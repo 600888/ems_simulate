@@ -15,27 +15,27 @@
 
 1. 主界面
 
-   ![](resources\img\1.png)
+   ![](resources/img/1.png)
 
 2. 新增设备
 
-   ![](resources\img\2.png)
+   ![](resources/img/2.png)
 
 3. 展开列表行可以编辑测点值
 
-   ![](resources\img\3.png)
+   ![](resources/img/3.png)
 
 4. 设置数据模拟方式
 
-   ![](resources\img\4.png)
+   ![](resources/img/4.png)
 
 5. 编辑测点信息
 
-   ![](resources\img\5.png)
+   ![](resources/img/5.png)
 
 6. 以DL/T645-2007协议为例，测试读取值是否正确，需要结合乘法系数和加法系数，可以看到数据读取正确
 
-   ![](resources\img\6.png)
+   ![](resources/img/6.png)
 
 ## 技术架构
 
