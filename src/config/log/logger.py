@@ -1,8 +1,10 @@
+import inspect
+import json
 from loguru import logger
 import os
 import sys
-import traceback
-from typing import Optional, Union
+from typing import Any, Dict, Optional, Union
+from src.config.env import log_path
 
 LOG_COLORS = {
     "DEBUG": "\033[1;36m",  # CYAN
@@ -13,7 +15,6 @@ LOG_COLORS = {
     "EXCEPTION": "\033[1;31m",  # RED
 }
 COLOR_RESET = "\033[1;0m"
-
 
 class Log:
     def __init__(
@@ -26,7 +27,10 @@ class Log:
         when: Optional[str] = None,
         colorful: bool = True,
         compression: Optional[str] = None,  # 新增压缩功能
+        is_backtrace: bool = True,
     ):
+        self.is_backtrace = is_backtrace
+        self.logger = logger.bind(task=filename)
         # 设置日志文件路径
         if filename is None:
             filename = getattr(sys.modules["__main__"], "__file__", "log.py")
@@ -37,36 +41,63 @@ class Log:
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
-        # 移除默认handler
-        logger.remove()
-
         # 控制台输出配置
-        logger.add(
+        self.logger.add(
             sys.stderr,
             level=cmdlevel,
             format=self._formatter,
             colorize=colorful,
+            backtrace=True,
             enqueue=True,
+            filter=lambda record: record["extra"]["task"] == filename,
         )
 
         # 文件输出配置
         rotation_config = self._get_rotation_config(when, limit)
-        logger.add(
+        self.logger.add(
             filename,
             level=filelevel,
             format=self._formatter,
+            backtrace=True,
             rotation=rotation_config,
             retention=f"{backup_count} days",
             compression=compression,
             enqueue=True,
+            filter=lambda record: record["extra"]["task"] == filename,
         )
 
     def _formatter(self, record):
+        # 处理消息内容
+        message = str(record["message"]).replace("{", "{{").replace("}", "}}")
+        if isinstance(message, (dict, list)):
+            try:
+                message = json.dumps(message, ensure_ascii=False)
+            except TypeError:
+                message = str(message)
+
+        # 处理调用栈和颜色
+        if self.is_backtrace:
+            frame = inspect.currentframe()
+            while frame:
+                if (
+                    "loguru" not in frame.f_code.co_filename
+                    and "logger.py" not in frame.f_code.co_filename
+                ):
+                    break
+                frame = frame.f_back
+            file_info = (
+                f"[{os.path.basename(frame.f_code.co_filename)}:{frame.f_code.co_name}:{frame.f_lineno}]"
+                if frame
+                else f"[{record['file']}:{record['function']}:{record['line']}]"
+            )
+        else:
+            file_info = f"[{record['file']}:{record['line']}]"
+
         level_color = LOG_COLORS.get(record["level"].name, "")
         return (
             f"{level_color}[{record['time'].strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}] "
-            f"[{record['file']}] [line:{record['line']}] "
-            f"[{record['level']}] {record['message']}{COLOR_RESET}\n"
+            + file_info
+            + f"[{record['level']}] {message}{COLOR_RESET}\n"
         )
 
     def _get_rotation_config(self, when: Optional[str], limit: Union[int, str]):
@@ -77,26 +108,25 @@ class Log:
                 return f"{limit / 1024 / 1024} MB"
             return limit  # 直接支持"10 MB"、"1 GB"等字符串格式
 
-    def trace(self):
-        """Log exception trace."""
-        info = sys.exc_info()
-        for file, lineno, function, text in traceback.extract_tb(info[2]):
-            logger.error(f"{file} line:{lineno} in {function}:{text}")
-        logger.error(f"{info[0].__name__}: {info[1]}")
-
-    # 代理loguru的日志方法（保持与原类完全相同的接口）
-    debug = logger.debug
-    info = logger.info
-    warning = logger.warning
-    error = logger.error
-    critical = logger.critical
-    exception = logger.exception
-
     @staticmethod
     def set_logger(**kwargs) -> bool:
         """For backward compatibility."""
         return True
 
+    def debug(self, *args, **kwargs):
+        self.logger.debug(*args, **kwargs)
 
-# 保持原有接口
-__all__ = ["set_logger", "debug", "info", "warning", "error", "critical", "exception"]
+    def info(self, *args, **kwargs):
+        self.logger.info(*args, **kwargs)
+
+    def warning(self, *args, **kwargs):
+        self.logger.warning(*args, **kwargs)
+
+    def error(self, *args, **kwargs):
+        self.logger.error(*args, **kwargs)
+
+    def critical(self, *args, **kwargs):
+        self.logger.critical(*args, **kwargs)
+
+    def exception(self, *args, **kwargs):
+        self.logger.exception(*args, **kwargs)

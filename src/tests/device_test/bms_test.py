@@ -1,6 +1,6 @@
 import unittest
 
-from src.device.bms import Bms
+from src.device.types.bms import Bms
 
 
 class BmsTestCase(unittest.TestCase):

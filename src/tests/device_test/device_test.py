@@ -1,7 +1,7 @@
 import unittest
 
 from src.config.global_config import CSV_DIR
-from src.device.device import Device
+from src.device.core.device import Device
 
 
 class DeviceTestCase(unittest.TestCase):

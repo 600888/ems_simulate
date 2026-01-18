@@ -52,8 +52,8 @@
 <script lang="ts" setup>
 import { ref, onMounted, computed, watch } from "vue";
 import { useRoute } from "vue-router";
-import TextNode from "@/components/TextNode.vue";
-import Slave from "@/components/Slave.vue";
+import TextNode from "@/components/common/TextNode.vue";
+import Slave from "@/components/device/Slave.vue";
 import {
   getDeviceInfo,
   startSimulation,

@@ -4,7 +4,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.web.device.device_controller import device_router
+from src.web.channel.channel_controller import channel_router
 from src.device_controller import get_device_controller
+from src.web.schemas import BaseResponse
 
 
 def create_app():
@@ -21,6 +23,7 @@ def create_app():
     
     # 注册路由
     app.include_router(device_router, prefix="")
+    app.include_router(channel_router, prefix="")
     return app
 
 
@@ -38,7 +41,7 @@ async def startup_event():
 async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
-        content={"code": 500, "message": f"服务器内部错误: {str(exc)}", "data": {}},
+        content=BaseResponse(code=500, message=f"服务器内部错误: {str(exc)}", data={}).dict(),
     )
 
 

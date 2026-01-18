@@ -1,0 +1,84 @@
+"""
+遥测测点表模型 (Yc)
+frame_type = 0
+"""
+
+from typing import TypedDict, Optional
+from sqlalchemy import Integer, String, Boolean, Float, ForeignKey
+from sqlalchemy.orm import mapped_column, Mapped, relationship
+
+from src.data.model.base import Base
+
+
+class PointYcDict(TypedDict):
+    """遥测点字典类型"""
+    id: int
+    code: str
+    name: str
+    channel_id: Optional[int]
+    rtu_addr: int
+    reg_addr: str
+    func_code: int
+    decode_code: str
+    mul_coe: float
+    add_coe: float
+    max_limit: float
+    min_limit: float
+    enable: bool
+
+
+class PointYc(Base):
+    """遥测测点表"""
+    __tablename__ = "point_yc"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True, comment="测点ID"
+    )
+    code: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True, comment="测点编码"
+    )
+    name: Mapped[str] = mapped_column(
+        String(64), nullable=False, comment="测点名称"
+    )
+    channel_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("channel.id"), nullable=True, index=True, comment="所属通道ID"
+    )
+    rtu_addr: Mapped[int] = mapped_column(
+        Integer, server_default="1", comment="从机地址"
+    )
+    reg_addr: Mapped[str] = mapped_column(
+        String(32), nullable=False, comment="寄存器地址"
+    )
+    func_code: Mapped[int] = mapped_column(
+        Integer, server_default="3", comment="功能码"
+    )
+    decode_code: Mapped[str] = mapped_column(
+        String(10), server_default="0x41", comment="解析码"
+    )
+
+    # 遥测特有字段
+    mul_coe: Mapped[float] = mapped_column(
+        Float, server_default="1.0", comment="乘系数"
+    )
+    add_coe: Mapped[float] = mapped_column(
+        Float, server_default="0.0", comment="加系数"
+    )
+    max_limit: Mapped[float] = mapped_column(
+        Float, server_default="9999999", comment="上限值"
+    )
+    min_limit: Mapped[float] = mapped_column(
+        Float, server_default="-9999999", comment="下限值"
+    )
+
+    enable: Mapped[bool] = mapped_column(
+        Boolean, server_default="1", comment="是否启用"
+    )
+
+    __table_args__ = {"comment": "遥测测点表"}
+
+    @property
+    def frame_type(self) -> int:
+        return 0
+
+    def to_dict(self) -> PointYcDict:
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}

@@ -1,63 +1,121 @@
-from typing import List
+"""
+通道服务模块
+提供通道的业务逻辑
+"""
+
+from typing import List, Optional
 from src.data.dao.channel_dao import ChannelDao
-from src.enums.channel import Channel, NetConfig
-from src.enums.connection_type import ConnectionType
-from src.enums.modbus_def import ProtocolType, get_protocol_type_by_value
+from src.data.model.channel import ChannelDict
+from src.enums.modbus_def import ProtocolType
 from src.data.log import log
 
 
 class ChannelService:
+    """通道服务类"""
+
     def __init__(self):
         pass
 
     @classmethod
-    def get_channel_list(cls) -> List[Channel]:
+    def get_all_channels(cls) -> List[ChannelDict]:
+        """获取所有启用的通道"""
         try:
-            result = ChannelDao().get_channel_list()
-            channel_list = []
-            for item in result:
-                connection_type = ConnectionType(item["dev_type"])
-                protocol = item["protocol_type"]
-
-                if connection_type == ConnectionType.Serial:
-                    if protocol == 0:
-                        protocol_type = ProtocolType.ModbusRtu
-                        continue
-                    elif protocol == 1:
-                        protocol_type = ProtocolType.ModbusRtuOverTcp
-                    else:
-                        continue
-                else:
-                    if protocol == 1:
-                        protocol_type = ProtocolType.ModbusTcp
-                    elif protocol == 2:
-                        protocol_type = ProtocolType.ModbusTcpClient
-                    elif protocol == 6:
-                        protocol_type = ProtocolType.Dlt645Server
-                    elif (
-                        protocol == 10
-                    ):  # 这里和数据库里面相反,EMS作为客户端的时候,模拟设备作为服务服务端
-                        protocol_type = ProtocolType.Iec104Server
-                    elif protocol == 9:
-                        protocol_type = ProtocolType.Iec104Client
-
-                # 只处理TCP的情况
-                # 截取冒号后的端口号
-                addr = item["remote_addr"]
-                ip = addr[: addr.find(":")]
-                port = addr[addr.find(":") + 1 :]
-
-                channel = Channel(
-                    id=item["id"],
-                    code=item["code"],
-                    name=item["name"],
-                    protocol_type=protocol_type,
-                    connection_type=connection_type,
-                    net_config=NetConfig(ip=ip, port=port),
-                )
-                channel_list.append(channel)
-                log.debug(f"获取通道: {channel}")
-            return channel_list
+            return ChannelDao.get_all_channels()
         except Exception as e:
             log.error(f"获取通道列表失败: {e}")
             return []
+
+    @classmethod
+    def get_channels_by_device(cls, device_id: int) -> List[ChannelDict]:
+        """根据设备ID获取通道列表"""
+        try:
+            return ChannelDao.get_channels_by_device(device_id)
+        except Exception as e:
+            log.error(f"获取通道列表失败: {e}")
+            return []
+
+    @classmethod
+    def get_channel_by_code(cls, code: str) -> Optional[ChannelDict]:
+        """根据编码获取通道"""
+        try:
+            return ChannelDao.get_channel_by_code(code)
+        except Exception as e:
+            log.error(f"获取通道失败: {e}")
+            return None
+
+    @classmethod
+    def get_channel_by_id(cls, channel_id: int) -> Optional[ChannelDict]:
+        """根据ID获取通道"""
+        try:
+            return ChannelDao.get_channel_by_id(channel_id)
+        except Exception as e:
+            log.error(f"获取通道失败: {e}")
+            return None
+
+    @classmethod
+    def get_protocol_type(cls, channel: ChannelDict) -> ProtocolType:
+        """根据通道配置获取协议类型"""
+        protocol = channel.get("protocol_type", 1)
+        conn_type = channel.get("conn_type", 1)
+
+        # 串口连接
+        if conn_type == 0:
+            if protocol == 0:
+                return ProtocolType.ModbusRtu
+            elif protocol == 3:
+                return ProtocolType.Dlt645Server
+
+        # TCP 客户端
+        elif conn_type == 1:
+            if protocol == 1:
+                return ProtocolType.ModbusTcpClient
+            elif protocol == 2:
+                return ProtocolType.Iec104Client
+
+        # TCP 服务端
+        elif conn_type == 2:
+            if protocol == 1:
+                return ProtocolType.ModbusTcp
+            elif protocol == 2:
+                return ProtocolType.Iec104Server
+            elif protocol == 3:
+                return ProtocolType.Dlt645Server
+
+        return ProtocolType.ModbusTcp
+
+    @classmethod
+    def create_channel(
+        cls,
+        code: str,
+        name: str,
+        device_id: Optional[int] = None,
+        protocol_type: int = 1,
+        conn_type: int = 1,
+        **kwargs,
+    ) -> int:
+        """创建通道"""
+        try:
+            return ChannelDao.create_channel(
+                code, name, device_id, protocol_type, conn_type, **kwargs
+            )
+        except Exception as e:
+            log.error(f"创建通道失败: {e}")
+            return -1
+
+    @classmethod
+    def update_channel(cls, channel_id: int, **kwargs) -> bool:
+        """更新通道"""
+        try:
+            return ChannelDao.update_channel(channel_id, **kwargs)
+        except Exception as e:
+            log.error(f"更新通道失败: {e}")
+            return False
+
+    @classmethod
+    def delete_channel(cls, channel_id: int) -> bool:
+        """删除通道"""
+        try:
+            return ChannelDao.delete_channel(channel_id)
+        except Exception as e:
+            log.error(f"删除通道失败: {e}")
+            return False

@@ -1,10 +1,7 @@
 pymodbus==3.6.2
 pyserial
-modbus_tk
 pylint==1.4.3
 blinker
-prettytable
-openpyxl
 sqlalchemy
 pymysql
 cryptography

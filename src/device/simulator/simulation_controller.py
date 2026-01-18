@@ -51,14 +51,25 @@ class SimulationController:
         """获取单个点的信息"""
         for point, simulator in self.points.items():
             if point.code == point_code:
-                return {
+                info = {
                     "code": point.code,
                     "name": point.name,
+                    "rtu_addr": point.rtu_addr,
+                    "reg_addr": point.hex_address,
+                    "func_code": point.func_code,
+                    "decode_code": point.decode,
                     "value": point.real_value if isinstance(point, Yc) else point.value,
                     "simulate_method": simulator.simulate_method.value,
                     "step": simulator.step,
-                    "is_running": simulator.is_running
+                    "is_running": simulator.is_running,
+                    "frame_type": point.frame_type
                 }
+                # 遥测和遥调特有字段
+                if hasattr(point, "mul_coe"):
+                    info["mul_coe"] = point.mul_coe
+                if hasattr(point, "add_coe"):
+                    info["add_coe"] = point.add_coe
+                return info
         return None
     
     def set_point_simulation_range(self, point_code: str, min_value: float, max_value: float):

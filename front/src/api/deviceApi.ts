@@ -20,6 +20,10 @@ export const requestApi = async (url: string, method: string, data: any): Promis
             method,
             data
         });
+        // 检查业务响应码
+        if (response.data.code !== 200) {
+            throw new Error(response.data.message || '请求失败');
+        }
         return response.data.data;
     } catch (error) {
         // 统一错误处理
@@ -252,6 +256,20 @@ export async function setPointSimulationRange(deviceName: string, pointCode: str
         return data;
     } catch (error) {
         console.error('Error setting point simulation range:', error);
+        return false;
+    }
+}
+
+export async function editPointMetadata(deviceName: string, pointCode: string, metadata: any): Promise<boolean> {
+    try {
+        const data = await requestApi('/device/edit_point_metadata/', 'post', {
+            device_name: deviceName,
+            point_code: pointCode,
+            metadata: metadata,
+        });
+        return data;
+    } catch (error) {
+        console.error('Error editing point metadata:', error);
         return false;
     }
 }

@@ -8,16 +8,16 @@ from src.data.service.channel_service import ChannelService
 from src.data.service.yc_service import YcService
 from src.device.data_update.data_update_thread import DataUpdateThread
 from src.device.factory.general_device_builder import GeneralDeviceBuilder
-from src.device.general_device import GeneralDevice
-from src.device.pcs import Pcs
-from src.device.circuit_breaker import CircuitBreaker
+from src.device.types.general_device import GeneralDevice
+from src.device.types.pcs import Pcs
+from src.device.types.circuit_breaker import CircuitBreaker
 from src.enums.data_source import DataSource
 from src.enums.modbus_def import ProtocolType, get_protocol_type_by_value
 
 sys.path.append("../")
 
 from src.config.global_config import CSV_DIR, CONFIG_JSON_DIR
-from src.device.device import Device
+from src.device.core.device import Device
 from src.config.config import Config
 from src.log import log
 
@@ -63,6 +63,50 @@ class DeviceController:
         slave_list.append("返回上级菜单")
         return slave_list
 
+    def get_device_by_id(self, device_id: int) -> Optional[Device]:
+        """根据设备 ID 查找设备"""
+        for device in self.device_list:
+            if getattr(device, 'device_id', None) == device_id:
+                return device
+        return None
+
+    async def remove_device_by_id(self, device_id: int) -> bool:
+        """根据设备 ID 停止并移除设备"""
+        device = self.get_device_by_id(device_id)
+        if not device:
+            return False
+
+        # 停止设备
+        try:
+            # 停止更新线程
+            if hasattr(device, "data_update_thread") and device.data_update_thread:
+                device.data_update_thread.stop()
+            
+            # 停止模拟
+            if hasattr(device, "simulation_controller"):
+                device.simulation_controller.stop_simulation()
+            
+            # 停止协议服务端/客户端
+            if hasattr(device, "protocol_handler") and device.protocol_handler:
+                await device.protocol_handler.stop()
+        except Exception as e:
+            log.error(f"移除设备 {device.name} (ID: {device_id}) 时出错: {e}")
+
+        # 从列表和映射中移除
+        if device in self.device_list:
+            self.device_list.remove(device)
+        
+        # 移除映射中的条目（可能存在多个指向同一对象的映射，例如旧名称和新名称）
+        keys_to_remove = [k for k, v in self.device_map.items() if v == device]
+        for k in keys_to_remove:
+            del self.device_map[k]
+        
+        # 如果是储能电表，清理变量
+        if self.enerey_meter == device:
+            self.enerey_meter = None
+            
+        return True
+
     def sync_pcs_power_to_meter(self):
         """同步所有PCS功率之和到储能电表"""
         try:
@@ -85,54 +129,66 @@ class DeviceController:
 
     async def import_device_from_db(self):
         try:
-            channel_list = ChannelService.get_channel_list()
+            channel_list = ChannelService.get_all_channels()
             for channel in channel_list:
-                log.info(f"导入设备: {channel.code}")
-                if channel.code.upper().find("PCS") != -1:
+                channel_code = channel["code"]
+                channel_name = channel["name"]
+                channel_id = channel["id"]
+                protocol_type = channel["protocol_type"]
+                conn_type = channel["conn_type"]
+                ip = channel.get("ip", Config.DEFAULT_IP)
+                port = channel.get("port", Config.DEFAULT_PORT)
+                
+                log.info(f"导入设备: {channel_code}")
+                
+                # 获取协议类型枚举
+                channel_protocol_type = ChannelService.get_protocol_type(channel)
+                
+                if channel_code.upper().find("PCS") != -1:
                     general_device_builder = GeneralDeviceBuilder(
-                        device_code=channel.code, device=Pcs()
+                        channel_id=channel_id, device=Pcs()
                     )
-                elif channel.code.upper().find("BREAKER") != -1:
-                    log.info(f"导入断路器设备: {channel.code}")
+                elif channel_code.upper().find("BREAKER") != -1:
+                    log.info(f"导入断路器设备: {channel_code}")
                     general_device_builder = GeneralDeviceBuilder(
-                        device_code=channel.code, device=CircuitBreaker()
+                        channel_id=channel_id, device=CircuitBreaker()
                     )
                 else:
                     general_device_builder = GeneralDeviceBuilder(
-                        device_code=channel.code, device=GeneralDevice()
+                        channel_id=channel_id, device=GeneralDevice()
                     )
 
                 if (
-                    channel.protocol_type == ProtocolType.Iec104Client
-                    or channel.protocol_type == ProtocolType.ModbusTcpClient
+                    channel_protocol_type == ProtocolType.Iec104Client
+                    or channel_protocol_type == ProtocolType.ModbusTcpClient
                 ):  # 如果是客户端，用客户端的ip
                     general_device_builder.setDeviceNetConfig(
-                        port=channel.net_config.port, ip=channel.net_config.ip
+                        port=port, ip=ip
                     )
                 else:
-                    general_device_builder.setDeviceNetConfig(  # 服务端默认0.0.0.0
-                        port=channel.net_config.port, ip="0.0.0.0"
+                    general_device_builder.setDeviceNetConfig(  # 服务端默认监听配置
+                        port=port, ip=Config.DEFAULT_IP
                     )
                 general_device = general_device_builder.makeGeneralDevice(
-                    device_id=channel.id,
-                    device_name=channel.name,
-                    protocol_type=channel.protocol_type,
+                    device_id=channel_id,
+                    device_name=channel_name,
+                    protocol_type=channel_protocol_type,
                     is_start=True,
                 )
-                general_device.name = channel.name
+                general_device.name = channel_name
                 general_device.data_update_thread.start()  #   启动数据更新线程
                 self.device_list.append(general_device)
                 self.device_map[general_device.name] = general_device
 
                 # 特殊处理储能电表
                 if (
-                    channel.protocol_type == ProtocolType.Dlt645Client
-                    or channel.protocol_type == ProtocolType.Dlt645Server
+                    channel_protocol_type == ProtocolType.Dlt645Client
+                    or channel_protocol_type == ProtocolType.Dlt645Server
                 ):
                     self.enerey_meter = general_device
 
             # 启动数据同步线程
-            self.start_data_sync_thread()
+            # self.start_data_sync_thread()
         except Exception as e:
             log.error(f"通过数据库导入失败: {e}")
             raise
@@ -164,7 +220,7 @@ class DeviceController:
                 log.info("通过csv文件导入设备配置文件成功!")
 
                 # 启动数据同步线程
-                self.start_data_sync_thread()
+                # self.start_data_sync_thread()
             except Exception as e:
                 log.error(f"通过csv文件导入设备配置文件失败: {e}")
 
@@ -219,5 +275,5 @@ async def get_device_controller():
         device_controller = DeviceController()
         # 读取配置文件创建设备
         await device_controller.import_device()
-        device_controller.start_data_sync_thread()
+        # device_controller.start_data_sync_thread()
     return device_controller

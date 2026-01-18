@@ -1,7 +1,18 @@
+"""
+通用设备构建器
+负责根据配置创建和初始化设备实例
+"""
+
 from typing import Optional
 import asyncio
+
+from src.data.service.point_service import PointService
+from src.data.service.channel_service import ChannelService
 from src.data.service.yc_service import YcService
-from src.device.device import Device
+from src.data.service.yx_service import YxService
+from src.data.service.yk_service import YkService
+from src.data.service.yt_service import YtService
+from src.device.core.device import Device
 from src.enums.modbus_def import ProtocolType
 from src.enums.data_source import DataSource
 from src.proto.iec104.iec104client import IEC104Client
@@ -11,16 +22,18 @@ from src.proto.pyModbus.server import ModbusServer
 
 
 class GeneralDeviceBuilder:
+    """通用设备构建器"""
+
     def __init__(
         self,
-        device_code,
+        channel_id: int,
         import_method=DataSource.Db,
-        device: Device = Device(),
+        device: Device = None,
     ) -> None:
-        self.general_device: Device = device
+        self.general_device: Device = device if device else Device()
         self.device_id: int = 0
         self.device_name: str = ""
-        self.device_code: str = device_code
+        self.channel_id: int = channel_id
         self.import_method: DataSource = import_method
         self.path: Optional[str] = None
         self.serial_port: Optional[str] = None
@@ -59,8 +72,14 @@ class GeneralDeviceBuilder:
     def initDlt645Server(self) -> None:
         self.general_device.initDlt645Server()
 
-    def initPlan(self) -> None:
-        self.general_device.initPlan()
+    def importDataPoints(self) -> None:
+        """导入测点数据"""
+        if self.import_method == DataSource.Db:
+            self.general_device.importDataPointFromChannel(
+                channel_id=self.channel_id, protocol_type=self.protocol_type
+            )
+        elif self.path:
+            self.general_device.importDataPointFromCsv(file_name=self.path)
 
     def makeGeneralDevice(
         self,
@@ -75,10 +94,8 @@ class GeneralDeviceBuilder:
         self.path = path
         self.is_start = is_start
         self.protocol_type = protocol_type
-        if (
-            protocol_type == ProtocolType.ModbusTcp
-            or protocol_type == ProtocolType.ModbusRtuOverTcp
-        ):
+
+        if protocol_type in [ProtocolType.ModbusTcp, ProtocolType.ModbusRtuOverTcp]:
             return self.generalDeviceModbusTcp
         elif protocol_type == ProtocolType.ModbusTcpClient:
             return self.generalDeviceModbusTcpClient
@@ -90,22 +107,16 @@ class GeneralDeviceBuilder:
             return self.generalDeviceIec104Client
         elif protocol_type == ProtocolType.Dlt645Server:
             return self.generalDeviceDlt645Server
+        return None
 
     @property
     def generalDeviceIec104Server(self) -> Device:
         print("初始化104服务器")
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
-        if self.import_method == DataSource.Db:
-            self.general_device.importDataPointFromDb(
-                grp_code=self.device_code, protocol_type=self.protocol_type
-            )
-        else:
-            if self.path:
-                self.general_device.importDataPointFromCsv(file_name=self.path)
+        self.importDataPoints()
         self.initIec104Server()
         self.general_device.setSpecialDataPointValues()
-        self.initPlan()
         if self.is_start and isinstance(self.general_device.server, IEC104Server):
             print(f"start server: {self.general_device.port}")
             self.general_device.server.start()
@@ -116,16 +127,9 @@ class GeneralDeviceBuilder:
         print("初始化104客户端")
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
-        if self.import_method == DataSource.Db:
-            self.general_device.importDataPointFromDb(
-                grp_code=self.device_code, protocol_type=self.protocol_type
-            )
-        else:
-            if self.path:
-                self.general_device.importDataPointFromCsv(file_name=self.path)
+        self.importDataPoints()
         self.initIec104Client()
         self.general_device.setSpecialDataPointValues()
-        self.initPlan()
         if self.is_start and isinstance(self.general_device.client, IEC104Client):
             print(
                 f"start client: {self.general_device.client.ip} port: {self.general_device.client.port}"
@@ -137,44 +141,27 @@ class GeneralDeviceBuilder:
     def generalDeviceModbusTcp(self) -> Device:
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
-        if self.import_method == DataSource.Db:
-            self.general_device.importDataPointFromDb(grp_code=self.device_code)
-        else:
-            if self.path:
-                self.general_device.importDataPointFromCsv(file_name=self.path)
+        self.importDataPoints()
         self.initModbusTcpServer()
         self.general_device.setSpecialDataPointValues()
-        self.initPlan()
-        # 标记服务器需要启动，但实际启动将在有事件循环的地方进行
-        # 例如在start_back_end.py的init_device_controller函数中
         return self.general_device
 
     @property
     def generalDeviceModbusTcpClient(self) -> Device:
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
-        if self.import_method == DataSource.Db:
-            self.general_device.importDataPointFromDb(grp_code=self.device_code)
-        else:
-            if self.path:
-                self.general_device.importDataPointFromCsv(file_name=self.path)
+        self.importDataPoints()
         self.initModbusTcpClient()
         self.general_device.setSpecialDataPointValues()
-        self.initPlan()
         return self.general_device
 
     @property
     def generalDeviceSerial(self) -> Device:
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
-        if self.import_method == DataSource.Db:
-            self.general_device.importDataPointFromDb(grp_code=self.device_code)
-        else:
-            if self.path:
-                self.general_device.importDataPointFromCsv(file_name=self.path)
+        self.importDataPoints()
         self.initModbusSerialServer()
         self.general_device.setSpecialDataPointValues()
-        self.initPlan()
         return self.general_device
 
     @property
@@ -182,17 +169,13 @@ class GeneralDeviceBuilder:
         print("初始化dlt645服务端")
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
-        if self.import_method == DataSource.Db:
-            self.general_device.importDataPointFromDb(
-                grp_code=self.device_code, protocol_type=self.protocol_type
-            )
-        else:
-            if self.path:
-                self.general_device.importDataPointFromCsv(file_name=self.path)
-        self.general_device.meter_address = YcService.meter_address_dict.get(
-            self.device_code, bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-        )  # 测点导入后再赋予电表地址
+        self.importDataPoints()
+        # 设置电表地址（12位字符串）
+        channel = ChannelService.get_channel_by_id(self.channel_id)
+        if channel:
+            # 从 rtu_addr 字段获取电表地址字符串
+            meter_addr = channel.get("rtu_addr", "000000000000")
+            self.general_device.meter_address = str(meter_addr) if meter_addr else "000000000000"
         self.initDlt645Server()
         self.general_device.setSpecialDataPointValues()
-        self.initPlan()
         return self.general_device

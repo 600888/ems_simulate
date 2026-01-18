@@ -5,7 +5,7 @@ from src.config.global_config import CSV_DIR
 
 sys.path.append("../../../")
 
-from src.device.pcs import Pcs
+from src.device.types.pcs import Pcs
 from src.device.factory.pcs_builder import PcsBuilder
 
 
