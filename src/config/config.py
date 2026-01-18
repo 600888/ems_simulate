@@ -26,6 +26,7 @@ class Config:
     # 默认协议配置
     DEFAULT_PORT: int = 502
     IEC104_DEFAULT_PORT: int = 2404
+    DLT645_DEFAULT_PORT: int = 8899
     DEFAULT_IP: str = "0.0.0.0"
 
     # 数据源配置

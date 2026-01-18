@@ -38,9 +38,24 @@ class ModbusServerHandler(ServerHandler):
         port = config.get("port", Config.DEFAULT_PORT)
         self._slave_id_list = config.get("slave_id_list", [1])
         protocol_type = config.get("protocol_type", ProtocolType.ModbusTcp)
+        
+        # 串口配置
+        serial_port = config.get("serial_port", "COM1")
+        baudrate = config.get("baudrate", 9600)
+        bytesize = config.get("databits", 8)
+        stopbits = config.get("stopbits", 1)
+        parity = config.get("parity", "N")
 
         self._server = ModbusServer(
-            self._log, self._slave_id_list, port, protocol_type
+            logger=self._log, 
+            slave_id_list=self._slave_id_list, 
+            port=port, 
+            protocol_type=protocol_type,
+            serial_port=serial_port,
+            baudrate=baudrate,
+            bytesize=bytesize,
+            stopbits=stopbits,
+            parity=parity
         )
 
     async def start(self) -> bool:
@@ -52,7 +67,7 @@ class ModbusServerHandler(ServerHandler):
                 return True
             return False
         except Exception as e:
-            if self._log:
+            if self._log: 
                 self._log.error(f"启动 Modbus 服务器失败: {e}")
             return False
 
@@ -74,7 +89,7 @@ class ModbusServerHandler(ServerHandler):
         if self._server and hasattr(point, "func_code"):
             slave_id = point.rtu_addr
             return self._server.getValueByAddress(
-                point.func_code, slave_id, point.address
+                point.func_code, slave_id, point.address, point.decode
             )
         return 0
 
@@ -83,7 +98,7 @@ class ModbusServerHandler(ServerHandler):
         if self._server and hasattr(point, "func_code"):
             slave_id = point.rtu_addr
             self._server.setValueByAddress(
-                point.func_code, slave_id, point.address, value
+                point.func_code, slave_id, point.address, value, point.decode
             )
             return True
         return False
@@ -97,7 +112,7 @@ class ModbusServerHandler(ServerHandler):
     ) -> Any:
         """根据地址获取值"""
         if self._server:
-            return self._server.getValueByAddress(func_code, slave_id, address)
+            return self._server.getValueByAddress(func_code, slave_id, address) # 这里可能需要默认值或外部传入 decode
         return 0
 
     def set_value_by_address(
@@ -105,7 +120,7 @@ class ModbusServerHandler(ServerHandler):
     ) -> None:
         """根据地址设置值"""
         if self._server:
-            self._server.setValueByAddress(func_code, slave_id, address, value)
+            self._server.setValueByAddress(func_code, slave_id, address, value) # 这里可能需要默认值或外部传入 decode
 
     @property
     def server(self):
@@ -134,8 +149,26 @@ class ModbusClientHandler(ClientHandler):
         self._config = config
         ip = config.get("ip", "127.0.0.1")
         port = config.get("port", Config.DEFAULT_PORT)
+        protocol_type = config.get("protocol_type", ProtocolType.ModbusTcp)
+        
+        # 串口配置
+        serial_port = config.get("serial_port", "COM1")
+        baudrate = config.get("baudrate", 9600)
+        bytesize = config.get("databits", 8)
+        stopbits = config.get("stopbits", 1)
+        parity = config.get("parity", "N")
 
-        self._client = ModbusClient(ip, port, log=self._log)
+        self._client = ModbusClient(
+            host=ip, 
+            port=port, 
+            protocol_type=protocol_type,
+            serial_port=serial_port,
+            baudrate=baudrate,
+            bytesize=bytesize,
+            stopbits=stopbits,
+            parity=parity,
+            log=self._log
+        )
 
     async def start(self) -> bool:
         """启动客户端（连接服务器）"""
@@ -169,7 +202,7 @@ class ModbusClientHandler(ClientHandler):
         """读取测点值"""
         if self._client and hasattr(point, "func_code"):
             return self._client.read_value_by_address(
-                point.func_code, point.rtu_addr, point.address
+                point.func_code, point.rtu_addr, point.address, point.decode
             )
         return 0
 
@@ -177,7 +210,7 @@ class ModbusClientHandler(ClientHandler):
         """写入测点值"""
         if self._client and hasattr(point, "func_code"):
             self._client.write_value_by_address(
-                point.func_code, point.rtu_addr, point.address, value
+                point.func_code, point.rtu_addr, point.address, value, point.decode
             )
             return True
         return False

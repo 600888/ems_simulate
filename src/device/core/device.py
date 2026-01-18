@@ -18,7 +18,7 @@ from src.device.core.data_exporter import DataExporter
 from src.device.protocol.base_handler import ProtocolHandler, ServerHandler, ClientHandler
 from src.device.protocol.modbus_handler import ModbusServerHandler, ModbusClientHandler
 from src.device.protocol.iec104_handler import IEC104ServerHandler, IEC104ClientHandler
-from src.device.protocol.dlt645_handler import DLT645ServerHandler
+from src.device.protocol.dlt645_handler import DLT645ServerHandler, DLT645ClientHandler
 from src.enums.point_data import SimulateMethod, Yc, Yx, Yt, Yk, DeviceType, BasePoint
 from src.enums.modbus_def import ProtocolType
 
@@ -37,6 +37,11 @@ class Device:
         self.name: str = ""
         self.ip: str = "0.0.0.0"
         self.port: int = 0
+        self.serial_port: Optional[str] = None  # 串口号（用于RTU模式）
+        self.baudrate: int = 9600
+        self.databits: int = 8
+        self.stopbits: int = 1
+        self.parity: str = "E"
         self.meter_address: str = "000000000000"
         self.device_type: DeviceType = DeviceType.Other
         self.protocol_type: ProtocolType = protocol_type
@@ -112,6 +117,7 @@ class Device:
             ProtocolType.Iec104Server: lambda: IEC104ServerHandler(self.log),
             ProtocolType.Iec104Client: lambda: IEC104ClientHandler(self.log),
             ProtocolType.Dlt645Server: lambda: DLT645ServerHandler(self.log),
+            ProtocolType.Dlt645Client: lambda: DLT645ClientHandler(self.log),
         }
         creator = handler_map.get(self.protocol_type)
         if creator:
@@ -125,6 +131,11 @@ class Device:
         config = {
             "ip": self.ip,
             "port": self.port,
+            "serial_port": self.serial_port,
+            "baudrate": self.baudrate,
+            "databits": self.databits,
+            "stopbits": self.stopbits,
+            "parity": self.parity,
             "slave_id_list": self.slave_id_list,
             "protocol_type": self.protocol_type,
             "meter_address": self.meter_address,
@@ -151,6 +162,11 @@ class Device:
         self.protocol_type = ProtocolType.ModbusTcpClient
         self.initProtocol()
 
+    def initModbusSerialServer(self) -> None:
+        """初始化 Modbus RTU 服务器（串口）"""
+        self.protocol_type = ProtocolType.ModbusRtu
+        self.initProtocol()
+
     def initIec104Server(self) -> None:
         """初始化 IEC104 服务器"""
         self.protocol_type = ProtocolType.Iec104Server
@@ -164,6 +180,11 @@ class Device:
     def initDlt645Server(self) -> None:
         """初始化 DLT645 服务器"""
         self.protocol_type = ProtocolType.Dlt645Server
+        self.initProtocol()
+
+    def initDlt645Client(self) -> None:
+        """初始化 DLT645 客户端"""
+        self.protocol_type = ProtocolType.Dlt645Client
         self.initProtocol()
 
     # ===== 设备启停 =====

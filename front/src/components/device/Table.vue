@@ -181,16 +181,32 @@ const props = defineProps({
     required: true
   },
   protocolType: {
-    type: Number,
+    type: [Number, String] as PropType<number | string>,
     default: 1  // 默认 Modbus TCP
   }
 })
 
-// Modbus协议类型 (0=RTU, 1=TCP)
-const isModbusProtocol = computed(() => props.protocolType === 0 || props.protocolType === 1)
+// 协议类型判断
+const isModbusProtocol = computed(() => {
+  const type = props.protocolType;
+  return type === 0 || type === 1 || (typeof type === 'string' && type.startsWith('Modbus'));
+})
 
-// 需要隐藏的列（位和功能码）仅对非Modbus协议隐藏
-const hiddenColumns = computed(() => isModbusProtocol.value ? [] : ['位', '功能码'])
+// DLT645 协议判断
+const isDlt645Protocol = computed(() => {
+  const type = props.protocolType;
+  return typeof type === 'string' && type.includes('Dlt645');
+})
+
+// 需要隐藏的列（位和功能码）
+const hiddenColumns = computed(() => {
+  // Modbus 协议显示位和功能码
+  if (isModbusProtocol.value) return [];
+  // DLT645 协议也显示功能码（DI/控制码）
+  if (isDlt645Protocol.value) return ['位'];
+  // 其他协议默认隐藏
+  return ['位', '功能码'];
+})
 
 // 过滤后的表头
 const filteredTableHeader = computed(() => {
@@ -200,9 +216,10 @@ const filteredTableHeader = computed(() => {
 // 过滤后的宽度列表
 const baseWidthList = [100, 100, 80, 100, 100, 280, 280, 150, 150, 120, 100, 100, 100]
 const filteredWidthList = computed(() => {
-  if (isModbusProtocol.value) return baseWidthList
-  // 移除"位"(index 2)和"功能码"(index 3)对应的宽度
-  return baseWidthList.filter((_, index) => index !== 2 && index !== 3)
+  return baseWidthList.filter((_, index) => {
+    const header = props.tableHeader[index]
+    return !hiddenColumns.value.includes(header)
+  })
 })
 
 // 响应式状态

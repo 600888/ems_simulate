@@ -50,7 +50,13 @@ async def get_device_info(req: DeviceInfoRequest, request: Request):
             "ip": device.ip,
             "port": device.port,
             "type": device.protocol_type.value,
-            "simulation_status": bool(device.isSimulationRunning())
+            "simulation_status": bool(device.isSimulationRunning()),
+            # 串口配置
+            "serial_port": getattr(device, 'serial_port', None),
+            "baudrate": getattr(device, 'baudrate', 9600),
+            "databits": getattr(device, 'databits', 8),
+            "stopbits": getattr(device, 'stopbits', 1),
+            "parity": getattr(device, 'parity', 'E'),
         }
         
         # 使用统一接口获取协议运行状态

@@ -62,7 +62,7 @@ const pageSize = ref(10);
 const pageIndex = ref(1);
 const total = ref(0);
 const activeFilters = ref<Record<string, number>>({});
-const protocolType = ref<number>(1); // 默认 Modbus TCP
+const protocolType = ref<number | string>(1); // 默认 Modbus TCP, 可以是字符串 (如 'ModbusTcp')
 const pointTypes = computed<number[]>(() => {
   return Object.values(activeFilters.value).flat() as number[];
 });

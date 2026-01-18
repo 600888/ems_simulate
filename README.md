@@ -66,7 +66,7 @@
 │                     Protocol Layer (协议层)                      │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
 │  │ModbusHandler │  │IEC104Handler │  │  DLT645Handler       │   │
-│  │ (Server/Client)│ │ (Server/Client)│ │    (Server)        │   │
+│  │ (Server/Client)│ │ (Server/Client)│ │  (Server/Client)     │   │
 │  └──────────────┘  └──────────────┘  └──────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -134,7 +134,7 @@ docker run -d --name ems -p 502:502 -p 2404:2404 -p 8899:8899 ems_simulate
 | Modbus TCP | ✅ | ✅ | 502 |
 | Modbus RTU | ✅ | ✅ | 串口 |
 | IEC 60870-5-104 | ✅ | ✅ | 2404 |
-| DLT/T 645-2007 | ✅ | - | 8899 |
+| DLT/T 645-2007 | ✅ | ✅ | 8899 |
 
 ---
 

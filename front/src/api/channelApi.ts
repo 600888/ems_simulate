@@ -148,3 +148,16 @@ export async function restartDevice(channelId: number): Promise<{ device_name: s
         throw error;
     }
 }
+
+/**
+ * 重新加载设备配置（不自动启动服务）
+ */
+export async function reloadDeviceConfig(channelId: number): Promise<{ device_name: string }> {
+    try {
+        const data = await requestApi(`/channel/reload_config/${channelId}`, 'post', null);
+        return data;
+    } catch (error) {
+        console.error('Error reloading device config:', error);
+        throw error;
+    }
+}

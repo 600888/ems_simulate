@@ -58,12 +58,12 @@ class ChannelService:
         protocol = channel.get("protocol_type", 1)
         conn_type = channel.get("conn_type", 1)
 
-        # 串口连接
+        # 串口主站（客户端模式 - 主动采集）
         if conn_type == 0:
             if protocol == 0:
-                return ProtocolType.ModbusRtu
+                return ProtocolType.ModbusRtu  # Modbus RTU 主站
             elif protocol == 3:
-                return ProtocolType.Dlt645Server
+                return ProtocolType.Dlt645Client  # DLT645 主站采集电表
 
         # TCP 客户端
         elif conn_type == 1:
@@ -71,6 +71,8 @@ class ChannelService:
                 return ProtocolType.ModbusTcpClient
             elif protocol == 2:
                 return ProtocolType.Iec104Client
+            elif protocol == 3:
+                return ProtocolType.Dlt645Client
 
         # TCP 服务端
         elif conn_type == 2:
@@ -80,6 +82,13 @@ class ChannelService:
                 return ProtocolType.Iec104Server
             elif protocol == 3:
                 return ProtocolType.Dlt645Server
+
+        # 串口从站（服务端模式 - 被采集）
+        elif conn_type == 3:
+            if protocol == 0:
+                return ProtocolType.ModbusRtu  # Modbus RTU 从站（目前共用同一类型）
+            elif protocol == 3:
+                return ProtocolType.Dlt645Server  # DLT645 从站模拟电表
 
         return ProtocolType.ModbusTcp
 

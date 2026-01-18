@@ -250,3 +250,28 @@ class PointDao:
         except Exception as e:
             log.error(f"更新测点元数据失败: {str(e)}")
             raise e
+
+    @classmethod
+    def delete_points_by_channel(cls, channel_id: int) -> int:
+        """删除通道下的所有测点（用于重新导入前清理）
+        
+        Args:
+            channel_id: 通道ID
+            
+        Returns:
+            删除的总测点数
+        """
+        try:
+            total_deleted = 0
+            with local_session() as session:
+                with session.begin():
+                    for model in [PointYc, PointYx, PointYk, PointYt]:
+                        deleted = session.query(model).where(
+                            model.channel_id == channel_id
+                        ).delete()
+                        total_deleted += deleted
+            log.info(f"已删除通道 {channel_id} 的 {total_deleted} 个测点")
+            return total_deleted
+        except Exception as e:
+            log.error(f"删除通道测点失败: {str(e)}")
+            raise e

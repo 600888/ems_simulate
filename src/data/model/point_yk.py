@@ -4,7 +4,7 @@ frame_type = 2
 """
 
 from typing import TypedDict, Optional
-from sqlalchemy import Integer, String, Boolean, ForeignKey
+from sqlalchemy import Integer, String, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import mapped_column, Mapped
 
 from src.data.model.base import Base
@@ -34,7 +34,7 @@ class PointYk(Base):
         Integer, primary_key=True, autoincrement=True, comment="测点ID"
     )
     code: Mapped[str] = mapped_column(
-        String(64), unique=True, nullable=False, index=True, comment="测点编码"
+        String(64), nullable=False, index=True, comment="测点编码"
     )
     name: Mapped[str] = mapped_column(
         String(64), nullable=False, comment="测点名称"
@@ -70,7 +70,10 @@ class PointYk(Base):
         Boolean, server_default="1", comment="是否启用"
     )
 
-    __table_args__ = {"comment": "遥控测点表"}
+    __table_args__ = (
+        UniqueConstraint("code", "channel_id", name="uq_point_yk_code_channel"),
+        {"comment": "遥控测点表"}
+    )
 
     @property
     def frame_type(self) -> int:

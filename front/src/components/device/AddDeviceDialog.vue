@@ -36,8 +36,8 @@
       
       <el-form-item label="连接模式" prop="conn_type">
         <el-radio-group v-if="mediaType === 'serial'" v-model="form.conn_type" @change="handleConnTypeChange">
-          <el-radio :value="0">从站（被动响应）</el-radio>
-          <el-radio :value="3">主站（主动采集）</el-radio>
+          <el-radio :value="3">从站（被动响应）</el-radio>
+          <el-radio :value="0">主站（主动采集）</el-radio>
         </el-radio-group>
         <el-radio-group v-else v-model="form.conn_type" @change="handleConnTypeChange">
           <el-radio :value="2">服务端（监听连接）</el-radio>
@@ -174,7 +174,7 @@
 import { ref, computed, reactive, watch, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules, UploadFile } from 'element-plus';
-import { createChannel, importPoints, createAndStartDevice, getChannel, updateChannel, getSerialPorts, restartDevice } from '@/api/channelApi';
+import { createChannel, importPoints, createAndStartDevice, getChannel, updateChannel, getSerialPorts, reloadDeviceConfig } from '@/api/channelApi';
 import type { ChannelCreateRequest, ProtocolOption } from '@/types/channel';
 
 // Props
@@ -249,7 +249,7 @@ const mediaType = ref<'serial' | 'network'>('network');
 // 介质类型改变处理
 const handleMediaTypeChange = (value: 'serial' | 'network') => {
   if (value === 'serial') {
-    form.conn_type = 0; // 默认为从站
+    form.conn_type = 3; // 默认为从站（被动响应）
     loadSerialPorts();
   } else {
     form.conn_type = 2; // 默认为服务端
@@ -408,18 +408,17 @@ const handleSubmit = async () => {
         }
       }
       
-      // 3. 创建并启动设备（仅新增模式）或重启设备（编辑模式）
+      // 3. 创建并启动设备（仅新增模式）
       if (!isEditMode.value) {
         const startResult = await createAndStartDevice(channelId);
         ElMessage.success(`设备 ${startResult.device_name} 启动成功`);
         // 刷新页面以更新UI（确保设备列表顺序与后端一致）
         window.location.reload();
       } else {
-        // 编辑模式：重启设备以应用新配置
-        await restartDevice(channelId);
-        ElMessage.success('设备配置已更新并重启');
-        // 刷新页面以更新UI（数据库已按ID排序，刷新后顺序正确）
+        // 编辑模式：重新加载配置（不自动启动）
+        await reloadDeviceConfig(channelId);
         window.location.reload();
+        ElMessage.success('设备配置已保存并重新加载，请手动启动设备');
       }
       
       // 5. 关闭对话框

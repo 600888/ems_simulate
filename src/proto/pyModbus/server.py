@@ -53,22 +53,30 @@ class ModbusServer:
         self,
         logger,
         slave_id_list: List[int],
-        port: int,
+        port: int = 502,
         protocol_type: ProtocolType = ProtocolType.ModbusTcp,
-        keep_connection: bool = False,  # 新增参数：是否保持连接不断开
+        serial_port: str = "COM1",
+        baudrate: int = 9600,
+        bytesize: int = 8,
+        parity: str = "N",
+        stopbits: int = 1,
+        keep_connection: bool = False,
     ):
         self._logger = logger
         self.server = None
-        self.ip = None  # 服务器地址, 默认本机地址
-        self.protocol_type = protocol_type  # 服务器类型, 串口, tcp, udp, tls, 默认tcp
+        self.protocol_type = protocol_type
         self.ip = "0.0.0.0"
-        self.port = port  # 端口号
-        self.serial_port = "/dev/ttyUSB0"  # 串口号, 默认/dev/ttyUSB0
+        self.port = port
+        self.serial_port = serial_port
+        self.baudrate = baudrate
+        self.bytesize = bytesize
+        self.parity = parity
+        self.stopbits = stopbits
         self.task = None
         self.loop = None
         self.is_running = False
-        self.keep_connection = keep_connection  # 新增标志位：是否保持连接不断开
-        self.stop_event = asyncio.Event()  # 初始化停止事件
+        self.keep_connection = keep_connection
+        self.stop_event = asyncio.Event()
         # 创建从站上下文
         self.slaves = {
             slave_id: ModbusSlaveContext(
@@ -96,6 +104,13 @@ class ModbusServer:
 
     def setSlaveCnt(self, slave_cnt):
         self.slave_cnt = slave_cnt
+
+    def setSerialConfig(self, port, baudrate=9600, bytesize=8, parity="N", stopbits=1):
+        self.serial_port = port
+        self.baudrate = baudrate
+        self.bytesize = bytesize
+        self.parity = parity
+        self.stopbits = stopbits
 
     def setUpServer(self, description=None, context=None, cmdline=None):
         """Run server setup."""
@@ -170,73 +185,82 @@ class ModbusServer:
             "identity": args.identity,  # server identify
         }
 
-        # 如果启用了保持连接功能
-        if self.keep_connection:
+        # 如果启用了保持连接功能 (仅限 TCP/UDP)
+        if self.keep_connection and self.protocol_type in [
+            ProtocolType.ModbusTcp, 
+            ProtocolType.ModbusTcpClient, 
+            ProtocolType.ModbusUdp,
+            ProtocolType.ModbusRtuOverTcp
+        ]:
             self._logger.info("保持连接功能已启用，将接收Modbus报文而不断开连接")
             common_params["handler"] = KeepConnectionHandler
 
-        if self.protocol_type == ProtocolType.ModbusTcp:
-            address = (
-                self.ip if self.ip else "",
-                self.port if self.port else None,
-            )
-            self.server = ModbusTcpServer(
-                address=address,  # listen address
-                **common_params,
-            )
-        elif self.protocol_type == ProtocolType.ModbusRtuOverTcp:
-            address = (
-                self.ip if self.ip else "",
-                self.port if self.port else None,
-            )
-            self.server = ModbusTcpServer(
-                address=address,  # listen address
-                framer=ModbusRtuFramer,  # The framer strategy to use
-                **common_params,
-            )
-        elif self.protocol_type == ProtocolType.ModbusUdp:
-            address = (
-                self.ip if self.ip else "",
-                self.port if self.port else None,
-            )
-            self.server = ModbusUdpServer(
-                address=address,  # listen address
-                **common_params,
-            )
-        elif self.protocol_type == ProtocolType.ModbusRtu:
-            # socat -d -d PTY,link=/tmp/ptyp0,raw,echo=0,ispeed=9600
-            #             PTY,link=/tmp/ttyp0,raw,echo=0,ospeed=9600
-            serial_params = {
-                "port": self.serial_port,  # serial port
-                "stopbits": 1,  # The number of stop bits to use
-                "bytesize": 8,  # The bytesize of the serial messages
-                "parity": "N",  # Which kind of parity to use
-                "baudrate": 9600,  # The baud rate to use for the serial device
-            }
-            self.server = ModbusSerialServer(
-                **common_params,
-                **serial_params,
-            )
-        elif self.protocol_type == ProtocolType.Tls:
-            address = (
-                self.ip if self.ip else "",
-                self.port if self.port else None,
-            )
-            tls_params = {
-                "host": "localhost",  # define tcp address where to connect to.
-                "address": address,  # listen address
-                "certfile": helper.get_certificate(
-                    "crt"
-                ),  # The cert file path for TLS (used if sslctx is None)
-                "keyfile": helper.get_certificate(
-                    "key"
-                ),  # The key file path for TLS (used if sslctx is None)
-            }
-            self.server = ModbusTlsServer(
-                **common_params,
-                **tls_params,
-            )
-        await self.server.serve_forever()
+        try:
+            if self.protocol_type == ProtocolType.ModbusTcp:
+                address = (
+                    self.ip if self.ip else "",
+                    self.port if self.port else None,
+                )
+                self.server = ModbusTcpServer(
+                    address=address,  # listen address
+                    **common_params,
+                )
+            elif self.protocol_type == ProtocolType.ModbusRtuOverTcp:
+                address = (
+                    self.ip if self.ip else "",
+                    self.port if self.port else None,
+                )
+                self.server = ModbusTcpServer(
+                    address=address,  # listen address
+                    framer=ModbusRtuFramer,  # The framer strategy to use
+                    **common_params,
+                )
+            elif self.protocol_type == ProtocolType.ModbusUdp:
+                address = (
+                    self.ip if self.ip else "",
+                    self.port if self.port else None,
+                )
+                self.server = ModbusUdpServer(
+                    address=address,  # listen address
+                    **common_params,
+                )
+            elif self.protocol_type == ProtocolType.ModbusRtu:
+                serial_params = {
+                    "port": self.serial_port,
+                    "baudrate": self.baudrate,
+                    "bytesize": self.bytesize,
+                    "parity": self.parity,
+                    "stopbits": self.stopbits,
+                }
+                self._logger.info(f"启动 Modbus RTU 服务器: {serial_params}")
+                self.server = ModbusSerialServer(
+                    framer=ModbusRtuFramer,
+                    **common_params,
+                    **serial_params,
+                )
+            elif self.protocol_type == ProtocolType.Tls:
+                address = (
+                    self.ip if self.ip else "",
+                    self.port if self.port else None,
+                )
+                tls_params = {
+                    "host": "localhost",
+                    "address": address,
+                    "certfile": helper.get_certificate("crt"),
+                    "keyfile": helper.get_certificate("key"),
+                }
+                self.server = ModbusTlsServer(
+                    **common_params,
+                    **tls_params,
+                )
+            
+            if self.server:
+                await self.server.serve_forever()
+            else:
+                self._logger.error(f"无法初始化服务器: {self.protocol_type}")
+        except Exception as e:
+            self._logger.error(f"运行 Modbus 服务器失败 ({self.protocol_type}): {e}")
+            raise e
 
     async def initServer(self):
         runArgs = self.setUpServer(
@@ -354,6 +378,11 @@ class ModbusServer:
         """
         func_code = int(func_code)
         rtu_addr = int(rtu_addr)
+
+        # 检查 slave context 是否存在
+        if rtu_addr not in self.slaves:
+            self._logger.error(f"setValueByAddress: rtu_addr {rtu_addr} 不在 slaves 中, 现有 slaves: {list(self.slaves.keys())}")
+            return
 
         # 获取解析码完整信息
         info = Decode.get_info(decode)

@@ -11,10 +11,9 @@ async def init_device_controller():
     """初始化设备控制器，在有事件循环的环境下启动Modbus TCP服务器"""
     device_controller = await get_device_controller()
     
-    # 启动所有需要启动的Modbus TCP服务器
+    # 启动所有已配置的设备协议处理器 (TCP/RTU/IEC104/DLT645 等)
     for device in device_controller.device_list:
-        if device.protocol_type == ProtocolType.ModbusTcp:
-            await device.start()
+        await device.start()
 
 
 async def main():

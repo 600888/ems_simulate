@@ -158,15 +158,25 @@ class DeviceController:
                         channel_id=channel_id, device=GeneralDevice()
                     )
 
-                if (
+                # 设置网络/串口配置
+                if conn_type in [0, 3]:  # 串口连接（主站或从站）
+                    general_device_builder.setDeviceSerialConfig(
+                        serial_port=channel.get("com_port", ""),
+                        baudrate=channel.get("baud_rate", 9600),
+                        databits=channel.get("data_bits", 8),
+                        stopbits=channel.get("stop_bits", 1),
+                        parity=channel.get("parity", "E")
+                    )
+                elif (
                     channel_protocol_type == ProtocolType.Iec104Client
                     or channel_protocol_type == ProtocolType.ModbusTcpClient
-                ):  # 如果是客户端，用客户端的ip
+                    or channel_protocol_type == ProtocolType.Dlt645Client
+                ):  # TCP 客户端
                     general_device_builder.setDeviceNetConfig(
                         port=port, ip=ip
                     )
-                else:
-                    general_device_builder.setDeviceNetConfig(  # 服务端默认监听配置
+                else:  # TCP 服务端
+                    general_device_builder.setDeviceNetConfig(
                         port=port, ip=Config.DEFAULT_IP
                     )
                 general_device = general_device_builder.makeGeneralDevice(

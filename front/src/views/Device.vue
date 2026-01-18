@@ -1,8 +1,11 @@
 <template>
   <el-col class="device-container">
     <el-row class="nodes" :span="24">
-      <TextNode label="服务器地址" :name="ip" />
-      <TextNode label="端口号" :name="String(port)" />
+      <!-- TCP模式显示IP和端口，RTU模式显示串口 -->
+      <TextNode v-if="!isSerialMode" label="服务器地址" :name="ip" />
+      <TextNode v-if="!isSerialMode" label="端口号" :name="String(port)" />
+      <TextNode v-if="isSerialMode" label="串口号" :name="serialPort || '-'" />
+      <TextNode v-if="isSerialMode" label="波特率" :name="String(baudrate)" />
       <TextNode label="通讯类型" :name="communicationType" />
       <TextNode label="设备状态" :name="deviceStatusStr" :status="deviceStatus" />
       <el-button
@@ -70,12 +73,21 @@ const routeName = ref(route.name as string);
 const deviceInfo = ref(new Map<string, any>());
 const ip = ref<any>("");
 const port = ref<any>("");
+const serialPort = ref<string | null>(null);
+const baudrate = ref<number>(9600);
 const communicationType = ref<any>("");
 const deviceStatus = ref<boolean>(false);
 const deviceStatusStr = ref<any>("");
 const simulationStatus = ref<boolean>(false);
 const simulationStatusStr = ref<any>("");
 const isProcessing = ref<boolean>(false);
+
+// 判断是否为串口模式（根据通讯类型判断）
+const isSerialMode = computed(() => {
+  const type = communicationType.value;
+  // Dlt645Client, Dlt645Server, ModbusRtu 为串口模式
+  return type && (type.includes('Dlt645') || type === 'ModbusRtu') && serialPort.value;
+});
 const simulateOptions = [
   {
     value: "Random",
@@ -182,6 +194,8 @@ const fetchDeviceInfo = async () => {
 
     ip.value = deviceInfo.value.get("ip") || null;
     port.value = deviceInfo.value.get("port") || null;
+    serialPort.value = deviceInfo.value.get("serial_port") || null;
+    baudrate.value = deviceInfo.value.get("baudrate") || 9600;
     communicationType.value = deviceInfo.value.get("type") || null;
     // 根据布尔值设置设备状态
     const serverStatus = deviceInfo.value.get("server_status");
