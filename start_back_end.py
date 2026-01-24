@@ -6,7 +6,6 @@ from src.web.app import app
 from src.device_controller import get_device_controller
 from src.enums.modbus_def import ProtocolType
 
-
 async def init_device_controller():
     """初始化设备控制器，在有事件循环的环境下启动Modbus TCP服务器"""
     device_controller = await get_device_controller()

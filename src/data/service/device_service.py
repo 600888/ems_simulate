@@ -43,10 +43,10 @@ class DeviceService:
             return None
 
     @classmethod
-    def create_device(cls, code: str, name: str, device_type: int = 0) -> int:
+    def create_device(cls, code: str, name: str, device_type: int = 0, group_id: Optional[int] = None) -> int:
         """创建设备"""
         try:
-            return DeviceDao.create_device(code, name, device_type)
+            return DeviceDao.create_device(code, name, device_type, group_id)
         except Exception as e:
             log.error(f"创建设备失败: {e}")
             return -1

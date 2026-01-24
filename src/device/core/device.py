@@ -237,6 +237,64 @@ class Device:
                 # 连接失败时静默处理，不中断线程
                 pass
 
+    # ===== 自动读取控制 =====
+
+    def start_auto_read(self) -> bool:
+        """启动自动读取线程
+        
+        Returns:
+            bool: 启动是否成功
+        """
+        return self.data_update_thread.start()
+
+    def stop_auto_read(self) -> None:
+        """停止自动读取线程"""
+        self.data_update_thread.stop()
+
+    def is_auto_read_running(self) -> bool:
+        """检查自动读取是否正在运行
+        
+        Returns:
+            bool: 是否正在运行
+        """
+        return self.data_update_thread.is_alive()
+
+    def single_read(self) -> None:
+        """执行单次读取操作"""
+        for slave_id in self.slave_id_list:
+            yc_list = self.yc_dict.get(slave_id, [])
+            yx_list = self.yx_dict.get(slave_id, [])
+            self.getSlaveRegisterValues(yc_list, yx_list)
+
+    def read_single_point(self, point_code: str) -> Optional[float]:
+        """读取单个测点的值
+        
+        Args:
+            point_code: 测点编码
+            
+        Returns:
+            Optional[float]: 读取成功返回值，失败返回None
+        """
+        point = self.point_manager.get_point_by_code(point_code)
+        if not point:
+            if self.log:
+                self.log.error(f"{self.name} 未找到测点: {point_code}")
+            return None
+        
+        if not self.protocol_handler:
+            return None
+        
+        try:
+            value = self.protocol_handler.read_value(point)
+            if value is not None:
+                point.value = value
+                return point.real_value if hasattr(point, 'real_value') else float(value)
+        except Exception as e:
+            if self.log:
+                self.log.error(f"读取测点 {point_code} 失败: {e}")
+        
+        return None
+
     # ===== 测点操作 =====
 
     def editPointData(self, point_code: str, real_value: float) -> bool:

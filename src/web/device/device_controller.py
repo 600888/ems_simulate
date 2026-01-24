@@ -313,3 +313,82 @@ async def stop_device(req: DeviceStopRequest, request: Request):
     except Exception as e:
         log.error(f"设备停止失败: {e}")
         return BaseResponse(code=500, message=f"设备停止失败: {e}!", data=False)
+
+
+# ===== 自动读取控制接口 =====
+
+# 获取自动读取状态
+@device_router.post("/get_auto_read_status", response_model=BaseResponse)
+async def get_auto_read_status(req: DeviceInfoRequest, request: Request):
+    try:
+        device = get_device(req.device_name, request)
+        is_running = device.is_auto_read_running()
+        return BaseResponse(message="获取自动读取状态成功!", data=is_running)
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=False)
+    except Exception as e:
+        log.error(f"获取自动读取状态失败: {e}")
+        return BaseResponse(code=500, message=f"获取自动读取状态失败: {e}!", data=False)
+
+
+# 启动自动读取
+@device_router.post("/start_auto_read", response_model=BaseResponse)
+async def start_auto_read(req: DeviceInfoRequest, request: Request):
+    try:
+        device = get_device(req.device_name, request)
+        success = device.start_auto_read()
+        return BaseResponse(
+            message="启动自动读取成功!" if success else "自动读取已在运行中!",
+            data=success
+        )
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=False)
+    except Exception as e:
+        log.error(f"启动自动读取失败: {e}")
+        return BaseResponse(code=500, message=f"启动自动读取失败: {e}!", data=False)
+
+
+# 停止自动读取
+@device_router.post("/stop_auto_read", response_model=BaseResponse)
+async def stop_auto_read(req: DeviceInfoRequest, request: Request):
+    try:
+        device = get_device(req.device_name, request)
+        device.stop_auto_read()
+        return BaseResponse(message="停止自动读取成功!", data=True)
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=False)
+    except Exception as e:
+        log.error(f"停止自动读取失败: {e}")
+        return BaseResponse(code=500, message=f"停止自动读取失败: {e}!", data=False)
+
+
+# 手动读取
+@device_router.post("/manual_read", response_model=BaseResponse)
+async def manual_read(req: DeviceInfoRequest, request: Request):
+    try:
+        device = get_device(req.device_name, request)
+        device.single_read()
+        return BaseResponse(message="手动读取成功!", data=True)
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=False)
+    except Exception as e:
+        log.error(f"手动读取失败: {e}")
+        return BaseResponse(code=500, message=f"手动读取失败: {e}!", data=False)
+
+
+# 读取单个测点值
+@device_router.post("/read_single_point", response_model=BaseResponse)
+async def read_single_point(req: PointInfoRequest, request: Request):
+    try:
+        device = get_device(req.device_name, request)
+        value = device.read_single_point(req.point_code)
+        if value is not None:
+            return BaseResponse(message="读取成功!", data={"value": value})
+        else:
+            return BaseResponse(code=400, message="读取失败，请检查连接状态", data=None)
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=None)
+    except Exception as e:
+        log.error(f"读取测点失败: {e}")
+        return BaseResponse(code=500, message=f"读取测点失败: {e}!", data=None)
+

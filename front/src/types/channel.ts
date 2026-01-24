@@ -4,9 +4,10 @@
 
 // 连接类型
 export enum ConnType {
-    Serial = 0,      // 串口
-    TcpClient = 1,   // TCP客户端
-    TcpServer = 2,   // TCP服务端
+    SerialMaster = 0,  // 串口主站（主动轮询）
+    TcpClient = 1,     // TCP客户端
+    TcpServer = 2,     // TCP服务端
+    SerialSlave = 3,   // 串口从站（被动响应）
 }
 
 // 协议类型
@@ -53,6 +54,8 @@ export interface ChannelCreateRequest {
     parity?: string;
     // RTU地址/电表地址
     rtu_addr?: string;
+    // 设备组ID
+    group_id?: number | null;
 }
 
 // 通道信息

@@ -1,0 +1,78 @@
+/* 全局设计系统变量定义 */
+
+:root {
+    /* 布局尺寸 */
+    --header-height: 48px;
+    --sidebar-width: 230px;
+
+    /* 测点状态背景色 */
+    --status-normal-bg: #f0fdf4;
+    --status-error-bg: #fef2f2;
+    --status-info-bg: #eff6ff;
+    --status-text-normal: #16a34a;
+    --status-text-error: #dc2626;
+    --status-text-info: #2563eb;
+
+    /* 基础颜色 - 浅色模式默认值 */
+    --bg-main: #f1f5f9;
+    --bg-sidebar: linear-gradient(180deg, #fdfdff 0%, #f5f7fa 100%);
+    --sidebar-border: rgba(0, 0, 0, 0.05);
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --panel-bg: #ffffff;
+
+    /* 品牌色 */
+    --color-primary: #3b82f6;
+    --color-success: #10b981;
+    --color-warning: #f59e0b;
+    --color-danger: #ef4444;
+
+    /* 组件装饰 */
+    --box-shadow-base: 0 4px 15px rgba(0, 0, 0, 0.05);
+    --border-radius-base: 12px;
+
+    /* 通道/设备相关 */
+    --item-hover-bg: rgba(59, 130, 246, 0.05);
+    --item-active-bg: rgba(59, 130, 246, 0.1);
+}
+
+/* 深色模式覆盖项 */
+body.theme-dark {
+    --status-normal-bg: rgba(22, 163, 74, 0.15);
+    --status-error-bg: rgba(220, 38, 38, 0.15);
+    --status-info-bg: rgba(37, 99, 235, 0.15);
+    --status-text-normal: #4ade80;
+    --status-text-error: #f87171;
+    --status-text-info: #60a5fa;
+
+    --bg-main: #020617;
+    --bg-sidebar: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+    --sidebar-border: rgba(255, 255, 255, 0.05);
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --panel-bg: #0f172a;
+
+    --box-shadow-base: 10px 0 30px rgba(0, 0, 0, 0.2);
+
+    --item-hover-bg: rgba(255, 255, 255, 0.03);
+    --item-active-bg: rgba(59, 130, 246, 0.15);
+}
+
+/* 统一重写 Element Plus 的部分基础变量 */
+body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.el-main {
+    background-color: var(--bg-main) !important;
+}
+
+/* 玻璃拟态卡片类 */
+.glass-card {
+    background: var(--panel-bg);
+    border-radius: var(--border-radius-base);
+    box-shadow: var(--box-shadow-base);
+    border: 1px solid var(--sidebar-border);
+}

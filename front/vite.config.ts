@@ -20,6 +20,20 @@ export default defineConfig(({ mode }) => { // 使用 mode 参数
     server: {
       host: '0.0.0.0',
       port: 8080,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:8888',
+          changeOrigin: true,
+        },
+        '/device': {
+          target: 'http://localhost:8888',
+          changeOrigin: true,
+        },
+        '/channel': {
+          target: 'http://localhost:8888',
+          changeOrigin: true,
+        },
+      },
     },
     base: './', // 修改这里的值为您想要设置的新路径
     plugins: [
@@ -48,6 +62,13 @@ export default defineConfig(({ mode }) => { // 使用 mode 参数
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
+      },
+    },
+    css: {
+      preprocessorOptions: {
+        scss: {
+          api: 'modern',
+        },
       },
     },
   };

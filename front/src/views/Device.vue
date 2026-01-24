@@ -1,25 +1,26 @@
 <template>
   <el-col class="device-container">
+    <!-- 第一行：设备基本通讯信息 -->
     <el-row class="nodes" :span="24">
-      <!-- TCP模式显示IP和端口，RTU模式显示串口 -->
       <TextNode v-if="!isSerialMode" label="服务器地址" :name="ip" />
       <TextNode v-if="!isSerialMode" label="端口号" :name="String(port)" />
       <TextNode v-if="isSerialMode" label="串口号" :name="serialPort || '-'" />
       <TextNode v-if="isSerialMode" label="波特率" :name="String(baudrate)" />
       <TextNode label="通讯类型" :name="communicationType" />
       <TextNode label="设备状态" :name="deviceStatusStr" :status="deviceStatus" />
+      
       <el-button
-        type="primary"
-        class="button device-button"
-        :style="deviceButtonStyle"
+        :class="['button', deviceStatus ? 'btn-stop' : 'btn-primary-action']"
         @click="toggleDevice"
         :disabled="isProcessing"
       >
         <el-icon v-if="!deviceStatus" class="icon"><CaretRight /></el-icon>
-        <el-icon v-else class="icon"><Stopwatch /></el-icon>
+        <el-icon v-else class="icon"><VideoPause /></el-icon>
         <span> {{ deviceButtonText }} </span>
       </el-button>
     </el-row>
+
+    <!-- 第二行：仿真模拟控制 -->
     <el-row class="nodes" :span="24">
       <TextNode label="模拟状态" :name="simulationStatusStr" :status="simulationStatus" />
       <el-select
@@ -36,18 +37,17 @@
         />
       </el-select>
       <el-button
-        type="primary"
-        class="button"
-        :style="buttonStyle"
+        :class="['button', simulationStatus ? 'btn-stop' : 'btn-start']"
         @click="startFunction"
         :disabled="isProcessing || !deviceStatus"
       >
-        <!-- 动态切换图标 -->
         <el-icon v-if="!simulationStatus" class="icon"><CaretRight /></el-icon>
-        <el-icon v-else class="icon"><Stopwatch /></el-icon>
+        <el-icon v-else class="icon"><VideoPause /></el-icon>
         <span> {{ buttonText }} </span>
       </el-button>
     </el-row>
+
+    <!-- 第三行：从站/测点数据 -->
     <Slave />
   </el-col>
 </template>
@@ -64,7 +64,7 @@ import {
   startDevice,
   stopDevice,
 } from "@/api/deviceApi";
-import { CaretRight, Stopwatch } from "@element-plus/icons-vue";
+import { CaretRight, VideoPause } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 
 const route = useRoute();
@@ -82,262 +82,163 @@ const simulationStatus = ref<boolean>(false);
 const simulationStatusStr = ref<any>("");
 const isProcessing = ref<boolean>(false);
 
-// 判断是否为串口模式（根据通讯类型判断）
 const isSerialMode = computed(() => {
   const type = communicationType.value;
-  // Dlt645Client, Dlt645Server, ModbusRtu 为串口模式
   return type && (type.includes('Dlt645') || type === 'ModbusRtu') && serialPort.value;
 });
+
 const simulateOptions = [
-  {
-    value: "Random",
-    label: "随机模拟",
-  },
-  {
-    value: "AutoIncrement",
-    label: "自增模拟",
-  },
-  {
-    value: "AutoDecrement",
-    label: "自减模拟",
-  },
-  {
-    value: "SineWave",
-    label: "正弦波模拟",
-  },
-  {
-    value: "Ramp",
-    label: "斜坡模拟",
-  },
-  {
-    value: "Pulse",
-    label: "脉冲模拟",
-  },
+  { value: "Random", label: "随机模拟" },
+  { value: "AutoIncrement", label: "自增模拟" },
+  { value: "AutoDecrement", label: "自减模拟" },
+  { value: "SineWave", label: "正弦波模拟" },
+  { value: "Ramp", label: "斜坡模拟" },
+  { value: "Pulse", label: "脉冲模拟" },
 ];
 const currentSimulateMethod = ref<string>(simulateOptions[0].value);
 
-const buttonStyle = computed(() => {
-  if (simulationStatus.value) {
-    return {
-      backgroundColor: "#f44336",
-    };
-  } else {
-    return {
-      backgroundColor: "#4caf50",
-    };
-  }
-});
+const deviceButtonText = computed(() => deviceStatus.value ? "停止设备" : "开启设备");
+const buttonText = computed(() => simulationStatus.value ? "停止" : "开始");
 
-// 设备按钮样式
-const deviceButtonStyle = computed(() => {
-  if (deviceStatus.value) {
-    return {
-      backgroundColor: "#f44336",
-    };
-  } else {
-    return {
-      backgroundColor: "#2196f3",
-    };
-  }
-});
-
-// 设备按钮文本
-const deviceButtonText = computed(() => {
-  if (deviceStatus.value) {
-    return "停止设备";
-  } else {
-    return "开启设备";
-  }
-});
-
-// 设备状态切换函数
 const toggleDevice = async () => {
   isProcessing.value = true;
   try {
     if (deviceStatus.value) {
-      // 停止设备
-      const isSuccess = await stopDevice(routeName.value);
-      if (isSuccess) {
+      if (await stopDevice(routeName.value)) {
         deviceStatus.value = false;
         deviceStatusStr.value = "停止";
-        // 如果设备停止，同时停止模拟
         if (simulationStatus.value) {
           await stopSimulation(routeName.value);
           simulationStatus.value = false;
           simulationStatusStr.value = "停止";
         }
-      } else {
-        ElMessage.error("停止设备失败!");
       }
     } else {
-      // 启动设备
-      const isSuccess = await startDevice(routeName.value);
-      if (isSuccess) {
+      if (await startDevice(routeName.value)) {
         deviceStatus.value = true;
         deviceStatusStr.value = "运行中";
-      } else {
-        ElMessage.error("开启设备失败!");
       }
     }
-  } catch (error) {
-    console.error("Error toggling device status:", error);
-  } finally {
-    isProcessing.value = false;
-  }
+  } catch (error) { console.error(error); }
+  finally { isProcessing.value = false; }
 };
 
-// 封装数据获取逻辑
 const fetchDeviceInfo = async () => {
   try {
     const info = await getDeviceInfo(routeName.value);
     deviceInfo.value = info;
-
-    ip.value = deviceInfo.value.get("ip") || null;
-    port.value = deviceInfo.value.get("port") || null;
-    serialPort.value = deviceInfo.value.get("serial_port") || null;
-    baudrate.value = deviceInfo.value.get("baudrate") || 9600;
-    communicationType.value = deviceInfo.value.get("type") || null;
-    // 根据布尔值设置设备状态
-    const serverStatus = deviceInfo.value.get("server_status");
+    ip.value = info.get("ip") || null;
+    port.value = info.get("port") || null;
+    serialPort.value = info.get("serial_port") || null;
+    baudrate.value = info.get("baudrate") || 9600;
+    communicationType.value = info.get("type") || null;
+    const serverStatus = info.get("server_status");
     deviceStatus.value = serverStatus;
     deviceStatusStr.value = serverStatus === true ? "运行中" : "停止";
-    // 根据布尔值设置模拟状态
-    const simulationStatusValue = deviceInfo.value.get("simulation_status");
-    simulationStatus.value = simulationStatusValue;
-    simulationStatusStr.value = simulationStatusValue === true ? "运行中" : "停止";
-  } catch (error) {
-    console.error("Error fetching device info:", error);
-  }
+    const simuStatus = info.get("simulation_status");
+    simulationStatus.value = simuStatus;
+    simulationStatusStr.value = simuStatus === true ? "运行中" : "停止";
+  } catch (error) { console.error(error); }
 };
 
-// 计算按钮文本
-const buttonText = computed(() => {
-  if (simulationStatus.value) {
-    return "停止";
-  } else {
-    return "开始";
-  }
-});
-
-// 定义 startFunction
 const startFunction = async () => {
   isProcessing.value = true;
   try {
     if (simulationStatus.value) {
-      // 如果设备或模拟正在运行，则停止它们
-      const isSuccess = await stopSimulation(routeName.value);
-      if (isSuccess) {
+      if (await stopSimulation(routeName.value)) {
         simulationStatus.value = false;
         simulationStatusStr.value = "停止";
       }
     } else {
-      // 否则，开始它们
-      const isSuccess = await startSimulation(
-        routeName.value,
-        currentSimulateMethod.value
-      );
-      if (isSuccess) {
+      if (await startSimulation(routeName.value, currentSimulateMethod.value)) {
         simulationStatus.value = true;
         simulationStatusStr.value = "运行中";
       }
     }
-  } catch (error) {
-    console.error("Error starting/stopping device:", error);
-  } finally {
-    isProcessing.value = false;
-  }
+  } catch (error) { console.error(error); }
+  finally { isProcessing.value = false; }
 };
 
-// 在组件挂载时首次获取数据
-onMounted(async () => {
-  await fetchDeviceInfo();
+onMounted(() => { fetchDeviceInfo(); });
+watch(() => route.name, async (newVal) => {
+  if (newVal) { routeName.value = newVal as string; await fetchDeviceInfo(); }
 });
-
-// 监听路由变化
-watch(
-  () => route.name,
-  async (newRouteName) => {
-    if (newRouteName) {
-      routeName.value = newRouteName as string;
-      await fetchDeviceInfo();
-    }
-  }
-);
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .device-container {
-  padding: 15px 20px;
-  background-color: #ffffff;
-  min-height: 100vh;
+  padding: 16px 20px;
+  background-color: var(--bg-main);
+  min-height: 100%;
 }
 
 .nodes {
   display: flex;
   flex-direction: row;
-  gap: 18px; /* 调整选项之间的间距 */
-  margin: 8px 0;
-  flex-wrap: wrap; /* 允许在小屏幕上换行 */
-  align-items: center; /* 垂直居中对齐所有元素 */
-  background-color: #ffffff;
-  padding: 15px 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  background-color: var(--panel-bg);
+  padding: 12px 20px;
+  border-radius: var(--border-radius-base);
+  box-shadow: var(--box-shadow-base);
+  border: 1px solid var(--sidebar-border);
+  transition: all 0.3s ease;
 }
 
 .button {
   margin: 0;
-  width: 100px;
-  height: 40px;
-  padding: 10px;
-  text-align: center;
-  transition: all 0.3s ease; /* 添加背景色过渡效果 */
-  border-radius: 6px;
-  font-size: 15px;
+  min-width: 110px;
+  height: 42px;
+  border-radius: 10px;
+  font-weight: 600;
+  border: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #ffffff;
+  
+  &:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.1);
+  }
 
   .icon {
-    font-size: 20px;
-    vertical-align: middle;
-    margin-right: 5px;
+    font-size: 18px;
+    margin-right: 6px;
   }
 }
 
-.device-button {
-  width: 110px;
+.btn-stop {
+  background-color: var(--color-danger);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+}
+
+.btn-start {
+  background-color: var(--color-success);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+
+.btn-primary-action {
+  background-color: var(--color-primary);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
 }
 
 .simulation-select {
   margin: 0;
-  width: 180px;
-  text-align: center;
-  border-radius: 6px;
+  width: 200px;
+  :deep(.el-input__wrapper) {
+    border-radius: 10px;
+    background-color: transparent;
+    box-shadow: 0 0 0 1px var(--sidebar-border) inset;
+  }
+  :deep(.el-input__inner) {
+    text-align: center;
+    font-weight: 500;
+  }
 }
 
-/* 响应式布局调整 */
 @media (max-width: 768px) {
-  .nodes {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-    margin-left: 10px;
-  }
-
-  .button,
-  .simulation-select {
-    margin: 10px 0 0 0;
-    width: 100%;
-    max-width: 300px;
-  }
-}
-
-@media (max-width: 480px) {
-  .device-container {
-    padding: 10px;
-  }
-
-  .button {
-    height: 36px;
-    font-size: 14px;
-  }
+  .nodes { flex-direction: column; align-items: stretch; }
+  .button, .simulation-select { width: 100%; }
 }
 </style>

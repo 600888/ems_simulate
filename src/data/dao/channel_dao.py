@@ -58,12 +58,20 @@ class ChannelDao:
 
     @classmethod
     def get_channel_by_id(cls, channel_id: int) -> Optional[ChannelDict]:
-        """根据ID获取通道"""
+        """根据ID获取通道（包含设备组ID）"""
         try:
             with local_session() as session:
                 with session.begin():
                     result = session.query(Channel).where(Channel.id == channel_id).first()
-                    return result.to_dict() if result else None
+                    if result:
+                        data = result.to_dict()
+                        # 从关联的 Device 获取 group_id
+                        if result.device:
+                            data["group_id"] = result.device.group_id
+                        else:
+                            data["group_id"] = None
+                        return data
+                    return None
         except Exception as e:
             log.error(f"获取通道失败: {str(e)}")
             raise e

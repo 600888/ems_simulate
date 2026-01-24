@@ -83,33 +83,32 @@ onMounted(async () => {
 
 <style lang="scss" scoped>
 .register {
-  margin-top: 10px;
-  margin-bottom: 20px;
-  margin-left: 20px;
-  padding: 20px;
-  width: 400px;
-  height: 250px;
+  margin: 0;
+  padding: 16px;
+  width: 340px;
   font-family: Arial, sans-serif;
   background-color: white;
-  border-radius: 5px;
-  box-shadow: 0 1px 3px rgba(0.2, 0.2, 0.2, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e4e7ed;
 }
 
 .simple-title {
-  margin-bottom: 15px;
+  margin-bottom: 12px;
 }
 .simple-title span {
-  font-size: 16px;
+  font-size: 14px;
   color: #409eff;
-  font-weight: 500;
+  font-weight: 600;
 }
 .simple-title .el-divider {
-  margin: 12px 0;
+  margin: 8px 0;
   background-color: #409eff;
 }
 
 .form-item {
-  width: 300px;
+  margin-bottom: 10px;
+  width: 280px;
 }
 
 .custom-row {

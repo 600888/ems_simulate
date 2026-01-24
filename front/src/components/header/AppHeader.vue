@@ -32,34 +32,46 @@ const updateBreadcrumb = () => {
   breadList.value = route.matched.filter((item) => item.meta?.title);
 };
 
-// 初始加载和路由变化时更新
 watch(() => route.path, updateBreadcrumb, { immediate: true });
 </script>
 
 <style lang="scss" scoped>
-.el-header {
+.app-header {
+  height: var(--header-height);
   display: flex;
-  margin: 0px 0px 0px 0px;
   align-items: center;
-  box-shadow: 0 1px 0 0 #dcdfe6;
-  .el-icon {
-    margin-right: 10px;
+  padding: 0 16px;
+  background-color: var(--panel-bg);
+  border-bottom: 1px solid var(--sidebar-border);
+  transition: all 0.3s;
+  
+  .collapse-icon {
+    font-size: 20px;
+    margin-right: 20px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 0.3s;
+    
+    &:hover {
+      color: var(--color-primary);
+    }
   }
 }
 
-.app-header {
-  //居中
-  height: 40px;
-  display: flex;
-  position: relative;
-}
-
-.breadcrumb-divider {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 0.1px;
-  background-color: #e4e7ed;
+.breadcrumb-container {
+  :deep(.el-breadcrumb__inner) {
+    color: var(--text-secondary) !important;
+    font-weight: 500;
+    transition: color 0.3s;
+    
+    &.is-link:hover {
+      color: var(--color-primary) !important;
+    }
+  }
+  
+  :deep(.el-breadcrumb__item:last-child .el-breadcrumb__inner) {
+    color: var(--text-primary) !important;
+    font-weight: 600;
+  }
 }
 </style>

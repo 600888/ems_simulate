@@ -53,7 +53,7 @@ class DeviceDao:
             raise e
 
     @classmethod
-    def create_device(cls, code: str, name: str, device_type: int = 0) -> int:
+    def create_device(cls, code: str, name: str, device_type: int = 0, group_id: Optional[int] = None) -> int:
         """创建设备
 
         Returns:
@@ -62,7 +62,7 @@ class DeviceDao:
         try:
             with local_session() as session:
                 with session.begin():
-                    device = Device(code=code, name=name, device_type=device_type)
+                    device = Device(code=code, name=name, device_type=device_type, group_id=group_id)
                     session.add(device)
                     session.flush()
                     return device.id

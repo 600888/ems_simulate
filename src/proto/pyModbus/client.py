@@ -68,6 +68,7 @@ class ModbusClient:
         try:
             if self.protocol_type in [
                 ProtocolType.ModbusTcp,
+                ProtocolType.ModbusTcpClient,
                 ProtocolType.ModbusRtuOverTcp,
             ]:
                 self.client = ModbusTcpClient(host=self.host, port=self.port)
@@ -382,7 +383,7 @@ class ModbusClient:
             Union[int, float]: 解析后的值
         """
         if not self.connected:
-            self.connect()
+            return 0
 
         # 获取解析码完整信息
         info = Decode.get_info(decode)
@@ -446,7 +447,7 @@ class ModbusClient:
             bool: 写入是否成功
         """
         if not self.connected:
-            self.connect()
+            return False
 
         # 获取解析码完整信息
         info = Decode.get_info(decode)

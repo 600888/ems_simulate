@@ -1,4 +1,73 @@
+@use "./theme-vars.scss";
+
 * {
     padding: 0;
     margin: 0;
+    box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+}
+
+/* 全局圆角工程与细节优化 */
+:root {
+    --el-border-radius-base: 8px;
+    --el-border-radius-small: 6px;
+    --el-border-radius-round: 24px;
+}
+
+/* 统一输入框与选择器圆角 */
+.el-input__wrapper,
+.el-select__wrapper,
+.el-textarea__inner {
+    border-radius: 8px !important;
+    box-shadow: 0 0 0 1px var(--sidebar-border) inset !important;
+    background-color: transparent !important;
+}
+
+/* 统一按钮造型 */
+.el-button {
+    border-radius: 8px;
+    font-weight: 500;
+
+    &.is-round {
+        border-radius: 20px;
+    }
+
+    &.is-circle {
+        border-radius: 50%;
+    }
+}
+
+/* 消息提示框优化 */
+.el-message {
+    border-radius: 12px;
+    border: 1px solid var(--sidebar-border);
+}
+
+/* 对话框圆角补完 */
+.el-dialog {
+    border-radius: 16px !important;
+    overflow: hidden;
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--sidebar-border);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
 }

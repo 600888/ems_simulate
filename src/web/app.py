@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.web.device.device_controller import device_router
 from src.web.channel.channel_controller import channel_router
+from src.web.device_group.device_group_controller import device_group_router
 from src.device_controller import get_device_controller
 from src.web.schemas import BaseResponse
 
@@ -24,6 +25,7 @@ def create_app():
     # 注册路由
     app.include_router(device_router, prefix="")
     app.include_router(channel_router, prefix="")
+    app.include_router(device_group_router, prefix="")
     return app
 
 

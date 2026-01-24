@@ -1,374 +1,328 @@
 <template>
-  <el-aside class="sidebar">
+  <el-aside class="sidebar" :class="`sidebar-theme-${currentTheme}`">
     <el-scrollbar>
-      <el-menu
-        @select="handleMenuSelect"
-        class="menu"
-        :default-active="defaultActive"
-        :collapse="isCollapse"
-      >
-        <div class="sidebar-header">
-          <h1>设备列表</h1>
-        </div>
-        
-        <!-- 添加设备按钮 -->
-        <div class="add-device-btn" v-if="!isCollapse">
-          <el-button type="primary" @click="showAddDeviceDialog" :icon="Plus">
-            添加设备
-          </el-button>
-        </div>
-        <div class="add-device-btn-collapse" v-else>
-          <el-button type="primary" circle @click="showAddDeviceDialog" :icon="Plus" />
-        </div>
-        
-        <!-- 动态生成菜单项 -->
-        <el-menu-item
-          v-for="deviceName in deviceList"
-          :key="deviceName"
-          :index="`/device/${deviceName}`"
-          class="device-menu-item"
-        >
-          <el-icon>
-            <component :is="Cpu" />
-          </el-icon>
-          <template #title>
-            <div class="menu-item-content">
-              <span>{{ deviceName }}</span>
-              <div v-if="!isCollapse" class="menu-item-actions">
-                <el-button 
-                  link
-                  size="small" 
-                  :icon="Edit"
-                  @click.stop="handleEditDevice(deviceName)"
-                />
-                <el-button 
-                  link
-                  size="small" 
-                  :icon="Delete"
-                  @click.stop="handleDeleteDevice(deviceName)"
-                />
-              </div>
-            </div>
-          </template>
-        </el-menu-item>
-      </el-menu>
+      <!-- 1. 头部徽标与主题切换 -->
+      <SideNavHeader :is-collapse="isCollapse" />
+      
+      <!-- 2. 操作按钮组 -->
+      <SideNavActions 
+        :is-collapse="isCollapse" 
+        @add-device="showAddDeviceDialog"
+        @add-group="() => showAddGroupDialog()"
+      />
+      
+      <!-- 3. 设备组树形菜单 -->
+      <SideNavTree
+        :tree-data="treeData"
+        :tree-props="treeProps"
+        :expanded-keys="expandedKeys"
+        :current-node-key="currentNodeKey"
+        :is-collapse="isCollapse"
+        @node-click="handleNodeClick"
+        @group-command="handleGroupCommand"
+        @edit-device="handleEditDevice"
+        @delete-device="handleDeleteDevice"
+      />
+      
+      <!-- 4. 未分组设备 -->
+      <SideNavUngrouped
+        :ungrouped-devices="ungroupedDevices"
+        :expanded="ungroupedExpanded"
+        :current-device-name="currentDeviceName"
+        :is-collapse="isCollapse"
+        @toggle="toggleUngrouped"
+        @device-click="handleDeviceClick"
+        @edit-device="handleEditDeviceByName"
+        @delete-device="handleDeleteDeviceByName"
+      />
     </el-scrollbar>
   </el-aside>
 
-  <el-container>
-    <el-main>
-      <el-scrollbar>
-        <AppHeader />
-        <router-view />
-      </el-scrollbar>
-    </el-main>
-  </el-container>
-  
-  <!-- 添加/编辑设备对话框 -->
+  <!-- 5. 对话框组件 -->
   <AddDeviceDialog 
     v-model:visible="addDeviceDialogVisible" 
     :channel-id="editingChannelId"
+    :initial-group-id="parentGroupIdForNewDevice"
     @success="handleDeviceAdded"
     @close="editingChannelId = null"
+  />
+  
+  <AddDeviceGroupDialog
+    v-model:visible="addGroupDialogVisible"
+    :group-id="editingGroupId"
+    :parent-options="groupTreeForSelect"
+    @success="handleGroupChanged"
+    @close="editingGroupId = null"
   />
 </template>
 
 <script lang="ts" setup>
+import { onMounted, ref, computed, watch } from "vue";
 import { useRouter } from "vue-router";
-import menuRouter from "@/router/index";
-import { Cpu, Plus, Delete, Edit } from "@element-plus/icons-vue";
-import { onMounted, ref, watch } from "vue";
-import { isCollapse } from "@/components/header/isCollapse";
-import AppHeader from "@/components/header/AppHeader.vue";
-import AddDeviceDialog from "@/components/device/AddDeviceDialog.vue";
-import { deleteChannel, getChannelList, getChannel } from "@/api/channelApi";
-import { getDeviceList } from "@/api/deviceApi";
 import { ElMessage, ElMessageBox } from "element-plus";
-import Device from "@/views/Device.vue";
+import type { ElTree } from "element-plus";
+
+import SideNavHeader from "@/components/layout/SideNavHeader.vue";
+import SideNavActions from "@/components/layout/SideNavActions.vue";
+import SideNavTree from "@/components/layout/SideNavTree.vue";
+import SideNavUngrouped from "@/components/layout/SideNavUngrouped.vue";
+import AddDeviceDialog from "@/components/device/AddDeviceDialog.vue";
+import AddDeviceGroupDialog from "@/components/device/AddDeviceGroupDialog.vue";
+
+import { currentTheme } from "@/utils/theme";
+import { isCollapse } from "@/components/header/isCollapse";
+import menuRouter from "@/router/index";
+import { deleteChannel, getChannelList } from "@/api/channelApi";
+import { 
+  getDeviceGroupTree, 
+  deleteDeviceGroup, 
+  batchDeviceOperation,
+  type DeviceGroupTreeNode,
+  type DeviceInfo
+} from "@/api/deviceGroupApi";
+
+// 类型定义
+interface TreeNode {
+  nodeKey: string;
+  label: string;
+  isGroup: boolean;
+  id: number;
+  name: string;
+  groupId?: number;
+  children?: TreeNode[];
+}
 
 const router = useRouter();
-const defaultActive = ref("/");
-const addDeviceDialogVisible = ref(false);
-const editingChannelId = ref<number | null>(null);
-const deviceList = ref<string[]>([]);
+const treeRef = ref<InstanceType<typeof ElTree>>();
 
-// 从后端获取设备列表
-const fetchDeviceList = async () => {
+// 状态管理
+const addDeviceDialogVisible = ref(false);
+const addGroupDialogVisible = ref(false);
+const editingChannelId = ref<number | null>(null);
+const editingGroupId = ref<number | null>(null);
+const parentGroupIdForNewDevice = ref<number | null>(null);
+
+const treeData = ref<TreeNode[]>([]);
+const ungroupedDevices = ref<DeviceInfo[]>([]);
+const expandedKeys = ref<string[]>([]);
+const currentNodeKey = ref<string>('');
+const currentDeviceName = ref<string>('');
+const ungroupedExpanded = ref(true);
+
+const treeProps = { children: 'children', label: 'label' };
+
+// 计算父级设备组选项
+const groupTreeForSelect = computed(() => {
+  const convertToSelectTree = (nodes: TreeNode[]): DeviceGroupTreeNode[] => {
+    return nodes.filter(n => n.isGroup).map(n => ({
+      id: n.id,
+      code: '',
+      name: n.name,
+      parent_id: null,
+      description: null,
+      status: 0,
+      enable: true,
+      created_at: null,
+      updated_at: null,
+      children: n.children ? convertToSelectTree(n.children) : [],
+      devices: []
+    }));
+  };
+  return convertToSelectTree(treeData.value);
+});
+
+// 数据转换逻辑
+const transformToTreeData = (groups: DeviceGroupTreeNode[]): TreeNode[] => {
+  return groups.map(group => {
+    const children: TreeNode[] = [];
+    if (group.children?.length) children.push(...transformToTreeData(group.children));
+    if (group.devices?.length) {
+      children.push(...group.devices.map(d => ({
+        nodeKey: `device-${d.id}`,
+        label: d.name,
+        isGroup: false,
+        id: d.id,
+        name: d.name,
+        groupId: group.id
+      })));
+    }
+    return {
+      nodeKey: `group-${group.id}`,
+      label: group.name,
+      isGroup: true,
+      id: group.id,
+      name: group.name,
+      children
+    };
+  });
+};
+
+const fetchDeviceGroupTree = async () => {
   try {
-    deviceList.value = await getDeviceList();
-  } catch (error) {
-    console.error('获取设备列表失败:', error);
+    const response = await getDeviceGroupTree();
+    treeData.value = transformToTreeData(response.groups || []);
+    ungroupedDevices.value = response.ungrouped || [];
+    if (currentDeviceName.value) {
+      currentNodeKey.value = `device-${currentDeviceName.value}`;
+    }
+  } catch (error: any) {
+    ElMessage.error('获取设备组失败: ' + error.message);
   }
 };
 
-onMounted(async () => {
-  // 获取设备列表
-  await fetchDeviceList();
-  
-  const isCollapseValue = localStorage.getItem("isCollapse");
-  if (isCollapseValue) {
-    isCollapse.value = isCollapseValue === "true";
-  }
-  
-  if (deviceList.value.length > 0) {
-    // 从 localStorage 中恢复选中的路由
-    const savedActive = localStorage.getItem("activeRoute");
-    
-    // 验证保存的路由是否仍然存在
-    const deviceExists = savedActive && deviceList.value.some(d => `/device/${d}` === savedActive);
-    
-    if (deviceExists) {
-      defaultActive.value = savedActive;
-    } else {
-      // 使用第一个设备作为默认选中
-      defaultActive.value = `/device/${deviceList.value[0]}`;
-      localStorage.setItem("activeRoute", defaultActive.value);
-    }
-    
-    // 确保导航到选中的路由
-    router.push(defaultActive.value);
-  }
-});
+// 交互处理
+const handleNodeClick = (data: TreeNode) => {
+  if (!data.isGroup) navigateToDevice(data.name);
+};
 
-const handleMenuSelect = (path: string) => {
-  // 保存选中的路由到 localStorage
+const handleDeviceClick = (device: DeviceInfo) => navigateToDevice(device.name);
+
+const navigateToDevice = (deviceName: string) => {
+  currentDeviceName.value = deviceName;
+  currentNodeKey.value = `device-${deviceName}`;
+  const path = `/device/${deviceName}`;
   localStorage.setItem("activeRoute", path);
-  // 导航到选中的路由
   router.push(path);
 };
 
-// 显示添加设备对话框
 const showAddDeviceDialog = () => {
-  editingChannelId.value = null;  // 重置为新增模式
+  editingChannelId.value = null;
+  parentGroupIdForNewDevice.value = null;
   addDeviceDialogVisible.value = true;
 };
 
-// 设备添加/编辑成功后刷新路由
-const handleDeviceAdded = async (deviceName: string, isEdit?: boolean, oldName?: string) => {
-  if (isEdit && oldName) {
-    // 编辑模式：如果名称改变，需要更新路由
-    if (oldName !== deviceName) {
-      // 移除旧路由
-      menuRouter.removeRoute(oldName);
-      
-      // 找到旧路由在列表中的位置（通过获取所有路由）
-      const routes = menuRouter.getRoutes();
-      
-      // 添加新路由
-      const route = {
-        path: `/device/${deviceName}`,
-        name: deviceName,
-        meta: {
-          title: deviceName
-        },
-        component: () => import("@/views/Device.vue")
-      };
-      menuRouter.addRoute(route);
-    }
-    // 导航到新设备名称
-    const newPath = `/device/${deviceName}`;
-    defaultActive.value = newPath;
-    localStorage.setItem("activeRoute", newPath);
-    router.push(newPath);
-  } else {
-    // 新增模式：添加新路由
-    const route = {
-      path: `/device/${deviceName}`,
-      name: deviceName,
-      meta: {
-        title: deviceName
-      },
-      component: () => import("@/views/Device.vue")
-    };
-    menuRouter.addRoute(route);
-    
-    // 导航到新设备
-    const newPath = `/device/${deviceName}`;
-    defaultActive.value = newPath;
-    localStorage.setItem("activeRoute", newPath);
-    router.push(newPath);
-  }
+const showAddGroupDialog = (parentId?: number) => {
+  editingGroupId.value = null;
+  parentGroupIdForNewDevice.value = parentId || null;
+  addGroupDialogVisible.value = true;
 };
 
-// 编辑设备
-const handleEditDevice = async (deviceName: string) => {
+const handleGroupCommand = async (command: string, data: TreeNode) => {
+  const actions: Record<string, Function> = {
+    edit: () => { editingGroupId.value = data.id; addGroupDialogVisible.value = true; },
+    addDevice: () => { parentGroupIdForNewDevice.value = data.id; addDeviceDialogVisible.value = true; },
+    addSubGroup: () => showAddGroupDialog(data.id),
+    startAll: () => handleBatchOperation(data.id, 'start'),
+    stopAll: () => handleBatchOperation(data.id, 'stop'),
+    delete: () => handleDeleteGroup(data)
+  };
+  actions[command]?.();
+};
+
+const handleBatchOperation = async (groupId: number, operation: 'start' | 'stop' | 'reset') => {
   try {
-    // 获取对应的channel_id
-    const channels = await getChannelList();
-    const channel = channels.find(c => c.name === deviceName);
-    
-    if (channel) {
-      editingChannelId.value = channel.id;
-      addDeviceDialogVisible.value = true;
-    } else {
-      ElMessage.error('未找到对应的通道');
-    }
+    await batchDeviceOperation(groupId, operation);
+    ElMessage.success(`${operation === 'start' ? '启动' : '停止'}成功`);
   } catch (error: any) {
-    ElMessage.error('获取通道信息失败: ' + error.message);
+    ElMessage.error('操作失败: ' + error.message);
   }
 };
 
-// 删除设备
-const handleDeleteDevice = async (deviceName: string) => {
+const handleDeleteGroup = async (data: TreeNode) => {
   try {
-    await ElMessageBox.confirm(
-      `确定要删除设备 "${deviceName}" 吗？删除后将无法恢复。`,
-      '删除确认',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    );
-    
-    // 从通道列表获取对应的channel_id
-    const channels = await getChannelList();
-    const channel = channels.find(c => c.name === deviceName);
-    
+    await ElMessageBox.confirm(`确定删除组 "${data.name}"？`, '提示', { type: 'warning' });
+    await deleteDeviceGroup(data.id, false);
+    ElMessage.success('成功');
+    await fetchDeviceGroupTree();
+  } catch {}
+};
+
+const handleEditDevice = (data: TreeNode) => handleEditDeviceByName(data.name);
+const handleEditDeviceByName = async (deviceName: string) => {
+  const channel = (await getChannelList()).find(c => c.name === deviceName);
+  if (channel) {
+    editingChannelId.value = channel.id;
+    addDeviceDialogVisible.value = true;
+  }
+};
+
+const handleDeleteDevice = (data: TreeNode) => handleDeleteDeviceByName(data.name);
+const handleDeleteDeviceByName = async (deviceName: string) => {
+  try {
+    await ElMessageBox.confirm(`确定删除 "${deviceName}"？`, '提示', { type: 'warning' });
+    const channel = (await getChannelList()).find(c => c.name === deviceName);
     if (channel) {
       await deleteChannel(channel.id);
-      
-      ElMessage.success('设备删除成功');
-      
-      // 刷新页面以更新路由列表
       window.location.reload();
-    } else {
-      ElMessage.error('未找到对应的通道');
     }
-  } catch (error: any) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除失败: ' + error.message);
-    }
-  }
+  } catch {}
 };
+
+const handleDeviceAdded = async (deviceName: string, isEdit?: boolean, oldName?: string) => {
+  if (isEdit && oldName && oldName !== deviceName) menuRouter.removeRoute(oldName);
+  menuRouter.addRoute({
+    path: `/device/${deviceName}`,
+    name: deviceName,
+    component: () => import("@/views/Device.vue")
+  });
+  await fetchDeviceGroupTree();
+  navigateToDevice(deviceName);
+};
+
+const handleGroupChanged = () => fetchDeviceGroupTree();
+const toggleUngrouped = () => { ungroupedExpanded.value = !ungroupedExpanded.value; };
+
+onMounted(() => {
+  fetchDeviceGroupTree();
+  const collapsed = localStorage.getItem("isCollapse");
+  if (collapsed) isCollapse.value = collapsed === "true";
+});
+
+// 监听路由同步
+watch(() => router.currentRoute.value.path, (path) => {
+  if (path.startsWith('/device/')) {
+    const name = path.split('/').pop() || '';
+    currentDeviceName.value = name;
+    currentNodeKey.value = `device-${name}`;
+  }
+}, { immediate: true });
 </script>
 
-<style scoped>
-.el-container {
-  padding: 0;
-  margin: 0;
-  width: 100%;
-  height: 100vh; /* 确保占满视口 */
-}
-
-.el-aside {
-  height: 100vh;
-  width: auto;
-}
-
-.el-main {
-  padding: 0;
-  margin: 0px 0px 0px 0px;
-}
-
+<style lang="scss" scoped>
+/* 全局侧边栏基础样式 - 通过主题变量驱动 */
 .sidebar {
-  width: auto;
+  width: auto !important;
+  min-width: var(--sidebar-width);
   height: 100vh;
-  background-color: #f8f9ff;
-}
-
-.sidebar-header {
-  text-align: center;
-  margin-top: 10px;
-  margin-bottom: 10px;
-}
-
-.sidebar-header h1 {
-  margin: 0;
-  font-size: 1.5em;
-  color: #333;
-  transition: opacity 0.1s ease;
-}
-
-.add-device-btn {
-  padding: 10px 15px;
-  text-align: center;
-}
-
-.add-device-btn .el-button {
-  width: 100%;
-}
-
-.add-device-btn-collapse {
-  padding: 10px;
-  text-align: center;
-}
-
-/* el-scrollbar 样式调整 */
-.el-scrollbar {
-  height: 100%; /* 让 el-scrollbar 占满侧边栏高度 */
-}
-
-.el-scrollbar__wrap {
-  overflow-x: hidden; /* 隐藏横向滚动条 */
-}
-
-.el-menu {
-  width: 200px;
-  border-right: none;
-  position: relative;
-  background-color: transparent !important;
-  will-change: width;
-
-  .is-active {
-    background-color: #dbeafe !important; /* 浅蓝色 */
-    color: #333 !important;
-  }
-
-  /* 折叠状态 */
-  &.el-menu--collapse {
-    width: 60px;
-    & h1 {
-      display: none;
-    }
-  }
-}
-
-.menu {
-  width: 200px;
-  border-right: none;
-  background-color: transparent;
-}
-
-.borderless-button {
-  border: none;
-  background-color: transparent;
-  font-size: 20px;
-  margin-right: 5px;
-}
-
-.menu-item-content {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  position: relative;
-}
-
-.menu-item-content > span {
-  flex: 1;
+  background: var(--sb-bg-main);
+  border-right: 1px solid var(--sb-border);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  max-width: calc(100% - 60px);
+  box-shadow: var(--sb-shadow);
 }
 
-.menu-item-actions {
-  display: flex;
-  flex-shrink: 0;
-  gap: 0;
-  position: absolute;
-  right: 0;
+/* 主题类定义 */
+.sidebar-theme-light {
+  --sb-bg-main: linear-gradient(180deg, #fdfdff 0%, #f5f7fa 100%);
+  --sb-logo-bg: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  --sb-logo-shadow: rgba(79, 70, 229, 0.25);
+  --sb-text-primary: #2d3748;
+  --sb-text-secondary: #64748b;
+  --sb-btn-primary-bg: rgba(79, 70, 229, 0.1);
+  --sb-btn-primary-hover: #4f46e5;
+  --sb-item-hover: rgba(79, 70, 229, 0.05);
+  --sb-item-active: rgba(79, 70, 229, 0.1);
+  --sb-border: rgba(0, 0, 0, 0.05);
+  --sb-shadow: 4px 0 15px rgba(0, 0, 0, 0.02);
+  --sb-icon-color: #64748b;
+  --sb-btn-text: #4f46e5;
+  --sb-scrollbar: rgba(0, 0, 0, 0.1);
 }
 
-.menu-item-actions .el-button {
-  color: #909399;
-  padding: 2px 2px;
-  margin-left: 0;
-}
-
-.menu-item-actions .el-button:hover {
-  color: #409EFF;
+.sidebar-theme-dark {
+  --sb-bg-main: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+  --sb-logo-bg: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  --sb-logo-shadow: rgba(37, 99, 235, 0.3);
+  --sb-text-primary: #f8fafc;
+  --sb-text-secondary: #94a3b8;
+  --sb-btn-primary-bg: rgba(59, 130, 246, 0.2);
+  --sb-btn-primary-hover: #3b82f6;
+  --sb-item-hover: rgba(255, 255, 255, 0.03);
+  --sb-item-active: rgba(59, 130, 246, 0.15);
+  --sb-border: rgba(255, 255, 255, 0.05);
+  --sb-shadow: 10px 0 30px rgba(0, 0, 0, 0.15);
+  --sb-icon-color: #94a3b8;
+  --sb-btn-text: #fff;
+  --sb-scrollbar: rgba(255, 255, 255, 0.1);
 }
 </style>
-

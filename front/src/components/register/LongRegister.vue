@@ -8,28 +8,28 @@
       <el-form-item label="Long AB CD:" class="form-item">
         <el-input v-model.number="longRegister.longABCD" disabled>
           <template #append>
-            <span>({{ getLongHex(longRegister.longABCD) }})</span>
+            <span class="hex-value">{{ getLongHex(longRegister.longABCD) }}</span>
           </template>
         </el-input>
       </el-form-item>
       <el-form-item label="Long CD AB:" class="form-item">
         <el-input v-model.number="longRegister.longCDAB" disabled>
           <template #append>
-            <span>({{ getLongHex(longRegister.longCDAB) }})</span>
+            <span class="hex-value">{{ getLongHex(longRegister.longCDAB) }}</span>
           </template>
         </el-input>
       </el-form-item>
       <el-form-item label="Long BA DC:" class="form-item">
         <el-input v-model="longRegister.longBADC" disabled>
           <template #append>
-            <span>({{ getLongHex(longRegister.longBADC) }})</span>
+            <span class="hex-value">{{ getLongHex(longRegister.longBADC) }}</span>
           </template>
         </el-input>
       </el-form-item>
       <el-form-item label="Long DC BA:" class="form-item">
         <el-input v-model="longRegister.longDCBA" disabled>
           <template #append>
-            <span>({{ getLongHex(longRegister.longDCBA) }})</span>
+            <span class="hex-value">{{ getLongHex(longRegister.longDCBA) }}</span>
           </template>
         </el-input>
       </el-form-item>
@@ -166,32 +166,47 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .register {
-  margin-top: 10px;
-  margin-bottom: 20px;
-  margin-left: 20px;
-  padding: 20px;
-  width: 500px;
+  margin: 0;
+  padding: 16px;
+  width: 420px;
   font-family: Arial, sans-serif;
   background-color: white;
-  border-radius: 5px;
-  box-shadow: 0 1px 3px rgba(0.2, 0.2, 0.2, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e4e7ed;
 }
 
 .simple-title {
-  margin-bottom: 15px;
+  margin-bottom: 12px;
 }
 .simple-title span {
-  font-size: 16px;
+  font-size: 14px;
   color: #409eff;
-  font-weight: 500;
+  font-weight: 600;
 }
 .simple-title .el-divider {
-  margin: 12px 0;
+  margin: 8px 0;
   background-color: #409eff;
 }
 
 .form-item {
-  width: 450px;
+  margin-bottom: 10px;
+  width: 380px;
+  
+  /* 优化输入框后缀样式，使其更融合 */
+  :deep(.el-input-group__append) {
+    background-color: #f5f7fa;
+    border-left: 1px solid #dcdfe6;
+    padding: 0 14px;
+  }
+  
+  .hex-value {
+    color: #409eff;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'Consolas', 'Monaco', monospace;
+    letter-spacing: 0.5px;
+  }
 }
 
 .custom-row {

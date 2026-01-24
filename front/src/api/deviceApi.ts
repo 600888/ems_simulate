@@ -273,3 +273,66 @@ export async function editPointMetadata(deviceName: string, pointCode: string, m
         return false;
     }
 }
+
+// ===== 自动读取控制 =====
+
+export async function getAutoReadStatus(deviceName: string): Promise<boolean> {
+    try {
+        const data = await requestApi('/device/get_auto_read_status', 'post', {
+            device_name: deviceName,
+        });
+        return data;
+    } catch (error) {
+        console.error('Error getting auto read status:', error);
+        return false;
+    }
+}
+
+export async function startAutoRead(deviceName: string): Promise<boolean> {
+    try {
+        const data = await requestApi('/device/start_auto_read', 'post', {
+            device_name: deviceName,
+        });
+        return data;
+    } catch (error) {
+        console.error('Error starting auto read:', error);
+        return false;
+    }
+}
+
+export async function stopAutoRead(deviceName: string): Promise<boolean> {
+    try {
+        const data = await requestApi('/device/stop_auto_read', 'post', {
+            device_name: deviceName,
+        });
+        return data;
+    } catch (error) {
+        console.error('Error stopping auto read:', error);
+        return false;
+    }
+}
+
+export async function manualRead(deviceName: string): Promise<boolean> {
+    try {
+        const data = await requestApi('/device/manual_read', 'post', {
+            device_name: deviceName,
+        });
+        return data;
+    } catch (error) {
+        console.error('Error performing manual read:', error);
+        return false;
+    }
+}
+
+export async function readSinglePoint(deviceName: string, pointCode: string): Promise<number | null> {
+    try {
+        const data = await requestApi('/device/read_single_point', 'post', {
+            device_name: deviceName,
+            point_code: pointCode,
+        });
+        return data?.value ?? null;
+    } catch (error) {
+        console.error('Error reading single point:', error);
+        return null;
+    }
+}

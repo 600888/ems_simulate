@@ -106,6 +106,7 @@ class ChannelCreateRequest(BaseModel):
     stop_bits: int = 1
     parity: str = "N"
     rtu_addr: str = "1"
+    group_id: Optional[int] = None  # 所属设备组ID
 
 class ChannelUpdateRequest(BaseModel):
     name: Optional[str] = None
@@ -122,3 +123,45 @@ class ChannelUpdateRequest(BaseModel):
 
 class CreateAndStartDeviceRequest(BaseModel):
     channel_id: int
+
+
+# ========== 设备组相关请求 ==========
+
+class DeviceGroupCreateRequest(BaseModel):
+    """创建设备组请求"""
+    code: str = Field(..., description="设备组编码", max_length=32)
+    name: str = Field(..., description="设备组名称", max_length=64)
+    parent_id: Optional[int] = Field(None, description="父设备组ID，NULL表示顶级")
+    description: Optional[str] = Field(None, description="设备组描述", max_length=256)
+
+
+class DeviceGroupUpdateRequest(BaseModel):
+    """更新设备组请求"""
+    name: Optional[str] = Field(None, description="设备组名称", max_length=64)
+    parent_id: Optional[int] = Field(None, description="父设备组ID")
+    description: Optional[str] = Field(None, description="设备组描述", max_length=256)
+    status: Optional[int] = Field(None, description="设备组状态")
+
+
+class DeviceGroupDeleteRequest(BaseModel):
+    """删除设备组请求"""
+    cascade: bool = Field(False, description="是否级联删除子组，False时将子组和设备移至未分组")
+
+
+class DeviceToGroupRequest(BaseModel):
+    """将设备添加到设备组请求"""
+    device_id: int = Field(..., description="设备ID")
+    group_id: int = Field(..., description="目标设备组ID")
+
+
+class DevicesToGroupRequest(BaseModel):
+    """批量移动设备到设备组请求"""
+    device_ids: List[int] = Field(..., description="设备ID列表")
+    group_id: Optional[int] = Field(None, description="目标设备组ID，NULL表示移至未分组")
+
+
+class BatchDeviceOperationRequest(BaseModel):
+    """批量设备操作请求"""
+    group_id: int = Field(..., description="设备组ID")
+    operation: str = Field(..., description="操作类型: start/stop/reset")
+

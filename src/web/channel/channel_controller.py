@@ -99,10 +99,23 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
                         message=f"端口 {req.port} 已被设备 '{ch.get('name')}' 占用，请使用其他端口"
                     )
         
-        # 创建通道
+        # 1. 首先创建 Device 记录
+        from src.data.service.device_service import DeviceService
+        device_id = DeviceService.create_device(
+            code=req.code,
+            name=req.name,
+            device_type=0,  # 默认类型
+            group_id=req.group_id,  # 设备组ID
+        )
+        
+        if device_id <= 0:
+            return BaseResponse(code=500, message="创建设备记录失败")
+        
+        # 2. 创建通道，关联到设备
         channel_id = ChannelService.create_channel(
             code=req.code,
             name=req.name,
+            device_id=device_id,  # 关联设备ID
             protocol_type=req.protocol_type,
             conn_type=req.conn_type,
             ip=req.ip,
@@ -116,7 +129,13 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
         )
         
         if channel_id > 0:
-            return BaseResponse(message="创建通道成功", data={"channel_id": channel_id})
+            return BaseResponse(
+                message="创建通道成功", 
+                data={
+                    "channel_id": channel_id,
+                    "device_id": device_id,
+                }
+            )
         else:
             return BaseResponse(code=500, message="创建通道失败")
             

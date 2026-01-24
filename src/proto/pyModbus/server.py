@@ -1,5 +1,6 @@
 import asyncio
 import struct
+import logging
 from typing import List
 
 from pymodbus import __version__ as pymodbus_version
@@ -171,8 +172,6 @@ class ModbusServer:
             }
         )
         return args
-
-
 
     async def runAsyncServer(self, args):
         """Run server."""
