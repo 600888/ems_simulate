@@ -80,6 +80,9 @@ class DLT645ServerHandler(ServerHandler):
         # 确保地址是12位BCD码字符串
         addr_str = str(self._meter_address).zfill(12)
         self._server.set_address(addr_str)
+        
+        # 启用报文捕获
+        self._server.enable_message_capture(queue_size=200)
 
     async def start(self) -> bool:
         """启动 DLT645 服务器"""
@@ -191,6 +194,22 @@ class DLT645ServerHandler(ServerHandler):
     def server(self):
         """获取底层服务器对象"""
         return self._server
+    
+    def get_captured_messages(self, count: int = 100) -> list:
+        """获取捕获的报文列表
+        
+        Returns:
+            报文记录列表，每条记录包含 direction, hex_string, timestamp 等
+        """
+        if self._server and hasattr(self._server, 'get_captured_messages'):
+            messages = self._server.get_captured_messages(count)
+            return [msg.to_dict() for msg in messages]
+        return []
+    
+    def clear_captured_messages(self) -> None:
+        """清空捕获的报文"""
+        if self._server and hasattr(self._server, 'clear_captured_messages'):
+            self._server.clear_captured_messages()
 
 
 class DLT645ClientHandler(ClientHandler):
@@ -411,3 +430,19 @@ class DLT645ClientHandler(ClientHandler):
     def client(self):
         """获取底层客户端对象"""
         return self._client
+    
+    def get_captured_messages(self, count: int = 100) -> list:
+        """获取捕获的报文列表
+        
+        Returns:
+            报文记录列表，每条记录包含 direction, hex_string, timestamp 等
+        """
+        if self._client and hasattr(self._client, 'get_captured_messages'):
+            messages = self._client.get_captured_messages(count)
+            return [msg.to_dict() for msg in messages]
+        return []
+    
+    def clear_captured_messages(self) -> None:
+        """清空捕获的报文"""
+        if self._client and hasattr(self._client, 'clear_captured_messages'):
+            self._client.clear_captured_messages()

@@ -14,7 +14,8 @@ from src.web.schemas import (
     PointInfoRequest, SimulationStartRequest, SimulationStopRequest,
     SimulateMethodSetRequest, SimulateStepSetRequest, SimulateRangeSetRequest,
     DeviceStartRequest, DeviceStopRequest, DeviceResetRequest,
-    PointLimitGetRequest, CurrentTableRequest, BaseResponse
+    PointLimitGetRequest, CurrentTableRequest, BaseResponse,
+    MessageListRequest
 )
 
 log = get_logger()
@@ -392,3 +393,35 @@ async def read_single_point(req: PointInfoRequest, request: Request):
         log.error(f"读取测点失败: {e}")
         return BaseResponse(code=500, message=f"读取测点失败: {e}!", data=None)
 
+
+# ===== 报文捕获接口 =====
+
+# 获取设备报文历史
+@device_router.post("/get_messages", response_model=BaseResponse)
+async def get_messages(req: MessageListRequest, request: Request):
+    try:
+        device = get_device(req.device_name, request)
+        messages = device.get_messages(limit=req.limit)
+        return BaseResponse(
+            message="获取报文历史成功!",
+            data={"messages": messages, "count": len(messages)}
+        )
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=None)
+    except Exception as e:
+        log.error(f"获取报文历史失败: {e}")
+        return BaseResponse(code=500, message=f"获取报文历史失败: {e}!", data=None)
+
+
+# 清空设备报文历史
+@device_router.post("/clear_messages", response_model=BaseResponse)
+async def clear_messages(req: DeviceInfoRequest, request: Request):
+    try:
+        device = get_device(req.device_name, request)
+        device.clear_messages()
+        return BaseResponse(message="清空报文历史成功!", data=True)
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=False)
+    except Exception as e:
+        log.error(f"清空报文历史失败: {e}")
+        return BaseResponse(code=500, message=f"清空报文历史失败: {e}!", data=False)

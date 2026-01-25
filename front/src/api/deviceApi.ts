@@ -336,3 +336,40 @@ export async function readSinglePoint(deviceName: string, pointCode: string): Pr
         return null;
     }
 }
+
+// ===== 报文捕获 =====
+
+export interface MessageRecord {
+    timestamp: number;
+    formatted_time: string;
+    direction: string;
+    hex_data: string;
+    raw_hex: string;
+    description: string;
+    length: number;
+}
+
+export async function getMessages(deviceName: string, limit: number = 100): Promise<MessageRecord[]> {
+    try {
+        const data = await requestApi('/device/get_messages', 'post', {
+            device_name: deviceName,
+            limit: limit,
+        });
+        return data?.messages ?? [];
+    } catch (error) {
+        console.error('Error getting messages:', error);
+        return [];
+    }
+}
+
+export async function clearMessages(deviceName: string): Promise<boolean> {
+    try {
+        const data = await requestApi('/device/clear_messages', 'post', {
+            device_name: deviceName,
+        });
+        return data;
+    } catch (error) {
+        console.error('Error clearing messages:', error);
+        return false;
+    }
+}

@@ -27,27 +27,10 @@ from pymodbus.server.async_io import ModbusServerRequestHandler
 from src.enums.modbus_register import Decode, DecodeType
 from src.proto.pyModbus import helper
 from src.enums.modbus_def import ProtocolType
+from src.device.core.message_capture import MessageCapture
 
-
-class KeepConnectionHandler(ModbusServerRequestHandler):
-    """自定义请求处理器，用于保持连接不断开"""
-
-    def __init__(self, request, client_address, server):
-        self.server = server
-        super().__init__(request, client_address, server)
-
-    async def handle(self):
-        """处理请求但不关闭连接"""
-        try:
-            # 调用父类的handle方法处理请求
-            await super().handle()
-            # 不调用close()方法，保持连接打开
-            if hasattr(self, "close_connection"):
-                # 确保不会自动关闭连接
-                self.close_connection = False
-        except Exception as e:
-            self.server._logger.error(f"处理请求时出错: {e}")
-
+# 从子模块导入捕获Framer
+from .capture import CreateCaptureSocketFramer, CreateCaptureRtuFramer
 
 class ModbusServer:
     def __init__(
@@ -78,6 +61,7 @@ class ModbusServer:
         self.is_running = False
         self.keep_connection = keep_connection
         self.stop_event = asyncio.Event()
+        self.message_capture = MessageCapture() # 报文捕获器
         # 创建从站上下文
         self.slaves = {
             slave_id: ModbusSlaveContext(
@@ -184,6 +168,7 @@ class ModbusServer:
             "identity": args.identity,  # server identify
         }
 
+
         # 如果启用了保持连接功能 (仅限 TCP/UDP)
         if self.keep_connection and self.protocol_type in [
             ProtocolType.ModbusTcp, 
@@ -192,7 +177,11 @@ class ModbusServer:
             ProtocolType.ModbusRtuOverTcp
         ]:
             self._logger.info("保持连接功能已启用，将接收Modbus报文而不断开连接")
-            common_params["handler"] = KeepConnectionHandler
+            # common_params["handler"] = KeepConnectionHandler
+        else:
+            # 否则使用基础的捕获处理器
+            # common_params["handler"] = CaptureRequestHandler
+            pass
 
         try:
             if self.protocol_type == ProtocolType.ModbusTcp:
@@ -200,8 +189,13 @@ class ModbusServer:
                     self.ip if self.ip else "",
                     self.port if self.port else None,
                 )
+                
+                # 使用自定义 Frmaer
+                framer_cls = CreateCaptureSocketFramer(self.message_capture)
+                
                 self.server = ModbusTcpServer(
                     address=address,  # listen address
+                    framer=framer_cls,
                     **common_params,
                 )
             elif self.protocol_type == ProtocolType.ModbusRtuOverTcp:
@@ -209,9 +203,12 @@ class ModbusServer:
                     self.ip if self.ip else "",
                     self.port if self.port else None,
                 )
+                
+                framer_cls = CreateCaptureRtuFramer(self.message_capture)
+                
                 self.server = ModbusTcpServer(
                     address=address,  # listen address
-                    framer=ModbusRtuFramer,  # The framer strategy to use
+                    framer=framer_cls,  # The framer strategy to use
                     **common_params,
                 )
             elif self.protocol_type == ProtocolType.ModbusUdp:
@@ -219,8 +216,12 @@ class ModbusServer:
                     self.ip if self.ip else "",
                     self.port if self.port else None,
                 )
+                
+                framer_cls = CreateCaptureSocketFramer(self.message_capture)
+                
                 self.server = ModbusUdpServer(
                     address=address,  # listen address
+                    framer=framer_cls,
                     **common_params,
                 )
             elif self.protocol_type == ProtocolType.ModbusRtu:
@@ -232,8 +233,11 @@ class ModbusServer:
                     "stopbits": self.stopbits,
                 }
                 self._logger.info(f"启动 Modbus RTU 服务器: {serial_params}")
+                
+                framer_cls = CreateCaptureRtuFramer(self.message_capture)
+                
                 self.server = ModbusSerialServer(
-                    framer=ModbusRtuFramer,
+                    framer=framer_cls,
                     **common_params,
                     **serial_params,
                 )
@@ -362,6 +366,14 @@ class ModbusServer:
 
     def isRunning(self):
         return self.is_running
+
+    def getCapturedMessages(self, limit: int = 100):
+        """获取捕获的报文"""
+        return self.message_capture.get_messages(limit)
+
+    def clearCapturedMessages(self) -> None:
+        """清空捕获的报文"""
+        self.message_capture.clear()
 
     def setValueByAddress(
         self,

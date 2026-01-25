@@ -165,3 +165,11 @@ class BatchDeviceOperationRequest(BaseModel):
     group_id: int = Field(..., description="设备组ID")
     operation: str = Field(..., description="操作类型: start/stop/reset")
 
+
+# ========== 报文捕获相关请求 ==========
+
+class MessageListRequest(BaseModel):
+    """获取报文列表请求"""
+    device_name: str = Field(..., description="设备名称")
+    limit: Optional[int] = Field(100, description="最大返回数量")
+

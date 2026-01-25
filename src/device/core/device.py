@@ -22,7 +22,6 @@ from src.device.protocol.dlt645_handler import DLT645ServerHandler, DLT645Client
 from src.enums.point_data import SimulateMethod, Yc, Yx, Yt, Yk, DeviceType, BasePoint
 from src.enums.modbus_def import ProtocolType
 
-
 class Device:
     """设备模拟器核心类"""
 
@@ -469,6 +468,66 @@ class Device:
         return self.data_exporter.get_table_data(
             slave_id, name, page_index, page_size, point_types
         )
+
+    # ===== 报文捕获 =====
+
+    def get_messages(self, limit: Optional[int] = None) -> List[dict]:
+        """获取报文历史记录
+        
+        从协议处理器获取原始报文。
+        
+        Args:
+            limit: 最大返回数量，None表示返回全部
+            
+        Returns:
+            报文记录列表（字典格式）
+        """
+        if self.protocol_handler and hasattr(self.protocol_handler, 'get_captured_messages'):
+            messages = self.protocol_handler.get_captured_messages(limit or 100)
+            if messages:
+                # 判断是否为客户端模式
+                is_client = self.protocol_type in [
+                    ProtocolType.ModbusTcpClient,
+                    ProtocolType.Iec104Client,
+                    ProtocolType.Dlt645Client
+                ]
+
+                # 统一显示格式
+                result = []
+                for msg in messages:
+                    direction = msg.get("direction", "")
+                    # 推导报文类型 (Request/Response)
+                    msg_type = ""
+                    if is_client:
+                        # 客户端: TX是请求, RX是响应
+                        msg_type = "Request" if direction == "TX" else "Response"
+                    else:
+                        # 服务端: RX是请求, TX是响应
+                        msg_type = "Request" if direction == "RX" else "Response"
+
+                    result.append({
+                        "sequence_id": msg.get("sequence_id", 0),
+                        "timestamp": msg.get("timestamp", 0),
+                        "formatted_time": msg.get("time", msg.get("formatted_time", "")),
+                        "direction": direction,
+                        "msg_type": msg_type, # 新增报文类型
+                        "hex_data": msg.get("hex_string", msg.get("data", "")),
+                        "raw_hex": msg.get("data", ""),
+                        "description": msg.get("description", ""),
+                        "length": msg.get("length", 0)
+                    })
+                
+                # 按序号倒序排列（最新的在前）
+                # 如果有sequence_id，使用sequence_id排序，否则使用timestamp
+                result.sort(key=lambda x: (x.get("sequence_id", 0), x["timestamp"]), reverse=True)
+                return result[:limit] if limit else result
+        
+        return []
+    
+    def clear_messages(self) -> None:
+        """清空报文历史记录"""
+        if self.protocol_handler and hasattr(self.protocol_handler, 'clear_captured_messages'):
+            self.protocol_handler.clear_captured_messages()
 
     # ===== 日志 =====
 

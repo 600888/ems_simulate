@@ -127,6 +127,17 @@ class ModbusServerHandler(ServerHandler):
         """获取底层服务器对象（用于兼容旧代码）"""
         return self._server
 
+    def get_captured_messages(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """获取捕获的报文列表"""
+        if self._server:
+            return self._server.getCapturedMessages(limit)
+        return []
+
+    def clear_captured_messages(self) -> None:
+        """清空捕获的报文"""
+        if self._server:
+            self._server.clearCapturedMessages()
+
 
 class ModbusClientHandler(ClientHandler):
     """Modbus 客户端处理器"""
@@ -223,3 +234,14 @@ class ModbusClientHandler(ClientHandler):
     def client(self):
         """获取底层客户端对象（用于兼容旧代码）"""
         return self._client
+
+    def get_captured_messages(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """获取捕获的报文列表"""
+        if self._client:
+            return self._client.getCapturedMessages(limit)
+        return []
+
+    def clear_captured_messages(self) -> None:
+        """清空捕获的报文"""
+        if self._client:
+            self._client.clearCapturedMessages()

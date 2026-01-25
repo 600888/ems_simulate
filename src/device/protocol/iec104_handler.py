@@ -131,6 +131,17 @@ class IEC104ServerHandler(ServerHandler):
         """获取底层服务器对象"""
         return self._server
 
+    def get_captured_messages(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """获取捕获的报文列表"""
+        if self._server and hasattr(self._server, 'get_captured_messages'):
+            return self._server.get_captured_messages(limit)
+        return []
+
+    def clear_captured_messages(self) -> None:
+        """清空捕获的报文"""
+        if self._server and hasattr(self._server, 'clear_captured_messages'):
+            self._server.clear_captured_messages()
+
 
 class IEC104ClientHandler(ClientHandler):
     """IEC104 客户端处理器"""
@@ -253,3 +264,14 @@ class IEC104ClientHandler(ClientHandler):
     def client(self):
         """获取底层客户端对象"""
         return self._client
+
+    def get_captured_messages(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """获取捕获的报文列表"""
+        if self._client and hasattr(self._client, 'get_captured_messages'):
+            return self._client.get_captured_messages(limit)
+        return []
+
+    def clear_captured_messages(self) -> None:
+        """清空捕获的报文"""
+        if self._client and hasattr(self._client, 'clear_captured_messages'):
+            self._client.clear_captured_messages()

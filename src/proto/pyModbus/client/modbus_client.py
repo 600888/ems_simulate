@@ -3,8 +3,18 @@ from typing import List, Optional, Union
 from pymodbus.client import ModbusTcpClient, ModbusSerialClient
 from pymodbus.exceptions import ModbusException
 from src.enums.modbus_register import Decode, DecodeType
+from pymodbus.framer import Framer
+from pymodbus.pdu import ModbusRequest
+from datetime import datetime
 from src.enums.modbus_def import ProtocolType
+from src.device.core.message_capture import MessageCapture
 
+# 从子模块导入捕获客户端
+from .capture import (
+    ModbusTcpClientWithCapture,
+    ModbusSerialClientWithCapture,
+    ModbusRtuOverTcpClientWithCapture
+)
 
 class ModbusClient:
     """
@@ -48,6 +58,15 @@ class ModbusClient:
         self.client = None
         self.connected = False
         self.log = log
+        self.message_capture = MessageCapture() # 报文捕获器
+
+    def getCapturedMessages(self, limit: int = 100):
+        """获取捕获的报文"""
+        return self.message_capture.get_messages(limit)
+
+    def clearCapturedMessages(self):
+        """清空捕获的报文"""
+        self.message_capture.clear()
 
     def is_connected(self) -> bool:
         """
@@ -66,19 +85,18 @@ class ModbusClient:
             bool: 连接是否成功
         """
         try:
-            if self.protocol_type in [
-                ProtocolType.ModbusTcp,
-                ProtocolType.ModbusTcpClient,
-                ProtocolType.ModbusRtuOverTcp,
-            ]:
-                self.client = ModbusTcpClient(host=self.host, port=self.port)
+            if self.protocol_type == ProtocolType.ModbusTcp or self.protocol_type == ProtocolType.ModbusTcpClient:
+                self.client = ModbusTcpClientWithCapture(host=self.host, port=self.port, message_capture=self.message_capture)
+            elif self.protocol_type == ProtocolType.ModbusRtuOverTcp:
+                self.client = ModbusRtuOverTcpClientWithCapture(host=self.host, port=self.port, message_capture=self.message_capture)
             elif self.protocol_type == ProtocolType.ModbusRtu:
-                self.client = ModbusSerialClient(
+                self.client = ModbusSerialClientWithCapture(
                     port=self.serial_port,
                     baudrate=self.baudrate,
                     bytesize=self.bytesize,
                     parity=self.parity,
                     stopbits=self.stopbits,
+                    message_capture=self.message_capture
                 )
             else:
                 if self.log:

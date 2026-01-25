@@ -18,6 +18,14 @@
         <el-icon v-else class="icon"><VideoPause /></el-icon>
         <span> {{ deviceButtonText }} </span>
       </el-button>
+      
+      <el-button
+        class="button btn-info"
+        @click="showMessageDialog = true"
+      >
+        <el-icon class="icon"><Document /></el-icon>
+        <span>查看报文</span>
+      </el-button>
     </el-row>
 
     <!-- 第二行：仿真模拟控制 -->
@@ -49,6 +57,12 @@
 
     <!-- 第三行：从站/测点数据 -->
     <Slave />
+    
+    <!-- 报文查看对话框 -->
+    <MessageViewDialog
+      v-model="showMessageDialog"
+      :device-name="routeName"
+    />
   </el-col>
 </template>
 
@@ -57,6 +71,7 @@ import { ref, onMounted, computed, watch } from "vue";
 import { useRoute } from "vue-router";
 import TextNode from "@/components/common/TextNode.vue";
 import Slave from "@/components/device/Slave.vue";
+import MessageViewDialog from "@/components/device/MessageViewDialog.vue";
 import {
   getDeviceInfo,
   startSimulation,
@@ -64,7 +79,7 @@ import {
   startDevice,
   stopDevice,
 } from "@/api/deviceApi";
-import { CaretRight, VideoPause } from "@element-plus/icons-vue";
+import { CaretRight, VideoPause, Document } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 
 const route = useRoute();
@@ -81,6 +96,7 @@ const deviceStatusStr = ref<any>("");
 const simulationStatus = ref<boolean>(false);
 const simulationStatusStr = ref<any>("");
 const isProcessing = ref<boolean>(false);
+const showMessageDialog = ref<boolean>(false);
 
 const isSerialMode = computed(() => {
   const type = communicationType.value;
@@ -221,6 +237,11 @@ watch(() => route.name, async (newVal) => {
 .btn-primary-action {
   background-color: var(--color-primary);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+}
+
+.btn-info {
+  background-color: #6366f1;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
 }
 
 .simulation-select {

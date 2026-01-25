@@ -58,6 +58,7 @@ declare module 'vue' {
     ElUpload: typeof import('element-plus/es')['ElUpload']
     FloatRegister: typeof import('./src/components/register/FloatRegister.vue')['default']
     LongRegister: typeof import('./src/components/register/LongRegister.vue')['default']
+    MessageViewDialog: typeof import('./src/components/device/MessageViewDialog.vue')['default']
     PointSimulate: typeof import('./src/components/point/PointSimulate.vue')['default']
     PointSimulator: typeof import('./src/components/point/PointSimulator.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

@@ -15,10 +15,30 @@ class ProtocolHandler(ABC):
     def __init__(self):
         self._is_running: bool = False
         self._config: Dict[str, Any] = {}
+        self._message_capture = None  # 报文捕获器引用
 
     @property
     def is_running(self) -> bool:
         return self._is_running
+
+    @property
+    def message_capture(self):
+        """获取报文捕获器"""
+        return self._message_capture
+    
+    def set_message_capture(self, capture) -> None:
+        """设置报文捕获器"""
+        self._message_capture = capture
+    
+    def add_tx_message(self, data: bytes, description: str = "") -> None:
+        """记录发送报文"""
+        if self._message_capture:
+            self._message_capture.add_tx(data, description)
+    
+    def add_rx_message(self, data: bytes, description: str = "") -> None:
+        """记录接收报文"""
+        if self._message_capture:
+            self._message_capture.add_rx(data, description)
 
     @abstractmethod
     def initialize(self, config: Dict[str, Any]) -> None:
@@ -88,6 +108,21 @@ class ProtocolHandler(ABC):
     def get_config(self, key: str, default: Any = None) -> Any:
         """获取配置项"""
         return self._config.get(key, default)
+
+    def get_captured_messages(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """获取捕获的报文列表
+        
+        Args:
+            limit: 最大返回数量
+            
+        Returns:
+            报文记录列表，每条记录包含 direction, data (hex), timestamp, time 等
+        """
+        return []
+
+    def clear_captured_messages(self) -> None:
+        """清空捕获的报文"""
+        pass
 
 
 class ServerHandler(ProtocolHandler):
