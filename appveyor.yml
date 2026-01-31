@@ -16,10 +16,13 @@ install:
   - nvm install 18
   - nvm use 18
   - npm install -g pnpm
+  - ls -la
   - cd docs && pnpm install
 
 # 构建文档
 build_script:
+  - pwd
+  - ls -la
   - cd docs && pnpm run docs:build
 
 # 部署到 GitHub Pages
