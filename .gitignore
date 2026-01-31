@@ -146,3 +146,10 @@ nohup.out
 
 # 确保www目录中的内容可以被提交（不忽略www目录）
 !www/
+# VitePress documentation
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
+# Global node_modules
+node_modules/
