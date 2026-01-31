@@ -1,0 +1,30 @@
+:root {
+    /* 调整侧边栏宽度 */
+    --vp-sidebar-width: 280px;
+
+    /* 让布局占满全屏，消除左侧留白 */
+    --vp-layout-max-width: 100%;
+}
+
+/* 适配移动端或窄屏 */
+@media (min-width: 960px) {
+    .VPContent {
+        /* 使用变量保持与侧边栏宽度一致 */
+        padding-left: var(--vp-sidebar-width);
+    }
+}
+
+/* 增大侧边栏条目 */
+.VPSidebarItem .text {
+    font-size: 15px !important;
+    font-weight: 500;
+}
+
+.VPSidebarItem .link {
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+}
+
+.VPSidebarItem .link:hover .text {
+    color: var(--vp-c-brand-1);
+}

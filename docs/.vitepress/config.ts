@@ -60,7 +60,7 @@ export default defineConfig({
         // 页脚
         footer: {
             message: 'Released under the Apache 2.0 License.',
-            copyright: 'Copyright © 2024-present'
+            copyright: 'Copyright © 2026 Appveyor Systems Inc.'
         },
 
         // 搜索
