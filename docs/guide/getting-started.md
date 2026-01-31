@@ -52,7 +52,7 @@ npm run dev
 
 ### 5. 访问系统
 
-打开浏览器访问 [http://localhost:5173](http://localhost:5173)
+打开浏览器访问 `http://localhost:5173`
 
 ## 目录结构
 
