@@ -5,6 +5,11 @@ export default defineConfig({
     title: 'EMS Simulate',
     description: '能源管理系统模拟器 - 项目文档',
 
+    // 配置浏览器标签页图标
+    head: [
+        ['link', { rel: 'icon', href: '/ems_simulate/img/m.ico' }]
+    ],
+
     // GitHub Pages 部署路径
     base: '/ems_simulate/',
 
@@ -60,7 +65,7 @@ export default defineConfig({
         // 页脚
         footer: {
             message: 'Released under the Apache 2.0 License.',
-            copyright: 'Copyright © 2026 Appveyor Systems Inc.'
+            copyright: 'Copyright © 2026 CDY'
         },
 
         // 搜索
