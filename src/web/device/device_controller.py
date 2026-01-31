@@ -15,7 +15,8 @@ from src.web.schemas import (
     SimulateMethodSetRequest, SimulateStepSetRequest, SimulateRangeSetRequest,
     DeviceStartRequest, DeviceStopRequest, DeviceResetRequest,
     PointLimitGetRequest, CurrentTableRequest, BaseResponse,
-    MessageListRequest, PointCreateRequest, PointDeleteRequest, SlaveAddRequest
+    MessageListRequest, PointCreateRequest, PointDeleteRequest, SlaveAddRequest,
+    ClearPointsRequest
 )
 from src.data.dao.channel_dao import ChannelDao
 
@@ -374,7 +375,10 @@ async def stop_auto_read(req: DeviceInfoRequest, request: Request):
 async def manual_read(req: DeviceInfoRequest, request: Request):
     try:
         device = get_device(req.device_name, request)
-        device.single_read()
+        # 在线程池中执行同步读取操作，避免阻塞事件循环
+        import asyncio
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, device.single_read)
         return BaseResponse(message="手动读取成功!", data=True)
     except KeyError:
         return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=False)
@@ -507,3 +511,20 @@ async def add_slave(req: SlaveAddRequest, request: Request):
     except Exception as e:
         log.error(f"添加从机失败: {e}")
         return BaseResponse(code=500, message=f"添加从机失败: {e}!", data=False)
+
+
+# 清空从机测点
+@device_router.post("/clear_points", response_model=BaseResponse)
+async def clear_points(req: ClearPointsRequest, request: Request):
+    try:
+        device = get_device(req.device_name, request)
+        deleted_count = device.clear_points_by_slave(req.slave_id)
+        if deleted_count >= 0:
+            return BaseResponse(message=f"清空成功，共删除 {deleted_count} 个测点!", data=deleted_count)
+        else:
+            return BaseResponse(code=500, message="清空测点失败!", data=0)
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=0)
+    except Exception as e:
+        log.error(f"清空测点失败: {e}")
+        return BaseResponse(code=500, message=f"清空测点失败: {e}!", data=0)

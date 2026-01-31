@@ -433,13 +433,13 @@ class Device:
             slave_id = point_data.get("rtu_addr", 1)
             
             if frame_type == 0:  # 遥测
-                point = YcService._convert_to_yc(db_point, self.protocol_type)
+                point = YcService._create_point(db_point, self.protocol_type)
             elif frame_type == 1:  # 遥信
-                point = YxService._convert_to_yx(db_point, self.protocol_type)
+                point = YxService._create_point(db_point, self.protocol_type)
             elif frame_type == 2:  # 遥控
-                point = YkService._convert_to_yk(db_point, self.protocol_type)
+                point = YkService._create_point(db_point, self.protocol_type)
             elif frame_type == 3:  # 遥调
-                point = YtService._convert_to_yt(db_point, self.protocol_type)
+                point = YtService._create_point(db_point, self.protocol_type)
             else:
                 return False
             
@@ -521,6 +521,76 @@ class Device:
             if self.log:
                 self.log.error(f"动态删除测点失败: {e}")
             return False
+
+    def clear_points_by_slave(self, slave_id: int) -> int:
+        """清空指定从机的所有测点
+        
+        Args:
+            slave_id: 从机地址
+            
+        Returns:
+            删除的测点数量
+        """
+        try:
+            from src.data.dao.point_dao import PointDao
+            
+            deleted_count = 0
+            
+            # 收集该从机下的所有测点 code
+            point_codes = []
+            
+            # 从 yc_dict 收集
+            if slave_id in self.point_manager.yc_dict:
+                for point in self.point_manager.yc_dict[slave_id]:
+                    point_codes.append(point.code)
+            
+            # 从 yx_dict 收集
+            if slave_id in self.point_manager.yx_dict:
+                for point in self.point_manager.yx_dict[slave_id]:
+                    point_codes.append(point.code)
+            
+            # 从 yk_dict 收集
+            if slave_id in self.point_manager.yk_dict:
+                for point in self.point_manager.yk_dict[slave_id]:
+                    point_codes.append(point.code)
+            
+            # 从 yt_dict 收集
+            if slave_id in self.point_manager.yt_dict:
+                for point in self.point_manager.yt_dict[slave_id]:
+                    point_codes.append(point.code)
+            
+            # 批量删除
+            for code in point_codes:
+                # 从数据库删除
+                if PointDao.delete_point_by_code(code):
+                    deleted_count += 1
+                # 从 code_map 移除
+                if code in self.point_manager.code_map:
+                    del self.point_manager.code_map[code]
+            
+            # 清空内存中的测点列表
+            if slave_id in self.point_manager.yc_dict:
+                self.point_manager.yc_dict[slave_id] = []
+            if slave_id in self.point_manager.yx_dict:
+                self.point_manager.yx_dict[slave_id] = []
+            if slave_id in self.point_manager.yk_dict:
+                self.point_manager.yk_dict[slave_id] = []
+            if slave_id in self.point_manager.yt_dict:
+                self.point_manager.yt_dict[slave_id] = []
+            
+            # IEC104 协议需要重新初始化
+            if self.protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
+                self._reinit_protocol_for_iec104()
+            
+            if self.log:
+                self.log.info(f"清空从机 {slave_id} 的测点成功，共删除 {deleted_count} 个测点")
+            
+            return deleted_count
+            
+        except Exception as e:
+            if self.log:
+                self.log.error(f"清空从机测点失败: {e}")
+            return 0
 
     def add_slave_dynamic(self, slave_id: int) -> bool:
         """动态添加从机

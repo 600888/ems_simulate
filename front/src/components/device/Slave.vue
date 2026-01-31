@@ -30,6 +30,18 @@
             <el-button class="modern-btn add-btn" @click="showAddPointDialog = true" :icon="Plus">
               添加测点
             </el-button>
+            <el-popconfirm
+              title="确定清空当前从机的所有测点吗？此操作不可恢复！"
+              confirm-button-text="确定"
+              cancel-button-text="取消"
+              @confirm="handleClearPoints"
+            >
+              <template #reference>
+                <el-button class="modern-btn clear-btn" type="danger" :icon="Delete">
+                  清空测点
+                </el-button>
+              </template>
+            </el-popconfirm>
             <div v-if="needsAutoReadControls" class="auto-read-control">
               <span class="auto-read-label">自动读取</span>
               <el-switch
@@ -58,7 +70,7 @@
           :tableData="tableDataMap[slave]?.tableData || []"
           :pageSize="pageSize"
           :pageIndex="pageIndex"
-          :total="total"
+          :total="tableDataMap[slave]?.total || 0"
           :activeFilters="activeFilters"
           :protocolType="protocolType"
           @update:pageSize="handlePageSizeChange"
@@ -102,8 +114,8 @@
 import { ref, onMounted, watch, onUnmounted, computed } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage, type TabsPaneContext } from "element-plus";
-import { Search, Refresh, Download, Plus } from "@element-plus/icons-vue";
-import { getSlaveIdList, getDeviceTable, resetPointData, getDeviceInfo, getAutoReadStatus, startAutoRead, stopAutoRead, manualRead } from "@/api/deviceApi";
+import { Search, Refresh, Download, Plus, Delete } from "@element-plus/icons-vue";
+import { getSlaveIdList, getDeviceTable, resetPointData, getDeviceInfo, getAutoReadStatus, startAutoRead, stopAutoRead, manualRead, clearPoints } from "@/api/deviceApi";
 import DeviceTable from "./Table.vue";
 import AddPointDialog from "./AddPointDialog.vue";
 import AddSlaveDialog from "./AddSlaveDialog.vue";
@@ -113,7 +125,7 @@ const routeName = ref(route.name as string);
 const activeName = ref("");
 const slaveIdList = ref<number[]>([]);
 const currentSlaveId = ref(1);
-const tableDataMap = ref<Record<number, { tableHeader: string[]; tableData: any[][] }>>({});
+const tableDataMap = ref<Record<number, { tableHeader: string[]; tableData: any[][]; total: number }>>({});
 const searchQuery = ref<Record<number, string>>({});
 const pageSize = ref(10);
 const pageIndex = ref(1);
@@ -170,11 +182,21 @@ const fetchSlaveList = async () => {
 const fetchDeviceTable = async (name: string, sid: number, q: string, pi: number, ps: number) => {
   const data = await getDeviceTable(name, sid, q, pi, ps, pointTypes.value);
   if (data) {
+    // 确保初始化对象
+    if (!tableDataMap.value[sid]) {
+      tableDataMap.value[sid] = { tableHeader: [], tableData: [], total: 0 };
+    }
+    
     tableDataMap.value[sid] = {
       tableHeader: data.get("head_data"),
       tableData: data.get("table_data"),
+      total: data.get("total"),
     };
-    total.value = data.get("total");
+    
+    // 如果是当前显示的从机，同时更新全局 total 以防万一（但我们将主要改为从 map 中取值）
+    if (sid === currentSlaveId.value) {
+      total.value = data.get("total");
+    }
   }
 };
 
@@ -217,6 +239,16 @@ const resetPoint = async () => {
   }
 };
 
+const handleClearPoints = async () => {
+  const deletedCount = await clearPoints(routeName.value, currentSlaveId.value);
+  if (deletedCount >= 0) {
+    ElMessage.success(`清空成功，共删除 ${deletedCount} 个测点`);
+    handleSearch(currentSlaveId.value);
+  } else {
+    ElMessage.error("清空测点失败");
+  }
+};
+
 watch(() => route.name, async (newVal) => {
   if (newVal) {
     stopAutoRefresh();
@@ -226,6 +258,8 @@ watch(() => route.name, async (newVal) => {
     isAutoRead.value = false;
     await stopAutoRead(routeName.value);
     await fetchSlaveList();
+    // 重新启动自动刷新
+    startAutoRefresh();
   }
 });
 

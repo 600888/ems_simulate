@@ -167,4 +167,20 @@ body.theme-dark {
   .icon-section { background: rgba(255, 255, 255, 0.05); }
   .status-indicator { border-color: #1e293b; }
 }
+
+@keyframes breathing {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.status-indicator {
+  animation: breathing 2s infinite;
+}
 </style>

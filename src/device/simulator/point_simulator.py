@@ -27,10 +27,26 @@ class PointSimulator:
 
         if isinstance(self.point, Yx):
             # 遥信点模拟
-            if random.random() < 0.05:  # 5%的概率改变状态
-                self.point.value = 1 - self.point.value
-        else:
-            # 遥测点模拟
+            if self.simulate_method == SimulateMethod.Random:
+                # 随机模拟：50%的概率改变状态
+                if random.random() < 0.5:
+                    self.point.value = 1 - self.point.value
+            elif (
+                hasattr(SimulateMethod, "Pulse")
+                and self.simulate_method == SimulateMethod.Pulse
+            ):
+                # 脉冲模拟
+                pulse_duration = 1  # 脉冲持续时间
+                if int(current_time) % self.cycle < pulse_duration:
+                    self.point.value = 1
+                else:
+                    self.point.value = 0
+            else:
+                # 默认行为（如果选了不支持的方法）：也按50%概率翻转
+                if random.random() < 0.5:
+                    self.point.value = 1 - self.point.value
+        elif hasattr(self.point, 'min_value_limit') and hasattr(self.point, 'max_value_limit'):
+            # 遥测点模拟（只有 Yc 类型有 min_value_limit/max_value_limit）
             if self.simulate_method == SimulateMethod.AutoIncrement:
                 # 自增模拟，随机步长
                 step = random.randint(1, self.step)

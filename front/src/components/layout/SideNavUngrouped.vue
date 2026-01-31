@@ -12,7 +12,9 @@
         :class="{ 'is-active': currentDeviceName === device.name }"
         @click="$emit('device-click', device)"
       >
-        <el-icon><Cpu /></el-icon>
+        <el-tooltip :content="device.name" placement="right" :disabled="!isCollapse">
+          <el-icon><Cpu /></el-icon>
+        </el-tooltip>
         <span>{{ device.name }}</span>
         <div class="node-actions" v-if="!isCollapse" @click.stop>
           <el-button link size="small" :icon="Edit" @click="$emit('edit-device', device.name)" />

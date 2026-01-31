@@ -13,10 +13,12 @@
   >
     <template #default="{ node, data }">
       <div class="tree-node-content" :class="{ 'is-group': data.isGroup }">
-        <el-icon class="node-icon">
-          <Folder v-if="data.isGroup" />
-          <Cpu v-else />
-        </el-icon>
+        <el-tooltip :content="node.label" placement="right" :disabled="!isCollapse">
+          <el-icon class="node-icon">
+            <Folder v-if="data.isGroup" />
+            <Cpu v-else />
+          </el-icon>
+        </el-tooltip>
         <span class="node-label">{{ node.label }}</span>
         
         <div class="node-actions" v-if="!isCollapse" @click.stop>

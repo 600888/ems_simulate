@@ -85,14 +85,43 @@
 
       <el-form-item label="解析码" prop="decode_code">
         <el-select v-model="formData.decode_code" placeholder="选择解析码" style="width: 100%">
-          <el-option label="0x10 - 16位无符号(单寄存器)" value="0x10" />
-          <el-option label="0x11 - 16位有符号(单寄存器)" value="0x11" />
-          <el-option label="0x20 - 16位无符号(高字节在前)" value="0x20" />
-          <el-option label="0x21 - 16位有符号(高字节在前)" value="0x21" />
-          <el-option label="0x40 - 32位无符号整型" value="0x40" />
-          <el-option label="0x41 - 32位有符号整型" value="0x41" />
-          <el-option label="0x42 - 32位浮点(ABCD)" value="0x42" />
-          <el-option label="0x45 - 32位浮点(CDAB)" value="0x45" />
+          <el-option-group label="8位字符">
+            <el-option label="0x10 - Byte 无符号" value="0x10" />
+            <el-option label="0x11 - Byte 有符号" value="0x11" />
+          </el-option-group>
+          <el-option-group label="16位整数">
+            <el-option label="0x20 - Short AB (大端)" value="0x20" />
+            <el-option label="0x21 - Short AB 有符号" value="0x21" />
+            <el-option label="0x22 - Short BA (字节交换)" value="0x22" />
+            <el-option label="0xB0 - Short BA 无符号" value="0xB0" />
+            <el-option label="0xB1 - Short BA 有符号" value="0xB1" />
+            <el-option label="0xC0 - Short CD (小端)" value="0xC0" />
+            <el-option label="0xC1 - Short CD 有符号" value="0xC1" />
+          </el-option-group>
+          <el-option-group label="32位整数">
+            <el-option label="0x40 - Long AB CD (大端)" value="0x40" />
+            <el-option label="0x41 - Long AB CD 有符号" value="0x41" />
+            <el-option label="0x43 - Long CD AB (字交换)" value="0x43" />
+            <el-option label="0x44 - Long CD AB 有符号" value="0x44" />
+            <el-option label="0xD0 - Long DC BA (小端)" value="0xD0" />
+            <el-option label="0xD1 - Long DC BA 有符号" value="0xD1" />
+            <el-option label="0xD4 - Long BA DC (小端字交换)" value="0xD4" />
+            <el-option label="0xD5 - Long BA DC 有符号" value="0xD5" />
+          </el-option-group>
+          <el-option-group label="32位浮点">
+            <el-option label="0x42 - Float AB CD (大端)" value="0x42" />
+            <el-option label="0x45 - Float CD AB (字交换)" value="0x45" />
+            <el-option label="0xD2 - Float DC BA (小端)" value="0xD2" />
+            <el-option label="0xD3 - Float BA DC (小端字交换)" value="0xD3" />
+          </el-option-group>
+          <el-option-group label="64位类型">
+            <el-option label="0x60 - Int64 AB CD EF GH (大端)" value="0x60" />
+            <el-option label="0x61 - Int64 有符号" value="0x61" />
+            <el-option label="0x62 - Double AB CD EF GH" value="0x62" />
+            <el-option label="0xE0 - Int64 HG FE DC BA (小端)" value="0xE0" />
+            <el-option label="0xE1 - Int64 小端有符号" value="0xE1" />
+            <el-option label="0xE2 - Double 小端" value="0xE2" />
+          </el-option-group>
         </el-select>
       </el-form-item>
 
@@ -143,8 +172,17 @@ const formRef = ref<FormInstance>();
 const loading = ref(false);
 const isBatch = ref(false);
 const batchCount = ref(10);
-const codePrefix = ref('POINT_');
-const namePrefix = ref('测点');
+
+// 根据测点类型动态计算编码和名称前缀
+const typeNameMap: Record<number, { code: string; name: string }> = {
+  0: { code: 'YC_', name: '遥测' },
+  1: { code: 'YX_', name: '遥信' },
+  2: { code: 'YK_', name: '遥控' },
+  3: { code: 'YT_', name: '遥调' },
+};
+
+const codePrefix = ref('YC_');
+const namePrefix = ref('遥测');
 
 const formData = reactive<PointCreateData>({
   frame_type: 0,
@@ -158,12 +196,24 @@ const formData = reactive<PointCreateData>({
   add_coe: 0.0,
 });
 
+// 监听测点类型变化，自动更新前缀
+watch(() => formData.frame_type, (newType) => {
+  const prefixes = typeNameMap[newType] || { code: 'POINT_', name: '测点' };
+  codePrefix.value = prefixes.code;
+  namePrefix.value = prefixes.name;
+});
+
 // 根据解析码计算寄存器跨度
 const getRegisterSpan = (decodeCode: string): number => {
-  // 32位解析码占2个寄存器，16位占1个
-  if (['0x40', '0x41', '0x42', '0x43', '0x44', '0x45'].includes(decodeCode)) {
+  // 64位解析码占4个寄存器
+  if (['0x60', '0x61', '0x62', '0xE0', '0xE1', '0xE2'].includes(decodeCode)) {
+    return 4;
+  }
+  // 32位解析码占2个寄存器
+  if (['0x40', '0x41', '0x42', '0x43', '0x44', '0x45', '0xD0', '0xD1', '0xD2', '0xD3', '0xD4', '0xD5'].includes(decodeCode)) {
     return 2;
   }
+  // 8位和16位占1个寄存器
   return 1;
 };
 

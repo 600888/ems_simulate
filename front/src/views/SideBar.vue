@@ -1,5 +1,5 @@
 <template>
-  <el-aside class="sidebar" :class="`sidebar-theme-${currentTheme}`">
+  <el-aside class="sidebar" :class="[`sidebar-theme-${currentTheme}`, { 'sidebar-collapsed': isCollapse }]">
     <el-scrollbar>
       <!-- 1. 头部徽标与主题切换 -->
       <SideNavHeader :is-collapse="isCollapse" />
@@ -321,6 +321,77 @@ watch(() => router.currentRoute.value.path, (path) => {
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   box-shadow: var(--sb-shadow);
+  
+  &.sidebar-collapsed {
+    width: 64px !important;
+    min-width: 64px;
+    
+    /* 折叠时隐藏树形结构的文字和操作按钮，只显示图标 */
+    :deep(.device-tree) {
+      padding: 0 6px;
+      
+      .el-tree-node__content {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        justify-content: center;
+      }
+      
+      .el-tree-node__expand-icon {
+        display: none;
+      }
+      
+      .tree-node-content {
+        justify-content: center;
+        padding-left: 0;
+      }
+      
+      .node-label,
+      .node-actions {
+        display: none !important;
+      }
+      
+      .node-icon {
+        margin-right: 0;
+      }
+    }
+    
+    /* 折叠时隐藏未分组设备区域 */
+    :deep(.ungrouped-section) {
+      margin: 10px 6px;
+      padding-top: 10px;
+      
+      .ungrouped-header {
+        justify-content: center;
+        padding: 10px;
+        
+        span {
+          display: none;
+        }
+        
+        .el-icon {
+          margin-right: 0;
+        }
+      }
+      
+      .ungrouped-list {
+        padding: 8px 0 0 0;
+      }
+      
+      .ungrouped-item {
+        justify-content: center;
+        padding: 10px;
+        
+        span,
+        .node-actions {
+          display: none !important;
+        }
+        
+        .el-icon {
+          margin-right: 0;
+        }
+      }
+    }
+  }
 }
 
 /* 主题类定义 */

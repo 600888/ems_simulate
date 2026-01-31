@@ -11,6 +11,18 @@
       </div>
     </div>
   </div>
+  <!-- 折叠状态下的简化头部 -->
+  <div class="sidebar-header-collapsed" v-else>
+    <div class="logo-box-collapsed">
+      <el-icon class="logo-icon"><Cpu /></el-icon>
+    </div>
+    <div class="theme-toggle-collapsed" @click.stop="toggleTheme">
+      <el-icon class="theme-icon">
+        <Sunny v-if="currentTheme === 'dark'" />
+        <Moon v-else />
+      </el-icon>
+    </div>
+  </div>
 </template>
 
 <script lang="ts" setup>
@@ -79,5 +91,52 @@ defineProps<{
 .theme-icon {
   font-size: 16px;
   color: #fff;
+}
+
+/* 折叠状态下的头部样式 */
+.sidebar-header-collapsed {
+  padding: 16px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-box-collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: var(--sb-logo-bg);
+  border-radius: 10px;
+  box-shadow: 0 4px 12px var(--sb-logo-shadow);
+  transition: all 0.3s ease;
+  
+  .logo-icon {
+    font-size: 20px;
+    color: #fff;
+  }
+}
+
+.theme-toggle-collapsed {
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: rotate(15deg);
+  }
+  
+  .theme-icon {
+    font-size: 16px;
+    color: var(--text-secondary);
+  }
 }
 </style>

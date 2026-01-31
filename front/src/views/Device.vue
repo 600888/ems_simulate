@@ -13,9 +13,12 @@
         :class="['button', deviceStatus ? 'btn-stop' : 'btn-primary-action']"
         @click="toggleDevice"
         :disabled="isProcessing"
+        :loading="isProcessing"
       >
-        <el-icon v-if="!deviceStatus" class="icon"><CaretRight /></el-icon>
-        <el-icon v-else class="icon"><VideoPause /></el-icon>
+        <template #icon v-if="!isProcessing">
+          <el-icon v-if="!deviceStatus" class="icon"><CaretRight /></el-icon>
+          <el-icon v-else class="icon"><VideoPause /></el-icon>
+        </template>
         <span> {{ deviceButtonText }} </span>
       </el-button>
       
@@ -67,7 +70,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, computed, watch } from "vue";
+import { ref, onMounted, onUnmounted, computed, watch } from "vue";
 import { useRoute } from "vue-router";
 import TextNode from "@/components/common/TextNode.vue";
 import Slave from "@/components/device/Slave.vue";
@@ -182,9 +185,68 @@ const startFunction = async () => {
   finally { isProcessing.value = false; }
 };
 
-onMounted(() => { fetchDeviceInfo(); });
+// 状态轮询定时器
+let statusPollTimer: number | null = null;
+const STATUS_POLL_INTERVAL = 5000; // 5秒轮询一次
+
+// 仅获取状态（不更新其他信息，减少开销）
+const fetchDeviceStatus = async () => {
+  try {
+    const info = await getDeviceInfo(routeName.value);
+    const serverStatus = info.get("server_status");
+    // 只有状态变化时才更新
+    if (deviceStatus.value !== serverStatus) {
+      deviceStatus.value = serverStatus;
+      deviceStatusStr.value = serverStatus === true ? "运行中" : "停止";
+      // 状态变化提示
+      if (serverStatus === true) {
+        ElMessage.success(`设备 ${routeName.value} 已连接`);
+      } else {
+        ElMessage.warning(`设备 ${routeName.value} 连接已断开`);
+      }
+    }
+    const simuStatus = info.get("simulation_status");
+    if (simulationStatus.value !== simuStatus) {
+      simulationStatus.value = simuStatus;
+      simulationStatusStr.value = simuStatus === true ? "运行中" : "停止";
+      // 模拟状态变化提示
+      if (simuStatus === true) {
+        ElMessage.info(`设备 ${routeName.value} 模拟已启动`);
+      } else {
+        ElMessage.info(`设备 ${routeName.value} 模拟已停止`);
+      }
+    }
+  } catch (error) { /* 静默处理轮询错误 */ }
+};
+
+// 启动状态轮询
+const startStatusPolling = () => {
+  if (statusPollTimer) return;
+  statusPollTimer = window.setInterval(fetchDeviceStatus, STATUS_POLL_INTERVAL);
+};
+
+// 停止状态轮询
+const stopStatusPolling = () => {
+  if (statusPollTimer) {
+    clearInterval(statusPollTimer);
+    statusPollTimer = null;
+  }
+};
+
+onMounted(() => {
+  fetchDeviceInfo();
+  startStatusPolling();
+});
+
+onUnmounted(() => {
+  stopStatusPolling();
+});
+
 watch(() => route.name, async (newVal) => {
-  if (newVal) { routeName.value = newVal as string; await fetchDeviceInfo(); }
+  if (newVal) {
+    routeName.value = newVal as string;
+    await fetchDeviceInfo();
+  }
 });
 </script>
 

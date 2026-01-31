@@ -245,9 +245,48 @@ class ModbusClientHandler(ClientHandler):
                 self._client.disconnect()
             self._is_running = False
 
+    @property
+    def is_running(self) -> bool:
+        """检测客户端的真实连接状态
+        
+        重写父类方法，实时检测连接状态而不只是返回标志位。
+        当服务端主动断开时，这个属性能反映真实状态。
+        """
+        if not self._is_running:
+            return False
+        
+        if not self._client:
+            return False
+        
+        # 检测 AsyncModbusClient 的连接状态
+        if hasattr(self._client, 'connected'):
+            if not self._client.connected:
+                self._is_running = False
+                return False
+            
+            # 进一步检查底层 pymodbus 客户端的连接状态
+            inner_client = getattr(self._client, 'client', None)
+            if inner_client and hasattr(inner_client, 'connected'):
+                if not inner_client.connected:
+                    self._is_running = False
+                    self._client.connected = False
+                    return False
+        
+        # 检测同步 ModbusClient 的连接状态
+        if hasattr(self._client, 'is_connected'):
+            if not self._client.is_connected():
+                self._is_running = False
+                return False
+        
+        return True
+
     def read_value(self, point: BasePoint) -> Any:
         """读取测点值（同步调用，用于 DataUpdateThread 等线程环境）"""
         if not self._client or not hasattr(point, "func_code"):
+            return None
+        
+        # 先检查连接状态，避免不必要的超时等待
+        if not self.is_running:
             return None
             
         # 检查是否是异步客户端
@@ -263,10 +302,11 @@ class ModbusClientHandler(ClientHandler):
                     self._loop
                 )
                 try:
-                    return future.result(timeout=2.0)
+                    return future.result(timeout=1)  # 1秒超时
                 except Exception as e:
+                    # 单个读取超时不断开连接，只记录日志
                     if self._log:
-                        self._log.error(f"Async read_value timeout/error: {e}")
+                        self._log.debug(f"读取超时: {e}")
                     return None
             else:
                 return None
@@ -284,18 +324,34 @@ class ModbusClientHandler(ClientHandler):
         # 检查是否是异步客户端
         is_async = hasattr(self._client, 'read_value_by_address') and asyncio.iscoroutinefunction(self._client.read_value_by_address)
 
-        if is_async:
-            return await self._client.read_value_by_address(
-                point.func_code, point.rtu_addr, point.address, point.decode
-            )
-        else:
-            # 同步客户端，放到线程池执行
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(
-                None, # 使用默认执行器
-                self._client.read_value_by_address,
-                point.func_code, point.rtu_addr, point.address, point.decode
-            )
+        try:
+            if is_async:
+                # 使用 asyncio.wait_for 添加超时保护
+                return await asyncio.wait_for(
+                    self._client.read_value_by_address(
+                        point.func_code, point.rtu_addr, point.address, point.decode
+                    ),
+                    timeout=1.0  # 1秒超时
+                )
+            else:
+                # 同步客户端，放到线程池执行
+                loop = asyncio.get_running_loop()
+                return await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None, # 使用默认执行器
+                        self._client.read_value_by_address,
+                        point.func_code, point.rtu_addr, point.address, point.decode
+                    ),
+                    timeout=1.0  # 1秒超时
+                )
+        except asyncio.TimeoutError:
+            if self._log:
+                self._log.debug(f"异步读取超时: {point.code if hasattr(point, 'code') else point}")
+            return None
+        except Exception as e:
+            if self._log:
+                self._log.debug(f"异步读取错误: {e}")
+            return None
 
     def write_value(self, point: BasePoint, value: Any) -> bool:
         """写入测点值（同步调用）"""

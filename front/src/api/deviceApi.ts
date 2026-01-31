@@ -426,3 +426,16 @@ export async function addSlave(deviceName: string, slaveId: number): Promise<boo
         return false;
     }
 }
+
+export async function clearPoints(deviceName: string, slaveId: number): Promise<number> {
+    try {
+        const data = await requestApi('/device/clear_points', 'post', {
+            device_name: deviceName,
+            slave_id: slaveId,
+        });
+        return data;
+    } catch (error) {
+        console.error('Error clearing points:', error);
+        return 0;
+    }
+}

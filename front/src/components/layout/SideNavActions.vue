@@ -11,8 +11,12 @@
       </el-button-group>
     </div>
     <div class="add-device-btn-collapse" v-else>
-      <el-button type="primary" circle @click="$emit('add-device')" :icon="Plus" />
-      <el-button type="success" circle @click="$emit('add-group')" :icon="FolderAdd" style="margin-top: 8px;" />
+      <el-tooltip content="添加设备" placement="right">
+        <el-button type="primary" circle @click="$emit('add-device')" :icon="Plus" />
+      </el-tooltip>
+      <el-tooltip content="添加分组" placement="right">
+        <el-button type="success" circle @click="$emit('add-group')" :icon="FolderAdd" />
+      </el-tooltip>
     </div>
   </div>
 </template>
@@ -79,10 +83,16 @@ defineEmits<{
 }
 
 .add-device-btn-collapse {
-  padding: 20px 0;
+  padding: 16px 0;
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 12px;
   align-items: center;
+  justify-content: center;
+  width: 100%;
+  
+  .el-button {
+    margin: 0 !important;
+  }
 }
 </style>

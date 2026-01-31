@@ -199,6 +199,34 @@ class IEC104ClientHandler(ClientHandler):
             self._client.disconnect()
             self._is_running = False
 
+    @property
+    def is_running(self) -> bool:
+        """检测客户端的真实连接状态
+        
+        重写父类方法，实时检测连接状态。
+        当服务端主动断开时，这个属性能反映真实状态。
+        """
+        if not self._is_running:
+            return False
+        
+        if not self._client:
+            return False
+        
+        # 检查 IEC104Client 的连接状态
+        if hasattr(self._client, 'is_connected'):
+            if not self._client.is_connected():
+                self._is_running = False
+                return False
+        
+        # 检查 c104 station 的连接状态
+        if hasattr(self._client, 'station') and self._client.station:
+            if hasattr(self._client.station, 'is_connected'):
+                if not self._client.station.is_connected:
+                    self._is_running = False
+                    return False
+        
+        return True
+
     def read_value(self, point: BasePoint) -> Any:
         """读取测点值"""
         # 检查客户端是否已连接

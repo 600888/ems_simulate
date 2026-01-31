@@ -200,3 +200,9 @@ class SlaveAddRequest(BaseModel):
     """添加从机请求"""
     device_name: str = Field(..., description="设备名称")
     slave_id: int = Field(..., description="从机地址 (1-255)")
+
+
+class ClearPointsRequest(BaseModel):
+    """清空从机测点请求"""
+    device_name: str = Field(..., description="设备名称")
+    slave_id: int = Field(..., description="从机地址")
