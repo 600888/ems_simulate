@@ -1,0 +1,55 @@
+name: Deploy VitePress Documentation
+
+on:
+  # 当主分支有推送时触发
+  push:
+    branches: [ main, master ]
+  # 允许手动触发
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 需要写入内容权限 (用于推送到 gh-pages 分支)
+    steps:
+      # 步骤 1: 检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 确保获取完整的提交历史
+
+      # 步骤 2: 设置 Node.js 环境
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # 步骤 3: 设置 pnpm
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      # 步骤 4: 安装依赖
+      - name: Install dependencies
+        run: |
+          cd docs
+          pnpm install
+
+      # 步骤 5: 生成静态文档
+      - name: Build VitePress documentation
+        run: |
+          cd docs
+          pnpm run docs:build
+
+      # 步骤 6: 部署到 GitHub Pages
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          # 文档构建产物目录 (VitePress 默认输出目录)
+          publish_dir: ./docs/.vitepress/dist
+          # 提交信息
+          commit_message: "Deploy VitePress docs for ${{ github.sha }}"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
