@@ -28,13 +28,14 @@ deploy_script:
   - git config --global user.email "appveyor@ci.com"
   - git config --global user.name "AppVeyor CI"
   # 克隆 gh-pages 分支或创建新分支
+  # 注意：由于之前 install 阶段 cd docs，当前 PWD 是 docs 目录
   - git clone --depth 1 --branch gh-pages https://github.com/600888/ems_simulate.git gh-pages 2>/dev/null || mkdir gh-pages
   - cd gh-pages
   - git init 2>/dev/null || true
   - git checkout -b gh-pages 2>/dev/null || true
   # 清空旧内容并复制新构建产物
   - rm -rf *
-  - cp -r ../docs/.vitepress/dist/* ./
+  - cp -r ./.vitepress/dist/* ./
   # 创建 .nojekyll 文件避免 GitHub Pages 处理
   - touch .nojekyll
   # 提交并推送
