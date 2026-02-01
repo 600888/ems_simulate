@@ -10,12 +10,7 @@ SERVICE_NAME="${APP_NAME}.service"
 
 case "$1" in
     configure)
-        # 1. 创建软链接到 /usr/bin
-        # 注意: PyInstaller onedir 生成的可执行文件通常即为 APP_NAME (如下划线或横线需一致)
-        # 这里假设生成的二进制文件名为 ems_simulate
-        ln -sf "${INSTALL_DIR}/ems_simulate" "${BIN_DIR}/${APP_NAME}"
-
-        # 2. 重新加载 systemd
+        # 1. 重新加载 systemd
         if command -v systemctl >/dev/null; then
             systemctl daemon-reload
             # 可选：安装后自动启动

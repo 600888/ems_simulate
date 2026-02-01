@@ -13,7 +13,10 @@ from src.data.model.base import Base
 
 
 # 加载配置
-Config.load_config(os.path.join(ROOT_DIR, "config.ini"))
+config_path = os.path.join(ROOT_DIR, "etc", "config.ini")
+if not os.path.exists(config_path):
+    config_path = os.path.join(ROOT_DIR, "config.ini")
+Config.load_config(config_path)
 
 # 初始化数据库控制器
 db_controller = DbController()

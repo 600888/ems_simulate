@@ -1,8 +1,12 @@
 import os
+import sys
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 # 根目录
-ROOT_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "../.."))
+if getattr(sys, 'frozen', False):
+    ROOT_DIR = os.path.dirname(sys.executable)
+else:
+    ROOT_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "../.."))
 # 日志目录
 LOG_DIR = os.path.join(ROOT_DIR, "log")
 

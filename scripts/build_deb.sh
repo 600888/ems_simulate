@@ -17,12 +17,6 @@ cd "$SCRIPT_DIR/.."
 echo ">>> 开始构建 ${APP_NAME} v${VERSION}..."
 
 # 1. 清理旧构建 (在 build/ 目录下)
-rm -rf "build/$BUILD_DIR" "build/$OUTPUT_DIR"
-mkdir -p "build/$INSTALL_DIR"
-mkdir -p "build/${DEB_DIR}/DEBIAN"
-# 修改为 /lib/systemd/system
-mkdir -p "build/${DEB_DIR}/lib/systemd/system"
-
 # 2. 构建前端
 echo ">>> 构建前端..."
 cd front
@@ -36,17 +30,25 @@ if [ ! -d "www" ]; then
     exit 1
 fi
 
-# 3. 构建后端 (PyInstaller)
+# 3. 准备 Debian 包结构 (直接复制骨架)
+echo ">>> 准备 Debian 包结构..."
+# 复制 debian 下的所有内容到构建目录
+cp -r debian/* "build/${DEB_DIR}/"
+
+# 4. 构建后端 (PyInstaller)
 echo ">>> 构建后端 (PyInstaller)..."
 # 注意: 在 Windows 上运行此命令会生成 .exe，在 Linux 上运行会生成 elf
 # 使用 --onedir 模式，方便包含依赖文件
 # 输出目录修改为 build/dist
+# 获取项目根目录的绝对路径
+PROJECT_ROOT=$(pwd)
+
 pyinstaller --noconfirm --onedir --name "${APP_NAME//-/_}" --clean \
     --distpath "build/dist" \
     --workpath "build/build_pyinstaller" \
     --specpath "build" \
-    --add-data "config.ini:." \
-    --add-data "www:www" \
+    --add-data "${PROJECT_ROOT}/config.ini:etc" \
+    --add-data "${PROJECT_ROOT}/www:www" \
     --hidden-import="uvicorn.logging" \
     --hidden-import="uvicorn.loops" \
     --hidden-import="uvicorn.loops.auto" \
@@ -57,19 +59,15 @@ pyinstaller --noconfirm --onedir --name "${APP_NAME//-/_}" --clean \
     --hidden-import="uvicorn.lifespan.on" \
     start_back_end.py
 
-# 4. 复制文件到打包目录
+# 5. 组装内容
 echo ">>> 组装 Debian 包..."
 # 复制 PyInstaller 生成的内容到 /usr/share/ems-simulate
 cp -r "build/dist/${APP_NAME//-/_}/"* "build/$INSTALL_DIR/"
 
-# 复制 Systemd 服务文件 (移至 /lib/systemd/system)
-cp debian/ems_simulate.service "build/${DEB_DIR}/lib/systemd/system/"
+# 创建 /usr/bin 下的软链接
+ln -sf "../share/${APP_NAME}/ems_simulate" "build/${DEB_DIR}/usr/bin/${APP_NAME}"
 
-# 复制 Control 文件及 maintainer 脚本
-cp debian/control "build/${DEB_DIR}/DEBIAN/"
-if [ -f "debian/postinst" ]; then cp "debian/postinst" "build/${DEB_DIR}/DEBIAN/"; fi
-if [ -f "debian/prerm" ]; then cp "debian/prerm" "build/${DEB_DIR}/DEBIAN/"; fi
-if [ -f "debian/postrm" ]; then cp "debian/postrm" "build/${DEB_DIR}/DEBIAN/"; fi
+# 权限设置和 Control 更新在后面...
 # 更新 Control 文件中的 Installed-Size
 # INSTALLED_SIZE=$(du -s "$INSTALL_DIR" | cut -f1)
 # echo "Installed-Size: $INSTALLED_SIZE" >> "${DEB_DIR}/DEBIAN/control"
