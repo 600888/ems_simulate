@@ -4,10 +4,14 @@ set -e
 # 在卸载后运行
 
 APP_NAME="ems-simulate"
+INSTALL_DIR="/usr/share/${APP_NAME}"
+
 case "$1" in
     purge)
         # 清理配置文件或日志 (如果需要)
         rm -rf "/var/log/${APP_NAME}"
+        # 清理安装目录 (包含运行时生成的数据库和可能的配置文件更改)
+        rm -rf "${INSTALL_DIR}"
         ;;
     
     remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)

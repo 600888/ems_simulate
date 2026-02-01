@@ -8,6 +8,7 @@ pymysql
 cryptography
 pydantic
 loguru
+openpyxl
 c104
 fastapi 
 uvicorn

@@ -33,6 +33,7 @@ export default defineConfig({
                     items: [
                         { text: '快速开始', link: '/guide/getting-started' },
                         { text: '安装部署', link: '/guide/installation' },
+                        { text: 'Debian 打包与部署', link: '/guide/packaging_deb' },
                         { text: '配置说明', link: '/guide/configuration' }
                     ]
                 },

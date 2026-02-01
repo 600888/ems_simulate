@@ -14,9 +14,22 @@ case "$1" in
         if command -v systemctl >/dev/null; then
             systemctl daemon-reload
             # 可选：安装后自动启动
-            # systemctl enable "${SERVICE_NAME}"
-            # systemctl start "${SERVICE_NAME}"
+            systemctl enable "${SERVICE_NAME}"
+            systemctl start "${SERVICE_NAME}"
         fi
+        
+        # 打印服务管理提示
+        GREEN='\033[0;32m'
+        BLUE='\033[0;34m'
+        YELLOW='\033[1;33m'
+        NC='\033[0m'
+        
+        echo -e "${GREEN}✅ ${APP_NAME} 安装成功！${NC}"
+        echo -e "${BLUE}服务管理命令:${NC}"
+        echo -e "  启动服务: ${GREEN}sudo systemctl start ${SERVICE_NAME}${NC}"
+        echo -e "  停止服务: ${YELLOW}sudo systemctl stop ${SERVICE_NAME}${NC}"
+        echo -e "  查看状态: ${BLUE}sudo systemctl status ${SERVICE_NAME}${NC}"
+        echo -e "  开机自启: ${BLUE}sudo systemctl enable ${SERVICE_NAME}${NC}"
         ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

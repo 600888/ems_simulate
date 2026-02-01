@@ -43,6 +43,9 @@ echo ">>> 构建后端 (PyInstaller)..."
 # 获取项目根目录的绝对路径
 PROJECT_ROOT=$(pwd)
 
+echo "Installing Python dependencies..."
+pip install -r requirements.txt
+
 pyinstaller --noconfirm --onedir --name "${APP_NAME//-/_}" --clean \
     --distpath "build/dist" \
     --workpath "build/build_pyinstaller" \
@@ -51,6 +54,7 @@ pyinstaller --noconfirm --onedir --name "${APP_NAME//-/_}" --clean \
     --add-data "${PROJECT_ROOT}/www:www" \
     --hidden-import="uvicorn.logging" \
     --hidden-import="uvicorn.loops" \
+    --hidden-import="openpyxl" \
     --hidden-import="uvicorn.loops.auto" \
     --hidden-import="uvicorn.protocols" \
     --hidden-import="uvicorn.protocols.http" \
@@ -82,5 +86,32 @@ echo ">>> 生成 .deb 文件..."
 mkdir -p build/dist_deb
 dpkg-deb --build "build/$DEB_DIR" "build/dist_deb/${APP_NAME}_${VERSION}_amd64.deb"
 
-echo ">>> 打包完成！文件位于 build/dist_deb/"
+# 定义颜色
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+DEB_OUTPUT="build/dist_deb/${APP_NAME}_${VERSION}_amd64.deb"
+
+echo -e "${YELLOW}🔍 检查deb包${NC}"
+if [ -f "$DEB_OUTPUT" ]; then
+    echo -e "${GREEN}✅ deb包构建成功！${NC}"
+    echo -e "${BLUE}📁 包位置: $DEB_OUTPUT${NC}"
+    echo ""
+    echo -e "${BLUE}📄 包信息:${NC}"
+    dpkg-deb --info "$DEB_OUTPUT"
+    echo ""
+    echo -e "${BLUE}📁 包内容:${NC}"
+    dpkg-deb --contents "$DEB_OUTPUT"
+    echo ""
+    echo -e "${GREEN}🎉 构建完成！${NC}"
+    echo -e "${BLUE}安装命令: sudo dpkg -i $DEB_OUTPUT${NC}"
+    echo -e "${BLUE}卸载命令: sudo dpkg -r ${APP_NAME}${NC}"
+    echo -e "${YELLOW}完全清除(含数据): sudo dpkg -P ${APP_NAME}${NC}"
+else
+    echo -e "${RED}❌ deb包构建失败${NC}"
+    exit 1
+fi
 

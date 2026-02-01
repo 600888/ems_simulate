@@ -53,7 +53,7 @@ check_file "./usr/share/ems-simulate/www/"
 check_file "./usr/share/ems-simulate/www/index.html"
 
 # 3. 检查 Systemd 服务
-check_file "./lib/systemd/system/ems_simulate.service"
+check_file "./lib/systemd/system/ems-simulate.service"
 
 if [ "$failed" -eq 1 ]; then
     echo ">>> 测试失败！包结构不完整。"
