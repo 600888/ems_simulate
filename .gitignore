@@ -14,10 +14,12 @@ downloads/
 eggs/
 .eggs/
 lib/
+!debian/lib/
 lib64/
 parts/
 sdist/
 var/
+!debian/var/
 wheels/
 share/python-wheels/
 *.egg-info/
