@@ -33,7 +33,7 @@ class Config:
     data_source: DataSource = DataSource.Db
 
     # Web服务配置
-    web_port: int = 8091
+    web_port: int = 8991
 
     @classmethod
     def load_config(cls, config_file: str) -> None:

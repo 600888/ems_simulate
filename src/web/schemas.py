@@ -206,3 +206,21 @@ class ClearPointsRequest(BaseModel):
     """清空从机测点请求"""
     device_name: str = Field(..., description="设备名称")
     slave_id: int = Field(..., description="从机地址")
+
+
+class PointItem(BaseModel):
+    code: str = Field(..., description="测点编码", max_length=64)
+    name: str = Field(..., description="测点名称", max_length=64)
+    rtu_addr: int = Field(1, description="从机地址")
+    reg_addr: str = Field(..., description="寄存器地址")
+    func_code: int = Field(3, description="功能码")
+    decode_code: str = Field("0x41", description="解析码")
+    mul_coe: float = Field(1.0, description="乘系数（仅遥测/遥调）")
+    add_coe: float = Field(0.0, description="加系数（仅遥测/遥调）")
+
+
+class PointsBatchCreateRequest(BaseModel):
+    """批量创建测点请求"""
+    device_name: str = Field(..., description="设备名称")
+    frame_type: int = Field(..., description="测点类型: 0=遥测, 1=遥信, 2=遥控, 3=遥调")
+    points: List[PointItem] = Field(..., description="测点数据列表")

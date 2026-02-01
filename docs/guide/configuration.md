@@ -66,7 +66,7 @@ database = ems_simulate
 前端开发环境配置文件 `front/.env.development`：
 
 ```properties
-VITE_API_BASE_URL=http://localhost:8000
+VITE_API_BASE_URL=http://localhost:8991
 ```
 
 生产环境创建 `front/.env.production` 文件配置 API 地址。

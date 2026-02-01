@@ -30,6 +30,12 @@ case "$1" in
         echo -e "  停止服务: ${YELLOW}sudo systemctl stop ${SERVICE_NAME}${NC}"
         echo -e "  查看状态: ${BLUE}sudo systemctl status ${SERVICE_NAME}${NC}"
         echo -e "  开机自启: ${BLUE}sudo systemctl enable ${SERVICE_NAME}${NC}"
+        
+        echo -e "\n${BLUE}关于:${NC}"
+        echo -e "  作者: CDY"
+        echo -e "  Email: 1755696012@qq.com"
+        echo -e "  GitHub: https://github.com/600888/ems_simulate"
+        echo -e "  文档: https://600888.github.io/ems_simulate/"
         ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

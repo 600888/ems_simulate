@@ -13,6 +13,10 @@ import { currentTheme } from "@/utils/theme";
         <el-main class="main-content">
           <el-scrollbar>
             <router-view />
+            <!-- 全局底部版权 -->
+            <footer class="app-footer">
+              Copyright © 2026 CDY
+            </footer>
           </el-scrollbar>
         </el-main>
       </el-container>
@@ -41,5 +45,16 @@ import { currentTheme } from "@/utils/theme";
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.app-footer {
+  height: 32px;
+  line-height: 32px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--text-secondary);
+  opacity: 0.6;
+  background-color: var(--bg-main);
+  flex-shrink: 0;
 }
 </style>

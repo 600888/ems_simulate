@@ -429,6 +429,82 @@ class PointDao:
         return result
 
     @classmethod
+    def create_points_batch(cls, channel_id: int, frame_type: int, points_data_list: List[dict]) -> List[dict]:
+        """批量创建测点"""
+        try:
+            points_to_add = []
+            with local_session() as session:
+                with session.begin():
+                    for point_data in points_data_list:
+                        if frame_type == 0:  # 遥测
+                            point = PointYc(
+                                channel_id=channel_id,
+                                code=point_data["code"],
+                                name=point_data["name"],
+                                rtu_addr=point_data.get("rtu_addr", 1),
+                                reg_addr=_format_reg_addr(point_data["reg_addr"]),
+                                func_code=point_data.get("func_code", 3),
+                                decode_code=point_data.get("decode_code", "0x41"),
+                                mul_coe=point_data.get("mul_coe", 1.0),
+                                add_coe=point_data.get("add_coe", 0.0),
+                                max_limit=point_data.get("max_limit", 9999999),
+                                min_limit=point_data.get("min_limit", -9999999),
+                                enable=True
+                            )
+                        elif frame_type == 1:  # 遥信
+                            point = PointYx(
+                                channel_id=channel_id,
+                                code=point_data["code"],
+                                name=point_data["name"],
+                                rtu_addr=point_data.get("rtu_addr", 1),
+                                reg_addr=_format_reg_addr(point_data["reg_addr"]),
+                                func_code=point_data.get("func_code", 2),
+                                decode_code=point_data.get("decode_code", "0x10"),
+                                enable=True
+                            )
+                        elif frame_type == 2:  # 遥控
+                            point = PointYk(
+                                channel_id=channel_id,
+                                code=point_data["code"],
+                                name=point_data["name"],
+                                rtu_addr=point_data.get("rtu_addr", 1),
+                                reg_addr=_format_reg_addr(point_data["reg_addr"]),
+                                func_code=point_data.get("func_code", 5),
+                                decode_code=point_data.get("decode_code", "0x10"),
+                                enable=True
+                            )
+                        elif frame_type == 3:  # 遥调
+                            point = PointYt(
+                                channel_id=channel_id,
+                                code=point_data["code"],
+                                name=point_data["name"],
+                                rtu_addr=point_data.get("rtu_addr", 1),
+                                reg_addr=_format_reg_addr(point_data["reg_addr"]),
+                                func_code=point_data.get("func_code", 6),
+                                decode_code=point_data.get("decode_code", "0x41"),
+                                mul_coe=point_data.get("mul_coe", 1.0),
+                                add_coe=point_data.get("add_coe", 0.0),
+                                enable=True
+                            )
+                        else:
+                            raise ValueError(f"无效的测点类型: {frame_type}")
+                        
+                        session.add(point)
+                        points_to_add.append(point)
+                    
+                    session.flush()
+                    # 转换为字典并添加 frame_type
+                    result = []
+                    for p in points_to_add:
+                        d = p.to_dict()
+                        d["frame_type"] = frame_type
+                        result.append(d)
+                    return result
+        except Exception as e:
+            log.error(f"批量创建测点失败: {str(e)}")
+            raise e
+
+    @classmethod
     def delete_point_by_code(cls, code: str) -> bool:
         """根据编码删除测点
         

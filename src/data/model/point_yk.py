@@ -86,7 +86,7 @@ class PointYk(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("code", "channel_id", name="uq_point_yk_code_channel"),
+        UniqueConstraint("code", "channel_id", "rtu_addr", name="uq_point_yk_code_channel_rtu"),
         {"comment": "遥控测点表"}
     )
 

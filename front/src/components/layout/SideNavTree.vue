@@ -87,15 +87,23 @@ const expandKeys = () => {
 const setCurrentKey = () => {
   nextTick(() => {
     if (treeRef.value && props.currentNodeKey) {
-      treeRef.value.setCurrentKey(props.currentNodeKey);
+      if (treeRef.value.getNode(props.currentNodeKey)) {
+        treeRef.value.setCurrentKey(props.currentNodeKey);
+      } else {
+        // 节点可能尚未渲染，延迟重试
+        setTimeout(() => {
+          treeRef.value?.setCurrentKey(props.currentNodeKey);
+        }, 100);
+      }
     }
   });
 };
 
 watch(() => props.expandedKeys, expandKeys, { deep: true });
 watch(() => props.treeData, () => {
+  // 数据更新时，先展开，再设置选中。给予更多时间确保 DOM 更新。
   expandKeys();
-  setCurrentKey();
+  setTimeout(setCurrentKey, 50);
 }, { deep: true });
 watch(() => props.currentNodeKey, setCurrentKey);
 </script>

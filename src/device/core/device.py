@@ -232,8 +232,12 @@ class Device:
                 value = self.protocol_handler.read_value(point)
                 if value is not None:
                     point.value = value
+                    point.is_valid = True
+                else:
+                    point.is_valid = False
             except (ConnectionError, Exception) as e:
                 # 连接失败时静默处理，不中断线程
+                point.is_valid = False
                 pass
 
     # ===== 自动读取控制 =====
@@ -287,10 +291,14 @@ class Device:
             value = self.protocol_handler.read_value(point)
             if value is not None:
                 point.value = value
+                point.is_valid = True
                 return point.real_value if hasattr(point, 'real_value') else float(value)
+            else:
+                point.is_valid = False
         except Exception as e:
             if self.log:
                 self.log.error(f"读取测点 {point_code} 失败: {e}")
+            point.is_valid = False
         
         return None
 
@@ -316,10 +324,14 @@ class Device:
             value = await self.protocol_handler.read_value_async(point)
             if value is not None:
                 point.value = value
+                point.is_valid = True
                 return point.real_value if hasattr(point, 'real_value') else float(value)
+            else:
+                point.is_valid = False
         except Exception as e:
             if self.log:
                 self.log.error(f"异步读取测点 {point_code} 失败: {e}")
+            point.is_valid = False
         
         return None
 
@@ -465,6 +477,73 @@ class Device:
         except Exception as e:
             if self.log:
                 self.log.error(f"动态添加测点失败: {e}")
+            return False
+
+    def add_points_dynamic_batch(self, channel_id: int, frame_type: int, points_data_list: List[dict]) -> bool:
+        """动态批量添加测点
+        
+        Args:
+            channel_id: 通道ID
+            frame_type: 测点类型 (0=遥测, 1=遥信, 2=遥控, 3=遥调)
+            points_data_list: 测点数据列表
+            
+        Returns:
+            是否添加成功
+        """
+        try:
+            from src.data.dao.point_dao import PointDao
+            from src.data.service.yc_service import YcService
+            from src.data.service.yx_service import YxService
+            from src.data.service.yk_service import YkService
+            from src.data.service.yt_service import YtService
+            
+            # 1. 批量写入数据库
+            db_points = PointDao.create_points_batch(channel_id, frame_type, points_data_list)
+            if not db_points:
+                return False
+            
+            memory_points = []
+            
+            # 2. 批量转换为内存对象
+            for db_point in db_points:
+                point: BasePoint
+                # slave_id is part of db_point dict now
+                slave_id = db_point.get("rtu_addr", 1)
+                
+                if frame_type == 0:
+                    point = YcService._create_point(db_point, self.protocol_type)
+                elif frame_type == 1:
+                    point = YxService._create_point(db_point, self.protocol_type)
+                elif frame_type == 2:
+                    point = YkService._create_point(db_point, self.protocol_type)
+                elif frame_type == 3:
+                    point = YtService._create_point(db_point, self.protocol_type)
+                else:
+                    return False
+                
+                # 3. 添加到测点管理器
+                self.point_manager.add_point(slave_id, point)
+                
+                # 4. 添加到模拟控制器
+                self.simulation_controller.add_point(point, SimulateMethod.Random, 1)
+                self.simulation_controller.set_point_status(point, True)
+                
+                memory_points.append(point)
+
+            # 5. 添加到协议处理器
+            if self.protocol_handler:
+                if self.protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
+                    self._reinit_protocol_for_iec104()
+                else:
+                    self.protocol_handler.add_points(memory_points)
+            
+            if self.log:
+                self.log.info(f"动态批量添加 {len(memory_points)} 个测点成功")
+            return True
+            
+        except Exception as e:
+            if self.log:
+                self.log.error(f"动态批量添加测点失败: {e}")
             return False
 
     def delete_point_dynamic(self, point_code: str) -> bool:
@@ -741,8 +820,15 @@ class Device:
         if self.protocol_type == ProtocolType.Iec104Client and self.protocol_handler:
             self._sync_iec104_client_values(slave_id)
         
+        # Determine if we should mask errors (only for Client devices)
+        mask_error = self.protocol_type in [
+            ProtocolType.ModbusTcpClient,
+            ProtocolType.Iec104Client,
+            ProtocolType.Dlt645Client
+        ]
+
         return self.data_exporter.get_table_data(
-            slave_id, name, page_index, page_size, point_types
+            slave_id, name, page_index, page_size, point_types, mask_error=mask_error
         )
 
     def _sync_iec104_client_values(self, slave_id: int) -> None:

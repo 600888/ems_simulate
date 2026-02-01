@@ -401,6 +401,20 @@ export async function addPoint(deviceName: string, pointData: PointCreateData): 
     }
 }
 
+export async function addPointsBatch(deviceName: string, frameType: number, points: PointCreateData[]): Promise<boolean> {
+    try {
+        const data = await requestApi('/device/add_points_batch', 'post', {
+            device_name: deviceName,
+            frame_type: frameType,
+            points: points,
+        });
+        return data;
+    } catch (error) {
+        console.error('Error adding points batch:', error);
+        return false;
+    }
+}
+
 export async function deletePoint(deviceName: string, pointCode: string): Promise<boolean> {
     try {
         const data = await requestApi('/device/delete_point', 'post', {

@@ -1,6 +1,6 @@
 <template>
   <el-aside class="sidebar" :class="[`sidebar-theme-${currentTheme}`, { 'sidebar-collapsed': isCollapse }]">
-    <el-scrollbar>
+    <el-scrollbar ref="scrollbarRef">
       <!-- 1. 头部徽标与主题切换 -->
       <SideNavHeader :is-collapse="isCollapse" />
       
@@ -57,10 +57,10 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref, computed, watch } from "vue";
+import { onMounted, ref, computed, watch, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import type { ElTree } from "element-plus";
+import type { ElTree, ElScrollbar } from "element-plus";
 
 import SideNavHeader from "@/components/layout/SideNavHeader.vue";
 import SideNavActions from "@/components/layout/SideNavActions.vue";
@@ -94,6 +94,7 @@ interface TreeNode {
 
 const router = useRouter();
 const treeRef = ref<InstanceType<typeof ElTree>>();
+const scrollbarRef = ref<InstanceType<typeof ElScrollbar>>();
 
 // 状态管理
 const addDeviceDialogVisible = ref(false);
@@ -138,7 +139,7 @@ const transformToTreeData = (groups: DeviceGroupTreeNode[]): TreeNode[] => {
     if (group.children?.length) children.push(...transformToTreeData(group.children));
     if (group.devices?.length) {
       children.push(...group.devices.map(d => ({
-        nodeKey: `device-${d.id}`,
+        nodeKey: `device-${d.name}`,
         label: d.name,
         isGroup: false,
         id: d.id,
@@ -160,10 +161,58 @@ const transformToTreeData = (groups: DeviceGroupTreeNode[]): TreeNode[] => {
 const fetchDeviceGroupTree = async () => {
   try {
     const response = await getDeviceGroupTree();
-    treeData.value = transformToTreeData(response.groups || []);
-    ungroupedDevices.value = response.ungrouped || [];
+    const newTreeData = transformToTreeData(response.groups || []);
+    const newUngrouped = response.ungrouped || [];
+    
+    // 准备要展开的keys
+    const newExpandedKeys: string[] = [];
+    
     if (currentDeviceName.value) {
       currentNodeKey.value = `device-${currentDeviceName.value}`;
+      
+      // 遍历寻找当前设备所在的分组并展开
+      const findAndExpand = (nodes: TreeNode[]) => {
+        for (const node of nodes) {
+          if (node.isGroup && node.children) {
+            // 检查直接子节点是否有该设备
+            const hasDevice = node.children.some(child => !child.isGroup && child.name === currentDeviceName.value);
+            if (hasDevice) {
+              if (!newExpandedKeys.includes(node.nodeKey)) {
+                newExpandedKeys.push(node.nodeKey);
+              }
+              return true;
+            }
+            // 递归检查子分组
+            if (findAndExpand(node.children)) {
+              if (!newExpandedKeys.includes(node.nodeKey)) {
+                newExpandedKeys.push(node.nodeKey);
+              }
+              return true;
+            }
+          }
+        }
+        return false;
+      };
+      
+      findAndExpand(newTreeData);
+    }
+
+    // 批量更新状态
+    expandedKeys.value = newExpandedKeys;
+    ungroupedDevices.value = newUngrouped;
+    treeData.value = newTreeData; // 最后更新 treeData，触发 SideNavTree 的监听
+    
+    // 如果是未分组设备，展开未分组区域
+    if (currentDeviceName.value) {
+      const isUngrouped = newUngrouped.some(d => d.name === currentDeviceName.value);
+      if (isUngrouped) {
+        ungroupedExpanded.value = true;
+      }
+      
+      // 等待展开动画或渲染后滚动
+      nextTick(() => {
+        scrollToCurrentDevice();
+      });
     }
   } catch (error: any) {
     ElMessage.error('获取设备组失败: ' + error.message);
@@ -177,12 +226,17 @@ const handleNodeClick = (data: TreeNode) => {
 
 const handleDeviceClick = (device: DeviceInfo) => navigateToDevice(device.name);
 
-const navigateToDevice = (deviceName: string) => {
+const navigateToDevice = (deviceName: string, forceRefresh = false) => {
   currentDeviceName.value = deviceName;
   currentNodeKey.value = `device-${deviceName}`;
   const path = `/device/${deviceName}`;
   localStorage.setItem("activeRoute", path);
-  router.push(path);
+  
+  if (forceRefresh) {
+    router.push(`${path}?t=${Date.now()}`);
+  } else {
+    router.push(path);
+  }
 };
 
 const showAddDeviceDialog = () => {
@@ -288,7 +342,29 @@ const handleDeviceAdded = async (deviceName: string, isEdit?: boolean, oldName?:
     }
   }
 
-  navigateToDevice(deviceName);
+  // 3. 滚动到当前设备
+  nextTick(() => {
+    scrollToCurrentDevice();
+  });
+
+  navigateToDevice(deviceName, isEdit);
+};
+
+const scrollToCurrentDevice = () => {
+  if (!scrollbarRef.value) return;
+  
+  // 查找当前选中的节点 DOM
+  // element-plus 的 tree 节点 current 类名为 is-current
+  // 但不仅仅是在 tree 中，未分组列表也可能有
+  
+  const treeNode = document.querySelector('.el-tree-node.is-current');
+  const ungroupedNode = document.querySelector('.ungrouped-item.is-active');
+  
+  const target = treeNode || ungroupedNode || document.querySelector('.is-current');
+  
+  if (target) {
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
 };
 
 const handleGroupChanged = () => fetchDeviceGroupTree();
@@ -301,11 +377,11 @@ onMounted(() => {
 });
 
 // 监听路由同步
-watch(() => router.currentRoute.value.path, (path) => {
-  if (path.startsWith('/device/')) {
-    const name = path.split('/').pop() || '';
-    currentDeviceName.value = name;
-    currentNodeKey.value = `device-${name}`;
+watch(() => router.currentRoute.value.params.deviceName, (name) => {
+  if (name) {
+    const nameStr = name as string;
+    currentDeviceName.value = nameStr;
+    currentNodeKey.value = `device-${nameStr}`;
   }
 }, { immediate: true });
 </script>

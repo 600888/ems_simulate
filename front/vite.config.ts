@@ -39,15 +39,15 @@ export default defineConfig(({ mode }) => { // 使用 mode 参数
       port: 8080,
       proxy: {
         '/api': {
-          target: 'http://localhost:8091',
+          target: 'http://localhost:8991',
           changeOrigin: true,
         },
         '/device': {
-          target: 'http://localhost:8091',
+          target: 'http://localhost:8991',
           changeOrigin: true,
         },
         '/channel': {
-          target: 'http://localhost:8091',
+          target: 'http://localhost:8991',
           changeOrigin: true,
         },
       },

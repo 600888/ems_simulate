@@ -8,15 +8,14 @@ from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import Yc, SimulateMethod
 from src.web.log import get_logger
 from src.web.schemas import (
-    DeviceNameListResponse, DeviceInfoRequest, DeviceInfoResponse,
+    BaseResponse, DeviceNameListResponse, DeviceInfoRequest, DeviceInfoResponse,
     SlaveIdListRequest, SlaveIdListResponse, DeviceTableRequest,
     PointEditDataRequest, PointLimitEditRequest, PointMetadataEditRequest,
     PointInfoRequest, SimulationStartRequest, SimulationStopRequest,
     SimulateMethodSetRequest, SimulateStepSetRequest, SimulateRangeSetRequest,
     DeviceStartRequest, DeviceStopRequest, DeviceResetRequest,
-    PointLimitGetRequest, CurrentTableRequest, BaseResponse,
     MessageListRequest, PointCreateRequest, PointDeleteRequest, SlaveAddRequest,
-    ClearPointsRequest
+    ClearPointsRequest, PointsBatchCreateRequest, CurrentTableRequest, PointLimitGetRequest
 )
 from src.data.dao.channel_dao import ChannelDao
 
@@ -477,6 +476,36 @@ async def add_point(req: PointCreateRequest, request: Request):
     except Exception as e:
         log.error(f"添加测点失败: {e}")
         return BaseResponse(code=500, message=f"添加测点失败: {e}!", data=False)
+
+
+# 批量添加测点
+@device_router.post("/add_points_batch", response_model=BaseResponse)
+async def add_points_batch(req: PointsBatchCreateRequest, request: Request):
+    try:
+        device = get_device(req.device_name, request)
+        # 获取设备的 channel_id
+        channel = ChannelDao.get_channel_by_code(req.device_name)
+        if not channel:
+            # 尝试通过设备名称查找
+            channels = ChannelDao.get_all_channels()
+            channel = next((c for c in channels if c["name"] == req.device_name), None)
+        
+        if not channel:
+            return BaseResponse(code=404, message=f"找不到设备 {req.device_name} 的通道信息!", data=False)
+        
+        channel_id = channel["id"]
+        points_data = [point.dict() for point in req.points]
+            
+        success = device.add_points_dynamic_batch(channel_id, req.frame_type, points_data)
+        if success:
+            return BaseResponse(message="批量添加测点成功!", data=True)
+        else:
+            return BaseResponse(code=500, message="批量添加测点失败!", data=False)
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=False)
+    except Exception as e:
+        log.error(f"批量添加测点失败: {e}")
+        return BaseResponse(code=500, message=f"批量添加测点失败: {e}!", data=False)
 
 
 # 删除测点

@@ -5,12 +5,19 @@
 
 import asyncio
 import struct
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Any
 from pymodbus.client import AsyncModbusTcpClient
 from pymodbus.exceptions import ModbusException
 from src.enums.modbus_def import ProtocolType
 from src.device.core.message_capture import MessageCapture
 from src.enums.modbus_register import Decode
+
+# 导入所有需要的 PDU 类
+from pymodbus.bit_read_message import ReadCoilsRequest, ReadDiscreteInputsRequest
+from pymodbus.bit_write_message import WriteSingleCoilRequest, WriteMultipleCoilsRequest
+from pymodbus.register_read_message import ReadHoldingRegistersRequest, ReadInputRegistersRequest
+from pymodbus.register_write_message import WriteSingleRegisterRequest, WriteMultipleRegistersRequest
+from pymodbus.pdu import ModbusRequest, ModbusResponse
 
 
 class AsyncModbusClient:
@@ -65,6 +72,71 @@ class AsyncModbusClient:
             self.client.close()
             self.connected = False
 
+    # ===== 报文捕获辅助方法 =====
+
+    def _capture_request(self, request: ModbusRequest):
+        """捕获请求报文"""
+        try:
+            if not self.message_capture:
+                return
+
+            # 构造 PDU (功能码 + 数据)
+            pdu = bytes([request.function_code]) + request.encode()
+            
+            # 构造模拟的 MBAP 头部 (为了显示效果)
+            transaction_id = 0
+            protocol_id = 0x0000
+            length = len(pdu) + 1  # PDU长度 + 从机ID
+            unit_id = request.slave_id
+
+            mbap_header = bytearray([
+                (transaction_id >> 8) & 0xFF,
+                transaction_id & 0xFF,
+                (protocol_id >> 8) & 0xFF,
+                protocol_id & 0xFF,
+                (length >> 8) & 0xFF,
+                length & 0xFF,
+                unit_id,
+            ])
+            
+            full_request = mbap_header + pdu
+            self.message_capture.add_tx(full_request)
+        except Exception as e:
+            pass
+
+    def _capture_response(self, response: ModbusResponse, request: ModbusRequest):
+        """捕获响应报文"""
+        try:
+            if not self.message_capture:
+                return
+
+            if response and not response.isError():
+                # 构造响应 PDU
+                response_pdu = bytes([response.function_code]) + response.encode()
+                
+                # 构造模拟的 MBAP 头部
+                transaction_id = 0
+                protocol_id = 0x0000
+                length = len(response_pdu) + 1
+                unit_id = request.slave_id
+
+                response_mbap_header = bytearray([
+                    (transaction_id >> 8) & 0xFF,
+                    transaction_id & 0xFF,
+                    (protocol_id >> 8) & 0xFF,
+                    protocol_id & 0xFF,
+                    (length >> 8) & 0xFF,
+                    length & 0xFF,
+                    unit_id,
+                ])
+                
+                full_response = response_mbap_header + response_pdu
+                self.message_capture.add_rx(full_response)
+        except Exception as e:
+            pass
+
+    # ===== 标准 Modbus 操作 =====
+
     async def read_holding_registers(
         self, slave_id: int, address: int, count: int = 1
     ) -> List[int]:
@@ -75,9 +147,13 @@ class AsyncModbusClient:
             return []
 
         try:
-            response = await self.client.read_holding_registers(
-                address, count, slave=slave_id
-            )
+            request = ReadHoldingRegistersRequest(address, count, slave=slave_id)
+            self._capture_request(request)
+            
+            response = await self.client.execute(request)
+            
+            self._capture_response(response, request)
+
             if not response.isError():
                 return response.registers
             else:
@@ -97,9 +173,13 @@ class AsyncModbusClient:
             return []
 
         try:
-            response = await self.client.read_input_registers(
-                address, count, slave=slave_id
-            )
+            request = ReadInputRegistersRequest(address, count, slave=slave_id)
+            self._capture_request(request)
+
+            response = await self.client.execute(request)
+            
+            self._capture_response(response, request)
+
             if not response.isError():
                 return response.registers
             return []
@@ -116,7 +196,13 @@ class AsyncModbusClient:
             return []
 
         try:
-            response = await self.client.read_coils(address, count, slave=slave_id)
+            request = ReadCoilsRequest(address, count, slave=slave_id)
+            self._capture_request(request)
+
+            response = await self.client.execute(request)
+            
+            self._capture_response(response, request)
+
             if not response.isError():
                 return response.bits[:count]
             return []
@@ -133,9 +219,13 @@ class AsyncModbusClient:
             return []
 
         try:
-            response = await self.client.read_discrete_inputs(
-                address, count, slave=slave_id
-            )
+            request = ReadDiscreteInputsRequest(address, count, slave=slave_id)
+            self._capture_request(request)
+
+            response = await self.client.execute(request)
+            
+            self._capture_response(response, request)
+
             if not response.isError():
                 return response.bits[:count]
             return []
@@ -152,9 +242,13 @@ class AsyncModbusClient:
             return False
 
         try:
-            response = await self.client.write_register(
-                address, value, slave=slave_id
-            )
+            request = WriteSingleRegisterRequest(address, value, slave=slave_id)
+            self._capture_request(request)
+
+            response = await self.client.execute(request)
+            
+            self._capture_response(response, request)
+
             return not response.isError()
         except ModbusException as e:
             if self.log:
@@ -169,9 +263,13 @@ class AsyncModbusClient:
             return False
 
         try:
-            response = await self.client.write_registers(
-                address, values, slave=slave_id
-            )
+            request = WriteMultipleRegistersRequest(address, values, slave=slave_id)
+            self._capture_request(request)
+
+            response = await self.client.execute(request)
+            
+            self._capture_response(response, request)
+
             return not response.isError()
         except ModbusException as e:
             if self.log:
@@ -184,6 +282,20 @@ class AsyncModbusClient:
         """异步写入单个线圈"""
         if not self.connected or not self.client:
             return False
+            
+        try:
+            request = WriteSingleCoilRequest(address, value, slave=slave_id)
+            self._capture_request(request)
+
+            response = await self.client.execute(request)
+            
+            self._capture_response(response, request)
+
+            return not response.isError()
+        except ModbusException as e:
+            if self.log:
+                self.log.error(f"Modbus 写入异常: {e}")
+            return False
 
     async def write_coils(
         self, slave_id: int, address: int, values: List[bool]
@@ -193,9 +305,13 @@ class AsyncModbusClient:
             return False
 
         try:
-            response = await self.client.write_coils(
-                address, values, slave=slave_id
-            )
+            request = WriteMultipleCoilsRequest(address, values, slave=slave_id)
+            self._capture_request(request)
+
+            response = await self.client.execute(request)
+            
+            self._capture_response(response, request)
+
             return not response.isError()
         except ModbusException as e:
             if self.log:
@@ -315,3 +431,4 @@ class AsyncModbusClient:
     def clearCapturedMessages(self) -> None:
         """清空捕获的报文"""
         self.message_capture.clear()
+

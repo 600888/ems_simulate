@@ -47,18 +47,23 @@
                   <EditPointLimit :deviceName="deviceName" :pointCode="scope.row['测点编码']" />
                 </div>
               </el-tab-pane>
-              <el-tab-pane label="仿真模拟" name="数据模拟">
-                <PointSimulator
-                  :deviceName="deviceName"
-                  :pointCode="scope.row['测点编码']"
-                  @update-success="handlePointSimulatorUpdate"
-                />
-              </el-tab-pane>
               <el-tab-pane label="属性编辑" name="测点编辑">
                 <EditPointMetadata
                   :deviceName="deviceName"
                   :pointCode="scope.row['测点编码']"
                   @update-success="(newCode) => handleMetadataUpdate(newCode, scope.row['测点编码'])"
+                />
+              </el-tab-pane>
+              <el-tab-pane name="数据模拟" :disabled="isClientDevice">
+                <template #label>
+                  <el-tooltip :content="isClientDevice ? '客户端设备不支持数据模拟' : ''" :disabled="!isClientDevice" placement="top">
+                    <span>仿真模拟</span>
+                  </el-tooltip>
+                </template>
+                <PointSimulator
+                  :deviceName="deviceName"
+                  :pointCode="scope.row['测点编码']"
+                  @update-success="handlePointSimulatorUpdate"
                 />
               </el-tab-pane>
             </el-tabs>
@@ -100,8 +105,8 @@
         :label="header"
         :min-width="addressFilteredWidthList[index]"
         show-overflow-tooltip
-        :filters="index === filteredTableHeaderWithoutAddress.length - 1 ? tagFilters : undefined"
-        :fixed="index === filteredTableHeaderWithoutAddress.length - 1 ? 'right' : undefined"
+        :filters="header === '帧类型' ? tagFilters : undefined"
+        :fixed="['帧类型', '状态'].includes(header) ? 'right' : undefined"
       >
         <template #header>
           <div class="header-content">
@@ -119,13 +124,18 @@
 
         <template #default="scope">
           <el-tag
-            v-if="index === filteredTableHeaderWithoutAddress.length - 1"
+            v-if="header === '帧类型'"
             :type="getTagType(scope.row[header])"
             effect="light"
             class="status-tag"
           >
             {{ scope.row[header] }}
           </el-tag>
+          <div v-else-if="header === '状态'" class="status-cell">
+            <el-icon v-if="scope.row[header] === '成功'" color="#67C23A" size="20"><CircleCheckFilled /></el-icon>
+            <el-icon v-else-if="scope.row[header] === '失败'" color="#F56C6C" size="20"><CircleCloseFilled /></el-icon>
+            <el-icon v-else color="#909399" size="20"><RemoveFilled /></el-icon>
+          </div>
           <span v-else class="cell-text" :class="{ 'high-contrast': header === '测点编码' }">
             {{ scope.row[header] }}
           </span>
@@ -208,7 +218,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive, type PropType } from 'vue'
 import { useRoute } from "vue-router"
-import { QuestionFilled, Download, Edit, Delete } from "@element-plus/icons-vue"
+import { QuestionFilled, Download, Edit, Delete, CircleCheckFilled, CircleCloseFilled, RemoveFilled } from "@element-plus/icons-vue"
 import { ElMessage } from 'element-plus'
 import { getPointType, PointType } from '@/types/point'
 import { readSinglePoint, deletePoint } from '@/api/deviceApi'
@@ -234,7 +244,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:pageSize', 'update:pageIndex', 'update:activeFilters', 'refresh']);
 const route = useRoute();
-const deviceName = computed(() => route.name as string);
+const deviceName = computed(() => route.params.deviceName as string);
 
 const activeName = ref("数据解析和设置");
 const expandedRowKeys = ref<string[]>([]);
@@ -267,6 +277,11 @@ const hiddenColumns = computed(() => {
     hidden.push('位', '功能码', '解析码');
   }
   
+  // 非客户端设备，隐藏状态列
+  if (!isClientDevice.value) {
+    hidden.push('状态');
+  }
+  
   return hidden;
 });
 
@@ -293,6 +308,8 @@ const columnWidthMap: Record<string, number> = {
   // DLT645 协议特有列
   '数据标识': 120,
   '数据长度': 80,
+  // 状态列
+  '状态': 80,
   // 通用默认
   'default': 100
 };
@@ -534,5 +551,12 @@ body.theme-dark {
 .address-switch {
   --el-switch-on-color: #3b82f6;
   --el-switch-off-color: #94a3b8;
+}
+
+.status-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
 }
 </style>

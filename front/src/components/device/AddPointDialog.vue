@@ -33,7 +33,7 @@
       <!-- 批量模式：数量输入 -->
       <template v-if="isBatch">
         <el-form-item label="添加数量" prop="batchCount">
-          <el-input-number v-model="batchCount" :min="1" :max="100" style="width: 100%" />
+          <el-input-number v-model="batchCount" :min="1" :max="500" style="width: 100%" />
         </el-form-item>
         <el-form-item label="起始地址" prop="reg_addr">
           <el-input v-model="formData.reg_addr" placeholder="如: 0 或 0x0000" />
@@ -149,7 +149,7 @@
 import { ref, reactive, watch, computed } from 'vue';
 import type { FormInstance, FormRules } from 'element-plus';
 import { ElMessage } from 'element-plus';
-import { addPoint, type PointCreateData } from '@/api/deviceApi';
+import { addPoint, addPointsBatch, type PointCreateData } from '@/api/deviceApi';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -248,26 +248,26 @@ const handleSubmit = async () => {
         ? parseInt(formData.reg_addr, 16) 
         : parseInt(formData.reg_addr);
       const span = getRegisterSpan(formData.decode_code);
-      let successCount = 0;
       
+      const points: PointCreateData[] = [];
       for (let i = 0; i < batchCount.value; i++) {
-        const pointData: PointCreateData = {
+        points.push({
           ...formData,
           code: `${codePrefix.value}${String(i + 1).padStart(3, '0')}`,
           name: `${namePrefix.value}${i + 1}`,
           reg_addr: String(startAddr + i * span),
-        };
-        const success = await addPoint(props.deviceName, pointData);
-        if (success) successCount++;
+        });
       }
       
-      if (successCount === batchCount.value) {
-        ElMessage.success(`成功添加 ${successCount} 个测点`);
+      const success = await addPointsBatch(props.deviceName, formData.frame_type, points);
+      
+      if (success) {
+        ElMessage.success(`成功批量添加 ${batchCount.value} 个测点`);
+        emit('success');
+        handleClose();
       } else {
-        ElMessage.warning(`成功添加 ${successCount}/${batchCount.value} 个测点`);
+        ElMessage.error('批量添加测点失败');
       }
-      emit('success');
-      handleClose();
     } else {
       // 单个添加模式
       const success = await addPoint(props.deviceName, formData);

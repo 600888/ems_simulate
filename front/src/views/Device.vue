@@ -12,10 +12,10 @@
       <el-button
         :class="['button', deviceStatus ? 'btn-stop' : 'btn-primary-action']"
         @click="toggleDevice"
-        :disabled="isProcessing"
-        :loading="isProcessing"
+        :disabled="isDeviceProcessing"
+        :loading="isDeviceProcessing"
       >
-        <template #icon v-if="!isProcessing">
+        <template #icon v-if="!isDeviceProcessing">
           <el-icon v-if="!deviceStatus" class="icon"><CaretRight /></el-icon>
           <el-icon v-else class="icon"><VideoPause /></el-icon>
         </template>
@@ -39,6 +39,7 @@
         placeholder="模拟方式选择"
         size="large"
         class="simulation-select"
+        :disabled="isClientDevice"
       >
         <el-option
           v-for="item in simulateOptions"
@@ -47,15 +48,23 @@
           :value="item.value"
         />
       </el-select>
-      <el-button
-        :class="['button', simulationStatus ? 'btn-stop' : 'btn-start']"
-        @click="startFunction"
-        :disabled="isProcessing || !deviceStatus"
-      >
-        <el-icon v-if="!simulationStatus" class="icon"><CaretRight /></el-icon>
-        <el-icon v-else class="icon"><VideoPause /></el-icon>
-        <span> {{ buttonText }} </span>
-      </el-button>
+      <el-tooltip :content="isClientDevice ? '客户端设备不支持数据模拟' : ''" :disabled="!isClientDevice" placement="top">
+        <span class="tooltip-wrapper">
+          <el-button
+            :class="['button', simulationStatus ? 'btn-stop' : 'btn-start']"
+            @click="startFunction"
+            :disabled="isSimProcessing || !deviceStatus || isClientDevice"
+            :style="isClientDevice ? { opacity: 0.6, cursor: 'not-allowed' } : {}"
+            :loading="isSimProcessing"
+          >
+            <template #icon v-if="!isSimProcessing">
+              <el-icon v-if="!simulationStatus" class="icon"><CaretRight /></el-icon>
+              <el-icon v-else class="icon"><VideoPause /></el-icon>
+            </template>
+            <span> {{ buttonText }} </span>
+          </el-button>
+        </span>
+      </el-tooltip>
     </el-row>
 
     <!-- 第三行：从站/测点数据 -->
@@ -86,8 +95,12 @@ import { CaretRight, VideoPause, Document } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 
 const route = useRoute();
-const routeName = ref(route.name as string);
 
+const getDeviceNameFromRoute = () => {
+  return (route.params.deviceName as string) || '';
+};
+
+const routeName = ref(getDeviceNameFromRoute());
 const deviceInfo = ref(new Map<string, any>());
 const ip = ref<any>("");
 const port = ref<any>("");
@@ -98,12 +111,18 @@ const deviceStatus = ref<boolean>(false);
 const deviceStatusStr = ref<any>("");
 const simulationStatus = ref<boolean>(false);
 const simulationStatusStr = ref<any>("");
-const isProcessing = ref<boolean>(false);
 const showMessageDialog = ref<boolean>(false);
 
 const isSerialMode = computed(() => {
   const type = communicationType.value;
   return type && (type.includes('Dlt645') || type === 'ModbusRtu') && serialPort.value;
+});
+
+const isClientDevice = computed(() => {
+  const type = communicationType.value;
+  // 检查是否为客户端类型 (包含 Client 且不包含 Server)
+  // ModbusTcpClient, Iec104Client, Dlt645Client
+  return String(type).includes('Client');
 });
 
 const simulateOptions = [
@@ -119,15 +138,18 @@ const currentSimulateMethod = ref<string>(simulateOptions[0].value);
 const deviceButtonText = computed(() => deviceStatus.value ? "停止设备" : "开启设备");
 const buttonText = computed(() => simulationStatus.value ? "停止" : "开始");
 
+const isDeviceProcessing = ref<boolean>(false);
+const isSimProcessing = ref<boolean>(false);
+
 const toggleDevice = async () => {
-  isProcessing.value = true;
+  isDeviceProcessing.value = true;
   try {
     if (deviceStatus.value) {
       if (await stopDevice(routeName.value)) {
         deviceStatus.value = false;
         deviceStatusStr.value = "停止";
         if (simulationStatus.value) {
-          await stopSimulation(routeName.value);
+          // 设备停止时，仿真自动停止，但不触发仿真按钮的loading
           simulationStatus.value = false;
           simulationStatusStr.value = "停止";
         }
@@ -146,7 +168,7 @@ const toggleDevice = async () => {
     console.error(error);
     ElMessage.error(error.message || "操作失败");
   }
-  finally { isProcessing.value = false; }
+  finally { isDeviceProcessing.value = false; }
 };
 
 const fetchDeviceInfo = async () => {
@@ -164,11 +186,14 @@ const fetchDeviceInfo = async () => {
     const simuStatus = info.get("simulation_status");
     simulationStatus.value = simuStatus;
     simulationStatusStr.value = simuStatus === true ? "运行中" : "停止";
-  } catch (error) { console.error(error); }
+  } catch (error: any) { 
+    console.error(error); 
+    ElMessage.error("获取设备信息失败: " + (error.message || "未知错误"));
+  }
 };
 
 const startFunction = async () => {
-  isProcessing.value = true;
+  isSimProcessing.value = true;
   try {
     if (simulationStatus.value) {
       if (await stopSimulation(routeName.value)) {
@@ -182,7 +207,7 @@ const startFunction = async () => {
       }
     }
   } catch (error) { console.error(error); }
-  finally { isProcessing.value = false; }
+  finally { isSimProcessing.value = false; }
 };
 
 // 状态轮询定时器
@@ -234,7 +259,7 @@ const stopStatusPolling = () => {
 };
 
 onMounted(() => {
-  fetchDeviceInfo();
+  // fetchDeviceInfo(); // 交给 watcher 处理，避免重复或时序问题
   startStatusPolling();
 });
 
@@ -242,12 +267,18 @@ onUnmounted(() => {
   stopStatusPolling();
 });
 
-watch(() => route.name, async (newVal) => {
-  if (newVal) {
-    routeName.value = newVal as string;
+watch(() => route.fullPath, async () => {
+  const newName = getDeviceNameFromRoute();
+  
+  if (newName) {
+    if (routeName.value !== newName) {
+      routeName.value = newName;
+      // 重置数据
+      deviceInfo.value = new Map<string, any>();
+    }
     await fetchDeviceInfo();
   }
-});
+}, { immediate: true });
 </script>
 
 <style lang="scss" scoped>

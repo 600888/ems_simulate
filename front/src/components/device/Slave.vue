@@ -121,7 +121,7 @@ import AddPointDialog from "./AddPointDialog.vue";
 import AddSlaveDialog from "./AddSlaveDialog.vue";
 
 const route = useRoute();
-const routeName = ref(route.name as string);
+const routeName = ref(route.params.deviceName as string);
 const activeName = ref("");
 const slaveIdList = ref<number[]>([]);
 const currentSlaveId = ref(1);
@@ -249,18 +249,26 @@ const handleClearPoints = async () => {
   }
 };
 
-watch(() => route.name, async (newVal) => {
-  if (newVal) {
-    stopAutoRefresh();
-    routeName.value = newVal as string;
-    pageIndex.value = 1; 
-    pageSize.value = 10;
-    isAutoRead.value = false;
-    await stopAutoRead(routeName.value);
-    await fetchSlaveList();
-    // 重新启动自动刷新
-    startAutoRefresh();
-  }
+// Watch for route param changes
+
+
+watch(() => route.fullPath, async () => {
+    // 强制刷新：当 query 参数变化（如添加了 t=timestamp）或路径变化时触发
+    if (route.params.deviceName) {
+      if (routeName.value !== route.params.deviceName) {
+          stopAutoRefresh();
+          routeName.value = route.params.deviceName as string;
+          pageIndex.value = 1; 
+          pageSize.value = 10;
+          isAutoRead.value = false;
+          await stopAutoRead(routeName.value);
+          await fetchSlaveList();
+          startAutoRefresh();
+      } else {
+        // 同一设备，仅刷新数据
+        handleSearch(currentSlaveId.value);
+      }
+    }
 });
 
 const timer = ref<any>(null);

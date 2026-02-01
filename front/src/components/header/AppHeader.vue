@@ -29,7 +29,14 @@ const setCollapse = (val) => {
 
 // 过滤有效路由并生成面包屑
 const updateBreadcrumb = () => {
-  breadList.value = route.matched.filter((item) => item.meta?.title);
+  if (route.name === 'device-detail' || route.path.startsWith('/device/')) {
+    const deviceName = route.params.deviceName;
+    breadList.value = [
+      { path: route.path, meta: { title: deviceName || '设备详情' } }
+    ];
+  } else {
+    breadList.value = route.matched.filter((item) => item.meta?.title);
+  }
 };
 
 watch(() => route.path, updateBreadcrumb, { immediate: true });
