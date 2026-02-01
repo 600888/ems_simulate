@@ -32,6 +32,9 @@ class Config:
     # 数据源配置
     data_source: DataSource = DataSource.Db
 
+    # Web服务配置
+    web_port: int = 8091
+
     @classmethod
     def load_config(cls, config_file: str) -> None:
         """加载配置文件并更新配置类属性
@@ -65,6 +68,10 @@ class Config:
                     cls.data_source = (
                         DataSource.Db if data_source == "db" else DataSource.CSV
                     )
+                
+                # Server 配置
+                if "server" in config:
+                    cls.web_port = int(config["server"].get("port", cls.web_port))
             else:
                 print(f"Warning: Config file {config_file} not found, using defaults")
         except Exception as e:

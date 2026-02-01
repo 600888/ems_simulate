@@ -16,21 +16,23 @@ export default defineConfig(({ mode }) => { // 使用 mode 参数
   return {
     build: {
       target: "esnext", // 支持最新 ES 特性
+      outDir: "../www",
+      emptyOutDir: true,
     },
     server: {
       host: '0.0.0.0',
       port: 8080,
       proxy: {
         '/api': {
-          target: 'http://localhost:8888',
+          target: 'http://localhost:8091',
           changeOrigin: true,
         },
         '/device': {
-          target: 'http://localhost:8888',
+          target: 'http://localhost:8091',
           changeOrigin: true,
         },
         '/channel': {
-          target: 'http://localhost:8888',
+          target: 'http://localhost:8091',
           changeOrigin: true,
         },
       },

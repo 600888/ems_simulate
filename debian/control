@@ -1,0 +1,9 @@
+Package: ems-simulate
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Chen Dongyu <1755696012@qq.com>
+Description: EMS Simulate - Energy Management System Simulator
+ A simulation software for EMS devices including PCS, BMS, and Meters.
+ Supports Modbus TCP/RTU, IEC104, and DLT645 protocols.

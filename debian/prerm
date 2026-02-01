@@ -1,0 +1,31 @@
+#!/bin/bash
+set -e
+
+# 在卸载前运行
+
+APP_NAME="ems-simulate"
+SERVICE_NAME="${APP_NAME}.service"
+BIN_LINK="/usr/bin/${APP_NAME}"
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # 1. 停止服务
+        if command -v systemctl >/dev/null; then
+            systemctl stop "${SERVICE_NAME}" || true
+            systemctl disable "${SERVICE_NAME}" || true
+        fi
+        
+        # 2. 删除软链接
+        rm -f "${BIN_LINK}"
+        ;;
+
+    failed-upgrade)
+        ;;
+
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

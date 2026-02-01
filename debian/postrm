@@ -1,0 +1,22 @@
+#!/bin/bash
+set -e
+
+# 在卸载后运行
+
+APP_NAME="ems-simulate"
+case "$1" in
+    purge)
+        # 清理配置文件或日志 (如果需要)
+        rm -rf "/var/log/${APP_NAME}"
+        ;;
+    
+    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

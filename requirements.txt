@@ -1,3 +1,4 @@
+pyinstaller
 pymodbus==3.6.2
 pyserial
 pylint==1.4.3
