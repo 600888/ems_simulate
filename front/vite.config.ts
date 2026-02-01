@@ -18,6 +18,21 @@ export default defineConfig(({ mode }) => { // 使用 mode 参数
       target: "esnext", // 支持最新 ES 特性
       outDir: "../www",
       emptyOutDir: true,
+      chunkSizeWarningLimit: 1500,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              // Split Element Plus into its own chunk
+              if (id.includes('element-plus')) {
+                return 'element-plus';
+              }
+              // Group other dependencies into a vendor chunk
+              return 'vendor';
+            }
+          }
+        }
+      }
     },
     server: {
       host: '0.0.0.0',
@@ -40,7 +55,7 @@ export default defineConfig(({ mode }) => { // 使用 mode 参数
     base: './', // 修改这里的值为您想要设置的新路径
     plugins: [
       vue(),
-      vueDevTools(),
+      mode !== 'production' && vueDevTools(),
       AutoImport({
         resolvers: [ElementPlusResolver(), IconsResolver()],
       }),

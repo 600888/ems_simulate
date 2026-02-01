@@ -21,7 +21,7 @@ echo ">>> 开始构建 ${APP_NAME} v${VERSION}..."
 echo ">>> 构建前端..."
 cd front
 npm install
-npm run build
+npm run build:fast
 cd ..
 
 # 检查前端构建结果
