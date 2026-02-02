@@ -108,7 +108,12 @@ class ModbusServerHandler(ServerHandler):
                 point.func_code, slave_id, point.address, value, point.decode
             )
             return True
+
         return False
+
+    async def write_value_async(self, point: BasePoint, value: Any) -> bool:
+        """异步写入测点值（包装同步方法）"""
+        return self.write_value(point, value)
 
     def add_points(self, points: List[BasePoint]) -> None:
         """添加测点（Modbus 服务器使用地址块方式，无需逐个添加）"""
@@ -381,6 +386,86 @@ class ModbusClientHandler(ClientHandler):
                 point.func_code, point.rtu_addr, point.address, value, point.decode
             )
             return True
+
+    async def read_value_async(self, point: BasePoint) -> Any:
+        """异步读取测点值（用于 async 环境）"""
+        print(f"DEBUG: read_value_async called for {point.code}, func={point.func_code}, client={self._client}")
+        if not self._client or not hasattr(point, "func_code"):
+            if self._log: self._log.warning(f"read_value_async: client or point invalid. point={point}")
+            print("DEBUG: read_value_async client or point invalid")
+            return None
+        
+        # 检查是否是异步客户端
+        is_async = hasattr(self._client, 'read_value_by_address') and asyncio.iscoroutinefunction(self._client.read_value_by_address)
+        
+        if self._log: self._log.info(f"read_value_async: point={point.code}, addr={point.address}, func={point.func_code}, is_async={is_async}")
+        print(f"DEBUG: read_value_async is_async={is_async}")
+
+        try:
+            if is_async:
+                # 使用 asyncio.wait_for 添加超时保护
+                return await asyncio.wait_for(
+                    self._client.read_value_by_address(
+                        point.func_code, point.rtu_addr, point.address, point.decode
+                    ),
+                    timeout=1.0  # 1秒超时
+                )
+            else:
+                # 同步客户端，放到线程池执行
+                loop = asyncio.get_running_loop()
+                return await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None, # 使用默认执行器
+                        self._client.read_value_by_address,
+                        point.func_code, point.rtu_addr, point.address, point.decode
+                    ),
+                    timeout=1.0  # 1秒超时
+                )
+        except asyncio.TimeoutError:
+            if self._log:
+                self._log.warning(f"Async read_value timeout: {point.code if hasattr(point, 'code') else point}")
+            return None
+        except Exception as e:
+            if self._log:
+                self._log.error(f"Async read_value error: {e}")
+            return None
+
+    async def write_value_async(self, point: BasePoint, value: Any) -> bool:
+        """异步写入测点值（用于 async 环境）"""
+        if not self._client or not hasattr(point, "func_code"):
+            return False
+
+        # 检查是否是异步客户端
+        is_async = hasattr(self._client, 'write_value_by_address') and asyncio.iscoroutinefunction(self._client.write_value_by_address)
+
+        try:
+            if is_async:
+                # 使用 asyncio.wait_for 添加超时保护
+                return await asyncio.wait_for(
+                    self._client.write_value_by_address(
+                        point.func_code, point.rtu_addr, point.address, value, point.decode
+                    ),
+                    timeout=2.0  # 2秒超时
+                )
+            else:
+                # 同步客户端，放到线程池执行
+                loop = asyncio.get_running_loop()
+                return await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None, # 使用默认执行器
+                        self._client.write_value_by_address,
+                        point.func_code, point.rtu_addr, point.address, value, point.decode
+                    ),
+                    timeout=2.0  # 2秒超时
+                )
+        except asyncio.TimeoutError:
+            if self._log:
+                self._log.error(f"Async write_value timeout: {point.code if hasattr(point, 'code') else point}")
+            return False
+        except Exception as e:
+            if self._log:
+                self._log.error(f"Async write_value error: {e}")
+            return False
 
     def add_points(self, points: List[BasePoint]) -> None:
         """添加测点（Modbus 客户端按需读写，无需预先添加）"""

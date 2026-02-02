@@ -339,7 +339,8 @@ class AsyncModbusClient:
         registers = None
 
         # 读取寄存器值
-        if func_code == 1:  # 读取线圈
+        # 读取寄存器值
+        if func_code == 1 or func_code == 5 or func_code == 15:  # 读取线圈
             values = await self.read_coils(slave_id, address, register_cnt)
             if not values:
                 return None
@@ -349,7 +350,7 @@ class AsyncModbusClient:
             if not values:
                 return None
             return values[0]
-        elif func_code == 3:  # 读取保持寄存器
+        elif func_code == 3 or func_code == 6 or func_code == 16:  # 读取保持寄存器
             registers = await self.read_holding_registers(slave_id, address, register_cnt)
         elif func_code == 4:  # 读取输入寄存器
             registers = await self.read_input_registers(slave_id, address, register_cnt)

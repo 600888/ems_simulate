@@ -240,6 +240,38 @@ class Device:
                 point.is_valid = False
                 pass
 
+    async def getSlaveRegisterValuesAsync(
+        self, yc_list: List[Yc], yx_list: List[Yx]
+    ) -> None:
+        """从协议处理器获取寄存器值（异步版）"""
+        if not self.protocol_handler:
+            if self._logger: self._logger.warning("getSlaveRegisterValuesAsync: No protocol handler")
+            return
+
+        for point in yc_list + yx_list:
+            try:
+                # 尝试调用异步读取
+                if hasattr(self.protocol_handler, 'read_value_async'):
+                    if self._logger: self._logger.debug(f"Calling read_value_async for point {point.code}")
+                    value = await self.protocol_handler.read_value_async(point)
+                else:
+                    if self._logger: self._logger.warning(f"Fallback to sync read for point {point.code}")
+                    # 降级到同步调用 (可能阻塞)
+                    # 最好不要在这里发生，因为会阻塞 loop
+                    value = self.protocol_handler.read_value(point)
+
+                if value is not None:
+                    point.value = value
+                    point.is_valid = True
+                else:
+                    if self._logger: self._logger.debug(f"Read value is None for point {point.code}")
+                    point.is_valid = False
+            except (ConnectionError, Exception) as e:
+                # 连接失败时静默处理
+                if self._logger: self._logger.error(f"Error in getSlaveRegisterValuesAsync: {e}")
+                point.is_valid = False
+                pass
+
     # ===== 自动读取控制 =====
 
     def start_auto_read(self) -> bool:
@@ -262,12 +294,28 @@ class Device:
         """
         return self.data_update_thread.is_alive()
 
-    def single_read(self) -> None:
+    async def single_read(self, event_emitter=None) -> None:
         """执行单次读取操作"""
-        for slave_id in self.slave_id_list:
+        total_slaves = len(self.slave_id_list)
+        for index, slave_id in enumerate(self.slave_id_list):
             yc_list = self.yc_dict.get(slave_id, [])
             yx_list = self.yx_dict.get(slave_id, [])
-            self.getSlaveRegisterValues(yc_list, yx_list)
+            
+            # print(f"DEBUG: single_read slave={slave_id}, yc={len(yc_list)}, yx={len(yx_list)}")
+
+            # 读取数据
+            await self.getSlaveRegisterValuesAsync(yc_list, yx_list)
+            
+            # 发送进度事件
+            # if event_emitter:
+            #     progress = int(((index + 1) / total_slaves) * 100)
+            #     await event_emitter({
+            #         "type": "progress",
+            #         "current": index + 1,
+            #         "total": total_slaves,
+            #         "progress": progress,
+            #         "message": f"Reading Slave {slave_id}..."
+            #     })
 
     def read_single_point(self, point_code: str) -> Optional[float]:
         """读取单个测点的值
@@ -349,6 +397,24 @@ class Device:
             return False
 
         if self.protocol_handler:
+            return self.protocol_handler.write_value(point, point.value)
+        return True
+
+    async def edit_point_data_async(self, point_code: str, real_value: float) -> bool:
+        """异步编辑测点值"""
+        point = self.point_manager.get_point_by_code(point_code)
+        if not point:
+            if self.log:
+                self.log.error(f"{self.name} 未找到测点: {point_code}")
+            return False
+
+        if not point.set_real_value(real_value):
+            return False
+
+        if self.protocol_handler:
+            if hasattr(self.protocol_handler, 'write_value_async'):
+                return await self.protocol_handler.write_value_async(point, point.value)
+            # 降级到同步方法（可能会阻塞）
             return self.protocol_handler.write_value(point, point.value)
         return True
 

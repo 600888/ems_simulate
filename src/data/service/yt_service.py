@@ -65,6 +65,8 @@ class YtService:
             ProtocolType.ModbusTcp,
             ProtocolType.ModbusRtu,
             ProtocolType.ModbusRtuOverTcp,
+            ProtocolType.ModbusTcpClient,
+            ProtocolType.ModbusUdp,
         ]:
             return Yt(
                 rtu_addr=item["rtu_addr"],

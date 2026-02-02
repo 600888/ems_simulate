@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Request, File, UploadFile, Depends
+from fastapi import APIRouter, Request, File, UploadFile, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from copy import deepcopy
+from typing import List, Dict
 
 from src.config.global_config import UPLOAD_PLAN_DIR
 from src.device.core.device import Device
@@ -21,8 +22,47 @@ from src.data.dao.channel_dao import ChannelDao
 
 log = get_logger()
 
+# WebSocket 连接管理器
+class ConnectionManager:
+    def __init__(self):
+        # device_name -> List[WebSocket]
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, device_name: str):
+        await websocket.accept()
+        if device_name not in self.active_connections:
+            self.active_connections[device_name] = []
+        self.active_connections[device_name].append(websocket)
+
+    def disconnect(self, websocket: WebSocket, device_name: str):
+        if device_name in self.active_connections:
+            if websocket in self.active_connections[device_name]:
+                self.active_connections[device_name].remove(websocket)
+            if not self.active_connections[device_name]:
+                del self.active_connections[device_name]
+
+    async def broadcast(self, message: dict, device_name: str):
+        if device_name in self.active_connections:
+            for connection in self.active_connections[device_name]:
+                try:
+                    await connection.send_json(message)
+                except Exception:
+                    # 连接可能断开
+                    pass
+
+manager = ConnectionManager()
+
 # 创建路由对象
-device_router = APIRouter(prefix="/device", tags=["device"])
+device_router = APIRouter(prefix="/device", tags=["device"]) 
+
+# @device_router.websocket("/ws/{device_name}")
+# async def websocket_endpoint(websocket: WebSocket, device_name: str):
+#     await manager.connect(websocket, device_name)
+#     try:
+#         while True:
+#             await websocket.receive_text()
+#     except WebSocketDisconnect:
+#         manager.disconnect(websocket, device_name)
 
 def get_device(device_name: str, request: Request) -> Device:
     return request.app.state.device_controller.device_map[device_name]
@@ -64,7 +104,14 @@ async def get_device_info(req: DeviceInfoRequest, request: Request):
         # 获取 conn_type（服务端/客户端判断需要）
         channels = ChannelDao.get_all_channels()
         channel = next((c for c in channels if c.get("name") == req.device_name), None)
-        info_dict["conn_type"] = channel.get("conn_type", 2) if channel else 2
+        
+        # 优先使用数据库中的 IP 和 Port，因为 Device 对象中的可能是 0.0.0.0 (服务端绑定)
+        if channel:
+             info_dict["ip"] = channel.get("ip")
+             info_dict["port"] = channel.get("port")
+             info_dict["conn_type"] = channel.get("conn_type", 2)
+        else:
+             info_dict["conn_type"] = 2
         
         # 使用统一接口获取协议运行状态
         info_dict["server_status"] = device.is_protocol_running()
@@ -154,7 +201,7 @@ async def get_current_table(req: CurrentTableRequest = Depends(), request: Reque
 async def edit_point_data(req: PointEditDataRequest, request: Request):
     try:
         device = get_device(req.device_name, request)
-        success = device.editPointData(req.point_code, req.point_value)
+        success = await device.edit_point_data_async(req.point_code, req.point_value)
         return BaseResponse(
             message="编辑测点数据成功!" if success else "编辑测点数据失败!",
             data=success
@@ -374,10 +421,14 @@ async def stop_auto_read(req: DeviceInfoRequest, request: Request):
 async def manual_read(req: DeviceInfoRequest, request: Request):
     try:
         device = get_device(req.device_name, request)
-        # 在线程池中执行同步读取操作，避免阻塞事件循环
-        import asyncio
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, device.single_read)
+        
+        # 定义发送进度的回调函数
+        async def event_emitter(data):
+            await manager.broadcast(data, req.device_name)
+            
+        # 异步执行读取
+        await device.single_read(event_emitter=event_emitter)
+        
         return BaseResponse(message="手动读取成功!", data=True)
     except KeyError:
         return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=False)

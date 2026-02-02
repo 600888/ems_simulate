@@ -62,6 +62,22 @@
           </div>
         </div>
 
+        <!-- 进度条区域 -->
+        <div v-if="readProgress > 0" class="progress-container">
+          <div class="progress-info">
+            <span class="progress-text">{{ progressMessage }}</span>
+            <span class="progress-percentage">{{ readProgress }}%</span>
+          </div>
+          <el-progress 
+            :percentage="readProgress" 
+            :format="formatProgress"
+            :stroke-width="10"
+            color="#3b82f6"
+            striped
+            striped-flow
+          />
+        </div>
+
         <!-- 数据表格区域 -->
         <DeviceTable
           v-if="slave === currentSlaveId"
@@ -115,7 +131,7 @@ import { ref, onMounted, watch, onUnmounted, computed } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage, type TabsPaneContext } from "element-plus";
 import { Search, Refresh, Download, Plus, Delete } from "@element-plus/icons-vue";
-import { getSlaveIdList, getDeviceTable, resetPointData, getDeviceInfo, getAutoReadStatus, startAutoRead, stopAutoRead, manualRead, clearPoints } from "@/api/deviceApi";
+import { getSlaveIdList, getDeviceTable, resetPointData, getDeviceInfo, getAutoReadStatus, startAutoRead, stopAutoRead, manualRead, clearPoints, instance } from "@/api/deviceApi";
 import DeviceTable from "./Table.vue";
 import AddPointDialog from "./AddPointDialog.vue";
 import AddSlaveDialog from "./AddSlaveDialog.vue";
@@ -320,7 +336,87 @@ onMounted(async () => {
   await fetchAutoReadStatus();
   // 始终开启表格刷新以支持主动上报协议的数据显示
   startAutoRefresh();
+  
+  // 连接 WebSocket
+  // connectWebSocket();
 });
+
+
+const readProgress = ref(0);
+const progressMessage = ref("");
+let websocket: WebSocket | null = null;
+let wsReconnectTimer: any = null;
+
+// import { instance } from "@/api/deviceApi"; // Moved to top
+
+const connectWebSocket = () => {
+    if (websocket) return;
+
+    // 获取 baseURL
+    let baseURL = instance.defaults.baseURL || '/';
+    if (baseURL.startsWith('/')) {
+        // 如果是相对路径，拼接到当前 host
+        baseURL = window.location.origin + baseURL;
+    }
+
+    // 替换 http/https 为 ws/wss
+    const wsBase = baseURL.replace(/^http/, 'ws');
+    // 去除末尾斜杠
+    const wsUrl = `${wsBase.replace(/\/$/, '')}/device/ws/${routeName.value}`; 
+    
+    console.log("Connecting to WebSocket:", wsUrl); // Debug log
+    
+    websocket = new WebSocket(wsUrl);
+
+    websocket.onopen = () => {
+        console.log("WebSocket connected");
+        if (wsReconnectTimer) {
+            clearTimeout(wsReconnectTimer);
+            wsReconnectTimer = null;
+        }
+    };
+
+    websocket.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'progress') {
+                readProgress.value = data.progress;
+                progressMessage.value = data.message;
+                
+                // 实时刷新表格数据
+                // 收到进度更新说明有新数据被读取，立即刷新当前显示的表格
+                handleSearch(currentSlaveId.value);
+                
+                if (data.progress >= 100) {
+                    setTimeout(() => {
+                        readProgress.value = 0;
+                        progressMessage.value = "";
+                    }, 2000);
+                }
+            }
+        } catch (e) {
+            console.error("WebSocket message error:", e);
+        }
+    };
+
+    websocket.onclose = () => {
+        console.log("WebSocket disconnected");
+        websocket = null;
+        // 尝试重连
+        wsReconnectTimer = setTimeout(() => {
+            connectWebSocket();
+        }, 3000);
+    };
+    
+    websocket.onerror = (err) => {
+         console.error("WebSocket error:", err);
+         websocket?.close();
+    };
+};
+
+const formatProgress = (percentage: number) => {
+    return percentage === 100 ? '完成' : `${percentage}%`;
+};
 
 const handlePointAdded = () => {
   fetchDeviceTable(routeName.value, currentSlaveId.value, searchQuery.value[currentSlaveId.value] || "", pageIndex.value, pageSize.value);
@@ -490,5 +586,23 @@ onUnmounted(() => { stopAutoRefresh(); });
   font-weight: 500;
   color: var(--text-secondary);
   white-space: nowrap;
+}
+
+.progress-container {
+  margin-bottom: 20px;
+  padding: 0 10px;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.progress-percentage {
+  font-weight: 600;
+  color: var(--color-primary);
 }
 </style>

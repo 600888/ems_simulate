@@ -74,39 +74,39 @@
 
       <el-form-item label="功能码" prop="func_code">
         <el-select v-model="formData.func_code" placeholder="选择功能码" style="width: 100%">
-          <el-option label="01 - 读线圈" :value="1" />
-          <el-option label="02 - 读离散输入" :value="2" />
-          <el-option label="03 - 读保持寄存器" :value="3" />
-          <el-option label="04 - 读输入寄存器" :value="4" />
-          <el-option label="05 - 写单个线圈" :value="5" />
-          <el-option label="06 - 写单个寄存器" :value="6" />
+          <el-option
+            v-for="fc in validFuncCodes"
+            :key="fc.value"
+            :label="fc.label"
+            :value="fc.value"
+          />
         </el-select>
       </el-form-item>
 
       <el-form-item label="解析码" prop="decode_code">
         <el-select v-model="formData.decode_code" placeholder="选择解析码" style="width: 100%">
           <el-option-group label="8位字符">
-            <el-option label="0x10 - Byte 无符号" value="0x10" />
-            <el-option label="0x11 - Byte 有符号" value="0x11" />
+            <el-option label="0x10 - Byte (无符号)" value="0x10" />
+            <el-option label="0x11 - Byte (有符号)" value="0x11" />
           </el-option-group>
           <el-option-group label="16位整数">
             <el-option label="0x20 - Short AB (大端)" value="0x20" />
-            <el-option label="0x21 - Short AB 有符号" value="0x21" />
+            <el-option label="0x21 - Short AB (有符号)" value="0x21" />
             <el-option label="0x22 - Short BA (字节交换)" value="0x22" />
-            <el-option label="0xB0 - Short BA 无符号" value="0xB0" />
-            <el-option label="0xB1 - Short BA 有符号" value="0xB1" />
+            <el-option label="0xB0 - Short BA (无符号)" value="0xB0" />
+            <el-option label="0xB1 - Short BA (有符号)" value="0xB1" />
             <el-option label="0xC0 - Short CD (小端)" value="0xC0" />
-            <el-option label="0xC1 - Short CD 有符号" value="0xC1" />
+            <el-option label="0xC1 - Short CD (有符号)" value="0xC1" />
           </el-option-group>
           <el-option-group label="32位整数">
             <el-option label="0x40 - Long AB CD (大端)" value="0x40" />
-            <el-option label="0x41 - Long AB CD 有符号" value="0x41" />
+            <el-option label="0x41 - Long AB CD (有符号)" value="0x41" />
             <el-option label="0x43 - Long CD AB (字交换)" value="0x43" />
-            <el-option label="0x44 - Long CD AB 有符号" value="0x44" />
+            <el-option label="0x44 - Long CD AB (有符号)" value="0x44" />
             <el-option label="0xD0 - Long DC BA (小端)" value="0xD0" />
-            <el-option label="0xD1 - Long DC BA 有符号" value="0xD1" />
+            <el-option label="0xD1 - Long DC BA (有符号)" value="0xD1" />
             <el-option label="0xD4 - Long BA DC (小端字交换)" value="0xD4" />
-            <el-option label="0xD5 - Long BA DC 有符号" value="0xD5" />
+            <el-option label="0xD5 - Long BA DC (有符号)" value="0xD5" />
           </el-option-group>
           <el-option-group label="32位浮点">
             <el-option label="0x42 - Float AB CD (大端)" value="0x42" />
@@ -116,11 +116,11 @@
           </el-option-group>
           <el-option-group label="64位类型">
             <el-option label="0x60 - Int64 AB CD EF GH (大端)" value="0x60" />
-            <el-option label="0x61 - Int64 有符号" value="0x61" />
-            <el-option label="0x62 - Double AB CD EF GH" value="0x62" />
+            <el-option label="0x61 - Int64 AB CD EF GH (有符号)" value="0x61" />
+            <el-option label="0x62 - Double AB CD EF GH (大端)" value="0x62" />
             <el-option label="0xE0 - Int64 HG FE DC BA (小端)" value="0xE0" />
-            <el-option label="0xE1 - Int64 小端有符号" value="0xE1" />
-            <el-option label="0xE2 - Double 小端" value="0xE2" />
+            <el-option label="0xE1 - Int64 HG FE DC BA (有符号)" value="0xE1" />
+            <el-option label="0xE2 - Double HG FE DC BA (小端)" value="0xE2" />
           </el-option-group>
         </el-select>
       </el-form-item>
@@ -201,6 +201,37 @@ watch(() => formData.frame_type, (newType) => {
   const prefixes = typeNameMap[newType] || { code: 'POINT_', name: '测点' };
   codePrefix.value = prefixes.code;
   namePrefix.value = prefixes.name;
+  
+  // 重置功能码为当前类型列表的第一个
+  if (validFuncCodes.value.length > 0) {
+    formData.func_code = validFuncCodes.value[0].value;
+  }
+});
+
+// 可用的功能码列表
+const validFuncCodes = computed(() => {
+  const allCodes = [
+    { value: 1, label: '01 - 读线圈' },
+    { value: 2, label: '02 - 读离散输入' },
+    { value: 3, label: '03 - 读保持寄存器' },
+    { value: 4, label: '04 - 读输入寄存器' },
+    { value: 5, label: '05 - 写单个线圈' },
+    { value: 6, label: '06 - 写单个寄存器' },
+    { value: 15, label: '15 - 写多个线圈' },
+    { value: 16, label: '16 - 写多个寄存器' },
+  ];
+
+  const type = formData.frame_type;
+  
+  if (type === 0 || type === 1) { 
+    // 遥测 (0) 和 遥信 (1): 允许 1, 2, 3, 4
+    return allCodes.filter(c => [1, 2, 3, 4].includes(c.value));
+  } else if (type === 2 || type === 3) {
+    // 遥控 (2) 和 遥调 (3): 允许 5, 6, 15, 16
+    return allCodes.filter(c => [5, 6, 15, 16].includes(c.value));
+  }
+  
+  return allCodes;
 });
 
 // 根据解析码计算寄存器跨度

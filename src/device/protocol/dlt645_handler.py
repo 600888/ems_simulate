@@ -286,6 +286,13 @@ class DLT645ClientHandler(ClientHandler):
             self._client.set_address(addr_str)
             # 保存底层传输客户端引用
             self._transport_client = self._client.client
+            
+            # 启用报文捕获
+            if hasattr(self._client, "enable_message_capture"):
+                self._client.enable_message_capture(queue_size=200)
+            else:
+                if self._log:
+                    self._log.warning("DLT645 客户端不支持报文捕获")
 
     async def start(self) -> bool:
         """启动客户端（非阻塞，在线程池中连接）"""

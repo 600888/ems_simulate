@@ -155,3 +155,5 @@ docs/.vitepress/cache/
 
 # Global node_modules
 node_modules/
+
+data/*.db

@@ -344,82 +344,9 @@ async def create_and_start_device(req: CreateAndStartDeviceRequest, request: Req
 async def restart_device(channel_id: int, request: Request):
     """重启设备（用于配置更新后）"""
     try:
-        channel = ChannelService.get_channel_by_id(channel_id)
-        if not channel:
-            return BaseResponse(code=404, message="通道不存在")
-        
         device_controller = request.app.state.device_controller
-        device_name = channel["name"]
-        
-        # 1. 找到旧设备在列表中的位置
-        original_index = -1
-        for i, device in enumerate(device_controller.device_list):
-            if getattr(device, 'device_id', None) == channel_id:
-                original_index = i
-                break
-        
-        # 2. 停止并移除旧设备（使用 ID 查找，确保名称变更也能找到）
-        await device_controller.remove_device_by_id(channel_id)
-        log.info(f"已停止旧设备 ID: {channel_id} (原索引: {original_index})")
-        
-        # 3. 使用更新后的配置创建新设备
-        channel_code = channel["code"]
-        # 获取协议类型枚举
-        channel_protocol_type = ChannelService.get_protocol_type(channel)
-        port = channel.get("port", Config.DEFAULT_PORT)
-        ip = channel.get("ip", Config.DEFAULT_IP)
-        
-        # 根据设备名称选择设备类型
-        if channel_code.upper().find("PCS") != -1:
-            general_device_builder = GeneralDeviceBuilder(
-                channel_id=channel_id, device=Pcs()
-            )
-        elif channel_code.upper().find("BREAKER") != -1:
-            general_device_builder = GeneralDeviceBuilder(
-                channel_id=channel_id, device=CircuitBreaker()
-            )
-        else:
-            general_device_builder = GeneralDeviceBuilder(
-                channel_id=channel_id, device=GeneralDevice()
-            )
-        
-        # 设置网络/串口配置
-        conn_type = channel.get("conn_type", 1)
-        if conn_type in [0, 3]:  # 串口连接（主站或0，从站或3）
-            general_device_builder.setDeviceSerialConfig(
-                serial_port=channel.get("com_port", ""),
-                baudrate=channel.get("baud_rate", 9600),
-                databits=channel.get("data_bits", 8),
-                stopbits=channel.get("stop_bits", 1),
-                parity=channel.get("parity", "E")
-            )
-        elif (
-            channel_protocol_type == ProtocolType.Iec104Client
-            or channel_protocol_type == ProtocolType.ModbusTcpClient
-        ):
-            general_device_builder.setDeviceNetConfig(port=port, ip=ip)
-        else:
-            # 服务端默认监听配置
-            general_device_builder.setDeviceNetConfig(port=port, ip=Config.DEFAULT_IP)
-        
-        # 创建设备
-        general_device = general_device_builder.makeGeneralDevice(
-            device_id=channel_id,
-            device_name=device_name,
-            protocol_type=channel_protocol_type,
-            is_start=True,
-        )
-        general_device.name = device_name
-        general_device.data_update_thread.start()
-        
-        # 4. 在原位置插入新设备（保持列表顺序）
-        if original_index >= 0 and original_index <= len(device_controller.device_list):
-            device_controller.device_list.insert(original_index, general_device)
-        else:
-            device_controller.device_list.append(general_device)
-        device_controller.device_map[general_device.name] = general_device
-        
-        log.info(f"设备 {device_name} 重启成功")
+        new_device = await _reload_device_instance(device_controller, channel_id, is_start=True)
+        device_name = new_device.name
         
         return BaseResponse(message=f"设备 {device_name} 重启成功", data={"device_name": device_name})
         
@@ -432,79 +359,9 @@ async def restart_device(channel_id: int, request: Request):
 async def reload_device_config(channel_id: int, request: Request):
     """重新加载设备配置（不自动启动服务）"""
     try:
-        channel = ChannelService.get_channel_by_id(channel_id)
-        if not channel:
-            return BaseResponse(code=404, message="通道不存在")
-        
         device_controller = request.app.state.device_controller
-        device_name = channel["name"]
-        
-        # 1. 找到旧设备在列表中的位置
-        original_index = -1
-        for i, device in enumerate(device_controller.device_list):
-            if getattr(device, 'device_id', None) == channel_id:
-                original_index = i
-                break
-        
-        # 2. 停止并移除旧设备
-        await device_controller.remove_device_by_id(channel_id)
-        log.info(f"已停止旧设备 ID: {channel_id}")
-        
-        # 3. 使用更新后的配置创建新设备（不启动）
-        channel_code = channel["code"]
-        channel_protocol_type = ChannelService.get_protocol_type(channel)
-        port = channel.get("port", Config.DEFAULT_PORT)
-        ip = channel.get("ip", Config.DEFAULT_IP)
-        
-        if channel_code.upper().find("PCS") != -1:
-            general_device_builder = GeneralDeviceBuilder(
-                channel_id=channel_id, device=Pcs()
-            )
-        elif channel_code.upper().find("BREAKER") != -1:
-            general_device_builder = GeneralDeviceBuilder(
-                channel_id=channel_id, device=CircuitBreaker()
-            )
-        else:
-            general_device_builder = GeneralDeviceBuilder(
-                channel_id=channel_id, device=GeneralDevice()
-            )
-        
-        # 设置网络/串口配置
-        conn_type = channel.get("conn_type", 1)
-        if conn_type in [0, 3]:  # 串口连接
-            general_device_builder.setDeviceSerialConfig(
-                serial_port=channel.get("com_port", ""),
-                baudrate=channel.get("baud_rate", 9600),
-                databits=channel.get("data_bits", 8),
-                stopbits=channel.get("stop_bits", 1),
-                parity=channel.get("parity", "E")
-            )
-        elif (
-            channel_protocol_type == ProtocolType.Iec104Client
-            or channel_protocol_type == ProtocolType.ModbusTcpClient
-        ):
-            general_device_builder.setDeviceNetConfig(port=port, ip=ip)
-        else:
-            general_device_builder.setDeviceNetConfig(port=port, ip=Config.DEFAULT_IP)
-        
-        # 创建设备（不启动服务）
-        general_device = general_device_builder.makeGeneralDevice(
-            device_id=channel_id,
-            device_name=device_name,
-            protocol_type=channel_protocol_type,
-            is_start=False,  # 不自动启动
-        )
-        general_device.name = device_name
-        # 不启动数据更新线程
-        
-        # 4. 在原位置插入新设备
-        if original_index >= 0 and original_index <= len(device_controller.device_list):
-            device_controller.device_list.insert(original_index, general_device)
-        else:
-            device_controller.device_list.append(general_device)
-        device_controller.device_map[general_device.name] = general_device
-        
-        log.info(f"设备 {device_name} 配置已重新加载（未启动）")
+        new_device = await _reload_device_instance(device_controller, channel_id, is_start=False)
+        device_name = new_device.name
         
         return BaseResponse(message=f"设备 {device_name} 配置已重新加载", data={"device_name": device_name})
         
@@ -584,6 +441,17 @@ async def update_channel(channel_id: int, req: ChannelUpdateRequest, request: Re
         )
         
         if success:
+            # ==========================================
+            # 新增：更新成功后立即重载设备配置（不自动启动）
+            # ==========================================
+            try:
+                device_controller = request.app.state.device_controller
+                await _reload_device_instance(device_controller, channel_id, is_start=False)
+
+            except Exception as e:
+                log.error(f"更新配置后重载设备失败: {e}")
+                # 不阻拦返回成功
+
             return BaseResponse(message="更新通道成功", data=True)
         else:
             return BaseResponse(code=500, message="更新通道失败", data=False)
@@ -591,4 +459,80 @@ async def update_channel(channel_id: int, req: ChannelUpdateRequest, request: Re
     except Exception as e:
         log.error(f"更新通道失败: {e}")
         return BaseResponse(code=500, message=f"更新通道失败: {e}", data=False)
+
+
+async def _reload_device_instance(device_controller, channel_id: int, is_start: bool = True):
+    """
+    内部辅助函数：重载/重启设备实例
+    """
+    # 1. 停止并移除旧设备
+    await device_controller.remove_device_by_id(channel_id)
+    
+    # 2. 获取最新配置
+    channel = ChannelService.get_channel_by_id(channel_id)
+    if not channel:
+        raise ValueError(f"通道 {channel_id} 不存在")
+        
+    device_name = channel["name"]
+    channel_code = channel["code"]
+    channel_protocol_type = ChannelService.get_protocol_type(channel)
+    port = channel.get("port", Config.DEFAULT_PORT)
+    ip = channel.get("ip", Config.DEFAULT_IP)
+    
+    # 3. 构建器
+    # 引入必要的类 (避免循环导入，这里局部引入即可，或顶部引入)
+    from src.device.factory.general_device_builder import GeneralDeviceBuilder
+    from src.device.types.general_device import GeneralDevice
+    from src.device.types.pcs import Pcs
+    from src.device.types.circuit_breaker import CircuitBreaker
+    
+    if channel_code.upper().find("PCS") != -1:
+        builder = GeneralDeviceBuilder(channel_id=channel_id, device=Pcs())
+    elif channel_code.upper().find("BREAKER") != -1:
+        builder = GeneralDeviceBuilder(channel_id=channel_id, device=CircuitBreaker())
+    else:
+        builder = GeneralDeviceBuilder(channel_id=channel_id, device=GeneralDevice())
+    
+    # 4. 通信配置
+    conn_type = channel.get("conn_type", 1)
+    
+    log.info(f"Preparing to reload device {device_name}. Protocol: {channel_protocol_type}, ConnType: {conn_type}, IP: {ip}, Port: {port}")
+    
+    if conn_type in [0, 3]:  # 串口
+        builder.setDeviceSerialConfig(
+            serial_port=channel.get("com_port", ""),
+            baudrate=channel.get("baud_rate", 9600),
+            databits=channel.get("data_bits", 8),
+            stopbits=channel.get("stop_bits", 1),
+            parity=channel.get("parity", "E")
+        )
+    elif (
+        channel_protocol_type == ProtocolType.Iec104Client
+        or channel_protocol_type == ProtocolType.ModbusTcpClient
+        or channel_protocol_type == ProtocolType.Dlt645Client
+    ):
+        log.info(f"Setting client net config: IP={ip}, Port={port}")
+        builder.setDeviceNetConfig(port=port, ip=ip)
+    else:
+        log.info(f"Setting server net config: IP={Config.DEFAULT_IP}, Port={port}")
+        builder.setDeviceNetConfig(port=port, ip=Config.DEFAULT_IP)
+    
+    # 5. 创建设备
+    new_device = builder.makeGeneralDevice(
+        device_id=channel_id,
+        device_name=device_name,
+        protocol_type=channel_protocol_type,
+        is_start=is_start, 
+    )
+    new_device.name = device_name
+    
+    if is_start:
+        new_device.data_update_thread.start()
+    
+    device_controller.device_list.append(new_device)
+    device_controller.device_map[new_device.name] = new_device
+    
+    log.info(f"设备 {device_name} 实例已更新 (启动状态: {is_start})")
+    
+    return new_device
 

@@ -7,7 +7,7 @@ from typing import List
 from src.data.dao.point_dao import PointDao
 from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import Yk
-from src.tools.transform import process_hex_address, decimal_to_hex
+from src.tools.transform import process_hex_address, decimal_to_hex, transform
 
 
 class YkService:
@@ -57,6 +57,8 @@ class YkService:
             ProtocolType.ModbusTcp,
             ProtocolType.ModbusRtu,
             ProtocolType.ModbusRtuOverTcp,
+            ProtocolType.ModbusTcpClient,
+            ProtocolType.ModbusUdp,
         ]:
             return Yk(
                 rtu_addr=item["rtu_addr"],
@@ -81,6 +83,20 @@ class YkService:
                 code=item["code"],
                 value=0,
                 frame_type=2,
+                command_type=item.get("command_type", 0),
+            )
+
+        elif protocol_type in [ProtocolType.Dlt645Server, ProtocolType.Dlt645Client]:
+            return Yk(
+                rtu_addr=1,
+                address=transform(process_hex_address(item["reg_addr"])),
+                bit=item["bit"] if item.get("bit") is not None else 0,
+                func_code=item["func_code"] if item.get("func_code") else 5,
+                name=item["name"],
+                code=item["code"],
+                value=0,
+                frame_type=2,
+                decode=item["decode_code"] if item.get("decode_code") else "0x20",
                 command_type=item.get("command_type", 0),
             )
 

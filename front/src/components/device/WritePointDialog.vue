@@ -7,10 +7,10 @@
     :close-on-click-modal="false"
   >
     <el-form :model="form" label-width="80px">
-      <el-form-item label="测点编码">
+      <el-form-item label="测点编码" class="center-input">
         <el-input v-model="form.pointCode" disabled />
       </el-form-item>
-      <el-form-item label="当前值">
+      <el-form-item label="当前值" class="center-input">
         <el-input v-model="form.currentValue" disabled />
       </el-form-item>
       
@@ -24,7 +24,12 @@
       
       <!-- 遥调 (YT) -->
       <el-form-item v-else-if="pointType === 3" label="设定值">
-        <el-input-number v-model="form.value" :controls="false" style="width: 100%" />
+        <el-input-number 
+          v-model="form.value" 
+          :controls="false" 
+          class="center-input"
+          style="width: 100%" 
+        />
       </el-form-item>
       
       <!-- 其他类型 fallback -->
@@ -102,3 +107,9 @@ const handleSubmit = async () => {
   }
 };
 </script>
+
+<style scoped>
+:deep(.center-input .el-input__inner) {
+  text-align: center;
+}
+</style>
