@@ -131,7 +131,6 @@ class GeneralDeviceBuilder:
 
     @property
     def generalDeviceIec104Server(self) -> Device:
-        print("初始化104服务器")
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
         self.importDataPoints()
@@ -144,7 +143,6 @@ class GeneralDeviceBuilder:
 
     @property
     def generalDeviceIec104Client(self) -> Device:
-        print("初始化104客户端")
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
         self.importDataPoints()
