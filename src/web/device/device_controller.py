@@ -134,7 +134,7 @@ async def get_table_by_slave_id(req: DeviceTableRequest, request: Request):
         device = get_device(req.device_name, request)
         head_data = device.get_table_head()
         table_data, total = device.get_table_data(
-            req.slave_id, req.point_name, req.page_index, req.pageSize, req.point_types
+            req.slave_id, req.point_name, req.page_index, req.page_size, req.point_types
         )
         data_dict = {"total": total, "head_data": head_data, "table_data": table_data}
         return BaseResponse(message="获取从机信息成功!", data=data_dict)

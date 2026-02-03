@@ -33,7 +33,7 @@
       <!-- 批量模式：数量输入 -->
       <template v-if="isBatch">
         <el-form-item label="添加数量" prop="batchCount">
-          <el-input-number v-model="batchCount" :min="1" :max="500" style="width: 100%" />
+          <el-input-number v-model="batchCount" :min="1" :max="10000" style="width: 100%" />
         </el-form-item>
         <el-form-item label="起始地址" prop="reg_addr">
           <el-input v-model="formData.reg_addr" placeholder="如: 0 或 0x0000" />

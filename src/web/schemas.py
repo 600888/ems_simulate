@@ -29,7 +29,7 @@ class DeviceTableRequest(BaseModel):
     slave_id: int
     point_name: Optional[str] = None
     page_index: int = 1
-    pageSize: int = 10
+    page_size: int = 10
     point_types: List[int] = Field(default_factory=list)
 
 class PointEditDataRequest(BaseModel):

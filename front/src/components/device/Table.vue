@@ -383,7 +383,7 @@ const handleReadPoint = async (pointCode: string) => {
       ElMessage.success(`读取成功: ${value}`);
       emit('refresh');
     } else {
-      ElMessage.warning('读取失败，请检查连接状态');
+      ElMessage.error('读取失败，请检查连接状态');
     }
   } catch (e) {
     ElMessage.error('读取失败');

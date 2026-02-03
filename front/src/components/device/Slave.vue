@@ -50,13 +50,32 @@
                 active-color="#3b82f6"
                 inactive-color="#94a3b8"
               />
+              <span class="auto-read-label">间隔(ms)</span>
+              <el-select
+                v-model="readInterval"
+                placeholder="间隔"
+                allow-create
+                filterable
+                default-first-option
+                style="width: 100px; margin-right: 12px;"
+                @change="handleIntervalChange"
+              >
+                <el-option
+                  v-for="item in intervalOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
               <el-button
                 v-if="!isAutoRead"
-                class="modern-btn manual-read-btn"
+                :type="isReading ? 'danger' : 'primary'"
+                class="modern-btn"
+                :class="isReading ? 'cancel-read-btn' : 'manual-read-btn'"
                 @click="handleManualRead"
-                :icon="Download"
+                :icon="isReading ? CircleCloseFilled : Download"
               >
-                手动读取
+                {{ isReading ? '取消读取' : '手动读取' }}
               </el-button>
             </div>
           </div>
@@ -130,8 +149,8 @@
 import { ref, onMounted, watch, onUnmounted, computed } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage, type TabsPaneContext } from "element-plus";
-import { Search, Refresh, Download, Plus, Delete } from "@element-plus/icons-vue";
-import { getSlaveIdList, getDeviceTable, resetPointData, getDeviceInfo, getAutoReadStatus, startAutoRead, stopAutoRead, manualRead, clearPoints, instance } from "@/api/deviceApi";
+import { Search, Refresh, Download, Plus, Delete, CircleCloseFilled } from "@element-plus/icons-vue";
+import { getSlaveIdList, getDeviceTable, resetPointData, getDeviceInfo, getAutoReadStatus, startAutoRead, stopAutoRead, manualRead, clearPoints, readSinglePoint, instance } from "@/api/deviceApi";
 import DeviceTable from "./Table.vue";
 import AddPointDialog from "./AddPointDialog.vue";
 import AddSlaveDialog from "./AddSlaveDialog.vue";
@@ -169,8 +188,14 @@ const showAddSlaveDialog = ref<boolean>(false);
 
 const pointTypes = computed<number[]>(() => Object.values(activeFilters.value).flat() as number[]);
 
-const handlePageIndexChange = (idx: number) => { pageIndex.value = idx; };
-const handlePageSizeChange = (size: number) => { pageSize.value = size; };
+const handlePageIndexChange = (idx: number) => { 
+  pageIndex.value = idx; 
+  handleSearch(currentSlaveId.value);
+};
+const handlePageSizeChange = (size: number) => { 
+  pageSize.value = size; 
+  handleSearch(currentSlaveId.value);
+};
 const handleFilterChange = (filters: Record<string, number>) => {
   activeFilters.value = filters;
   fetchDeviceTable(routeName.value, currentSlaveId.value, searchQuery.value[currentSlaveId.value] || "", pageIndex.value, pageSize.value);
@@ -312,13 +337,121 @@ const handleAutoReadChange = async (enabled: boolean) => {
   }
 };
 
+const isReading = ref(false);
+const cancelRead = ref(false);
+const readInterval = ref(100);
+const intervalOptions = ref([
+  { label: '10ms', value: 10 },
+  { label: '50ms', value: 50 },
+  { label: '100ms', value: 100 },
+  { label: '200ms', value: 200 },
+  { label: '500ms', value: 500 },
+  { label: '1000ms', value: 1000 },
+  { label: '2000ms', value: 2000 },
+  { label: '5000ms', value: 5000 },
+]);
+
+const handleIntervalChange = (val: string | number) => {
+  const numVal = Number(val);
+  if (!isNaN(numVal) && numVal > 0) {
+    const exists = intervalOptions.value.some(opt => opt.value === numVal);
+    if (!exists) {
+      intervalOptions.value.push({
+        label: `${numVal}ms`,
+        value: numVal
+      });
+      // Sort options optional, but good for UX? Maybe not needed if user just wants it added.
+      intervalOptions.value.sort((a, b) => a.value - b.value);
+    }
+    readInterval.value = numVal;
+  }
+};
+
 const handleManualRead = async () => {
-  const success = await manualRead(routeName.value);
-  if (success) {
-    await fetchDeviceTable(routeName.value, currentSlaveId.value, searchQuery.value[currentSlaveId.value] || "", pageIndex.value, pageSize.value);
-    ElMessage.success("手动读取成功");
-  } else {
-    ElMessage.error("手动读取失败");
+  if (isReading.value) {
+    cancelRead.value = true;
+    return;
+  }
+
+  isReading.value = true;
+  cancelRead.value = false;
+  readProgress.value = 0;
+  progressMessage.value = "正在获取测点列表...";
+
+  try {
+    // 1. 获取所有测点 (使用较大的 pageSize)
+    const data = await getDeviceTable(routeName.value, currentSlaveId.value, "", 1, 10000, pointTypes.value);
+    const allRows = data.get("table_data") || [];
+    const totalPoints = allRows.length;
+
+    if (totalPoints === 0) {
+      ElMessage.warning("当前从机没有测点");
+      isReading.value = false;
+      return;
+    }
+
+    progressMessage.value = "开始读取...";
+    
+    // 2. 循环读取
+    for (let i = 0; i < totalPoints; i++) {
+      if (cancelRead.value) {
+        progressMessage.value = "读取已取消";
+        ElMessage.warning("操作已取消");
+        break;
+      }
+
+      const row = allRows[i];
+      const pointCode = row[6]; // 测点编码在第7列 (索引6)
+      const pointName = row[5];
+      
+      progressMessage.value = `正在读取 [${i + 1}/${totalPoints}]: ${pointName}`;
+      
+      try {
+        const value = await readSinglePoint(routeName.value, pointCode);
+        
+        if (value !== null) {   
+          if (tableDataMap.value[currentSlaveId.value]) {
+             const currentTableData = tableDataMap.value[currentSlaveId.value].tableData;
+             const displayRow = currentTableData.find(r => r[6] === pointCode);
+             if (displayRow) {
+               displayRow[8] = value; // 真实值
+               displayRow[12] = "成功"; // 状态
+               // 暂时无法更新寄存器值(row[7])因为 readSinglePoint 只返回真实值
+               // 如果需要寄存器值，可能需要后端接口支持返回更多信息
+             }
+          }
+        }
+      } catch (e) {
+        console.warn(`读取测点 ${pointCode} 失败`);
+      }
+
+      if (readInterval.value > 0) {
+        await new Promise(resolve => setTimeout(resolve, readInterval.value));
+      }
+
+      readProgress.value = Math.floor(((i + 1) / totalPoints) * 100);
+    }
+    
+    if (!cancelRead.value) {
+      progressMessage.value = "读取完成";
+      ElMessage.success("读取完成");
+    }
+
+  } catch (e) {
+    console.error(e);
+    ElMessage.error("手动读取过程中出错");
+  } finally {
+    if (cancelRead.value) {
+       // If cancelled, reset immediately
+       isReading.value = false;
+       readProgress.value = 0;
+    } else {
+       // If finished normally, show 100% for a moment
+       setTimeout(() => {
+           isReading.value = false;
+           readProgress.value = 0;
+       }, 1000);
+    }
   }
 };
 
@@ -555,6 +688,13 @@ onUnmounted(() => { stopAutoRefresh(); });
     border: none;
     padding: 0 16px;
     &:hover { background-color: #059669; transform: translateY(-1px); }
+  }
+  &.cancel-read-btn {
+    background-color: var(--el-color-danger, #f56c6c);
+    color: white;
+    border: none;
+    padding: 0 16px;
+    &:hover { background-color: #f78989; transform: translateY(-1px); }
   }
   &.add-btn {
     background-color: #6366f1;
