@@ -58,7 +58,7 @@ class ModbusTcpClientWithCapture(ModbusTcpClient):
 
         # 处理响应
         try:
-            if response and not response.isError():
+            if response:
                 response_pdu = bytes([response.function_code]) + response.encode()
                 response_mbap_header = bytearray([
                     (transaction_id >> 8) & 0xFF,
@@ -109,7 +109,7 @@ class ModbusSerialClientWithCapture(ModbusSerialClient):
 
         # 处理响应
         try:
-            if response and not response.isError():
+            if response:
                 response_pdu = bytes([response.function_code]) + response.encode()
                 
                 # Reconstruct response frame for logging (Slave + PDU + CRC)
@@ -156,7 +156,7 @@ class ModbusRtuOverTcpClientWithCapture(ModbusTcpClient):
 
         # 处理响应
         try:
-            if response and not response.isError():
+            if response:
                 response_pdu = bytes([response.function_code]) + response.encode()
                 
                 pre_crc_resp = bytes([unit_id]) + response_pdu

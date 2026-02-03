@@ -389,17 +389,14 @@ class ModbusClientHandler(ClientHandler):
 
     async def read_value_async(self, point: BasePoint) -> Any:
         """异步读取测点值（用于 async 环境）"""
-        print(f"DEBUG: read_value_async called for {point.code}, func={point.func_code}, client={self._client}")
         if not self._client or not hasattr(point, "func_code"):
             if self._log: self._log.warning(f"read_value_async: client or point invalid. point={point}")
-            print("DEBUG: read_value_async client or point invalid")
             return None
         
         # 检查是否是异步客户端
         is_async = hasattr(self._client, 'read_value_by_address') and asyncio.iscoroutinefunction(self._client.read_value_by_address)
         
         if self._log: self._log.info(f"read_value_async: point={point.code}, addr={point.address}, func={point.func_code}, is_async={is_async}")
-        print(f"DEBUG: read_value_async is_async={is_async}")
 
         try:
             if is_async:

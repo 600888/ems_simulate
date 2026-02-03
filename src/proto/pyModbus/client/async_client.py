@@ -110,7 +110,7 @@ class AsyncModbusClient:
             if not self.message_capture:
                 return
 
-            if response and not response.isError():
+            if response:
                 # 构造响应 PDU
                 response_pdu = bytes([response.function_code]) + response.encode()
                 
