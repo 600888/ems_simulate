@@ -8,7 +8,7 @@ from src.web.channel.channel_controller import channel_router
 from src.web.device_group.device_group_controller import device_group_router
 from src.device_controller import get_device_controller
 from src.web.schemas import BaseResponse
-
+from src.web.log import log
 
 def create_app():
     app = FastAPI(title="EMS Simulator API")
@@ -41,6 +41,7 @@ async def startup_event():
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    log.error(f"服务器内部错误: {str(exc)}")
     return JSONResponse(
         status_code=500,
         content=BaseResponse(code=500, message=f"服务器内部错误: {str(exc)}", data={}).dict(),

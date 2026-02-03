@@ -16,7 +16,7 @@ from src.data.service.yx_service import YxService
 from src.data.service.yk_service import YkService
 from src.data.service.yt_service import YtService
 from src.tools.excel_point_importer import ExcelPointImporter
-from src.web.log import get_logger
+from src.web.log import log
 from src.config.config import Config
 from src.device.factory.general_device_builder import GeneralDeviceBuilder
 from src.device.types.general_device import GeneralDevice
@@ -28,7 +28,6 @@ from src.web.schemas import (
     CreateAndStartDeviceRequest
 )
 
-log = get_logger()
 
 # 创建路由对象
 channel_router = APIRouter(prefix="/channel", tags=["channel"])

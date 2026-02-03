@@ -212,7 +212,7 @@ const startFunction = async () => {
 
 // 状态轮询定时器
 let statusPollTimer: number | null = null;
-const STATUS_POLL_INTERVAL = 5000; // 5秒轮询一次
+const STATUS_POLL_INTERVAL = 1000; // 1秒轮询一次
 
 // 仅获取状态（不更新其他信息，减少开销）
 const fetchDeviceStatus = async () => {

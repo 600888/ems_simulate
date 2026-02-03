@@ -214,7 +214,7 @@ class IEC104ClientHandler(ClientHandler):
         
         # 检查 IEC104Client 的连接状态
         if hasattr(self._client, 'is_connected'):
-            if not self._client.is_connected():
+            if not self._client.is_connected:
                 self._is_running = False
                 return False
         

@@ -117,4 +117,4 @@ class SimulationController:
 
     def is_simulation_running(self) -> bool:
         """检查模拟线程是否运行"""
-        return self._simulation_thread and self._simulation_thread.is_alive()
+        return self._simulation_thread is not None and self._simulation_thread.is_alive()

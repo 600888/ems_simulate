@@ -31,6 +31,7 @@ class Log:
         colorful: bool = True,
         compression: Optional[str] = None,  # 新增压缩功能
         is_backtrace: bool = True,
+        enqueue: bool = True,
     ):
         # 移除 loguru 默认的 stderr handler，避免日志重复打印
         if not Log._default_handler_removed:
@@ -56,7 +57,7 @@ class Log:
             format=self._formatter,
             colorize=colorful,
             backtrace=True,
-            enqueue=True,
+            enqueue=enqueue,
             filter=lambda record: record["extra"]["task"] == filename,
         )
 
@@ -70,9 +71,27 @@ class Log:
             rotation=rotation_config,
             retention=f"{backup_count} days",
             compression=compression,
-            enqueue=True,
-            filter=lambda record: record["extra"]["task"] == filename,
+            enqueue=enqueue,
+            filter=self._create_filter(filename),
         )
+
+    def _create_filter(self, filename):
+        def filter_func(record):
+            task = record["extra"].get("task")
+            
+            # Normalize paths for comparison
+            task_norm = os.path.normpath(os.path.abspath(task)).lower() if task else ""
+            filename_norm = os.path.normpath(os.path.abspath(filename)).lower() if filename else ""
+            
+            is_match = task_norm == filename_norm
+            
+            # Debugging for web.log issues
+            if "web.log" in str(filename) and not is_match:
+                 # Only print if it looks like it SHOULD match (e.g. both are web.log variants)
+                 if "web.log" in str(task):
+                     print(f"DEBUG: Log Filter Mismatch! Record Task: '{task}' (norm: {task_norm}) vs Handler Filename: '{filename}' (norm: {filename_norm})")
+            return is_match
+        return filter_func
 
     def _formatter(self, record):
         # 处理消息内容
@@ -100,6 +119,10 @@ class Log:
             )
         else:
             file_info = f"[{record['file']}:{record['line']}]"
+        
+        # Escape Loguru tags in file_info and message
+        file_info = file_info.replace("<", "\\<").replace(">", "\\>")
+        message = message.replace("<", "\\<").replace(">", "\\>")
 
         level_color = LOG_COLORS.get(record["level"].name, "")
         return (

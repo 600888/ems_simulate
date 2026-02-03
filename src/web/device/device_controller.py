@@ -7,7 +7,7 @@ from src.config.global_config import UPLOAD_PLAN_DIR
 from src.device.core.device import Device
 from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import Yc, SimulateMethod
-from src.web.log import get_logger
+from src.web.log import log
 from src.web.schemas import (
     BaseResponse, DeviceNameListResponse, DeviceInfoRequest, DeviceInfoResponse,
     SlaveIdListRequest, SlaveIdListResponse, DeviceTableRequest,
@@ -19,8 +19,6 @@ from src.web.schemas import (
     ClearPointsRequest, PointsBatchCreateRequest, CurrentTableRequest, PointLimitGetRequest
 )
 from src.data.dao.channel_dao import ChannelDao
-
-log = get_logger()
 
 # WebSocket 连接管理器
 class ConnectionManager:
@@ -92,13 +90,13 @@ async def get_device_info(req: DeviceInfoRequest, request: Request):
             "ip": device.ip,
             "port": device.port,
             "type": device.protocol_type.value,
-            "simulation_status": bool(device.isSimulationRunning()),
+            "simulation_status": device.isSimulationRunning(),
             # 串口配置
             "serial_port": getattr(device, 'serial_port', None),
             "baudrate": getattr(device, 'baudrate', 9600),
             "databits": getattr(device, 'databits', 8),
             "stopbits": getattr(device, 'stopbits', 1),
-            "parity": getattr(device, 'parity', 'E'),
+            "parity": getattr(device, 'parity', 'N'),
         }
         
         # 获取 conn_type（服务端/客户端判断需要）
@@ -113,9 +111,7 @@ async def get_device_info(req: DeviceInfoRequest, request: Request):
         else:
              info_dict["conn_type"] = 2
         
-        # 使用统一接口获取协议运行状态
         info_dict["server_status"] = device.is_protocol_running()
-
         return DeviceInfoResponse(message="获取设备信息成功!", data=info_dict)
     except Exception as e:
         log.error(f"获取设备信息失败: {e}")
