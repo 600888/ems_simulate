@@ -324,9 +324,26 @@ class ModbusServer:
         self.is_running = False
         self.stop_event.set()
         
-        # 使用pymodbus提供的ServerStop函数停止服务器
-        await self.server.shutdown()
-        self._logger.info("Modbus服务器已停止")
+        # 检查 server 是否存在
+        if not self.server:
+            self._logger.warning("服务器实例不存在，无需停止")
+            return
+            
+        try:
+            # 主动关闭所有活动连接
+            if hasattr(self.server, 'active_connections'):
+                for conn in list(self.server.active_connections.values()):
+                    try:
+                        conn.close()
+                    except Exception as e:
+                        self._logger.debug(f"关闭连接时出错: {e}")
+                self.server.active_connections.clear()
+            
+            # 使用pymodbus提供的shutdown函数停止服务器
+            await self.server.shutdown()
+            self._logger.info("Modbus服务器已停止")
+        except Exception as e:
+            self._logger.error(f"停止服务器时出错: {e}")
 
     def startSync(self):
         """同步启动服务器（阻塞调用）"""

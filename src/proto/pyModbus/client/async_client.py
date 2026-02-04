@@ -69,8 +69,25 @@ class AsyncModbusClient:
     async def disconnect(self) -> None:
         """断开连接"""
         if self.client:
-            self.client.close()
-            self.connected = False
+            try:
+                # 先将连接状态设为 False，防止其他操作继续使用
+                self.connected = False
+                
+                # pymodbus 的 close() 是同步方法
+                self.client.close()
+                
+                # 等待一小段时间确保连接完全关闭
+                await asyncio.sleep(0.1)
+                
+                # 清理客户端引用
+                self.client = None
+                
+                if self.log:
+                    self.log.info("异步 Modbus 客户端已断开连接")
+            except Exception as e:
+                if self.log:
+                    self.log.error(f"断开连接时出错: {e}")
+                self.client = None
 
     # ===== 报文捕获辅助方法 =====
 

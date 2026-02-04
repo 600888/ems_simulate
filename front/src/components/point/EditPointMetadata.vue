@@ -95,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue';
+import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { getPointInfo, editPointMetadata } from '@/api/deviceApi';
 
@@ -153,6 +153,13 @@ const saveMetadata = async () => {
     ElMessage.error('更新失败: ' + error.message);
   }
 };
+
+// 监听 pointCode 变化，重新加载数据
+watch(() => props.pointCode, (newCode) => {
+  if (newCode) {
+    loadPointInfo();
+  }
+}, { immediate: true });
 
 onMounted(() => {
   loadPointInfo();

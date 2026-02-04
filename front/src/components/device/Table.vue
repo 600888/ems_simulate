@@ -17,7 +17,7 @@
       <el-table-column type="expand">
         <template #default="scope">
           <div class="expand-wrapper">
-            <el-tabs v-model="activeName" class="inner-tabs">
+            <el-tabs v-model="activeName" class="inner-tabs" lazy>
               <el-tab-pane label="配置与控制" name="数据解析和设置">
                 <div class="control-grid">
                   <SingleRegister

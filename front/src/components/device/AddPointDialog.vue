@@ -72,7 +72,7 @@
         </el-select>
       </el-form-item>
 
-      <el-form-item label="功能码" prop="func_code">
+      <el-form-item v-if="!isIec104" label="功能码" prop="func_code">
         <el-select v-model="formData.func_code" placeholder="选择功能码" style="width: 100%">
           <el-option
             v-for="fc in validFuncCodes"
@@ -156,7 +156,14 @@ const props = defineProps<{
   deviceName: string;
   slaveIdList: number[];
   currentSlaveId?: number;
+  protocolType?: string;
 }>();
+
+// 判断是否为 IEC104 协议（IEC104 不需要功能码）
+const isIec104 = computed(() => {
+  const pt = props.protocolType || '';
+  return pt === 'Iec104Client' || pt === 'Iec104Server';
+});
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void;
@@ -191,7 +198,7 @@ const formData = reactive<PointCreateData>({
   rtu_addr: 1,
   reg_addr: '0',
   func_code: 3,
-  decode_code: '0x41',
+  decode_code: '0x20',
   mul_coe: 1.0,
   add_coe: 0.0,
 });

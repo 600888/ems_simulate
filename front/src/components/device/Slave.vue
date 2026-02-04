@@ -82,10 +82,14 @@
         </div>
 
         <!-- 进度条区域 -->
-        <div v-if="readProgress > 0" class="progress-container">
+        <div v-if="isReading || readProgress > 0" class="progress-container">
           <div class="progress-info">
             <span class="progress-text">{{ progressMessage }}</span>
-            <span class="progress-percentage">{{ readProgress }}%</span>
+            <div class="progress-stats">
+              <span class="stat-success">成功: {{ successCount }}</span>
+              <span class="stat-fail">失败: {{ failCount }}</span>
+              <span class="progress-percentage">{{ readProgress }}%</span>
+            </div>
           </div>
           <el-progress 
             :percentage="readProgress" 
@@ -132,6 +136,7 @@
       :deviceName="routeName"
       :slaveIdList="slaveIdList"
       :currentSlaveId="currentSlaveId"
+      :protocolType="String(protocolType)"
       @success="handlePointAdded"
     />
     
@@ -339,6 +344,8 @@ const handleAutoReadChange = async (enabled: boolean) => {
 
 const isReading = ref(false);
 const cancelRead = ref(false);
+const successCount = ref(0);
+const failCount = ref(0);
 const readInterval = ref(100);
 const intervalOptions = ref([
   { label: '10ms', value: 10 },
@@ -373,6 +380,19 @@ const handleManualRead = async () => {
     return;
   }
 
+  // 检查设备连接状态
+  try {
+    const deviceInfo = await getDeviceInfo(routeName.value);
+    const serverStatus = deviceInfo?.get("server_status");
+    if (!serverStatus) {
+      ElMessage.error("设备未连接，请先启动设备后再进行读取操作");
+      return;
+    }
+  } catch (e) {
+    ElMessage.error("无法获取设备状态，请检查后端服务");
+    return;
+  }
+
   isReading.value = true;
   cancelRead.value = false;
   readProgress.value = 0;
@@ -391,6 +411,8 @@ const handleManualRead = async () => {
     }
 
     progressMessage.value = "开始读取...";
+    successCount.value = 0;
+    failCount.value = 0;
     
     // 2. 循环读取
     for (let i = 0; i < totalPoints; i++) {
@@ -410,18 +432,20 @@ const handleManualRead = async () => {
         const value = await readSinglePoint(routeName.value, pointCode);
         
         if (value !== null) {   
+          successCount.value++;
           if (tableDataMap.value[currentSlaveId.value]) {
              const currentTableData = tableDataMap.value[currentSlaveId.value].tableData;
              const displayRow = currentTableData.find(r => r[6] === pointCode);
              if (displayRow) {
                displayRow[8] = value; // 真实值
                displayRow[12] = "成功"; // 状态
-               // 暂时无法更新寄存器值(row[7])因为 readSinglePoint 只返回真实值
-               // 如果需要寄存器值，可能需要后端接口支持返回更多信息
              }
           }
+        } else {
+          failCount.value++;
         }
       } catch (e) {
+        failCount.value++;
         console.warn(`读取测点 ${pointCode} 失败`);
       }
 
@@ -433,8 +457,8 @@ const handleManualRead = async () => {
     }
     
     if (!cancelRead.value) {
-      progressMessage.value = "读取完成";
-      ElMessage.success("读取完成");
+      progressMessage.value = `读取完成 (成功: ${successCount.value}, 失败: ${failCount.value})`;
+      ElMessage.success(`读取完成，成功 ${successCount.value} 个，失败 ${failCount.value} 个`);
     }
 
   } catch (e) {
@@ -445,12 +469,16 @@ const handleManualRead = async () => {
        // If cancelled, reset immediately
        isReading.value = false;
        readProgress.value = 0;
+       successCount.value = 0;
+       failCount.value = 0;
     } else {
        // If finished normally, show 100% for a moment
        setTimeout(() => {
            isReading.value = false;
            readProgress.value = 0;
-       }, 1000);
+           successCount.value = 0;
+           failCount.value = 0;
+       }, 2000);
     }
   }
 };
@@ -736,13 +764,38 @@ onUnmounted(() => { stopAutoRefresh(); });
 .progress-info {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   margin-bottom: 8px;
   font-size: 14px;
   color: var(--text-secondary);
 }
 
+.progress-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.stat-success {
+  color: #10b981;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 4px;
+}
+
+.stat-fail {
+  color: #ef4444;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 4px;
+}
+
 .progress-percentage {
   font-weight: 600;
   color: var(--color-primary);
+  padding-left: 12px;
+  border-left: 1px solid var(--sidebar-border);
 }
 </style>
