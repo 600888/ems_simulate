@@ -312,10 +312,11 @@ export async function stopAutoRead(deviceName: string): Promise<boolean> {
     }
 }
 
-export async function manualRead(deviceName: string): Promise<boolean> {
+export async function manualRead(deviceName: string, interval: number = 0): Promise<any> {
     try {
         const data = await requestApi('/device/manual_read', 'post', {
             device_name: deviceName,
+            interval: interval
         });
         return data;
     } catch (error) {
@@ -437,6 +438,33 @@ export async function addSlave(deviceName: string, slaveId: number): Promise<boo
         return data;
     } catch (error) {
         console.error('Error adding slave:', error);
+        return false;
+    }
+}
+
+export async function deleteSlave(deviceName: string, slaveId: number): Promise<boolean> {
+    try {
+        const data = await requestApi('/device/delete_slave', 'post', {
+            device_name: deviceName,
+            slave_id: slaveId,
+        });
+        return data;
+    } catch (error) {
+        console.error('Error deleting slave:', error);
+        return false;
+    }
+}
+
+export async function editSlave(deviceName: string, oldSlaveId: number, newSlaveId: number): Promise<boolean> {
+    try {
+        const data = await requestApi('/device/edit_slave', 'post', {
+            device_name: deviceName,
+            old_slave_id: oldSlaveId,
+            new_slave_id: newSlaveId,
+        });
+        return data;
+    } catch (error) {
+        console.error('Error editing slave:', error);
         return false;
     }
 }

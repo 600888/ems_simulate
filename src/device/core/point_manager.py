@@ -118,7 +118,19 @@ class PointManager:
             protocol_type: 协议类型
         """
         log.debug(f"PointManager: Importing points for channel_id={channel_id}, protocol={protocol_type}")
-        # 导入遥测
+        
+        # 1. 首先加载从机配置 (Slave 表)
+        try:
+            from src.data.service.slave_service import SlaveService
+            slave_ids = SlaveService.get_slave_ids_by_channel(channel_id)
+            for slave_id in slave_ids:
+                if slave_id not in self.slave_id_list:
+                    self.slave_id_list.append(slave_id)
+            log.debug(f"PointManager: Loaded {len(slave_ids)} slaves from database: {slave_ids}")
+        except Exception as e:
+            log.error(f"Failed to load slaves from database: {e}")
+
+        # 2. 导入遥测 (兼容旧数据：如果测点存在但从机不在列表中，会自动添加)
         yc_list = YcService.get_list(channel_id, protocol_type)
         for point in yc_list:
             slave_id = point.rtu_addr

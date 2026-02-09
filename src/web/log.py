@@ -10,5 +10,5 @@ log = Log(
     limit=2048000,
     backup_count=1,
     colorful=True,
-    enqueue=False,
+    enqueue=True,  # 在异步环境中需要启用队列
 )

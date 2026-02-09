@@ -527,3 +527,33 @@ class PointDao:
         except Exception as e:
             log.error(f"删除测点失败: {str(e)}")
             raise e
+
+    @classmethod
+    def update_slave_id(cls, channel_id: int, old_slave_id: int, new_slave_id: int) -> int:
+        """批量更新从机地址
+        
+        Args:
+            channel_id: 通道ID
+            old_slave_id: 旧从机地址
+            new_slave_id: 新从机地址
+            
+        Returns:
+            更新的测点总数
+        """
+        try:
+            total_updated = 0
+            with local_session() as session:
+                with session.begin():
+                    for model in [PointYc, PointYx, PointYk, PointYt]:
+                        # update() returns the number of matched rows
+                        updated = (
+                            session.query(model)
+                            .where(model.channel_id == channel_id, model.rtu_addr == old_slave_id)
+                            .update({model.rtu_addr: new_slave_id}, synchronize_session=False)
+                        )
+                        total_updated += updated
+            log.info(f"已将通道 {channel_id} 下从机 {old_slave_id} 的 {total_updated} 个测点更新为从机 {new_slave_id}")
+            return total_updated
+        except Exception as e:
+            log.error(f"批量更新从机地址失败: {str(e)}")
+            raise e

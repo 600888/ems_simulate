@@ -358,6 +358,104 @@ class ModbusClientHandler(ClientHandler):
                 self._log.debug(f"异步读取错误: {e}")
             return None
 
+    async def read_registers_batch_async(
+        self, 
+        func_code: int, 
+        slave_id: int, 
+        start_address: int, 
+        count: int
+    ) -> List[int]:
+        """批量读取连续寄存器（优化方法）
+        
+        Args:
+            func_code: 功能码 (1=线圈, 2=离散输入, 3=保持寄存器, 4=输入寄存器)
+            slave_id: 从站地址
+            start_address: 起始寄存器地址
+            count: 读取的寄存器数量
+            
+        Returns:
+            寄存器值列表，失败返回空列表
+        """
+        if not self._client:
+            return []
+        
+        if not self.is_running:
+            return []
+        
+        # 检查是否是异步客户端
+        is_async_client = hasattr(self._client, 'read_holding_registers') and \
+                          asyncio.iscoroutinefunction(self._client.read_holding_registers)
+        
+        try:
+            if is_async_client:
+                # 异步客户端
+                return await asyncio.wait_for(
+                    self._read_registers_by_func_code_async(func_code, slave_id, start_address, count),
+                    timeout=2.0
+                )
+            else:
+                # 同步客户端，放到线程池执行
+                loop = asyncio.get_running_loop()
+                return await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        self._read_registers_by_func_code_sync,
+                        func_code, slave_id, start_address, count
+                    ),
+                    timeout=2.0
+                )
+        except asyncio.TimeoutError:
+            if self._log:
+                self._log.warning(f"批量读取超时: slave={slave_id}, addr={start_address}, count={count}")
+            return []
+        except Exception as e:
+            if self._log:
+                self._log.error(f"批量读取错误: {e}")
+            return []
+
+    async def _read_registers_by_func_code_async(
+        self,
+        func_code: int,
+        slave_id: int,
+        start_address: int,
+        count: int
+    ) -> List[int]:
+        """根据功能码异步读取寄存器"""
+        if func_code in (3, 6, 16):  # 保持寄存器
+            return await self._client.read_holding_registers(slave_id, start_address, count)
+        elif func_code == 4:  # 输入寄存器
+            return await self._client.read_input_registers(slave_id, start_address, count)
+        elif func_code in (1, 5, 15):  # 线圈
+            return await self._client.read_coils(slave_id, start_address, count)
+        elif func_code == 2:  # 离散输入
+            return await self._client.read_discrete_inputs(slave_id, start_address, count)
+        else:
+            if self._log:
+                self._log.warning(f"不支持的功能码批量读取: {func_code}")
+            return []
+
+    def _read_registers_by_func_code_sync(
+        self,
+        func_code: int,
+        slave_id: int,
+        start_address: int,
+        count: int
+    ) -> List[int]:
+        """根据功能码同步读取寄存器"""
+        if func_code in (3, 6, 16):  # 保持寄存器
+            return self._client.read_holding_registers(slave_id, start_address, count)
+        elif func_code == 4:  # 输入寄存器
+            return self._client.read_input_registers(slave_id, start_address, count)
+        elif func_code in (1, 5, 15):  # 线圈
+            return self._client.read_coils(slave_id, start_address, count)
+        elif func_code == 2:  # 离散输入
+            return self._client.read_discrete_inputs(slave_id, start_address, count)
+        else:
+            if self._log:
+                self._log.warning(f"不支持的功能码批量读取: {func_code}")
+            return []
+
+
     def write_value(self, point: BasePoint, value: Any) -> bool:
         """写入测点值（同步调用）"""
         if not self._client or not hasattr(point, "func_code"):

@@ -5,6 +5,7 @@ from src.data.model.base import Base
 from src.data.model.device_group import DeviceGroup, DeviceGroupDict
 from src.data.model.device import Device, DeviceDict
 from src.data.model.channel import Channel, ChannelDict
+from src.data.model.slave import Slave, SlaveDict
 from src.data.model.point_yc import PointYc, PointYcDict
 from src.data.model.point_yx import PointYx, PointYxDict
 from src.data.model.point_yk import PointYk, PointYkDict
@@ -18,6 +19,8 @@ __all__ = [
     "DeviceDict",
     "Channel",
     "ChannelDict",
+    "Slave",
+    "SlaveDict",
     "PointYc",
     "PointYcDict",
     "PointYx",

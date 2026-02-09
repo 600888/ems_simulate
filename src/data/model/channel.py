@@ -87,7 +87,7 @@ class Channel(Base):
 
     # 通用配置
     rtu_addr: Mapped[str] = mapped_column(
-        String(16), server_default="1", comment="从机地址/电表地址"
+        String(16), server_default="1", comment="电表地址(DLT645)"
     )
     timeout: Mapped[int] = mapped_column(
         Integer, server_default="5", comment="超时时间(秒)"
@@ -103,6 +103,7 @@ class Channel(Base):
     points_yx = relationship("PointYx", backref="channel", foreign_keys="PointYx.channel_id")
     points_yk = relationship("PointYk", backref="channel", foreign_keys="PointYk.channel_id")
     points_yt = relationship("PointYt", backref="channel", foreign_keys="PointYt.channel_id")
+    slaves = relationship("Slave", back_populates="channel")
 
     __table_args__ = {"comment": "通道表"}
 

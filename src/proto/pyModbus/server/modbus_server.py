@@ -400,6 +400,62 @@ class ModbusServer:
         """清空捕获的报文"""
         self.message_capture.clear()
 
+    def add_slave(self, slave_id: int):
+        """动态添加从站"""
+        if slave_id in self.slaves:
+            self._logger.warning(f"从站 {slave_id} 已存在")
+            return
+
+        # 创建新的从站上下文
+        from pymodbus.datastore import ModbusSequentialDataBlock, ModbusSlaveContext
+        self.slaves[slave_id] = ModbusSlaveContext(
+            di=ModbusSequentialDataBlock(0, [0] * 65535),
+            co=ModbusSequentialDataBlock(0, [0] * 65535),
+            hr=ModbusSequentialDataBlock(0, [0] * 65535),
+            ir=ModbusSequentialDataBlock(0, [0] * 65535),
+        )
+        # 更新 ServerContext
+        # 注意: pymodbus 的 ModbusServerContext 可能没有直接提供 add/remove slave 的公开接口
+        # 但通常可以通过修改 slaves 字典 (如果是非 single 模式)
+        if hasattr(self.context, '__setitem__'):
+             self.context[slave_id] = self.slaves[slave_id]
+        else:
+             # 如果 context 是对象且有 slaves 属性
+             if hasattr(self.context, 'slaves') and isinstance(self.context.slaves, dict):
+                 self.context.slaves[slave_id] = self.slaves[slave_id]
+        
+        if slave_id not in self._slave_id_list:
+            self._slave_id_list.append(slave_id)
+            self._slave_id_list.sort()
+            
+        self._logger.info(f"已动态添加从站: {slave_id}")
+
+    def remove_slave(self, slave_id: int):
+        """动态移除从站"""
+        if slave_id not in self.slaves:
+            self._logger.warning(f"从站 {slave_id} 不存在")
+            return
+
+        del self.slaves[slave_id]
+        
+        # 更新 ServerContext
+        try:
+            if hasattr(self.context, '__delitem__'):
+                 del self.context[slave_id]
+            else:
+                 if hasattr(self.context, 'slaves') and isinstance(self.context.slaves, dict):
+                     if slave_id in self.context.slaves:
+                        del self.context.slaves[slave_id]
+        except KeyError:
+            self._logger.warning(f"从站 {slave_id} 在 ServerContext 中不存在 (但在 slaves 中存在)")
+        except Exception as e:
+             self._logger.error(f"从 ServerContext 移除从站 {slave_id} 失败: {e}")
+
+        if slave_id in self._slave_id_list:
+            self._slave_id_list.remove(slave_id)
+            
+        self._logger.info(f"已动态移除从站: {slave_id}")
+
     def setValueByAddress(
         self,
         func_code,

@@ -16,6 +16,7 @@ LOG_COLORS = {
 }
 COLOR_RESET = "\033[1;0m"
 
+
 class Log:
     # 静态标记：确保只移除一次默认 handler
     _default_handler_removed = False
@@ -33,37 +34,46 @@ class Log:
         is_backtrace: bool = True,
         enqueue: bool = True,
     ):
-        # 移除 loguru 默认的 stderr handler，避免日志重复打印
+        # 只移除 loguru 默认的 stderr handler (ID 0)，避免删除其他模块已添加的 handlers
         if not Log._default_handler_removed:
-            logger.remove()
+            try:
+                logger.remove(0)  # 只移除默认 handler
+            except ValueError:
+                pass  # 默认 handler 可能已被移除
             Log._default_handler_removed = True
 
         self.is_backtrace = is_backtrace
-        self.logger = logger.bind(task=filename)
+        
         # 设置日志文件路径
         if filename is None:
             filename = getattr(sys.modules["__main__"], "__file__", "log.py")
             filename = os.path.basename(filename.replace(".py", ".log"))
 
+        # 规范化文件路径，确保 bind 和 filter 使用相同的路径格式
+        filename = os.path.normpath(os.path.abspath(filename))
+        
+        # 绑定 task 到 logger（必须使用规范化后的路径）
+        self.logger = logger.bind(task=filename)
+
         # 确保日志目录存在
-        log_dir = os.path.abspath(os.path.dirname(filename))
+        log_dir = os.path.dirname(filename)
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
         # 控制台输出配置
-        self.logger.add(
+        stderr_handler_id = self.logger.add(
             sys.stderr,
             level=cmdlevel,
             format=self._formatter,
             colorize=colorful,
             backtrace=True,
             enqueue=enqueue,
-            filter=lambda record: record["extra"]["task"] == filename,
+            filter=self._create_filter(filename),
         )
 
         # 文件输出配置
         rotation_config = self._get_rotation_config(when, limit)
-        self.logger.add(
+        file_handler_id = self.logger.add(
             filename,
             level=filelevel,
             format=self._formatter,
@@ -76,21 +86,14 @@ class Log:
         )
 
     def _create_filter(self, filename):
+        # 直接使用 filename 进行比较
+        target_filename = filename
+        
         def filter_func(record):
             task = record["extra"].get("task")
-            
-            # Normalize paths for comparison
-            task_norm = os.path.normpath(os.path.abspath(task)).lower() if task else ""
-            filename_norm = os.path.normpath(os.path.abspath(filename)).lower() if filename else ""
-            
-            is_match = task_norm == filename_norm
-            
-            # Debugging for web.log issues
-            if "web.log" in str(filename) and not is_match:
-                 # Only print if it looks like it SHOULD match (e.g. both are web.log variants)
-                 if "web.log" in str(task):
-                     print(f"DEBUG: Log Filter Mismatch! Record Task: '{task}' (norm: {task_norm}) vs Handler Filename: '{filename}' (norm: {filename_norm})")
-            return is_match
+            if not task:
+                return False
+            return task == target_filename
         return filter_func
 
     def _formatter(self, record):

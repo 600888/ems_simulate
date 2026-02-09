@@ -1,12 +1,33 @@
 <template>
   <div class="slave-container">
-    <el-tabs v-model="activeName" class="modern-tabs" @tab-click="handleClick" :before-leave="beforeLeave">
+    <el-tabs 
+      v-model="activeName" 
+      class="modern-tabs" 
+      @tab-click="handleClick" 
+      :before-leave="beforeLeave"
+      @tab-remove="handleTabRemove"
+    >
       <el-tab-pane
         v-for="slave in slaveIdList"
         :key="slave"
-        :label="`从机 ${slave}`"
         :name="slave.toString()"
       >
+        <template #label>
+          <span class="custom-tab-label">
+            <span>从机 {{ slave }}</span>
+            <span @click.stop>
+              <el-dropdown trigger="click" @command="handleCommand($event, slave)" class="tab-dropdown">
+                <el-icon class="more-btn"><MoreFilled /></el-icon>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="edit">编辑从机</el-dropdown-item>
+                    <el-dropdown-item command="delete" divided style="color: var(--el-color-danger)">删除从机</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </span>
+          </span>
+        </template>
         <!-- 搜索与控制栏 -->
         <div class="search-bar">
           <div class="search-left">
@@ -50,33 +71,55 @@
                 active-color="#3b82f6"
                 inactive-color="#94a3b8"
               />
-              <span class="auto-read-label">间隔(ms)</span>
-              <el-select
-                v-model="readInterval"
-                placeholder="间隔"
-                allow-create
-                filterable
-                default-first-option
-                style="width: 100px; margin-right: 12px;"
-                @change="handleIntervalChange"
-              >
-                <el-option
-                  v-for="item in intervalOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </el-select>
-              <el-button
-                v-if="!isAutoRead"
-                :type="isReading ? 'danger' : 'primary'"
-                class="modern-btn"
-                :class="isReading ? 'cancel-read-btn' : 'manual-read-btn'"
-                @click="handleManualRead"
-                :icon="isReading ? CircleCloseFilled : Download"
-              >
-                {{ isReading ? '取消读取' : '手动读取' }}
-              </el-button>
+              
+              <!-- 读取模式和手动读取按钮 -->
+              <div v-if="!isAutoRead" class="manual-read-section">
+                <el-divider direction="vertical" />
+                
+                <!-- 读取模式选择 -->
+                <el-tooltip 
+                  :content="readMode === 'batch' ? '批量读取：合并连续地址，一次性读取多个寄存器（推荐）' : '逐点读取：逐个测点读取，可设置间隔'"
+                  placement="top"
+                >
+                  <el-segmented
+                    v-model="readMode"
+                    :options="readModeOptions"
+                    size="small"
+                  />
+                </el-tooltip>
+
+                <!-- 间隔设置 (批量和逐点都支持) -->
+                <span class="auto-read-label">间隔</span>
+                <el-select
+                  v-model="readInterval"
+                  placeholder="间隔"
+                  allow-create
+                  filterable
+                  default-first-option
+                  style="width: 90px;"
+                  @change="handleIntervalChange"
+                  size="normal"
+                >
+                  <el-option
+                    v-for="item in intervalOptions"
+                    :key="item.value"
+                      :label="item.label"
+                      :value="item.value"
+                    />
+                  </el-select>
+
+                <!-- 手动读取按钮 -->
+                <el-button
+                  :type="isReading ? 'danger' : 'success'"
+                  class="modern-btn"
+                  :class="isReading ? 'cancel-read-btn' : 'manual-read-btn'"
+                  @click="handleManualRead"
+                  :icon="isReading ? CircleCloseFilled : Download"
+                  :loading="isReading && readMode === 'batch'"
+                >
+                  {{ isReading ? '取消' : (readMode === 'batch' ? '批量读取' : '逐点读取') }}
+                </el-button>
+              </div>
             </div>
           </div>
         </div>
@@ -147,18 +190,28 @@
       :existingSlaves="slaveIdList"
       @success="handleSlaveAdded"
     />
+
+    <!-- 编辑从机对话框 -->
+    <EditSlaveDialog
+      v-model="showEditSlaveDialog"
+      :deviceName="routeName"
+      :existingSlaves="slaveIdList"
+      :currentSlaveId="editSlaveId"
+      @success="handleSlaveEdited"
+    />
   </div>
 </template>
 
 <script lang="ts" setup>
 import { ref, onMounted, watch, onUnmounted, computed } from "vue";
 import { useRoute } from "vue-router";
-import { ElMessage, type TabsPaneContext } from "element-plus";
-import { Search, Refresh, Download, Plus, Delete, CircleCloseFilled } from "@element-plus/icons-vue";
-import { getSlaveIdList, getDeviceTable, resetPointData, getDeviceInfo, getAutoReadStatus, startAutoRead, stopAutoRead, manualRead, clearPoints, readSinglePoint, instance } from "@/api/deviceApi";
+import { ElMessage, ElMessageBox, type TabsPaneContext } from "element-plus";
+import { Search, Refresh, Download, Plus, Delete, CircleCloseFilled, MoreFilled } from "@element-plus/icons-vue";
+import { getSlaveIdList, getDeviceTable, resetPointData, getDeviceInfo, getAutoReadStatus, startAutoRead, stopAutoRead, manualRead, clearPoints, readSinglePoint, instance, deleteSlave } from "@/api/deviceApi";
 import DeviceTable from "./Table.vue";
 import AddPointDialog from "./AddPointDialog.vue";
 import AddSlaveDialog from "./AddSlaveDialog.vue";
+import EditSlaveDialog from "./EditSlaveDialog.vue";
 
 const route = useRoute();
 const routeName = ref(route.params.deviceName as string);
@@ -190,6 +243,8 @@ const needsAutoReadControls = computed(() => {
 });
 const showAddPointDialog = ref<boolean>(false);
 const showAddSlaveDialog = ref<boolean>(false);
+const showEditSlaveDialog = ref<boolean>(false);
+const editSlaveId = ref<number>(0);
 
 const pointTypes = computed<number[]>(() => Object.values(activeFilters.value).flat() as number[]);
 
@@ -255,15 +310,23 @@ const fetchAllDeviceTables = async () => {
 // 阻止切换到 "add" tab
 const beforeLeave = (activeName: string, oldActiveName: string) => {
   if (activeName === "add") {
-    showAddSlaveDialog.value = true;
-    return false; // 阻止切换
+    if (!isInternalSwitch.value) {
+      showAddSlaveDialog.value = true;
+      return false; // 用户点击时阻止切换
+    }
+    // 内部切换（如删除最后一个从机后），允许切换但不弹窗
+    return true;
   }
   return true;
 };
 
 const handleClick = (tab: TabsPaneContext) => {
   if (tab.paneName === "add") {
-    return; // beforeLeave 已处理
+    // 如果当前已经是 add（例如删光了所有从机），再次点击需要弹窗
+    if (activeName.value === "add") {
+        showAddSlaveDialog.value = true;
+    }
+    return; 
   }
   
   if (tab.index !== undefined) {
@@ -289,11 +352,104 @@ const handleClearPoints = async () => {
   const deletedCount = await clearPoints(routeName.value, currentSlaveId.value);
   if (deletedCount >= 0) {
     ElMessage.success(`清空成功，共删除 ${deletedCount} 个测点`);
-    handleSearch(currentSlaveId.value);
+    handleTableRefresh();
   } else {
     ElMessage.error("清空测点失败");
   }
 };
+
+const isInternalSwitch = ref(false);
+
+const handleDeleteSlave = async (slaveId: number) => {
+  try {
+    const success = await deleteSlave(routeName.value, slaveId);
+    if (success) {
+      ElMessage.success(`从机 ${slaveId} 删除成功`);
+      
+      // 标记为内部切换，防止触发 beforeLeave 的弹窗
+      isInternalSwitch.value = true;
+
+      // 重新加载从机列表
+      await fetchSlaveList();
+      
+      // 切换到第一个可用的从机，或添加页
+      if (slaveIdList.value.length > 0) {
+        // 如果删除的是当前选中的，切换到第一个
+        activeName.value = slaveIdList.value[0].toString();
+        currentSlaveId.value = slaveIdList.value[0];
+        // 刷新新的从机数据
+        await fetchDeviceTable(
+          routeName.value, 
+          currentSlaveId.value, 
+          searchQuery.value[currentSlaveId.value] || "", 
+          1, 
+          pageSize.value
+        );
+      } else {
+        activeName.value = "add";
+        currentSlaveId.value = 1; 
+      }
+
+      // 恢复标志位 (使用 setTimeout 确保在 Vue 更新周期之后)
+      setTimeout(() => {
+        isInternalSwitch.value = false;
+      }, 100);
+
+    } else {
+      ElMessage.error("删除从机失败");
+    }
+  } catch (e) {
+    console.error(e);
+    ElMessage.error("删除从机出错");
+  }
+};
+
+
+const handleTabRemove = (tabName: string | number) => {
+  const slaveId = Number(tabName);
+  
+  ElMessageBox.confirm(
+    `确定删除从机 ${slaveId} 吗？此操作不可恢复！`,
+    '警告',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  )
+    .then(() => {
+      handleDeleteSlave(slaveId);
+    })
+    .catch(() => {
+      // cancel
+    });
+};
+
+const handleCommand = (command: string | number | object, slaveId: number) => {
+  if (command === 'delete') {
+    handleTabRemove(slaveId);
+  } else if (command === 'edit') {
+    editSlaveId.value = slaveId;
+    showEditSlaveDialog.value = true;
+  }
+};
+
+const handleSlaveEdited = async (newSlaveId: number) => {
+  await fetchSlaveList();
+  // Switch to new slave ID
+  if (slaveIdList.value.includes(newSlaveId)) {
+    activeName.value = newSlaveId.toString();
+    currentSlaveId.value = newSlaveId;
+    await fetchDeviceTable(
+        routeName.value, 
+        currentSlaveId.value, 
+        searchQuery.value[currentSlaveId.value] || "", 
+        1, 
+        pageSize.value
+    );
+  }
+};
+
 
 // Watch for route param changes
 
@@ -358,6 +514,13 @@ const intervalOptions = ref([
   { label: '5000ms', value: 5000 },
 ]);
 
+// 读取模式: batch=批量读取(优化), single=逐点读取(传统)
+const readMode = ref<'batch' | 'single'>('batch');
+const readModeOptions = [
+  { label: '批量', value: 'batch' },
+  { label: '逐点', value: 'single' },
+];
+
 const handleIntervalChange = (val: string | number) => {
   const numVal = Number(val);
   if (!isNaN(numVal) && numVal > 0) {
@@ -396,10 +559,69 @@ const handleManualRead = async () => {
   isReading.value = true;
   cancelRead.value = false;
   readProgress.value = 0;
+  successCount.value = 0;
+  failCount.value = 0;
+
+  if (readMode.value === 'batch') {
+    // ========== 批量读取模式 ==========
+    await handleBatchRead();
+  } else {
+    // ========== 逐点读取模式 ==========
+    await handleSinglePointRead();
+  }
+};
+
+// 批量读取模式（优化版）
+const handleBatchRead = async () => {
+  progressMessage.value = "正在批量读取寄存器...";
+  
+  try {
+    const result = await manualRead(routeName.value, readInterval.value);
+    
+    // 如果返回的是对象则包含统计信息，否则视为全部成功
+    if (result) {
+      if (typeof result === 'object' && 'success' in result) {
+        successCount.value = result.success;
+        failCount.value = result.fail;
+        progressMessage.value = `批量读取完成 (成功: ${result.success}, 失败: ${result.fail})`;
+        ElMessage.success(`批量读取完成，成功 ${result.success} 个，失败 ${result.fail} 个`);
+      } else {
+        readProgress.value = 100;
+        progressMessage.value = "批量读取完成";
+        ElMessage.success("批量读取完成");
+      }
+
+      await fetchDeviceTable(
+        routeName.value, 
+        currentSlaveId.value, 
+        searchQuery.value[currentSlaveId.value] || "", 
+        pageIndex.value, 
+        pageSize.value
+      );
+      
+      readProgress.value = 100;
+    } else {
+      progressMessage.value = "批量读取失败";
+      ElMessage.error("批量读取失败");
+    }
+  } catch (e) {
+    console.error(e);
+    ElMessage.error("批量读取过程中出错");
+    progressMessage.value = "读取出错";
+  } finally {
+    setTimeout(() => {
+      isReading.value = false;
+      readProgress.value = 0;
+    }, 1500);
+  }
+};
+
+// 逐点读取模式（传统版）
+const handleSinglePointRead = async () => {
   progressMessage.value = "正在获取测点列表...";
 
   try {
-    // 1. 获取所有测点 (使用较大的 pageSize)
+    // 1. 获取所有测点
     const data = await getDeviceTable(routeName.value, currentSlaveId.value, "", 1, 10000, pointTypes.value);
     const allRows = data.get("table_data") || [];
     const totalPoints = allRows.length;
@@ -410,11 +632,9 @@ const handleManualRead = async () => {
       return;
     }
 
-    progressMessage.value = "开始读取...";
-    successCount.value = 0;
-    failCount.value = 0;
+    progressMessage.value = "开始逐点读取...";
     
-    // 2. 循环读取
+    // 2. 循环读取每个测点
     for (let i = 0; i < totalPoints; i++) {
       if (cancelRead.value) {
         progressMessage.value = "读取已取消";
@@ -423,32 +643,32 @@ const handleManualRead = async () => {
       }
 
       const row = allRows[i];
-      const pointCode = row[6]; // 测点编码在第7列 (索引6)
+      const pointCode = row[6];
       const pointName = row[5];
       
-      progressMessage.value = `正在读取 [${i + 1}/${totalPoints}]: ${pointName}`;
+      progressMessage.value = `[${i + 1}/${totalPoints}] ${pointName}`;
       
       try {
         const value = await readSinglePoint(routeName.value, pointCode);
         
         if (value !== null) {   
           successCount.value++;
+          // 更新表格显示
           if (tableDataMap.value[currentSlaveId.value]) {
-             const currentTableData = tableDataMap.value[currentSlaveId.value].tableData;
-             const displayRow = currentTableData.find(r => r[6] === pointCode);
-             if (displayRow) {
-               displayRow[8] = value; // 真实值
-               displayRow[12] = "成功"; // 状态
-             }
+            const currentTableData = tableDataMap.value[currentSlaveId.value].tableData;
+            const displayRow = currentTableData.find(r => r[6] === pointCode);
+            if (displayRow) {
+              displayRow[8] = value;
+            }
           }
         } else {
           failCount.value++;
         }
       } catch (e) {
         failCount.value++;
-        console.warn(`读取测点 ${pointCode} 失败`);
       }
 
+      // 读取间隔
       if (readInterval.value > 0) {
         await new Promise(resolve => setTimeout(resolve, readInterval.value));
       }
@@ -457,28 +677,26 @@ const handleManualRead = async () => {
     }
     
     if (!cancelRead.value) {
-      progressMessage.value = `读取完成 (成功: ${successCount.value}, 失败: ${failCount.value})`;
+      progressMessage.value = `完成 (成功: ${successCount.value}, 失败: ${failCount.value})`;
       ElMessage.success(`读取完成，成功 ${successCount.value} 个，失败 ${failCount.value} 个`);
     }
 
   } catch (e) {
     console.error(e);
-    ElMessage.error("手动读取过程中出错");
+    ElMessage.error("逐点读取过程中出错");
   } finally {
     if (cancelRead.value) {
-       // If cancelled, reset immediately
-       isReading.value = false;
-       readProgress.value = 0;
-       successCount.value = 0;
-       failCount.value = 0;
+      isReading.value = false;
+      readProgress.value = 0;
+      successCount.value = 0;
+      failCount.value = 0;
     } else {
-       // If finished normally, show 100% for a moment
-       setTimeout(() => {
-           isReading.value = false;
-           readProgress.value = 0;
-           successCount.value = 0;
-           failCount.value = 0;
-       }, 2000);
+      setTimeout(() => {
+        isReading.value = false;
+        readProgress.value = 0;
+        successCount.value = 0;
+        failCount.value = 0;
+      }, 2000);
     }
   }
 };
@@ -683,6 +901,38 @@ onUnmounted(() => { stopAutoRefresh(); });
   }
 }
 
+.custom-tab-label {
+  display: flex;
+  align-items: center;
+  justify-content: center; /* Ensure label content is centered */
+  height: 100%;
+
+  .tab-dropdown {
+    margin-left: 8px; /* More space */
+    display: flex;
+    align-items: center; /* Vertical center */
+    
+    .more-btn {
+      font-size: 20px; /* Larger icon */
+      color: var(--text-secondary);
+      cursor: pointer;
+      transform: rotate(90deg);
+      border-radius: 4px;
+      padding: 4px; /* Larger hit area */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      
+      &:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+        color: var(--color-primary);
+        transform: rotate(90deg) scale(1.1); /* Slight zoom on hover */
+      }
+    }
+  }
+}
+
 .search-bar {
   display: flex;
   justify-content: flex-start;
@@ -747,6 +997,27 @@ onUnmounted(() => { stopAutoRefresh(); });
   padding-left: 16px;
   border-left: 1px solid var(--sidebar-border);
   height: 34px;
+}
+
+.manual-read-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  
+  .el-divider--vertical {
+    height: 20px;
+    margin: 0 4px;
+  }
+  
+  :deep(.el-segmented) {
+    --el-segmented-item-selected-bg-color: var(--color-primary);
+    --el-segmented-item-selected-color: #fff;
+    
+    .el-segmented__item {
+      padding: 0 12px;
+      font-size: 12px;
+    }
+  }
 }
 
 .auto-read-label {

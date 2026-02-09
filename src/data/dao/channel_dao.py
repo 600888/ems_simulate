@@ -144,6 +144,7 @@ class ChannelDao:
         from src.data.model.point_yx import PointYx
         from src.data.model.point_yk import PointYk
         from src.data.model.point_yt import PointYt
+        from src.data.model.slave import Slave
         from src.data.model.device import Device
         
         try:
@@ -155,13 +156,16 @@ class ChannelDao:
                     session.query(PointYk).where(PointYk.channel_id == channel_id).delete()
                     session.query(PointYt).where(PointYt.channel_id == channel_id).delete()
                     
-                    # 2. 删除关联的设备 (Device 表)
+                    # 2. 删除关联的从机配置 (Slave 表)
+                    session.query(Slave).where(Slave.channel_id == channel_id).delete()
+
+                    # 3. 删除关联的设备 (Device 表)
                     # 先查出通道，获取 device_id
                     channel = session.query(Channel).where(Channel.id == channel_id).first()
                     if channel and channel.device_id:
                          session.query(Device).where(Device.id == channel.device_id).delete()
                     
-                    # 3. 再删除通道
+                    # 4. 再删除通道
                     if channel:
                         session.delete(channel)
                         return True

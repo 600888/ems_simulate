@@ -202,6 +202,19 @@ class SlaveAddRequest(BaseModel):
     slave_id: int = Field(..., description="从机地址 (1-255)")
 
 
+
+class SlaveDeleteRequest(BaseModel):
+    """删除从机请求"""
+    device_name: str = Field(..., description="设备名称")
+    slave_id: int = Field(..., description="从机地址")
+
+
+class SlaveEditRequest(BaseModel):
+    """编辑从机请求"""
+    device_name: str = Field(..., description="设备名称")
+    old_slave_id: int = Field(..., description="旧从机地址")
+    new_slave_id: int = Field(..., description="新从机地址 (1-255)")
+
 class ClearPointsRequest(BaseModel):
     """清空从机测点请求"""
     device_name: str = Field(..., description="设备名称")

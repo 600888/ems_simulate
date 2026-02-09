@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, File, UploadFile, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from copy import deepcopy
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from src.config.global_config import UPLOAD_PLAN_DIR
 from src.device.core.device import Device
@@ -9,13 +9,14 @@ from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import Yc, SimulateMethod
 from src.web.log import log
 from src.web.schemas import (
-    BaseResponse, DeviceNameListResponse, DeviceInfoRequest, DeviceInfoResponse,
+    BaseModel, BaseResponse, DeviceNameListResponse, DeviceInfoRequest, DeviceInfoResponse,
     SlaveIdListRequest, SlaveIdListResponse, DeviceTableRequest,
     PointEditDataRequest, PointLimitEditRequest, PointMetadataEditRequest,
     PointInfoRequest, SimulationStartRequest, SimulationStopRequest,
     SimulateMethodSetRequest, SimulateStepSetRequest, SimulateRangeSetRequest,
     DeviceStartRequest, DeviceStopRequest, DeviceResetRequest,
-    MessageListRequest, PointCreateRequest, PointDeleteRequest, SlaveAddRequest,
+    MessageListRequest, PointCreateRequest, PointDeleteRequest, SlaveAddRequest, SlaveDeleteRequest,
+    SlaveEditRequest,
     ClearPointsRequest, PointsBatchCreateRequest, CurrentTableRequest, PointLimitGetRequest
 )
 from src.data.dao.channel_dao import ChannelDao
@@ -52,6 +53,14 @@ manager = ConnectionManager()
 
 # 创建路由对象
 device_router = APIRouter(prefix="/device", tags=["device"]) 
+
+# 测试日志接口
+@device_router.get("/test_log")
+async def test_log():
+    """测试日志是否正常工作"""
+    log.info("测试日志 - INFO")
+    log.error("测试日志 - ERROR")
+    return {"message": "日志测试完成，请检查控制台和 web.log 文件"}
 
 # @device_router.websocket("/ws/{device_name}")
 # async def websocket_endpoint(websocket: WebSocket, device_name: str):
@@ -122,7 +131,7 @@ async def get_device_info(req: DeviceInfoRequest, request: Request):
 async def get_slave_id_list(req: SlaveIdListRequest, request: Request):
     try:
         device = get_device(req.device_name, request)
-        return SlaveIdListResponse(data=device.slave_id_list)
+        return SlaveIdListResponse(data=sorted(device.slave_id_list))
     except Exception as e:
         log.error(f"获取从机id列表失败: {e}")
         return SlaveIdListResponse(code=500, message=f"获取从机id列表失败: {e}!", data=[])
@@ -412,9 +421,13 @@ async def stop_auto_read(req: DeviceInfoRequest, request: Request):
         return BaseResponse(code=500, message=f"停止自动读取失败: {e}!", data=False)
 
 
+class ManualReadRequest(BaseModel):
+    device_name: str
+    interval: Optional[int] = 0
+
 # 手动读取
 @device_router.post("/manual_read", response_model=BaseResponse)
-async def manual_read(req: DeviceInfoRequest, request: Request):
+async def manual_read(req: ManualReadRequest, request: Request):
     try:
         device = get_device(req.device_name, request)
         
@@ -423,9 +436,9 @@ async def manual_read(req: DeviceInfoRequest, request: Request):
             await manager.broadcast(data, req.device_name)
             
         # 异步执行读取
-        await device.single_read(event_emitter=event_emitter)
+        stats = await device.single_read(event_emitter=event_emitter, interval_ms=req.interval)
         
-        return BaseResponse(message="手动读取成功!", data=True)
+        return BaseResponse(message="手动读取成功!", data=stats)
     except KeyError:
         return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=False)
     except Exception as e:
@@ -589,6 +602,41 @@ async def add_slave(req: SlaveAddRequest, request: Request):
         return BaseResponse(code=500, message=f"添加从机失败: {e}!", data=False)
 
 
+# 删除从机
+@device_router.post("/delete_slave", response_model=BaseResponse)
+async def delete_slave(req: SlaveDeleteRequest, request: Request):
+    try:
+        device = get_device(req.device_name, request)
+        success = device.delete_slave_dynamic(req.slave_id)
+        if success:
+            return BaseResponse(message="删除从机成功!", data=True)
+        else:
+            return BaseResponse(code=500, message="删除从机失败!", data=False)
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=False)
+    except Exception as e:
+        log.error(f"删除从机失败: {e}")
+        return BaseResponse(code=500, message=f"删除从机失败: {e}!", data=False)
+
+
+# 编辑从机
+@device_router.post("/edit_slave", response_model=BaseResponse)
+async def edit_slave(req: SlaveEditRequest, request: Request):
+    try:
+        device = get_device(req.device_name, request)
+        success = device.edit_slave_dynamic(req.old_slave_id, req.new_slave_id)
+        if success:
+            return BaseResponse(message="编辑从机成功!", data=True)
+        else:
+            return BaseResponse(code=400, message="编辑从机失败，请检查新从机地址是否有效或已存在!", data=False)
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=False)
+    except Exception as e:
+        log.error(f"编辑从机失败: {e}")
+        return BaseResponse(code=500, message=f"编辑从机失败: {e}!", data=False)
+
+
+
 # 清空从机测点
 @device_router.post("/clear_points", response_model=BaseResponse)
 async def clear_points(req: ClearPointsRequest, request: Request):
@@ -596,6 +644,7 @@ async def clear_points(req: ClearPointsRequest, request: Request):
         device = get_device(req.device_name, request)
         deleted_count = device.clear_points_by_slave(req.slave_id)
         if deleted_count >= 0:
+            log.info(f"清空成功，共删除 {deleted_count} 个测点!")
             return BaseResponse(message=f"清空成功，共删除 {deleted_count} 个测点!", data=deleted_count)
         else:
             return BaseResponse(code=500, message="清空测点失败!", data=0)

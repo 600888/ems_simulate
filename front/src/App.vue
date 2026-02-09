@@ -11,8 +11,10 @@ import { currentTheme } from "@/utils/theme";
       <el-container direction="vertical">
         <AppHeader />
         <el-main class="main-content">
-          <el-scrollbar>
-            <router-view />
+          <el-scrollbar view-class="app-scrollbar-view">
+            <div class="app-view-container">
+              <router-view />
+            </div>
             <!-- 全局底部版权 -->
             <footer class="app-footer">
               Copyright © 2026 CDY
@@ -47,6 +49,18 @@ import { currentTheme } from "@/utils/theme";
   flex-direction: column;
 }
 
+/* 修复内容不足时 footer 上浮的问题 */
+.app-scrollbar-view {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-view-container {
+  flex: 1;
+  /* 确保有一定的内边距，如果不希望全局设置，可以在具体页面设置 */
+}
+
 .app-footer {
   height: 32px;
   line-height: 32px;
@@ -56,5 +70,6 @@ import { currentTheme } from "@/utils/theme";
   opacity: 0.6;
   background-color: var(--bg-main);
   flex-shrink: 0;
+  margin-top: auto; /* 双重保险，确保沉底 */
 }
 </style>
