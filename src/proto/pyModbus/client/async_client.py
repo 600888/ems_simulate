@@ -9,7 +9,7 @@ from typing import List, Optional, Union, Any
 from pymodbus.client import AsyncModbusTcpClient
 from pymodbus.exceptions import ModbusException
 from src.enums.modbus_def import ProtocolType
-from src.device.core.message_capture import MessageCapture
+from src.device.core.message.message_capture import MessageCapture
 from src.enums.modbus_register import Decode
 
 # 导入所有需要的 PDU 类

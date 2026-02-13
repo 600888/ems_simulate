@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     title="实时报文查看"
-    width="900px"
+    width="1100px"
     :before-close="handleClose"
     destroy-on-close
     class="message-dialog"
@@ -47,9 +47,14 @@
           <span class="length-badge">{{ row.length }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="hex_data" label="数据 (HEX)" min-width="400" align="center" header-align="center">
+      <el-table-column prop="hex_data" label="数据 (HEX)" min-width="350" align="center" header-align="center">
         <template #default="{ row }">
           <span class="hex-data" :title="row.hex_data">{{ row.hex_data }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="description" label="解析" min-width="280" header-align="center">
+        <template #default="{ row }">
+          <span class="desc-text" :title="row.description">{{ row.description }}</span>
         </template>
       </el-table-column>
     </el-table>
@@ -219,6 +224,12 @@ onUnmounted(() => {
     text-align: center;
     font-size: 12px;
     font-weight: 500;
+  }
+
+  .desc-text {
+    font-size: 13px;
+    color: var(--text-secondary, #555);
+    word-break: break-all;
   }
 }
 </style>

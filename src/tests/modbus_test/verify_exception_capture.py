@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock
 from pymodbus.pdu import ExceptionResponse, ModbusRequest
 from src.proto.pyModbus.client.capture import ModbusTcpClientWithCapture
-from src.device.core.message_capture import MessageCapture
+from src.device.core.message.message_capture import MessageCapture
 
 class TestModbusExceptionCapture(unittest.TestCase):
     def test_capture_exception_response(self):

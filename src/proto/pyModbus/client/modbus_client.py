@@ -7,7 +7,7 @@ from pymodbus.framer import Framer
 from pymodbus.pdu import ModbusRequest
 from datetime import datetime
 from src.enums.modbus_def import ProtocolType
-from src.device.core.message_capture import MessageCapture
+from src.device.core.message.message_capture import MessageCapture
 
 # 从子模块导入捕获客户端
 from .capture import (

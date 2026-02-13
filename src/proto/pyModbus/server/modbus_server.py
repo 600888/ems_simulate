@@ -27,7 +27,7 @@ from pymodbus.server.async_io import ModbusServerRequestHandler
 from src.enums.modbus_register import Decode, DecodeType
 from src.proto.pyModbus import helper
 from src.enums.modbus_def import ProtocolType
-from src.device.core.message_capture import MessageCapture
+from src.device.core.message.message_capture import MessageCapture
 
 # 从子模块导入捕获Framer
 from .capture import CreateCaptureSocketFramer, CreateCaptureRtuFramer

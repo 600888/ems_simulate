@@ -2,7 +2,7 @@ from typing import List, Optional, Callable, Dict, Any
 import c104
 import time
 from src.proto.iec104.log import log
-from src.device.core.message_capture import MessageCapture
+from src.device.core.message.message_capture import MessageCapture
 
 
 class IEC104Client:

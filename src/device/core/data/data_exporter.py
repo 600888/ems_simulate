@@ -5,7 +5,7 @@
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from src.device.core.point_manager import PointManager
+from src.device.core.point.point_manager import PointManager
 from src.enums.point_data import Yc, Yx, Yt, Yk
 
 
