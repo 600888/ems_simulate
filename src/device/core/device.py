@@ -492,6 +492,10 @@ class Device:
         """清空报文历史记录"""
         self.message_formatter.clear_messages()
 
+    def get_avg_time(self) -> dict:
+        """获取平均收发时间"""
+        return self.message_formatter.get_avg_time()
+
     # ===== 日志 =====
 
     @property

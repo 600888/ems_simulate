@@ -142,6 +142,16 @@ class ProtocolHandler(ABC):
         """清空捕获的报文"""
         pass
 
+    def get_avg_time(self) -> dict:
+        """获取平均收发时间
+
+        Returns:
+            统计字典，包含发送/接收报文数量、平均间隔等
+        """
+        if self._message_capture and hasattr(self._message_capture, 'get_avg_time'):
+            return self._message_capture.get_avg_time()
+        return {}
+
 
 class ServerHandler(ProtocolHandler):
     """服务端协议处理器基类"""

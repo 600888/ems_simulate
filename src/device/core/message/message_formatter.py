@@ -8,7 +8,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, List, Optional
 
 from src.enums.modbus_def import ProtocolType
-from src.device.core.message.message_parser import ModbusMessageParser
+from src.device.core.message.message_parser import (
+    ModbusMessageParser,
+    DLT645MessageParser,
+    IEC104MessageParser,
+)
 
 if TYPE_CHECKING:
     from src.device.core.device import Device
@@ -28,6 +32,18 @@ _MODBUS_RTU_TYPES = {
 
 # 所有 Modbus 协议类型
 _MODBUS_ALL_TYPES = _MODBUS_TCP_TYPES | _MODBUS_RTU_TYPES
+
+# DLT645 协议类型集合
+_DLT645_TYPES = {
+    ProtocolType.Dlt645Server,
+    ProtocolType.Dlt645Client,
+}
+
+# IEC104 协议类型集合
+_IEC104_TYPES = {
+    ProtocolType.Iec104Server,
+    ProtocolType.Iec104Client,
+}
 
 
 class MessageFormatter:
@@ -73,6 +89,8 @@ class MessageFormatter:
         protocol_type = self._device.protocol_type
         is_modbus = protocol_type in _MODBUS_ALL_TYPES
         is_tcp = protocol_type in _MODBUS_TCP_TYPES
+        is_dlt645 = protocol_type in _DLT645_TYPES
+        is_iec104 = protocol_type in _IEC104_TYPES
 
         # 统一显示格式
         result = []
@@ -115,6 +133,10 @@ class MessageFormatter:
                         )
                     # 响应处理完后清空请求信息，避免错误关联
                     last_request_info = None
+            elif is_dlt645 and raw_hex:
+                description = DLT645MessageParser.parse(raw_hex)
+            elif is_iec104 and raw_hex:
+                description = IEC104MessageParser.parse(raw_hex)
 
             result.append({
                 "sequence_id": msg.get("sequence_id", 0),
@@ -139,4 +161,14 @@ class MessageFormatter:
         """清空报文历史记录"""
         if self._handler and hasattr(self._handler, 'clear_captured_messages'):
             self._handler.clear_captured_messages()
+
+    def get_avg_time(self) -> dict:
+        """获取平均收发时间
+
+        Returns:
+            统计字典，包含发送/接收报文数量、平均间隔等
+        """
+        if self._handler and hasattr(self._handler, 'get_avg_time'):
+            return self._handler.get_avg_time()
+        return {}
 

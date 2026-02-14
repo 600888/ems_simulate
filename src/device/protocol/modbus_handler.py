@@ -150,6 +150,12 @@ class ModbusServerHandler(ServerHandler):
         if self._server:
             self._server.clearCapturedMessages()
 
+    def get_avg_time(self) -> dict:
+        """获取平均收发时间"""
+        if self._server and hasattr(self._server, 'message_capture'):
+            return self._server.message_capture.get_avg_time()
+        return {}
+
 
 class ModbusClientHandler(ClientHandler):
     """Modbus 客户端处理器"""
@@ -581,3 +587,9 @@ class ModbusClientHandler(ClientHandler):
         """清空捕获的报文"""
         if self._client:
             self._client.clearCapturedMessages()
+
+    def get_avg_time(self) -> dict:
+        """获取平均收发时间"""
+        if self._client and hasattr(self._client, 'message_capture'):
+            return self._client.message_capture.get_avg_time()
+        return {}

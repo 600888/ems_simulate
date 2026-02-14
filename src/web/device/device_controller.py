@@ -498,6 +498,20 @@ async def clear_messages(req: DeviceInfoRequest, request: Request):
         return BaseResponse(code=500, message=f"清空报文历史失败: {e}!", data=False)
 
 
+# 获取报文平均收发时间
+@device_router.post("/get_avg_time", response_model=BaseResponse)
+async def get_avg_time(req: DeviceInfoRequest, request: Request):
+    try:
+        device = get_device(req.device_name, request)
+        stats = device.get_avg_time()
+        return BaseResponse(message="获取平均收发时间成功!", data=stats)
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=None)
+    except Exception as e:
+        log.error(f"获取平均收发时间失败: {e}")
+        return BaseResponse(code=500, message=f"获取平均收发时间失败: {e}!", data=None)
+
+
 # ===== 动态测点/从机管理接口 =====
 
 # 添加测点

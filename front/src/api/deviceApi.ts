@@ -375,6 +375,26 @@ export async function clearMessages(deviceName: string): Promise<boolean> {
     }
 }
 
+export interface AvgTimeStats {
+    tx_count: number;
+    rx_count: number;
+    total_count: number;
+    pair_count: number;
+    avg_latency_ms: number;
+}
+
+export async function getAvgTime(deviceName: string): Promise<AvgTimeStats | null> {
+    try {
+        const data = await requestApi('/device/get_avg_time', 'post', {
+            device_name: deviceName,
+        });
+        return data;
+    } catch (error) {
+        console.error('Error getting avg time:', error);
+        return null;
+    }
+}
+
 // ===== 动态测点/从机管理 =====
 
 export interface PointCreateData {

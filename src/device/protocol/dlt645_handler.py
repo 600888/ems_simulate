@@ -211,6 +211,30 @@ class DLT645ServerHandler(ServerHandler):
         if self._server and hasattr(self._server, 'clear_captured_messages'):
             self._server.clear_captured_messages()
 
+    def get_avg_time(self) -> dict:
+        """获取平均收发时间"""
+        if not self._server:
+            return {}
+        try:
+            stats = self._server.get_message_capture_stats()
+            pairs = self._server.get_captured_pairs()
+            # 从配对中计算平均延迟
+            complete_pairs = [p for p in pairs if p.is_complete() and p.round_trip_time is not None]
+            pair_count = len(complete_pairs)
+            avg_latency_ms = 0.0
+            if pair_count > 0:
+                total_rtt = sum(p.round_trip_time for p in complete_pairs)
+                avg_latency_ms = round((total_rtt / pair_count) * 1000, 2)
+            return {
+                "tx_count": stats.get("tx_count", 0),
+                "rx_count": stats.get("rx_count", 0),
+                "total_count": stats.get("tx_count", 0) + stats.get("rx_count", 0),
+                "pair_count": pair_count,
+                "avg_latency_ms": avg_latency_ms,
+            }
+        except Exception:
+            return {}
+
 
 class DLT645ClientHandler(ClientHandler):
     """DLT645 客户端处理器
@@ -453,3 +477,27 @@ class DLT645ClientHandler(ClientHandler):
         """清空捕获的报文"""
         if self._client and hasattr(self._client, 'clear_captured_messages'):
             self._client.clear_captured_messages()
+
+    def get_avg_time(self) -> dict:
+        """获取平均收发时间"""
+        if not self._client:
+            return {}
+        try:
+            stats = self._client.get_message_capture_stats()
+            pairs = self._client.get_captured_pairs()
+            # 从配对中计算平均延迟
+            complete_pairs = [p for p in pairs if p.is_complete() and p.round_trip_time is not None]
+            pair_count = len(complete_pairs)
+            avg_latency_ms = 0.0
+            if pair_count > 0:
+                total_rtt = sum(p.round_trip_time for p in complete_pairs)
+                avg_latency_ms = round((total_rtt / pair_count) * 1000, 2)
+            return {
+                "tx_count": stats.get("tx_count", 0),
+                "rx_count": stats.get("rx_count", 0),
+                "total_count": stats.get("tx_count", 0) + stats.get("rx_count", 0),
+                "pair_count": pair_count,
+                "avg_latency_ms": avg_latency_ms,
+            }
+        except Exception:
+            return {}

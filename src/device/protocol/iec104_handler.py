@@ -144,6 +144,12 @@ class IEC104ServerHandler(ServerHandler):
         if self._server and hasattr(self._server, 'clear_captured_messages'):
             self._server.clear_captured_messages()
 
+    def get_avg_time(self) -> dict:
+        """获取平均收发时间"""
+        if self._server and hasattr(self._server, 'message_capture'):
+            return self._server.message_capture.get_avg_time()
+        return {}
+
 
 class IEC104ClientHandler(ClientHandler):
     """IEC104 客户端处理器"""
@@ -309,3 +315,9 @@ class IEC104ClientHandler(ClientHandler):
         """清空捕获的报文"""
         if self._client and hasattr(self._client, 'clear_captured_messages'):
             self._client.clear_captured_messages()
+
+    def get_avg_time(self) -> dict:
+        """获取平均收发时间"""
+        if self._client and hasattr(self._client, 'message_capture'):
+            return self._client.message_capture.get_avg_time()
+        return {}

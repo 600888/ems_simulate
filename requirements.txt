@@ -13,4 +13,4 @@ c104
 fastapi 
 uvicorn[standard]
 python-multipart
-dlt645==1.3.4
+dlt645==1.3.5

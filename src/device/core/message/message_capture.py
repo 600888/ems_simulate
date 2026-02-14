@@ -46,6 +46,13 @@ class MessageCapture:
         self._enabled = True
         self._sequence_counter = 0
 
+        # 平均收发时间统计：追踪 TX→RX 配对的延迟
+        self._tx_count: int = 0
+        self._rx_count: int = 0
+        self._pending_tx_time: float = 0.0   # 最近一次 TX 的时间戳，等待配对 RX
+        self._pair_count: int = 0             # 已配对的 TX→RX 次数
+        self._total_latency: float = 0.0      # 所有配对延迟的累计（秒）
+
     def enable(self):
         self._enabled = True
 
@@ -60,6 +67,10 @@ class MessageCapture:
         """添加发送报文"""
         if not self._enabled: return
         with self._lock:
+            self._tx_count += 1
+            # 记录 TX 时间，等待下一个 RX 配对
+            self._pending_tx_time = time.time()
+
             seq = self._get_next_sequence()
             self._queue.append(MessageRecord("TX", data, seq))
 
@@ -67,8 +78,41 @@ class MessageCapture:
         """添加接收报文"""
         if not self._enabled: return
         with self._lock:
+            now = time.time()
+            self._rx_count += 1
+
+            # 如果有待配对的 TX，计算本次收发延迟
+            if self._pending_tx_time > 0:
+                latency = now - self._pending_tx_time
+                self._total_latency += latency
+                self._pair_count += 1
+                self._pending_tx_time = 0.0  # 清除，避免重复配对
+
             seq = self._get_next_sequence()
             self._queue.append(MessageRecord("RX", data, seq))
+
+    def get_avg_time(self) -> Dict[str, Any]:
+        """获取平均收发时间
+
+        计算 TX→RX 配对的平均延迟（即请求到响应的平均耗时）。
+
+        Returns:
+            统计字典，包含报文数量和平均收发延迟（毫秒）
+        """
+        with self._lock:
+            avg_latency_ms = 0.0
+            if self._pair_count > 0:
+                avg_latency_ms = round(
+                    (self._total_latency / self._pair_count) * 1000, 2
+                )
+
+            return {
+                "tx_count": self._tx_count,
+                "rx_count": self._rx_count,
+                "total_count": self._tx_count + self._rx_count,
+                "pair_count": self._pair_count,
+                "avg_latency_ms": avg_latency_ms,
+            }
 
     def get_messages(self, count: int = 0) -> List[Dict[str, Any]]:
         """获取报文列表"""
@@ -82,3 +126,9 @@ class MessageCapture:
         """清空报文"""
         with self._lock:
             self._queue.clear()
+            # 重置统计数据
+            self._tx_count = 0
+            self._rx_count = 0
+            self._pending_tx_time = 0.0
+            self._pair_count = 0
+            self._total_latency = 0.0

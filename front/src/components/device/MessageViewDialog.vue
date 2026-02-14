@@ -22,6 +22,9 @@
       </div>
       <div class="right-info">
         <span class="msg-count">共 {{ messages.length }} 条报文</span>
+        <el-tag v-if="avgStats && avgStats.pair_count > 0" type="warning" size="small">
+          平均延时: {{ avgStats.avg_latency_ms }} ms ({{ avgStats.pair_count }} 对)
+        </el-tag>
         <el-tag v-if="autoRefresh" type="success" size="small">自动刷新中</el-tag>
         <el-tag v-else type="info" size="small">已暂停</el-tag>
       </div>
@@ -67,7 +70,7 @@
 
 <script lang="ts" setup>
 import { ref, watch, onUnmounted, computed } from 'vue';
-import { getMessages, clearMessages, type MessageRecord } from '@/api/deviceApi';
+import { getMessages, clearMessages, getAvgTime, type MessageRecord, type AvgTimeStats } from '@/api/deviceApi';
 import { CaretRight, VideoPause, Delete } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
@@ -86,6 +89,7 @@ const visible = computed({
 });
 
 const messages = ref<MessageRecord[]>([]);
+const avgStats = ref<AvgTimeStats | null>(null);
 const autoRefresh = ref(true);
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -93,6 +97,7 @@ const fetchMessages = async () => {
   if (!props.deviceName) return;
   try {
     messages.value = await getMessages(props.deviceName, 200);
+    avgStats.value = await getAvgTime(props.deviceName);
   } catch (error) {
     console.error('Failed to fetch messages:', error);
   }
@@ -129,6 +134,7 @@ const handleClear = async () => {
     const success = await clearMessages(props.deviceName);
     if (success) {
       messages.value = [];
+      avgStats.value = null;
       ElMessage.success('报文已清空');
     } else {
       ElMessage.error('清空失败');
