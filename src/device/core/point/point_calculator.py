@@ -60,6 +60,11 @@ class PointCalculator:
     def reload_mappings(self):
         """重新加载映射规则"""
         try:
+            # 1. 重置所有测点的锁定状态
+            if self.pm:
+                for point in self.pm.get_all_points():
+                    point.is_locked_by_mapping = False
+
             mappings = PointMappingService.get_all_mappings()
             # 仅加载目标为当前设备的映射
             self._mappings = [
@@ -69,8 +74,18 @@ class PointCalculator:
             self._build_dependency_map()
             self._subscribe_events()
             
-            # 立即执行所有映射计算，确保值更新
+            # 立即执行所有映射计算，确保值更新，并锁定目标点
             for mapping in self._mappings:
+                try:
+                    target_code = mapping.get('target_point_code')
+                    if target_code:
+                        target_point = self.pm.get_point_by_code(target_code)
+                        if target_point:
+                            target_point.is_locked_by_mapping = True
+                            log.info(f"Point {target_code} is now locked by mapping {mapping['id']}")
+                except Exception as ex:
+                    log.warning(f"Failed to lock target point for mapping {mapping['id']}: {ex}")
+
                 self._executor.submit(self._execute_calculation, mapping['id'])
 
             log.info(f"PointCalculator for {self.device.name} loaded {len(self._mappings)} mappings")

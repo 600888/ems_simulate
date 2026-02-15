@@ -23,6 +23,10 @@ class PointSimulator:
 
     def simulate(self):
         """模拟测点值变化"""
+        # 如果测点被映射锁定，则不进行模拟
+        if self.point.is_locked_by_mapping:
+           return
+
         current_time = time.time()
 
         if isinstance(self.point, Yx):

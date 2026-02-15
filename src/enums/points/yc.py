@@ -133,11 +133,11 @@ class Yc(BasePoint):
 
     @property
     def real_value(self) -> float:
-        return self._real_value
+        return round(self._real_value, 3)
 
     @real_value.setter
     def real_value(self, real_value):
-        self._real_value = real_value
+        self._real_value = round(float(real_value), 3)
 
     def set_real_value(self, real_value) -> bool:
         """通过真实值设置寄存器值"""
