@@ -29,6 +29,11 @@ async def main():
         log_level="info"
     )
     server = uvicorn.Server(config)
+    
+    # 打印Swagger文档地址
+    print(f"\nAPI Documentation (Swagger UI): http://127.0.0.1:{Config.web_port}/docs")
+    print(f"Redoc Documentation: http://127.0.0.1:{Config.web_port}/redoc\n")
+    
     await server.serve()
 
 

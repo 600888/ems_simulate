@@ -8,7 +8,7 @@ from src.device.core.device import Device
 from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import Yc, SimulateMethod
 from src.web.log import log
-from src.web.schemas import (
+from src.web.schemas.schemas import (
     BaseModel, BaseResponse, DeviceNameListResponse, DeviceInfoRequest, DeviceInfoResponse,
     SlaveIdListRequest, SlaveIdListResponse, DeviceTableRequest,
     PointEditDataRequest, PointLimitEditRequest, PointMetadataEditRequest,

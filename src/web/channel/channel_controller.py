@@ -23,7 +23,7 @@ from src.device.types.general_device import GeneralDevice
 from src.device.types.pcs import Pcs
 from src.device.types.circuit_breaker import CircuitBreaker
 from src.enums.modbus_def import ProtocolType
-from src.web.schemas import (
+from src.web.schemas.schemas import (
     BaseResponse, ChannelCreateRequest, ChannelUpdateRequest,
     CreateAndStartDeviceRequest
 )

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, HTTPException
 from typing import Optional
 
 from src.data.service.device_group_service import DeviceGroupService
-from src.web.schemas import (
+from src.web.schemas.schemas import (
     BaseResponse,
     DeviceGroupCreateRequest,
     DeviceGroupUpdateRequest,

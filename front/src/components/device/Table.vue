@@ -54,6 +54,14 @@
                   @update-success="(newCode) => handleMetadataUpdate(newCode, scope.row['测点编码'])"
                 />
               </el-tab-pane>
+              
+              <el-tab-pane label="测点映射" name="测点映射">
+                <PointMappingConfig
+                  :deviceName="deviceName"
+                  :targetPointCode="scope.row['测点编码']"
+                />
+              </el-tab-pane>
+
               <el-tab-pane name="数据模拟" :disabled="isClientDevice">
                 <template #label>
                   <el-tooltip :content="isClientDevice ? '客户端设备不支持数据模拟' : ''" :disabled="!isClientDevice" placement="top">
@@ -229,6 +237,7 @@ import FloatRegister from '../register/FloatRegister.vue'
 import EditPointLimit from '../point/EditPointLimit.vue'
 import PointSimulator from '../point/PointSimulator.vue'
 import EditPointMetadata from '../point/EditPointMetadata.vue'
+import PointMappingConfig from '../point/PointMappingConfig.vue'
 import WritePointDialog from './WritePointDialog.vue'
 
 const props = defineProps({

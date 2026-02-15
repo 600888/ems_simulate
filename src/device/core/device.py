@@ -28,6 +28,7 @@ from src.device.protocol.base_handler import ProtocolHandler, ServerHandler, Cli
 from src.device.protocol.modbus_handler import ModbusServerHandler, ModbusClientHandler
 from src.device.protocol.iec104_handler import IEC104ServerHandler, IEC104ClientHandler
 from src.device.protocol.dlt645_handler import DLT645ServerHandler, DLT645ClientHandler
+from src.device.core.point.point_calculator import PointCalculator
 from src.enums.point_data import SimulateMethod, Yc, Yx, Yt, Yk, DeviceType, BasePoint
 from src.enums.modbus_def import ProtocolType
 
@@ -70,6 +71,9 @@ class Device:
         self.point_operator: PointOperator = PointOperator(self)
         self.slave_manager: SlaveManager = SlaveManager(self)
         self.message_formatter: MessageFormatter = MessageFormatter(self)
+        
+        # 测点计算器
+        self.point_calculator: PointCalculator = PointCalculator(self)
 
         # 日志（延迟初始化，在 set_name 或 initLog 时创建）
         self._logger = None
@@ -216,6 +220,7 @@ class Device:
     async def start(self) -> bool:
         """启动设备"""
         try:
+            self.point_calculator.start()
             if self.protocol_handler:
                 return await self.protocol_handler.start()
             return False
@@ -226,6 +231,7 @@ class Device:
     async def stop(self) -> bool:
         """停止设备"""
         try:
+            self.point_calculator.stop()
             if self.protocol_handler:
                 return await self.protocol_handler.stop()
             return False

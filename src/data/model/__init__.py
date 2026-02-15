@@ -10,6 +10,7 @@ from src.data.model.point_yc import PointYc, PointYcDict
 from src.data.model.point_yx import PointYx, PointYxDict
 from src.data.model.point_yk import PointYk, PointYkDict
 from src.data.model.point_yt import PointYt, PointYtDict
+from src.data.model.point_mapping import PointMapping, PointMappingDict
 
 __all__ = [
     "Base",
@@ -29,5 +30,7 @@ __all__ = [
     "PointYkDict",
     "PointYt",
     "PointYtDict",
+    "PointMapping",
+    "PointMappingDict",
 ]
 

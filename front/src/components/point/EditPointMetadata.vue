@@ -168,15 +168,14 @@ onMounted(() => {
 
 <style scoped>
 .edit-metadata {
-  margin-top: 10px;
-  margin-bottom: 20px;
-  margin-left: 20px;
-  padding: 20px;
-  width: 680px; /* Increased to accommodate long options */
+  margin: 0;
+  padding: 16px;
+  width: 680px; /* Keep width */
   font-family: Arial, sans-serif;
   background-color: white;
-  border-radius: 5px;
-  box-shadow: 0 1px 3px rgba(0.2, 0.2, 0.2, 0.2);
+  border-radius: 8px; /* Match SingleRegister */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); /* Match SingleRegister */
+  border: 1px solid #e4e7ed; /* Match SingleRegister */
 }
 
 .simple-title {
