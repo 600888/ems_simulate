@@ -126,7 +126,7 @@ class Yc(BasePoint):
 
                 if self.is_send_signal:
                     self.value_changed.send(
-                        old_point=self, related_point=self.related_point
+                        self, old_point=self, related_point=self.related_point
                     )
             finally:
                 self._is_updating = False

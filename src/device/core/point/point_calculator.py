@@ -21,8 +21,10 @@ class PointCalculator:
         self.device = device
         self.pm = device.point_manager
         self._mappings: List[Dict[str, Any]] = []
-        self._source_usage: Dict[str, List[int]] = {}  # source_code -> [mapping_ids]
+        self._source_usage: Dict[str, List[int]] = {}  # source_code -> [mapping_ids] (DEPRECATED: still used for debug or display)
+        self._sender_map: Dict[int, List[int]] = {}  # id(sender) -> [mapping_ids]
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="CalcThread")
+        self._device_provider: Any = None 
         
         # 受限的操作符映射
         self._operators: Dict[type, Callable] = {
@@ -37,6 +39,12 @@ class PointCalculator:
             ast.RShift: operator.rshift,
             ast.USub: operator.neg,
         }
+
+    def set_device_provider(self, provider: Any):
+        """设置设备提供者"""
+        self._device_provider = provider
+        # 立即启动计算器（加载映射并订阅事件）
+        self.start()
 
     def start(self):
         """启动计算器"""
@@ -60,6 +68,11 @@ class PointCalculator:
             ]
             self._build_dependency_map()
             self._subscribe_events()
+            
+            # 立即执行所有映射计算，确保值更新
+            for mapping in self._mappings:
+                self._executor.submit(self._execute_calculation, mapping['id'])
+
             log.info(f"PointCalculator for {self.device.name} loaded {len(self._mappings)} mappings")
         except Exception as e:
             log.error(f"Failed to reload mappings: {e}")
@@ -67,6 +80,7 @@ class PointCalculator:
     def _build_dependency_map(self):
         """构建依赖关系图"""
         self._source_usage.clear()
+        self._sender_map.clear()
         for mapping in self._mappings:
             try:
                 # source_point_codes 是 List[Dict]
@@ -89,20 +103,8 @@ class PointCalculator:
 
     def _subscribe_events(self):
         """订阅源测点变化事件"""
-        from src.device_controller import get_device_controller
-        import asyncio
+        dc = self._device_provider
         
-        # 由于 device_controller 是异步初始化的，这里可能需要等待或者假设已初始化
-        # 简单起见，尝试直接获取
-        try:
-            # get_device_controller 是异步的，但通常实例已存在
-            # 这里的代码是在同步上下文中运行的，我们暂时 hack 一下
-            # 或者直接从 global 获取（如果有的话），device_controller 模块有一个全局变量
-            from src.device_controller import device_controller
-            dc = device_controller
-        except ImportError:
-            dc = None
-            
         if not dc:
             log.warning("DeviceController not ready for PointCalculator subscription")
             return
@@ -114,7 +116,6 @@ class PointCalculator:
                 # 查找设备
                 target_device = dc.device_map.get(device_name)
                 if not target_device:
-                    # 可能是当前设备？虽然通常当前设备也在 device_map 中
                     if device_name == self.device.name:
                         target_device = self.device
                     else:
@@ -126,6 +127,21 @@ class PointCalculator:
                 if point:
                     # 避免重复绑定：blinker 的 connect 会自动处理去重
                     point.value_changed.connect(self.on_source_changed)
+                    # 确保测点发出信号
+                    point.is_send_signal = True
+                    
+                    # 注册到 sender_map
+                    sender_id = id(point)
+                    if sender_id not in self._sender_map:
+                        self._sender_map[sender_id] = []
+                    
+                    # 找到对应的 mapping_ids
+                    mapping_ids = self._source_usage.get(source_key, [])
+                    for mid in mapping_ids:
+                        if mid not in self._sender_map[sender_id]:
+                             self._sender_map[sender_id].append(mid)
+
+                    log.info(f"Subscribed to point {point_code} in device {device_name} (ID: {sender_id})")
                 else:
                     log.warning(f"Point {point_code} not found in device {device_name}")
             except ValueError:
@@ -133,21 +149,33 @@ class PointCalculator:
 
     def on_source_changed(self, sender: BasePoint, **kwargs):
         """源测点值变化回调"""
-        if not sender or not sender.code:
+        # 尝试从 kwargs 中获取 sender (以防 signal 发送时漏传 sender)
+        if not sender:
+            log.warning(f"Invalid sender: None. kwargs: {kwargs}")
+            sender = kwargs.get('old_point')
+
+        if not sender or not getattr(sender, 'code', None):
+            log.warning(f"Invalid sender: {sender}")
             return
             
-        mapping_ids = self._source_usage.get(sender.code, [])
-        for mapping_id in mapping_ids:
+        # 使用对象的 id 精确查找
+        sender_id = id(sender)
+        mapping_ids = self._sender_map.get(sender_id, [])
+        
+        if not mapping_ids:
+             log.warning(f"Sender {sender.code} (ID: {sender_id}) not found in sender_map. Known IDs: {list(self._sender_map.keys())}")
+
+        for mapping_id in set(mapping_ids): # 去重
             self._executor.submit(self._execute_calculation, mapping_id)
 
     def _execute_calculation(self, mapping_id: int):
         """执行计算"""
         mapping = next((m for m in self._mappings if m['id'] == mapping_id), None)
         if not mapping:
+            log.error(f"Mapping {mapping_id} not found")
             return
 
-        from src.device_controller import device_controller
-        dc = device_controller
+        dc = self._device_provider
 
         if not dc:
             return
@@ -156,6 +184,7 @@ class PointCalculator:
             target_code = mapping['target_point_code']
             target_point = self.pm.get_point_by_code(target_code)
             if not target_point:
+                log.error(f"Target point {target_code} not found")
                 return
 
             source_points = json.loads(mapping['source_point_codes'])
@@ -215,12 +244,12 @@ class PointCalculator:
                                 target_point.value = int(result)
                             except:
                                 pass
+                log.info(f"Setting point {target_point.code} to {result}")
+            else:
+                log.error(f"Calculation result {result} is not a number")
 
         except Exception as e:
-            log.warning(f"Calculation failed for mapping {mapping_id}: {e}")
-
-        except Exception as e:
-            log.warning(f"Calculation failed for mapping {mapping_id}: {e}")
+            log.error(f"Calculation failed for mapping {mapping_id}: {e}")
 
     def _safe_eval(self, expr: str, context: Dict[str, Any]) -> Any:
         """安全评估表达式"""

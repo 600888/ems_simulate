@@ -21,55 +21,9 @@ from src.web.schemas.schemas import (
 )
 from src.data.dao.channel_dao import ChannelDao
 
-# WebSocket 连接管理器
-class ConnectionManager:
-    def __init__(self):
-        # device_name -> List[WebSocket]
-        self.active_connections: Dict[str, List[WebSocket]] = {}
-
-    async def connect(self, websocket: WebSocket, device_name: str):
-        await websocket.accept()
-        if device_name not in self.active_connections:
-            self.active_connections[device_name] = []
-        self.active_connections[device_name].append(websocket)
-
-    def disconnect(self, websocket: WebSocket, device_name: str):
-        if device_name in self.active_connections:
-            if websocket in self.active_connections[device_name]:
-                self.active_connections[device_name].remove(websocket)
-            if not self.active_connections[device_name]:
-                del self.active_connections[device_name]
-
-    async def broadcast(self, message: dict, device_name: str):
-        if device_name in self.active_connections:
-            for connection in self.active_connections[device_name]:
-                try:
-                    await connection.send_json(message)
-                except Exception:
-                    # 连接可能断开
-                    pass
-
-manager = ConnectionManager()
-
 # 创建路由对象
 device_router = APIRouter(prefix="/device", tags=["device"]) 
 
-# 测试日志接口
-@device_router.get("/test_log")
-async def test_log():
-    """测试日志是否正常工作"""
-    log.info("测试日志 - INFO")
-    log.error("测试日志 - ERROR")
-    return {"message": "日志测试完成，请检查控制台和 web.log 文件"}
-
-# @device_router.websocket("/ws/{device_name}")
-# async def websocket_endpoint(websocket: WebSocket, device_name: str):
-#     await manager.connect(websocket, device_name)
-#     try:
-#         while True:
-#             await websocket.receive_text()
-#     except WebSocketDisconnect:
-#         manager.disconnect(websocket, device_name)
 
 def get_device(device_name: str, request: Request) -> Device:
     return request.app.state.device_controller.device_map[device_name]

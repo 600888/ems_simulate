@@ -85,8 +85,7 @@ class Device:
             task=self.update_data
         )
 
-    # ===== 只读属性（向后兼容） =====
-
+    # ===== 只读属性 =====
     @property
     def yc_dict(self) -> Dict[int, List[Yc]]:
         """获取遥测字典"""
@@ -174,7 +173,7 @@ class Device:
         all_points = self.point_manager.get_all_points()
         self.protocol_handler.add_points(all_points)
 
-    # 向后兼容的初始化方法
+    # 初始化方法
     def initModbusTcpServer(
         self, port: int, protocol_type: ProtocolType = ProtocolType.ModbusTcp
     ) -> None:
@@ -571,3 +570,13 @@ class Device:
     ) -> None:
         """设置测点关联"""
         self.point_operator.set_related_point(point, related_point)
+
+    def reload_mappings(self) -> None:
+        """重新加载测点映射"""
+        if self.point_calculator:
+            self.point_calculator.reload_mappings()
+
+    def set_device_provider(self, provider: Any) -> None:
+        """设置设备提供者"""
+        if self.point_calculator:
+            self.point_calculator.set_device_provider(provider)

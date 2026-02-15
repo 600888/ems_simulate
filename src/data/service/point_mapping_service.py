@@ -39,6 +39,15 @@ class PointMappingService:
         return [m.to_dict() for m in mappings]
 
     @staticmethod
+    def get_mapping_by_id(mapping_id: int) -> Optional[Dict[str, Any]]:
+        """根据ID获取映射"""
+        mapping = PointMappingDao.get_mapping_by_id(mapping_id)
+        if mapping:
+            return mapping.to_dict()
+        return None
+
+
+    @staticmethod
     def update_mapping(mapping_id: int, data: Dict[str, Any]) -> bool:
         """更新映射"""
         update_data = {}

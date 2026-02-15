@@ -39,9 +39,8 @@
                   <template #default="{ node, data }">
                     <div class="custom-tree-node">
                        <el-icon class="node-icon">
-                         <Folder v-if="!data.type && data.children" />
-                         <files v-else-if="!data.type" />
-                         <Location v-else />
+                         <Folder v-if="!data.type" />
+                         <Document v-else />
                        </el-icon>
                        <div class="node-content">
                          <span class="node-label">{{ node.label }}</span>
@@ -100,7 +99,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch, shallowRef } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Plus, Minus, Folder, Files, Location } from '@element-plus/icons-vue';
+import { Plus, Minus, Folder, Document } from '@element-plus/icons-vue';
 import { 
   getMappings, 
   createMapping, 

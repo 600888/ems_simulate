@@ -210,6 +210,11 @@ class DeviceController:
 
             # 启动数据同步线程
             # self.start_data_sync_thread()
+            
+            # 所有设备创建完成后，设置提供者（此时可以安全地解析跨设备依赖）
+            for device in self.device_list:
+                device.set_device_provider(self)
+
         except Exception as e:
             log.error(f"通过数据库导入失败: {e}")
             raise
@@ -242,6 +247,11 @@ class DeviceController:
 
                 # 启动数据同步线程
                 # self.start_data_sync_thread()
+
+                # 所有设备创建完成后，设置提供者
+                for device in self.device_list:
+                    device.set_device_provider(self)
+
             except Exception as e:
                 log.error(f"通过csv文件导入设备配置文件失败: {e}")
 
