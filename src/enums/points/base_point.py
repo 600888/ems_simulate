@@ -47,7 +47,7 @@ class BasePoint:
         self.value_changed = Signal()
         self.is_signed = False
         self.is_valid = None  # 数据是否有效（None:未知, True:成功, False:失败）
-        self.is_locked_by_mapping = False # 是否被映射锁定（如果为True，则模拟器不应修改此值得）
+        self.is_locked_by_mapping = False # 是否被映射锁定（如果为True，则模拟器不应修改此值）
 
     def list(self) -> list:
         """返回测点属性列表，供表格显示使用"""
