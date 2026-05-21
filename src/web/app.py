@@ -47,6 +47,34 @@ def create_app():
 app = create_app()
 
 
+@app.get("/api/health")
+async def health_check():
+    """
+    健康检查端点 - 供 Tauri 桌面客户端检测后端服务是否就绪
+    返回后端服务状态、版本信息和数据库连接状态
+    """
+    health_data = {
+        "status": "ok",
+        "version": "1.0.0",
+        "service": "EMS Simulate Backend",
+        "timestamp": None,
+    }
+    try:
+        from datetime import datetime, timezone
+        health_data["timestamp"] = datetime.now(timezone.utc).isoformat()
+    except Exception:
+        pass
+
+    # 检查数据库连接（可选）
+    try:
+        from src.config.config import Config
+        health_data["database"] = Config.db_type
+    except Exception:
+        health_data["database"] = "unknown"
+
+    return BaseResponse(code=0, message="服务正常", data=health_data).model_dump()
+
+
 @app.on_event("startup")
 async def startup_event():
     """FastAPI启动事件，初始化设备控制器和GOOSE管理器"""

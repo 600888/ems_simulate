@@ -41,6 +41,10 @@ async def create_and_start_device(req: ChannelIdRequest, request: Request):
 
         if is_client_protocol(channel_protocol_type):
             general_device.data_update_thread.start()
+        elif channel_protocol_type == ProtocolType.Iec61850Server:
+            # IEC61850 服务端: 显式启动 MMS 服务器
+            await general_device.start()
+            log.info(f"IEC 61850 服务端已启动: {channel_name}")
 
         device_controller = request.app.state.device_controller
         device_controller.device_list.append(general_device)

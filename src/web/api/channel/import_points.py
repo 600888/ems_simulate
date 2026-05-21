@@ -178,14 +178,19 @@ async def import_icd(
             except Exception as e:
                 log.warning(f"提取 IED 名称失败 (不影响测点导入): {e}")
 
+            # 重建设备实例（暂不启动），先注册 DataSet/GoCB 再启动服务器
+            # IEC 61850 标准要求的创建顺序：数据模型(DO/DA) → DataSet → GSEControlBlock → IedServer_create
+            device_controller = request.app.state.device_controller
+            was_running = False
             try:
-                device_controller = request.app.state.device_controller
                 device = device_controller.get_device_by_id(channel_id)
                 if device:
                     if device.protocol_type == ProtocolType.Iec61850Server:
                         was_running = device.is_protocol_running()
-                        await reload_device_instance(device_controller, channel_id, is_start=was_running)
-                        log.info(f"IEC 61850 服务端设备 {device.name} (ID: {channel_id}) 已重建以加载新点表")
+                        # 关键：is_start=False，不立即启动服务器
+                        # 先完成 DataSet 和 GoCB 注册，最后统一启动
+                        await reload_device_instance(device_controller, channel_id, is_start=False)
+                        log.info(f"IEC 61850 服务端设备已重建 (暂未启动，待 DataSet/GoCB 注册后再启动)")
                     else:
                         device.importDataPointFromChannel(channel_id, device.protocol_type)
                         log.info(f"已同步更新设备 {device.name} (ID: {channel_id}) 的内存点表")
@@ -238,7 +243,7 @@ async def import_icd(
                     _handler = _device.protocol_handler
                     if hasattr(_handler, 'server'):
                         iec61850_server = _handler.server
-                        log.info("已获取 IEC61850Server，将在 MMS 模型中注册 GSEControlBlock")
+                        log.info("已获取 IEC61850Server，将在 MMS 模型中注册 DataSet/GSEControlBlock")
             except Exception as e:
                 log.warning(f"获取 IEC61850Server 失败: {e}")
 
@@ -247,7 +252,29 @@ async def import_icd(
                 goose_result = import_goose_from_icd(tmp_path, interface=interface)
                 goose_data = goose_result
 
-                # 可选：自动创建 GOOSE Publisher
+                # ===== 2a. 注册纯 DataSet（必须在 GoCB 之前） =====
+                # IEC 61850 标准创建顺序：数据模型 → DataSet → GSEControlBlock
+                # DataSet 必须先于引用它的 GSEControlBlock 存在于 IedModel 中
+                pure_datasets = goose_result.get("pure_datasets", [])
+                pure_ds_count = 0
+                log.info(f"纯 DataSet 注册准备: pure_datasets={len(pure_datasets)}个, iec61850_server={'可用' if iec61850_server else 'None'}")
+                if pure_datasets and iec61850_server:
+                    for ds_info in pure_datasets:
+                        try:
+                            success = iec61850_server.register_dataset(
+                                ld_inst=ds_info["ld_inst"],
+                                ds_name=ds_info["ds_name"],
+                                data_set_ref=ds_info["data_set_ref"],
+                                entries=ds_info.get("entries", []),
+                            )
+                            if success:
+                                pure_ds_count += 1
+                        except Exception as ds_err:
+                            log.warning(f"注册纯 DataSet 失败 ({ds_info.get('ds_name', '')}): {ds_err}")
+
+                # ===== 2b. 创建 GOOSE Publisher（注册 GSEControlBlock） =====
+                # GoCB 引用的 DataSet 会在 add_goose_control_block 内部创建
+                # 但纯 DataSet 已在 2a 步骤中提前注册到 IedModel
                 if auto_create_goose and goose_result.get("publishers"):
                     from src.proto.iec61850.goose_manager import GooseManager
                     manager: Optional[GooseManager] = getattr(
@@ -271,6 +298,9 @@ async def import_icd(
                                     entries=pub_config.get("entries", []),
                                     server=iec61850_server,
                                     channel_id=channel_id,  # 持久化到数据库
+                                    # 不在 create_publisher 内部触发 apply_model_changes，
+                                    # 由下面的统一启动处理
+                                    skip_model_rebuild=True,
                                 )
                                 if pub_result:
                                     created_goose_count += 1
@@ -285,39 +315,32 @@ async def import_icd(
                     else:
                         goose_errors.append("GOOSE 管理器未初始化，无法自动创建 Publisher")
 
-                # ===== 注册未被 GSEControl 引用的纯 DataSet =====
-                # 重要：必须在 restart() 之前注册，否则 IedServer_create 后
-                # 再添加 DataSet 会导致 MMS 命名空间不一致，客户端连接时崩溃
-                pure_datasets = goose_result.get("pure_datasets", [])
-                pure_ds_count = 0
-                log.info(f"纯 DataSet 注册准备: pure_datasets={len(pure_datasets)}个, iec61850_server={'可用' if iec61850_server else 'None'}")
-                if pure_datasets and iec61850_server:
-                    for ds_info in pure_datasets:
-                        try:
-                            success = iec61850_server.register_dataset(
-                                ld_inst=ds_info["ld_inst"],
-                                ds_name=ds_info["ds_name"],
-                                data_set_ref=ds_info["data_set_ref"],
-                                entries=ds_info.get("entries", []),
-                            )
-                            if success:
-                                pure_ds_count += 1
-                        except Exception as ds_err:
-                            log.warning(f"注册纯 DataSet 失败 ({ds_info.get('ds_name', '')}): {ds_err}")
-
-                # GoCB + DataSet 添加到模型后，统一重启服务器使 MMS 命名空间生效
-                # 重要：所有 DataSet 必须在 restart() 之前注册完毕，
-                # 否则 IedServer_create 不会包含后续添加的 DataSet，客户端连接时崩溃
-                need_restart = (created_goose_count > 0 or (pure_datasets and pure_ds_count > 0))
-                if need_restart and iec61850_server and iec61850_server.is_running:
+                # ===== 2c. 统一启动 MMS 服务器 =====
+                # 所有 DataSet 和 GoCB 已注册到 IedModel，现在启动 IedServer
+                # IedServer_create 一次性构建包含所有节点的 MMS 命名空间
+                need_start = (created_goose_count > 0 or pure_ds_count > 0 or was_running)
+                if need_start and iec61850_server:
+                    # 启动前诊断：确认 GoCB/DataSet 已注册到 IedModel
+                    log.info(
+                        f"启动 MMS 服务器前诊断: "
+                        f"GoCB={len(iec61850_server._goose_cb_list)}, "
+                        f"DataSet={len(iec61850_server._dataset_catalog)}, "
+                        f"LD={list(iec61850_server._ld_map.keys())}, "
+                        f"LN_count={len(iec61850_server._ln_map)}, "
+                        f"is_running={iec61850_server.is_running}"
+                    )
                     try:
-                        log.info(f"重启 MMS 服务器以加载 {created_goose_count} 个 GSEControlBlock 和 {pure_ds_count} 个纯 DataSet...")
-                        if iec61850_server.restart():
-                            log.info("MMS 服务器重启完成，GoCB 和 DataSet 已生效")
+                        log.info(
+                            f"启动 MMS 服务器 (DataSet={pure_ds_count}, "
+                            f"GoCB={created_goose_count}, was_running={was_running})..."
+                        )
+                        iec61850_server.start()
+                        if iec61850_server.is_running:
+                            log.info("MMS 服务器启动完成，DataSet 和 GoCB 已生效")
                         else:
-                            goose_errors.append("MMS 服务器重启失败")
-                    except Exception as restart_err:
-                        goose_errors.append(f"重启 MMS 服务器失败: {restart_err}")
+                            goose_errors.append("MMS 服务器启动失败")
+                    except Exception as start_err:
+                        goose_errors.append(f"启动 MMS 服务器失败: {start_err}")
 
                 # 持久化纯 DataSet 到数据库（应用重启后可自动恢复）
                 if pure_datasets:

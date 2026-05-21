@@ -87,6 +87,12 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
             await new_device.start()
         else:
             new_device.data_update_thread.start()
+    elif is_start and channel_protocol_type == ProtocolType.Iec61850Server:
+        # IEC61850 服务端: 需要显式启动 MMS 服务器
+        # 注意: IEC61850 服务器不在 is_client_protocol 中，
+        # 必须单独处理，否则 reload_device_instance(is_start=True) 不会启动服务器
+        await new_device.start()
+        log.info(f"IEC 61850 服务端已启动: {device_name}")
 
     device_controller.device_list.append(new_device)
     device_controller.device_map[new_device.name] = new_device

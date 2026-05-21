@@ -1,0 +1,15 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for EMS Simulate",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:allow-open-url",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "dialog:allow-ask",
+    "process:allow-exit",
+    "process:allow-restart"
+  ]
+}

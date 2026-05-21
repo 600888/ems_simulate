@@ -66,6 +66,7 @@ class GooseManager:
         server: Optional[Any] = None,
         channel_id: Optional[int] = None,
         force_recreate: bool = False,
+        skip_model_rebuild: bool = False,
     ) -> Optional[Dict[str, Any]]:
         """创建 GOOSE Publisher
 
@@ -85,6 +86,8 @@ class GooseManager:
             server: IEC61850Server 实例，提供后会在 MMS 数据模型中创建 GSEControlBlock 节点
             channel_id: 关联的通道 ID，提供后会持久化到数据库
             force_recreate: 如果为 True，当 go_cb_ref 已存在时先删除再重新创建
+            skip_model_rebuild: 如果为 True，跳过 apply_model_changes 调用，
+                               由调用方统一触发服务器重建（ICD 导入时使用）
         """
         if not GOOSE_AVAILABLE:
             log.error("GOOSE 功能不可用 (pyiec61850 未安装)")
@@ -153,9 +156,20 @@ class GooseManager:
                         max_time=time_allowed_to_live,
                         ld_inst=go_ld_inst,
                         entries=entries,
+                        dst_mac=dst_mac,
+                        vlan_id=vlan_id,
+                        vlan_prio=vlan_prio,
                     )
                 except Exception as e:
                     log.warning(f"注册 GSEControlBlock 到 MMS 模型失败: {e}")
+
+                # 应用模型变更：若 IedServer 已运行，重建以更新 MMS 命名空间
+                # skip_model_rebuild=True 时跳过，由调用方统一触发服务器重建
+                if not skip_model_rebuild and hasattr(server, 'apply_model_changes'):
+                    try:
+                        server.apply_model_changes()
+                    except Exception as rebuild_err:
+                        log.warning(f"重建 IedServer 以更新 MMS 命名空间失败: {rebuild_err}")
 
             log.info(f"GOOSE Publisher 创建成功: id={pub_id}, go_cb_ref={go_cb_ref}")
             return self.get_publisher_status(pub_id)
@@ -407,6 +421,18 @@ class GooseManager:
                     if effective_server is None:
                         effective_server = server
                     if effective_server is None:
+                        # 找不到 server，暂存到 server_map 中的待注册队列
+                        if server_map:
+                            pending_srv = next(iter(server_map.values()), None)
+                            if pending_srv and hasattr(pending_srv, '_pending_goose_registrations'):
+                                pending_srv._pending_goose_registrations.append({
+                                    "_type": "dataset",
+                                    "ld_inst": ds_info["ld_inst"],
+                                    "ds_name": ds_info["ds_name"],
+                                    "data_set_ref": ds_info["data_set_ref"],
+                                    "entries": ds_info.get("entries", []),
+                                })
+                                log.info(f"纯 DataSet '{ds_info.get('ds_name', '')}' 已暂存到待注册队列")
                         continue
                     try:
                         effective_server.register_dataset(
@@ -487,30 +513,84 @@ class GooseManager:
                         if db_channel_id is not None:
                             effective_server = server_map.get(db_channel_id)
 
+                    gse_name = go_cb_ref.split("$")[-1] if "$" in go_cb_ref else go_cb_ref.split("/")[-1]
+                    go_ld_inst = go_cb_ref.split("/")[0] if "/" in go_cb_ref else None
+                    gocb_kwargs = dict(
+                        name=gse_name,
+                        app_id=cfg.get("app_id", 0x0001),
+                        data_set_ref=cfg.get("data_set_ref", ""),
+                        conf_rev=cfg.get("conf_rev", 1),
+                        go_id=cfg.get("go_id", ""),
+                        min_time=10,
+                        max_time=cfg.get("time_allowed_to_live", 1000),
+                        ld_inst=go_ld_inst,
+                        entries=cfg.get("entries", []),
+                        dst_mac=cfg.get("dst_mac"),
+                        vlan_id=cfg.get("vlan_id", 0),
+                        vlan_prio=cfg.get("vlan_prio", 4),
+                    )
+
                     if effective_server is not None:
                         try:
-                            gse_name = go_cb_ref.split("$")[-1] if "$" in go_cb_ref else go_cb_ref.split("/")[-1]
-                            # 从 go_cb_ref 中提取 LD 实例名
-                            go_ld_inst = go_cb_ref.split("/")[0] if "/" in go_cb_ref else None
-                            effective_server.add_goose_control_block(
-                                name=gse_name,
-                                app_id=cfg.get("app_id", 0x0001),
-                                data_set_ref=cfg.get("data_set_ref", ""),
-                                conf_rev=cfg.get("conf_rev", 1),
-                                go_id=cfg.get("go_id", ""),
-                                min_time=10,
-                                max_time=cfg.get("time_allowed_to_live", 1000),
-                                ld_inst=go_ld_inst,
-                                entries=cfg.get("entries", []),
-                            )
+                            gocb_result = effective_server.add_goose_control_block(**gocb_kwargs)
+                            if not gocb_result:
+                                log.warning(
+                                    f"从数据库恢复 GSEControlBlock 失败: "
+                                    f"go_cb_ref={go_cb_ref}, name={gse_name}, "
+                                    f"add_goose_control_block 返回 False"
+                                )
                         except Exception as gse_err:
                             log.warning(f"从数据库恢复时注册 GSEControlBlock 失败: {gse_err}")
+                    else:
+                        # effective_server 为 None：将 GoCB 配置暂存到 server_map 中
+                        # 每个 server 的待注册队列，待设备启动时统一注册
+                        # 如果 server_map 中有任何一个 server，将配置存入第一个
+                        # （更精确的做法是按 channel_id 匹配，但此处 server_map
+                        #   已无法找到对应 server，退而求其次）
+                        log.warning(
+                            f"load_from_db: 找不到 channel_id={cfg.get('_channel_id')} 对应的 "
+                            f"IEC61850Server，GoCB '{gse_name}' 将暂存为待注册配置，"
+                            f"待服务器启动时自动注册"
+                        )
+                        # 尝试存入 server_map 中的第一个 server 的待注册队列
+                        pending_server = None
+                        if server_map:
+                            # 优先匹配 channel_id 对应的 server
+                            db_ch_id = cfg.get("_channel_id")
+                            if db_ch_id is not None and db_ch_id in server_map:
+                                pending_server = server_map[db_ch_id]
+                            else:
+                                # 回退：使用 server_map 中第一个 server
+                                pending_server = next(iter(server_map.values()), None)
+                        if pending_server is not None and hasattr(pending_server, '_pending_goose_registrations'):
+                            gocb_kwargs["_type"] = "gocb"
+                            pending_server._pending_goose_registrations.append(gocb_kwargs)
+                            log.info(f"GoCB '{gse_name}' 已暂存到待注册队列 (server={pending_server.ied_name})")
 
                     loaded_count += 1
                 except Exception as e:
                     log.error(f"从数据库恢复 Publisher 失败: {go_cb_ref}, {e}")
 
             log.info(f"从数据库加载了 {loaded_count} 个 GOOSE Publisher")
+
+            # ===== 3. 应用模型变更 =====
+            # 如果在 IedServer 运行时注册了 DataSet/GSEControlBlock，
+            # MMS 命名空间需要重建才能让客户端发现新节点。
+            if server_map:
+                for sid, srv in server_map.items():
+                    if hasattr(srv, 'apply_model_changes'):
+                        try:
+                            rebuilt = srv.apply_model_changes()
+                            if rebuilt:
+                                log.info(f"IEC61850 服务器 (channel={sid}) IedServer 已重建以更新 MMS 命名空间")
+                        except Exception as rebuild_err:
+                            log.warning(f"重建 IedServer (channel={sid}) 失败: {rebuild_err}")
+            elif server and hasattr(server, 'apply_model_changes'):
+                try:
+                    server.apply_model_changes()
+                except Exception as rebuild_err:
+                    log.warning(f"重建 IedServer 失败: {rebuild_err}")
+
             return loaded_count
         except Exception as e:
             log.error(f"从数据库加载 GOOSE Publisher 失败: {e}")
