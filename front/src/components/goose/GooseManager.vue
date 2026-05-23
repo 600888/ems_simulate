@@ -806,6 +806,14 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .goose-manager {
   padding: 16px;
+
+  @include bp.respond-to('medium-down') {
+    padding: 12px;
+  }
+
+  @include bp.respond-to('small') {
+    padding: 10px;
+  }
 }
 
 .tab-header {
@@ -813,6 +821,11 @@ onUnmounted(() => {
   justify-content: flex-end;
   gap: 8px;
   margin-bottom: 12px;
+
+  @include bp.respond-to('small') {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
 }
 
 .entry-list {
@@ -824,6 +837,10 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+
+  @include bp.respond-to('small') {
+    flex-wrap: wrap;
+  }
 }
 
 .subscription-list {
@@ -854,6 +871,18 @@ onUnmounted(() => {
 .text-muted {
   color: #909399;
   font-size: 12px;
+}
+
+/* 在 small 断点下表格操作列按钮组换行 */
+@include bp.respond-to('small') {
+  .el-button-group {
+    flex-wrap: wrap;
+    gap: 2px;
+
+    .el-button {
+      margin: 0;
+    }
+  }
 }
 </style>
 

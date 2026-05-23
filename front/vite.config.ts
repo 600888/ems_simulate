@@ -85,6 +85,7 @@ export default defineConfig(({ mode }) => { // 使用 mode 参数
       preprocessorOptions: {
         scss: {
           api: 'modern',
+          additionalData: `@use "@/styles/breakpoints.scss" as bp;\n`,
         },
       },
     },

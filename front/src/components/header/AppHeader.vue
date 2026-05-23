@@ -44,11 +44,16 @@
 import { ref, watch } from "vue";
 import { Expand, Fold, Document, Connection } from "@element-plus/icons-vue";
 import { useRoute } from "vue-router";
-import { isCollapse } from "./isCollapse";
+import { isCollapse, sidebarOverlayMode } from "./isCollapse";
 const route = useRoute();
 const breadList = ref([]);
 
 const setCollapse = (val) => {
+  // small 断点 (< 1200px): 切换 overlay 弹出模式
+  if (window.innerWidth < 1200) {
+    sidebarOverlayMode.value = !sidebarOverlayMode.value;
+    return;
+  }
   isCollapse.value = val;
   localStorage.setItem("isCollapse", isCollapse.value.toString());
 };
@@ -81,6 +86,26 @@ watch(() => route.path, updateBreadcrumb, { immediate: true });
   background-color: var(--panel-bg);
   border-bottom: 1px solid var(--sidebar-border);
   transition: all 0.3s;
+
+  @include bp.respond-to('medium-down') {
+    padding: 0 10px;
+
+    .el-breadcrumb {
+      font-size: 13px;
+    }
+
+    .link-container {
+      gap: 10px;
+    }
+  }
+
+  @include bp.respond-to('small') {
+    padding: 0 8px;
+
+    .el-breadcrumb {
+      font-size: 12px;
+    }
+  }
   
   .collapse-icon {
     font-size: 20px;

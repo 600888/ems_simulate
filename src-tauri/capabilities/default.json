@@ -10,6 +10,8 @@
     "dialog:allow-message",
     "dialog:allow-ask",
     "process:allow-exit",
-    "process:allow-restart"
+    "process:allow-restart",
+    "shell:allow-open",
+    "shell:default"
   ]
 }

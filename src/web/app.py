@@ -89,13 +89,17 @@ async def startup_event():
         # 从数据库加载已持久化的 GOOSE Publisher 配置
         try:
             # 构建 channel_id -> IEC61850Server 映射
+            from src.proto.iec61850.iec61850_server import IEC61850Server
+
             server_map = {}
             for device in app.state.device_controller.device_list:
                 device_id = getattr(device, 'device_id', None) or getattr(device, 'id', None)
                 if device_id and hasattr(device, 'protocol_handler') and device.protocol_handler:
                     handler = device.protocol_handler
                     if hasattr(handler, 'server') and handler.server:
-                        server_map[device_id] = handler.server
+                        # 只映射 IEC61850 服务器，避免 ModbusServer 等混入
+                        if isinstance(handler.server, IEC61850Server):
+                            server_map[device_id] = handler.server
 
             loaded_count = app.state.goose_manager.load_from_db(server_map=server_map)
             if server_map:

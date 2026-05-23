@@ -5,6 +5,7 @@ Modbus 协议处理器
 
 import asyncio
 import concurrent.futures
+import time
 from typing import Any, Dict, List, Optional, Union
 
 from src.device.protocol.base_handler import ServerHandler, ClientHandler
@@ -233,6 +234,10 @@ class ModbusClientHandler(ClientHandler):
         self._client = None
         self._log = log
         self._loop = None  # 事件循环引用
+        # 重连相关状态
+        self._reconnect_count = 0          # 连续重连尝试次数
+        self._last_reconnect_attempt = 0.0  # 上次重连尝试时间戳
+        self._max_reconnect_interval = 30   # 最大重连间隔（秒）
 
     def initialize(self, config: Dict[str, Any]) -> None:
         """初始化 Modbus 客户端
@@ -308,6 +313,8 @@ class ModbusClientHandler(ClientHandler):
                         is_connected = self._client.connect()
                 
                 self._is_running = is_connected
+                if is_connected:
+                    self._reconnect_count = 0  # 连接成功，重置退避计数器
                 return is_connected
             return False
         except Exception as e:
@@ -324,6 +331,73 @@ class ModbusClientHandler(ClientHandler):
                 self._client.disconnect()
             self._is_running = False
 
+    async def _try_reconnect(self) -> bool:
+        """尝试自动重连（带指数退避冷却机制）
+
+        当检测到连接断开时调用，避免无限重试导致日志刷屏。
+        退避策略：2^reconnect_count 秒，上限 _max_reconnect_interval 秒。
+        重连成功后重置计数器。
+
+        Returns:
+            bool: 重连是否成功
+        """
+        now = time.time()
+        # 指数退避：2, 4, 8, 16, 30, 30, 30...
+        min_interval = min(2 ** self._reconnect_count, self._max_reconnect_interval)
+        if now - self._last_reconnect_attempt < min_interval:
+            return False
+
+        self._last_reconnect_attempt = now
+        self._reconnect_count += 1
+
+        if self._log:
+            self._log.info(
+                f"尝试重连 Modbus 服务器 (第{self._reconnect_count}次, "
+                f"下次间隔{min(2 ** self._reconnect_count, self._max_reconnect_interval)}秒)..."
+            )
+
+        try:
+            # 先断开旧连接（清理残留状态）
+            await self.disconnect()
+            # 重新初始化客户端（创建新的底层连接对象）
+            self.initialize(self._config)
+            # 尝试连接
+            connected = await self.connect()
+            if connected:
+                self._reconnect_count = 0  # 重置退避计数器
+                if self._log:
+                    self._log.info("Modbus 客户端重连成功")
+                return True
+            return False
+        except Exception as e:
+            if self._log:
+                self._log.error(f"重连失败: {e}")
+            return False
+
+    def _try_reconnect_from_thread(self) -> bool:
+        """从非事件循环线程尝试自动重连（同步版本）
+
+        用于 read_value() 等同步方法中，当检测到连接断开时，
+        通过 run_coroutine_threadsafe() 调度重连协程到主事件循环。
+
+        Returns:
+            bool: 重连是否成功
+        """
+        now = time.time()
+        min_interval = min(2 ** self._reconnect_count, self._max_reconnect_interval)
+        if now - self._last_reconnect_attempt < min_interval:
+            return False
+
+        if not self._loop or not self._loop.is_running():
+            return False
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(self._try_reconnect(), self._loop)
+            return future.result(timeout=5)
+        except Exception as e:
+            if self._log:
+                self._log.debug(f"跨线程重连失败: {e}")
+            return False
     @property
     def is_running(self) -> bool:
         """检测客户端的真实连接状态
@@ -366,7 +440,9 @@ class ModbusClientHandler(ClientHandler):
         
         # 先检查连接状态，避免不必要的超时等待
         if not self.is_running:
-            return None
+            # 尝试跨线程自动重连
+            if not self._try_reconnect_from_thread():
+                return None
             
         # 检查是否是异步客户端
         is_async = hasattr(self._client, 'read_value_by_address') and asyncio.iscoroutinefunction(self._client.read_value_by_address)
@@ -407,6 +483,11 @@ class ModbusClientHandler(ClientHandler):
         """异步读取测点值（用于 async 环境）"""
         if not self._client or not hasattr(point, "func_code"):
             return None
+
+        # 连接断开时尝试自动重连
+        if not self.is_running:
+            if not await self._try_reconnect():
+                return None
 
         # 检查是否是异步客户端
         is_async = hasattr(self._client, 'read_value_by_address') and asyncio.iscoroutinefunction(self._client.read_value_by_address)
@@ -469,7 +550,9 @@ class ModbusClientHandler(ClientHandler):
             return []
         
         if not self.is_running:
-            return []
+            # 连接断开，尝试自动重连
+            if not await self._try_reconnect():
+                return []
         
         # 检查是否是异步客户端
         is_async_client = hasattr(self._client, 'read_holding_registers') and \

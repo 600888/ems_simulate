@@ -1,7 +1,7 @@
 <template>
   <el-aside
     class="sidebar"
-    :class="[`sidebar-theme-${currentTheme}`, { 'sidebar-collapsed': isCollapse }]"
+    :class="[`sidebar-theme-${currentTheme}`, { 'sidebar-collapsed': isCollapse }, { 'sidebar-overlay-mode': overlayMode }]"
   >
     <el-scrollbar ref="scrollbarRef">
       <!-- 1. 头部徽标与主题切换 -->
@@ -92,7 +92,7 @@ import AddDeviceGroupDialog from "@/components/device/AddDeviceGroupDialog.vue";
 import CopyDeviceDialog from "@/components/device/CopyDeviceDialog.vue";
 
 import { currentTheme } from "@/utils/theme";
-import { isCollapse } from "@/components/header/isCollapse";
+import { isCollapse, sidebarOverlayMode } from "@/components/header/isCollapse";
 import menuRouter from "@/router/index";
 import { delView, visitedViews } from "@/store/tagsView";
 import { deleteChannel, getChannelList } from "@/api/channelApi";
@@ -107,6 +107,7 @@ import { useIec61850Tree, type TreeNode } from "@/composables";
 import { useSidebarRefresh } from "@/composables";
 
 const router = useRouter();
+const overlayMode = sidebarOverlayMode;
 const treeRef = ref<InstanceType<typeof ElTree>>();
 const scrollbarRef = ref<InstanceType<typeof ElScrollbar>>();
 
@@ -308,6 +309,8 @@ const handleUngroupedNodeClick = (data: any) => {
 };
 
 const navigateToDevice = (deviceName: string, forceRefresh = false, isIec61850Child = false, treeNode?: any) => {
+  // 关闭 overlay 模式（small 断点下弹出后点击导航自动收起）
+  sidebarOverlayMode.value = false;
   currentDeviceName.value = deviceName;
   currentNodeKey.value = `device-${deviceName}`;
   const path = `/device/${deviceName}`;
@@ -546,8 +549,8 @@ watch(refreshCounter, () => {
   box-shadow: var(--sb-shadow);
 
   &.sidebar-collapsed {
-    width: 64px !important;
-    min-width: 64px;
+    width: var(--sidebar-collapsed-width) !important;
+    min-width: var(--sidebar-collapsed-width);
 
     /* 折叠时隐藏树形结构的文字和操作按钮，只显示图标 */
     :deep(.device-tree) {
@@ -657,5 +660,17 @@ watch(refreshCounter, () => {
   --sb-icon-color: #94a3b8;
   --sb-btn-text: #fff;
   --sb-scrollbar: rgba(255, 255, 255, 0.1);
+}
+
+/* small 断点下侧边栏 overlay 弹出模式 */
+.sidebar-overlay-mode {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: 230px !important;
+  min-width: 230px !important;
+  z-index: 999;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
 }
 </style>

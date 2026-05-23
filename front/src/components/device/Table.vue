@@ -666,7 +666,7 @@ const iec61850FlatRows = computed(() => {
           '真实值': daNode.value || '',
           '16进制地址': '',
           'FC': daNode.fc,
-          '最后更新时间': daNode['读取时间'] || '',
+          '最后更新时间': daNode.read_time || '',
         });
       }
       continue; // 跳过 DO 行逻辑

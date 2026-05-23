@@ -22,9 +22,22 @@ export const SLAVE_ADDR_MAX = 255;
 export const PORT_MIN = 1;
 export const PORT_MAX = 65535;
 
-// 侧边栏宽度
+// ========================================
+// 断点常量（用于 JS 侧判断当前窗口尺寸）
+// 与 breakpoints.scss 保持同步
+// ========================================
+export const BREAKPOINTS = {
+  small: 960,
+  medium: 1200,
+  large: 1400,
+} as const;
+
+// 侧边栏宽度（CSS 变量驱动，此处仅作参考常量）
+// 实际渲染值由 --sidebar-width CSS 变量在不同断点下动态覆盖
+// large: 230px / medium: 200px / small: 64px (自动折叠 overlay 模式)
 export const SIDEBAR_WIDTH = '230px';
 export const SIDEBAR_COLLAPSED_WIDTH = '64px';
+export const SIDEBAR_MEDIUM_WIDTH = '200px';
 
 // 侧边栏本地存储 Key
 export const LS_KEY_COLLAPSE = 'isCollapse';

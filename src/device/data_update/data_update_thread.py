@@ -24,7 +24,7 @@ class DataUpdateThread:
                     time.sleep(0.1)  # 100毫秒延迟
             except Exception as e:
                 print(f"Task execution failed: {e}")
-                raise e
+                # 不 re-raise，保持线程存活继续重试
 
     def is_alive(self) -> bool:
         """检查线程是否运行中"""

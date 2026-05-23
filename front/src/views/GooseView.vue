@@ -8,7 +8,7 @@
 import GooseManager from '@/components/goose/GooseManager.vue'
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .goose-view {
   height: 100%;
   overflow: auto;

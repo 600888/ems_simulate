@@ -406,15 +406,38 @@ class Device:
         对于 Modbus 客户端会将连续地址合并为一次请求；
         对于 IEC61850 客户端会按类型分组批量读取；
         对于服务端和其他协议回退到逐点读取。
+
+        重要：对于使用 AsyncModbusClient 的客户端，必须通过
+        run_coroutine_threadsafe() 将协程调度到客户端连接时的事件循环上，
+        而不是用 asyncio.run() 创建新的事件循环，否则会导致连接断裂。
         """
         try:
-            asyncio.run(self._update_data_async())
+            loop = self._get_event_loop_for_update()
+            if loop and loop.is_running():
+                # 将协程调度到正确的事件循环（客户端连接时所在的循环）
+                future = asyncio.run_coroutine_threadsafe(self._update_data_async(), loop)
+                future.result(timeout=5)  # 最多等待5秒
+            else:
+                # 回退：无可用事件循环时使用 asyncio.run()（兼容非客户端场景）
+                asyncio.run(self._update_data_async())
         except Exception as e:
             if self._logger_initialized:
                 self.log.error(f"update_data error: {e}")
             else:
                 print(f"update_data error: {e}")
         time.sleep(0.5)
+
+    def _get_event_loop_for_update(self):
+        """获取数据更新应使用的事件循环
+
+        对于客户端协议（使用异步客户端如 AsyncModbusClient），
+        必须使用客户端连接时所在的事件循环，否则 async 操作会失败。
+        """
+        if self.protocol_handler and isinstance(self.protocol_handler, ClientHandler):
+            loop = getattr(self.protocol_handler, '_loop', None)
+            if loop:
+                return loop
+        return None
 
     async def _update_data_async(self) -> None:
         """异步批量更新设备数据"""

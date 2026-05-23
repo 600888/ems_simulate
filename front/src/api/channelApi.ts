@@ -115,6 +115,7 @@ export interface IEC61850BdaItem {
   point_code: string;
   value: string;
   status: string;
+  read_time?: string;
 }
 
 export interface IEC61850DaNode {
@@ -126,6 +127,7 @@ export interface IEC61850DaNode {
   point_name: string;
   value: string;
   status: string;
+  read_time?: string;
   children: IEC61850BdaItem[];
 }
 

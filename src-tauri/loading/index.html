@@ -27,6 +27,21 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+
+    /* 关闭动画 */
+    .closing-overlay {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      z-index: 9999; display: flex; align-items: center; justify-content: center;
+      animation: closeFadeIn 0.4s ease forwards;
+    }
+    .closing-spinner {
+      display: inline-block; width: 32px; height: 32px;
+      border: 3px solid rgba(255,255,255,0.15); border-top-color: #4fc3f7;
+      border-radius: 50%; animation: spin 0.7s linear infinite; margin-bottom: 12px;
+    }
+    .closing-text { color: #ccc; font-size: 13px; letter-spacing: 1px; }
+    @keyframes closeFadeIn { from { opacity: 0; } to { opacity: 1; } }
   </style>
 </head>
 <body>
@@ -35,7 +50,21 @@
     <div class="title">EMS Simulate</div>
     <div class="subtitle">工业协议仿真平台</div>
     <div class="spinner"></div>
-    <div class="status">后端服务启动中<span class="dots"></span></div>
+    <div class="status">EMS模拟设备启动中<span class="dots"></span></div>
   </div>
+  <script>
+    // 监听 Tauri 关闭请求事件（loading 阶段也需要关闭动画）
+    if (window.__TAURI_INTERNALS__) {
+      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+        const appWindow = getCurrentWindow();
+        appWindow.listen('close-requested', () => {
+          const overlay = document.createElement('div');
+          overlay.className = 'closing-overlay';
+          overlay.innerHTML = '<div style="text-align:center"><div class="closing-spinner"></div><div class="closing-text">正在关闭...</div></div>';
+          document.body.appendChild(overlay);
+        });
+      }).catch(() => {});
+    }
+  </script>
 </body>
 </html>

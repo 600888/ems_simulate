@@ -82,7 +82,7 @@ const openMenu = (tag: TagView, e: MouseEvent) => {
 
 <style lang="scss" scoped>
 .tags-view-container {
-  height: 34px;
+  height: var(--tags-height);
   width: 100%;
   flex-shrink: 0; // prevent being squished by main content
   background: var(--bg-main);
@@ -96,8 +96,8 @@ const openMenu = (tag: TagView, e: MouseEvent) => {
       display: inline-block;
       position: relative;
       cursor: pointer;
-      height: 26px;
-      line-height: 26px;
+      height: calc(var(--tags-height) - 8px);
+      line-height: calc(var(--tags-height) - 8px);
       border: 1px solid var(--sidebar-border);
       color: var(--text-primary);
       background: var(--panel-bg);
@@ -107,6 +107,17 @@ const openMenu = (tag: TagView, e: MouseEvent) => {
       margin-top: 4px;
       border-radius: 4px;
       text-decoration: none;
+
+      @include bp.respond-to('medium-down') {
+        font-size: 12px;
+        padding: 0 6px;
+      }
+
+      @include bp.respond-to('small') {
+        font-size: 11px;
+        padding: 0 5px;
+        margin-left: 3px;
+      }
       
       &:first-of-type {
         margin-left: 15px;

@@ -157,3 +157,12 @@ docs/.vitepress/cache/
 node_modules/
 
 data/*.db
+
+# Development certificate
+devcert.pfx
+
+Assets/
+build
+dist_msix
+*.msix
+*.appxmanifest

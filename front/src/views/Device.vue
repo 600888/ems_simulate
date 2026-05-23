@@ -523,8 +523,38 @@ watch(() => route.fullPath, async () => {
   }
 }
 
-@media (max-width: 768px) {
-  .nodes { flex-direction: column; align-items: stretch; }
-  .button, .simulation-select { width: 100%; }
+/* 响应式适配：medium 及以下断点缩小间距 */
+@include bp.respond-to('medium-down') {
+  .device-container {
+    padding: 12px 16px;
+  }
+  .nodes {
+    padding: 10px 16px;
+    gap: 10px;
+  }
+  .button {
+    min-width: 100px;
+    height: 38px;
+    font-size: 13px;
+  }
+  .simulation-select {
+    width: 170px;
+  }
+}
+
+/* small 断点：按钮和选择器全宽，单列布局 */
+@include bp.respond-to('small') {
+  .device-container {
+    padding: 10px 12px;
+  }
+  .nodes {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 10px 14px;
+    gap: 8px;
+  }
+  .button, .simulation-select {
+    width: 100%;
+  }
 }
 </style>

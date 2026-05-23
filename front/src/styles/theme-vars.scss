@@ -4,6 +4,9 @@
     /* 布局尺寸 */
     --header-height: 48px;
     --sidebar-width: 230px;
+    --sidebar-collapsed-width: 64px;
+    --tags-height: 34px;
+    --footer-height: 32px;
 
     /* 测点状态背景色 */
     --status-normal-bg: #f0fdf4;
@@ -75,4 +78,28 @@ body {
     border-radius: var(--border-radius-base);
     box-shadow: var(--box-shadow-base);
     border: 1px solid var(--sidebar-border);
+}
+
+/* ========================================
+   响应式断点覆盖 - 随窗口尺寸缩放布局
+   ======================================== */
+
+/* medium 断点 (1200px ~ 1399px): 标准桌面窗口，适当缩小 */
+@media (max-width: 1399px) {
+    :root {
+        --header-height: 44px;
+        --sidebar-width: 200px;
+        --tags-height: 32px;
+        --footer-height: 28px;
+    }
+}
+
+/* small 断点 (960px ~ 1199px): 最小窗口/笔记本，强制折叠侧边栏 */
+@media (max-width: 1199px) {
+    :root {
+        --header-height: 40px;
+        --sidebar-width: 64px;
+        --tags-height: 30px;
+        --footer-height: 24px;
+    }
 }

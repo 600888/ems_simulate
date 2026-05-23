@@ -2,8 +2,11 @@ import os
 import sys
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-# 根目录
-if getattr(sys, 'frozen', False):
+# 根目录（支持 EMS_ROOT_DIR 环境变量覆盖，用于 MSIX/Sidecar 模式持久化数据）
+EMS_ROOT_DIR = os.environ.get("EMS_ROOT_DIR")
+if EMS_ROOT_DIR:
+    ROOT_DIR = EMS_ROOT_DIR
+elif getattr(sys, 'frozen', False):
     ROOT_DIR = os.path.dirname(sys.executable)
 else:
     ROOT_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "../.."))

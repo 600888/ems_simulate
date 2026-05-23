@@ -71,3 +71,50 @@ body,
 ::-webkit-scrollbar-track {
     background: transparent;
 }
+
+/* ========================================
+   Element Plus 响应式全局覆盖
+   ======================================== */
+
+/* 对话框在窄屏下自动缩小 */
+@media (max-width: 1199px) {
+    .el-dialog {
+        width: 90vw !important;
+        max-height: 90vh;
+
+        .el-dialog__body {
+            max-height: calc(90vh - 120px);
+            overflow-y: auto;
+        }
+    }
+}
+
+/* 表格在小窗口下支持横向滚动 */
+@media (max-width: 1199px) {
+    .el-table {
+        font-size: 13px;
+
+        .el-table__header-wrapper th,
+        .el-table__body-wrapper td {
+            padding: 8px 4px;
+        }
+    }
+}
+
+/* 表单在窄屏下 label 自适应 */
+@media (max-width: 1199px) {
+    .el-form--label-left {
+        .el-form-item__label {
+            width: auto !important;
+            min-width: 80px;
+        }
+    }
+}
+
+/* 按钮组在窄屏下缩小间距 */
+@media (max-width: 1399px) {
+    .el-button-group .el-button {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+}

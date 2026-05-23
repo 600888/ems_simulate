@@ -93,10 +93,24 @@ export async function initTauri() {
     const appWindow = getCurrentWindow()
 
     // 窗口获得焦点
-    await appWindow.onFocusChanged(({ payload: focused }) => {
+    await appWindow.onFocusChanged(({ payload: focused }: { payload: boolean }) => {
       console.log(`[Tauri] 窗口焦点: ${focused}`)
     })
   } catch (e) {
     console.warn('[Tauri] 窗口事件监听失败:', e)
+  }
+}
+
+/** 监听 Tauri 关闭请求事件（窗口 X 按钮点击时触发） */
+export async function onCloseRequested(callback: () => void) {
+  if (!isTauri()) return
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    const appWindow = getCurrentWindow()
+    await appWindow.listen('close-requested', () => {
+      callback()
+    })
+  } catch (e) {
+    console.warn('[Tauri] 监听关闭请求失败:', e)
   }
 }

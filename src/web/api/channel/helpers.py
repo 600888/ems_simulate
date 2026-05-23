@@ -86,7 +86,9 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
             # IEC61850 客户端: 使用 start() 后台线程连接，而非仅启动数据更新线程
             await new_device.start()
         else:
-            new_device.data_update_thread.start()
+            # Modbus/其他客户端：先连接服务器，再启动数据更新线程
+            await new_device.start()
+        new_device.data_update_thread.start()
     elif is_start and channel_protocol_type == ProtocolType.Iec61850Server:
         # IEC61850 服务端: 需要显式启动 MMS 服务器
         # 注意: IEC61850 服务器不在 is_client_protocol 中，
