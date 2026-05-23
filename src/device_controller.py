@@ -272,7 +272,6 @@ class DeviceController:
 
         if self.device_list:
             self.current_device = self.device_list[0]
-        time.sleep(1)
 
     # 结束所有ModbusTcpServer
     async def stop_all_modbus_server(self):

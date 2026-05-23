@@ -310,57 +310,125 @@ fn log_path_diagnostics(app_handle: &AppHandle) {
     log::info!("=== 路径诊断结束 ===");
 }
 
-/// 等待后端就绪（轮询健康检查）
-async fn wait_for_backend_ready(url: &str, max_retries: u32, delay_ms: u64) -> Result<(), String> {
-    let client = reqwest::Client::new();
-    let health_url = format!("{}/api/health", url);
+/// 等待后端就绪（TCP 端口检测）
+/// 每 100ms 尝试连接后端端口，连接成功即表示服务已启动
+async fn wait_for_backend_ready(url: &str, timeout_secs: u64) -> Result<(), String> {
+    // 从 URL 解析端口号 (http://127.0.0.1:8991 -> 8991)
+    let port = url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.port())
+        .unwrap_or(8991);
+    let addr = format!("127.0.0.1:{}", port);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
 
-    for i in 0..max_retries {
-        match client.get(&health_url).timeout(std::time::Duration::from_secs(3)).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                log::info!("后端就绪 (尝试 {}/{})", i + 1, max_retries);
+    loop {
+        // TCP 连接成功 = 端口已监听 = 服务就绪
+        match tokio::net::TcpStream::connect(&addr).await {
+            Ok(_) => {
+                log::info!("后端端口 {} 已就绪", port);
                 return Ok(());
             }
-            Ok(resp) => log::debug!("后端状态异常: {} (尝试 {}/{})", resp.status(), i + 1, max_retries),
-            Err(e) => log::debug!("后端未就绪: {} (尝试 {}/{})", e, i + 1, max_retries),
+            Err(_) => {
+                if std::time::Instant::now() >= deadline {
+                    return Err(format!("后端在 {}s 内未就绪 (端口: {})", timeout_secs, addr));
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
         }
-        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
     }
-
-    Err(format!("后端在 {} 次尝试后仍未就绪 (健康检查: {})", max_retries, health_url))
 }
 
-/// 优雅关闭后端进程（Windows 下使用 taskkill 杀进程树）
-fn shutdown_backend(child: &mut std::process::Child) {
+/// PID 文件名
+const PID_FILENAME: &str = "backend.pid";
+
+/// 读取并清理上一次残留的后端进程
+fn cleanup_stale_backend(data_dir: &std::path::Path) {
+    let pid_path = data_dir.join(PID_FILENAME);
+    if !pid_path.exists() {
+        return;
+    }
+    if let Ok(pid_str) = std::fs::read_to_string(&pid_path) {
+        if let Ok(pid) = pid_str.trim().parse::<u32>() {
+            log::info!("发现残留后端进程 PID: {}, 尝试清理", pid);
+            kill_pid(pid);
+        }
+    }
+    let _ = std::fs::remove_file(&pid_path);
+}
+
+/// 通过 PID 杀进程（Windows: taskkill /F /T; 其他: kill）
+fn kill_pid(pid: u32) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        unsafe {
+            libc::kill(pid as i32, libc::SIGTERM);
+        }
+    }
+}
+
+/// 保存后端 PID 到文件，用于异常退出时清理
+fn save_backend_pid(data_dir: &std::path::Path, pid: u32) {
+    let pid_path = data_dir.join(PID_FILENAME);
+    if let Err(e) = std::fs::write(&pid_path, pid.to_string()) {
+        log::warn!("保存 PID 文件失败: {}", e);
+    }
+}
+
+/// 删除 PID 文件（正常退出时调用）
+fn remove_backend_pid(data_dir: &std::path::Path) {
+    let pid_path = data_dir.join(PID_FILENAME);
+    let _ = std::fs::remove_file(&pid_path);
+}
+
+/// 关闭后端进程（Windows 下使用 taskkill 杀进程树，即时终止）
+fn shutdown_backend(child: &mut std::process::Child, data_dir: &std::path::Path) {
     let pid = child.id();
     log::info!("正在关闭后端进程 (PID: {})...", pid);
 
     #[cfg(target_os = "windows")]
     {
-        // Windows 下后端进程可能 fork 了子进程，child.kill() 只杀父进程
-        // 使用 taskkill /F /T /PID 强制杀掉整个进程树
+        // taskkill /F /T 强制杀掉整个进程树，是即时终止，无需后续等待
         let kill_result = std::process::Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status();
         match kill_result {
-            Ok(s) => log::info!("taskkill 执行完成 (exit: {})", s.code().unwrap_or(-1)),
-            Err(e) => log::warn!("taskkill 执行失败: {}, 回退到 child.kill()", e),
+            Ok(s) => log::info!("taskkill 完成 (exit: {})", s.code().unwrap_or(-1)),
+            Err(e) => {
+                log::warn!("taskkill 失败: {}, 回退到 child.kill()", e);
+                let _ = child.kill();
+            }
         }
     }
 
-    let _ = child.kill();
-    let _ = child.wait();
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = child.kill();
+    }
+
+    remove_backend_pid(data_dir);
     log::info!("后端进程已关闭");
 }
 
 /// Tauri 命令: 检查后端状态
 #[tauri::command]
 async fn check_backend_status(backend_url: String) -> Result<bool, String> {
-    match reqwest::Client::new()
+    match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .connect_timeout(std::time::Duration::from_millis(500))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
         .get(&format!("{}/api/health", backend_url))
-        .timeout(std::time::Duration::from_secs(3))
         .send()
         .await
     {
@@ -480,8 +548,7 @@ pub fn run() {
                 return Ok(());
             }
 
-            // 生产模式：用代码创建窗口
-            // 窗口初始不可见，等 loading 页面渲染完成后再显示，避免白屏闪烁
+            // 生产模式：先创建 loading 窗口显示启动状态
             let _window = tauri::WebviewWindowBuilder::new(&app_handle, "main", tauri::WebviewUrl::App("index.html".into()))
                 .title("EMS Simulate")
                 .inner_size(1280.0, 800.0)
@@ -489,19 +556,8 @@ pub fn run() {
                 .center()
                 .resizable(true)
                 .decorations(true)
-                .visible(false)
+                .visible(true)
                 .background_color(tauri::window::Color(0x0f, 0x0c, 0x29, 0xff))
-                .on_page_load(|window, payload| {
-                    if payload.event() == tauri::webview::PageLoadEvent::Finished {
-                        // 延迟 150ms 等待 WebView2 完成 CSS 绘制，再显示窗口
-                        let win = window.clone();
-                        tauri::async_runtime::spawn(async move {
-                            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-                            let _ = win.show();
-                            let _ = win.set_focus();
-                        });
-                    }
-                })
                 .build()
                 .expect("创建主窗口失败");
 
@@ -523,7 +579,10 @@ pub fn run() {
                     }
                 };
 
-                // 2. 启动后端
+                // 2. 清理上次残留的后端进程（异常退出时 PID 文件可能仍存在）
+                cleanup_stale_backend(&data_dir);
+
+                // 3. 启动后端
                 let child = match start_backend_process(&app_clone, &data_dir) {
                     Ok(c) => c,
                     Err(e) => {
@@ -536,22 +595,29 @@ pub fn run() {
                     }
                 };
 
-                // 存储子进程句柄
+                // 存储子进程句柄并保存 PID（用于异常退出时清理残留进程）
+                let pid = child.id();
                 if let Some(state) = app_clone.try_state::<BackendState>() {
                     if let Ok(mut guard) = state.child.lock() {
                         *guard = Some(child);
                     }
                 }
+                save_backend_pid(&data_dir, pid);
 
-                // 3. 健康检查
-                match wait_for_backend_ready(&url_health, 60, 2000).await {
+                // 4. 等待后端就绪（TCP 端口检测，每 100ms 一次）
+                match wait_for_backend_ready(&url_health, 60).await {
                     Ok(()) => {
                         log::info!("后端服务已就绪，导航到 {}", url_nav);
+                        // 直接导航现有窗口到后端 URL（避免销毁重建导致 Tauri 无窗口退出）
                         if let Some(win) = app_clone.get_webview_window("main") {
-                            if let Ok(parsed) = url::Url::parse(&url_nav) {
-                                let _ = win.navigate(parsed);
-                                let _ = win.show();
-                                let _ = win.set_focus();
+                            match url::Url::parse(&url_nav) {
+                                Ok(parsed_url) => {
+                                    let _ = win.navigate(parsed_url);
+                                    log::info!("窗口导航完成");
+                                }
+                                Err(e) => {
+                                    log::error!("解析后端 URL 失败: {}", e);
+                                }
                             }
                         }
                     }
@@ -574,17 +640,26 @@ pub fn run() {
                 // 通知前端显示关闭动画
                 let _ = window.emit("close-requested", ());
 
-                // 同时在后台关闭后端进程，关闭完成后退出应用
+                // 延迟 100ms 让关闭动画开始，然后关闭后端并退出
                 let app_handle = window.app_handle().clone();
-                tauri::async_runtime::spawn_blocking(move || {
-                    log::info!("开始关闭后端进程...");
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+                    // 关闭后端进程
+                    let data_dir = ensure_data_dir().ok();
                     if let Some(state) = app_handle.try_state::<BackendState>() {
                         if let Ok(mut guard) = state.child.lock() {
                             if let Some(ref mut child) = guard.take() {
-                                shutdown_backend(child);
+                                let dir = data_dir.as_deref().unwrap_or(std::path::Path::new("."));
+                                shutdown_backend(child, dir);
                             }
                         }
                     }
+                    // 如果 child 句柄已丢失，尝试通过 PID 文件清理
+                    if let Some(ref dir) = data_dir {
+                        cleanup_stale_backend(dir);
+                    }
+
                     log::info!("后端已关闭，退出应用");
                     // 先关闭窗口，再退出进程，避免 WebView2 窗口类注销报错
                     if let Some(win) = app_handle.get_webview_window("main") {
