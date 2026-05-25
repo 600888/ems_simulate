@@ -5,7 +5,9 @@ import logging
 
 # ⭐ Windows 打包环境下将 stdout/stderr 重定向到日志文件，避免控制台闪现
 if sys.platform.startswith('win') and getattr(sys, 'frozen', False):
-    _log_dir = os.path.join(os.path.dirname(sys.executable), 'logs')
+    # MSIX 安装模式下可执行文件目录为只读，需使用 EMS_ROOT_DIR（Tauri 侧设置的可写数据目录）
+    _root = os.environ.get('EMS_ROOT_DIR', os.path.dirname(sys.executable))
+    _log_dir = os.path.join(_root, 'logs')
     os.makedirs(_log_dir, exist_ok=True)
     sys.stdout = open(os.path.join(_log_dir, 'backend.log'), 'a', encoding='utf-8')
     sys.stderr = sys.stdout
