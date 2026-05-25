@@ -204,12 +204,13 @@ fn start_backend_process(
         .stderr(std::process::Stdio::piped());
 
     // Windows 下禁止子进程创建控制台窗口
+    // 注意: CREATE_NO_WINDOW 与 DETACHED_PROCESS 不能同时使用（微软文档明确互斥）
+    // 否则 CREATE_NO_WINDOW 会失效，导致控制台窗口闪现
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        const DETACHED_PROCESS: u32 = 0x00000008;
-        cmd.creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS);
+        cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
     let mut child = cmd.spawn()
@@ -360,10 +361,13 @@ fn cleanup_stale_backend(data_dir: &std::path::Path) {
 fn kill_pid(pid: u32) {
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
         let _ = std::process::Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
             .status();
     }
 
@@ -397,10 +401,13 @@ fn shutdown_backend(child: &mut std::process::Child, data_dir: &std::path::Path)
     #[cfg(target_os = "windows")]
     {
         // taskkill /F /T 强制杀掉整个进程树，是即时终止，无需后续等待
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
         let kill_result = std::process::Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
             .status();
         match kill_result {
             Ok(s) => log::info!("taskkill 完成 (exit: {})", s.code().unwrap_or(-1)),

@@ -1,25 +1,26 @@
 # -*- coding: utf-8 -
+import sys
+import os
+import logging
+
+# ⭐ Windows 打包环境下将 stdout/stderr 重定向到日志文件，避免控制台闪现
+if sys.platform.startswith('win') and getattr(sys, 'frozen', False):
+    _log_dir = os.path.join(os.path.dirname(sys.executable), 'logs')
+    os.makedirs(_log_dir, exist_ok=True)
+    sys.stdout = open(os.path.join(_log_dir, 'backend.log'), 'a', encoding='utf-8')
+    sys.stderr = sys.stdout
+    logging.basicConfig(
+        filename=os.path.join(_log_dir, 'app_error.log'),
+        level=logging.ERROR,
+        format='%(asctime)s - %(levelname)s: %(message)s',
+    )
+
 import uvicorn
 import asyncio
-import os
-import sys
 from fastapi.staticfiles import StaticFiles
 from src.web.app import app
 from src.device_controller import get_device_controller
-from src.enums.modbus_def import ProtocolType
 from src.config.config import Config
-
-# PyInstaller --noconsole 模式下 sys.stdout/stderr 为 None，
-# 需要替换为空写入器以避免 print() / logging 报错
-class _NullWriter:
-    def write(self, *args, **kwargs): pass
-    def flush(self, *args, **kwargs): pass
-    def fileno(self): return -1
-
-if sys.stdout is None:
-    sys.stdout = _NullWriter()
-if sys.stderr is None:
-    sys.stderr = _NullWriter()
 
 async def init_device_controller():
     """初始化设备控制器，在有事件循环的环境下启动Modbus TCP服务器"""
@@ -42,11 +43,10 @@ async def main():
         app,
         host="0.0.0.0",
         port=Config.web_port,
-        log_level="info"
+        log_level="info",
     )
     server = uvicorn.Server(config)
 
-    # 打印Swagger文档地址
     print(f"\nAPI Documentation (Swagger UI): http://127.0.0.1:{Config.web_port}/docs")
     print(f"Redoc Documentation: http://127.0.0.1:{Config.web_port}/redoc\n")
 
@@ -54,5 +54,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    # 使用asyncio.run运行主协程
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception:
+        logging.exception("程序发生异常:")

@@ -163,6 +163,7 @@ devcert.pfx
 
 Assets/
 build
+dist
 dist_msix
 *.msix
 *.appxmanifest
