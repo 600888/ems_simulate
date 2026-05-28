@@ -1,31 +1,31 @@
 <template>
   <div class="edit-metadata">
     <div class="simple-title">
-      <span>编辑测点属性</span>
+      <span>{{ $t('editMetadata.title') }}</span>
       <el-divider></el-divider>
     </div>
     <el-form label-width="auto" :model="metadataForm">
       <el-row :gutter="20">
         <el-col :span="12">
-          <el-form-item label="名称" class="form-item">
+          <el-form-item :label="$t('editMetadata.name')" class="form-item">
             <el-input v-model="metadataForm.name" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="编码" class="form-item">
+          <el-form-item :label="$t('editMetadata.code')" class="form-item">
             <el-input v-model="metadataForm.code" />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row :gutter="20">
         <el-col :span="12">
-          <el-form-item label="地址" class="form-item">
+          <el-form-item :label="$t('table.address')" class="form-item">
             <el-input v-model="metadataForm.reg_addr" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="解析码" class="form-item">
-            <el-select v-model="metadataForm.decode_code" placeholder="选择解析码">
+          <el-form-item :label="$t('editMetadata.decodeCode')" class="form-item">
+            <el-select v-model="metadataForm.decode_code" :placeholder="$t('editMetadata.selectDecodeCode')">
               <el-option-group label="8位字符">
                 <el-option label="0x10 - Byte (无符号)" value="0x10" />
                 <el-option label="0x11 - Byte (有符号)" value="0x11" />
@@ -69,32 +69,32 @@
       </el-row>
       <el-row :gutter="20">
         <el-col :span="12">
-          <el-form-item label="功能码" class="form-item">
+          <el-form-item :label="$t('table.funcCode')" class="form-item">
             <el-input v-model.number="metadataForm.func_code" type="number" />
           </el-form-item>
         </el-col>
         <el-col :span="12" v-if="isYxOrYk">
-          <el-form-item label="位偏移 (Bit)" class="form-item">
-            <el-input-number v-model="metadataForm.bit" :min="0" :max="31" :step="1" placeholder="留空或输入0-31" style="width: 100%" controls-position="right" :value-on-clear="null" />
+          <el-form-item :label="$t('editMetadata.bitOffset')" class="form-item">
+            <el-input-number v-model="metadataForm.bit" :min="0" :max="31" :step="1" :placeholder="$t('editMetadata.bitPlaceholder')" style="width: 100%" controls-position="right" :value-on-clear="null" />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row :gutter="20" v-if="isYcOrYt">
         <el-col :span="12">
-          <el-form-item label="乘系数" class="form-item">
+          <el-form-item :label="$t('editMetadata.mulCoe')" class="form-item">
             <el-input v-model.number="metadataForm.mul_coe" type="number" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="加系数" class="form-item">
+          <el-form-item :label="$t('editMetadata.addCoe')" class="form-item">
             <el-input v-model.number="metadataForm.add_coe" type="number" />
           </el-form-item>
         </el-col>
       </el-row>
 
       <div class="button-group">
-        <el-button type="primary" @click="saveMetadata">保存属性</el-button>
-        <el-button @click="loadPointInfo">刷新</el-button>
+        <el-button type="primary" @click="saveMetadata">{{ $t('editMetadata.save') }}</el-button>
+        <el-button @click="loadPointInfo">{{ $t('common.refresh') }}</el-button>
       </div>
     </el-form>
   </div>
@@ -102,6 +102,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue';
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus';
 import { getPointInfo, editPointMetadata } from '@/api/pointApi';
 
@@ -110,6 +111,8 @@ interface Props {
   pointCode: string;
   active?: boolean;
 }
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<Props>(), {
   active: true
@@ -156,7 +159,7 @@ const saveMetadata = async () => {
   try {
     const result = await editPointMetadata(props.deviceName, props.pointCode, metadataForm);
     if (result) {
-      ElMessage.success('测点属性已更新');
+      ElMessage.success(t('editMetadata.saved'));
       emit('update-success', metadataForm.code); // 通知上层编码可能已变
     }
   } catch (error: any) {

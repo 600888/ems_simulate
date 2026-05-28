@@ -3,18 +3,18 @@
     <div class="action-buttons" v-if="!isCollapse">
       <el-button-group>
         <el-button type="primary" @click="$emit('add-device')" :icon="Plus">
-          添加设备
+          {{ $t('sidebar.addDevice') }}
         </el-button>
         <el-button type="success" @click="$emit('add-group')" :icon="FolderAdd">
-          添加分组
+          {{ $t('sidebar.addGroup') }}
         </el-button>
       </el-button-group>
     </div>
     <div class="add-device-btn-collapse" v-else>
-      <el-tooltip content="添加设备" placement="right">
+      <el-tooltip :content="$t('sidebar.addDevice')" placement="right">
         <el-button type="primary" circle @click="$emit('add-device')" :icon="Plus" />
       </el-tooltip>
-      <el-tooltip content="添加分组" placement="right">
+      <el-tooltip :content="$t('sidebar.addGroup')" placement="right">
         <el-button type="success" circle @click="$emit('add-group')" :icon="FolderAdd" />
       </el-tooltip>
     </div>

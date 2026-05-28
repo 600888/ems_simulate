@@ -5,7 +5,7 @@
       <div class="toolbar-left">
         <el-input
           v-model="interfaceName"
-          placeholder="网络接口 (空=自动)"
+          placeholder="Network Interface (empty=auto)"
           style="width: 180px"
           size="small"
           :disabled="captureRunning"
@@ -46,7 +46,7 @@
           @click="startCapture"
           :loading="starting"
         >
-          开始抓包
+          {{ $t('goose.startCapture') }}
         </el-button>
         <el-button
           v-else
@@ -56,7 +56,7 @@
           @click="stopCapture"
           :loading="stopping"
         >
-          停止抓包
+          {{ $t('goose.stopCapture') }}
         </el-button>
         <el-button
           :icon="Refresh"
@@ -65,7 +65,7 @@
           :disabled="!captureRunning"
           :loading="loading"
         >
-          刷新
+          {{ $t('goose.refresh') }}
         </el-button>
         <el-button
           :icon="Delete"
@@ -73,7 +73,7 @@
           @click="clearPackets"
           :disabled="!hasData"
         >
-          清空
+          {{ $t('goose.clear') }}
         </el-button>
       </div>
     </div>
@@ -81,15 +81,15 @@
     <!-- 统计信息 -->
     <div v-if="statistics" class="capture-stats">
       <div class="stat-item">
-        <span class="stat-label">捕获总数</span>
+        <span class="stat-label">{{ $t('goose.totalCaptured') }}</span>
         <span class="stat-value">{{ statistics.total_captured }}</span>
       </div>
       <div class="stat-item">
-        <span class="stat-label">缓冲区</span>
+        <span class="stat-label">{{ $t('goose.buffer') }}</span>
         <span class="stat-value">{{ statistics.buffer_size }} / {{ statistics.max_buffer_size }}</span>
       </div>
       <div class="stat-item">
-        <span class="stat-label">APPID 分布</span>
+        <span class="stat-label">{{ $t('goose.appIdDist') }}</span>
         <span class="stat-value">
           <el-tag
             v-for="app in (statistics.app_ids || [])"
@@ -234,6 +234,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { VideoPlay, VideoPause, Refresh, Delete } from '@element-plus/icons-vue'
 import { GooseCaptureWebSocket, WsEventType } from '@/services/GooseCaptureWebSocket'
@@ -243,6 +244,7 @@ import type {
 } from '@/api/gooseApi'
 
 const ws = GooseCaptureWebSocket.getInstance()
+const { t } = useI18n()
 
 // ===== 状态 =====
 const loading = ref(false)
@@ -312,7 +314,7 @@ function refreshPackets() {
 }
 
 function clearPackets() {
-  ElMessageBox.confirm('确定清空所有已捕获的 GOOSE 报文?', '确认', { type: 'warning' })
+  ElMessageBox.confirm(t('goose.clearConfirm'), t('common.confirm'), { type: 'warning' })
     .then(() => {
       ws.clear()
     })
@@ -343,12 +345,12 @@ cleanups.push(
     if (res.command === 'start') {
       starting.value = false
       if (res.success) {
-        ElMessage.success('GOOSE 抓包已启动')
+        ElMessage.success(t('goose.captureStarted'))
         lastListSeq = curSeq
         ws.list()
       } else {
         captureRunning.value = false
-        ElMessage.error(res.message || '启动失败')
+        ElMessage.error(res.message || t('goose.createFailed'))
       }
     } else if (res.command === 'stop') {
       // 清除兜底超时
@@ -361,10 +363,10 @@ cleanups.push(
       if (curSeq !== cmdSeq) return
       if (res.success) {
         captureRunning.value = false
-        ElMessage.success('GOOSE 抓包已停止')
+        ElMessage.success(t('goose.captureStopped'))
       } else {
         captureRunning.value = true
-        ElMessage.error(res.message || '停止失败')
+        ElMessage.error(res.message || t('goose.publishFailed'))
       }
     } else if (res.command === 'list') {
       loading.value = false
@@ -378,7 +380,7 @@ cleanups.push(
       if (res.success) {
         packets.value = []
         statistics.value = null
-        ElMessage.success('已清空')
+        ElMessage.success(t('goose.clearSuccess'))
       }
     } else if (res.command === 'status') {
       if (res.success && res.data?.captures?.length > 0) {

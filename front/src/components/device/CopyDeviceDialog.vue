@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    title="复制设备"
+    :title="$t('copyDevice.title')"
     width="480px"
     :close-on-click-modal="false"
     @close="handleClose"
@@ -14,23 +14,23 @@
       label-width="100px"
       label-position="right"
     >
-      <el-form-item label="源设备">
+      <el-form-item :label="$t('copyDevice.sourceDevice')">
         <el-input :value="sourceDeviceName" disabled />
       </el-form-item>
 
-      <el-form-item label="前缀">
-        <el-input v-model="form.prefix" placeholder="可选，如: DEV_" />
+      <el-form-item :label="$t('copyDevice.prefix')">
+        <el-input v-model="form.prefix" :placeholder="$t('copyDevice.prefixPlaceholder')" />
       </el-form-item>
 
-      <el-form-item label="后缀">
-        <el-input v-model="form.suffix" placeholder="可选，如: _COPY" />
+      <el-form-item :label="$t('copyDevice.suffix')">
+        <el-input v-model="form.suffix" :placeholder="$t('copyDevice.suffixPlaceholder')" />
       </el-form-item>
 
-      <el-form-item label="复制数量" prop="count">
+      <el-form-item :label="$t('copyDevice.copyCount')" prop="count">
         <el-input-number v-model="form.count" :min="1" :max="100" style="width: 100%" />
       </el-form-item>
 
-      <el-form-item label="IP偏移" prop="ipStartOffset">
+      <el-form-item :label="$t('copyDevice.ipOffset')" prop="ipStartOffset">
         <el-input-number
           v-model="form.ipStartOffset"
           :min="0"
@@ -38,11 +38,11 @@
           style="width: 100%"
         />
         <div class="form-tip">
-          源设备IP: {{ sourceIp }}，第一个复制设备的IP将变为 {{ previewFirstIp }}
+          {{ $t('copyDevice.ipPreview', { ip: sourceIp, newIp: previewFirstIp }) }}
         </div>
       </el-form-item>
 
-      <el-form-item label="端口偏移" prop="portOffset">
+      <el-form-item :label="$t('copyDevice.portOffset')" prop="portOffset">
         <el-input-number
           v-model="form.portOffset"
           :min="0"
@@ -50,7 +50,7 @@
           style="width: 100%"
         />
         <div class="form-tip">
-          源设备端口: {{ sourcePort }}，第一个复制设备的端口将变为 {{ previewFirstPort }}
+          {{ $t('copyDevice.portPreview', { port: sourcePort, newPort: previewFirstPort }) }}
         </div>
       </el-form-item>
 
@@ -62,18 +62,18 @@
         style="margin-bottom: 16px"
       >
         <template #title>
-          将复制 <strong>{{ sourcePointCount }}</strong> 个测点
+          {{ $t('copyDevice.copyPoints', { count: sourcePointCount }) }}
         </template>
       </el-alert>
 
-      <el-form-item label="复制预览">
+      <el-form-item :label="$t('copyDevice.copyPreview')">
         <div class="preview-list">
           <div v-for="i in Math.min(form.count, 5)" :key="i" class="preview-item">
             <span class="preview-name">{{ getPreviewName(i) }}</span>
             <span class="preview-ip">{{ getPreviewIp(i) }}:{{ getPreviewPort(i) }}</span>
           </div>
           <div v-if="form.count > 5" class="preview-more">
-            ... 还有 {{ form.count - 5 }} 个设备
+            {{ $t('copyDevice.moreDevices', { count: form.count - 5 }) }}
           </div>
         </div>
       </el-form-item>
@@ -81,7 +81,7 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose" round>取消</el-button>
+        <el-button @click="handleClose" round>{{ $t('common.cancel') }}</el-button>
         <el-button
           type="primary"
           :loading="loading"
@@ -90,7 +90,7 @@
           class="submit-btn"
           :icon="Check"
         >
-          开始复制
+          {{ $t('copyDevice.startCopy') }}
         </el-button>
       </div>
     </template>
@@ -99,6 +99,7 @@
 
 <script lang="ts" setup>
 import { ref, computed, reactive } from "vue";
+import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import type { FormInstance, FormRules } from "element-plus";
 import { Check } from "@element-plus/icons-vue";
@@ -119,6 +120,7 @@ const emit = defineEmits<{
   (e: "close"): void;
 }>();
 
+const { t } = useI18n()
 const formRef = ref<FormInstance>();
 const loading = ref(false);
 
@@ -131,7 +133,7 @@ const form = reactive({
 });
 
 const rules: FormRules = {
-  count: [{ required: true, message: "请输入复制数量", trigger: "blur" }],
+  count: [{ required: true, message: t("copyDevice.countRequired"), trigger: "blur" }],
 };
 
 const dialogVisible = computed({
@@ -188,7 +190,7 @@ const handleSubmit = async () => {
         ip_start_offset: form.ipStartOffset,
         port_offset: form.portOffset,
       });
-      ElMessage.success(`成功复制 ${result.copied_count} 个设备`);
+      ElMessage.success(t('copyDevice.copySuccess', { count: result.copied_count }));
       emit("success");
       dialogVisible.value = false;
       window.location.reload();

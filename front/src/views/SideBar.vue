@@ -78,6 +78,7 @@
 </template>
 
 <script lang="ts" setup>
+import { useI18n } from 'vue-i18n'
 import { onMounted, ref, computed, watch, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -107,6 +108,7 @@ import { useIec61850Tree, type TreeNode } from "@/composables";
 import { useSidebarRefresh } from "@/composables";
 
 const router = useRouter();
+const { t } = useI18n()
 const overlayMode = sidebarOverlayMode;
 const treeRef = ref<InstanceType<typeof ElTree>>();
 const scrollbarRef = ref<InstanceType<typeof ElScrollbar>>();
@@ -366,13 +368,13 @@ const handleUngroupedCommand = async (command: string) => {
 
 const handleBatchOperation = async (groupId: number, operation: 'start' | 'stop' | 'reset') => {
     await batchDeviceOperation(groupId, operation);
-    ElMessage.success(`${operation === 'start' ? '启动' : '停止'}成功`);
+    ElMessage.success(t('sidebar.' + (operation === 'start' ? 'startSuccess' : 'stopSuccess')));
 };
 
 const handleDeleteGroup = async (data: TreeNode) => {
-    await ElMessageBox.confirm(`确定删除组 "${data.name}"？`, '提示', { type: 'warning' });
+    await ElMessageBox.confirm(t('sidebar.confirmDeleteGroup', { name: data.name }), t('common.hint'), { type: 'warning' });
     await deleteDeviceGroup(data.id, false);
-    ElMessage.success('成功');
+    ElMessage.success(t('sidebar.success'));
     await fetchDeviceGroupTree();
 };
 
@@ -387,11 +389,11 @@ const handleEditDeviceByName = async (deviceName: string) => {
 
 const handleDeleteDevice = (data: TreeNode) => handleDeleteDeviceByName(data.name);
 const handleDeleteDeviceByName = async (deviceName: string) => {
-  await ElMessageBox.confirm(`确定删除 "${deviceName}"？`, '提示', { type: 'warning' });
+  await ElMessageBox.confirm(t('sidebar.confirmDeleteDevice', { name: deviceName }), t('common.hint'), { type: 'warning' });
   const channel = (await getChannelList()).find(c => c.name === deviceName);
   if (channel) {
     await deleteChannel(channel.id);
-    ElMessage.success('删除成功');
+    ElMessage.success(t('sidebar.deleteSuccess'));
 
     const path = `/device/${deviceName}`;
     // 如果存在这个标签，需要关闭它

@@ -1,16 +1,16 @@
 <template>
   <div class="register">
     <div class="simple-title">
-      <span>单点模拟设置</span>
+      <span>{{ $t('pointSimulator.title') }}</span>
       <el-divider></el-divider>
     </div>
     <el-form label-width="auto" :model="simulateForm">
       <el-row>
         <el-col :span="12">
-          <el-form-item label="模拟方法" label-position="right" class="form-item">
+          <el-form-item :label="$t('pointSimulator.method')" label-position="right" class="form-item">
             <el-select
               v-model="simulateForm.simulateMethod"
-              placeholder="请选择模拟方法"
+              :placeholder="$t('pointSimulator.selectMethod')"
               style="width: 90%"
               @change="handleSimulateMethodChange"
             >
@@ -24,11 +24,11 @@
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="步长" label-position="right" class="form-item">
+          <el-form-item :label="$t('pointSimulator.step')" label-position="right" class="form-item">
             <el-input
               v-model.number="simulateForm.step"
               type="number"
-              placeholder="请输入步长"
+              :placeholder="$t('pointSimulator.enterStep')"
               style="width: 90%"
             />
           </el-form-item>
@@ -36,21 +36,21 @@
       </el-row>
       <el-row>
         <el-col :span="12">
-          <el-form-item label="最小值" label-position="right" class="form-item">
+          <el-form-item :label="$t('pointSimulator.minValue')" label-position="right" class="form-item">
             <el-input
               v-model.number="simulateForm.minValue"
               type="number"
-              placeholder="请输入最小值"
+              :placeholder="$t('pointSimulator.enterMin')"
               style="width: 90%"
             />
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="最大值" label-position="right" class="form-item">
+          <el-form-item :label="$t('pointSimulator.maxValue')" label-position="right" class="form-item">
             <el-input
               v-model.number="simulateForm.maxValue"
               type="number"
-              placeholder="请输入最大值"
+              :placeholder="$t('pointSimulator.enterMax')"
               style="width: 90%"
             />
           </el-form-item>
@@ -58,41 +58,41 @@
       </el-row>
       <el-row>
         <el-col :span="24">
-          <el-form-item label="特殊参数" label-position="right" class="form-item">
+          <el-form-item :label="$t('pointSimulator.specialParams')" label-position="right" class="form-item">
             <div class="special-params" v-if="showSpecialParams">
               <el-input
                 v-if="simulateForm.simulateMethod === 'SineWave'"
                 v-model.number="simulateForm.period"
                 type="number"
-                placeholder="请输入周期(秒)"
+                :placeholder="$t('pointSimulator.enterPeriod')"
                 style="width: 90%"
               />
               <el-input
                 v-if="simulateForm.simulateMethod === 'SineWave'"
                 v-model.number="simulateForm.phase"
                 type="number"
-                placeholder="请输入相位(度)"
+                :placeholder="$t('pointSimulator.enterPhase')"
                 style="width: 90%"
               />
               <el-input
                 v-if="simulateForm.simulateMethod === 'Ramp'"
                 v-model.number="simulateForm.rampTime"
                 type="number"
-                placeholder="请输入斜坡时间(秒)"
+                :placeholder="$t('pointSimulator.enterRampTime')"
                 style="width: 90%"
               />
               <el-input
                 v-if="simulateForm.simulateMethod === 'Pulse'"
                 v-model.number="simulateForm.pulseWidth"
                 type="number"
-                placeholder="请输入脉冲宽度(秒)"
+                :placeholder="$t('pointSimulator.enterPulseWidth')"
                 style="width: 200px"
               />
               <el-input
                 v-if="simulateForm.simulateMethod === 'Pulse'"
                 v-model.number="simulateForm.pulseInterval"
                 type="number"
-                placeholder="请输入脉冲间隔(秒)"
+                :placeholder="$t('pointSimulator.enterPulseInterval')"
                 style="width: 200px"
               />
             </div>
@@ -101,13 +101,13 @@
       </el-row>
       <el-row class="custom-row">
         <el-form-item class="custom-form-item">
-          <el-button type="primary" @click="saveSettings">保存设置</el-button>
+          <el-button type="primary" @click="saveSettings">{{ $t('pointSimulator.saveSettings') }}</el-button>
         </el-form-item>
         <el-form-item class="custom-form-item">
-          <el-button @click="loadPointInfo">加载点信息</el-button>
+          <el-button @click="loadPointInfo">{{ $t('pointSimulator.loadPointInfo') }}</el-button>
         </el-form-item>
         <el-form-item class="custom-form-item">
-          <el-button @click="resetSettings">重置</el-button>
+          <el-button @click="resetSettings">{{ $t('pointSimulator.reset') }}</el-button>
         </el-form-item>
       </el-row>
     </el-form>
@@ -115,7 +115,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue';
+import { ref, reactive, watch, computed } from 'vue';
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus';
 import { 
   getPointInfo, 
@@ -135,13 +136,15 @@ const props = withDefaults(defineProps<Props>(), {
 });
 const emit = defineEmits(['update-success']);
 
-const simulateOptions = ref([
-  { value: 'Random', label: '随机模拟' },
-  { value: 'AutoIncrement', label: '自增模拟' },
-  { value: 'AutoDecrement', label: '自减模拟' },
-  { value: 'SineWave', label: '正弦波模拟' },
-  { value: 'Ramp', label: '斜坡模拟' },
-  { value: 'Pulse', label: '脉冲模拟' }
+const { t } = useI18n()
+
+const simulateOptions = computed(() => [
+  { value: 'Random', label: t('device.random') },
+  { value: 'AutoIncrement', label: t('device.autoIncrement') },
+  { value: 'AutoDecrement', label: t('device.autoDecrement') },
+  { value: 'SineWave', label: t('device.sineWave') },
+  { value: 'Ramp', label: t('device.ramp') },
+  { value: 'Pulse', label: t('device.pulse') }
 ]);
 
 const simulateForm = reactive({
@@ -193,7 +196,7 @@ const loadPointInfo = async () => {
       if (info.pulse_width) simulateForm.pulseWidth = info.pulse_width;
       if (info.pulse_interval) simulateForm.pulseInterval = info.pulse_interval;
       
-      ElMessage.success('加载点信息成功');
+      ElMessage.success(t('pointSimulator.loaded'));
     }
   } catch (error) {
     console.error('加载点信息失败:', error);
@@ -206,7 +209,7 @@ const saveSettings = async () => {
   try {
     // 验证表单
     if (simulateForm.minValue >= simulateForm.maxValue) {
-      ElMessage.warning('最小值必须小于最大值');
+      ElMessage.warning(t('pointSimulator.minLtMax'));
       return;
     }
     
@@ -233,10 +236,10 @@ const saveSettings = async () => {
     );
     
     if (methodResult && stepResult && rangeResult) {
-      ElMessage.success('设置保存成功');
+      ElMessage.success(t('pointSimulator.saved'));
       emit('update-success');
     } else {
-      ElMessage.error('设置保存失败');
+      ElMessage.error(t('pointSimulator.saveFailed'));
     }
   } catch (error) {
     console.error('保存设置失败:', error);
@@ -255,7 +258,7 @@ const resetSettings = () => {
   simulateForm.rampTime = 5;
   simulateForm.pulseWidth = 2;
   simulateForm.pulseInterval = 5;
-  ElMessage.success('设置已重置');
+  ElMessage.success(t('pointSimulator.resetDone'));
 };
 
 // 处理模拟方法变化

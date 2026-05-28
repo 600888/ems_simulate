@@ -21,12 +21,7 @@ import uvicorn
 import asyncio
 from fastapi.staticfiles import StaticFiles
 from src.web.app import app
-from src.device_controller import get_device_controller
 from src.config.config import Config
-
-async def init_device_controller():
-    """初始化设备控制器，在有事件循环的环境下启动Modbus TCP服务器"""
-    device_controller = await get_device_controller()
 
 async def main():
     # 获取静态文件目录（兼容开发 / PyInstaller 打包模式）
@@ -37,8 +32,9 @@ async def main():
     static_dir = os.path.join(base_dir, "www")
 
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
-    # 先初始化设备控制器，确保设备都已创建
-    await init_device_controller()
+
+    # 设备初始化已移至 FastAPI startup_event 中后台执行，
+    # uvicorn 先启动监听端口，Tauri 可更快检测到后端就绪
 
     # 启动后端服务器
     config = uvicorn.Config(

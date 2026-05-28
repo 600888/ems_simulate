@@ -20,7 +20,7 @@
         <template #default="scope">
           <div v-if="!scope.row._isDoRow && !scope.row._isVirtualDa" class="expand-wrapper">
             <el-tabs v-model="activeName" class="inner-tabs" lazy>
-              <el-tab-pane label="配置与控制" name="数据解析和设置">
+              <el-tab-pane :label="$t('table.configControl')" name="数据解析和设置">
                 <div class="control-grid">
                   <SingleRegister
                     v-if="intRegisterDecodeList.includes(scope.row['解析码'])"
@@ -49,7 +49,7 @@
                   <EditPointLimit :deviceName="deviceName" :pointCode="scope.row['测点编码']" :active="activeName === '数据解析和设置'" />
                 </div>
               </el-tab-pane>
-              <el-tab-pane label="属性编辑" name="测点编辑">
+              <el-tab-pane :label="$t('table.propertyEdit')" name="测点编辑">
                 <div class="metadata-grid">
                   <EditPointMetadata
                     :deviceName="deviceName"
@@ -67,7 +67,7 @@
                 </div>
               </el-tab-pane>
               
-              <el-tab-pane label="测点映射" name="测点映射">
+              <el-tab-pane :label="$t('table.pointMapping')" name="测点映射">
                 <PointMappingConfig
                   :deviceName="deviceName"
                   :targetPointCode="scope.row['测点编码']"
@@ -77,8 +77,8 @@
 
               <el-tab-pane name="数据模拟" :disabled="isClientDevice">
                 <template #label>
-                  <el-tooltip :content="isClientDevice ? '客户端设备不支持数据模拟' : ''" :disabled="!isClientDevice" placement="top">
-                    <span>仿真模拟</span>
+                  <el-tooltip :content="isClientDevice ? $t('device.clientNoSim') : ''" :disabled="!isClientDevice" placement="top">
+                    <span>{{ $t('table.simulation') }}</span>
                   </el-tooltip>
                 </template>
                 <PointSimulator
@@ -89,7 +89,7 @@
                 />
               </el-tab-pane>
 
-              <el-tab-pane label="变化回溯" name="变化回溯">
+              <el-tab-pane :label="$t('table.changeHistory')" name="变化回溯">
                 <PointChangeHistory
                   :deviceName="deviceName"
                   :pointCode="scope.row['测点编码']"
@@ -103,7 +103,7 @@
 
       <!-- 地址列 -->
       <el-table-column
-        label="地址"
+        :label="$t('table.address')"
         prop="地址"
         sortable="custom"
         :min-width="isIec61850 ? 200 : 130"
@@ -111,14 +111,14 @@
       >
         <template #header>
           <div class="header-content address-header">
-            <span>地址</span>
+            <span>{{ $t('table.address') }}</span>
             <el-switch
               v-if="!isIec61850"
               v-model="showHexAddress"
               size="small"
               inline-prompt
-              active-text="Hex"
-              inactive-text="Dec"
+              :active-text="$t('table.hex')"
+              :inactive-text="$t('table.dec')"
               class="address-switch"
             />
           </div>
@@ -130,7 +130,7 @@
             </el-icon>
             {{ scope.row._doName }}
             <el-tag size="small" effect="plain" class="do-da-tag do-tag">DO</el-tag>
-            <span class="do-badge">{{ scope.row._daCount }} 项</span>
+            <span class="do-badge">{{ scope.row._daCount }} {{ $t('table.items') }}</span>
           </span>
           <span v-else-if="scope.row._isDaRow" class="cell-text da-address" :class="{ 'is-struct-da': scope.row._isStructDa }" @click.stop="scope.row._isStructDa && toggleDaExpand(`${scope.row._doRef}.${scope.row._daPath}`)">
             <el-icon v-if="scope.row._isStructDa" class="da-expand-icon" :class="{ 'is-expanded': iec61850ExpandedDaKeys.includes(`${scope.row._doRef}.${scope.row._daPath}`) }">
@@ -138,7 +138,7 @@
             </el-icon>
             {{ scope.row._daDisplayName || scope.row._daPath || scope.row['地址'] }}
             <el-tag size="small" effect="plain" class="do-da-tag da-tag">DA</el-tag>
-            <span v-if="scope.row._isStructDa" class="do-badge">{{ scope.row._bdaCount }} 项</span>
+            <span v-if="scope.row._isStructDa" class="do-badge">{{ scope.row._bdaCount }} {{ $t('table.items') }}</span>
           </span>
           <span v-else-if="scope.row._isBdaRow" class="cell-text bda-address">
             {{ scope.row._bdaName || scope.row._daPath }}
@@ -153,7 +153,7 @@
       <!-- IEC61850 FC 列 -->
       <el-table-column
         v-if="isIec61850"
-        label="FC"
+        :label="$t('table.fc')"
         :width="70"
         :show-overflow-tooltip="false"
       >
@@ -173,7 +173,7 @@
       <!-- DataSet 最后更新时间列 -->
       <el-table-column
         v-if="props.iec61850Category === 'DataSets'"
-        label="最后更新时间"
+        :label="$t('table.lastUpdate')"
         :width="160"
         show-overflow-tooltip
       >
@@ -185,7 +185,7 @@
       <!-- IEC61850 DA路径列 -->
       <el-table-column
         v-if="isIec61850"
-        label="DA路径"
+        :label="$t('table.daPath')"
         :width="120"
         show-overflow-tooltip
       >
@@ -214,7 +214,7 @@
               <template #content>
                 <div v-if="header === '解析码'">{{ toolTip }}</div>
                 <div v-else-if="header === '功能码'">{{ funcCodeToolTip }}</div>
-                <div v-else>算法: 真实值 = 寄存器值 × 系数 + 偏移量</div>
+                <div v-else>{{ $t('table.algHint') }}</div>
               </template>
               <el-icon class="help-icon"><QuestionFilled /></el-icon>
             </el-tooltip>
@@ -256,6 +256,7 @@
       <el-table-column
         v-if="props.iec61850Category !== 'DataSets'"
         label="操作"
+        :label="$t('common.operation')"
         :width="isClientDevice || isIec61850WithActions ? 240 : 100"
         fixed="right"
       >
@@ -270,7 +271,7 @@
               @click="handleIec61850ReadPoint(scope.row['测点编码'])"
               :loading="readingPoints[scope.row['测点编码']]"
             >
-              读取
+              {{ $t('table.read') }}
             </el-button>
             <!-- IEC61850 服务端: 写入 (所有行可写，仿真设值) -->
             <el-button
@@ -280,7 +281,7 @@
               :icon="Edit"
               @click="handleIec61850WritePoint(scope.row)"
             >
-              写入
+              {{ $t('table.write') }}
             </el-button>
             <!-- IEC61850 客户端: 写入 (仅遥控/遥调，发送控制命令) -->
             <el-button
@@ -290,7 +291,7 @@
               :icon="Edit"
               @click="handleIec61850WritePoint(scope.row)"
             >
-              写入
+              {{ $t('table.write') }}
             </el-button>
             <!-- 非 IEC61850 客户端: 读取 -->
             <el-button
@@ -301,7 +302,7 @@
               @click="handleReadPoint(scope.row['测点编码'])"
               :loading="readingPoints[scope.row['测点编码']]"
             >
-              读取
+              {{ $t('table.read') }}
             </el-button>
             <!-- 非 IEC61850 客户端: 写入 (Modbus: func_code=01/03 也可写; 其他协议仅遥控/遥调) -->
             <el-button
@@ -311,13 +312,13 @@
               :icon="Edit"
               @click="handleWritePoint(scope.row)"
             >
-              写入
+              {{ $t('table.write') }}
             </el-button>
             <el-popconfirm
               v-if="!isIec61850"
-              title="确定要删除这个测点吗？"
-              confirm-button-text="删除"
-              cancel-button-text="取消"
+              :title="$t('table.deleteConfirm')"
+              :confirm-button-text="$t('common.delete')"
+              :cancel-button-text="$t('common.cancel')"
               @confirm="handleDeletePoint(scope.row['测点编码'])"
             >
               <template #reference>
@@ -327,7 +328,7 @@
                   :icon="Delete"
                   :loading="deletingPoints[scope.row['测点编码']]"
                 >
-                  删除
+                  {{ $t('common.delete') }}
                 </el-button>
               </template>
             </el-popconfirm>
@@ -372,6 +373,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive, watch, type PropType } from 'vue'
 import { useRoute } from "vue-router"
+import { useI18n } from 'vue-i18n'
 import { QuestionFilled, Download, Edit, Delete, CircleCheckFilled, CircleCloseFilled, RemoveFilled, ArrowRight } from "@element-plus/icons-vue"
 import { ElMessage } from 'element-plus'
 import { getPointType, PointType } from '@/types/point'
@@ -403,6 +405,8 @@ import PointMappingConfig from '../point/PointMappingConfig.vue'
 import PointChangeHistory from '../point/PointChangeHistory.vue'
 import WritePointDialog from './WritePointDialog.vue'
 import Iec61850WriteDialog from './Iec61850WriteDialog.vue'
+
+const { t } = useI18n()
 
 // ===== IEC61850 树形表格常量 =====
 
@@ -800,11 +804,11 @@ const handleReadPoint = async (pointCode: string) => {
   try {
     const value = await readSinglePoint(deviceName.value, pointCode);
     if (value !== null) {
-      ElMessage.success(`读取成功: ${value}`);
+      ElMessage.success(t('table.readSuccess', { value }));
       emit('refresh');
     }
   } catch (e) {
-    console.error('读取失败:', e);
+    console.error(t('table.readFailed'), e);
   } finally {
     readingPoints[pointCode] = false;
   }
@@ -836,13 +840,13 @@ const handleIec61850ReadPoint = async (pointCode: string) => {
   try {
     const result = await iec61850ReadPoint(props.channelId, pointCode);
     if (result && result.value !== null) {
-      ElMessage.success(`读取成功: ${result.value}`);
+      ElMessage.success(t('table.readSuccess', { value: result.value }));
       emit('refresh');
     } else {
-      ElMessage.warning('读取失败，请检查连接状态');
+      ElMessage.warning(t('table.readFailed'));
     }
   } catch (e: any) {
-    ElMessage.error(`读取失败: ${e?.message || e}`);
+    ElMessage.error(t('table.iec61850ReadFailed', { msg: e?.message || e }));
   } finally {
     readingPoints[pointCode] = false;
   }
@@ -867,10 +871,10 @@ const handleDeletePoint = async (pointCode: string) => {
   try {
     const success = await deletePoint(deviceName.value, pointCode);
     if (success) {
-      ElMessage.success('删除成功');
+      ElMessage.success(t('table.deleteSuccess'));
       emit('refresh');
     } else {
-      ElMessage.error('删除失败');
+      ElMessage.error(t('table.deleteFailed'));
     }
   } catch (e) {
   } finally {

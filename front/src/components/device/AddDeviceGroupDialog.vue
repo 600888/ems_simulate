@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    :title="isEditMode ? '编辑设备组' : '添加设备组'"
+    :title="isEditMode ? $t('addGroup.titleEdit') : $t('addGroup.titleAdd')"
     width="520px"
     :close-on-click-modal="false"
     @close="handleClose"
@@ -14,43 +14,43 @@
       label-width="100px"
       label-position="right"
     >
-      <el-form-item label="组编码" prop="code">
+      <el-form-item :label="$t('addGroup.groupCode')" prop="code">
         <el-input
           v-model="form.code"
-          placeholder="请输入设备组编码，如 GROUP1"
+          :placeholder="$t('addGroup.codePlaceholder')"
           :disabled="isEditMode"
         />
       </el-form-item>
 
-      <el-form-item label="组名称" prop="name">
-        <el-input v-model="form.name" placeholder="请输入设备组名称" />
+      <el-form-item :label="$t('addGroup.groupName')" prop="name">
+        <el-input v-model="form.name" :placeholder="$t('addGroup.namePlaceholder')" />
       </el-form-item>
 
-      <el-form-item label="父级设备组" prop="parent_id">
+      <el-form-item :label="$t('addGroup.parentGroup')" prop="parent_id">
         <el-tree-select
           v-model="form.parent_id"
           :data="parentOptions"
           :props="{ label: 'name', value: 'id', children: 'children' }"
-          placeholder="选择父级设备组（可选）"
+          :placeholder="$t('addGroup.parentPlaceholder')"
           check-strictly
           clearable
           style="width: 100%"
         />
       </el-form-item>
 
-      <el-form-item label="描述" prop="description">
+      <el-form-item :label="$t('addGroup.description')" prop="description">
         <el-input
           v-model="form.description"
           type="textarea"
           :rows="3"
-          placeholder="请输入设备组描述（可选）"
+          :placeholder="$t('addGroup.descPlaceholder')"
         />
       </el-form-item>
     </el-form>
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose" round>取消</el-button>
+        <el-button @click="handleClose" round>{{ $t('common.cancel') }}</el-button>
         <el-button
           type="primary"
           :loading="loading"
@@ -58,7 +58,7 @@
           round
           :icon="Check"
         >
-          {{ isEditMode ? "保存修改" : "确认添加" }}
+          {{ isEditMode ? $t('addGroup.saveChanges') : $t('addGroup.confirmAdd') }}
         </el-button>
       </div>
     </template>
@@ -67,6 +67,7 @@
 
 <script lang="ts" setup>
 import { ref, computed, reactive, watch } from 'vue';
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import { Check } from "@element-plus/icons-vue";
@@ -92,6 +93,8 @@ const emit = defineEmits<{
   (e: 'close'): void;
 }>();
 
+const { t } = useI18n()
+
 const formRef = ref<FormInstance>();
 const loading = ref(false);
 const isEditMode = computed(() => !!props.groupId);
@@ -106,13 +109,13 @@ const form = reactive<DeviceGroupCreateRequest>({
 
 const rules: FormRules = {
   code: [
-    { required: true, message: '请输入编码', trigger: 'blur' },
-    { min: 1, max: 32, message: '1-32字符', trigger: 'blur' },
-    { pattern: /^[a-zA-Z0-9_]+$/, message: '仅限字母/数字/下划线', trigger: 'blur' },
+    { required: true, message: t('addGroup.codeRequired'), trigger: 'blur' },
+    { min: 1, max: 32, message: '1-32 characters', trigger: 'blur' },
+    { pattern: /^[a-zA-Z0-9_]+$/, message: 'Letters/Numbers/Underscores only', trigger: 'blur' },
   ],
   name: [
-    { required: true, message: '请输入名称', trigger: 'blur' },
-    { min: 1, max: 64, message: '1-64字符', trigger: 'blur' },
+    { required: true, message: t('addGroup.nameRequired'), trigger: 'blur' },
+    { min: 1, max: 64, message: '1-64 characters', trigger: 'blur' },
   ],
 };
 
@@ -151,10 +154,10 @@ const handleSubmit = async () => {
     try {
       if (isEditMode.value && props.groupId) {
         await updateDeviceGroup(props.groupId, { name: form.name, parent_id: form.parent_id, description: form.description });
-        ElMessage.success('更新成功');
+        ElMessage.success(t('addGroup.updateSuccess'));
       } else {
         await createDeviceGroup(form);
-        ElMessage.success('创建成功');
+        ElMessage.success(t('addGroup.createSuccess'));
       }
       emit('success');
       handleClose();

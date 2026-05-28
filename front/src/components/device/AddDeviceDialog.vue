@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    :title="isEditMode ? '编辑设备' : '添加设备'"
+    :title="isEditMode ? $t('addDevice.titleEdit') : $t('addDevice.titleAdd')"
     width="640px"
     :close-on-click-modal="false"
     @close="handleClose"
@@ -35,11 +35,11 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button v-if="showPreviewBtn" type="warning" :icon="View" :loading="previewLoading" @click="handlePreview">
-          预览 ICD
+          {{ $t('addDevice.previewIcd') }}
         </el-button>
-        <el-button @click="handleClose" round>取消</el-button>
+        <el-button @click="handleClose" round>{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="loading" @click="handleSubmit" round class="submit-btn" :icon="Check">
-          {{ isEditMode ? '保存修改' : '确认添加' }}
+          {{ isEditMode ? $t('addDevice.saveChanges') : $t('addDevice.confirmAdd') }}
         </el-button>
       </div>
     </template>
@@ -48,14 +48,14 @@
   <!-- GOOSE 预览对话框 -->
   <el-dialog
     v-model="goosePreviewVisible"
-    title="ICD 文件预览"
+    :title="$t('addDevice.icdPreview')"
     width="90%"
     style="max-width: 1100px"
     :close-on-click-modal="false"
     destroy-on-close
   >
     <el-alert
-      :title="`MMS 测点: ${goosePreviewData?.total || 0} 个 (遥测 ${goosePreviewData?.yc_count || 0}, 遥信 ${goosePreviewData?.yx_count || 0}, 遥控 ${goosePreviewData?.yk_count || 0}, 遥调 ${goosePreviewData?.yt_count || 0})`"
+      :title="$t('addDevice.mmsPoints', { total: goosePreviewData?.total || 0, yc: goosePreviewData?.yc_count || 0, yx: goosePreviewData?.yx_count || 0, yk: goosePreviewData?.yk_count || 0, yt: goosePreviewData?.yt_count || 0 })"
       type="success"
       :closable="false"
       show-icon
@@ -64,7 +64,7 @@
 
     <div v-if="gooseControlList.length > 0">
       <el-alert
-        :title="`发现 ${gooseControlList.length} 个 GOOSE 控制块`"
+        :title="$t('addDevice.gooseControlBlocks', { count: gooseControlList.length })"
         type="info"
         :closable="false"
         show-icon
@@ -88,7 +88,7 @@
 
     <div v-else-if="previewDone">
       <el-alert
-        title="未发现 GOOSE 控制块，仅包含 MMS 测点配置"
+        :title="$t('addDevice.noGooseControl')"
         type="warning"
         :closable="false"
         show-icon
@@ -97,7 +97,7 @@
 
     <template #footer>
       <el-button type="primary" @click="goosePreviewVisible = false">
-        关闭
+        {{ $t('addDevice.close') }}
       </el-button>
     </template>
   </el-dialog>
@@ -105,6 +105,7 @@
 
 <script lang="ts" setup>
 import { ref, computed, reactive, watch, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import { Check, View } from "@element-plus/icons-vue";
@@ -124,6 +125,8 @@ const props = defineProps<{
   channelId?: number | null;
   initialGroupId?: number | null;
 }>();
+
+const { t } = useI18n()
 
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void;
@@ -169,9 +172,9 @@ const form = reactive<ChannelCreateRequest>({
 });
 
 const rules: FormRules = {
-  code: [{ required: true, message: '请输入编码', trigger: 'blur' }],
-  name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
-  port: [{ required: true, message: '请输入端口', trigger: 'blur' }],
+  code: [{ required: true, message: t('addDevice.codeRequired'), trigger: 'blur' }],
+  name: [{ required: true, message: t('addDevice.nameRequired'), trigger: 'blur' }],
+  port: [{ required: true, message: t('addDevice.portRequired'), trigger: 'blur' }],
 };
 
 // 生命周期与监听
@@ -269,16 +272,16 @@ const handleSubmit = async () => {
         await updateChannel(props.channelId, form);
         resultId = props.channelId;
         await reloadDeviceConfig(props.channelId);
-        ElMessage.success('更新成功，配置已重新加载');
+        ElMessage.success(t('addDevice.updateSuccess'));
       } else {
         const createRes = await createChannel(form);
         resultId = createRes.channel_id;
-        ElMessage.success('创建成功');
+        ElMessage.success(t('addDevice.createSuccess'));
       }
       
       if (selectedIcdFile.value) {
         const importResult = await importIcdPoints(resultId, selectedIcdFile.value, 'eth0', true);
-        ElMessage.success(`ICD 导入成功: 测点 ${importResult?.total || 0} 个，GOOSE Publisher ${importResult?.goose?.created_count || 0} 个`);
+        ElMessage.success(t('addDevice.icdImportSuccess', { total: importResult?.total || 0, goose: importResult?.goose?.created_count || 0 }));
       } else if (selectedFile.value) {
         await importPoints(resultId, selectedFile.value);
       }

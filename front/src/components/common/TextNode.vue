@@ -33,21 +33,30 @@ import {
   VideoPlay
 } from "@element-plus/icons-vue";
 
-defineProps({
+const props = defineProps({
   label: { type: String, required: true },
   name: { type: String, required: true },
   status: { type: Boolean, default: null },
+  /**
+   * Icon type: 'address' | 'port' | 'serial' | 'baud' | 'comm' | 'device-status' | 'sim-status'
+   */
+  iconType: { type: String, default: '' },
 });
 
 const getIconByLabel = (label: string) => {
-  const l = label.toLowerCase();
-  if (l.includes('地址')) return Connection;
-  if (l.includes('端口')) return PortIcon;
-  if (l.includes('串口')) return Link;
-  if (l.includes('波特率')) return Operation;
-  if (l.includes('通讯')) return Cpu;
-  if (l.includes('设备状态')) return Monitor;
-  if (l.includes('模拟状态')) return VideoPlay;
+  // If explicit iconType is provided, use it
+  if (props.iconType) {
+    const iconMap: Record<string, any> = {
+      'address': Connection,
+      'port': PortIcon,
+      'serial': Link,
+      'baud': Operation,
+      'comm': Cpu,
+      'device-status': Monitor,
+      'sim-status': VideoPlay,
+    };
+    return iconMap[props.iconType] || Setting;
+  }
   return Setting;
 };
 </script>

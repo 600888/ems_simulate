@@ -2,12 +2,29 @@
 import Sidebar from "./views/SideBar.vue";
 import AppHeader from "@/components/header/AppHeader.vue";
 import TagsView from "@/components/layout/TagsView.vue";
+import SettingsView from "@/views/SettingsView.vue";
 import { currentTheme } from "@/utils/theme";
 import { sidebarOverlayMode, closeSidebarOverlay } from "@/components/header/isCollapse";
 import { isTauri, onCloseRequested } from "@/utils/tauri";
-import { ref, onMounted } from "vue";
+import { ref, watch, onMounted } from "vue";
+import { useI18n } from "vue-i18n";
+import { currentLocale, setLocale } from "@/composables/useAppSettings";
 
 const isClosing = ref(false);
+const settingsVisible = ref(false);
+
+// 应用持久化的语言设置
+const { locale: i18nLocale, t } = useI18n();
+i18nLocale.value = currentLocale.value;
+
+// 监听语言切换
+watch(currentLocale, (val) => {
+  i18nLocale.value = val;
+});
+
+const openSettings = () => {
+  settingsVisible.value = true;
+};
 
 onMounted(async () => {
   if (isTauri()) {
@@ -25,7 +42,7 @@ onMounted(async () => {
       <div v-if="isClosing" class="closing-overlay">
         <div class="closing-content">
           <div class="closing-spinner"></div>
-          <div class="closing-text">正在关闭...</div>
+          <div class="closing-text">{{ $t('app.closing') }}</div>
         </div>
       </div>
     </Transition>
@@ -38,7 +55,7 @@ onMounted(async () => {
         @click="closeSidebarOverlay"
       ></div>
       <el-container direction="vertical">
-        <AppHeader />
+        <AppHeader @open-settings="openSettings" />
         <!-- 标签页 -->
         <TagsView />
         <el-main class="main-content">
@@ -59,6 +76,17 @@ onMounted(async () => {
       </el-container>
     </el-container>
   </div>
+
+  <!-- 设置弹框 -->
+  <el-dialog
+    v-model="settingsVisible"
+    :title="$t('app.settings')"
+    width="680px"
+    :close-on-click-modal="true"
+    class="settings-dialog"
+  >
+    <SettingsView />
+  </el-dialog>
 </template>
 
 <style lang="scss">
@@ -178,6 +206,16 @@ onMounted(async () => {
   }
   to {
     opacity: 1;
+  }
+}
+</style>
+
+<!-- 设置弹框：去除默认内边距 -->
+<style lang="scss">
+.settings-dialog {
+  .el-dialog__body {
+    padding: 0;
+    overflow: hidden;
   }
 }
 </style>

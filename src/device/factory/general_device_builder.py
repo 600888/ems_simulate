@@ -15,10 +15,12 @@ from src.data.service.yt_service import YtService
 from src.device.core.device import Device
 from src.enums.modbus_def import ProtocolType
 from src.enums.data_source import DataSource
-from src.proto.iec104.iec104client import IEC104Client
-from src.proto.iec104.iec104server import IEC104Server
-from src.proto.pyModbus.client import ModbusClient
-from src.proto.pyModbus.server import ModbusServer
+
+# 协议模块延迟导入，减少启动时间
+# from src.proto.iec104.iec104client import IEC104Client
+# from src.proto.iec104.iec104server import IEC104Server
+# from src.proto.pyModbus.client import ModbusClient
+# from src.proto.pyModbus.server import ModbusServer
 
 
 class GeneralDeviceBuilder:
@@ -150,6 +152,7 @@ class GeneralDeviceBuilder:
 
     @property
     def generalDeviceIec104Server(self) -> Device:
+        from src.proto.iec104.iec104server import IEC104Server
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
         self.importDataPoints()
@@ -162,6 +165,7 @@ class GeneralDeviceBuilder:
 
     @property
     def generalDeviceIec104Client(self) -> Device:
+        from src.proto.iec104.iec104client import IEC104Client
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
         self.importDataPoints()

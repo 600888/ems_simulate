@@ -1,30 +1,30 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="写入值"
+    :title="$t('writeDialog.title')"
     width="400px"
     destroy-on-close
     :close-on-click-modal="false"
   >
     <el-form :model="form" label-width="80px">
-      <el-form-item label="测点编码">
+      <el-form-item :label="$t('table.pointCode')">
         <el-input v-model="form.pointCode" disabled />
       </el-form-item>
-      <el-form-item label="真实值">
+      <el-form-item :label="$t('table.realValue')">
         <el-input :model-value="String(form.currentValue)" disabled />
       </el-form-item>
       <!-- 遥控 (YK): 合/分 -->
-      <el-form-item v-if="pointType === 2" label="操作">
+      <el-form-item v-if="pointType === 2" :label="$t('common.operation')">
         <el-radio-group v-model="form.writeValue">
-          <el-radio :label="1">合 / 开 (1)</el-radio>
-          <el-radio :label="0">分 / 关 (0)</el-radio>
+          <el-radio :label="1">{{ $t('writeDialog.on') }}</el-radio>
+          <el-radio :label="0">{{ $t('writeDialog.off') }}</el-radio>
         </el-radio-group>
       </el-form-item>
       <!-- 其他类型: 自由输入 (数值/字符串) -->
-      <el-form-item v-else label="写入值">
+      <el-form-item v-else :label="$t('writeDialog.writeValue')">
         <el-input
           v-model="form.writeValue"
-          placeholder="输入数值或字符串"
+          :placeholder="$t('writeDialog.inputPlaceholder')"
           style="width: 100%"
         />
       </el-form-item>
@@ -32,9 +32,9 @@
 
     <template #footer>
       <span class="dialog-footer">
-        <el-button @click="visible = false">取消</el-button>
+        <el-button @click="visible = false">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="loading" @click="handleSubmit">
-          确认写入
+          {{ $t('writeDialog.confirmWrite') }}
         </el-button>
       </span>
     </template>
@@ -43,8 +43,11 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue';
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus';
 import { iec61850WritePoint } from '@/api/channelApi';
+
+const { t } = useI18n()
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -78,7 +81,7 @@ watch(() => props.modelValue, (val) => {
 
 const handleSubmit = async () => {
   if (!form.pointCode) {
-    ElMessage.warning('测点编码为空，无法写入');
+    ElMessage.warning(t('writeDialog.emptyCode'));
     return;
   }
   loading.value = true;
@@ -90,12 +93,12 @@ const handleSubmit = async () => {
     }
     const result = await iec61850WritePoint(props.channelId, form.pointCode, val);
     if (result) {
-      ElMessage.success('写入指令已发送');
+      ElMessage.success(t('writeDialog.writeSent'));
       visible.value = false;
       emit('success');
     }
   } catch (e: any) {
-    ElMessage.error(`写入失败: ${e?.message || e}`);
+    ElMessage.error(t('writeDialog.writeFailed', { msg: e?.message || e }));
   } finally {
     loading.value = false;
   }

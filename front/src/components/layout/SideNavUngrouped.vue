@@ -3,7 +3,7 @@
     <div class="ungrouped-header">
       <div class="header-left" @click="$emit('toggle')">
         <el-icon><ArrowRight :class="{ 'is-expanded': expanded }" /></el-icon>
-        <span>未分组设备 ({{ ungroupedDevices.length }})</span>
+        <span>{{ $t('sidebar.ungroupedDevices', { count: ungroupedDevices.length }) }}</span>
       </div>
       
       <div class="header-actions" v-if="!isCollapse" @click.stop>
@@ -11,9 +11,9 @@
           <el-button link size="small" :icon="MoreFilled" />
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="addDevice" :icon="Plus">添加设备</el-dropdown-item>
-              <el-dropdown-item command="startAll" :icon="VideoPlay">启动全部</el-dropdown-item>
-              <el-dropdown-item command="stopAll" :icon="VideoPause">停止全部</el-dropdown-item>
+              <el-dropdown-item command="addDevice" :icon="Plus">{{ $t('sidebar.addDevice') }}</el-dropdown-item>
+              <el-dropdown-item command="startAll" :icon="VideoPlay">{{ $t('sidebar.startAll') }}</el-dropdown-item>
+              <el-dropdown-item command="stopAll" :icon="VideoPause">{{ $t('sidebar.stopAll') }}</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>

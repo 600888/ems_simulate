@@ -2,6 +2,7 @@ import json
 import os.path
 import sys
 import time
+import asyncio
 from typing import Union, List, Optional, Type
 
 from src.data.service.channel_service import ChannelService
@@ -137,7 +138,10 @@ class DeviceController:
     async def import_device_from_db(self):
         try:
             channel_list = ChannelService.get_all_channels()
-            for channel in channel_list:
+            
+            # 并发创建所有设备
+            async def _build_device(channel):
+                """单个设备的构建逻辑"""
                 channel_code = channel["code"]
                 channel_name = channel["name"]
                 channel_id = channel["id"]
@@ -201,20 +205,33 @@ class DeviceController:
                     is_start=False,
                 )
                 general_device.name = channel_name
-                
-                self.device_list.append(general_device)
-                self.device_map[general_device.name] = general_device
 
                 # 特殊处理储能电表
-                if (
+                is_energy_meter = (
                     channel_protocol_type == ProtocolType.Dlt645Client
                     or channel_protocol_type == ProtocolType.Dlt645Server
-                ):
-                    self.enerey_meter = general_device
+                )
 
-            # 启动数据同步线程
-            # self.start_data_sync_thread()
-            
+                return general_device, is_energy_meter
+
+            # 使用 asyncio.gather 并发创建所有设备
+            results = await asyncio.gather(
+                *[_build_device(ch) for ch in channel_list],
+                return_exceptions=True
+            )
+
+            # 收集结果
+            for result in results:
+                if isinstance(result, Exception):
+                    log.error(f"创建设备失败: {result}")
+                    continue
+                general_device, is_energy_meter = result
+                if general_device is not None:
+                    self.device_list.append(general_device)
+                    self.device_map[general_device.name] = general_device
+                    if is_energy_meter:
+                        self.enerey_meter = general_device
+
             # 所有设备创建完成后，设置提供者（此时可以安全地解析跨设备依赖）
             for device in self.device_list:
                 device.set_device_provider(self)

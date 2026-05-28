@@ -311,10 +311,10 @@ fn log_path_diagnostics(app_handle: &AppHandle) {
     log::info!("=== 路径诊断结束 ===");
 }
 
-/// 等待后端就绪（TCP 端口检测）
-/// 每 100ms 尝试连接后端端口，连接成功即表示服务已启动
+/// 等待后端就绪（TCP 端口检测 + HTTP health check）
+/// 阶段1: 每 100ms 尝试 TCP 连接，端口监听后进入阶段2
+/// 阶段2: 每 200ms 请求 /api/health，等待 initialized=true
 async fn wait_for_backend_ready(url: &str, timeout_secs: u64) -> Result<(), String> {
-    // 从 URL 解析端口号 (http://127.0.0.1:8991 -> 8991)
     let port = url::Url::parse(url)
         .ok()
         .and_then(|u| u.port())
@@ -322,18 +322,48 @@ async fn wait_for_backend_ready(url: &str, timeout_secs: u64) -> Result<(), Stri
     let addr = format!("127.0.0.1:{}", port);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
 
+    // 阶段1: 等待 TCP 端口可连接
     loop {
-        // TCP 连接成功 = 端口已监听 = 服务就绪
         match tokio::net::TcpStream::connect(&addr).await {
             Ok(_) => {
-                log::info!("后端端口 {} 已就绪", port);
-                return Ok(());
+                log::info!("后端端口 {} 已监听", port);
+                break;
             }
             Err(_) => {
                 if std::time::Instant::now() >= deadline {
                     return Err(format!("后端在 {}s 内未就绪 (端口: {})", timeout_secs, addr));
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+    }
+
+    // 阶段2: 等待 /api/health 返回 200 (initialized=true)
+    let health_url = format!("{}/api/health", url);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .connect_timeout(std::time::Duration::from_millis(500))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    loop {
+        match client.get(&health_url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                log::info!("后端服务已完全就绪 (health check 200)");
+                return Ok(());
+            }
+            Ok(_) => {
+                // 503 = 初始化中，继续等待
+                if std::time::Instant::now() >= deadline {
+                    return Err(format!("后端初始化在 {}s 内未完成", timeout_secs));
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+            Err(_) => {
+                if std::time::Instant::now() >= deadline {
+                    return Err(format!("后端 health check 超时 {}s", timeout_secs));
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             }
         }
     }

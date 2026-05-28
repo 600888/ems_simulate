@@ -2,12 +2,12 @@
   <el-col class="device-container">
     <!-- 第一行：设备基本通讯信息 -->
     <el-row class="nodes" :span="24">
-      <TextNode v-if="!isSerialMode" label="服务器地址" :name="ip" />
-      <TextNode v-if="!isSerialMode" label="端口号" :name="String(port)" />
-      <TextNode v-if="isSerialMode" label="串口号" :name="serialPort || '-'" />
-      <TextNode v-if="isSerialMode" label="波特率" :name="String(baudrate)" />
-      <TextNode label="通讯类型" :name="communicationType" />
-      <TextNode label="设备状态" :name="deviceStatusStr" :status="deviceStatus" />
+      <TextNode v-if="!isSerialMode" iconType="address" :label="$t('device.serverAddress')" :name="ip" />
+      <TextNode v-if="!isSerialMode" iconType="port" :label="$t('device.port')" :name="String(port)" />
+      <TextNode v-if="isSerialMode" iconType="serial" :label="$t('device.serialPort')" :name="serialPort || '-'" />
+      <TextNode v-if="isSerialMode" iconType="baud" :label="$t('device.baudRate')" :name="String(baudrate)" />
+      <TextNode iconType="comm" :label="$t('device.commType')" :name="communicationType" />
+      <TextNode iconType="device-status" :label="$t('device.deviceStatus')" :name="deviceStatusStr" :status="deviceStatus" />
       
       <el-button
         :class="['button', deviceStatus ? 'btn-stop' : 'btn-primary-action']"
@@ -19,7 +19,7 @@
           <el-icon v-if="!deviceStatus" class="icon"><CaretRight /></el-icon>
           <el-icon v-else class="icon"><VideoPause /></el-icon>
         </template>
-        <span> {{ deviceButtonText }} </span>
+        <span> {{ $t(deviceStatus ? 'device.stopDevice' : 'device.startDevice') }} </span>
       </el-button>
       
       <el-button
@@ -27,7 +27,7 @@
         @click="showMessageDialog = true"
       >
         <el-icon class="icon"><Document /></el-icon>
-        <span>查看报文</span>
+        <span>{{ $t('device.viewMessages') }}</span>
       </el-button>
       <el-button
         v-if="isIec61850Client"
@@ -36,16 +36,16 @@
         :disabled="!deviceStatus"
       >
         <el-icon class="icon"><Download /></el-icon>
-        <span>导出模型</span>
+        <span>{{ $t('device.exportModel') }}</span>
       </el-button>
     </el-row>
 
     <!-- 第二行：仿真模拟控制 -->
     <el-row class="nodes" :span="24">
-      <TextNode label="模拟状态" :name="simulationStatusStr" :status="simulationStatus" />
+      <TextNode iconType="sim-status" :label="$t('device.simulationStatus')" :name="simulationStatusStr" :status="simulationStatus" />
       <el-select
         v-model="currentSimulateMethod"
-        placeholder="模拟方式选择"
+        :placeholder="$t('device.selectSimMethod')"
         size="large"
         class="simulation-select"
         :disabled="isClientDevice"
@@ -57,7 +57,7 @@
           :value="item.value"
         />
       </el-select>
-      <el-tooltip :content="isClientDevice ? '客户端设备不支持数据模拟' : ''" :disabled="!isClientDevice" placement="top">
+      <el-tooltip :content="isClientDevice ? $t('device.clientNoSim') : ''" :disabled="!isClientDevice" placement="top">
         <span class="tooltip-wrapper">
           <el-button
             :class="['button', simulationStatus ? 'btn-stop' : 'btn-start']"
@@ -70,7 +70,7 @@
               <el-icon v-if="!simulationStatus" class="icon"><CaretRight /></el-icon>
               <el-icon v-else class="icon"><VideoPause /></el-icon>
             </template>
-            <span> {{ buttonText }} </span>
+            <span> {{ $t(simulationStatus ? 'device.stopSim' : 'device.startSim') }} </span>
           </el-button>
         </span>
       </el-tooltip>
@@ -106,6 +106,7 @@
 </template>
 
 <script lang="ts" setup>
+import { useI18n } from 'vue-i18n'
 import { ref, onMounted, onUnmounted, computed, watch, onActivated, onDeactivated } from "vue";
 import { useRoute } from "vue-router";
 import TextNode from "@/components/common/TextNode.vue";
@@ -126,6 +127,7 @@ import { CaretRight, VideoPause, Document, Download } from "@element-plus/icons-
 import { ElMessage } from "element-plus";
 
 const route = useRoute();
+const { t } = useI18n()
 
 const getDeviceNameFromRoute = () => {
   return (route.params.deviceName as string) || '';
@@ -160,18 +162,15 @@ const isClientDevice = computed(() => {
   return String(type).includes('Client');
 });
 
-const simulateOptions = [
-  { value: "Random", label: "随机模拟" },
-  { value: "AutoIncrement", label: "自增模拟" },
-  { value: "AutoDecrement", label: "自减模拟" },
-  { value: "SineWave", label: "正弦波模拟" },
-  { value: "Ramp", label: "斜坡模拟" },
-  { value: "Pulse", label: "脉冲模拟" },
-];
-const currentSimulateMethod = ref<string>(simulateOptions[0].value);
-
-const deviceButtonText = computed(() => deviceStatus.value ? "停止设备" : "开启设备");
-const buttonText = computed(() => simulationStatus.value ? "停止" : "开始");
+const simulateOptions = computed(() => [
+  { value: "Random", label: t("device.random") },
+  { value: "AutoIncrement", label: t("device.autoIncrement") },
+  { value: "AutoDecrement", label: t("device.autoDecrement") },
+  { value: "SineWave", label: t("device.sineWave") },
+  { value: "Ramp", label: t("device.ramp") },
+  { value: "Pulse", label: t("device.pulse") },
+]);
+const currentSimulateMethod = ref<string>("Random");
 
 const isDeviceProcessing = ref<boolean>(false);
 const isSimProcessing = ref<boolean>(false);
@@ -180,11 +179,11 @@ const isSimProcessing = ref<boolean>(false);
 const iec61850Connecting = ref(false);
 const iec61850ConnectProgress = ref<IEC61850ConnectProgress | null>(null);
 const iec61850PhaseLabel: Record<string, string> = {
-  idle: '准备中...',
-  connecting: '正在连接服务器...',
-  discovering: '正在发现数据模型...',
-  done: '连接完成',
-  failed: '连接失败',
+  idle: t('device.preparing'),
+  connecting: t('device.connectingServer'),
+  discovering: t('device.discoveringModel'),
+  done: t('device.connectDone'),
+  failed: t('device.connectFailed'),
 };
 
 const isIec61850Client = computed(() => {
@@ -216,11 +215,11 @@ const startIec61850ProgressPolling = () => {
         if (progress.phase === 'done') {
           deviceStatus.value = true;
           deviceStatusStr.value = '运行中';
-          ElMessage.success('IEC 61850 设备连接成功');
+          ElMessage.success(t('device.iec61850DeviceConnectSuccess'));
           slaveRef.value?.reloadDatas();
           triggerSidebarRefresh(routeName.value);
         } else {
-          ElMessage.error('IEC 61850 设备连接失败');
+          ElMessage.error(t('device.iec61850DeviceConnectFailed'));
         }
       }
     }
@@ -241,28 +240,28 @@ const toggleDevice = async () => {
     if (deviceStatus.value) {
       if (await stopDevice(routeName.value)) {
         deviceStatus.value = false;
-        deviceStatusStr.value = "停止";
+        deviceStatusStr.value = t('common.stopped');
         if (simulationStatus.value) {
           // 设备停止时，仿真自动停止，但不触发仿真按钮的loading
           simulationStatus.value = false;
-          simulationStatusStr.value = "停止";
+          simulationStatusStr.value = t('common.stopped');
         }
       } else {
-        ElMessage.error("停止设备失败");
+        ElMessage.error(t('device.stopDeviceFailed'));
       }
     } else {
       if (await startDevice(routeName.value)) {
         if (isIec61850Client.value) {
           // IEC61850: 后台连接中，启动进度轮询
-          deviceStatusStr.value = "连接中";
+          deviceStatusStr.value = t('device.connecting');
           startIec61850ProgressPolling();
         } else {
           deviceStatus.value = true;
-          deviceStatusStr.value = "运行中";
-          ElMessage.success("启动设备成功");
+          deviceStatusStr.value = t('common.running');
+          ElMessage.success(t('device.startDeviceSuccess'));
         }
       } else {
-        ElMessage.error("启动设备失败");
+        ElMessage.error(t('device.startDeviceFailed'));
       }
     }
   } catch (error: any) {
@@ -283,7 +282,7 @@ const fetchDeviceInfo = async () => {
     communicationType.value = info.get("type") || null;
     const serverStatus = info.get("server_status");
     deviceStatus.value = serverStatus;
-    deviceStatusStr.value = serverStatus === true ? "运行中" : "停止";
+    deviceStatusStr.value = serverStatus === true ? t('common.running') : t('common.stopped');
     // 初始化防抖状态，避免初始加载时误弹通知
     lastNotifyServerStatus = serverStatus;
     stableServerStatus = serverStatus;
@@ -291,7 +290,7 @@ const fetchDeviceInfo = async () => {
     statusUnstableCount = STATUS_STABLE_THRESHOLD;
     const simuStatus = info.get("simulation_status");
     simulationStatus.value = simuStatus;
-    simulationStatusStr.value = simuStatus === true ? "运行中" : "停止";
+    simulationStatusStr.value = simuStatus === true ? t('common.running') : t('common.stopped');
 
     // IEC61850 客户端：如果设备未运行，检查是否正在后台连接中
     if (!serverStatus && String(communicationType.value) === 'Iec61850Client') {
@@ -299,7 +298,7 @@ const fetchDeviceInfo = async () => {
       if (progress && progress.connecting) {
         // 正在连接中，启动进度轮询
         iec61850Connecting.value = true;
-        deviceStatusStr.value = '连接中';
+        deviceStatusStr.value = t('device.connecting');
         iec61850ConnectProgress.value = progress;
         startIec61850ProgressPolling();
       }
@@ -316,12 +315,12 @@ const startFunction = async () => {
     if (simulationStatus.value) {
       if (await stopSimulation(routeName.value)) {
         simulationStatus.value = false;
-        simulationStatusStr.value = "停止";
+        simulationStatusStr.value = t('common.stopped');
       }
     } else {
       if (await startSimulation(routeName.value, currentSimulateMethod.value)) {
         simulationStatus.value = true;
-        simulationStatusStr.value = "运行中";
+        simulationStatusStr.value = t('common.running');
       }
     }
   } catch (error) { console.error(error); }
@@ -351,11 +350,11 @@ const fetchDeviceStatus = async () => {
       // 连接完成后才更新设备状态
       if (serverStatus === true) {
         deviceStatus.value = true;
-        deviceStatusStr.value = "运行中";
+        deviceStatusStr.value = t('common.running');
       }
     } else {
       deviceStatus.value = serverStatus;
-      deviceStatusStr.value = serverStatus === true ? "运行中" : "停止";
+      deviceStatusStr.value = serverStatus === true ? t('common.running') : t('common.stopped');
     }
 
     // IEC 61850 客户端：检测到连接从 false 变为 true 时立即刷新测点表格
@@ -386,21 +385,21 @@ const fetchDeviceStatus = async () => {
     if (statusUnstableCount >= STATUS_STABLE_THRESHOLD && lastNotifyServerStatus !== serverStatus) {
       lastNotifyServerStatus = serverStatus;
       if (serverStatus === true) {
-        ElMessage.success(`设备 ${routeName.value} 已连接`);
+        ElMessage.success(t('device.deviceConnected', { name: routeName.value }));
       } else {
-        ElMessage.warning(`设备 ${routeName.value} 连接已断开`);
+        ElMessage.warning(t('device.deviceDisconnected', { name: routeName.value }));
       }
     }
 
     const simuStatus = info.get("simulation_status");
     if (simulationStatus.value !== simuStatus) {
       simulationStatus.value = simuStatus;
-      simulationStatusStr.value = simuStatus === true ? "运行中" : "停止";
+      simulationStatusStr.value = simuStatus === true ? t('common.running') : t('common.stopped');
       // 模拟状态变化提示
       if (simuStatus === true) {
-        ElMessage.info(`设备 ${routeName.value} 模拟已启动`);
+        ElMessage.info(t('device.simStarted', { name: routeName.value }));
       } else {
-        ElMessage.info(`设备 ${routeName.value} 模拟已停止`);
+        ElMessage.info(t('device.simStopped', { name: routeName.value }));
       }
     }
   } catch (error) { /* 静默处理轮询错误 */ }

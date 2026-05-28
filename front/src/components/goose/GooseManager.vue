@@ -2,13 +2,13 @@
   <div class="goose-manager">
     <el-tabs v-model="activeTab" class="goose-tabs">
       <!-- Publisher 面板 -->
-      <el-tab-pane label="GOOSE 发布" name="publisher">
+      <el-tab-pane :label="$t('goose.publish')" name="publisher">
         <div class="tab-header">
           <el-button type="primary" :icon="Plus" @click="showCreatePublisherDialog">
-            新建 Publisher
+            {{ $t('goose.newPublisher') }}
           </el-button>
           <el-button :icon="Refresh" @click="refreshPublishers" :loading="loading">
-            刷新
+            {{ $t('goose.refresh') }}
           </el-button>
         </div>
 
@@ -20,9 +20,9 @@
               0x{{ (row.app_id ?? 0).toString(16).toUpperCase().padStart(4, '0') }}
             </template>
           </el-table-column>
-          <el-table-column prop="interface" label="接口" width="100" />
-          <el-table-column prop="dst_mac" label="目标MAC" width="140" />
-          <el-table-column label="数据集" width="80" align="center">
+          <el-table-column prop="interface" label="Interface" width="100" />
+          <el-table-column prop="dst_mac" label="Dest MAC" width="140" />
+          <el-table-column :label="$t('goose.dataSet')" width="80" align="center">
             <template #default="{ row }">
               {{ row.entry_count }}
             </template>
@@ -32,21 +32,21 @@
               {{ row.st_num }}/{{ row.sq_num }}
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="90" align="center">
+          <el-table-column :label="$t('goose.running')" width="90" align="center">
             <template #default="{ row }">
               <el-tag :type="row.is_running ? 'success' : 'info'" size="small">
-                {{ row.is_running ? '运行中' : '已停止' }}
+                {{ row.is_running ? $t('goose.running') : $t('goose.stopped') }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="仿真" width="70" align="center">
+          <el-table-column :label="$t('goose.yes')" width="70" align="center">
             <template #default="{ row }">
               <el-tag :type="row.simulation ? 'warning' : ''" size="small">
-                {{ row.simulation ? '是' : '否' }}
+                {{ row.simulation ? $t('goose.yes') : $t('goose.no') }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="280" fixed="right">
+          <el-table-column :label="$t('common.operation')" width="280" fixed="right">
             <template #default="{ row }">
               <el-button-group>
                 <el-button
@@ -55,7 +55,7 @@
                   size="small"
                   @click="startPublisher(row.id)"
                 >
-                  启动
+                  {{ $t('goose.start') }}
                 </el-button>
                 <el-button
                   v-else
@@ -63,7 +63,7 @@
                   size="small"
                   @click="stopPublisher(row.id)"
                 >
-                  停止
+                  {{ $t('goose.stop') }}
                 </el-button>
                 <el-button
                   type="primary"
@@ -71,20 +71,20 @@
                   :disabled="!row.is_running"
                   @click="publishNow(row.id)"
                 >
-                  发布
+                  {{ $t('goose.publishAction') }}
                 </el-button>
                 <el-button
                   size="small"
                   @click="editPublisherEntries(row)"
                 >
-                  数据集
+                  {{ $t('goose.dataSet') }}
                 </el-button>
                 <el-button
                   type="danger"
                   size="small"
                   @click="deletePublisher(row.id)"
                 >
-                  删除
+                  {{ $t('common.delete') }}
                 </el-button>
               </el-button-group>
             </template>
@@ -93,31 +93,31 @@
       </el-tab-pane>
 
       <!-- Receiver 面板 -->
-      <el-tab-pane label="GOOSE 订阅" name="receiver">
+      <el-tab-pane :label="$t('goose.subscribe')" name="receiver">
         <div class="tab-header">
           <el-button type="primary" :icon="Plus" @click="showCreateReceiverDialog">
-            新建 Receiver
+            {{ $t('goose.newReceiver') }}
           </el-button>
           <el-button :icon="Refresh" @click="refreshReceivers" :loading="loading">
-            刷新
+            {{ $t('goose.refresh') }}
           </el-button>
         </div>
 
         <el-table :data="receivers" stripe border style="width: 100%" v-loading="loading">
-          <el-table-column prop="interface" label="网络接口" width="140" />
-          <el-table-column label="订阅数" width="90" align="center">
+          <el-table-column prop="interface" :label="$t('goose.iface')" width="140" />
+          <el-table-column label="Subscriptions" width="90" align="center">
             <template #default="{ row }">
               {{ row.subscription_count }}
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="90" align="center">
+          <el-table-column :label="$t('goose.running')" width="90" align="center">
             <template #default="{ row }">
               <el-tag :type="row.is_running ? 'success' : 'info'" size="small">
-                {{ row.is_running ? '运行中' : '已停止' }}
+                {{ row.is_running ? $t('goose.running') : $t('goose.stopped') }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="订阅详情" min-width="400">
+          <el-table-column :label="$t('device.subscribeNow')" min-width="400">
             <template #default="{ row }">
               <div class="subscription-list">
                 <el-tag
@@ -132,11 +132,11 @@
                   {{ sub.go_cb_ref?.split('$').pop() || sub.go_cb_ref }}
                   ({{ GOOSE_STATE_LABEL[sub.state] || sub.state }})
                 </el-tag>
-                <span v-if="!row.subscriptions?.length" class="text-muted">暂无订阅</span>
+                <span v-if="!row.subscriptions?.length" class="text-muted">{{ $t('goose.noSubscription') }}</span>
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="260" fixed="right">
+          <el-table-column :label="$t('common.operation')" width="260" fixed="right">
             <template #default="{ row }">
               <el-button-group>
                 <el-button
@@ -145,7 +145,7 @@
                   size="small"
                   @click="startReceiver(row.id)"
                 >
-                  启动
+                  {{ $t('goose.start') }}
                 </el-button>
                 <el-button
                   v-else
@@ -153,13 +153,13 @@
                   size="small"
                   @click="stopReceiver(row.id)"
                 >
-                  停止
+                  {{ $t('goose.stop') }}
                 </el-button>
                 <el-button size="small" @click="editReceiverSubscriptions(row)">
-                  订阅管理
+                  {{ $t('goose.subscriptionManager') }}
                 </el-button>
                 <el-button type="danger" size="small" @click="deleteReceiver(row.id)">
-                  删除
+                  {{ $t('common.delete') }}
                 </el-button>
               </el-button-group>
             </template>
@@ -168,13 +168,13 @@
       </el-tab-pane>
 
       <!-- GOOSE 抓包 -->
-      <el-tab-pane label="GOOSE 抓包" name="capture">
+      <el-tab-pane :label="$t('goose.captureTitle')" name="capture">
         <GooseCapture />
       </el-tab-pane>
     </el-tabs>
 
     <!-- 创建 Publisher 对话框 -->
-    <el-dialog v-model="createPublisherVisible" title="新建 GOOSE Publisher" width="600px" destroy-on-close>
+    <el-dialog v-model="createPublisherVisible" :title="$t('goose.newPublisher')" width="600px" destroy-on-close>
       <el-form :model="publisherForm" label-width="130px" :rules="publisherRules" ref="publisherFormRef">
         <el-form-item label="GoCBRef" prop="go_cb_ref">
           <el-input v-model="publisherForm.go_cb_ref" placeholder="如: LD0/LLN0$GO$gcb1" />
@@ -250,10 +250,10 @@
     </el-dialog>
 
     <!-- 创建 Receiver 对话框 -->
-    <el-dialog v-model="createReceiverVisible" title="新建 GOOSE Receiver" width="500px" destroy-on-close>
+    <el-dialog v-model="createReceiverVisible" :title="$t('goose.newReceiver')" width="500px" destroy-on-close>
       <el-form :model="receiverForm" label-width="100px">
-        <el-form-item label="网络接口" required>
-          <el-input v-model="receiverForm.interface" placeholder="如: eth0" />
+        <el-form-item :label="$t('goose.iface')" required>
+          <el-input v-model="receiverForm.interface" placeholder="e.g. eth0" />
         </el-form-item>
         <el-form-item label="订阅列表">
           <div class="entry-list">
@@ -273,7 +273,7 @@
     </el-dialog>
 
     <!-- 数据集编辑对话框 -->
-    <el-dialog v-model="entryEditorVisible" :title="`数据集编辑 - ${editingPublisher?.go_cb_ref || ''}`" width="700px" destroy-on-close>
+    <el-dialog v-model="entryEditorVisible" :title="$t('goose.dataSet') + ' - ' + (editingPublisher?.go_cb_ref || '')" width="700px" destroy-on-close>
       <el-table :data="editingEntries" border size="small">
         <el-table-column label="序号" width="60" align="center">
           <template #default="{ $index }">{{ $index }}</template>
@@ -305,16 +305,16 @@
         </el-table-column>
       </el-table>
       <div style="margin-top: 12px; display: flex; gap: 8px">
-        <el-button :icon="Plus" size="small" @click="addEntryToEditor">添加条目</el-button>
+        <el-button :icon="Plus" size="small" @click="addEntryToEditor">{{ $t('goose.addEntry') }}</el-button>
       </div>
       <template #footer>
-        <el-button @click="entryEditorVisible = false">关闭</el-button>
-        <el-button type="primary" @click="saveNewEntries" :loading="savingEntries">保存新增条目</el-button>
+        <el-button @click="entryEditorVisible = false">{{ $t('goose.close') }}</el-button>
+        <el-button type="primary" @click="saveNewEntries" :loading="savingEntries">{{ $t('goose.saveEntries') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 订阅管理对话框 -->
-    <el-dialog v-model="subManagerVisible" :title="`订阅管理 - ${editingReceiver?.interface || ''}`" width="700px" destroy-on-close>
+    <el-dialog v-model="subManagerVisible" :title="$t('goose.subscriptionManager') + ' - ' + (editingReceiver?.interface || '')" width="700px" destroy-on-close>
       <div class="tab-header">
         <el-button type="primary" :icon="Plus" size="small" @click="showAddSubscriptionForm = true" v-if="!editingReceiver?.is_running">
           添加订阅
@@ -411,6 +411,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Delete } from '@element-plus/icons-vue'
 import GooseCapture from './GooseCapture.vue'
@@ -429,6 +430,8 @@ import {
 import type {
   GoosePublisherStatus, GooseReceiverStatus, GooseSubscriptionStatus,
 } from '@/api/gooseApi'
+
+const { t } = useI18n()
 
 // ===== 通用状态 =====
 const loading = ref(false)
@@ -547,11 +550,11 @@ async function createPublisher() {
       ...publisherForm,
       dst_mac: null,
     })
-    ElMessage.success('GOOSE Publisher 创建成功')
+    ElMessage.success(t('goose.createSuccess'))
     createPublisherVisible.value = false
     await refreshPublishers()
   } catch (e: any) {
-    ElMessage.error(e?.message || '创建失败')
+    ElMessage.error(e?.message || t('goose.createFailed'))
   } finally {
     creating.value = false
   }
@@ -560,40 +563,40 @@ async function createPublisher() {
 async function startPublisher(id: string) {
   try {
     const ok = await startGoosePublisher(id)
-    if (ok) ElMessage.success('启动成功')
-    else ElMessage.error('启动失败')
+    if (ok) ElMessage.success(t('goose.startSuccess'))
+    else ElMessage.error(t('goose.publishFailed'))
     await refreshPublishers()
   } catch (e: any) {
-    ElMessage.error(e?.message || '启动失败')
+    ElMessage.error(e?.message || t('goose.publishFailed'))
   }
 }
 
 async function stopPublisher(id: string) {
   try {
     const ok = await stopGoosePublisher(id)
-    if (ok) ElMessage.success('已停止')
+    if (ok) ElMessage.success(t('goose.stopSuccess'))
     await refreshPublishers()
   } catch (e: any) {
-    ElMessage.error(e?.message || '停止失败')
+    ElMessage.error(e?.message || t('goose.publishFailed'))
   }
 }
 
 async function publishNow(id: string) {
   try {
     const ok = await publishGooseNow(id)
-    if (ok) ElMessage.success('GOOSE 报文已发布')
-    else ElMessage.error('发布失败')
+    if (ok) ElMessage.success(t('goose.publishSuccess'))
+    else ElMessage.error(t('goose.publishFailed'))
     await refreshPublishers()
   } catch (e: any) {
-    ElMessage.error(e?.message || '发布失败')
+    ElMessage.error(e?.message || t('goose.publishFailed'))
   }
 }
 
 async function deletePublisher(id: string) {
   try {
-    await ElMessageBox.confirm('确定删除此 GOOSE Publisher?', '确认', { type: 'warning' })
+    await ElMessageBox.confirm(t('goose.deleteConfirm'), t('common.confirm'), { type: 'warning' })
     await deleteGoosePublisher(id)
-    ElMessage.success('已删除')
+    ElMessage.success(t('goose.deleted'))
     await refreshPublishers()
   } catch { /* cancelled */ }
 }
@@ -703,11 +706,11 @@ async function createReceiver() {
         description: s.description,
       })),
     })
-    ElMessage.success('GOOSE Receiver 创建成功')
+    ElMessage.success(t('goose.createSuccess'))
     createReceiverVisible.value = false
     await refreshReceivers()
   } catch (e: any) {
-    ElMessage.error(e?.message || '创建失败')
+    ElMessage.error(e?.message || t('goose.createFailed'))
   } finally {
     creating.value = false
   }
@@ -716,29 +719,29 @@ async function createReceiver() {
 async function startReceiver(id: string) {
   try {
     const ok = await startGooseReceiver(id)
-    if (ok) ElMessage.success('启动成功')
-    else ElMessage.error('启动失败')
+    if (ok) ElMessage.success(t('goose.startSuccess'))
+    else ElMessage.error(t('goose.createFailed'))
     await refreshReceivers()
   } catch (e: any) {
-    ElMessage.error(e?.message || '启动失败')
+    ElMessage.error(e?.message || t('goose.createFailed'))
   }
 }
 
 async function stopReceiver(id: string) {
   try {
     const ok = await stopGooseReceiver(id)
-    if (ok) ElMessage.success('已停止')
+    if (ok) ElMessage.success(t('goose.stopSuccess'))
     await refreshReceivers()
   } catch (e: any) {
-    ElMessage.error(e?.message || '停止失败')
+    ElMessage.error(e?.message || t('goose.publishFailed'))
   }
 }
 
 async function deleteReceiver(id: string) {
   try {
-    await ElMessageBox.confirm('确定删除此 GOOSE Receiver?', '确认', { type: 'warning' })
+    await ElMessageBox.confirm(t('goose.receiverDeleteConfirm'), t('common.confirm'), { type: 'warning' })
     await deleteGooseReceiver(id)
-    ElMessage.success('已删除')
+    ElMessage.success(t('goose.deleted'))
     await refreshReceivers()
   } catch { /* cancelled */ }
 }
@@ -759,14 +762,14 @@ async function addSubscription() {
       dst_mac: null,
       description: newSubForm.description,
     })
-    ElMessage.success('订阅添加成功')
+    ElMessage.success(t('goose.subscriptionAdded'))
     showAddSubscriptionForm.value = false
     Object.assign(newSubForm, { go_cb_ref: '', app_id: null, description: '' })
     await refreshReceivers()
     // 更新编辑中的 receiver
     editingReceiver.value = receivers.value.find(r => r.id === editingReceiver.value?.id) || editingReceiver.value
   } catch (e: any) {
-    ElMessage.error(e?.message || '添加订阅失败')
+    ElMessage.error(e?.message || t('goose.createFailed'))
   }
 }
 
@@ -774,7 +777,7 @@ async function removeSubscription(goCbRef: string) {
   if (!editingReceiver.value) return
   try {
     await removeGooseSubscription(editingReceiver.value.id, goCbRef)
-    ElMessage.success('订阅已移除')
+    ElMessage.success(t('goose.subscriptionRemoved'))
     await refreshReceivers()
     editingReceiver.value = receivers.value.find(r => r.id === editingReceiver.value?.id) || editingReceiver.value
   } catch (e: any) {

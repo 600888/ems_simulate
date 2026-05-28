@@ -43,21 +43,21 @@
               <el-button link size="small" :icon="MoreFilled" />
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="edit" :icon="Edit">编辑</el-dropdown-item>
+                  <el-dropdown-item command="edit" :icon="Edit">{{ $t('common.edit') }}</el-dropdown-item>
                   <el-dropdown-item command="addDevice" :icon="Plus"
-                    >添加设备</el-dropdown-item
+                    >{{ $t('sidebar.addDevice') }}</el-dropdown-item
                   >
                   <el-dropdown-item command="addSubGroup" :icon="FolderAdd"
-                    >添加子分组</el-dropdown-item
+                    >{{ $t('sidebar.addSubGroup') }}</el-dropdown-item
                   >
                   <el-dropdown-item command="startAll" :icon="VideoPlay"
-                    >启动全部</el-dropdown-item
+                    >{{ $t('sidebar.startAll') }}</el-dropdown-item
                   >
                   <el-dropdown-item command="stopAll" :icon="VideoPause"
-                    >停止全部</el-dropdown-item
+                    >{{ $t('sidebar.stopAll') }}</el-dropdown-item
                   >
                   <el-dropdown-item command="delete" :icon="Delete" divided
-                    >删除</el-dropdown-item
+                    >{{ $t('common.delete') }}</el-dropdown-item
                   >
                 </el-dropdown-menu>
               </template>

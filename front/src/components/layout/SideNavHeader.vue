@@ -2,7 +2,7 @@
   <div class="sidebar-header" v-if="!isCollapse">
     <div class="logo-box">
       <el-icon class="logo-icon"><Cpu /></el-icon>
-      <span class="logo-text">设备列表</span>
+      <span class="logo-text">{{ $t('sidebar.deviceList') }}</span>
       <div class="theme-toggle-wrapper" @click.stop="toggleTheme">
         <el-icon class="theme-icon">
           <Sunny v-if="currentTheme === 'dark'" />

@@ -26,10 +26,11 @@ from src.device.core.point.point_operator import PointOperator
 from src.device.core.slave_manager import SlaveManager
 from src.device.core.message.message_formatter import MessageFormatter
 from src.device.protocol.base_handler import ProtocolHandler, ServerHandler, ClientHandler
-from src.device.protocol.modbus_handler import ModbusServerHandler, ModbusClientHandler
-from src.device.protocol.iec104_handler import IEC104ServerHandler, IEC104ClientHandler
-from src.device.protocol.dlt645_handler import DLT645ServerHandler, DLT645ClientHandler
-from src.device.protocol.iec61850_handler import IEC61850ServerHandler, IEC61850ClientHandler
+# 协议处理器延迟导入，减少启动时间
+# from src.device.protocol.modbus_handler import ModbusServerHandler, ModbusClientHandler
+# from src.device.protocol.iec104_handler import IEC104ServerHandler, IEC104ClientHandler
+# from src.device.protocol.dlt645_handler import DLT645ServerHandler, DLT645ClientHandler
+# from src.device.protocol.iec61850_handler import IEC61850ServerHandler, IEC61850ClientHandler
 from src.device.core.point.point_calculator import PointCalculator
 from src.enums.point_data import SimulateMethod, Yc, Yx, Yt, Yk, DeviceType, BasePoint
 from src.enums.modbus_def import ProtocolType
@@ -137,7 +138,12 @@ class Device:
     # ===== 协议处理 =====
 
     def _create_protocol_handler(self) -> ProtocolHandler:
-        """根据协议类型创建处理器"""
+        """根据协议类型创建处理器（延迟导入协议模块）"""
+        from src.device.protocol.modbus_handler import ModbusServerHandler, ModbusClientHandler
+        from src.device.protocol.iec104_handler import IEC104ServerHandler, IEC104ClientHandler
+        from src.device.protocol.dlt645_handler import DLT645ServerHandler, DLT645ClientHandler
+        from src.device.protocol.iec61850_handler import IEC61850ServerHandler, IEC61850ClientHandler
+
         handler_map = {
             ProtocolType.ModbusTcp: lambda: ModbusServerHandler(self.log),
             ProtocolType.ModbusRtu: lambda: ModbusServerHandler(self.log),

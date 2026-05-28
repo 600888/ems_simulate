@@ -7,23 +7,23 @@
     :close-on-click-modal="false"
   >
     <el-form :model="form" label-width="80px">
-      <el-form-item label="测点编码" class="center-input">
+      <el-form-item :label="$t('table.pointCode')" class="center-input">
         <el-input v-model="form.pointCode" disabled />
       </el-form-item>
-      <el-form-item label="真实值" class="center-input">
+      <el-form-item :label="$t('table.realValue')" class="center-input">
         <el-input v-model="form.currentValue" disabled />
       </el-form-item>
       
       <!-- 遥控 (YK) -->
-      <el-form-item v-if="pointType === 2" label="操作">
+      <el-form-item v-if="pointType === 2" :label="$t('common.operation')">
         <el-radio-group v-model="form.value">
-          <el-radio :label="1">合 / 开 (1)</el-radio>
-          <el-radio :label="0">分 / 关 (0)</el-radio>
+          <el-radio :label="1">{{ $t('writeDialog.on') }}</el-radio>
+          <el-radio :label="0">{{ $t('writeDialog.off') }}</el-radio>
         </el-radio-group>
       </el-form-item>
       
       <!-- 遥调 (YT) -->
-      <el-form-item v-else-if="pointType === 3" label="设定值">
+      <el-form-item v-else-if="pointType === 3" :label="$t('writeDialog.setValue')">
         <el-input-number 
           v-model="form.value" 
           :controls="false" 
@@ -33,16 +33,16 @@
       </el-form-item>
       
       <!-- 其他类型 fallback -->
-      <el-form-item v-else label="设定值">
+      <el-form-item v-else :label="$t('writeDialog.setValue')">
         <el-input v-model="form.value" />
       </el-form-item>
     </el-form>
     
     <template #footer>
       <span class="dialog-footer">
-        <el-button @click="visible = false">取消</el-button>
+        <el-button @click="visible = false">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="loading" @click="handleSubmit">
-          确认写入
+          {{ $t('writeDialog.confirmWrite') }}
         </el-button>
       </span>
     </template>
@@ -51,8 +51,11 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue';
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus';
 import { editPointData } from '@/api/pointApi';
+
+const { t } = useI18n()
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -77,7 +80,7 @@ const form = reactive({
 });
 
 const title = computed(() => {
-  return props.pointType === 2 ? '遥控操作' : '遥调设置';
+  return props.pointType === 2 ? t('writeDialog.remoteControl') : t('writeDialog.adjustSetting');
 });
 
 watch(() => props.modelValue, (val) => {
@@ -94,7 +97,7 @@ const handleSubmit = async () => {
     const val = Number(form.value);
     const success = await editPointData(props.deviceName, props.pointCode, val);
     if (success) {
-      ElMessage.success('写入指令已发送');
+      ElMessage.success(t('writeDialog.writeSent'));
       visible.value = false;
       emit('success');
     }

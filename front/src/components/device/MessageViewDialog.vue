@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="实时报文查看"
+    :title="$t('messageView.title')"
     width="1100px"
     :before-close="handleClose"
     destroy-on-close
@@ -14,18 +14,18 @@
           @click="toggleAutoRefresh"
           :icon="autoRefresh ? VideoPause : CaretRight"
         >
-          {{ autoRefresh ? '暂停刷新' : '开始刷新' }}
+          {{ autoRefresh ? $t('messageView.pauseRefresh') : $t('messageView.startRefresh') }}
         </el-button>
         <el-button type="danger" @click="handleClear" :icon="Delete">
-          清空报文
+          {{ $t('messageView.clearMessages') }}
         </el-button>
         <el-select v-model="searchMode" class="search-mode-select">
-          <el-option label="按描述" value="description" />
-          <el-option label="按报文" value="hex_data" />
+          <el-option :label="$t('messageView.byDescription')" value="description" />
+          <el-option :label="$t('messageView.byData')" value="hex_data" />
         </el-select>
         <el-input
           v-model="searchKeyword"
-          :placeholder="searchMode === 'description' ? '搜索描述...' : '搜索报文...'"
+          :placeholder="searchMode === 'description' ? $t('messageView.searchDesc') : $t('messageView.searchData')"
           :prefix-icon="Search"
           clearable
           class="search-input"
@@ -33,13 +33,13 @@
       </div>
       <div class="right-info">
         <span class="msg-count">
-          共 {{ filteredMessages.length }} / {{ messages.length }} 条报文
+          {{ $t('messageView.messageCount', { filtered: filteredMessages.length, total: messages.length }) }}
         </span>
         <el-tag v-if="avgStats && avgStats.pair_count > 0" type="warning" size="small">
-          平均延时: {{ avgStats.avg_latency_ms }} ms ({{ avgStats.pair_count }} 对)
+          {{ $t('messageView.avgLatency', { ms: avgStats.avg_latency_ms, pairs: avgStats.pair_count }) }}
         </el-tag>
-        <el-tag v-if="autoRefresh" type="success" size="small">自动刷新中</el-tag>
-        <el-tag v-else type="info" size="small">已暂停</el-tag>
+        <el-tag v-if="autoRefresh" type="success" size="small">{{ $t('messageView.autoRefreshing') }}</el-tag>
+        <el-tag v-else type="info" size="small">{{ $t('messageView.paused') }}</el-tag>
       </div>
     </div>
 
@@ -50,25 +50,25 @@
       class="message-table"
       :row-class-name="getRowClass"
     >
-      <el-table-column prop="formatted_time" label="时间" width="120" header-align="center" />
-      <el-table-column prop="direction" label="方向" width="80" align="center" header-align="center">
+      <el-table-column prop="formatted_time" :label="$t('messageView.time')" width="120" header-align="center" />
+      <el-table-column prop="direction" :label="$t('messageView.direction')" width="80" align="center" header-align="center">
         <template #default="{ row }">
           <el-tag :type="row.direction === 'TX' ? 'primary' : 'success'" size="small">
-            {{ row.direction === 'TX' ? '发送' : '接收' }}
+            {{ row.direction === 'TX' ? $t('messageView.send') : $t('messageView.receive') }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="length" label="长度" width="70" align="center" header-align="center">
+      <el-table-column prop="length" :label="$t('messageView.length')" width="70" align="center" header-align="center">
         <template #default="{ row }">
           <span class="length-badge">{{ row.length }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="hex_data" label="数据 (HEX)" min-width="350" align="center" header-align="center">
+      <el-table-column prop="hex_data" :label="$t('messageView.dataHex')" min-width="350" align="center" header-align="center">
         <template #default="{ row }">
           <span class="hex-data" :title="row.hex_data">{{ row.hex_data }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="description" label="解析" min-width="280" header-align="center">
+      <el-table-column prop="description" :label="$t('messageView.parsed')" min-width="280" header-align="center">
         <template #default="{ row }">
           <span class="desc-text" :title="row.description">{{ row.description }}</span>
         </template>
@@ -76,13 +76,14 @@
     </el-table>
 
     <template #footer>
-      <el-button @click="handleClose">关闭</el-button>
+      <el-button @click="handleClose">{{ $t('common.close') }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script lang="ts" setup>
 import { ref, watch, onUnmounted, computed } from 'vue';
+import { useI18n } from 'vue-i18n'
 import { getMessages, clearMessages, getAvgTime, type MessageRecord, type AvgTimeStats } from '@/api/deviceApi';
 import { CaretRight, VideoPause, Delete, Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -96,6 +97,7 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void;
 }>();
 
+const { t } = useI18n()
 const visible = computed({
   get: () => props.modelValue,
   set: (val) => emit('update:modelValue', val)
@@ -150,18 +152,18 @@ const toggleAutoRefresh = () => {
 
 const handleClear = async () => {
   try {
-    await ElMessageBox.confirm('确定要清空所有报文记录吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
+    await ElMessageBox.confirm(t('messageView.clearConfirm'), t('common.hint'), {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
       type: 'warning',
     });
     const success = await clearMessages(props.deviceName);
     if (success) {
       messages.value = [];
       avgStats.value = null;
-      ElMessage.success('报文已清空');
+      ElMessage.success(t('messageView.cleared'));
     } else {
-      ElMessage.error('清空失败');
+      ElMessage.error(t('messageView.clearFailed'));
     }
   } catch {
     // 用户取消
