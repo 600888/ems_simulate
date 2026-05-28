@@ -7,6 +7,7 @@
     - 前端新增 `@tauri-apps/api` 原生能力集成
     - Windows `.msi` / Linux `.deb` / `.AppImage` 打包支持
     - 安装包体积预估 ~40MB（相比 Electron 方案减少 60%+）
+1. 增加IEC61850客户端导出模型功能，支持icd、xml、json、csv、text等格式
 
 ## [3.0.0] - 2026-5-12
 ### 新增功能

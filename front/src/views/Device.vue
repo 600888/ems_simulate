@@ -29,6 +29,15 @@
         <el-icon class="icon"><Document /></el-icon>
         <span>查看报文</span>
       </el-button>
+      <el-button
+        v-if="isIec61850Client"
+        class="button btn-export"
+        @click="showExportDialog = true"
+        :disabled="!deviceStatus"
+      >
+        <el-icon class="icon"><Download /></el-icon>
+        <span>导出模型</span>
+      </el-button>
     </el-row>
 
     <!-- 第二行：仿真模拟控制 -->
@@ -87,6 +96,12 @@
       v-model="showMessageDialog"
       :device-name="routeName"
     />
+
+    <!-- 模型导出对话框 -->
+    <ModelExportDialog
+      v-model="showExportDialog"
+      :device-name="routeName"
+    />
   </el-col>
 </template>
 
@@ -96,6 +111,7 @@ import { useRoute } from "vue-router";
 import TextNode from "@/components/common/TextNode.vue";
 import Slave from "@/components/device/Slave.vue";
 import MessageViewDialog from "@/components/device/MessageViewDialog.vue";
+import ModelExportDialog from "@/components/device/ModelExportDialog.vue";
 import {
   getDeviceInfo,
   startSimulation,
@@ -106,7 +122,7 @@ import {
 } from "@/api/deviceApi";
 import type { IEC61850ConnectProgress } from "@/api/deviceApi";
 import { triggerSidebarRefresh } from "@/composables";
-import { CaretRight, VideoPause, Document } from "@element-plus/icons-vue";
+import { CaretRight, VideoPause, Document, Download } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 
 const route = useRoute();
@@ -129,6 +145,7 @@ const deviceStatusStr = ref<any>("");
 const simulationStatus = ref<boolean>(false);
 const simulationStatusStr = ref<any>("");
 const showMessageDialog = ref<boolean>(false);
+const showExportDialog = ref<boolean>(false);
 const slaveRef = ref<any>(null);
 
 const isSerialMode = computed(() => {
@@ -500,6 +517,11 @@ watch(() => route.fullPath, async () => {
 .btn-info {
   background-color: #6366f1;
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+}
+
+.btn-export {
+  background-color: #0ea5e9;
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.25);
 }
 
 .progress-row {

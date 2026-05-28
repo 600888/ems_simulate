@@ -72,6 +72,7 @@ declare module 'vue' {
     Iec61850WriteDialog: typeof import('./src/components/device/Iec61850WriteDialog.vue')['default']
     LongRegister: typeof import('./src/components/register/LongRegister.vue')['default']
     MessageViewDialog: typeof import('./src/components/device/MessageViewDialog.vue')['default']
+    ModelExportDialog: typeof import('./src/components/device/ModelExportDialog.vue')['default']
     PointChangeHistory: typeof import('./src/components/point/PointChangeHistory.vue')['default']
     PointMappingConfig: typeof import('./src/components/point/PointMappingConfig.vue')['default']
     PointSimulator: typeof import('./src/components/point/PointSimulator.vue')['default']

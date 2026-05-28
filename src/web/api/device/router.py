@@ -13,6 +13,7 @@ from src.web.api.schemas import (
     DeviceStartRequest, DeviceStopRequest, DeviceResetRequest,
     CurrentTableRequest, ManualReadRequest,
     MessageListRequest, SlaveAddRequest, SlaveDeleteRequest, SlaveEditRequest,
+    ExportModelRequest,
 )
 
 # from src.web.ws.manager import manager
@@ -354,3 +355,74 @@ async def edit_slave(req: SlaveEditRequest, request: Request):
     except Exception as e:
         log.error(f"编辑从机失败: {e}")
         return BaseResponse(code=500, message=f"编辑从机失败: {e}!", data=False)
+
+
+# ===== IEC 61850 模型导出 =====
+
+@device_router.post("/export-model")
+async def export_model(req: ExportModelRequest, request: Request):
+    """导出 IEC 61850 服务器模型为指定格式文件
+
+    支持: icd (SCL/ICD标准格式), json, xml, csv, tree
+    """
+    import os
+    import tempfile
+    from fastapi.responses import FileResponse
+
+    try:
+        device = _get_device(req.device_name, request)
+    except KeyError:
+        return BaseResponse(code=404, message=f"设备 {req.device_name} 不存在!", data=False)
+    except Exception as e:
+        return BaseResponse(code=500, message=f"获取设备失败: {e}!", data=False)
+
+    # 仅支持 IEC 61850 客户端设备
+    if device.protocol_type != ProtocolType.Iec61850Client:
+        return BaseResponse(code=400, message="仅支持 IEC 61850 客户端设备导出模型!", data=False)
+
+    # 检查客户端是否已连接
+    client = device.client
+    if not client or not client.is_connected:
+        return BaseResponse(code=400, message="IEC 61850 客户端未连接，请先启动设备!", data=False)
+
+    # 导出类型映射
+    export_type = req.export_type.lower()
+    type_config = {
+        "icd":  {"ext": ".icd",  "media": "application/xml",        "method": "export_icd"},
+        "json": {"ext": ".json", "media": "application/json",       "method": "export_json"},
+        "xml":  {"ext": ".xml",  "media": "application/xml",        "method": "export_xml"},
+        "csv":  {"ext": ".csv",  "media": "text/csv",               "method": "export_csv"},
+        "tree": {"ext": ".txt",  "media": "text/plain",             "method": "export_tree_text"},
+    }
+
+    if export_type not in type_config:
+        return BaseResponse(code=400, message=f"不支持的导出类型: {req.export_type}，支持: icd/json/xml/csv/tree", data=False)
+
+    config = type_config[export_type]
+
+    try:
+        # 发现模型
+        exporter = client.model_exporter
+        model = exporter.discover()
+
+        # 导出到临时文件
+        tmp_dir = tempfile.mkdtemp(prefix="ems_export_")
+        filename = f"{req.device_name}_model{config['ext']}"
+        tmp_path = os.path.join(tmp_dir, filename)
+
+        # 调用对应的导出方法
+        method = getattr(exporter, config["method"])
+        if export_type == "icd":
+            method(model, tmp_path, ied_name=req.ied_name)
+        else:
+            method(model, tmp_path)
+
+        # 返回文件下载
+        return FileResponse(
+            path=tmp_path,
+            filename=filename,
+            media_type=config["media"],
+        )
+    except Exception as e:
+        log.error(f"导出模型失败: {e}")
+        return BaseResponse(code=500, message=f"导出模型失败: {e}!", data=False)

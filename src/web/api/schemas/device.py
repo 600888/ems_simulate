@@ -95,3 +95,10 @@ class SlaveEditRequest(BaseModel):
     device_name: str = Field(..., description="设备名称")
     old_slave_id: int = Field(..., description="旧从机地址")
     new_slave_id: int = Field(..., description="新从机地址 (1-255)")
+
+
+class ExportModelRequest(BaseModel):
+    """IEC 61850 模型导出请求"""
+    device_name: str = Field(..., description="设备名称")
+    export_type: str = Field("icd", description="导出类型: icd/json/xml/csv/tree")
+    ied_name: str = Field("", description="IED 名称 (ICD 导出时使用，为空则自动推断)")

@@ -11,6 +11,7 @@ from .device import (
     CurrentTableRequest, ManualReadRequest,
     MessageListRequest, SlaveAddRequest, SlaveDeleteRequest, SlaveEditRequest,
     DeviceGroupStatusRequest,
+    ExportModelRequest,
 )
 from .device_group import (
     DeviceGroupCreateRequest, DeviceGroupUpdateRequest,
@@ -52,6 +53,7 @@ __all__ = [
     "CurrentTableRequest", "ManualReadRequest",
     "MessageListRequest", "SlaveAddRequest", "SlaveDeleteRequest", "SlaveEditRequest",
     "DeviceGroupStatusRequest",
+    "ExportModelRequest",
     "DeviceGroupCreateRequest", "DeviceGroupUpdateRequest",
     "DeviceGroupDeleteRequest", "DeviceGroupIdRequest",
     "DeviceToGroupRequest", "RemoveDeviceRequest",

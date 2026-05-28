@@ -277,6 +277,8 @@ def infer_iec_type_from_address(address: str) -> str:
     return IEC_TYPE_UNKNOWN
 
 
+
+
 class IEC61850Client:
     """IEC 61850 MMS 客户端
 
@@ -2022,3 +2024,45 @@ class IEC61850Client:
         except Exception as e:
             log.debug(f"浏览数据属性失败: {do_ref}, 错误: {e}")
             return []
+
+    # ========== 模型导出插件 ==========
+
+    @property
+    def model_exporter(self):
+        """获取模型导出工具实例 (懒加载)"""
+        if not hasattr(self, '_model_exporter') or self._model_exporter is None:
+            from .iec61850_model_exporter import IEC61850ModelExporter
+            self._model_exporter = IEC61850ModelExporter(self)
+        return self._model_exporter
+
+    def discover_server_model(self):
+        """动态发现服务端完整数据模型 (结构化)
+
+        委托给 IEC61850ModelExporter，返回 ServerModel 对象。
+        包含完整的 LD -> LN -> DO/DS/RCB/GoCB -> DA/BDA 树形层次。
+        """
+        return self.model_exporter.discover()
+
+    def export_model_json(self, model, output_path, indent=2):
+        """导出模型为 JSON - 委托给 model_exporter"""
+        return self.model_exporter.export_json(model, output_path, indent)
+
+    def export_model_csv(self, model, output_path):
+        """导出模型为 CSV - 委托给 model_exporter"""
+        return self.model_exporter.export_csv(model, output_path)
+
+    def export_model_tree_text(self, model, output_path):
+        """导出模型为树形文本 - 委托给 model_exporter"""
+        return self.model_exporter.export_tree_text(model, output_path)
+
+    def export_model_xml(self, model, output_path, pretty=True):
+        """导出模型为 XML - 委托给 model_exporter"""
+        return self.model_exporter.export_xml(model, output_path, pretty)
+
+    def export_model_icd(self, model, output_path, ied_name="", pretty=True):
+        """导出模型为 ICD (SCL标准格式) - 委托给 model_exporter"""
+        return self.model_exporter.export_icd(model, output_path, ied_name=ied_name, pretty=pretty)
+
+    def export_model_all(self, model, output_dir, ied_name=""):
+        """导出所有格式 - 委托给 model_exporter"""
+        return self.model_exporter.export_all(model, output_dir, ied_name=ied_name)

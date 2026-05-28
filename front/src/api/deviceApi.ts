@@ -238,6 +238,61 @@ export async function getIEC61850ConnectProgress(deviceName: string): Promise<IE
   }
 }
 
+// ===== IEC 61850 模型导出 =====
+
+export type ExportModelType = 'icd' | 'json' | 'xml' | 'csv' | 'tree';
+
+export async function exportModel(deviceName: string, exportType: ExportModelType, iedName: string = ''): Promise<void> {
+  const extMap: Record<ExportModelType, string> = {
+    icd: '.icd',
+    json: '.json',
+    xml: '.xml',
+    csv: '.csv',
+    tree: '.txt',
+  };
+  const mimeMap: Record<ExportModelType, string> = {
+    icd: 'application/xml',
+    json: 'application/json',
+    xml: 'application/xml',
+    csv: 'text/csv',
+    tree: 'text/plain',
+  };
+  const defaultFilename = `${deviceName}_model${extMap[exportType]}`;
+
+  // 弹出文件保存对话框，让用户选择保存位置
+  const fileHandle = await (window as any).showSaveFilePicker({
+    suggestedName: defaultFilename,
+    types: [{
+      description: `${exportType.toUpperCase()} 文件`,
+      accept: { [mimeMap[exportType]]: [extMap[exportType]] },
+    }],
+  });
+
+  // 请求后端获取文件内容
+  const baseURL = import.meta.env.VUE_APP_API_BASE || '/';
+  const response = await fetch(`${baseURL}${DEVICE_API.EXPORT_MODEL}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      device_name: deviceName,
+      export_type: exportType,
+      ied_name: iedName,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    const errorMsg = errorData?.message || `导出失败 (HTTP ${response.status})`;
+    throw new Error(errorMsg);
+  }
+
+  // 将响应内容写入用户选择的文件
+  const blob = await response.blob();
+  const writable = await fileHandle.createWritable();
+  await writable.write(blob);
+  await writable.close();
+}
+
 // ===== 动态测点/从机管理 =====
 
 export async function addSlave(deviceName: string, slaveId: number): Promise<boolean> {

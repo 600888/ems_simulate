@@ -15,4 +15,4 @@ uvicorn[standard]==0.40.0
 python-multipart==0.0.21
 dlt645==1.3.6
 pyiec61850-ng==1.6.1.2
-pywin32==311
+xmltodict==1.0.4

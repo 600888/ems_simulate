@@ -50,6 +50,7 @@ export const DEVICE_API = {
   CLEAR_MESSAGES: '/api/devices/clear-messages',
   AVG_TIME: '/api/devices/avg-time',
   IEC61850_CONNECT_PROGRESS: '/api/devices/iec61850-connect-progress',
+  EXPORT_MODEL: '/api/devices/export-model',
   ADD_SLAVE: '/api/devices/add-slave',
   DELETE_SLAVE: '/api/devices/delete-slave',
   EDIT_SLAVE: '/api/devices/edit-slave',
