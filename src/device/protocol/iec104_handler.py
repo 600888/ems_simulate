@@ -47,6 +47,8 @@ class IEC104ServerHandler(ServerHandler):
         super().__init__()
         self._server = None
         self._log = log
+        # 命令点 IOA → BasePoint 映射，用于收到客户端命令后更新应用层点值
+        self._command_point_map: Dict[int, BasePoint] = {}
 
     def initialize(self, config: Dict[str, Any]) -> None:
         """初始化 IEC104 服务器
@@ -180,6 +182,47 @@ class IEC104ServerHandler(ServerHandler):
                     io_address=point.address,
                     point_type=point_type,
                 )
+                # 建立 IOA → BasePoint 映射，用于命令接收后同步更新应用层值
+                self._command_point_map[point.address] = point
+
+        # 注册命令接收回调（每次 add_points 时更新）
+        self._server.set_on_command_callback(self._on_command_received)
+
+    def _on_command_received(self, io_address: int, value, point_type) -> None:
+        """
+        当服务端收到客户端发送的遥控/遥调命令时，同步更新应用层测点值。
+
+        Args:
+            io_address: 信息对象地址(IOA)
+            value: 接收到的命令值（c104 原生类型）
+            point_type: c104 点类型
+        """
+        point = self._command_point_map.get(io_address)
+        if point is None:
+            if self._log:
+                self._log.warning(f"收到IOA {io_address} 的命令，但未找到对应的应用层测点")
+            return
+
+        try:
+            # c104 对不同类型返回不同的值对象，转换为 Python 原生类型
+            if isinstance(point, (Yx, Yk)):
+                new_value = int(bool(value))
+            elif point_type in (c104.Type.C_SE_NA_1, c104.Type.C_SE_TA_1):
+                # 归一化值有 16-bit 精度损失（如 1.0→0.999969），四舍五入恢复
+                new_value = round(float(value))
+            else:
+                new_value = float(value)
+
+            # 通过 set_real_value 更新（会触发 value setter 和变更追踪）
+            if point.set_real_value(new_value):
+                if self._log:
+                    self._log.info(f"服务端收到命令并更新测点 {point.code}(IOA={io_address}): {new_value}")
+            else:
+                if self._log:
+                    self._log.warning(f"服务端收到命令但测点 {point.code} 值 {new_value} 超出允许范围")
+        except Exception as e:
+            if self._log:
+                self._log.error(f"更新命令接收后的测点值失败: {e}")
 
     def get_value_by_address(
         self, func_code: int, slave_id: int, address: int

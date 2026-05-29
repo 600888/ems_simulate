@@ -26,6 +26,8 @@ class IEC104Server:
         self.commands = []
         # 关联测点map
         self.related_point_map = {}
+        # 命令接收后的应用层回调（由 handler 注册，用于同步应用层 BasePoint）
+        self._on_command_received_callback = None
         # 设置默认回调函数
         self._setup_callbacks()
 
@@ -61,10 +63,8 @@ class IEC104Server:
 
     def _setup_callbacks(self):
         """设置默认的回调函数"""
-        pass
-        # self._on_step_command = self._default_step_command_handler
-        # self._before_auto_transmit = self._default_before_auto_transmit
-        # self._before_read = self._default_before_read
+        # 初始化通用命令接收处理函数
+        self._on_command_received = self._default_command_handler
 
     def add_monitoring_point(
         self, io_address, point_type=c104.Type.M_ME_NC_1, report_ms=1000
@@ -101,8 +101,8 @@ class IEC104Server:
         """
         # 创建命令点
         command = self.station.add_point(io_address=io_address, type=point_type)
-        # 设置接收命令的回调
-        # command.on_receive(callable=self._on_step_command)
+        # 注册命令接收回调（c104 接收到命令后自动更新 point.value，然后触发此回调）
+        command.on_receive(callable=self._on_command_received)
         # 添加到命令点列表
         self.commands.append(command)
         return command
@@ -248,6 +248,37 @@ class IEC104Server:
         """检查服务器是否运行中"""
         return self.server.is_running
 
+    def _default_command_handler(
+        self,
+        point: c104.Point,
+        previous_info: c104.Information,
+        message: c104.IncomingMessage,
+    ) -> c104.ResponseState:
+        """
+        默认的通用命令接收处理函数
+        处理单点遥控(C_SC_NA_1)、双点遥控(C_DC_NA_1)、设定值(C_SE_*)等命令。
+
+        c104 在收到命令后会先更新 point.value 再触发此回调，
+        回调只需返回响应状态即可。
+
+        :param point: 命令点对象（point.value 已更新为接收到的命令值）
+        :param previous_info: 前一个信息对象
+        :param message: 接收到的消息
+        :return: 响应状态(SUCCESS/FAILURE)
+        """
+        log.info(
+            "收到命令 - IOA: {0}, 类型: {1}, 值: {2}".format(
+                point.io_address, point.type, point.value
+            )
+        )
+        # 通知应用层回调（如果有注册），传递 IOA、值和帧类型
+        if self._on_command_received_callback:
+            try:
+                self._on_command_received_callback(point.io_address, point.value, point.type)
+            except Exception as e:
+                log.error(f"命令接收回调执行失败: {e}")
+        return c104.ResponseState.SUCCESS
+
     def _default_step_command_handler(
         self,
         point: c104.Point,
@@ -329,6 +360,14 @@ class IEC104Server:
         # 更新所有监控点的回调函数
         for point, _ in self.related_point_map:
             point.on_before_read(callable=self._before_read)
+
+    def set_on_command_callback(self, callback):
+        """
+        设置命令接收通知回调
+        当服务端收到客户端的遥控/遥调命令时，会调用此回调通知应用层。
+        :param callback: 回调函数，签名 callback(io_address, value, point_type)
+        """
+        self._on_command_received_callback = callback
 
     # 绑定关联测点
     def bind_related_point(self, io_address: int, related_io_address: int):

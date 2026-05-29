@@ -139,9 +139,16 @@ class IEC104Client:
 
     def write_point(self, io_address: int, value, frame_type: int = 0) -> bool:
         """
-        写入指定IOA的监控点值
+        写入指定IOA的监控点值（发送遥控/遥调命令）
+
+        c104 库要求对命令类型使用特定的 Info 对象：
+        - 单点遥控(C_SC_*): point.info = SingleCmd(state, qualifier)
+        - 双点遥控(C_DC_*): point.info = DoubleCmd(state, qualifier)
+        - 步命令(C_RC_*):   point.value = Step (然后 transmit)
+        - 设定值(C_SE_*):   point.value = float (然后 transmit)
+
         :param io_address: 信息对象地址(IOA)
-        :param value: 要写入的值（c104 原生类型，如 NormalizedFloat、Int16、float、bool）
+        :param value: 要写入的值
         :param frame_type: 帧类型，0-遥测，1-遥信，2-遥控，3-遥调
         :return: 是否写入成功
         """
@@ -155,10 +162,41 @@ class IEC104Client:
 
         try:
             point = self.station.get_point(io_address=io_address)
-            if point:
+            if not point:
+                log.error(f"IOA {io_address} 未找到对应的点")
+                return False
+
+            pt_type = point.type
+            # 根据点类型设置命令信息
+            if pt_type in (c104.Type.C_SC_NA_1, c104.Type.C_SC_TA_1):
+                # 单点遥控: 使用 SingleCmd(on=bool, qualifier=Qoc)
+                point.info = c104.SingleCmd(on=bool(value), qualifier=c104.Qoc.SHORT_PULSE)
+            elif pt_type in (c104.Type.C_DC_NA_1, c104.Type.C_DC_TA_1):
+                # 双点遥控: 使用 DoubleCmd
+                point.info = c104.DoubleCmd(state=c104.Double.ON if bool(value) else c104.Double.OFF,
+                                            qualifier=c104.Qoc.LONG_PULSE)
+            elif pt_type in (c104.Type.C_SE_NA_1, c104.Type.C_SE_TA_1):
+                # 设定值-归一化: 使用 NormalizedFloat
+                point.value = c104.NormalizedFloat(float(value))
+            elif pt_type in (c104.Type.C_SE_NB_1, c104.Type.C_SE_TB_1):
+                # 设定值-标度化: 使用 ScaledCmd
+                point.info = c104.ScaledCmd(target=c104.Int16(int(value)), qualifier=c104.UInt7(0))
+            elif pt_type in (c104.Type.C_SE_NC_1, c104.Type.C_SE_TC_1):
+                # 设定值-短浮点: 直接设 float
+                point.value = float(value)
+            elif pt_type in (c104.Type.C_RC_NA_1, c104.Type.C_RC_TA_1):
+                # 步调节命令: 直接设 value（如 c104.Step.HIGHER）
                 point.value = value
-                return True
-            return False
+            else:
+                # 未知类型回退
+                point.value = value
+
+            # 调用 transmit() 实际发送命令报文
+            if not point.transmit(cause=c104.Cot.ACTIVATION):
+                log.error(f"发送命令到IOA {io_address} 失败: transmit返回False (type={pt_type})")
+                return False
+            log.info(f"已发送命令到IOA {io_address}: {value} (type={pt_type})")
+            return True
         except Exception as e:
             log.error(f"写入监控点值失败: {e}")
             return False
@@ -178,7 +216,11 @@ class IEC104Client:
             point = self.station.get_point(io_address=io_address)
             if point and isinstance(point, c104.Point):
                 point.value = command
-                log.info(f"已发送命令到IOA {io_address}: {command}")
+                # 必须调用 transmit() 才能实际发送命令报文
+                if not point.transmit(cause=c104.Cot.ACTIVATION):
+                    log.error(f"发送步进命令到IOA {io_address} 失败: transmit返回False")
+                    return False
+                log.info(f"已发送步进命令到IOA {io_address}: {command}")
                 return True
             return False
         except Exception as e:
