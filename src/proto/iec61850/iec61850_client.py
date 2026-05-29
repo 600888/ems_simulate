@@ -12,8 +12,7 @@ from .log import log
 from .defs import (
     HAS_IEC61850,
     FC_MX, FC_ST, FC_CO,
-    IEC_TYPE_FLOAT, IEC_TYPE_BOOLEAN, IEC_TYPE_INTEGER,
-    IEC_TYPE_STRING, IEC_TYPE_TIMESTAMP, IEC_TYPE_UNKNOWN,
+    IecType,
     YC_LN_CLASSES, YX_LN_CLASSES, YK_LN_CLASSES, YT_LN_CLASSES,
     ALL_LN_CLASSES, SKIP_SYSTEM_DOS, SIGNAL_DOS,
     DA_PATTERNS, DA_PATH_TO_FRAME_TYPE, EXTRA_DA_INFO,
@@ -33,19 +32,6 @@ from .core import (
 )
 from .plugins import PluginRegistry
 
-# ===== 向后兼容: 保留旧名称的模块级别别名 =====
-# 外部代码可能使用: from iec61850_client import _DA_PATTERNS, _SKIP_DA_NAMES 等
-# 直接指向 defs 包导出的对象，避免重复定义
-_is_full_ref = is_full_ref
-_parse_ref = parse_ref
-_DA_PATTERNS = DA_PATTERNS
-_DA_PATH_TO_FRAME_TYPE = DA_PATH_TO_FRAME_TYPE
-_EXTRA_DA_INFO = EXTRA_DA_INFO
-_ENC_DO_DA_TYPE_OVERRIDE = ENC_DO_DA_TYPE_OVERRIDE
-_SKIP_DA_NAMES = SKIP_DA_NAMES
-_BDA_TYPE_MAP = BDA_TYPE_MAP
-_STRUCT_DA_EXPAND_ONLINE = STRUCT_DA_EXPAND_ONLINE
-_KNOWN_BDA_FALLBACK_ONLINE = KNOWN_BDA_FALLBACK_ONLINE
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
@@ -84,9 +70,6 @@ class IEC61850Client:
         # ===== 插件系统 =====
         self._plugins = PluginRegistry()
         self._plugins.initialize_all(self._conn, registry=self._registry, client=self)
-
-        # ===== 懒加载模型导出器 =====
-        self._model_exporter = None
 
     # ===== 向后兼容属性: 委托给核心组件 =====
 
@@ -188,7 +171,7 @@ class IEC61850Client:
         """构建 MMS DataSet 引用 (委托给 connection)"""
         return self._conn.build_dataset_ref(dataset_ref)
 
-    def _mms_value_to_python(self, mms_value, iec_type: str = IEC_TYPE_UNKNOWN) -> Any:
+    def _mms_value_to_python(self, mms_value, iec_type: str = IecType.UNKNOWN) -> Any:
         """将 MmsValue 转换为 Python 类型 (委托给 core)"""
         return mms_value_to_python(mms_value, iec_type)
 
@@ -343,78 +326,96 @@ class IEC61850Client:
     # ===== 读写内部方法 (向后兼容, 供 _read_*_batch 引用) =====
 
     def _read_floats_batch(self, items, results):
-        """批量读取浮点值 (向后兼容)"""
-        from .core.reader import READ_STRATEGIES, IEC_TYPE_FLOAT
-        READ_STRATEGIES[IEC_TYPE_FLOAT].read_batch(self._conn.connection, items, results)
+        """批量读取浮点值 (向后兼容, 委托给 core.reader)"""
+        from .core.reader import READ_STRATEGIES
+        READ_STRATEGIES[IecType.FLOAT].read_batch(self._conn.connection, items, results)
 
     def _read_booleans_batch(self, items, results):
-        """批量读取布尔值 (向后兼容)"""
-        from .core.reader import READ_STRATEGIES, IEC_TYPE_BOOLEAN
-        READ_STRATEGIES[IEC_TYPE_BOOLEAN].read_batch(self._conn.connection, items, results)
+        """批量读取布尔值 (向后兼容, 委托给 core.reader)"""
+        from .core.reader import READ_STRATEGIES
+        READ_STRATEGIES[IecType.BOOLEAN].read_batch(self._conn.connection, items, results)
 
     def _read_integers_batch(self, items, results):
-        """批量读取整数值 (向后兼容)"""
-        from .core.reader import READ_STRATEGIES, IEC_TYPE_INTEGER
-        READ_STRATEGIES[IEC_TYPE_INTEGER].read_batch(self._conn.connection, items, results)
+        """批量读取整数值 (向后兼容, 委托给 core.reader)"""
+        from .core.reader import READ_STRATEGIES
+        READ_STRATEGIES[IecType.INTEGER].read_batch(self._conn.connection, items, results)
 
     def _read_strings_batch(self, items, results):
-        """批量读取字符串值 (向后兼容)"""
-        from .core.reader import READ_STRATEGIES, IEC_TYPE_STRING
-        READ_STRATEGIES[IEC_TYPE_STRING].read_batch(self._conn.connection, items, results)
+        """批量读取字符串值 (向后兼容, 委托给 core.reader)"""
+        from .core.reader import READ_STRATEGIES
+        READ_STRATEGIES[IecType.STRING].read_batch(self._conn.connection, items, results)
 
     def _read_timestamps_batch(self, items, results):
-        """批量读取时标值 (向后兼容)"""
-        from .core.reader import READ_STRATEGIES, IEC_TYPE_TIMESTAMP
-        READ_STRATEGIES[IEC_TYPE_TIMESTAMP].read_batch(self._conn.connection, items, results)
+        """批量读取时标值 (向后兼容, 委托给 core.reader)"""
+        from .core.reader import READ_STRATEGIES
+        READ_STRATEGIES[IecType.TIMESTAMP].read_batch(self._conn.connection, items, results)
 
     def _read_unknowns_batch(self, items, results):
-        """批量自动探测读取 (向后兼容)"""
-        from .core.reader import READ_STRATEGIES, IEC_TYPE_UNKNOWN
-        READ_STRATEGIES[IEC_TYPE_UNKNOWN].read_batch(self._conn.connection, items, results)
+        """批量自动探测读取 (向后兼容, 委托给 core.reader)"""
+        from .core.reader import READ_STRATEGIES
+        READ_STRATEGIES[IecType.UNKNOWN].read_batch(self._conn.connection, items, results)
 
     def _read_point_auto_detect(self, ref: str, fc_val) -> Any:
-        """自动探测数据类型并读取值 (向后兼容)"""
-        from .core.reader import READ_STRATEGIES, IEC_TYPE_UNKNOWN
-        return READ_STRATEGIES[IEC_TYPE_UNKNOWN].read(self._conn.connection, ref, fc_val)
+        """自动探测数据类型并读取值 (向后兼容, 委托给 core.reader)"""
+        from .core.reader import READ_STRATEGIES
+        return READ_STRATEGIES[IecType.UNKNOWN].read(self._conn.connection, ref, fc_val)
 
     def _resolve_dataset_ref_with_ld_prefix(self, dataset_ref: str) -> str:
         """解析 DataSet 引用 LD 前缀 (向后兼容, 委托给 connection)"""
         return self._conn._resolve_dataset_ref_with_ld_prefix(dataset_ref)
 
-    # ===== 模型导出 (委托给 IEC61850ModelExporter) =====
+    # ===== 模型导出 (委托给 ModelExporter 插件) =====
 
     @property
     def model_exporter(self):
-        """获取模型导出工具实例 (懒加载)"""
-        if self._model_exporter is None:
-            from .iec61850_model_exporter import IEC61850ModelExporter
-            self._model_exporter = IEC61850ModelExporter(self)
-        return self._model_exporter
+        """获取模型导出工具实例 (通过插件系统)"""
+        return self._plugins.get("model_exporter")
 
     def discover_server_model(self):
         """动态发现服务端完整数据模型 (结构化)"""
-        return self.model_exporter.discover()
+        plugin = self.model_exporter
+        if plugin:
+            return plugin.discover_server_model()
+        return None
 
     def export_model_json(self, model, output_path, indent=2):
         """导出模型为 JSON"""
-        return self.model_exporter.export_json(model, output_path, indent)
+        plugin = self.model_exporter
+        if plugin:
+            return plugin.export_json(model, output_path, indent)
+        return None
 
     def export_model_csv(self, model, output_path):
         """导出模型为 CSV"""
-        return self.model_exporter.export_csv(model, output_path)
+        plugin = self.model_exporter
+        if plugin:
+            return plugin.export_csv(model, output_path)
+        return None
 
     def export_model_tree_text(self, model, output_path):
         """导出模型为树形文本"""
-        return self.model_exporter.export_tree_text(model, output_path)
+        plugin = self.model_exporter
+        if plugin:
+            return plugin.export_tree_text(model, output_path)
+        return None
 
     def export_model_xml(self, model, output_path, pretty=True):
         """导出模型为 XML"""
-        return self.model_exporter.export_xml(model, output_path, pretty)
+        plugin = self.model_exporter
+        if plugin:
+            return plugin.export_xml(model, output_path, pretty)
+        return None
 
     def export_model_icd(self, model, output_path, ied_name="", pretty=True):
         """导出模型为 ICD"""
-        return self.model_exporter.export_icd(model, output_path, ied_name=ied_name, pretty=pretty)
+        plugin = self.model_exporter
+        if plugin:
+            return plugin.export_icd(model, output_path, ied_name=ied_name, pretty=pretty)
+        return None
 
     def export_model_all(self, model, output_dir, ied_name=""):
         """导出所有格式"""
-        return self.model_exporter.export_all(model, output_dir, ied_name=ied_name)
+        plugin = self.model_exporter
+        if plugin:
+            return plugin.export_all(model, output_dir, ied_name=ied_name)
+        return None

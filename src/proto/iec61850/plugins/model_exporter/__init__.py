@@ -1,14 +1,6 @@
-"""
-IEC 61850 模型导出工具类
+"""ModelExporter 插件 - 模型发现与多格式导出
 
-独立的模型发现与导出插件，通过持有 IEC61850Client 引用来复用客户端的连接和浏览能力。
-用法:
-    client = IEC61850Client("192.168.1.100", 102)
-    client.connect(auto_discover=False)
-    exporter = IEC61850ModelExporter(client)
-    model = exporter.discover()
-    exporter.export_json(model, "model.json")
-    exporter.export_all(model, "./output/")
+包含 IEC61850ModelExporter 实现和 ModelExporterPlugin 插件封装。
 """
 
 import csv
@@ -20,16 +12,14 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import xmltodict
 
-from .log import log
+from ...log import log
 
 if TYPE_CHECKING:
-    from .iec61850_client import IEC61850Client
+    from ...iec61850_client import IEC61850Client
 
-from .defs import (
+from ...defs import (
     HAS_IEC61850,
     IecType,
-    IEC_TYPE_FLOAT, IEC_TYPE_BOOLEAN, IEC_TYPE_INTEGER,
-    IEC_TYPE_STRING, IEC_TYPE_TIMESTAMP, IEC_TYPE_UNKNOWN,
     DA_PATTERNS, EXTRA_DA_INFO, ENC_DO_DA_TYPE_OVERRIDE,
     BDA_TYPE_MAP, STRUCT_DA_EXPAND_ONLINE, KNOWN_BDA_FALLBACK_ONLINE,
     AcsiClass,
@@ -41,18 +31,13 @@ from .defs import (
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
 
-# 向后兼容别名
+# 模块级别名 (仅用于文件内部兼容)
 _DA_PATTERNS = DA_PATTERNS
 _EXTRA_DA_INFO = EXTRA_DA_INFO
 _ENC_DO_DA_TYPE_OVERRIDE = ENC_DO_DA_TYPE_OVERRIDE
 _BDA_TYPE_MAP = BDA_TYPE_MAP
 _STRUCT_DA_EXPAND_ONLINE = STRUCT_DA_EXPAND_ONLINE
 _KNOWN_BDA_FALLBACK_ONLINE = KNOWN_BDA_FALLBACK_ONLINE
-ACSI_CLASS_DATA_OBJECT = AcsiClass.DATA_OBJECT
-ACSI_CLASS_DATA_SET = AcsiClass.DATA_SET
-ACSI_CLASS_BRCB = AcsiClass.BRCB
-ACSI_CLASS_URCB = AcsiClass.URCB
-ACSI_CLASS_GOOSE = AcsiClass.GOOSE
 
 
 # ========== 模型数据类 ==========
@@ -212,7 +197,7 @@ class IEC61850ModelExporter:
 
         try:
             result = iec61850.IedConnection_getLogicalNodeDirectory(
-                self._client._connection, ln_ref, ACSI_CLASS_DATA_OBJECT
+                self._client._connection, ln_ref, AcsiClass.DATA_OBJECT
             )
             do_names_raw = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
@@ -284,17 +269,17 @@ class IEC61850ModelExporter:
                 # 回退: 使用已知 BDA
                 parent_name = parent_ref.split(".")[-1]
                 if parent_name in _KNOWN_BDA_FALLBACK_ONLINE:
-                    bda_type_map = {"orCat": IEC_TYPE_INTEGER, "orIdent": IEC_TYPE_UNKNOWN}
+                    bda_type_map = {"orCat": IecType.INTEGER, "orIdent": IecType.UNKNOWN}
                     for bda_name in _KNOWN_BDA_FALLBACK_ONLINE.get(parent_name, []):
                         sub_das.append(DAInfo(
                             name=bda_name, path=f"{path_prefix}{bda_name}",
-                            fc=parent_fc, iec_type=bda_type_map.get(bda_name, IEC_TYPE_UNKNOWN),
+                            fc=parent_fc, iec_type=bda_type_map.get(bda_name, IecType.UNKNOWN),
                         ))
                 return sub_das
 
             bda_name_list = self._client._get_list_from_linked_list(bda_names_raw)
             for bda_name in bda_name_list:
-                bda_type = _BDA_TYPE_MAP.get(bda_name, IEC_TYPE_UNKNOWN)
+                bda_type = _BDA_TYPE_MAP.get(bda_name, IecType.UNKNOWN)
                 sub_das.append(DAInfo(
                     name=bda_name, path=f"{path_prefix}{bda_name}",
                     fc=parent_fc, iec_type=bda_type,
@@ -311,7 +296,7 @@ class IEC61850ModelExporter:
 
         try:
             result = iec61850.IedConnection_getLogicalNodeDirectory(
-                self._client._connection, ln_ref, ACSI_CLASS_DATA_SET
+                self._client._connection, ln_ref, AcsiClass.DATA_SET
             )
             ds_names_raw = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
@@ -336,8 +321,8 @@ class IEC61850ModelExporter:
         """发现逻辑节点下的报告控制块"""
         rcb_list = []
         for _rcb_type, acsi_class, type_name in [
-            ("URCB", ACSI_CLASS_URCB, "URCB"),
-            ("BRCB", ACSI_CLASS_BRCB, "BRCB"),
+            ("URCB", AcsiClass.URCB, "URCB"),
+            ("BRCB", AcsiClass.BRCB, "BRCB"),
         ]:
             try:
                 result = iec61850.IedConnection_getLogicalNodeDirectory(
@@ -364,7 +349,7 @@ class IEC61850ModelExporter:
         gocb_list = []
         try:
             result = iec61850.IedConnection_getLogicalNodeDirectory(
-                self._client._connection, ln_ref, ACSI_CLASS_GOOSE
+                self._client._connection, ln_ref, AcsiClass.GOOSE
             )
             gocb_names_raw = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
@@ -398,7 +383,7 @@ class IEC61850ModelExporter:
                 iec_type=_ENC_DO_DA_TYPE_OVERRIDE[do_name][da_name],
             )
 
-        return DAInfo(name=da_name, path=da_name, fc="", iec_type=IEC_TYPE_UNKNOWN)
+        return DAInfo(name=da_name, path=da_name, fc="", iec_type=IecType.UNKNOWN)
 
     def _infer_fc_from_da(self, da_name: str, do_frame_type: int) -> str:
         """根据 DA 名称和 DO 帧类型推断 FC"""
@@ -465,7 +450,6 @@ class IEC61850ModelExporter:
             pretty: 是否格式化输出
         """
         if not ied_name:
-            # 从第一个 LD 名称推断 IED 名称 (去掉最后一个 _XX 部分)
             if model.lds:
                 parts = model.lds[0].name.rsplit("_", 1)
                 ied_name = parts[0] if len(parts) > 1 else model.lds[0].name
@@ -518,7 +502,6 @@ class IEC61850ModelExporter:
                 ln_class_str = f" [{ln.ln_class}]" if ln.ln_class else ""
                 lines.append(f"│   {ln_prefix} LN: {ln.name}{ln_class_str}")
 
-                # DO
                 for j, do in enumerate(ln.dos):
                     is_last_do = (j == len(ln.dos) - 1) and not ln.datasets and not ln.rcb_list
                     do_prefix = "└──" if is_last_do else "├──"
@@ -541,7 +524,6 @@ class IEC61850ModelExporter:
                                 bda_prefix = "└──" if is_last_bda else "├──"
                                 lines.append(f"│   {bda_indent}{bda_prefix} BDA: {bda.path} ({bda.iec_type})")
 
-                # DataSet
                 for j, ds in enumerate(ln.datasets):
                     is_last = (j == len(ln.datasets) - 1) and not ln.rcb_list
                     ds_prefix = "└──" if is_last else "├──"
@@ -552,13 +534,11 @@ class IEC61850ModelExporter:
                         m_prefix = "└──" if is_last_m else "├──"
                         lines.append(f"│   {ds_indent}{m_prefix} {member.get('ref', '')} [{member.get('fc', '')}]")
 
-                # RCB
                 for j, rcb in enumerate(ln.rcb_list):
                     is_last = (j == len(ln.rcb_list) - 1) and not ln.gocb_list
                     rcb_prefix = "└──" if is_last else "├──"
                     lines.append(f"│   {ln_indent}{rcb_prefix} RCB: {rcb.name} ({rcb.rcb_type})")
 
-                # GoCB
                 for j, gocb in enumerate(ln.gocb_list):
                     is_last = (j == len(ln.gocb_list) - 1)
                     gocb_prefix = "└──" if is_last else "├──"
@@ -711,20 +691,13 @@ class IEC61850ModelExporter:
         return rows
 
     def _model_to_xml_dict(self, model: ServerModel) -> Dict[str, Any]:
-        """将 ServerModel 转换为 xmltodict 兼容的字典结构
-
-        xmltodict 约定:
-          - "@key" 表示 XML 属性
-          - 列表元素需用同一标签名包裹在父节点下
-          - "#text" 表示元素文本内容
-        """
+        """将 ServerModel 转换为 xmltodict 兼容的字典结构"""
         ld_list = []
         for ld in model.lds:
             ln_list = []
             for ln in ld.lns:
                 ln_item = {"@name": ln.name, "@lnClass": ln.ln_class, "@ref": ln.ref}
 
-                # DataObjects
                 if ln.dos:
                     do_list = []
                     for do_info in ln.dos:
@@ -758,7 +731,6 @@ class IEC61850ModelExporter:
                         do_list.append(do_item)
                     ln_item["DataObjects"] = {"DataObject": do_list if len(do_list) > 1 else do_list[0]}
 
-                # DataSets
                 if ln.datasets:
                     ds_list = []
                     for ds in ln.datasets:
@@ -778,14 +750,12 @@ class IEC61850ModelExporter:
                         ds_list.append(ds_item)
                     ln_item["DataSets"] = {"DataSet": ds_list if len(ds_list) > 1 else ds_list[0]}
 
-                # ReportControlBlocks
                 if ln.rcb_list:
                     rcb_list = []
                     for rcb in ln.rcb_list:
                         rcb_list.append({"@name": rcb.name, "@ref": rcb.ref, "@type": rcb.rcb_type})
                     ln_item["ReportControlBlocks"] = {"ReportControlBlock": rcb_list if len(rcb_list) > 1 else rcb_list[0]}
 
-                # GooseControlBlocks
                 if ln.gocb_list:
                     gocb_list = []
                     for gocb in ln.gocb_list:
@@ -820,13 +790,10 @@ class IEC61850ModelExporter:
 
     # ========== SCL/ICD 序列化 ==========
 
-    # IEC 61850-7-3 CDC -> bType 映射 (简化)
     _CDC_BTYPE_MAP = {
-        # 测量值 (MX)
         "MV": {"mag": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None)},
         "CMV": {"cVal": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None)},
         "SAV": {"instMag": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None)},
-        # 状态值 (ST)
         "SPS": {"stVal": ("BOOLEAN", None), "q": ("Quality", None), "t": ("Timestamp", None)},
         "DPS": {"stVal": ("Dbpos", None), "q": ("Quality", None), "t": ("Timestamp", None)},
         "INS": {"stVal": ("INT32", None), "q": ("Quality", None), "t": ("Timestamp", None)},
@@ -834,30 +801,25 @@ class IEC61850ModelExporter:
         "ACT": {"general": ("BOOLEAN", None), "q": ("Quality", None), "t": ("Timestamp", None)},
         "ACD": {"general": ("BOOLEAN", None), "q": ("Quality", None), "t": ("Timestamp", None)},
         "SEC": {"Cnt": ("INT32", None), "q": ("Quality", None), "t": ("Timestamp", None)},
-        # 控制 (CO)
         "SPC": {"stVal": ("BOOLEAN", None), "ctlVal": ("BOOLEAN", None), "Oper": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None), "ctlModel": ("Enum", "ctlModel")},
         "DPC": {"stVal": ("Dbpos", None), "ctlVal": ("Dbpos", None), "Oper": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None), "ctlModel": ("Enum", "ctlModel")},
         "ENC": {"stVal": ("Enum", None), "ctlVal": ("Enum", None), "Oper": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None), "ctlModel": ("Enum", "ctlModel")},
         "INC": {"stVal": ("INT32", None), "Oper": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None), "ctlModel": ("Enum", "ctlModel")},
-        # 设定 (SP)
         "APC": {"setVal": ("FLOAT32", None), "Oper": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None), "ctlModel": ("Enum", "ctlModel")},
         "ASG": {"setMag": ("Struct", None), "setVal": ("FLOAT32", None), "q": ("Quality", None), "t": ("Timestamp", None)},
-        # 铭牌 (DC)
         "LPL": {"vendor": ("VisString255", None), "swRev": ("VisString255", None), "d": ("VisString255", None)},
         "DPL": {"vendor": ("VisString255", None), "swRev": ("VisString255", None), "d": ("VisString255", None)},
     }
 
-    # bType 简化映射 (用于在线发现时无法确定 CDC 的情况)
     _IEC_TYPE_TO_BTYPE = {
-        IEC_TYPE_FLOAT: "FLOAT32",
-        IEC_TYPE_BOOLEAN: "BOOLEAN",
-        IEC_TYPE_INTEGER: "INT32",
-        IEC_TYPE_STRING: "VisString255",
-        IEC_TYPE_TIMESTAMP: "Timestamp",
-        IEC_TYPE_UNKNOWN: "Struct",
+        IecType.FLOAT: "FLOAT32",
+        IecType.BOOLEAN: "BOOLEAN",
+        IecType.INTEGER: "INT32",
+        IecType.STRING: "VisString255",
+        IecType.TIMESTAMP: "Timestamp",
+        IecType.UNKNOWN: "Struct",
     }
 
-    # DA name -> fc 映射 (在线发现时推断)
     _DA_NAME_FC_MAP = {
         "mag": "MX", "cVal": "MX", "instMag": "MX", "mxVal": "MX", "fCVal": "MX", "setMag": "SP", "setVal": "SP", "wVal": "SP",
         "stVal": "ST", "general": "ST", "Cnt": "ST", "frVal": "ST", "frTm": "ST", "actVal": "ST", "subVal": "SV", "subEna": "SV",
@@ -868,22 +830,8 @@ class IEC61850ModelExporter:
     }
 
     def _model_to_scl_dict(self, model: ServerModel, ied_name: str) -> Dict[str, Any]:
-        """将 ServerModel 转换为 SCL/ICD 标准格式的 xmltodict 字典
-
-        SCL 层级:
-          SCL
-          ├── Header
-          ├── Communication > SubNetwork > ConnectedAP > Address
-          ├── IED > AccessPoint > Server > LDevice > LN0 / LN
-          └── DataTypeTemplates > LNodeType / DOType / DAType / EnumType
-        """
-        # 1. 构建 DataTypeTemplates (先构建，因为 IED 引用 lnType)
         type_templates = self._build_data_type_templates(model, ied_name)
-
-        # 2. 构建 IED 段
         ied = self._build_ied_section(model, ied_name, type_templates)
-
-        # 3. 构建 Communication 段
         communication = {
             "SubNetwork": {
                 "@name": "MMS",
@@ -902,8 +850,6 @@ class IEC61850ModelExporter:
                 },
             }
         }
-
-        # 4. 组装 SCL
         scl_dict = {
             "SCL": {
                 "@xmlns": "http://www.iec.ch/61850/2003/SCL",
@@ -922,63 +868,48 @@ class IEC61850ModelExporter:
 
     def _build_ied_section(self, model: ServerModel, ied_name: str,
                             type_templates: Dict[str, Any]) -> Dict[str, Any]:
-        """构建 IED 段 (含 AccessPoint > Server > LDevice > LN)"""
         ldevice_list = []
-
         for ld in model.lds:
             ld_inst = self._extract_ld_inst(ld.name, ied_name)
-
             ln0_item = None
             ln_list = []
-
             for ln in ld.lns:
                 ln_type_id = f"{ied_name}{ld_inst}.{ln.name}"
                 ln_inst = self._extract_ln_inst(ln.name)
                 ln_class = ln.ln_class or self._extract_ln_class_from_name(ln.name)
-
                 if ln_class == "LLN0":
-                    # LLN0 作为 LN0
                     ln0_item = {
                         "@lnType": ln_type_id,
                         "@lnClass": "LLN0",
                         "@inst": "",
                     }
-                    # DataSet
                     if ln.datasets:
                         ln0_item["DataSet"] = self._build_datasets(ln.datasets, ld_inst, ln)
-                    # ReportControl
                     if ln.rcb_list:
                         ln0_item["ReportControl"] = self._build_report_controls(ln.rcb_list)
                 else:
-                    # 普通 LN
                     ln_item = {
                         "@lnType": ln_type_id,
                         "@lnClass": ln_class,
                         "@inst": ln_inst,
                     }
-                    # DOI / DAI
                     doi_list = self._build_dois(ln)
                     if doi_list:
                         ln_item["DOI"] = doi_list
-                    # DataSet
                     if ln.datasets:
                         ln_item["DataSet"] = self._build_datasets(ln.datasets, ld_inst, ln)
-                    # ReportControl
                     if ln.rcb_list:
                         ln_item["ReportControl"] = self._build_report_controls(ln.rcb_list)
                     ln_list.append(ln_item)
-
             ldevice = {"@inst": ld_inst}
             if ln0_item:
                 ldevice["LN0"] = ln0_item
             if ln_list:
                 ldevice["LN"] = ln_list if len(ln_list) > 1 else ln_list[0]
             ldevice_list.append(ldevice)
-
         server = {"Authentication": {"@none": "true"}}
         if ldevice_list:
             server["LDevice"] = ldevice_list if len(ldevice_list) > 1 else ldevice_list[0]
-
         ied = {
             "@name": ied_name,
             "Services": {
@@ -1002,13 +933,10 @@ class IEC61850ModelExporter:
         return ied
 
     def _build_data_type_templates(self, model: ServerModel, ied_name: str) -> Dict[str, Any]:
-        """构建 DataTypeTemplates 段 (LNodeType + DOType + DAType + EnumType)"""
         lnode_types = []
         do_types = []
         da_types = []
         enum_types = {}
-
-        # 收集所有出现的 EnumType
         enum_types["ctlModel"] = [
             {"@ord": str(i), "#text": v}
             for i, v in enumerate(["status-only", "direct-with-normal-security",
@@ -1020,79 +948,53 @@ class IEC61850ModelExporter:
             for i, v in enumerate(["not-supported", "bay-control", "station-control",
                                     "remote-control", "automatic-control", "maintenance-control"])
         ]
-
         for ld in model.lds:
             ld_inst = self._extract_ld_inst(ld.name, ied_name)
-
             for ln in ld.lns:
                 ln_type_id = f"{ied_name}{ld_inst}.{ln.name}"
                 ln_class = ln.ln_class or self._extract_ln_class_from_name(ln.name)
-
-                # LNodeType
                 do_refs = []
                 for do_info in ln.dos:
                     cdc = self._infer_cdc_from_do(do_info.name, ln_class)
                     do_type_id = f"{ln_type_id}.{do_info.name}"
                     do_refs.append({"@name": do_info.name, "@type": do_type_id})
-
-                    # DOType (每个 DO 一个)
-                    do_type_item = {
-                        "@id": do_type_id,
-                        "@cdc": cdc,
-                    }
+                    do_type_item = {"@id": do_type_id, "@cdc": cdc}
                     da_refs = []
                     for da in do_info.das:
                         fc = da.fc or self._DA_NAME_FC_MAP.get(da.name, "")
                         btype, da_type_ref = self._resolve_btype(da, do_info.name, cdc, ln_type_id)
-                        da_ref = {
-                            "@name": da.name,
-                            "@fc": fc,
-                            "@bType": btype,
-                        }
+                        da_ref = {"@name": da.name, "@fc": fc, "@bType": btype}
                         if da_type_ref:
                             da_ref["@type"] = da_type_ref
-                        # 枚举类型记录
                         if btype == "Enum" and da_type_ref:
                             if da_type_ref not in enum_types:
                                 enum_types[da_type_ref] = [{"@ord": "0", "#text": "unknown"}]
                         da_refs.append(da_ref)
-
-                        # 子 DA -> DAType
                         if da.sub_das:
                             da_type_id = f"{ln_type_id}.{do_info.name}.{da.name}"
                             bda_refs = []
                             for bda in da.sub_das:
                                 bda_btype = self._IEC_TYPE_TO_BTYPE.get(bda.iec_type, "Struct")
                                 bda_ref = {"@name": bda.name, "@bType": bda_btype}
-                                if bda.iec_type == IEC_TYPE_INTEGER and bda.name == "orCat":
+                                if bda.iec_type == IecType.INTEGER and bda.name == "orCat":
                                     bda_ref["@bType"] = "Enum"
                                     bda_ref["@type"] = "orCategory"
                                 bda_refs.append(bda_ref)
-                            # 添加 DAType
                             da_type_item = {"@id": da_type_id}
                             if len(bda_refs) > 1:
                                 da_type_item["BDA"] = bda_refs
                             else:
                                 da_type_item["BDA"] = bda_refs[0]
                             da_types.append(da_type_item)
-
                     if da_refs:
                         do_type_item["DA"] = da_refs if len(da_refs) > 1 else da_refs[0]
                     do_types.append(do_type_item)
-
-                # LNodeType 添加固定 DO (Mod, Beh, Health, NamPlt)
                 for fixed_do in self._get_fixed_dos(ln_class):
                     do_refs.append(fixed_do)
-
-                lnode_type = {
-                    "@id": ln_type_id,
-                    "@lnClass": ln_class,
-                }
+                lnode_type = {"@id": ln_type_id, "@lnClass": ln_class}
                 if do_refs:
                     lnode_type["DO"] = do_refs if len(do_refs) > 1 else do_refs[0]
                 lnode_types.append(lnode_type)
-
-        # 组装 DataTypeTemplates
         result = {}
         if lnode_types:
             result["LNodeType"] = lnode_types if len(lnode_types) > 1 else lnode_types[0]
@@ -1100,8 +1002,6 @@ class IEC61850ModelExporter:
             result["DOType"] = do_types if len(do_types) > 1 else do_types[0]
         if da_types:
             result["DAType"] = da_types if len(da_types) > 1 else da_types[0]
-
-        # EnumType
         enum_list = []
         for enum_id, vals in enum_types.items():
             enum_item = {"@id": enum_id}
@@ -1109,18 +1009,15 @@ class IEC61850ModelExporter:
             enum_list.append(enum_item)
         if enum_list:
             result["EnumType"] = enum_list if len(enum_list) > 1 else enum_list[0]
-
         return result
 
     def _build_dois(self, ln: LNInfo) -> List[Dict[str, Any]]:
-        """构建 DOI 段 (LN 下的 DO 实例化)"""
         doi_list = []
         for do_info in ln.dos:
             doi = {"@name": do_info.name}
-            # 为有 dU 描述的 DO 添加 DAI
             dai_list = []
             for da in do_info.das:
-                if da.name in ("dU", "du") and da.iec_type == IEC_TYPE_STRING:
+                if da.name in ("dU", "du") and da.iec_type == IecType.STRING:
                     dai_list.append({"@name": da.name})
             if dai_list:
                 doi["DAI"] = dai_list if len(dai_list) > 1 else dai_list[0]
@@ -1129,7 +1026,6 @@ class IEC61850ModelExporter:
 
     def _build_datasets(self, datasets: List[DataSetInfo],
                         ld_inst: str, ln: LNInfo) -> Any:
-        """构建 DataSet 段"""
         ds_list = []
         for ds in datasets:
             ds_item = {"@name": ds.name}
@@ -1156,7 +1052,6 @@ class IEC61850ModelExporter:
         return ds_list if len(ds_list) > 1 else (ds_list[0] if ds_list else [])
 
     def _build_report_controls(self, rcb_list: List[RCBInfo]) -> Any:
-        """构建 ReportControl 段"""
         rcb_items = []
         for rcb in rcb_list:
             buffered = "true" if rcb.rcb_type == "BRCB" else "false"
@@ -1176,14 +1071,7 @@ class IEC61850ModelExporter:
             rcb_items.append(rcb_item)
         return rcb_items if len(rcb_items) > 1 else (rcb_items[0] if rcb_items else [])
 
-    # ========== SCL 辅助方法 ==========
-
     def _extract_ld_inst(self, ld_name: str, ied_name: str) -> str:
-        """从 LD 名称提取实例名 (去掉 IED 前缀)
-
-        如 "EMS_LD0" -> "LD0" (ied_name="EMS")
-        如 "KG_BAMSCTMP01" -> "CTMP01" (ied_name="KG_BAMS")
-        """
         if ld_name.startswith(ied_name + "_"):
             return ld_name[len(ied_name) + 1:]
         if ld_name.startswith(ied_name):
@@ -1191,10 +1079,6 @@ class IEC61850ModelExporter:
         return ld_name
 
     def _extract_ln_inst(self, ln_name: str) -> str:
-        """从 LN 名称提取实例号
-
-        如 "MMXU1" -> "1", "M0GGIO1" -> "1", "LLN0" -> ""
-        """
         if ln_name == "LLN0":
             return ""
         import re
@@ -1202,33 +1086,22 @@ class IEC61850ModelExporter:
         return m.group(1) if m else "1"
 
     def _extract_ln_class_from_name(self, ln_name: str) -> str:
-        """从 LN 名称提取 LN 类
-
-        如 "MMXU1" -> "MMXU", "M0GGIO1" -> "GGIO", "LLN0" -> "LLN0"
-        """
         if ln_name == "LLN0":
             return "LLN0"
         import re
-        # 去掉可能的前缀 (如 M0) 和实例号 (如 1)
         m = re.match(r'^[A-Z]*(\d+)?([A-Z]+)\d*$', ln_name)
         if m:
             return m.group(2)
-        # 回退: 去掉末尾数字
         return re.sub(r'\d+$', '', ln_name)
 
     def _infer_cdc_from_do(self, do_name: str, ln_class: str) -> str:
-        """根据 DO 名称和 LN 类推断 CDC (Common Data Class)"""
-        # 优先查 _DA_PATTERNS 推断
         if do_name in ("Mod", "Beh", "Health"):
             return "ENC"
         if do_name == "NamPlt":
             return "LPL"
         if do_name == "DNamPlt":
             return "DPL"
-
-        # 基于 LN 类和 DO 前缀推断
         if ln_class in ("MMXU", "MMTR", "MMLN", "MSQI", "MHAN", "MSTA"):
-            # 测量 LN -> MV/CMV
             if do_name.startswith("PhV") or do_name.startswith("CV"):
                 return "CMV"
             return "MV"
@@ -1248,42 +1121,24 @@ class IEC61850ModelExporter:
             if do_name == "NamPlt":
                 return "LPL"
             return "SPS"
-
-        # 回退: 基于 DA 内容推断
         return "MV"
 
     def _resolve_btype(self, da: DAInfo, do_name: str, cdc: str,
                        ln_type_id: str) -> tuple:
-        """推断 DA 的 bType 和 type 引用
-
-        Returns:
-            (bType, type_ref) - type_ref 为 None 表示基本类型
-        """
-        # Quality
         if da.name == "q":
             return ("Quality", None)
-        # Timestamp
         if da.name == "t":
             return ("Timestamp", None)
-        # ctlModel
         if da.name == "ctlModel":
             return ("Enum", "ctlModel")
-
-        # Struct 类型 DA
         if da.sub_das:
             return ("Struct", f"{ln_type_id}.{do_name}.{da.name}")
-
-        # 基于 iec_type
         btype = self._IEC_TYPE_TO_BTYPE.get(da.iec_type, "Struct")
-
-        # ENC 类型的 stVal/ctlVal 用 Enum
         if do_name in ("Mod", "Beh", "Health") and da.name in ("stVal", "ctlVal"):
             return ("Enum", "Origin")
-
         return (btype, None)
 
     def _get_fixed_dos(self, ln_class: str) -> List[Dict[str, Any]]:
-        """获取 LN 的固定 DO 引用 (Mod, Beh, Health, NamPlt)"""
         dos = []
         if ln_class != "LLN0":
             dos.append({"@name": "Mod", "@type": f"_ENC_{ln_class}_Mod"})
@@ -1292,3 +1147,87 @@ class IEC61850ModelExporter:
         if ln_class == "LLN0":
             dos.append({"@name": "NamPlt", "@type": f"_LPL_{ln_class}_NamPlt"})
         return dos
+
+
+# ===== 插件封装 =====
+
+class ModelExporterPlugin:
+    """ModelExporter 插件
+
+    提供结构化模型发现和多格式导出（JSON/CSV/XML/ICD/树形文本）。
+    """
+
+    def __init__(self):
+        self._connection = None
+        self._client = None
+        self._exporter = None
+        self._initialized = False
+
+    @property
+    def name(self) -> str:
+        return "model_exporter"
+
+    @property
+    def available(self) -> bool:
+        return HAS_IEC61850
+
+    def initialize(self, connection: Any, **kwargs) -> None:
+        self._connection = connection
+        self._client = kwargs.get("client")
+        self._initialized = True
+        log.info("ModelExporter 插件已初始化")
+
+    def shutdown(self) -> None:
+        self._exporter = None
+        self._connection = None
+        self._client = None
+        self._initialized = False
+
+    @property
+    def exporter(self):
+        """获取 IEC61850ModelExporter 实例 (懒创建)"""
+        if self._exporter is None and self._initialized and self._client is not None:
+            self._exporter = IEC61850ModelExporter(self._client)
+        return self._exporter
+
+    def discover_server_model(self):
+        exp = self.exporter
+        if exp:
+            return exp.discover()
+        return None
+
+    def export_json(self, model, output_path, indent=2):
+        exp = self.exporter
+        if exp:
+            return exp.export_json(model, output_path, indent)
+        return None
+
+    def export_csv(self, model, output_path):
+        exp = self.exporter
+        if exp:
+            return exp.export_csv(model, output_path)
+        return None
+
+    def export_tree_text(self, model, output_path):
+        exp = self.exporter
+        if exp:
+            return exp.export_tree_text(model, output_path)
+        return None
+
+    def export_xml(self, model, output_path, pretty=True):
+        exp = self.exporter
+        if exp:
+            return exp.export_xml(model, output_path, pretty)
+        return None
+
+    def export_icd(self, model, output_path, ied_name="", pretty=True):
+        exp = self.exporter
+        if exp:
+            return exp.export_icd(model, output_path, ied_name=ied_name, pretty=pretty)
+        return None
+
+    def export_all(self, model, output_dir, ied_name=""):
+        exp = self.exporter
+        if exp:
+            return exp.export_all(model, output_dir, ied_name=ied_name)
+        return None

@@ -55,7 +55,7 @@ class IecType(StrEnum):
     UNKNOWN = "unknown"
 
 
-# 向后兼容: 保持旧的常量名可用
+# IecType 枚举值别名 (保持旧常量名可用，通过 defs/__init__.py 统一导出)
 IEC_TYPE_FLOAT = IecType.FLOAT
 IEC_TYPE_BOOLEAN = IecType.BOOLEAN
 IEC_TYPE_INTEGER = IecType.INTEGER

@@ -14,7 +14,7 @@ from .constants import (
     FRAME_TYPE_DESC,
     FC_TO_FRAME_TYPE,
     FRAME_TYPE_TO_FC,
-    # 向后兼容别名
+    # IecType 枚举值重导出 (旧常量名, 统一由 defs 层导出)
     IEC_TYPE_FLOAT,
     IEC_TYPE_BOOLEAN,
     IEC_TYPE_INTEGER,

@@ -22,6 +22,7 @@ def _register_builtin_plugins(target_registry: "PluginRegistry" = None):
     from .log_plugin import LogPlugin
     from .setting_groups import SettingGroupsPlugin
     from .files import FilesPlugin
+    from .model_exporter import ModelExporterPlugin
 
     reg.register("goose", GoosePlugin)
     reg.register("datasets", DataSetsPlugin)
@@ -31,6 +32,7 @@ def _register_builtin_plugins(target_registry: "PluginRegistry" = None):
     reg.register("log", LogPlugin)
     reg.register("setting_groups", SettingGroupsPlugin)
     reg.register("files", FilesPlugin)
+    reg.register("model_exporter", ModelExporterPlugin)
 
 
 class PluginRegistry:

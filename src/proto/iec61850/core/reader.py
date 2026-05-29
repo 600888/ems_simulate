@@ -8,11 +8,18 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..defs.constants import (
     HAS_IEC61850,
-    IEC_TYPE_FLOAT, IEC_TYPE_BOOLEAN, IEC_TYPE_INTEGER,
-    IEC_TYPE_STRING, IEC_TYPE_TIMESTAMP, IEC_TYPE_UNKNOWN,
+    IecType,
 )
 from ..defs.address import infer_fc_from_address, infer_iec_type_from_address
 from ..log import log
+
+# 类型别名 (使用 IecType 枚举值作为策略键)
+IEC_TYPE_FLOAT = IecType.FLOAT
+IEC_TYPE_BOOLEAN = IecType.BOOLEAN
+IEC_TYPE_INTEGER = IecType.INTEGER
+IEC_TYPE_STRING = IecType.STRING
+IEC_TYPE_TIMESTAMP = IecType.TIMESTAMP
+IEC_TYPE_UNKNOWN = IecType.UNKNOWN
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850

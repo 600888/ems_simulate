@@ -23,6 +23,6 @@ def __getattr__(name):
         from .iec61850_server import IEC61850Server
         return IEC61850Server
     if name == "IEC61850ModelExporter":
-        from .iec61850_model_exporter import IEC61850ModelExporter
+        from .plugins.model_exporter import IEC61850ModelExporter
         return IEC61850ModelExporter
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

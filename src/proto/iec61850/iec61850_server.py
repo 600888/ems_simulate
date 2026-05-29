@@ -19,10 +19,6 @@ from .defs import (
 from .plugins.datamodels.builder import IedModelBuilder
 from .plugins.datasets.server import ServerDataSetManager
 
-# 向后兼容别名
-_is_full_ref = is_full_ref
-_parse_ref = parse_ref
-_split_ln_name = split_ln_name
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850

@@ -402,7 +402,7 @@ async def export_model(req: ExportModelRequest, request: Request):
     try:
         # 发现模型
         exporter = client.model_exporter
-        model = exporter.discover()
+        model = exporter.discover_server_model()
 
         # 导出到临时文件
         tmp_dir = tempfile.mkdtemp(prefix="ems_export_")
