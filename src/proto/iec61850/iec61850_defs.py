@@ -26,6 +26,8 @@ YC_LN_CLASSES = frozenset({
 YX_LN_CLASSES = frozenset({
     # 通用 I/O
     "GGIO",
+    # 物理设备 (Physical Device)
+    "LPHD",
     # 保护类 (Protection)
     "PTRC", "PSCH", "PTOC", "PDIS", "PTTR", "PTEF",
     "PTUV", "PTOV", "PPRF", "PUPF", "PVOC", "POPF",
@@ -76,6 +78,9 @@ SKIP_SYSTEM_DOS = frozenset({
     "Beh",      # 行为 (ENC)
     "Health",   # 健康 (ENC)
     "NamPlt",   # 铭牌 (LPL)
+    "PhyHealth",# 物理设备健康 (ENC, 同 Health)
+    "Proxy",    # 代理状态 (SPS)
+    "PhyNam",   # 物理设备铭牌 (LPL)
 })
 
 # 信号 DO 名称 - 可映射为遥信 (CDC 类型为 ACT/SPS, stVal 是布尔值)

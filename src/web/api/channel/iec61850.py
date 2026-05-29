@@ -245,7 +245,10 @@ def _build_iec61850_tree(
         elif isinstance(point, (Yc, Yt)):
             value = str(point.real_value) if point.real_value is not None else ""
         elif isinstance(point, (Yx, Yk)):
-            value = str(int(point.value)) if point.value is not None else ""
+            try:
+                value = str(int(point.value)) if point.value is not None else ""
+            except (ValueError, TypeError):
+                value = str(point.value) if point.value is not None else ""
         else:
             value = ""
 

@@ -106,13 +106,15 @@ _DA_PATTERNS = {
     "wVal": ("wVal.f", 3, IEC_TYPE_FLOAT),        # 某些实现的设定值
 }
 
-# ENC 类型 DO 的 stVal 类型覆盖
-# Mod/Beh/Health 的 stVal 是枚举整型, 而非布尔; NamPlt 无 stVal
+# ENC/DPC 类型 DO 的 stVal 类型覆盖
+# Mod/Beh/Health/PhyHealth 的 stVal 是枚举整型; Pos(DPC) 的 stVal 是 DbPos 整型
 # 格式: DO名 -> {DA名: iec_type}
 _ENC_DO_DA_TYPE_OVERRIDE = {
     "Mod": {"stVal": IEC_TYPE_INTEGER, "ctlVal": IEC_TYPE_INTEGER},
     "Beh": {"stVal": IEC_TYPE_INTEGER},
     "Health": {"stVal": IEC_TYPE_INTEGER},
+    "PhyHealth": {"stVal": IEC_TYPE_INTEGER},
+    "Pos": {"stVal": IEC_TYPE_INTEGER},
 }
 
 # 附加 DA (元数据类) - 这些不是主值, 但需要在树形表格中显示
@@ -143,7 +145,25 @@ _EXTRA_DA_INFO = {
     "d": ("d", "DC", IEC_TYPE_STRING),                 # 描述 (短名称, 某些 NamPlt 实现)
     "lnNs": ("lnNs", "DC", IEC_TYPE_STRING),           # LN 命名空间
     "AddCause": ("AddCause", "CO", IEC_TYPE_INTEGER),  # 附加原因
+    # 替代/结构元数据 (不作为测点)
+    "subQ": ("subQ", "SV", IEC_TYPE_INTEGER),      # 替代品质 (Quality struct)
+    "subID": ("subID", "SV", IEC_TYPE_STRING),      # 替代标识 (Octet string)
+    "dataNs": ("dataNs", "DC", IEC_TYPE_STRING),    # 数据命名空间
 }
+
+# 不作为测点创建的元数据 DA (在 _EXTRA_DA_INFO 中定义但不生成测点)
+_SKIP_DA_NAMES = frozenset({
+    "q", "t",          # 品质/时标, IEC61850 固有属性
+    "subQ", "subID",   # 替代品质/标识
+    "subVal", "subEna",# 替代值/使能, 结构元数据
+    "setMag",          # 设定值幅值, 结构体 DA 服务端不支持直接读取
+    "dataNs",          # 数据命名空间
+    "ctlModel",        # 控制模型配置
+    "sboTimeout",      # SBO 超时配置
+    "sboClass",        # SBO 类别配置
+    # NamPlt/PhyNam 铭牌字符串 DA, 大部分服务器不支持 MMS 读取
+    "vendor", "swRev", "configRev", "d", "dU", "lnNs",
+})
 
 # BDA 子节点 -> iec_type 映射（用于推断 struct 内部 BDA 的数据类型）
 _BDA_TYPE_MAP = {
@@ -1173,8 +1193,8 @@ class IEC61850Client:
                     found.append((da_path, frame_type, fc, iec_type))
                 elif da_name in _EXTRA_DA_INFO:
                     da_path, fc, iec_type = _EXTRA_DA_INFO[da_name]
-                    # q 和 t 是 IEC61850 固有属性, 不作为测点
-                    if da_name in ("q", "t"):
+                    # 跳过元数据 DA (q/t/subQ/subID/dataNs 等), 不作为测点
+                    if da_name in _SKIP_DA_NAMES:
                         continue
                     # 元数据 DA 的 frame_type 统一为 1 (遥信/状态类)
                     found.append((da_path, 1, fc, iec_type))
@@ -1184,7 +1204,9 @@ class IEC61850Client:
                         sub_found = self._discover_sub_da_paths(sub_ref, fc, da_name)
                         found.extend(sub_found)
                 else:
-                    # 未知 DA, 直接使用名称作为路径, 默认 frame_type=1
+                    # 未知 DA, 跳过已知的元数据/配置 DA, 否则默认 frame_type=1
+                    if da_name in _SKIP_DA_NAMES:
+                        continue
                     found.append((da_name, 1, "", IEC_TYPE_UNKNOWN))
 
             return found
@@ -1321,16 +1343,6 @@ class IEC61850Client:
                                 break
                     except Exception:
                         continue
-                # 方法B: IedConnection_getDataDirectory (MMS 层回退)
-                if not dos:
-                    try:
-                        result = iec61850.IedConnection_getDataDirectory(self._connection, ln_ref)
-                        dd_list = result[0] if isinstance(result, (list, tuple)) else result
-                        dd_err = result[1] if isinstance(result, (list, tuple)) else 0
-                        if dd_err == 0 and dd_list is not None:
-                            dos = self._get_list_from_linked_list(dd_list)
-                    except Exception:
-                        pass
                 log.info(f"逻辑节点 {ln_ref} 下发现数据对象: {dos}")
                 if not dos:
                     log.warning(f"跳过逻辑节点 {ln_ref}: 无法获取数据对象目录")

@@ -294,9 +294,9 @@ class Device:
                         "description": f"自动发现: {g.get('data_set_ref', '')}",
                     })
                 gm.create_receiver(interface="", subscriptions=sub_list)
-                log.info(f"已自动创建 GOOSE 订阅: {len(sub_list)} 个 (interface 为空，启动前请先配置网卡)")
+                self.log.info(f"已自动创建 GOOSE 订阅: {len(sub_list)} 个 (interface 为空，启动前请先配置网卡)")
             except Exception as e:
-                log.warning(f"自动创建 GOOSE 订阅失败: {e}")
+                self.log.warning(f"自动创建 GOOSE 订阅失败: {e}")
 
         for dp in discovered_points:
             if dp.get("_type") == "goose":
