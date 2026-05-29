@@ -2,9 +2,9 @@
   <div class="device-form-points">
     <!-- IEC 61850 服务端: ICD 文件导入 -->
     <template v-if="protocolType === 4 && connType === 2">
-      <el-divider content-position="left">ICD 文件导入</el-divider>
+      <el-divider content-position="left">{{ $t('device.icdImport') }}</el-divider>
 
-      <el-form-item label="ICD文件">
+      <el-form-item :label="$t('device.icdFile')">
         <el-upload
           ref="icdUploadRef"
           action="#"
@@ -14,11 +14,11 @@
           accept=".icd,.scd,.cid,.xml"
         >
           <template #trigger>
-            <el-button type="success" plain :icon="Upload">选择 ICD 文件</el-button>
+            <el-button type="success" plain :icon="Upload">{{ $t('device.selectIcd') }}</el-button>
           </template>
           <template #tip>
             <div class="el-upload__tip">
-              支持 .icd / .scd / .cid / .xml 格式（IEC 61850 SCL 文件）
+              {{ $t('device.icdTip') }}
             </div>
           </template>
         </el-upload>
@@ -28,7 +28,7 @@
     <!-- IEC 61850 客户端提示 -->
     <template v-else-if="protocolType === 4 && connType === 1">
       <el-alert
-        title="IEC61850 客户端将从服务端动态发现数据点，无需导入 ICD 文件"
+        :title="$t('device.clientNoIcdNeeded')"
         type="info"
         :closable="false"
         show-icon
@@ -38,9 +38,9 @@
 
     <!-- 其他协议: Excel 点表导入 -->
     <template v-else>
-      <el-divider content-position="left">点表导入</el-divider>
+      <el-divider content-position="left">{{ $t('device.pointTable') }}</el-divider>
 
-      <el-form-item label="测点表格">
+      <el-form-item :label="$t('device.pointFile')">
         <el-upload
           ref="uploadRef"
           action="#"
@@ -50,11 +50,11 @@
           accept=".xlsx,.xls"
         >
           <template #trigger>
-            <el-button type="success" plain :icon="Upload">选择 Excel 文件</el-button>
+            <el-button type="success" plain :icon="Upload">{{ $t('device.selectExcel') }}</el-button>
           </template>
           <template #tip>
             <div class="el-upload__tip">
-              支持 .xlsx 格式，包含遥测/遥信/遥控/遥调 四个 sheet
+              {{ $t('device.excelTip') }}
             </div>
           </template>
         </el-upload>

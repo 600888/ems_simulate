@@ -91,12 +91,11 @@ async def get_table_by_slave_id(req: DeviceTableRequest, request: Request):
     """获取设备表格数据"""
     try:
         device = _get_device(req.device_name, request)
-        head_data = device.get_table_head()
         table_data, total = device.get_table_data(
             req.slave_id, req.point_name, req.page_index, req.page_size,
             req.point_types, req.order_by, req.order_direction,
         )
-        data_dict = {"total": total, "head_data": head_data, "table_data": table_data}
+        data_dict = {"total": total, "table_data": table_data}
         return BaseResponse(message="获取从机信息成功!", data=data_dict)
     except Exception as e:
         log.error(f"获取从机信息失败: {e}")

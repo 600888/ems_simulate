@@ -1,6 +1,6 @@
 <template>
   <el-dialog
-    title="编辑测点值"
+    :title="$t('editPoint.title')"
     width="350"
     v-model="visible"
     :show-close="false"
@@ -12,32 +12,32 @@
       :model="editConfig"
       @submit.native.prevent="editRegisterValue"
     >
-      <el-form-item label="测点名称:" label-position="right">
+      <el-form-item :label="$t('editPoint.pointName')" label-position="right">
         <el-input v-model="editConfig.pointName" disabled></el-input>
       </el-form-item>
-      <el-form-item label="测点编码:" label-position="right">
+      <el-form-item :label="$t('editPoint.pointCode')" label-position="right">
         <el-input v-model="editConfig.pointCode" disabled></el-input>
       </el-form-item>
-      <el-form-item label="乘法系数:" label-position="right">
+      <el-form-item :label="$t('editPoint.mulCoe')" label-position="right">
         <el-input v-model="editConfig.multiplicationFactor" disabled></el-input>
       </el-form-item>
-      <el-form-item label="加法系数:" label-position="right">
+      <el-form-item :label="$t('editPoint.addCoe')" label-position="right">
         <el-input v-model="editConfig.additionFactor" disabled></el-input>
       </el-form-item>
-      <el-form-item label="寄存器值:" label-position="right">
+      <el-form-item :label="$t('editPoint.registerValue')" label-position="right">
         <el-input v-model="registerValue" disabled></el-input>
       </el-form-item>
-      <el-form-item label="真实值:" label-position="right">
+      <el-form-item :label="$t('editPoint.realValue')" label-position="right">
         <el-input v-model="editConfig.realValue"></el-input>
       </el-form-item>
     </el-form>
     <template #footer>
       <el-row class="custom-row">
         <el-form-item class="custom-form-item">
-          <el-button type="primary" @click="editRegisterValue">确定</el-button>
+          <el-button type="primary" @click="editRegisterValue">{{ $t('common.confirm') }}</el-button>
         </el-form-item>
         <el-form-item class="custom-form-item">
-          <el-button @click="cancel">取消</el-button>
+          <el-button @click="cancel">{{ $t('common.cancel') }}</el-button>
         </el-form-item>
       </el-row>
     </template>
@@ -46,11 +46,13 @@
 
 <script setup name="EditPoint">
 import { computed, ref } from "vue";
+import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import { editPointData } from "@/api/deviceApi";
 import { useRoute } from "vue-router";
 const route = useRoute();
 const deviceName = computed(() => route.name);
+const { t } = useI18n();
 
 let props = defineProps({
   editDialogVisible: {
@@ -85,7 +87,7 @@ const editRegisterValue = async () => {
         props.editConfig.realValue,
         registerValue.value
       );
-      ElMessage.success("修改成功!");
+      ElMessage.success(t('register.editSuccess'));
     }
   } catch (error) {
     console.error('Edit register failed:', error);

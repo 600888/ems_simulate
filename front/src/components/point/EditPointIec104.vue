@@ -10,10 +10,10 @@
           <el-form-item label="ASDU类型" class="form-item">
             <el-select v-model="iec104Form.iec_type_id" placeholder="选择ASDU类型" style="width: 100%" clearable>
               <el-option
-                v-for="t in availableIec104Types"
-                :key="t.type_id"
-                :label="`${t.label} (${t.type_id})`"
-                :value="t.type_id"
+                v-for="item in availableIec104Types"
+                :key="item.type_id"
+                :label="locale === 'en-US' ? item.type_id : `${t(item.label)} (${item.type_id})`"
+                :value="item.type_id"
               />
             </el-select>
           </el-form-item>
@@ -43,9 +43,12 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import { getPointInfo, editIec104Metadata } from '@/api/pointApi';
 import { IEC104_TYPES_BY_FRAME_TYPE, decodeIec104Quality, encodeIec104Quality, supportsQuality as supportsQualityFlag, supportsOverflow } from '@/types/point';
+
+const { t, locale } = useI18n();
 
 interface Props {
   deviceName: string;

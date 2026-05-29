@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    :title="isBatch ? '批量添加测点' : '添加测点'"
+    :title="isBatch ? $t('point.batchAdd') : $t('point.add')"
     width="560px"
     :close-on-click-modal="false"
     @close="handleClose"
@@ -13,67 +13,64 @@
       label-width="100px"
       label-position="right"
     >
-      <!-- 添加模式切换 -->
-      <el-form-item label="添加模式">
+      <el-form-item :label="$t('point.addMode')">
         <el-radio-group v-model="isBatch">
-          <el-radio :value="false">单个添加</el-radio>
-          <el-radio :value="true">批量添加</el-radio>
+          <el-radio :value="false">{{ $t('point.singleAdd') }}</el-radio>
+          <el-radio :value="true">{{ $t('point.batchAdd') }}</el-radio>
         </el-radio-group>
       </el-form-item>
 
-      <el-form-item label="测点类型" prop="frame_type">
-        <el-select v-model="formData.frame_type" placeholder="选择测点类型" style="width: 100%">
-          <el-option label="遥测 (YC)" :value="0" />
-          <el-option label="遥信 (YX)" :value="1" />
-          <el-option label="遥控 (YK)" :value="2" />
-          <el-option label="遥调 (YT)" :value="3" />
+      <el-form-item :label="$t('point.type')" prop="frame_type">
+        <el-select v-model="formData.frame_type" :placeholder="$t('point.selectType')" style="width: 100%">
+          <el-option :label="`${$t('point.yc')} (YC)`" :value="0" />
+          <el-option :label="`${$t('point.yx')} (YX)`" :value="1" />
+          <el-option :label="`${$t('point.yk')} (YK)`" :value="2" />
+          <el-option :label="`${$t('point.yt')} (YT)`" :value="3" />
         </el-select>
       </el-form-item>
 
-      <!-- 批量模式：数量输入 -->
       <template v-if="isBatch">
-        <el-form-item label="添加数量" prop="batchCount">
+        <el-form-item :label="$t('point.batchCount')" prop="batchCount">
           <el-input-number v-model="batchCount" :min="1" :max="10000" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="起始地址" prop="reg_addr">
-          <el-input v-model="formData.reg_addr" placeholder="如: 0 或 0x0000" />
+        <el-form-item :label="$t('point.startAddress')" prop="reg_addr">
+          <el-input v-model="formData.reg_addr" :placeholder="$t('point.startAddrPlaceholder')" />
         </el-form-item>
-        <el-form-item label="编码前缀">
-          <el-input v-model="codePrefix" placeholder="如: POINT_" />
+        <el-form-item :label="$t('point.codePrefix')">
+          <el-input v-model="codePrefix" :placeholder="$t('point.codePrefixPlaceholder')" />
         </el-form-item>
-        <el-form-item label="名称前缀">
-          <el-input v-model="namePrefix" placeholder="如: 测点" />
+        <el-form-item :label="$t('point.namePrefix')">
+          <el-input v-model="namePrefix" :placeholder="$t('point.namePrefixPlaceholder')" />
         </el-form-item>
       </template>
 
-      <!-- 单个模式：编码和名称输入 -->
       <template v-else>
-        <el-form-item label="测点编码" prop="code">
-          <el-input v-model="formData.code" placeholder="输入测点编码" />
+        <el-form-item :label="$t('point.code')" prop="code">
+          <el-input v-model="formData.code" :placeholder="$t('point.codePlaceholder')" />
         </el-form-item>
 
-        <el-form-item label="测点名称" prop="name">
-          <el-input v-model="formData.name" placeholder="输入测点名称" />
+        <el-form-item :label="$t('point.name')" prop="name">
+          <el-input v-model="formData.name" :placeholder="$t('point.namePlaceholder')" />
         </el-form-item>
 
-        <el-form-item label="寄存器地址" prop="reg_addr">
-          <el-input v-model="formData.reg_addr" placeholder="如: 0x0000 或 0" />
+        <el-form-item :label="$t('point.regAddress')" prop="reg_addr">
+          <el-input v-model="formData.reg_addr" :placeholder="$t('point.regAddrPlaceholder')" />
         </el-form-item>
       </template>
 
-      <el-form-item v-if="!isIec61850" label="从机地址" prop="rtu_addr">
-        <el-select v-model="formData.rtu_addr" placeholder="选择从机地址" style="width: 100%">
+      <el-form-item v-if="!isIec61850" :label="$t('point.slaveAddress')" prop="rtu_addr">
+        <el-select v-model="formData.rtu_addr" :placeholder="$t('point.selectSlaveAddress')" style="width: 100%">
           <el-option
             v-for="slave in slaveIdList"
             :key="slave"
-            :label="`从机 ${slave}`"
+            :label="`${$t('point.slave')} ${slave}`"
             :value="slave"
           />
         </el-select>
       </el-form-item>
 
-      <el-form-item v-if="!isIec104" label="功能码" prop="func_code">
-        <el-select v-model="formData.func_code" placeholder="选择功能码" style="width: 100%">
+      <el-form-item v-if="!isIec104" :label="$t('point.funcCode')" prop="func_code">
+        <el-select v-model="formData.func_code" :placeholder="$t('point.selectFuncCode')" style="width: 100%">
           <el-option
             v-for="fc in validFuncCodes"
             :key="fc.value"
@@ -83,93 +80,89 @@
         </el-select>
       </el-form-item>
 
-      <el-form-item label="解析码" prop="decode_code">
-        <el-select v-model="formData.decode_code" placeholder="选择解析码" style="width: 100%">
-          <el-option-group label="8位字符">
-            <el-option label="0x10 - Byte (无符号)" value="0x10" />
-            <el-option label="0x11 - Byte (有符号)" value="0x11" />
+      <el-form-item :label="$t('point.decodeCode')" prop="decode_code">
+        <el-select v-model="formData.decode_code" :placeholder="$t('point.selectDecodeCode')" style="width: 100%">
+          <el-option-group :label="$t('decode.bit8')">
+            <el-option label="0x10 - Byte (unsigned)" value="0x10" />
+            <el-option label="0x11 - Byte (signed)" value="0x11" />
           </el-option-group>
-          <el-option-group label="16位整数">
-            <el-option label="0x20 - Short AB (大端)" value="0x20" />
-            <el-option label="0x21 - Short AB (有符号)" value="0x21" />
-            <el-option label="0x22 - Short BA (字节交换)" value="0x22" />
-            <el-option label="0xB0 - Short BA (无符号)" value="0xB0" />
-            <el-option label="0xB1 - Short BA (有符号)" value="0xB1" />
-            <el-option label="0xC0 - Short CD (小端)" value="0xC0" />
-            <el-option label="0xC1 - Short CD (有符号)" value="0xC1" />
+          <el-option-group :label="$t('decode.int16')">
+            <el-option label="0x20 - Short AB (big endian)" value="0x20" />
+            <el-option label="0x21 - Short AB (signed)" value="0x21" />
+            <el-option label="0x22 - Short BA (byte swap)" value="0x22" />
+            <el-option label="0xB0 - Short BA (unsigned)" value="0xB0" />
+            <el-option label="0xB1 - Short BA (signed)" value="0xB1" />
+            <el-option label="0xC0 - Short CD (little endian)" value="0xC0" />
+            <el-option label="0xC1 - Short CD (signed)" value="0xC1" />
           </el-option-group>
-          <el-option-group label="32位整数">
-            <el-option label="0x40 - Long AB CD (大端)" value="0x40" />
-            <el-option label="0x41 - Long AB CD (有符号)" value="0x41" />
-            <el-option label="0x43 - Long BA DC (大端字交换)" value="0x43" />
-            <el-option label="0x44 - Long BA DC (有符号)" value="0x44" />
-            <el-option label="0xD0 - Long DC BA (小端)" value="0xD0" />
-            <el-option label="0xD1 - Long DC BA (有符号)" value="0xD1" />
-            <el-option label="0xD4 - Long CD AB (小端字交换)" value="0xD4" />
-            <el-option label="0xD5 - Long CD AB (有符号)" value="0xD5" />
+          <el-option-group :label="$t('decode.int32')">
+            <el-option label="0x40 - Long AB CD (big endian)" value="0x40" />
+            <el-option label="0x41 - Long AB CD (signed)" value="0x41" />
+            <el-option label="0x43 - Long BA DC (big word swap)" value="0x43" />
+            <el-option label="0x44 - Long BA DC (signed)" value="0x44" />
+            <el-option label="0xD0 - Long DC BA (little endian)" value="0xD0" />
+            <el-option label="0xD1 - Long DC BA (signed)" value="0xD1" />
+            <el-option label="0xD4 - Long CD AB (little word swap)" value="0xD4" />
+            <el-option label="0xD5 - Long CD AB (signed)" value="0xD5" />
           </el-option-group>
-          <el-option-group label="32位浮点">
-            <el-option label="0x42 - Float AB CD (大端)" value="0x42" />
-            <el-option label="0x45 - Float BA DC (大端字交换)" value="0x45" />
-            <el-option label="0xD2 - Float DC BA (小端)" value="0xD2" />
-            <el-option label="0xD3 - Float CD AB (小端字交换)" value="0xD3" />
+          <el-option-group :label="$t('decode.float32')">
+            <el-option label="0x42 - Float AB CD (big endian)" value="0x42" />
+            <el-option label="0x45 - Float BA DC (big word swap)" value="0x45" />
+            <el-option label="0xD2 - Float DC BA (little endian)" value="0xD2" />
+            <el-option label="0xD3 - Float CD AB (little word swap)" value="0xD3" />
           </el-option-group>
-          <el-option-group label="64位类型">
-            <el-option label="0x60 - Int64 AB CD EF GH (大端)" value="0x60" />
-            <el-option label="0x61 - Int64 AB CD EF GH (有符号)" value="0x61" />
-            <el-option label="0x62 - Double AB CD EF GH (大端)" value="0x62" />
-            <el-option label="0xE0 - Int64 HG FE DC BA (小端)" value="0xE0" />
-            <el-option label="0xE1 - Int64 HG FE DC BA (有符号)" value="0xE1" />
-            <el-option label="0xE2 - Double HG FE DC BA (小端)" value="0xE2" />
+          <el-option-group :label="$t('decode.int64')">
+            <el-option label="0x60 - Int64 AB CD EF GH (big endian)" value="0x60" />
+            <el-option label="0x61 - Int64 AB CD EF GH (signed)" value="0x61" />
+            <el-option label="0x62 - Double AB CD EF GH (big endian)" value="0x62" />
+            <el-option label="0xE0 - Int64 HG FE DC BA (little endian)" value="0xE0" />
+            <el-option label="0xE1 - Int64 HG FE DC BA (signed)" value="0xE1" />
+            <el-option label="0xE2 - Double HG FE DC BA (little endian)" value="0xE2" />
           </el-option-group>
         </el-select>
       </el-form-item>
 
-      <!-- 遥信和遥控特有：位偏移 -->
       <template v-if="[1, 2].includes(formData.frame_type)">
-        <el-form-item label="位偏移 (Bit)" prop="bit">
-          <el-input-number v-model="formData.bit" :min="0" :max="31" :step="1" placeholder="留空或输入0-31" style="width: 100%" controls-position="right" :value-on-clear="null" />
+        <el-form-item :label="$t('point.bitOffset')" prop="bit">
+          <el-input-number v-model="formData.bit" :min="0" :max="31" :step="1" :placeholder="$t('point.bitOffsetPlaceholder')" style="width: 100%" controls-position="right" :value-on-clear="null" />
         </el-form-item>
       </template>
 
-      <!-- IEC104 类型选择器（仅 IEC104 协议时显示） -->
-      <el-form-item v-if="isIec104" label="IEC104类型" prop="iec_type_id">
-        <el-select v-model="formData.iec_type_id" placeholder="选择ASDU类型" style="width: 100%" clearable>
+      <el-form-item v-if="isIec104" :label="$t('point.iec104Type')" prop="iec_type_id">
+        <el-select v-model="formData.iec_type_id" :placeholder="$t('point.selectAsduType')" style="width: 100%" clearable>
           <el-option
-            v-for="t in availableIec104Types"
-            :key="t.type_id"
-            :label="`${t.label} (${t.type_id})`"
-            :value="t.type_id"
+            v-for="item in availableIec104Types"
+            :key="item.type_id"
+            :label="locale === 'en-US' ? item.type_id : `${t(getIec104TypeLabelKey(item.type_id))} (${item.type_id})`"
+            :value="item.type_id"
           />
         </el-select>
       </el-form-item>
 
-      <!-- IEC104 品质描述符（仅 IEC104 协议且非遥控时显示） -->
-      <el-form-item v-if="showQualityFlags" label="品质描述符">
+      <el-form-item v-if="showQualityFlags" :label="$t('point.qualityDescriptor')">
         <div class="quality-flags">
-          <el-checkbox v-model="qualityFlags.ov" :disabled="!canOverflow" label="溢出(OV)" />
-          <el-checkbox v-model="qualityFlags.bl" label="闭锁(BL)" />
-          <el-checkbox v-model="qualityFlags.sb" label="取代(SB)" />
-          <el-checkbox v-model="qualityFlags.nt" label="不刷新(NT)" />
-          <el-checkbox v-model="qualityFlags.iv" label="无效(IV)" />
+          <el-checkbox v-model="qualityFlags.ov" :disabled="!canOverflow" label="OV" />
+          <el-checkbox v-model="qualityFlags.bl" label="BL" />
+          <el-checkbox v-model="qualityFlags.sb" label="SB" />
+          <el-checkbox v-model="qualityFlags.nt" label="NT" />
+          <el-checkbox v-model="qualityFlags.iv" label="IV" />
         </div>
       </el-form-item>
 
-      <!-- 系数配置，仅遥测和遥调显示 -->
       <template v-if="[0, 3].includes(formData.frame_type)">
-        <el-form-item label="乘法系数" prop="mul_coe">
+        <el-form-item :label="$t('point.mulCoe')" prop="mul_coe">
           <el-input-number v-model="formData.mul_coe" :precision="6" :step="0.1" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="加法系数" prop="add_coe">
+        <el-form-item :label="$t('point.addCoe')" prop="add_coe">
           <el-input-number v-model="formData.add_coe" :precision="6" :step="1" style="width: 100%" />
         </el-form-item>
       </template>
     </el-form>
 
     <template #footer>
-      <el-button @click="handleClose">取消</el-button>
+      <el-button @click="handleClose">{{ $t('common.cancel') }}</el-button>
       <el-button type="primary" :loading="loading" @click="handleSubmit">
-        {{ isBatch ? `批量添加 ${batchCount} 个` : '确定' }}
+        {{ isBatch ? `${t('common.confirm')} (${batchCount})` : $t('common.confirm') }}
       </el-button>
     </template>
   </el-dialog>
@@ -177,10 +170,13 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { FormInstance, FormRules } from 'element-plus';
 import { ElMessage } from 'element-plus';
 import { addPoint, addPointsBatch, type PointCreateData } from '@/api/pointApi';
-import { IEC104_TYPES_BY_FRAME_TYPE, getDefaultIec104Type, encodeIec104Quality, supportsOverflow, supportsQuality as supportsQualityCheck } from '@/types/point';
+import { IEC104_TYPES_BY_FRAME_TYPE, getDefaultIec104Type, getIec104TypeLabelKey, encodeIec104Quality, supportsOverflow, supportsQuality as supportsQualityCheck } from '@/types/point';
+
+const { t, locale } = useI18n();
 
 const props = defineProps<{
   modelValue: boolean;

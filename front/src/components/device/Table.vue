@@ -199,7 +199,7 @@
         v-for="(header, index) in filteredTableHeaderWithoutAddress"
         :key="index"
         :prop="header.toLowerCase()"
-        :label="header"
+        :label="getHeaderLabel(header)"
         :min-width="addressFilteredWidthList[index]"
         :show-overflow-tooltip="!['帧类型', 'IEC104类型'].includes(header)"
         :sortable="['功能码', '解析码'].includes(header) ? 'custom' : false"
@@ -209,7 +209,7 @@
       >
         <template #header>
           <div class="header-content">
-            <span>{{ header }}</span>
+            <span>{{ getHeaderLabel(header) }}</span>
             <el-tooltip v-if="shouldShowTooltip(header)" effect="dark" placement="top">
               <template #content>
                 <div v-if="header === '解析码'">{{ toolTip }}</div>
@@ -228,15 +228,15 @@
             effect="light"
             class="status-tag"
           >
-            {{ scope.row[header] }}
+            {{ translateFrameType(scope.row[header]) }}
           </el-tag>
           <el-tag
             v-else-if="header === 'IEC104类型' && scope.row[header]"
-            :type="getIec104TagType(scope.row[header])"
+            :type="getIec104TagType(getIec104TypeLabelKey(scope.row[header]))"
             effect="light"
             class="status-tag"
           >
-            {{ scope.row[header] }}
+            {{ locale === 'en-US' ? scope.row[header] : t(getIec104TypeLabelKey(scope.row[header])) }}
           </el-tag>
           <div v-else-if="header === '状态'" class="status-cell">
             <el-icon v-if="scope.row[header] === '成功'" color="#67C23A" size="20"><CircleCheckFilled /></el-icon>
@@ -255,7 +255,6 @@
       <!-- 操作列（DataSet 扁平模式隐藏写入按钮） -->
       <el-table-column
         v-if="props.iec61850Category !== 'DataSets'"
-        label="操作"
         :label="$t('common.operation')"
         :width="isClientDevice || isIec61850WithActions ? 240 : 100"
         fixed="right"
@@ -376,7 +375,7 @@ import { useRoute } from "vue-router"
 import { useI18n } from 'vue-i18n'
 import { QuestionFilled, Download, Edit, Delete, CircleCheckFilled, CircleCloseFilled, RemoveFilled, ArrowRight } from "@element-plus/icons-vue"
 import { ElMessage } from 'element-plus'
-import { getPointType, PointType } from '@/types/point'
+import { getPointType, PointType, getIec104TypeLabelKey } from '@/types/point'
 import { readSinglePoint, deletePoint } from '@/api/pointApi'
 import { iec61850ReadPoint } from '@/api/channelApi'
 import type { IEC61850TreeDataResponse } from '@/api/channelApi'
@@ -392,6 +391,7 @@ import {
   DECODE_CODE_TOOLTIP,
   FUNC_CODE_TOOLTIP,
   CLIENT_PROTOCOL_NAMES,
+  HEADER_I18N_MAP,
 } from '@/constants/table'
 
 import SingleRegister from '../register/SingleRegister.vue'
@@ -406,7 +406,7 @@ import PointChangeHistory from '../point/PointChangeHistory.vue'
 import WritePointDialog from './WritePointDialog.vue'
 import Iec61850WriteDialog from './Iec61850WriteDialog.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 // ===== IEC61850 树形表格常量 =====
 
@@ -442,6 +442,25 @@ const props = defineProps({
 const emit = defineEmits(['update:pageSize', 'update:pageIndex', 'update:activeFilters', 'refresh', 'sort-change']);
 const route = useRoute();
 const deviceName = computed(() => route.params.deviceName as string);
+
+/** 根据中文列名获取 i18n 翻译后的表头文本 */
+const getHeaderLabel = (header: string): string => {
+  const key = HEADER_I18N_MAP[header];
+  return key ? t('table.' + key) : header;
+};
+
+/** 帧类型中文 → i18n key 映射 */
+const FRAME_TYPE_I18N_MAP: Record<string, string> = {
+  '遥测': 'meas',
+  '遥信': 'status2',
+  '遥控': 'control',
+  '遥调': 'adjust',
+};
+/** 翻译帧类型 */
+const translateFrameType = (val: string): string => {
+  const key = FRAME_TYPE_I18N_MAP[val];
+  return key ? t('table.' + key) : val;
+};
 
 const activeName = ref("数据解析和设置");
 const expandedRowKeys = ref<string[]>([]);
@@ -586,7 +605,9 @@ const iec61850RowClassName = ({ row }: { row: any }) => {
 
 const tagFilters = FRAME_TYPE_FILTERS;
 
-const iec104TypeFilters = IEC104_TYPE_FILTERS;
+const iec104TypeFilters = computed(() =>
+  IEC104_TYPE_FILTERS.map(f => ({ text: t(f.text), value: f.value }))
+);
 
 const handleFilterChange = (f: any) => emit('update:activeFilters', f);
 const handleSortChange = ({ prop, order }: { prop: string, order: string | null }) => {

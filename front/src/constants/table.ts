@@ -45,6 +45,47 @@ export const TABLE_COLUMN_NAMES = {
   STATUS: '状态',
 } as const;
 
+/**
+ * 后端返回的列顺序（固定，前端不再通过 API 获取 head_data）
+ * 与 src/device/core/data/data_exporter.py:get_table_head() 保持一致
+ */
+export const TABLE_HEADERS: readonly string[] = [
+  '地址',
+  '16进制地址',
+  '位',
+  '功能码',
+  '解析码',
+  '测点名称',
+  '测点编码',
+  '寄存器值',
+  '真实值',
+  '乘法系数',
+  '加法系数',
+  '帧类型',
+  'IEC104类型',
+  '状态',
+  'FC',
+] as const;
+
+/** 中文列名 → i18n key 后缀映射 */
+export const HEADER_I18N_MAP: Record<string, string> = {
+  '地址': 'address',
+  '16进制地址': 'hexAddress',
+  '位': 'bit',
+  '功能码': 'funcCode',
+  '解析码': 'decodeCode',
+  '测点名称': 'pointName',
+  '测点编码': 'pointCode',
+  '寄存器值': 'registerValue',
+  '真实值': 'realValue',
+  '乘法系数': 'multiplier',
+  '加法系数': 'offset',
+  '帧类型': 'frameType',
+  'IEC104类型': 'iec104Type',
+  '状态': 'status',
+  'FC': 'fc',
+};
+
 // ===== 列宽度映射 =====
 
 export const COLUMN_WIDTH_MAP: Record<string, number> = {
@@ -82,12 +123,12 @@ export const FRAME_TYPE_FILTERS = [
 
 export const IEC104_TYPE_FILTERS: Array<{ text: string; value: string }> = [];
 
-// 自动从 IEC104_TYPES_BY_FRAME_TYPE 生成筛选项
+// 自动从 IEC104_TYPES_BY_FRAME_TYPE 生成筛选项（使用 type_id 做 value，i18n key 做 text）
 for (const types of Object.values(IEC104_TYPES_BY_FRAME_TYPE)) {
   for (const t of types) {
-    const existing = IEC104_TYPE_FILTERS.find(f => f.value === t.label);
+    const existing = IEC104_TYPE_FILTERS.find(f => f.value === t.type_id);
     if (!existing) {
-      IEC104_TYPE_FILTERS.push({ text: t.label, value: t.label });
+      IEC104_TYPE_FILTERS.push({ text: t.label, value: t.type_id });
     }
   }
 }
@@ -103,12 +144,12 @@ export const FRAME_TYPE_TAG_MAP: Record<string, string> = {
 
 // ===== IEC104 类型标签颜色 =====
 
-export function getIec104TagType(label: string): string {
-  if (label.includes('遥测')) return 'success';
-  if (label.includes('遥信')) return 'warning';
-  if (label.includes('遥控')) return 'danger';
-  if (label.includes('遥调') || label.includes('设定值')) return 'info';
-  if (label.includes('步调节')) return 'danger';
+export function getIec104TagType(labelOrKey: string): string {
+  // 支持 i18n key 前缀和中文 label 两种格式
+  if (labelOrKey.startsWith('iec104.m') || labelOrKey.includes('遥测')) return 'success';
+  if (labelOrKey.startsWith('iec104.s') || labelOrKey.includes('遥信')) return 'warning';
+  if (labelOrKey.startsWith('iec104.c') || labelOrKey.includes('遥控') || labelOrKey.includes('步调节')) return 'danger';
+  if (labelOrKey.startsWith('iec104.t') || labelOrKey.includes('遥调') || labelOrKey.includes('设定值')) return 'info';
   return 'info';
 }
 

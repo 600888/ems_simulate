@@ -3,46 +3,43 @@
     <!-- 控制栏 -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-input
-          v-model="interfaceName"
-          placeholder="Network Interface (empty=auto)"
-          style="width: 180px"
-          size="small"
-          :disabled="captureRunning"
-        />
-        <el-input-number
-          v-model="maxPackets"
-          :min="100"
-          :max="10000"
-          :step="100"
-          size="small"
-          style="width: 140px"
-          :disabled="captureRunning"
-        >
-          <template #prefix>
-            <span style="font-size: 12px; color: #909399;">缓存:</span>
-          </template>
-        </el-input-number>
-        <el-input-number
-          v-model="filterAppId"
-          :min="0"
-          :max="65535"
-          size="small"
-          style="width: 140px"
-          placeholder="APPID 过滤"
-          :disabled="captureRunning"
-        >
-          <template #prefix>
-            <span style="font-size: 12px; color: #909399;">APPID:</span>
-          </template>
-        </el-input-number>
+        <div class="toolbar-item">
+          <span class="toolbar-label">{{ $t('goose.iface') }}</span>
+          <el-input
+            v-model="interfaceName"
+            :placeholder="$t('goose.iface') + ' (empty=auto)'"
+            style="width: 160px"
+            :disabled="captureRunning"
+          />
+        </div>
+        <div class="toolbar-item">
+          <span class="toolbar-label">{{ $t('goose.cache') }}</span>
+          <el-input-number
+            v-model="maxPackets"
+            :min="100"
+            :max="10000"
+            :step="100"
+            style="width: 130px"
+            :disabled="captureRunning"
+          />
+        </div>
+        <div class="toolbar-item">
+          <span class="toolbar-label">{{ $t('goose.appIdLabel') }}</span>
+          <el-input-number
+            v-model="filterAppId"
+            :min="0"
+            :max="65535"
+            style="width: 130px"
+            :placeholder="$t('goose.filterAppId')"
+            :disabled="captureRunning"
+          />
+        </div>
       </div>
       <div class="toolbar-right">
         <el-button
           v-if="!captureRunning"
           type="success"
           :icon="VideoPlay"
-          size="small"
           @click="startCapture"
           :loading="starting"
         >
@@ -52,7 +49,6 @@
           v-else
           type="danger"
           :icon="VideoPause"
-          size="small"
           @click="stopCapture"
           :loading="stopping"
         >
@@ -60,7 +56,6 @@
         </el-button>
         <el-button
           :icon="Refresh"
-          size="small"
           @click="refreshPackets"
           :disabled="!captureRunning"
           :loading="loading"
@@ -69,7 +64,6 @@
         </el-button>
         <el-button
           :icon="Delete"
-          size="small"
           @click="clearPackets"
           :disabled="!hasData"
         >
@@ -115,32 +109,32 @@
       size="small"
       @row-click="showPacketDetail"
     >
-      <el-table-column type="index" label="#" width="50" />
-      <el-table-column label="时间" width="165" sortable>
+      <el-table-column type="index" :label="$t('goose.seqNum')" width="50" />
+      <el-table-column :label="$t('goose.time')" width="165" sortable>
         <template #default="{ row }">
           {{ row.time }}
         </template>
       </el-table-column>
-      <el-table-column prop="src_mac" label="源MAC" width="140" />
-      <el-table-column prop="dst_mac" label="目标MAC" width="140" />
-      <el-table-column label="APPID" width="80" sortable>
+      <el-table-column prop="src_mac" :label="$t('goose.srcMac')" width="140" />
+      <el-table-column prop="dst_mac" :label="$t('goose.dstMacLabel')" width="140" />
+      <el-table-column :label="$t('goose.appId')" width="90" sortable>
         <template #default="{ row }">
           <el-tag size="small">{{ row.app_id_hex }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="go_cb_ref" label="GoCBRef" min-width="200" show-overflow-tooltip />
-      <el-table-column prop="go_id" label="GoID" width="100" show-overflow-tooltip />
-      <el-table-column label="stNum" width="65" sortable align="center" prop="st_num" />
-      <el-table-column label="sqNum" width="65" align="center" prop="sq_num" />
-      <el-table-column label="TAL(ms)" width="75" align="right" prop="time_allowed_to_live" />
-      <el-table-column label="长度" width="65" align="right" prop="length" />
-      <el-table-column label="仿真" width="60" align="center">
+      <el-table-column prop="go_cb_ref" :label="$t('goose.goCbRef')" min-width="200" show-overflow-tooltip />
+      <el-table-column prop="go_id" :label="$t('goose.goId')" width="100" show-overflow-tooltip />
+      <el-table-column :label="$t('goose.stNum')" width="85" sortable align="center" prop="st_num" />
+      <el-table-column :label="$t('goose.sqNum')" width="80" align="center" prop="sq_num" />
+      <el-table-column :label="$t('goose.tal')" width="95" align="right" prop="time_allowed_to_live" />
+      <el-table-column :label="$t('goose.length')" width="75" align="right" prop="length" />
+      <el-table-column :label="$t('goose.simulationLabel')" width="75" align="center">
         <template #default="{ row }">
-          <el-tag v-if="row.simulation" type="warning" size="small">是</el-tag>
-          <span v-else class="text-muted">否</span>
+          <el-tag v-if="row.simulation" type="warning" size="small">{{ $t('goose.yes') }}</el-tag>
+          <span v-else class="text-muted">{{ $t('goose.no') }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="VLAN" width="100">
+      <el-table-column :label="$t('goose.vlan')" width="100">
         <template #default="{ row }">
           <span v-if="row.has_vlan" class="text-muted">
             ID={{ row.vlan_id }} P={{ row.vlan_prio }}
@@ -148,7 +142,7 @@
           <span v-else class="text-muted">-</span>
         </template>
       </el-table-column>
-      <el-table-column label="数据集" min-width="200">
+      <el-table-column :label="$t('goose.dataSet')" min-width="200">
         <template #default="{ row }">
           <div v-if="row.data_values?.length" class="data-values">
             <el-tooltip
@@ -169,55 +163,55 @@
     <!-- 报文详情对话框 -->
     <el-dialog
       v-model="detailVisible"
-      :title="`GOOSE 报文详情 - ${detailPacket?.app_id_hex || ''}`"
+      :title="$t('goose.packetDetailTitle', { appId: detailPacket?.app_id_hex || '' })"
       width="900px"
       top="5vh"
       destroy-on-close
     >
       <template v-if="detailPacket">
         <el-descriptions :column="3" border size="small">
-          <el-descriptions-item label="时间" :span="2">{{ detailPacket.time }}</el-descriptions-item>
-          <el-descriptions-item label="长度">{{ detailPacket.length }} 字节</el-descriptions-item>
-          <el-descriptions-item label="源MAC">{{ detailPacket.src_mac }}</el-descriptions-item>
-          <el-descriptions-item label="目标MAC">{{ detailPacket.dst_mac }}</el-descriptions-item>
-          <el-descriptions-item label="APPID">
+          <el-descriptions-item :label="$t('goose.time')" :span="2">{{ detailPacket.time }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.length')">{{ $t('goose.bytes', { count: detailPacket.length }) }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.srcMac')">{{ detailPacket.src_mac }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.dstMacLabel')">{{ detailPacket.dst_mac }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.appId')">
             <el-tag size="small">{{ detailPacket.app_id_hex }}</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="GoCBRef" :span="3">{{ detailPacket.go_cb_ref || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="GoID">{{ detailPacket.go_id || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="数据集引用">{{ detailPacket.data_set_ref || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="VLAN">
+          <el-descriptions-item :label="$t('goose.goCbRef')" :span="3">{{ detailPacket.go_cb_ref || '-' }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.goId')">{{ detailPacket.go_id || '-' }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.dataSetRef')">{{ detailPacket.data_set_ref || '-' }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.vlan')">
             {{ detailPacket.has_vlan ? `ID=${detailPacket.vlan_id}, P=${detailPacket.vlan_prio}` : '-' }}
           </el-descriptions-item>
-          <el-descriptions-item label="stNum">{{ detailPacket.st_num }}</el-descriptions-item>
-          <el-descriptions-item label="sqNum">{{ detailPacket.sq_num }}</el-descriptions-item>
-          <el-descriptions-item label="confRev">{{ detailPacket.conf_rev }}</el-descriptions-item>
-          <el-descriptions-item label="TAL(ms)">{{ detailPacket.time_allowed_to_live }}</el-descriptions-item>
-          <el-descriptions-item label="仿真">
-            <el-tag v-if="detailPacket.simulation" type="warning" size="small">是</el-tag>
-            <span v-else>否</span>
+          <el-descriptions-item :label="$t('goose.stNum')">{{ detailPacket.st_num }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.sqNum')">{{ detailPacket.sq_num }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.confRev')">{{ detailPacket.conf_rev }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.tal')">{{ detailPacket.time_allowed_to_live }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.simulationLabel')">
+            <el-tag v-if="detailPacket.simulation" type="warning" size="small">{{ $t('goose.yes') }}</el-tag>
+            <span v-else>{{ $t('goose.no') }}</span>
           </el-descriptions-item>
-          <el-descriptions-item label="ndsCom">
-            <span>{{ detailPacket.nds_com ? '是' : '否' }}</span>
+          <el-descriptions-item :label="$t('goose.ndsCom')">
+            <span>{{ detailPacket.nds_com ? $t('goose.yes') : $t('goose.no') }}</span>
           </el-descriptions-item>
-          <el-descriptions-item label="数据集条目数">{{ detailPacket.num_dat_set_entries }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.numEntries')">{{ detailPacket.num_dat_set_entries }}</el-descriptions-item>
         </el-descriptions>
 
         <!-- 数据集值 -->
-        <h4 style="margin: 16px 0 8px">数据集值 ({{ detailPacket.data_values?.length || 0 }})</h4>
+        <h4 style="margin: 16px 0 8px">{{ $t('goose.dataValues') }} ({{ detailPacket.data_values?.length || 0 }})</h4>
         <el-table :data="detailPacket.data_values || []" border size="small" max-height="200">
-          <el-table-column type="index" label="序号" width="60" />
-          <el-table-column label="类型" width="120" prop="type" />
-          <el-table-column label="值" prop="value" />
+          <el-table-column type="index" :label="$t('goose.seqNum')" width="60" />
+          <el-table-column :label="$t('goose.entryType')" width="120" prop="type" />
+          <el-table-column :label="$t('goose.entryValue')" prop="value" />
         </el-table>
 
         <!-- 十六进制转储 -->
-        <h4 style="margin: 16px 0 8px">原始十六进制</h4>
+        <h4 style="margin: 16px 0 8px">{{ $t('goose.rawHex') }}</h4>
         <el-tabs type="border-card" size="small">
-          <el-tab-pane label="HEX Dump">
+          <el-tab-pane :label="$t('goose.hexDumpLabel')">
             <pre class="hex-dump">{{ detailPacket.hex_string }}</pre>
           </el-tab-pane>
-          <el-tab-pane label="Hex String">
+          <el-tab-pane :label="$t('goose.hexStringLabel')">
             <el-input
               type="textarea"
               :model-value="detailPacket.hex_data"
@@ -419,7 +413,7 @@ cleanups.push(
     loading.value = false
     starting.value = false
     stopping.value = false
-    ElMessage.error(err.message || 'WebSocket 错误')
+    ElMessage.error(err.message || t('goose.websocketError'))
   }),
 )
 
@@ -446,6 +440,16 @@ onUnmounted(() => {
   padding: 0;
 }
 
+/* 表头文字不换行 */
+:deep(.el-table thead th .cell) {
+  white-space: nowrap;
+}
+
+/* 表格所有列居中 */
+:deep(.el-table .cell) {
+  text-align: center;
+}
+
 .toolbar {
   display: flex;
   justify-content: space-between;
@@ -460,6 +464,18 @@ onUnmounted(() => {
     align-items: center;
     gap: 8px;
   }
+}
+
+.toolbar-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-label {
+  font-size: 13px;
+  color: var(--text-secondary, #64748b);
+  white-space: nowrap;
 }
 
 .capture-stats {

@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="添加从机"
+    :title="$t('slave.addSlaveTitle')"
     width="400px"
     :close-on-click-modal="false"
     @close="handleClose"
@@ -13,18 +13,18 @@
       label-width="100px"
       label-position="right"
     >
-      <el-form-item label="从机地址" prop="slave_id">
+      <el-form-item :label="$t('slave.slaveAddress')" prop="slave_id">
         <el-input-number
           v-model="formData.slave_id"
           :min="0"
           :max="255"
-          placeholder="输入从机地址 (0-255)"
+          :placeholder="$t('slave.slaveAddressPlaceholder')"
           style="width: 100%"
         />
       </el-form-item>
       <el-alert
         v-if="existingSlaves.length > 0"
-        :title="`已存在的从机: ${existingSlaves.join(', ')}`"
+        :title="$t('slave.existingSlaves', { list: existingSlaves.join(', ') })"
         type="info"
         :closable="false"
         style="margin-bottom: 10px;"
@@ -32,17 +32,20 @@
     </el-form>
 
     <template #footer>
-      <el-button @click="handleClose">取消</el-button>
-      <el-button type="primary" :loading="loading" @click="handleSubmit">确定</el-button>
+      <el-button @click="handleClose">{{ $t('common.cancel') }}</el-button>
+      <el-button type="primary" :loading="loading" @click="handleSubmit">{{ $t('common.confirm') }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { FormInstance, FormRules } from 'element-plus';
 import { ElMessage } from 'element-plus';
 import { addSlave } from '@/api/deviceApi';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   modelValue: boolean;

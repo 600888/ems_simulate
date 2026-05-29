@@ -22,24 +22,24 @@
           </el-table-column>
           <el-table-column prop="interface" label="Interface" width="100" />
           <el-table-column prop="dst_mac" label="Dest MAC" width="140" />
-          <el-table-column :label="$t('goose.dataSet')" width="80" align="center">
+          <el-table-column :label="$t('goose.dataSet')" width="95" align="center">
             <template #default="{ row }">
               {{ row.entry_count }}
             </template>
           </el-table-column>
-          <el-table-column label="stNum/sqNum" width="120" align="center">
+          <el-table-column label="stNum/sqNum" width="140" align="center">
             <template #default="{ row }">
               {{ row.st_num }}/{{ row.sq_num }}
             </template>
           </el-table-column>
-          <el-table-column :label="$t('goose.running')" width="90" align="center">
+          <el-table-column :label="$t('goose.running')" width="100" align="center">
             <template #default="{ row }">
               <el-tag :type="row.is_running ? 'success' : 'info'" size="small">
                 {{ row.is_running ? $t('goose.running') : $t('goose.stopped') }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column :label="$t('goose.yes')" width="70" align="center">
+          <el-table-column :label="$t('goose.yes')" width="80" align="center">
             <template #default="{ row }">
               <el-tag :type="row.simulation ? 'warning' : ''" size="small">
                 {{ row.simulation ? $t('goose.yes') : $t('goose.no') }}
@@ -105,12 +105,12 @@
 
         <el-table :data="receivers" stripe border style="width: 100%" v-loading="loading">
           <el-table-column prop="interface" :label="$t('goose.iface')" width="140" />
-          <el-table-column label="Subscriptions" width="90" align="center">
+          <el-table-column label="Subscriptions" width="130" align="center">
             <template #default="{ row }">
               {{ row.subscription_count }}
             </template>
           </el-table-column>
-          <el-table-column :label="$t('goose.running')" width="90" align="center">
+          <el-table-column :label="$t('goose.running')" width="100" align="center">
             <template #default="{ row }">
               <el-tag :type="row.is_running ? 'success' : 'info'" size="small">
                 {{ row.is_running ? $t('goose.running') : $t('goose.stopped') }}
@@ -176,60 +176,60 @@
     <!-- 创建 Publisher 对话框 -->
     <el-dialog v-model="createPublisherVisible" :title="$t('goose.newPublisher')" width="600px" destroy-on-close>
       <el-form :model="publisherForm" label-width="130px" :rules="publisherRules" ref="publisherFormRef">
-        <el-form-item label="GoCBRef" prop="go_cb_ref">
-          <el-input v-model="publisherForm.go_cb_ref" placeholder="如: LD0/LLN0$GO$gcb1" />
+        <el-form-item :label="$t('goose.goCbRef')" prop="go_cb_ref">
+          <el-input v-model="publisherForm.go_cb_ref" :placeholder="$t('goose.createPublisherPlaceholder')" />
         </el-form-item>
-        <el-form-item label="GoID" prop="go_id">
-          <el-input v-model="publisherForm.go_id" placeholder="GOOSE 标识符" />
+        <el-form-item :label="$t('goose.goId')" prop="go_id">
+          <el-input v-model="publisherForm.go_id" :placeholder="$t('goose.goIdPlaceholder')" />
         </el-form-item>
-        <el-form-item label="数据集引用" prop="data_set_ref">
-          <el-input v-model="publisherForm.data_set_ref" placeholder="如: LD0/LLN0$dsGOOSE1" />
+        <el-form-item :label="$t('goose.dataSetRef')" prop="data_set_ref">
+          <el-input v-model="publisherForm.data_set_ref" :placeholder="$t('goose.dataSetRefPlaceholder')" />
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="APPID" prop="app_id">
+            <el-form-item :label="$t('goose.appId')" prop="app_id">
               <el-input-number v-model="publisherForm.app_id" :min="0" :max="65535" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="网络接口" prop="interface">
-              <el-input v-model="publisherForm.interface" placeholder="如: eth0" />
+            <el-form-item :label="$t('goose.interface')" prop="interface">
+              <el-input v-model="publisherForm.interface" :placeholder="$t('goose.interfacePlaceholder')" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="存活时间(ms)" prop="time_allowed_to_live">
+            <el-form-item :label="$t('goose.timeAllowedToLive')" prop="time_allowed_to_live">
               <el-input-number v-model="publisherForm.time_allowed_to_live" :min="100" :max="60000" :step="100" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="配置修订号" prop="conf_rev">
+            <el-form-item :label="$t('goose.confRev')" prop="conf_rev">
               <el-input-number v-model="publisherForm.conf_rev" :min="1" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="8">
-            <el-form-item label="VLAN ID">
+            <el-form-item :label="$t('goose.vlanId')">
               <el-input-number v-model="publisherForm.vlan_id" :min="0" :max="4095" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="VLAN优先级">
+            <el-form-item :label="$t('goose.vlanPrio')">
               <el-input-number v-model="publisherForm.vlan_prio" :min="0" :max="7" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="仿真模式">
+            <el-form-item :label="$t('goose.simulation')">
               <el-switch v-model="publisherForm.simulation" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="数据集条目">
+        <el-form-item :label="$t('goose.entryList')">
           <div class="entry-list">
             <div v-for="(entry, idx) in publisherForm.entries" :key="idx" class="entry-row">
-              <el-input v-model="entry.name" placeholder="名称" style="width: 120px" />
+              <el-input v-model="entry.name" :placeholder="$t('goose.entryNamePlaceholder')" style="width: 120px" />
               <el-select v-model="entry.iec_type" style="width: 130px">
                 <el-option v-for="opt in GOOSE_IEC_TYPE_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
@@ -239,13 +239,13 @@
               <el-input v-else v-model="entry.value" style="width: 100px" />
               <el-button type="danger" :icon="Delete" circle size="small" @click="publisherForm.entries.splice(idx, 1)" />
             </div>
-            <el-button :icon="Plus" size="small" @click="addPublisherEntry">添加条目</el-button>
+            <el-button :icon="Plus" size="small" @click="addPublisherEntry">{{ $t('goose.addEntry') }}</el-button>
           </div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="createPublisherVisible = false">取消</el-button>
-        <el-button type="primary" @click="createPublisher" :loading="creating">创建</el-button>
+        <el-button @click="createPublisherVisible = false">{{ $t('goose.cancel') }}</el-button>
+        <el-button type="primary" @click="createPublisher" :loading="creating">{{ $t('goose.create') }}</el-button>
       </template>
     </el-dialog>
 
@@ -253,44 +253,44 @@
     <el-dialog v-model="createReceiverVisible" :title="$t('goose.newReceiver')" width="500px" destroy-on-close>
       <el-form :model="receiverForm" label-width="100px">
         <el-form-item :label="$t('goose.iface')" required>
-          <el-input v-model="receiverForm.interface" placeholder="e.g. eth0" />
+          <el-input v-model="receiverForm.interface" :placeholder="$t('goose.interfacePlaceholder')" />
         </el-form-item>
-        <el-form-item label="订阅列表">
+        <el-form-item :label="$t('goose.subscriptions')">
           <div class="entry-list">
             <div v-for="(sub, idx) in receiverForm.subscriptions" :key="idx" class="entry-row">
-              <el-input v-model="sub.go_cb_ref" placeholder="GoCBRef (如 LD0/LLN0$GO$gcb1)" style="flex: 1" />
-              <el-input-number v-model="sub.app_id" :min="0" :max="65535" placeholder="APPID" style="width: 120px" />
+              <el-input v-model="sub.go_cb_ref" :placeholder="$t('goose.subPlaceholder')" style="flex: 1" />
+              <el-input-number v-model="sub.app_id" :min="0" :max="65535" :placeholder="$t('goose.appIdPlaceholder')" style="width: 120px" />
               <el-button type="danger" :icon="Delete" circle size="small" @click="receiverForm.subscriptions.splice(idx, 1)" />
             </div>
-            <el-button :icon="Plus" size="small" @click="addReceiverSubscription">添加订阅</el-button>
+            <el-button :icon="Plus" size="small" @click="addReceiverSubscription">{{ $t('goose.addSub') }}</el-button>
           </div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="createReceiverVisible = false">取消</el-button>
-        <el-button type="primary" @click="createReceiver" :loading="creating">创建</el-button>
+        <el-button @click="createReceiverVisible = false">{{ $t('goose.cancel') }}</el-button>
+        <el-button type="primary" @click="createReceiver" :loading="creating">{{ $t('goose.create') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 数据集编辑对话框 -->
     <el-dialog v-model="entryEditorVisible" :title="$t('goose.dataSet') + ' - ' + (editingPublisher?.go_cb_ref || '')" width="700px" destroy-on-close>
       <el-table :data="editingEntries" border size="small">
-        <el-table-column label="序号" width="60" align="center">
+        <el-table-column :label="$t('goose.seqNum')" width="75" align="center">
           <template #default="{ $index }">{{ $index }}</template>
         </el-table-column>
-        <el-table-column label="名称" width="150">
+        <el-table-column :label="$t('goose.entryName')" width="150">
           <template #default="{ row }">
-            <el-input v-model="row.name" size="small" :disabled="row._new !== true" placeholder="条目名称" />
+            <el-input v-model="row.name" size="small" :disabled="row._new !== true" :placeholder="$t('goose.entryNamePlaceholder')" />
           </template>
         </el-table-column>
-        <el-table-column label="类型" width="130">
+        <el-table-column :label="$t('goose.entryType')" width="130">
           <template #default="{ row }">
             <el-select v-model="row.iec_type" size="small" :disabled="row._new !== true">
               <el-option v-for="opt in GOOSE_IEC_TYPE_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="值" min-width="150">
+        <el-table-column :label="$t('goose.entryValue')" min-width="150">
           <template #default="{ row }">
             <el-switch v-if="row.iec_type === 'boolean'" v-model="row.value" @change="onEntryValueChange(row)" />
             <el-input-number v-else-if="row.iec_type === 'integer'" v-model="row.value" size="small" @change="onEntryValueChange(row)" />
@@ -298,7 +298,7 @@
             <el-input v-else v-model="row.value" size="small" @change="onEntryValueChange(row)" />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80" align="center">
+        <el-table-column :label="$t('goose.entryOperation')" width="90" align="center">
           <template #default="{ $index }">
             <el-button type="danger" :icon="Delete" circle size="small" @click="removeEntry($index)" />
           </template>
@@ -317,49 +317,49 @@
     <el-dialog v-model="subManagerVisible" :title="$t('goose.subscriptionManager') + ' - ' + (editingReceiver?.interface || '')" width="700px" destroy-on-close>
       <div class="tab-header">
         <el-button type="primary" :icon="Plus" size="small" @click="showAddSubscriptionForm = true" v-if="!editingReceiver?.is_running">
-          添加订阅
+          {{ $t('goose.addSub') }}
         </el-button>
         <el-alert v-else type="warning" :closable="false" style="margin-bottom: 12px">
-          Receiver 运行中，无法修改订阅。请先停止 Receiver。
+          {{ $t('goose.receiverRunning') }}
         </el-alert>
       </div>
 
       <div v-if="showAddSubscriptionForm" style="margin-bottom: 12px; padding: 12px; border: 1px solid #EBEEF5; border-radius: 4px;">
         <el-form :inline="true" size="small">
-          <el-form-item label="GoCBRef">
-            <el-input v-model="newSubForm.go_cb_ref" placeholder="如: LD0/LLN0$GO$gcb1" style="width: 250px" />
+          <el-form-item :label="$t('goose.subGoCbRef')">
+            <el-input v-model="newSubForm.go_cb_ref" :placeholder="$t('goose.subGoCbRefPlaceholder')" style="width: 250px" />
           </el-form-item>
-          <el-form-item label="APPID">
+          <el-form-item :label="$t('goose.subAppId')">
             <el-input-number v-model="newSubForm.app_id" :min="0" :max="65535" />
           </el-form-item>
-          <el-form-item label="描述">
+          <el-form-item :label="$t('goose.subDescription')">
             <el-input v-model="newSubForm.description" style="width: 150px" />
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="addSubscription">确认</el-button>
-            <el-button @click="showAddSubscriptionForm = false">取消</el-button>
+            <el-button type="primary" @click="addSubscription">{{ $t('goose.confirm') }}</el-button>
+            <el-button @click="showAddSubscriptionForm = false">{{ $t('goose.cancel') }}</el-button>
           </el-form-item>
         </el-form>
       </div>
 
       <el-table :data="editingReceiver?.subscriptions || []" border size="small">
-        <el-table-column prop="go_cb_ref" label="GoCBRef" min-width="250" show-overflow-tooltip />
-        <el-table-column label="APPID" width="80">
+        <el-table-column prop="go_cb_ref" :label="$t('goose.subGoCbRef')" min-width="250" show-overflow-tooltip />
+        <el-table-column :label="$t('goose.subAppId')" width="100">
           <template #default="{ row }">
             {{ row.app_id != null ? '0x' + row.app_id.toString(16).toUpperCase().padStart(4, '0') : '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="GoID" width="100" prop="go_id" />
-        <el-table-column label="stNum" width="70" align="center" prop="st_num" />
-        <el-table-column label="sqNum" width="70" align="center" prop="sq_num" />
-        <el-table-column label="状态" width="80" align="center">
+        <el-table-column :label="$t('goose.goId')" width="110" prop="go_id" />
+        <el-table-column :label="$t('goose.stNum')" width="85" align="center" prop="st_num" />
+        <el-table-column :label="$t('goose.sqNum')" width="85" align="center" prop="sq_num" />
+        <el-table-column :label="$t('goose.subState')" width="95" align="center">
           <template #default="{ row }">
             <el-tag :color="GOOSE_STATE_COLOR[row.state] || '#909399'" style="color: #fff" size="small">
               {{ GOOSE_STATE_LABEL[row.state] || row.state }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="数据值" min-width="200">
+        <el-table-column :label="$t('goose.subDataValue')" min-width="200">
           <template #default="{ row }">
             <div v-if="row.data_values?.length" class="data-values">
               <span v-for="dv in row.data_values" :key="dv.index" class="data-value-item">
@@ -369,7 +369,7 @@
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80" align="center" v-if="!editingReceiver?.is_running">
+        <el-table-column :label="$t('goose.subOperation')" width="90" align="center" v-if="!editingReceiver?.is_running">
           <template #default="{ row }">
             <el-button type="danger" :icon="Delete" circle size="small" @click="removeSubscription(row.go_cb_ref)" />
           </template>
@@ -378,31 +378,31 @@
     </el-dialog>
 
     <!-- 订阅详情对话框 -->
-    <el-dialog v-model="subDetailVisible" title="GOOSE 订阅详情" width="500px">
+    <el-dialog v-model="subDetailVisible" :title="$t('goose.subscriptionDetail')" width="500px">
       <el-descriptions :column="2" border v-if="selectedSubscription">
-        <el-descriptions-item label="GoCBRef" :span="2">{{ selectedSubscription.go_cb_ref }}</el-descriptions-item>
-        <el-descriptions-item label="GoID">{{ selectedSubscription.go_id || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="APPID">
+        <el-descriptions-item :label="$t('goose.goCbRef')" :span="2">{{ selectedSubscription.go_cb_ref }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('goose.goId')">{{ selectedSubscription.go_id || '-' }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('goose.appId')">
           {{ selectedSubscription.app_id != null ? '0x' + selectedSubscription.app_id.toString(16).toUpperCase().padStart(4, '0') : '-' }}
         </el-descriptions-item>
-        <el-descriptions-item label="数据集引用" :span="2">{{ selectedSubscription.data_set_ref || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="stNum">{{ selectedSubscription.st_num }}</el-descriptions-item>
-        <el-descriptions-item label="sqNum">{{ selectedSubscription.sq_num }}</el-descriptions-item>
-        <el-descriptions-item label="confRev">{{ selectedSubscription.conf_rev }}</el-descriptions-item>
-        <el-descriptions-item label="状态">
+        <el-descriptions-item :label="$t('goose.dataSetRef')" :span="2">{{ selectedSubscription.data_set_ref || '-' }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('goose.stNum')">{{ selectedSubscription.st_num }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('goose.sqNum')">{{ selectedSubscription.sq_num }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('goose.confRev')">{{ selectedSubscription.conf_rev }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('goose.subState')">
           <el-tag :color="GOOSE_STATE_COLOR[selectedSubscription.state]" style="color: #fff" size="small">
             {{ GOOSE_STATE_LABEL[selectedSubscription.state] || selectedSubscription.state }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="存活时间(ms)">{{ selectedSubscription.time_allowed_to_live }}</el-descriptions-item>
-        <el-descriptions-item label="目标MAC">{{ selectedSubscription.dst_mac || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="描述" :span="2">{{ selectedSubscription.description || '-' }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('goose.timeAllowedToLive')">{{ selectedSubscription.time_allowed_to_live }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('goose.dstMac')">{{ selectedSubscription.dst_mac || '-' }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('goose.description')" :span="2">{{ selectedSubscription.description || '-' }}</el-descriptions-item>
       </el-descriptions>
-      <h4 style="margin: 16px 0 8px">数据集值</h4>
+      <h4 style="margin: 16px 0 8px">{{ $t('goose.dataSetValues') }}</h4>
       <el-table :data="selectedSubscription?.data_values || []" border size="small">
-        <el-table-column label="序号" width="60" align="center" prop="index" />
-        <el-table-column label="类型" width="100" prop="type" />
-        <el-table-column label="值" prop="value" />
+        <el-table-column :label="$t('goose.seqNum')" width="75" align="center" prop="index" />
+        <el-table-column :label="$t('goose.entryType')" width="100" prop="type" />
+        <el-table-column :label="$t('goose.entryValue')" prop="value" />
       </el-table>
     </el-dialog>
 
@@ -457,8 +457,8 @@ const publisherForm = reactive({
   entries: [] as { name: string; value: any; iec_type: string }[],
 })
 const publisherRules = {
-  go_cb_ref: [{ required: true, message: '请输入 GoCBRef', trigger: 'blur' }],
-  interface: [{ required: true, message: '请输入网络接口', trigger: 'blur' }],
+  go_cb_ref: [{ required: true, message: t('goose.goCbRefRequired'), trigger: 'blur' }],
+  interface: [{ required: true, message: t('goose.interfaceRequired'), trigger: 'blur' }],
 }
 
 // ===== Receiver 状态 =====
@@ -614,7 +614,7 @@ function addEntryToEditor() {
   // 空条目检查：如果已有未填名称的新条目，不允许再添加
   const hasBlank = editingEntries.value.some(e => e._new && !e.name)
   if (hasBlank) {
-    ElMessage.warning('请先填写新增条目的名称')
+    ElMessage.warning(t('goose.addEntryNameRequired'))
     return
   }
   editingEntries.value.push({ name: '', value: false, iec_type: 'boolean', _new: true })
@@ -633,7 +633,7 @@ async function removeEntry(index: number) {
       editingEntries.value.splice(index, 1)
       await refreshPublishers()
     } catch (e: any) {
-      ElMessage.error(e?.message || '删除条目失败')
+      ElMessage.error(e?.message || t('goose.deleteEntryFailed'))
     }
   }
 }
@@ -643,7 +643,7 @@ async function onEntryValueChange(row: any) {
     try {
       await updateGoosePublisherEntry(editingPublisher.value.id, row.index, row.value)
     } catch (e: any) {
-      ElMessage.error(e?.message || '更新值失败')
+      ElMessage.error(e?.message || t('goose.updateValueFailed'))
     }
   }
 }
@@ -652,13 +652,13 @@ async function saveNewEntries() {
   if (!editingPublisher.value) return
   const newEntries = editingEntries.value.filter(e => e._new && e.name)
   if (newEntries.length === 0) {
-    ElMessage.info('没有新增条目需要保存')
+    ElMessage.info(t('goose.noNewEntries'))
     return
   }
   // 去重检查
   for (const entry of newEntries) {
     if (hasDuplicateName(entry.name)) {
-      ElMessage.warning(`条目名称 "${entry.name}" 已存在，请修改后重试`)
+      ElMessage.warning(t('goose.entryNameExists', { name: entry.name }))
       return
     }
   }
@@ -667,7 +667,7 @@ async function saveNewEntries() {
     for (const entry of newEntries) {
       await addGoosePublisherEntry(editingPublisher.value.id, entry.name, entry.value, entry.iec_type)
     }
-    ElMessage.success(`已保存 ${newEntries.length} 个新条目`)
+    ElMessage.success(t('goose.entriesSaved', { count: newEntries.length }))
     await refreshPublishers()
     // 重新打开编辑器刷新数据
     const pub = publishers.value.find(p => p.id === editingPublisher.value?.id)
@@ -675,7 +675,7 @@ async function saveNewEntries() {
       editingEntries.value = (pub.entries || []).map(e => ({ ...e, _new: false }))
     }
   } catch (e: any) {
-    ElMessage.error(e?.message || '保存新增条目失败')
+    ElMessage.error(e?.message || t('goose.saveEntriesFailed'))
   } finally {
     savingEntries.value = false
   }
@@ -781,7 +781,7 @@ async function removeSubscription(goCbRef: string) {
     await refreshReceivers()
     editingReceiver.value = receivers.value.find(r => r.id === editingReceiver.value?.id) || editingReceiver.value
   } catch (e: any) {
-    ElMessage.error(e?.message || '移除订阅失败')
+    ElMessage.error(e?.message || t('goose.removeSubscriptionFailed'))
   }
 }
 
@@ -829,6 +829,15 @@ onUnmounted(() => {
     flex-wrap: wrap;
     justify-content: flex-start;
   }
+}
+
+:deep(.el-table thead th .cell) {
+  white-space: nowrap;
+}
+
+/* 表格所有列居中 */
+:deep(.el-table .cell) {
+  text-align: center;
 }
 
 .entry-list {

@@ -143,12 +143,21 @@ const serialPort = ref<string | null>(null);
 const baudrate = ref<number>(9600);
 const communicationType = ref<any>("");
 const deviceStatus = ref<boolean>(false);
-const deviceStatusStr = ref<any>("");
 const simulationStatus = ref<boolean>(false);
-const simulationStatusStr = ref<any>("");
 const showMessageDialog = ref<boolean>(false);
 const showExportDialog = ref<boolean>(false);
 const slaveRef = ref<any>(null);
+
+// 设备状态文字：使用 computed 确保语言切换时自动刷新
+const deviceStatusStr = computed(() => {
+  if (iec61850Connecting.value) return t('device.connecting');
+  return deviceStatus.value ? t('common.running') : t('common.stopped');
+});
+
+// 模拟状态文字：使用 computed 确保语言切换时自动刷新
+const simulationStatusStr = computed(() => {
+  return simulationStatus.value ? t('common.running') : t('common.stopped');
+});
 
 const isSerialMode = computed(() => {
   const type = communicationType.value;
@@ -214,7 +223,6 @@ const startIec61850ProgressPolling = () => {
         stopIec61850ProgressPolling();
         if (progress.phase === 'done') {
           deviceStatus.value = true;
-          deviceStatusStr.value = '运行中';
           ElMessage.success(t('device.iec61850DeviceConnectSuccess'));
           slaveRef.value?.reloadDatas();
           triggerSidebarRefresh(routeName.value);
@@ -240,11 +248,9 @@ const toggleDevice = async () => {
     if (deviceStatus.value) {
       if (await stopDevice(routeName.value)) {
         deviceStatus.value = false;
-        deviceStatusStr.value = t('common.stopped');
         if (simulationStatus.value) {
           // 设备停止时，仿真自动停止，但不触发仿真按钮的loading
           simulationStatus.value = false;
-          simulationStatusStr.value = t('common.stopped');
         }
       } else {
         ElMessage.error(t('device.stopDeviceFailed'));
@@ -253,11 +259,9 @@ const toggleDevice = async () => {
       if (await startDevice(routeName.value)) {
         if (isIec61850Client.value) {
           // IEC61850: 后台连接中，启动进度轮询
-          deviceStatusStr.value = t('device.connecting');
           startIec61850ProgressPolling();
         } else {
           deviceStatus.value = true;
-          deviceStatusStr.value = t('common.running');
           ElMessage.success(t('device.startDeviceSuccess'));
         }
       } else {
@@ -282,7 +286,6 @@ const fetchDeviceInfo = async () => {
     communicationType.value = info.get("type") || null;
     const serverStatus = info.get("server_status");
     deviceStatus.value = serverStatus;
-    deviceStatusStr.value = serverStatus === true ? t('common.running') : t('common.stopped');
     // 初始化防抖状态，避免初始加载时误弹通知
     lastNotifyServerStatus = serverStatus;
     stableServerStatus = serverStatus;
@@ -290,7 +293,6 @@ const fetchDeviceInfo = async () => {
     statusUnstableCount = STATUS_STABLE_THRESHOLD;
     const simuStatus = info.get("simulation_status");
     simulationStatus.value = simuStatus;
-    simulationStatusStr.value = simuStatus === true ? t('common.running') : t('common.stopped');
 
     // IEC61850 客户端：如果设备未运行，检查是否正在后台连接中
     if (!serverStatus && String(communicationType.value) === 'Iec61850Client') {
@@ -298,7 +300,6 @@ const fetchDeviceInfo = async () => {
       if (progress && progress.connecting) {
         // 正在连接中，启动进度轮询
         iec61850Connecting.value = true;
-        deviceStatusStr.value = t('device.connecting');
         iec61850ConnectProgress.value = progress;
         startIec61850ProgressPolling();
       }
@@ -315,12 +316,10 @@ const startFunction = async () => {
     if (simulationStatus.value) {
       if (await stopSimulation(routeName.value)) {
         simulationStatus.value = false;
-        simulationStatusStr.value = t('common.stopped');
       }
     } else {
       if (await startSimulation(routeName.value, currentSimulateMethod.value)) {
         simulationStatus.value = true;
-        simulationStatusStr.value = t('common.running');
       }
     }
   } catch (error) { console.error(error); }
@@ -350,11 +349,9 @@ const fetchDeviceStatus = async () => {
       // 连接完成后才更新设备状态
       if (serverStatus === true) {
         deviceStatus.value = true;
-        deviceStatusStr.value = t('common.running');
       }
     } else {
       deviceStatus.value = serverStatus;
-      deviceStatusStr.value = serverStatus === true ? t('common.running') : t('common.stopped');
     }
 
     // IEC 61850 客户端：检测到连接从 false 变为 true 时立即刷新测点表格
@@ -394,7 +391,6 @@ const fetchDeviceStatus = async () => {
     const simuStatus = info.get("simulation_status");
     if (simulationStatus.value !== simuStatus) {
       simulationStatus.value = simuStatus;
-      simulationStatusStr.value = simuStatus === true ? t('common.running') : t('common.stopped');
       // 模拟状态变化提示
       if (simuStatus === true) {
         ElMessage.info(t('device.simStarted', { name: routeName.value }));

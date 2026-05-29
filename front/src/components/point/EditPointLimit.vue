@@ -1,23 +1,23 @@
 <template>
   <div class="register">
     <div class="simple-title">
-      <span>上下限值设置</span>
+      <span>{{ $t('register.limitSettings') }}</span>
       <el-divider></el-divider>
     </div>
     <el-form label-width="auto" :model="pointLimit" @submit.native.prevent="">
-      <el-form-item label="测点上限值(真实值):" label-position="right" class="form-item">
+      <el-form-item :label="$t('register.maxValueLimit')" label-position="right" class="form-item">
         <el-input v-model.number="pointLimit.maxValueLimit"></el-input>
       </el-form-item>
-      <el-form-item label="测点下限值(真实值):" label-position="right" class="form-item">
+      <el-form-item :label="$t('register.minValueLimit')" label-position="right" class="form-item">
         <el-input v-model.number="pointLimit.minValueLimit"></el-input>
       </el-form-item>
     </el-form>
     <el-row class="custom-row">
       <el-form-item class="custom-form-item">
-        <el-button type="primary" @click="editPointLimitValue">设置</el-button>
+        <el-button type="primary" @click="editPointLimitValue">{{ $t('register.set') }}</el-button>
       </el-form-item>
       <el-form-item class="custom-form-item">
-        <el-button @click="reset">重置</el-button>
+        <el-button @click="reset">{{ $t('common.reset') }}</el-button>
       </el-form-item>
     </el-row>
   </div>
@@ -25,10 +25,13 @@
 
 <script setup name="SingleRegister" lang="ts">
 import { onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { editPointLimit, getPointLimit } from "@/api/pointApi";
 import { ElMessage } from "element-plus";
 import "element-plus/dist/index.css";
 import type { PointLimit } from "@/types/point";
+
+const { t } = useI18n();
 
 const props = defineProps({
   deviceName: { type: String, required: true },
@@ -50,7 +53,7 @@ const reset = () => {
 const editPointLimitValue = async () => {
   if (pointLimit.value.minValueLimit > pointLimit.value.maxValueLimit) {
     ElMessage({
-      message: "最小值不能大于最大值!",
+      message: t('register.minLtMax'),
       type: "error",
     });
     return;
@@ -65,7 +68,7 @@ const editPointLimitValue = async () => {
     );
     if (isSuccess) {
       ElMessage({
-        message: "修改成功!",
+        message: t('register.editSuccess'),
         type: "success",
       });
     }

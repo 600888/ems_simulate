@@ -1,7 +1,7 @@
 <template>
   <div class="register">
     <div class="simple-title">
-      <span>寄存器解析</span>
+      <span>{{ $t('register.registerParse') }}</span>
       <el-divider></el-divider>
     </div>
     <el-form label-width="auto" :model="floatRegister" @submit.native.prevent="">
@@ -39,10 +39,10 @@
     </el-form>
     <el-row class="custom-row">
       <el-form-item class="custom-form-item">
-        <el-button type="primary" @click="editRegisterValue">设置</el-button>
+        <el-button type="primary" @click="editRegisterValue">{{ $t('register.set') }}</el-button>
       </el-form-item>
       <el-form-item class="custom-form-item">
-        <el-button @click="reset">重置</el-button>
+        <el-button @click="reset">{{ $t('common.reset') }}</el-button>
       </el-form-item>
     </el-row>
   </div>
@@ -50,10 +50,13 @@
 
 <script setup name="LongRegister" lang="ts">
 import { onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import {type FloatPointRegister } from "@/types/register";
 import { editPointData } from "@/api/pointApi";
 import { ElMessage } from "element-plus";
 import 'element-plus/dist/index.css'
+
+const { t } = useI18n();
 
 const props = defineProps({
   rowIndex: { type: Number, required: true },
@@ -97,7 +100,7 @@ const editRegisterValue = async() => {
     if (isSuccess) {
       emit("editSuccess",props.rowIndex, parseFloat(floatRegister.value.real.toString()), getFloatHex(floatRegister.value.floatABCD));
       ElMessage({
-        message: '修改成功!',
+        message: t('register.editSuccess'),
         type: 'success'
       })
     }

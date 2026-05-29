@@ -77,10 +77,10 @@
         <el-table-column prop="app_id" label="APPID" width="70" />
         <el-table-column prop="dat_set" label="DataSet" width="120" show-overflow-tooltip />
         <el-table-column prop="conf_rev" label="ConfRev" width="70" />
-        <el-table-column label="MAC地址" width="140">
+        <el-table-column :label="$t('addDevice.macAddress')" width="140">
           <template #default="{ row }">{{ formatMac(row) }}</template>
         </el-table-column>
-        <el-table-column label="数据集成员" width="90" align="center">
+        <el-table-column :label="$t('addDevice.datasetMembers')" width="90" align="center">
           <template #default="{ row }">{{ row.dataset_member_count }}</template>
         </el-table-column>
       </el-table>

@@ -13,6 +13,16 @@
     <div class="breadcrumb-divider"></div>
     
     <div class="link-container">
+      <!-- Language Switch -->
+      <el-icon
+        :size="24"
+        class="icon-link clickable"
+        :title="currentLocale === 'zh-CN' ? 'Switch to English' : '切换到中文'"
+        @click="toggleLang"
+      >
+        <span class="lang-text">{{ currentLocale === 'zh-CN' ? 'EN' : '中' }}</span>
+      </el-icon>
+
       <!-- GOOSE Management -->
       <router-link to="/goose" class="icon-link goose-link" :title="t('header.gooseManagement')">
         <el-icon :size="24" color="var(--text-secondary)"><Connection /></el-icon>
@@ -56,18 +66,26 @@ import { useI18n } from "vue-i18n";
 import { Expand, Fold, Document, Connection, Setting } from "@element-plus/icons-vue";
 import { useRoute } from "vue-router";
 import { isCollapse, sidebarOverlayMode } from "./isCollapse";
+import { currentLocale, setLocale } from "@/composables/useAppSettings";
+import type { LocaleType } from '@/i18n'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const emit = defineEmits(['open-settings'])
 
+function toggleLang() {
+  const newLocale: LocaleType = currentLocale.value === 'zh-CN' ? 'en-US' : 'zh-CN'
+  setLocale(newLocale)
+  locale.value = newLocale
+}
+
 const route = useRoute();
-const breadList = ref([]);
+const breadList = ref<any[]>([]);
 
 const openSettings = () => {
   emit('open-settings')
 }
 
-const setCollapse = (val) => {
+const setCollapse = (val: boolean) => {
   // small 断点 (< 1200px): 切换 overlay 弹出模式
   if (window.innerWidth < 1200) {
     sidebarOverlayMode.value = !sidebarOverlayMode.value;
@@ -167,6 +185,13 @@ watch(() => route.path, updateBreadcrumb, { immediate: true });
 
   .clickable {
     cursor: pointer;
+  }
+
+  .lang-text {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    font-style: normal;
   }
 
   .goose-link {

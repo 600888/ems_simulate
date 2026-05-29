@@ -6,24 +6,24 @@
     <div v-else class="config-form">
       <!-- 如果没有映射，显示创建按钮 -->
       <div v-if="!hasMapping && !isEditing" class="empty-state">
-        <p class="info-text">当前测点暂无映射规则</p>
+        <p class="info-text">{{ $t('pointMapping.noMapping') }}</p>
         <!-- DEBUG INFO -->
         <p class="debug-text" style="font-size: 10px; color: #ccc;">
            Device: {{ deviceName }} | Point: {{ targetPointCode }}
         </p>
         <el-button type="primary" size="small" @click="startCreate">
-          <el-icon><Plus /></el-icon> 创建映射
+          <el-icon><Plus /></el-icon> {{ $t('pointMapping.createMapping') }}
         </el-button>
       </div>
 
       <!-- 编辑/新建表单 -->
       <div v-else>
-        <el-form :model="form" label-width="80px">
-          <el-form-item label="目标测点">
+        <el-form :model="form" :label-width="i18nLabelWidth">
+          <el-form-item :label="$t('pointMapping.targetPoint')">
              <el-tag>{{ targetPointCode }}</el-tag>
           </el-form-item>
           
-          <el-form-item label="源测点">
+          <el-form-item :label="$t('pointMapping.sourcePoint')">
             <div class="source-points-container">
               <div v-for="(item, index) in form.source_point_codes" :key="index" class="source-item">
                 <el-tree-select
@@ -31,7 +31,7 @@
                   :lazy="true"
                   :load="loadNode"
                   check-strictly
-                  placeholder="请选择源测点"
+                  :placeholder="$t('pointMapping.selectSource')"
                   class="source-selector"
                   node-key="code"
                   :props="treeProps"
@@ -51,7 +51,7 @@
                 </el-tree-select>
                  <el-input 
                   v-model="form.source_point_codes[index].alias" 
-                  placeholder="别名" 
+                  :placeholder="$t('pointMapping.alias')" 
                   class="alias-input"
                 />
                 <el-button type="danger" circle plain @click="removeSource(index)" v-if="form.source_point_codes.length > 1">
@@ -59,34 +59,34 @@
                 </el-button>
               </div>
               <el-button type="dashed" @click="addSource" class="add-btn">
-                <el-icon><Plus /></el-icon> 添加源测点
+                <el-icon><Plus /></el-icon> {{ $t('pointMapping.addSource') }}
               </el-button>
             </div>
           </el-form-item>
 
-          <el-form-item label="计算公式">
+          <el-form-item :label="$t('pointMapping.formula')">
             <el-input 
               v-model="form.formula" 
               type="textarea" 
               :rows="2"
-              placeholder="公式 (例如: alias_a + alias_b * 0.5)" 
+              :placeholder="$t('pointMapping.formulaPlaceholder')" 
             />
           </el-form-item>
 
-          <el-form-item label="启用">
+          <el-form-item :label="$t('pointMapping.enable')">
             <el-switch v-model="form.enable" />
           </el-form-item>
 
           <div class="form-actions">
-            <el-button @click="cancelEdit">取消</el-button>
-            <el-button type="primary" @click="saveMapping" :loading="saving">保存</el-button>
+            <el-button @click="cancelEdit">{{ $t('common.cancel') }}</el-button>
+            <el-button type="primary" @click="saveMapping" :loading="saving">{{ $t('common.save') }}</el-button>
             <el-popconfirm 
               v-if="hasMapping"
-              title="确定删除由于此测点的映射吗？" 
+              :title="$t('pointMapping.deleteConfirm')" 
               @confirm="handleDeleteMapping"
             >
               <template #reference>
-                <el-button type="danger" link>删除映射</el-button>
+                <el-button type="danger" link>{{ $t('pointMapping.deleteMapping') }}</el-button>
               </template>
             </el-popconfirm>
           </div>
@@ -97,9 +97,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch, shallowRef } from 'vue';
+import { ref, reactive, computed, onMounted, watch, shallowRef } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import { Plus, Minus, Folder, Document } from '@element-plus/icons-vue';
+
+const { t } = useI18n();
+const i18nLabelWidth = computed(() => {
+  // 根据当前语言调整 label 宽度
+  return '80px';
+});
 import { 
   getMappings, 
   createMapping, 
@@ -314,10 +321,10 @@ const saveMapping = async () => {
 
         if (hasMapping.value) {
             await updateMapping(currentMappingId.value, data);
-            ElMessage.success('更新成功');
+            ElMessage.success(t('pointMapping.updateSuccess'));
         } else {
             await createMapping(data);
-            ElMessage.success('创建成功');
+            ElMessage.success(t('pointMapping.createSuccess'));
             hasMapping.value = true;
         }
         emit('update-success');
@@ -334,7 +341,7 @@ const handleDeleteMapping = async () => {
     if (!currentMappingId.value) return;
     try {
         await deleteMapping(currentMappingId.value);
-        ElMessage.success('删除成功');
+        ElMessage.success(t('pointMapping.deleteSuccess'));
         hasMapping.value = false;
         isEditing.value = false;
         resetForm();

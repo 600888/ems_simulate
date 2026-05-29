@@ -149,12 +149,10 @@ class DataExporter:
             else:
                 real_val = str(point.real_value)
         
-        # 获取 IEC104 类型标签
+        # 获取 IEC104 类型标识（发 type_id，前端用 i18n key 翻译）
         iec_type_label = ""
         if hasattr(point, "iec_type_id") and point.iec_type_id:
-            from src.enums.points.iec104_type import get_iec104_type_info
-            info = get_iec104_type_info(point.iec_type_id)
-            iec_type_label = info.label if info else point.iec_type_id
+            iec_type_label = point.iec_type_id
 
         return [
             str(point.address),
@@ -199,12 +197,10 @@ class DataExporter:
             else:
                 real_val = str(int(point.value))
 
-        # 获取 IEC104 类型标签
+        # 获取 IEC104 类型标识（发 type_id，前端用 i18n key 翻译）
         iec_type_label = ""
         if hasattr(point, "iec_type_id") and point.iec_type_id:
-            from src.enums.points.iec104_type import get_iec104_type_info
-            info = get_iec104_type_info(point.iec_type_id)
-            iec_type_label = info.label if info else point.iec_type_id
+            iec_type_label = point.iec_type_id
 
         return [
             str(point.address),

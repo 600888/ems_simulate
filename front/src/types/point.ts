@@ -103,40 +103,40 @@ export interface IEC104TypeInfo {
   timestamp_type: string | null;
 }
 
-/** 每种帧类型可用的 IEC104 ASDU 类型列表 */
+/** 每种帧类型可用的 IEC104 ASDU 类型列表（label 为 i18n key，使用时需 t() 翻译） */
 export const IEC104_TYPES_BY_FRAME_TYPE: Record<number, IEC104TypeInfo[]> = {
   0: [ // 遥测
-    { type_id: "M_ME_NC_1", type_code: 13, label: "短浮点遥测", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: false, timestamp_type: null },
-    { type_id: "M_ME_NA_1", type_code: 9, label: "归一化遥测", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: false, timestamp_type: null },
-    { type_id: "M_ME_NB_1", type_code: 11, label: "标度化遥测", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: false, timestamp_type: null },
-    { type_id: "M_ME_ND_1", type_code: 21, label: "归一化遥测(不带品质)", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: false, timestamp_type: null },
-    { type_id: "M_ME_TD_1", type_code: 34, label: "归一化遥测(CP56)", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: true, timestamp_type: "CP56" },
-    { type_id: "M_ME_TE_1", type_code: 35, label: "标度化遥测(CP56)", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: true, timestamp_type: "CP56" },
-    { type_id: "M_ME_TF_1", type_code: 36, label: "短浮点遥测(CP56)", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: true, timestamp_type: "CP56" },
+    { type_id: "M_ME_NC_1", type_code: 13, label: "iec104.mShortFloat", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: false, timestamp_type: null },
+    { type_id: "M_ME_NA_1", type_code: 9, label: "iec104.mNormalized", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: false, timestamp_type: null },
+    { type_id: "M_ME_NB_1", type_code: 11, label: "iec104.mScaled", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: false, timestamp_type: null },
+    { type_id: "M_ME_ND_1", type_code: 21, label: "iec104.mNormalizedNoQ", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: false, timestamp_type: null },
+    { type_id: "M_ME_TD_1", type_code: 34, label: "iec104.mNormalizedCp56", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: true, timestamp_type: "CP56" },
+    { type_id: "M_ME_TE_1", type_code: 35, label: "iec104.mScaledCp56", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: true, timestamp_type: "CP56" },
+    { type_id: "M_ME_TF_1", type_code: 36, label: "iec104.mShortFloatCp56", direction: "monitoring", value_type: "float", frame_type: 0, has_timestamp: true, timestamp_type: "CP56" },
   ],
   1: [ // 遥信
-    { type_id: "M_SP_NA_1", type_code: 1, label: "单点遥信", direction: "monitoring", value_type: "single", frame_type: 1, has_timestamp: false, timestamp_type: null },
-    { type_id: "M_SP_TA_1", type_code: 2, label: "单点遥信(带时标)", direction: "monitoring", value_type: "single", frame_type: 1, has_timestamp: true, timestamp_type: "CP16" },
-    { type_id: "M_DP_NA_1", type_code: 3, label: "双点遥信", direction: "monitoring", value_type: "double", frame_type: 1, has_timestamp: false, timestamp_type: null },
-    { type_id: "M_DP_TA_1", type_code: 4, label: "双点遥信(带时标)", direction: "monitoring", value_type: "double", frame_type: 1, has_timestamp: true, timestamp_type: "CP16" },
-    { type_id: "M_SP_TB_1", type_code: 30, label: "单点遥信(CP56)", direction: "monitoring", value_type: "single", frame_type: 1, has_timestamp: true, timestamp_type: "CP56" },
-    { type_id: "M_DP_TB_1", type_code: 31, label: "双点遥信(CP56)", direction: "monitoring", value_type: "double", frame_type: 1, has_timestamp: true, timestamp_type: "CP56" },
+    { type_id: "M_SP_NA_1", type_code: 1, label: "iec104.sSingle", direction: "monitoring", value_type: "single", frame_type: 1, has_timestamp: false, timestamp_type: null },
+    { type_id: "M_SP_TA_1", type_code: 2, label: "iec104.sSingleCp16", direction: "monitoring", value_type: "single", frame_type: 1, has_timestamp: true, timestamp_type: "CP16" },
+    { type_id: "M_DP_NA_1", type_code: 3, label: "iec104.sDouble", direction: "monitoring", value_type: "double", frame_type: 1, has_timestamp: false, timestamp_type: null },
+    { type_id: "M_DP_TA_1", type_code: 4, label: "iec104.sDoubleCp16", direction: "monitoring", value_type: "double", frame_type: 1, has_timestamp: true, timestamp_type: "CP16" },
+    { type_id: "M_SP_TB_1", type_code: 30, label: "iec104.sSingleCp56", direction: "monitoring", value_type: "single", frame_type: 1, has_timestamp: true, timestamp_type: "CP56" },
+    { type_id: "M_DP_TB_1", type_code: 31, label: "iec104.sDoubleCp56", direction: "monitoring", value_type: "double", frame_type: 1, has_timestamp: true, timestamp_type: "CP56" },
   ],
   2: [ // 遥控
-    { type_id: "C_SC_NA_1", type_code: 45, label: "单点遥控", direction: "control", value_type: "single", frame_type: 2, has_timestamp: false, timestamp_type: null },
-    { type_id: "C_DC_NA_1", type_code: 46, label: "双点遥控", direction: "control", value_type: "double", frame_type: 2, has_timestamp: false, timestamp_type: null },
-    { type_id: "C_RC_NA_1", type_code: 47, label: "步调节命令", direction: "control", value_type: "step", frame_type: 2, has_timestamp: false, timestamp_type: null },
-    { type_id: "C_SC_TA_1", type_code: 58, label: "单点遥控(CP56)", direction: "control", value_type: "single", frame_type: 2, has_timestamp: true, timestamp_type: "CP56" },
-    { type_id: "C_DC_TA_1", type_code: 59, label: "双点遥控(CP56)", direction: "control", value_type: "double", frame_type: 2, has_timestamp: true, timestamp_type: "CP56" },
-    { type_id: "C_RC_TA_1", type_code: 60, label: "步调节命令(CP56)", direction: "control", value_type: "step", frame_type: 2, has_timestamp: true, timestamp_type: "CP56" },
+    { type_id: "C_SC_NA_1", type_code: 45, label: "iec104.cSingle", direction: "control", value_type: "single", frame_type: 2, has_timestamp: false, timestamp_type: null },
+    { type_id: "C_DC_NA_1", type_code: 46, label: "iec104.cDouble", direction: "control", value_type: "double", frame_type: 2, has_timestamp: false, timestamp_type: null },
+    { type_id: "C_RC_NA_1", type_code: 47, label: "iec104.cStep", direction: "control", value_type: "step", frame_type: 2, has_timestamp: false, timestamp_type: null },
+    { type_id: "C_SC_TA_1", type_code: 58, label: "iec104.cSingleCp56", direction: "control", value_type: "single", frame_type: 2, has_timestamp: true, timestamp_type: "CP56" },
+    { type_id: "C_DC_TA_1", type_code: 59, label: "iec104.cDoubleCp56", direction: "control", value_type: "double", frame_type: 2, has_timestamp: true, timestamp_type: "CP56" },
+    { type_id: "C_RC_TA_1", type_code: 60, label: "iec104.cStepCp56", direction: "control", value_type: "step", frame_type: 2, has_timestamp: true, timestamp_type: "CP56" },
   ],
   3: [ // 遥调
-    { type_id: "C_SE_NC_1", type_code: 50, label: "设定值(短浮点)", direction: "control", value_type: "float", frame_type: 3, has_timestamp: false, timestamp_type: null },
-    { type_id: "C_SE_NA_1", type_code: 48, label: "设定值(归一化)", direction: "control", value_type: "float", frame_type: 3, has_timestamp: false, timestamp_type: null },
-    { type_id: "C_SE_NB_1", type_code: 49, label: "设定值(标度化)", direction: "control", value_type: "float", frame_type: 3, has_timestamp: false, timestamp_type: null },
-    { type_id: "C_SE_TA_1", type_code: 61, label: "设定值归一化(CP56)", direction: "control", value_type: "float", frame_type: 3, has_timestamp: true, timestamp_type: "CP56" },
-    { type_id: "C_SE_TB_1", type_code: 62, label: "设定值标度化(CP56)", direction: "control", value_type: "float", frame_type: 3, has_timestamp: true, timestamp_type: "CP56" },
-    { type_id: "C_SE_TC_1", type_code: 63, label: "设定值短浮点(CP56)", direction: "control", value_type: "float", frame_type: 3, has_timestamp: true, timestamp_type: "CP56" },
+    { type_id: "C_SE_NC_1", type_code: 50, label: "iec104.tShortFloat", direction: "control", value_type: "float", frame_type: 3, has_timestamp: false, timestamp_type: null },
+    { type_id: "C_SE_NA_1", type_code: 48, label: "iec104.tNormalized", direction: "control", value_type: "float", frame_type: 3, has_timestamp: false, timestamp_type: null },
+    { type_id: "C_SE_NB_1", type_code: 49, label: "iec104.tScaled", direction: "control", value_type: "float", frame_type: 3, has_timestamp: false, timestamp_type: null },
+    { type_id: "C_SE_TA_1", type_code: 61, label: "iec104.tNormalizedCp56", direction: "control", value_type: "float", frame_type: 3, has_timestamp: true, timestamp_type: "CP56" },
+    { type_id: "C_SE_TB_1", type_code: 62, label: "iec104.tScaledCp56", direction: "control", value_type: "float", frame_type: 3, has_timestamp: true, timestamp_type: "CP56" },
+    { type_id: "C_SE_TC_1", type_code: 63, label: "iec104.tShortFloatCp56", direction: "control", value_type: "float", frame_type: 3, has_timestamp: true, timestamp_type: "CP56" },
   ],
 };
 
@@ -151,8 +151,8 @@ export function getDefaultIec104Type(frameType: number): string {
   return defaults[frameType] || "M_ME_NC_1";
 }
 
-/** 根据 type_id 获取类型标签 */
-export function getIec104TypeLabel(typeId: string | null | undefined): string {
+/** 根据 type_id 获取 i18n key，使用时需 t() 翻译 */
+export function getIec104TypeLabelKey(typeId: string | null | undefined): string {
   if (!typeId) return "";
   for (const types of Object.values(IEC104_TYPES_BY_FRAME_TYPE)) {
     const found = types.find(t => t.type_id === typeId);
@@ -160,3 +160,5 @@ export function getIec104TypeLabel(typeId: string | null | undefined): string {
   }
   return typeId;
 }
+/** @deprecated 使用 getIec104TypeLabelKey + t() 替代 */
+export const getIec104TypeLabel = getIec104TypeLabelKey;

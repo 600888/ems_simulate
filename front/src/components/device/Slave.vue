@@ -14,14 +14,14 @@
       >
         <template #label>
           <span class="custom-tab-label">
-            <span>{{ isIec61850 ? '测点数据' : `从机 ${slave}` }}</span>
+            <span>{{ isIec61850 ? $t('common.data') : `${$t('point.slave')} ${slave}` }}</span>
             <span v-if="!isIec61850" @click.stop>
               <el-dropdown trigger="click" @command="handleCommand($event, slave)" class="tab-dropdown">
                 <el-icon class="more-btn"><MoreFilled /></el-icon>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item command="edit">编辑从机</el-dropdown-item>
-                    <el-dropdown-item command="delete" divided style="color: var(--el-color-danger)">删除从机</el-dropdown-item>
+                    <el-dropdown-item command="edit">{{ $t('common.edit') }}</el-dropdown-item>
+                    <el-dropdown-item command="delete" divided style="color: var(--el-color-danger)">{{ $t('common.delete') }}</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -33,7 +33,7 @@
           <div class="search-left">
             <el-input
               v-model="searchQuery[slave]"
-              placeholder="搜索测点名称..."
+              :placeholder="$t('common.searchPlaceholder')"
               class="modern-input"
               clearable
               @keyup.enter="handleSearch(slave)"
@@ -43,28 +43,28 @@
               </template>
             </el-input>
             <el-button type="primary" class="modern-btn search-btn" @click="handleSearch(slave)">
-              搜索
+              {{ $t('common.search') }}
             </el-button>
             <el-button class="modern-btn reset-btn" @click="resetPoint" :icon="Refresh">
-              重置测点值
+              {{ $t('slave.resetPointValue') }}
             </el-button>
             <el-button class="modern-btn add-btn" @click="showAddPointDialog = true" :icon="Plus">
-              添加测点
+              {{ $t('point.add') }}
             </el-button>
             <el-popconfirm
-              title="确定清空当前从机的所有测点吗？此操作不可恢复！"
-              confirm-button-text="确定"
-              cancel-button-text="取消"
+              :title="$t('slave.clearConfirm')"
+              :confirm-button-text="$t('common.confirm')"
+              :cancel-button-text="$t('common.cancel')"
               @confirm="handleClearPoints"
             >
               <template #reference>
                 <el-button class="modern-btn clear-btn" type="danger" :icon="Delete">
-                  清空测点
+                  {{ $t('slave.clearPoints') }}
                 </el-button>
               </template>
             </el-popconfirm>
             <div v-if="needsAutoReadControls" class="auto-read-control">
-              <span class="auto-read-label">自动读取</span>
+              <span class="auto-read-label">{{ $t('slave.autoRead') }}</span>
               <el-switch
                 v-model="isAutoRead"
                 @change="handleAutoReadChange"
@@ -76,7 +76,7 @@
               
               <!-- 读取模式选择 (始终显示) -->
               <el-tooltip 
-                :content="readMode === 'batch' ? '批量读取：合并连续地址，一次性读取多个寄存器（推荐）' : '逐点读取：逐个测点读取，可设置间隔'"
+                :content="readMode === 'batch' ? $t('slave.batchRead') : $t('slave.singleRead')"
                 placement="top"
               >
                 <el-segmented
@@ -88,10 +88,10 @@
               </el-tooltip>
 
               <!-- 间隔设置 (批量和逐点都支持，始终显示) -->
-              <span class="auto-read-label">间隔</span>
+              <span class="auto-read-label">{{ $t('slave.interval') }}</span>
               <el-select
                 v-model="readInterval"
-                placeholder="间隔"
+                :placeholder="$t('slave.interval')"
                 allow-create
                 filterable
                 default-first-option
@@ -117,12 +117,12 @@
                 :icon="isReading ? CircleCloseFilled : Download"
                 :loading="isReading && readMode === 'batch'"
               >
-                {{ isReading ? '取消' : (readMode === 'batch' ? '批量读取' : '逐点读取') }}
+                {{ isReading ? $t('common.cancel') : (readMode === 'batch' ? $t('common.batchRead') : $t('common.singleRead')) }}
               </el-button>
 
               <!-- 自动读取时显示当前模式 -->
               <el-tag v-if="isAutoRead" type="info" size="small" effect="plain">
-                {{ readMode === 'batch' ? '批量' : '逐点' }}自动读取中
+                {{ readMode === 'batch' ? $t('slave.batchAutoReading') : $t('slave.singleAutoReading') }}
               </el-tag>
             </div>
           </div>
@@ -133,9 +133,9 @@
           <div class="progress-info">
             <span class="progress-text">{{ progressMessage }}</span>
             <div class="progress-stats">
-              <span class="stat-success">成功: {{ successCount }}</span>
-              <span class="stat-fail">失败: {{ failCount }}</span>
-              <span class="progress-percentage">{{ readProgress }}%</span>
+              <span class="stat-success">{{ $t('common.successCount', { count: successCount }) }}</span>
+              <span class="stat-fail">{{ $t('common.failCount', { count: failCount }) }}</span>
+              <span class="progress-percentage">{{ $t('common.progress', { pct: readProgress }) }}</span>
             </div>
           </div>
           <el-progress 
@@ -176,7 +176,7 @@
         <template #label>
           <span class="add-slave-tab">
             <el-icon><Plus /></el-icon>
-            添加从机
+            {{ $t('slave.addSlave') }}
           </span>
         </template>
       </el-tab-pane>
@@ -216,6 +216,7 @@
 <script lang="ts" setup>
 import { ref, onMounted, watch, computed } from "vue";
 import { useRoute } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox, type TabsPaneContext } from "element-plus";
 import { Search, Refresh, Download, Plus, Delete, CircleCloseFilled, MoreFilled } from "@element-plus/icons-vue";
 import { getSlaveIdList, getDeviceTable, getDeviceInfo, deleteSlave } from "@/api/deviceApi";
@@ -225,12 +226,14 @@ import type { IEC61850TreeDataResponse } from "@/api/channelApi";
 import { clearPoints, resetPointData } from "@/api/pointApi";
 import { useAutoRead } from "@/composables";
 import { isIec61850Protocol } from "@/constants/protocol";
+import { TABLE_HEADERS } from "@/constants/table";
 import DeviceTable from "./Table.vue";
 import AddPointDialog from "./AddPointDialog.vue";
 import AddSlaveDialog from "./AddSlaveDialog.vue";
 import EditSlaveDialog from "./EditSlaveDialog.vue";
 
 const route = useRoute();
+const { t } = useI18n();
 const initialDeviceName = route.params.deviceName as string;
 const routeName = ref(initialDeviceName);
 const activeName = ref("");
@@ -367,7 +370,7 @@ const fetchDeviceTable = async (name: string, sid: number, q: string, pi: number
     }
     
     tableDataMap.value[sid] = {
-      tableHeader: data.get("head_data"),
+      tableHeader: TABLE_HEADERS as string[],
       tableData: data.get("table_data"),
       total: data.get("total"),
     };
@@ -420,7 +423,7 @@ const handleSearch = (slave: number) => {
 const resetPoint = async () => {
   try {
     if (await resetPointData(routeName.value)) {
-      ElMessage.success("重置成功");
+      ElMessage.success(t('slave.resetSuccess'));
       handleSearch(currentSlaveId.value);
     }
   } catch (e) {
@@ -432,7 +435,7 @@ const handleClearPoints = async () => {
   try {
     const deletedCount = await clearPoints(routeName.value, currentSlaveId.value);
     if (deletedCount >= 0) {
-      ElMessage.success(`清空成功，共删除 ${deletedCount} 个测点`);
+      ElMessage.success(t('slave.clearSuccess', { count: deletedCount }));
       handleTableRefresh();
     }
   } catch (e) {
@@ -446,7 +449,7 @@ const handleDeleteSlave = async (slaveId: number) => {
   try {
     const success = await deleteSlave(routeName.value, slaveId);
     if (success) {
-      ElMessage.success(`从机 ${slaveId} 删除成功`);
+      ElMessage.success(t('slave.deleteSuccess', { id: slaveId }));
       
       // 标记为内部切换，防止触发 beforeLeave 的弹窗
       isInternalSwitch.value = true;
@@ -487,11 +490,11 @@ const handleTabRemove = (tabName: string | number) => {
   const slaveId = Number(tabName);
   
   ElMessageBox.confirm(
-    `确定删除从机 ${slaveId} 吗？此操作不可恢复！`,
-    '警告',
+    t('slave.deleteConfirm', { id: slaveId }),
+    t('common.warning'),
     {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
       type: 'warning',
     }
   )

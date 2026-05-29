@@ -149,6 +149,8 @@ function handleLocaleChange(val: LocaleType) {
   flex: 1;
   padding: 24px 28px;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
 }
 
 .settings-section {
@@ -173,8 +175,7 @@ function handleLocaleChange(val: LocaleType) {
 .setting-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 16px;
 
   &:not(:last-child) {
     padding-bottom: 16px;
@@ -184,7 +185,10 @@ function handleLocaleChange(val: LocaleType) {
 }
 
 .setting-info {
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .setting-label {

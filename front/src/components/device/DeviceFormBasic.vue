@@ -1,21 +1,21 @@
 <template>
   <div class="device-form-basic">
-    <el-divider content-position="left">基本信息</el-divider>
+    <el-divider content-position="left">{{ $t('device.basicInfo') }}</el-divider>
     
-    <el-form-item label="设备编码" prop="code">
-      <el-input v-model="modelValue.code" placeholder="请输入设备编码，如 PCS1" />
+    <el-form-item :label="$t('device.code')" prop="code">
+      <el-input v-model="modelValue.code" :placeholder="$t('device.codePlaceholder')" />
     </el-form-item>
     
-    <el-form-item label="设备名称" prop="name">
-      <el-input v-model="modelValue.name" placeholder="请输入设备名称" />
+    <el-form-item :label="$t('device.name')" prop="name">
+      <el-input v-model="modelValue.name" :placeholder="$t('device.namePlaceholder')" />
     </el-form-item>
     
-    <el-form-item label="所属设备组">
+    <el-form-item :label="$t('device.group')">
       <el-tree-select
         v-model="modelValue.group_id"
         :data="groupOptions"
         :props="{ label: 'name', value: 'id', children: 'children' }"
-        placeholder="选择设备组（可选，不选则为未分组）"
+        :placeholder="$t('device.groupPlaceholder')"
         check-strictly
         clearable
         style="width: 100%"

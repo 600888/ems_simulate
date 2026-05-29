@@ -2,16 +2,16 @@
   <div class="change-history">
     <div class="config-bar">
       <div class="config-item">
-        <span class="label">启用变更追溯:</span>
+        <span class="label">{{ $t('changeHistory.title') }}</span>
         <el-switch
           v-model="trackingEnabled"
-          active-text="开启"
-          inactive-text="关闭"
+          :active-text="$t('changeHistory.on')"
+          :inactive-text="$t('changeHistory.off')"
           @change="handleConfigChange"
         />
       </div>
       <div class="config-item">
-        <span class="label">历史条数上限:</span>
+        <span class="label">{{ $t('changeHistory.maxLen') }}</span>
         <el-input-number
           v-model="maxlen"
           :min="1"
@@ -21,25 +21,25 @@
         />
       </div>
       <div class="actions">
-        <el-button type="primary" size="small" :icon="Refresh" @click="loadHistory">刷新</el-button>
-        <el-button type="danger" size="small" :icon="Delete" @click="handleClear">清空记录</el-button>
+        <el-button type="primary" size="small" :icon="Refresh" @click="loadHistory">{{ $t('common.refresh') }}</el-button>
+        <el-button type="danger" size="small" :icon="Delete" @click="handleClear">{{ $t('common.clear') }}</el-button>
       </div>
     </div>
 
     <el-table :data="history" style="width: 100%" height="300" border stripe class="history-table">
-      <el-table-column prop="time" label="变更时间" width="200" show-overflow-tooltip align="center" header-align="center">
+      <el-table-column prop="time" :label="$t('changeHistory.time')" width="200" show-overflow-tooltip align="center" header-align="center">
         <template #default="scope">
           <span class="timestamp">{{ scope.row.time }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="source_label" label="变更来源" width="120" align="center" header-align="center">
+      <el-table-column prop="source_label" :label="$t('changeHistory.source')" width="120" align="center" header-align="center">
         <template #default="scope">
           <el-tag :type="getSourceTagType(scope.row.source)" size="small">
             {{ scope.row.source_label }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="client_info" label="来源地址" width="160" align="center" header-align="center" show-overflow-tooltip>
+      <el-table-column prop="client_info" :label="$t('changeHistory.sourceAddr')" width="160" align="center" header-align="center" show-overflow-tooltip>
         <template #default="scope">
           <span v-if="scope.row.client_info" class="client-info">
             {{ scope.row.client_info }}
@@ -49,8 +49,8 @@
       </el-table-column>
       <el-table-column min-width="180" align="center" header-align="center">
         <template #header>
-          值变化
-          <el-tooltip effect="dark" content="括号内为寄存器值" placement="top">
+          {{ $t('changeHistory.valueChange') }}
+          <el-tooltip effect="dark" :content="$t('changeHistory.tooltip')" placement="top">
             <el-icon style="margin-left: 4px; font-size: 14px; vertical-align: middle; cursor: help;"><QuestionFilled /></el-icon>
           </el-tooltip>
         </template>
@@ -66,19 +66,22 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="detail" label="详情描述" min-width="120" show-overflow-tooltip align="center" header-align="center" />
+      <el-table-column prop="detail" :label="$t('changeHistory.detail')" min-width="120" show-overflow-tooltip align="center" header-align="center" />
     </el-table>
 
     <div class="history-footer">
-      <span>共 {{ history.length }} 条记录（上限 {{ maxlen }} 条）</span>
+      <span>{{ $t('changeHistory.footer', { count: history.length, max: maxlen }) }}</span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Refresh, Delete, Right, QuestionFilled } from '@element-plus/icons-vue';
+
+const { t } = useI18n();
 import { 
   getPointChangeHistory, 
   setChangeTrackingConfig, 
@@ -125,7 +128,7 @@ const handleConfigChange = async () => {
   try {
     const success = await setChangeTrackingConfig(props.deviceName, props.pointCode, trackingEnabled.value, maxlen.value);
     if (success) {
-      ElMessage.success('配置已更新');
+      ElMessage.success(t('changeHistory.configUpdated'));
       loadHistory();
     }
   } catch (error: any) {
@@ -135,15 +138,15 @@ const handleConfigChange = async () => {
 };
 
 const handleClear = () => {
-  ElMessageBox.confirm('确定要清空该测点的所有变更历史吗？', '提示', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
+  ElMessageBox.confirm(t('changeHistory.clearConfirm'), t('common.hint'), {
+    confirmButtonText: t('common.confirm'),
+    cancelButtonText: t('common.cancel'),
     type: 'warning'
   }).then(async () => {
     try {
       const success = await clearPointChangeHistory(props.deviceName, props.pointCode);
       if (success) {
-        ElMessage.success('清空成功');
+        ElMessage.success(t('changeHistory.clearSuccess'));
         loadHistory();
       }
     } catch (error: any) {
