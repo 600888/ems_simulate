@@ -1306,20 +1306,35 @@ class IEC61850Client:
             for ln in lns:
                 ln_ref = f"{ld}/{ln}"
                 
-                # 3. 获取数据对象列表 (使用 getLogicalNodeDirectory)
-                result = iec61850.IedConnection_getLogicalNodeDirectory(self._connection, ln_ref, 0) # 0 = ACSI_CLASS_DATA_OBJECT
-                do_list = result[0] if isinstance(result, (list, tuple)) else result
-                error = result[1] if isinstance(result, (list, tuple)) else 0
-                
-                if error != iec61850.IED_ERROR_OK:
-                    log.info(f"跳过逻辑节点 {ln_ref}: 无法获取目录 (错误码: {error})")
-                    continue
-                
-                dos = self._get_list_from_linked_list(do_list)
-                log.info(f"逻辑节点 {ln_ref} 下发现数据对象: {dos}")
-                
+                # 3. 获取数据对象列表
+                dos = []
+                # 方法A: IedConnection_getLogicalNodeDirectory (ACSI 类查询)
+                for acsi_val in [0, 2, 3, 1]:
+                    try:
+                        result = iec61850.IedConnection_getLogicalNodeDirectory(
+                            self._connection, ln_ref, acsi_val)
+                        do_list = result[0] if isinstance(result, (list, tuple)) else result
+                        error = result[1] if isinstance(result, (list, tuple)) else 0
+                        if error == iec61850.IED_ERROR_OK and do_list is not None:
+                            dos = self._get_list_from_linked_list(do_list)
+                            if dos:
+                                break
+                    except Exception:
+                        continue
+                # 方法B: IedConnection_getDataDirectory (MMS 层回退)
                 if not dos:
-                    log.warning(f"逻辑节点 {ln_ref} 下没有发现数据对象 (DO 列表为空)")
+                    try:
+                        result = iec61850.IedConnection_getDataDirectory(self._connection, ln_ref)
+                        dd_list = result[0] if isinstance(result, (list, tuple)) else result
+                        dd_err = result[1] if isinstance(result, (list, tuple)) else 0
+                        if dd_err == 0 and dd_list is not None:
+                            dos = self._get_list_from_linked_list(dd_list)
+                    except Exception:
+                        pass
+                log.info(f"逻辑节点 {ln_ref} 下发现数据对象: {dos}")
+                if not dos:
+                    log.warning(f"跳过逻辑节点 {ln_ref}: 无法获取数据对象目录")
+                    continue
 
                 for do in dos:
                     # 注意: 不再跳过 Mod/Beh/Health/NamPlt 等 LLN0 系统 DO
@@ -1723,6 +1738,7 @@ class IEC61850Client:
                     continue
             if result is None:
                 return []
+            if isinstance(result, (list, tuple)):
                 s_data_set = result[0] if result[0] else None
                 dir_error = result[1] if len(result) > 1 else 0
             else:
@@ -1733,51 +1749,51 @@ class IEC61850Client:
                 log.debug(f"浏览 DataSet 目录失败: {dataset_ref} (错误码: {dir_error})")
                 return []
 
-            # sDataSet.fcdas 是一个 LinkedList，每个节点包含 DataSetEntry
+            # 注意: IedConnection_getDataSetDirectory 在 pyiec61850 中可能直接返回
+            # FCDA 条目的 LinkedList (同 C++ 61850cpp 模式), 而非 sDataSet.fcdas 结构体
+            # 先尝试访问 sDataSet.fcdas, 若不存在则直接用 s_data_set 本身作为链表
             fcdas = getattr(s_data_set, 'fcdas', None)
+            is_direct_ll = False
             if fcdas is None:
-                return []
+                fcdas = s_data_set
+                is_direct_ll = True
 
             members = []
             it = iec61850.LinkedList_getNext(fcdas)
             while it:
-                entry = iec61850.LinkedList_getData(it)
-                if entry:
+                if is_direct_ll:
+                    # 直接 LinkedList 模式: 每个节点 data 是 char* 类型 FCDA 引用
                     try:
-                        # DataSetEntry 字段: logicalDeviceName, variableName, componentName
-                        ld_name = getattr(entry, 'logicalDeviceName', '') or ''
-                        var_name = getattr(entry, 'variableName', '') or ''
-                        comp_name = getattr(entry, 'componentName', '') or ''
-                        entry_index = getattr(entry, 'index', 0) or 0
-
-                        # 构建 FCDA 引用: "LD0/MMXU1.TotW.mag.f"
-                        if ld_name and var_name:
-                            if comp_name:
-                                ref_str = f"{ld_name}/{var_name}.{comp_name}"
-                                # 处理有 index 的情况 (如数组元素)
-                                if entry_index > 0:
-                                    ref_str = f"{ld_name}/{var_name}[{entry_index}].{comp_name}"
-                            else:
-                                ref_str = f"{ld_name}/{var_name}"
-                        else:
-                            # 备用: 使用 DataSetEntry.value 或 str(entry)
-                            ref_str = str(entry) if entry else ""
-
-                        # 推断 FC
-                        fc_str = infer_fc_from_address(ref_str) if ref_str else "MX"
-
-                        # 推断 iec_type
-                        iec_type = infer_iec_type_from_address(ref_str) if ref_str else IEC_TYPE_UNKNOWN
-
-                        members.append({
-                            "ref": ref_str,
-                            "fc": fc_str,
-                            "iec_type": iec_type,
-                            "index": entry_index,
-                        })
+                        ref_str = iec61850.toCharP(it.data)
+                        if ref_str:
+                            fc_str = infer_fc_from_address(ref_str) if ref_str else "MX"
+                            iec_type = infer_iec_type_from_address(ref_str) if ref_str else IEC_TYPE_UNKNOWN
+                            members.append({"ref": ref_str, "fc": fc_str, "iec_type": iec_type, "index": 0})
                     except Exception as e:
-                        log.debug(f"解析 DataSet 条目时出错: {e}")
-
+                        log.debug(f"解析 FCDA 引用出错: {e}")
+                else:
+                    # sDataSet.fcdas 模式: 每个节点包含 DataSetEntry 结构体
+                    entry = iec61850.LinkedList_getData(it)
+                    if entry:
+                        try:
+                            ld_name = getattr(entry, 'logicalDeviceName', '') or ''
+                            var_name = getattr(entry, 'variableName', '') or ''
+                            comp_name = getattr(entry, 'componentName', '') or ''
+                            entry_index = getattr(entry, 'index', 0) or 0
+                            if ld_name and var_name:
+                                if comp_name:
+                                    ref_str = f"{ld_name}/{var_name}.{comp_name}"
+                                    if entry_index > 0:
+                                        ref_str = f"{ld_name}/{var_name}[{entry_index}].{comp_name}"
+                                else:
+                                    ref_str = f"{ld_name}/{var_name}"
+                            else:
+                                ref_str = str(entry) if entry else ""
+                            fc_str = infer_fc_from_address(ref_str) if ref_str else "MX"
+                            iec_type = infer_iec_type_from_address(ref_str) if ref_str else IEC_TYPE_UNKNOWN
+                            members.append({"ref": ref_str, "fc": fc_str, "iec_type": iec_type, "index": entry_index})
+                        except Exception as e:
+                            log.debug(f"解析 DataSetEntry 出错: {e}")
                 it = iec61850.LinkedList_getNext(it)
 
             return members

@@ -1125,26 +1125,23 @@ async def get_iec61850_dataset_detail(
         if not is_iec61850:
             return BaseResponse(code=400, message="仅 IEC61850 协议支持 DataSet 操作", data={})
 
-        # 从发现的 DataSet 中查找匹配项（含成员列表）
-        if not hasattr(protocol_handler, 'get_discovered_datasets'):
-            return BaseResponse(code=400, message="该处理器不支持 DataSet", data={})
-        discovered_datasets = protocol_handler.get_discovered_datasets()
+        # 优先实时浏览 DataSet 目录（获取最新成员信息）
         matched_ds = None
-        for ds in discovered_datasets:
-            if ds.get("ref") == body.dataset_ref:
-                matched_ds = ds
-                break
+        if isinstance(protocol_handler, IEC61850ClientHandler) and hasattr(protocol_handler.client, 'browse_dataset_directory'):
+            members = protocol_handler.client.browse_dataset_directory(body.dataset_ref)
+            matched_ds = {
+                "ref": body.dataset_ref,
+                "name": body.dataset_ref.split("$")[-1] if "$" in body.dataset_ref else body.dataset_ref,
+                "member_count": len(members),
+                "members": members,
+            }
 
-        if not matched_ds:
-            # 如果不在已发现列表中，尝试客户端浏览目录
-            if isinstance(protocol_handler, IEC61850ClientHandler) and hasattr(protocol_handler.client, 'browse_dataset_directory'):
-                members = protocol_handler.client.browse_dataset_directory(body.dataset_ref)
-                matched_ds = {
-                    "ref": body.dataset_ref,
-                    "name": body.dataset_ref.split("$")[-1] if "$" in body.dataset_ref else body.dataset_ref,
-                    "member_count": len(members),
-                    "members": members,
-                }
+        # 如果实时浏览失败，从缓存查找
+        if (not matched_ds or matched_ds.get("member_count", 0) == 0) and hasattr(protocol_handler, 'get_discovered_datasets'):
+            for ds in protocol_handler.get_discovered_datasets():
+                if ds.get("ref") == body.dataset_ref:
+                    matched_ds = ds
+                    break
 
         if not matched_ds:
             return BaseResponse(code=404, message="DataSet 未找到，请先连接设备获取结构", data={})

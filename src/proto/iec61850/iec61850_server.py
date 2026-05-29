@@ -823,6 +823,10 @@ class IEC61850Server:
     def start(self):
         """启动 IEC 61850 MMS 服务器"""
         if self._is_running:
+            # 如果服务器已在运行且模型有变更，执行热重建
+            if self._model_changed:
+                log.info("IEC61850Server.start(): 服务器已在运行，检测到模型变更，执行热重建")
+                self.apply_model_changes()
             return
 
         # 在 IedServer_create 之前，处理待注册的 GoCB/DataSet 队列
@@ -1544,6 +1548,13 @@ class IEC61850Server:
             if ld_inst == self.ld_name:
                 self._ensure_base_ld()
                 lln0 = self._lln0
+            else:
+                # 非默认 LD: 自动创建 LD 和 LLN0
+                # 当 ICD 文件中某个 LD 下只有纯 DataSet 而没有 MMS 测点时，
+                # 需要在此处自动创建 LD/LLN0 以便注册 DataSet
+                ld = self._get_or_create_ld(ld_inst)
+                lln0 = self._ln_map.get(lln0_key)
+                log.info(f"为 register_dataset 自动创建 LD/LLN0: {ld_inst}")
         if not lln0:
             log.warning(f"无法注册 DataSet: LLN0 未找到 (ld_inst={ld_inst})")
             return False
