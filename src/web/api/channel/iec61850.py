@@ -494,6 +494,7 @@ async def get_iec61850_tree_data(
 @router.post("/iec61850-structure", response_model=BaseResponse)
 async def get_iec61850_structure(body: Iec61850StructureRequest, request: Request):
     """获取 IEC61850 设备的子节点结构树"""
+    log.info(f"get_iec61850_structure 请求, channel_id={body.channel_id}")
     try:
         channel = ChannelService.get_channel_by_id(body.channel_id)
         if not channel:

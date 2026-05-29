@@ -25,30 +25,34 @@ from .log import log
 if TYPE_CHECKING:
     from .iec61850_client import IEC61850Client
 
-try:
-    from pyiec61850 import pyiec61850 as iec61850
-    HAS_IEC61850 = True
-except ImportError:
-    HAS_IEC61850 = False
-
-# 从 client 模块导入共享常量
-from .iec61850_client import (
+from .defs import (
+    HAS_IEC61850,
+    IecType,
     IEC_TYPE_FLOAT, IEC_TYPE_BOOLEAN, IEC_TYPE_INTEGER,
     IEC_TYPE_STRING, IEC_TYPE_TIMESTAMP, IEC_TYPE_UNKNOWN,
-    _DA_PATTERNS, _EXTRA_DA_INFO, _ENC_DO_DA_TYPE_OVERRIDE,
-    _BDA_TYPE_MAP, _STRUCT_DA_EXPAND_ONLINE, _KNOWN_BDA_FALLBACK_ONLINE,
+    DA_PATTERNS, EXTRA_DA_INFO, ENC_DO_DA_TYPE_OVERRIDE,
+    BDA_TYPE_MAP, STRUCT_DA_EXPAND_ONLINE, KNOWN_BDA_FALLBACK_ONLINE,
+    AcsiClass,
+    FrameType,
+    FRAME_TYPE_DESC,
+    DA_PATH_TO_FRAME_TYPE,
 )
 
-# ========== ACSI 类常量 ==========
+if HAS_IEC61850:
+    from pyiec61850 import pyiec61850 as iec61850
 
-ACSI_CLASS_DATA_OBJECT = 0
-ACSI_CLASS_DATA_SET = 3
-ACSI_CLASS_BRCB = 5
-ACSI_CLASS_URCB = 6
-ACSI_CLASS_GOOSE = 9
-
-# frame_type 中文描述
-FRAME_TYPE_DESC = {0: "遥测(YC)", 1: "遥信(YX)", 2: "遥控(YK)", 3: "遥调(YT)"}
+# 向后兼容别名
+_DA_PATTERNS = DA_PATTERNS
+_EXTRA_DA_INFO = EXTRA_DA_INFO
+_ENC_DO_DA_TYPE_OVERRIDE = ENC_DO_DA_TYPE_OVERRIDE
+_BDA_TYPE_MAP = BDA_TYPE_MAP
+_STRUCT_DA_EXPAND_ONLINE = STRUCT_DA_EXPAND_ONLINE
+_KNOWN_BDA_FALLBACK_ONLINE = KNOWN_BDA_FALLBACK_ONLINE
+ACSI_CLASS_DATA_OBJECT = AcsiClass.DATA_OBJECT
+ACSI_CLASS_DATA_SET = AcsiClass.DATA_SET
+ACSI_CLASS_BRCB = AcsiClass.BRCB
+ACSI_CLASS_URCB = AcsiClass.URCB
+ACSI_CLASS_GOOSE = AcsiClass.GOOSE
 
 
 # ========== 模型数据类 ==========
@@ -1215,8 +1219,6 @@ class IEC61850ModelExporter:
     def _infer_cdc_from_do(self, do_name: str, ln_class: str) -> str:
         """根据 DO 名称和 LN 类推断 CDC (Common Data Class)"""
         # 优先查 _DA_PATTERNS 推断
-        from .iec61850_client import _DA_PATTERNS
-
         if do_name in ("Mod", "Beh", "Health"):
             return "ENC"
         if do_name == "NamPlt":

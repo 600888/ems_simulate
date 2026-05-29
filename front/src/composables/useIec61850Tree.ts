@@ -70,15 +70,12 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
         });
       } else if (cat.key === 'DataSets') {
         // DataSets 返回层级结构: [{name: "LD0", children: [{name: "LLN0", datasets: [...]}]}]
-        console.log('[DataSets] items:', JSON.stringify(items).substring(0, 500));
         categoryChildren = items.map((ldItem: any, ldIndex: number) => {
           const ldName = typeof ldItem === 'string' ? ldItem : ldItem.name;
           const lnList = typeof ldItem === 'object' && ldItem.children ? ldItem.children : [];
-          console.log(`[DataSets] LD=${ldName}, lnList=`, JSON.stringify(lnList).substring(0, 300));
           const lnChildren: TreeNode[] = lnList.map((lnItem: any, lnIndex: number) => {
             const lnName = typeof lnItem === 'string' ? lnItem : lnItem.name;
             const dsList = typeof lnItem === 'object' && lnItem.datasets ? lnItem.datasets : [];
-            console.log(`[DataSets] LN=${lnName}, datasets count=${dsList.length}`);
             const dsChildren: TreeNode[] = dsList.map((ds: any, dsIndex: number) => ({
               nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${ldIndex}-${lnIndex}-${dsIndex}`,
               label: `${ds.name} (${ds.member_count || 0} members)`,
@@ -196,20 +193,6 @@ export function buildFallbackIEC61850Children(deviceName: string, keyPrefix: str
 }
 
 /**
- * 在树节点递归查找指定设备名的节点
- */
-function findDeviceNode(nodes: any[], deviceName: string): any | null {
-  for (const n of nodes) {
-    if (n.name === deviceName && n.isIec61850) return n;
-    if (n.children) {
-      const found = findDeviceNode(n.children, deviceName);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-/**
  * IEC61850 树节点管理 composable
  */
 export function useIec61850Tree() {
@@ -220,8 +203,29 @@ export function useIec61850Tree() {
    */
   let _structureLoadedCallback: (() => void) | null = null;
 
+  // 请求去重：缓存正在进行的 iec61850-structure 请求，防止同一 channel 重复请求
+  const _pendingStructureRequests = new Map<number, Promise<any>>();
+
   const setStructureLoadedCallback = (cb: () => void) => {
     _structureLoadedCallback = cb;
+  };
+
+  /**
+   * 获取 IEC61850 结构（带去重），同一 channelId 并发时只发一次请求
+   */
+  const _fetchStructureDeduped = async (channelId: number): Promise<any> => {
+    // 如果已有正在进行的请求，复用该 Promise
+    const pending = _pendingStructureRequests.get(channelId);
+    if (pending) {
+      console.log(`[IEC61850] 复用已有的 structure 请求, channelId=${channelId}`);
+      return pending;
+    }
+    // 发起新请求并缓存
+    const promise = getIEC61850Structure(channelId).finally(() => {
+      _pendingStructureRequests.delete(channelId);
+    });
+    _pendingStructureRequests.set(channelId, promise);
+    return promise;
   };
 
   const fetchIEC61850Structure = async (channelId: number, deviceName: string, treeData: Ref<TreeNode[]>) => {
@@ -238,20 +242,11 @@ export function useIec61850Tree() {
     };
 
     try {
-      const structure = await getIEC61850Structure(channelId);
+      const structure = await _fetchStructureDeduped(channelId);
       const iec61850Children = buildIEC61850Children(structure, deviceName, 'device');
 
-      let updated = false;
       try {
         treeData.value = updateTreeNode(treeData.value, iec61850Children);
-        updated = true;
-        console.log(`[TreeUpdate] treeData.value type=${typeof treeData.value}, isArray=${Array.isArray(treeData.value)}, length=${treeData.value?.length}`);
-        const dev = findDeviceNode(treeData.value, deviceName);
-        console.log(`[TreeUpdate] device "${deviceName}" found:`, !!dev, 'childrenCount:', dev?.children?.length);
-        if (dev?.children) {
-          const dsCat = dev.children.find((c: any) => c?.name === 'DataSets');
-          console.log(`[TreeUpdate] DataSets category exist:`, !!dsCat, 'childrenCount:', dsCat?.children?.length);
-        }
       } catch (mapErr: any) {
         console.error(`[TreeUpdate ERROR] updateTreeNode failed:`, mapErr, `deviceName=${deviceName}`);
         treeData.value = updateTreeNode(treeData.value, iec61850Children);
@@ -283,6 +278,9 @@ export function useIec61850Tree() {
               node.children = [];
             }
             fetchIEC61850Structure(channel.id, node.name, treeData);
+            // IEC61850 设备节点已处理完毕，跳过对其 children 的递归
+            // （设备节点没有有意义的子节点，空 children 数组无需遍历）
+            continue;
           }
         }
         if (node.children) {
@@ -305,7 +303,7 @@ export function useIec61850Tree() {
         if (channel && channel.protocol_type === 4) {
           (async () => {
             try {
-              const structure = await getIEC61850Structure(channel.id);
+              const structure = await _fetchStructureDeduped(channel.id);
               iec61850UngroupedMap.value = {
                 ...iec61850UngroupedMap.value,
                 [device.name]: buildIEC61850Children(structure, device.name, 'ungrouped'),

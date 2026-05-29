@@ -13,7 +13,7 @@ from src.tools.transform import decimal_to_hex, process_hex_address, transform
 def _infer_iec61850_fc(address: str, frame_type: int) -> str:
     """从 IEC61850 地址推断 FC, 推断失败则根据帧类型回退"""
     try:
-        from src.proto.iec61850.iec61850_client import infer_fc_from_address
+        from src.proto.iec61850.defs import infer_fc_from_address
         fc = infer_fc_from_address(address)
         if fc:
             return fc
