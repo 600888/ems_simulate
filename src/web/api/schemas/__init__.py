@@ -41,6 +41,10 @@ from .goose import (
     GooseCaptureStartRequest, GooseCaptureStopRequest,
     GooseCaptureListRequest, GooseCaptureStatusResponse,
 )
+from .report import (
+    RcbListRequest, RcbEnableRequest, RcbDisableRequest,
+    RcbGiRequest, ReportDataRequest, RcbDetailRequest,
+)
 
 __all__ = [
     "BaseResponse",
@@ -76,4 +80,7 @@ __all__ = [
     "GoosePublisherStatus", "GooseSubscriptionStatus", "GooseReceiverStatus",
     "GooseCaptureStartRequest", "GooseCaptureStopRequest",
     "GooseCaptureListRequest", "GooseCaptureStatusResponse",
+    # report
+    "RcbListRequest", "RcbEnableRequest", "RcbDisableRequest",
+    "RcbGiRequest", "ReportDataRequest", "RcbDetailRequest",
 ]

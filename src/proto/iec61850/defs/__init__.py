@@ -6,7 +6,7 @@
 
 from .constants import (
     HAS_IEC61850,
-    FC_MX, FC_ST, FC_CO, FC_CF, FC_DC,
+    FC_MX, FC_ST, FC_CO, FC_CF, FC_DC, FC_RP, FC_BR,
     FunctionalConstraint,
     IecType,
     FrameType,
@@ -61,6 +61,9 @@ from .types import (
     DataSetInfo,
     GoCBInfo,
     RCBInfo,
+    TrgOps,
+    OptFields,
+    ReportDataEntry,
     LNInfo,
     LDInfo,
     ServerModel,
@@ -68,7 +71,7 @@ from .types import (
 
 __all__ = [
     # constants
-    "HAS_IEC61850", "FC_MX", "FC_ST", "FC_CO", "FC_CF", "FC_DC",
+    "HAS_IEC61850", "FC_MX", "FC_ST", "FC_CO", "FC_CF", "FC_DC", "FC_RP", "FC_BR",
     "FunctionalConstraint", "IecType", "FrameType", "AcsiClass",
     "FRAME_TYPE_DESC", "FC_TO_FRAME_TYPE", "FRAME_TYPE_TO_FC",
     "IEC_TYPE_FLOAT", "IEC_TYPE_BOOLEAN", "IEC_TYPE_INTEGER",
@@ -86,5 +89,6 @@ __all__ = [
     "extract_ln_class", "split_ln_name",
     # types
     "PointRef", "DAInfo", "DOInfo", "DataSetInfo", "GoCBInfo",
-    "RCBInfo", "LNInfo", "LDInfo", "ServerModel",
+    "RCBInfo", "TrgOps", "OptFields", "ReportDataEntry",
+    "LNInfo", "LDInfo", "ServerModel",
 ]

@@ -126,15 +126,23 @@ const emit = defineEmits<{
 
 const treeRef = ref<InstanceType<typeof ElTree>>();
 
+// 导入 router 用于 linkTo 导航
+import { useRouter } from 'vue-router';
+const router = useRouter();
+
 // 处理节点点击，为 IEC61850 子节点补充 category 信息
 const handleNodeClick = (data: any) => {
+  // 优先处理 linkTo 导航 (如 Reports/GOOSE 跳转到独立管理页面)
+  if (data.linkTo) {
+    router.push(data.linkTo);
+    return;
+  }
   if (data.isIec61850Child) {
     // 从 nodeKey 推断 category: nodeKey 格式如 "device-{name}-Data Model" 或 "device-{name}-Data Model-{idx}"
     // type 字段在构建树时已经设置
     const enrichedData = { ...data };
     // 如果没有 type 字段，从 nodeKey 中提取
     if (!enrichedData.type && enrichedData.nodeKey) {
-      const keyParts = String(enrichedData.nodeKey).split('-');
       // 尝试匹配 category: "device-{deviceName}-{category}" 或 "ungrouped-{deviceName}-{category}-{idx}"
       const categories = ['GOOSE', 'Reports', 'SettingGroups', 'Files', 'DataSets', 'Data Model'];
       for (const cat of categories) {

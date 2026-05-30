@@ -143,3 +143,14 @@ export const GOOSE_API = {
   CAPTURE_CLEAR: '/api/channels/goose/capture/clear',
   CAPTURE_STATUS: '/api/channels/goose/capture/status',
 } as const;
+
+// ===== Reports 相关 =====
+export const REPORT_API = {
+  LIST: '/api/channels/iec61850/reports/list',
+  ENABLE: '/api/channels/iec61850/reports/enable',
+  DISABLE: '/api/channels/iec61850/reports/disable',
+  GI: '/api/channels/iec61850/reports/gi',
+  DATA: '/api/channels/iec61850/reports/data',
+  DETAIL: '/api/channels/iec61850/reports/detail',
+  ACTIVE: '/api/channels/iec61850/reports/active',
+} as const;

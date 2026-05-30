@@ -45,86 +45,90 @@
             <el-button type="primary" class="modern-btn search-btn" @click="handleSearch(slave)">
               {{ $t('common.search') }}
             </el-button>
-            <el-button class="modern-btn reset-btn" @click="resetPoint" :icon="Refresh">
-              {{ $t('slave.resetPointValue') }}
-            </el-button>
-            <el-button class="modern-btn add-btn" @click="showAddPointDialog = true" :icon="Plus">
-              {{ $t('point.add') }}
-            </el-button>
-            <el-popconfirm
-              :title="$t('slave.clearConfirm')"
-              :confirm-button-text="$t('common.confirm')"
-              :cancel-button-text="$t('common.cancel')"
-              @confirm="handleClearPoints"
-            >
-              <template #reference>
-                <el-button class="modern-btn clear-btn" type="danger" :icon="Delete">
-                  {{ $t('slave.clearPoints') }}
-                </el-button>
-              </template>
-            </el-popconfirm>
-            <div v-if="needsAutoReadControls" class="auto-read-control">
-              <span class="auto-read-label">{{ $t('slave.autoRead') }}</span>
-              <el-switch
-                v-model="isAutoRead"
-                @change="handleAutoReadChange"
-                active-color="#3b82f6"
-                inactive-color="#94a3b8"
-              />
-              
-              <el-divider direction="vertical" />
-              
-              <!-- 读取模式选择 (始终显示) -->
-              <el-tooltip 
-                :content="readMode === 'batch' ? $t('slave.batchRead') : $t('slave.singleRead')"
-                placement="top"
-              >
-                <el-segmented
-                  v-model="readMode"
-                  :options="readModeOptions"
-                  size="small"
-                  @change="handleReadModeChange"
-                />
-              </el-tooltip>
-
-              <!-- 间隔设置 (批量和逐点都支持，始终显示) -->
-              <span class="auto-read-label">{{ $t('slave.interval') }}</span>
-              <el-select
-                v-model="readInterval"
-                :placeholder="$t('slave.interval')"
-                allow-create
-                filterable
-                default-first-option
-                style="width: 90px;"
-                @change="handleIntervalChange"
-                size="normal"
-              >
-                <el-option
-                  v-for="item in intervalOptions"
-                  :key="item.value"
-                    :label="item.label"
-                    :value="item.value"
-                  />
-                </el-select>
-
-              <!-- 手动读取/取消按钮 (仅在非自动读取时显示) -->
-              <el-button
-                v-if="!isAutoRead"
-                :type="isReading ? 'danger' : 'success'"
-                class="modern-btn"
-                :class="isReading ? 'cancel-read-btn' : 'manual-read-btn'"
-                @click="handleManualRead"
-                :icon="isReading ? CircleCloseFilled : Download"
-                :loading="isReading && readMode === 'batch'"
-              >
-                {{ isReading ? $t('common.cancel') : (readMode === 'batch' ? $t('common.batchRead') : $t('common.singleRead')) }}
+            <template v-if="!(isIec61850 && iec61850Category === 'DataSets')">
+              <el-button class="modern-btn reset-btn" @click="resetPoint" :icon="Refresh">
+                {{ $t('slave.resetPointValue') }}
               </el-button>
+              <el-button class="modern-btn add-btn" @click="showAddPointDialog = true" :icon="Plus">
+                {{ $t('point.add') }}
+              </el-button>
+              <el-popconfirm
+                :title="$t('slave.clearConfirm')"
+                :confirm-button-text="$t('common.confirm')"
+                :cancel-button-text="$t('common.cancel')"
+                @confirm="handleClearPoints"
+              >
+                <template #reference>
+                  <el-button class="modern-btn clear-btn" type="danger" :icon="Delete">
+                    {{ $t('slave.clearPoints') }}
+                  </el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+            <template v-if="!(isIec61850 && iec61850Category === 'DataSets') && needsAutoReadControls">
+              <div class="auto-read-control">
+                <span class="auto-read-label">{{ $t('slave.autoRead') }}</span>
+                <el-switch
+                  v-model="isAutoRead"
+                  @change="handleAutoReadChange"
+                  active-color="#3b82f6"
+                  inactive-color="#94a3b8"
+                />
+                
+                <el-divider direction="vertical" />
+                
+                <!-- 读取模式选择 (始终显示) -->
+                <el-tooltip 
+                  :content="readMode === 'batch' ? $t('slave.batchRead') : $t('slave.singleRead')"
+                  placement="top"
+                >
+                  <el-segmented
+                    v-model="readMode"
+                    :options="readModeOptions"
+                    size="small"
+                    @change="handleReadModeChange"
+                  />
+                </el-tooltip>
 
-              <!-- 自动读取时显示当前模式 -->
-              <el-tag v-if="isAutoRead" type="info" size="small" effect="plain">
-                {{ readMode === 'batch' ? $t('slave.batchAutoReading') : $t('slave.singleAutoReading') }}
-              </el-tag>
-            </div>
+                <!-- 间隔设置 (批量和逐点都支持，始终显示) -->
+                <span class="auto-read-label">{{ $t('slave.interval') }}</span>
+                <el-select
+                  v-model="readInterval"
+                  :placeholder="$t('slave.interval')"
+                  allow-create
+                  filterable
+                  default-first-option
+                  style="width: 90px;"
+                  @change="handleIntervalChange"
+                  size="normal"
+                >
+                  <el-option
+                    v-for="item in intervalOptions"
+                    :key="item.value"
+                      :label="item.label"
+                      :value="item.value"
+                    />
+                  </el-select>
+
+                <!-- 手动读取/取消按钮 (仅在非自动读取时显示) -->
+                <el-button
+                  v-if="!isAutoRead"
+                  :type="isReading ? 'danger' : 'success'"
+                  class="modern-btn"
+                  :class="isReading ? 'cancel-read-btn' : 'manual-read-btn'"
+                  @click="handleManualRead"
+                  :icon="isReading ? CircleCloseFilled : Download"
+                  :loading="isReading && readMode === 'batch'"
+                >
+                  {{ isReading ? $t('common.cancel') : (readMode === 'batch' ? $t('common.batchRead') : $t('common.singleRead')) }}
+                </el-button>
+
+                <!-- 自动读取时显示当前模式 -->
+                <el-tag v-if="isAutoRead" type="info" size="small" effect="plain">
+                  {{ readMode === 'batch' ? $t('slave.batchAutoReading') : $t('slave.singleAutoReading') }}
+                </el-tag>
+              </div>
+            </template>
           </div>
         </div>
 
@@ -221,8 +225,8 @@ import { ElMessage, ElMessageBox, type TabsPaneContext } from "element-plus";
 import { Search, Refresh, Download, Plus, Delete, CircleCloseFilled, MoreFilled } from "@element-plus/icons-vue";
 import { getSlaveIdList, getDeviceTable, getDeviceInfo, deleteSlave } from "@/api/deviceApi";
 import { instance } from "@/api/http";
-import { getIEC61850TreeData, getIEC61850DatasetDetail } from "@/api/channelApi";
-import type { IEC61850TreeDataResponse, IEC61850DataSetDetail } from "@/api/channelApi";
+import { getIEC61850TreeData } from "@/api/channelApi";
+import type { IEC61850TreeDataResponse } from "@/api/channelApi";
 import { clearPoints, resetPointData } from "@/api/pointApi";
 import { useAutoRead } from "@/composables";
 import { isIec61850Protocol } from "@/constants/protocol";
@@ -338,24 +342,20 @@ const fetchSlaveList = async () => {
 const fetchDeviceTable = async (name: string, sid: number, q: string, pi: number, ps: number) => {
   // IEC61850 使用新的树形接口
   if (isIec61850.value && channelId.value !== null) {
-    // DataSets 分类: 调用 dataset-detail 接口
+    // DataSets 分类: 使用 tree-data 接口（Table.vue 的 displayData 只认 iec61850TreeData）
     if (iec61850Category.value === 'DataSets' && iec61850Item.value) {
-      const dsDetail = await getIEC61850DatasetDetail(channelId.value, iec61850Item.value);
+      const treeResp = await getIEC61850TreeData(
+        channelId.value, iec61850Category.value, iec61850Item.value,
+        q || null, pointTypes.value, pi, ps,
+      );
+      iec61850TreeData.value = treeResp;
+      total.value = treeResp?.total || 0;
+      // 设置 tableHeader: 地址/FC/最后更新时间/DA路径 是模板写死的专用列,
+      // 动态列只需补充剩余的表头
       if (!tableDataMap.value[sid]) {
         tableDataMap.value[sid] = { tableHeader: [], tableData: [], total: 0 };
       }
-      tableDataMap.value[sid].tableHeader = ["FCDA 引用", "FC", "数据类型", "值"];
-      if (dsDetail && dsDetail.members) {
-        tableDataMap.value[sid].tableData = dsDetail.members.map((m: any) => [
-          m.ref || '', m.fc || '', m.iec_type || '',
-          m.value !== undefined && m.value !== null ? String(m.value) : '',
-        ]);
-        tableDataMap.value[sid].total = dsDetail.members.length;
-      } else {
-        tableDataMap.value[sid].tableData = [];
-        tableDataMap.value[sid].total = 0;
-      }
-      total.value = tableDataMap.value[sid].total;
+      tableDataMap.value[sid].tableHeader = ['测点名称', '测点编码', '真实值'];
       return;
     }
 

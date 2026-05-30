@@ -30,10 +30,14 @@ export interface TreeNode {
 /**
  * 根据 IEC61850 结构数据构建树节点
  */
-export function buildIEC61850Children(structure: any, deviceName: string, keyPrefix: string): TreeNode[] {
+export function buildIEC61850Children(structure: any, deviceName: string, keyPrefix: string, channelId?: number): TreeNode[] {
   const children: TreeNode[] = [];
   IEC61850_CATEGORIES.forEach((cat) => {
     const items = structure[cat.key] || [];
+    // 为 Reports/GOOSE 构造带 channel_id 的导航链接
+    const makeLinkTo = (basePath: string) => {
+      return channelId ? `${basePath}?channel_id=${channelId}` : basePath;
+    };
     if (items.length > 0) {
       let categoryChildren: TreeNode[];
 
@@ -128,7 +132,21 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
           name: item,
           deviceName: deviceName,
           type: cat.label,
-          linkTo: '/goose',
+          linkTo: makeLinkTo('/goose'),
+        }));
+      } else if (cat.key === 'Reports') {
+        // Reports 分类: 导航到 Reports 管理页面
+        categoryChildren = items.map((item: string, itemIndex: number) => ({
+          nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${itemIndex}`,
+          label: item,
+          isGroup: false,
+          id: 0,
+          isIec61850Child: true,
+          iec61850Level: 'ld' as const,
+          name: item,
+          deviceName: deviceName,
+          type: cat.label,
+          linkTo: makeLinkTo('/reports'),
         }));
       } else {
         // 其他分类: 仍然为扁平列表
@@ -155,7 +173,7 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
         name: cat.label,
         deviceName: deviceName,
         type: cat.label,
-        linkTo: cat.key === 'GOOSE' ? '/goose' : undefined,
+        linkTo: cat.key === 'GOOSE' ? makeLinkTo('/goose') : cat.key === 'Reports' ? makeLinkTo('/reports') : undefined,
         children: categoryChildren,
       });
     } else {
@@ -169,7 +187,7 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
         name: cat.label,
         deviceName: deviceName,
         type: cat.label,
-        linkTo: cat.key === 'GOOSE' ? '/goose' : undefined,
+        linkTo: cat.key === 'GOOSE' ? makeLinkTo('/goose') : cat.key === 'Reports' ? makeLinkTo('/reports') : undefined,
       });
     }
   });
@@ -243,7 +261,7 @@ export function useIec61850Tree() {
 
     try {
       const structure = await _fetchStructureDeduped(channelId);
-      const iec61850Children = buildIEC61850Children(structure, deviceName, 'device');
+      const iec61850Children = buildIEC61850Children(structure, deviceName, 'device', channelId);
 
       try {
         treeData.value = updateTreeNode(treeData.value, iec61850Children);
@@ -306,7 +324,7 @@ export function useIec61850Tree() {
               const structure = await _fetchStructureDeduped(channel.id);
               iec61850UngroupedMap.value = {
                 ...iec61850UngroupedMap.value,
-                [device.name]: buildIEC61850Children(structure, device.name, 'ungrouped'),
+                [device.name]: buildIEC61850Children(structure, device.name, 'ungrouped', channel.id),
               };
             } catch (error) {
               console.warn(`获取未分组 IEC61850 结构失败 (设备: ${device.name}):`, error);

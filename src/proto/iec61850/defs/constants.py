@@ -21,6 +21,8 @@ FC_ST = getattr(_iec61850, 'IEC61850_FC_ST', None)  # 状态
 FC_CO = getattr(_iec61850, 'IEC61850_FC_CO', None)  # 控制
 FC_CF = getattr(_iec61850, 'IEC61850_FC_CF', None)  # 配置
 FC_DC = getattr(_iec61850, 'IEC61850_FC_DC', None)  # 描述
+FC_RP = getattr(_iec61850, 'IEC61850_FC_RP', None)  # 未缓冲报告 (URCB)
+FC_BR = getattr(_iec61850, 'IEC61850_FC_BR', None)  # 缓冲报告 (BRCB)
 
 
 class FunctionalConstraint(StrEnum):

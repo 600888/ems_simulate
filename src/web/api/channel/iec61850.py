@@ -595,8 +595,39 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
                         "children": ln_items,
                     })
 
+        # 获取 Reports 信息（通过 ReportsPlugin 发现远端 RCB）
+        report_items = []
+        if protocol_handler:
+            try:
+                from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+
+                if isinstance(protocol_handler, IEC61850ClientHandler):
+                    client = getattr(protocol_handler, '_client', None)
+                    if client and hasattr(client, 'reports') and client.reports:
+                        rcbs = client.reports.discover_rcbs()
+                        for rcb in rcbs:
+                            active_mark = " 🟢" if rcb.get("rpt_ena") else ""
+                            report_items.append(
+                                f"{rcb['ref']} ({rcb['rcb_type']}){active_mark}"
+                            )
+                        log.info(f"通过 ReportsPlugin 发现 {len(rcbs)} 个 RCB")
+                        if not rcbs:
+                            log.info("远端 IED 未配置报告控制块 (BRCB/URCB)，需在 ICD 中声明 ReportControl")
+                elif isinstance(protocol_handler, IEC61850ServerHandler):
+                    # 服务端模式：从 ReportManager 获取已注册的 RCB
+                    server = getattr(protocol_handler, '_server', None)
+                    if server and hasattr(server, 'reports') and server.reports:
+                        rcbs = server.reports.browse_rcbs()
+                        for rcb in rcbs:
+                            report_items.append(
+                                f"{rcb.get('ld_inst', '')}/LLN0.{rcb['name']} ({rcb['rcb_type']})"
+                            )
+                        log.info(f"通过 ReportManager 发现 {len(rcbs)} 个服务端 RCB")
+            except Exception as e:
+                log.warning(f"获取 Reports 信息失败: {e}")
+
         structure = {
-            "GOOSE": goose_items, "Reports": [], "SettingGroups": [],
+            "GOOSE": goose_items, "Reports": report_items, "SettingGroups": [],
             "Files": [],
             "DataSets": dataset_items,
             "Data Model": data_model,

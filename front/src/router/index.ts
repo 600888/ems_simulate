@@ -17,6 +17,11 @@ const menuRouter = createRouter({
       name: 'goose-manager',
       component: () => import('../views/GooseView.vue'),
     },
+    {
+      path: '/reports',
+      name: 'reports-manager',
+      component: () => import('../views/ReportsView.vue'),
+    },
     // Optional: Add a default redirect or home route if needed
     // { path: '/', redirect: '/device/some-default' } 
   ],
@@ -25,7 +30,7 @@ const menuRouter = createRouter({
 // 全局后置钩子，用于收集访问过的页面作为标签页
 menuRouter.afterEach((to) => {
   // 我们只收集设备页面或者其他需要标签页的页面
-  if (to.name || to.path.startsWith('/device') || to.path.startsWith('/goose')) {
+  if (to.name || to.path.startsWith('/device') || to.path.startsWith('/goose') || to.path.startsWith('/reports')) {
     addView(to);
   }
 });

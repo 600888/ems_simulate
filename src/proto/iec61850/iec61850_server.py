@@ -18,6 +18,7 @@ from .defs import (
 )
 from .plugins.datamodels.builder import IedModelBuilder
 from .plugins.datasets.server import ServerDataSetManager
+from .plugins.reports.manager import ReportManager
 
 
 if HAS_IEC61850:
@@ -52,6 +53,7 @@ class IEC61850Server:
         self._builder = IedModelBuilder(model_name, ied_name, ld_name)
         self.model_name = self._builder.model_name  # 同步
         self._ds_manager = ServerDataSetManager(self._builder, self.model_name)
+        self._report_manager = ReportManager(self._builder, self.model_name)
 
         self._server = None
         self._is_running = False
@@ -302,6 +304,7 @@ class IEC61850Server:
                 self.apply_model_changes()
             return
 
+        self._register_default_rcbs()
         self._apply_pending_registrations()
 
         log.info(
@@ -526,6 +529,84 @@ class IEC61850Server:
                         iec61850.IedServer_updateBooleanAttributeValue(self._server, da, bool(value))
         except Exception as e:
             log.error(f"IEC61850 调用底层设置值函数失败: address={address}, value={value}, error={e}")
+
+    # ===== Reports (委托给 report_manager) =====
+
+    @property
+    def reports(self):
+        """获取 Reports 管理对象"""
+        return self._report_manager
+
+    def _register_default_rcbs(self):
+        """注册默认报告控制块 (BRCB/URCB)
+
+        为服务端默认逻辑设备创建 RCB，绑定到对应的 DataSet。
+        每个 IED 都应该至少有一个 BRCB 用于支持报告功能。
+        """
+        if not self._builder.model:
+            log.debug("_register_default_rcbs: 模型未初始化，跳过")
+            return
+
+        # 为默认 LD 创建 DataSet 和 BRCB
+        default_ld = self.ld_name
+        default_rcbs = [
+            {
+                "ld_inst": default_ld,
+                "name": "brcb01",
+                "rcb_type": "BRCB",
+                "rpt_id": "brcb01",
+                "data_set_ref": f"{default_ld}/LLN0$dsReport1",
+                "conf_rev": 1,
+                "buf_time": 0,
+                "trg_ops": {"dchg": True, "qchg": False, "dupd": False, "period": False, "gi": True},
+                "opt_fields": {"seq_num": True, "time_stamp": True, "data_set": True,
+                               "reason_code": True, "data_ref": False, "entry_id": True,
+                               "config_ref": False, "buf_ovfl": False},
+            },
+            {
+                "ld_inst": default_ld,
+                "name": "brcb02",
+                "rcb_type": "BRCB",
+                "rpt_id": "brcb02",
+                "data_set_ref": f"{default_ld}/LLN0$dsReport2",
+                "conf_rev": 1,
+                "buf_time": 100,
+                "trg_ops": {"dchg": True, "qchg": True, "dupd": False, "period": True, "gi": True},
+                "opt_fields": {"seq_num": True, "time_stamp": True, "data_set": True,
+                               "reason_code": True, "data_ref": False, "entry_id": True,
+                               "config_ref": False, "buf_ovfl": False},
+            },
+        ]
+
+        for rcb_cfg in default_rcbs:
+            # 先注册 DataSet（如果还不存在）
+            ds_name = rcb_cfg["data_set_ref"].split("$")[-1]
+            if not any(ds.get("ref") == rcb_cfg["data_set_ref"]
+                       for ds in self._ds_manager.browse_datasets()):
+                self._ds_manager.register_dataset(
+                    ld_inst=rcb_cfg["ld_inst"],
+                    ds_name=ds_name,
+                    data_set_ref=rcb_cfg["data_set_ref"],
+                    entries=None,
+                )
+                log.info(f"为 RCB 自动创建 DataSet: {rcb_cfg['data_set_ref']}")
+
+            # 注册 RCB
+            success = self._report_manager.register_rcb(
+                ld_inst=rcb_cfg["ld_inst"],
+                name=rcb_cfg["name"],
+                rcb_type=rcb_cfg["rcb_type"],
+                rpt_id=rcb_cfg["rpt_id"],
+                data_set_ref=rcb_cfg["data_set_ref"],
+                conf_rev=rcb_cfg["conf_rev"],
+                buf_time=rcb_cfg["buf_time"],
+                trg_ops=rcb_cfg.get("trg_ops"),
+                opt_fields=rcb_cfg.get("opt_fields"),
+            )
+            if success:
+                log.info(f"默认 RCB 已注册: {rcb_cfg['name']} ({rcb_cfg['rcb_type']})")
+            else:
+                log.warning(f"默认 RCB 注册失败: {rcb_cfg['name']}")
 
     # ===== 浏览方法 (委托给 builder) =====
 
