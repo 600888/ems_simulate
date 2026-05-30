@@ -29,11 +29,28 @@ _CALLBACK_LOCK = threading.Lock()
 class _CallbackInfo:
     """回调注册信息"""
     rcb_ref: str
-    handler: Any = None               # 安装的报告处理器引用
+    handler: Any = None               # _PyRCBHandler 实例 (保持引用防 GC)
+    subscriber: Any = None            # RCBSubscriber 实例 (保持引用防 GC)
     on_report: Optional[Callable] = None  # Python 回调函数
     data_cache: List[ReportDataEntry] = field(default_factory=list)
     max_cache: int = 1000
     enabled_at: str = ""
+
+
+def _normalize_ref(rcb_ref: str) -> str:
+    """规范化 RCB 引用, 按名称前缀插入 FC 段 (.RP./.BR.)
+
+    rp*/urcb* -> .RP. (非缓冲); 其余 -> .BR. (缓冲)。
+    已含 FC 段则原样返回。
+    """
+    if not rcb_ref or "." not in rcb_ref or "/" not in rcb_ref:
+        return rcb_ref
+    ln_part, name = rcb_ref.rsplit(".", 1)
+    if name in ("BR", "RP"):
+        return rcb_ref
+    low = name.lower()
+    fc = "RP" if (low.startswith("rp") or low.startswith("urcb")) else "BR"
+    return f"{ln_part}.{fc}.{name}"
 
 
 class ReportCallbackHandler:
@@ -47,7 +64,7 @@ class ReportCallbackHandler:
     @staticmethod
     def install(connection, rcb_ref: str,
                 on_report: Optional[Callable[[ReportDataEntry], None]] = None,
-                max_cache: int = 1000) -> bool:
+                max_cache: int = 1000, rpt_id: str = "") -> bool:
         """安装报告回调
 
         Args:
@@ -55,6 +72,7 @@ class ReportCallbackHandler:
             rcb_ref: RCB 引用路径
             on_report: 可选 Python 回调，收到报告时调用
             max_cache: 最大缓存条数
+            rpt_id: 报告 ID (可空, 空表示接受任意)
 
         Returns:
             bool 是否成功
@@ -71,21 +89,26 @@ class ReportCallbackHandler:
             if rcb_ref in _CALLBACK_REGISTRY:
                 ReportCallbackHandler.uninstall(connection, rcb_ref)
 
+            if not (hasattr(iec61850, "RCBHandler") and hasattr(iec61850, "RCBSubscriber")):
+                log.warning("pyiec61850 不支持 RCBHandler/RCBSubscriber, 无法安装报告回调")
+                return False
+
             try:
-                # 注册 C 回调
-                handler = iec61850.IedConnection_installReportHandler(
-                    conn, rcb_ref,
-                    _report_callback_function,
-                    rcb_ref,
-                )
-                if handler is None:
-                    log.warning(f"安装报告回调失败 (返回None): ref={rcb_ref}")
-                    log.warning("可能是 pyiec61850 版本不支持 IedConnection_installReportHandler")
+                nref = _normalize_ref(rcb_ref)
+                handler = _PyRCBHandler(rcb_ref)
+                subscriber = iec61850.RCBSubscriber()
+                subscriber.setIedConnection(conn)
+                subscriber.setRcbReference(nref)
+                subscriber.setRcbRptId(rpt_id or "")
+                subscriber.setEventHandler(handler)
+                if not subscriber.subscribe():
+                    log.warning(f"订阅报告失败: ref={nref}")
                     return False
 
                 _CALLBACK_REGISTRY[rcb_ref] = _CallbackInfo(
                     rcb_ref=rcb_ref,
                     handler=handler,
+                    subscriber=subscriber,
                     on_report=on_report,
                     max_cache=max_cache,
                     enabled_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -110,10 +133,13 @@ class ReportCallbackHandler:
                 return True
 
             try:
-                iec61850.IedConnection_uninstallReportHandler(conn, rcb_ref)
+                iec61850.IedConnection_uninstallReportHandler(conn, _normalize_ref(rcb_ref))
             except Exception as e:
                 log.debug(f"注销报告回调异常 (非致命): {rcb_ref}, {e}")
 
+            # 释放 subscriber/handler 引用
+            _CALLBACK_REGISTRY[rcb_ref].subscriber = None
+            _CALLBACK_REGISTRY[rcb_ref].handler = None
             del _CALLBACK_REGISTRY[rcb_ref]
             log.info(f"报告回调已注销: {rcb_ref}")
             return True
@@ -165,7 +191,7 @@ class ReportCallbackHandler:
                 try:
                     if connection and connection.connection:
                         iec61850.IedConnection_uninstallReportHandler(
-                            connection.connection, rcb_ref
+                            connection.connection, _normalize_ref(rcb_ref)
                         )
                 except Exception:
                     pass
@@ -188,34 +214,19 @@ class ReportCallbackHandler:
         }
 
 
-def _report_callback_function(param, report):
-    """C 级别报告回调函数 (静态)
-
-    由 libIEC61850 在接收线程中调用。
-    该函数必须是模块级函数，不能是实例方法。
-
-    Args:
-        param: 注册时传入的用户参数 (rcb_ref)
-        report: ClientReport 对象
-    """
-    rcb_ref = str(param) if param else "unknown"
-
+def _dispatch_report(rcb_ref: str, report) -> None:
+    """解析并分发一条报告 (由 _PyRCBHandler.trigger 调用)"""
     with _CALLBACK_LOCK:
         info = _CALLBACK_REGISTRY.get(rcb_ref)
         if not info:
             return
-
         try:
             entry = _parse_client_report(report, rcb_ref)
             if entry is None:
                 return
-
-            # 缓存报告数据
             info.data_cache.append(entry)
             if len(info.data_cache) > info.max_cache:
                 info.data_cache.pop(0)
-
-            # 调用 Python 回调（如果有）
             if info.on_report:
                 try:
                     info.on_report(entry)
@@ -223,6 +234,25 @@ def _report_callback_function(param, report):
                     log.error(f"报告回调函数异常: {rcb_ref}, {cb_err}")
         except Exception as e:
             log.error(f"报告回调处理异常: {rcb_ref}, {e}")
+
+
+if HAS_IEC61850 and hasattr(iec61850, "RCBHandler"):
+    class _PyRCBHandler(iec61850.RCBHandler):
+        """SWIG director 子类, C++ 收到报告时回调 trigger()"""
+
+        def __init__(self, rcb_ref: str):
+            super().__init__()
+            self._rcb_ref = rcb_ref
+
+        def trigger(self):
+            try:
+                _dispatch_report(self._rcb_ref, self._client_report)
+            except Exception as e:
+                log.error(f"RCBHandler.trigger 异常: {self._rcb_ref}, {e}")
+else:
+    class _PyRCBHandler:  # 占位, 不会被使用
+        def __init__(self, rcb_ref: str):
+            self._rcb_ref = rcb_ref
 
 
 def _parse_client_report(report, rcb_ref: str) -> Optional[ReportDataEntry]:
@@ -342,9 +372,3 @@ def _parse_client_report(report, rcb_ref: str) -> Optional[ReportDataEntry]:
     except Exception as e:
         log.error(f"解析 ClientReport 失败: {rcb_ref}, {e}")
         return None
-
-
-# 如果没有 pyiec61850，提供空桩实现
-if not HAS_IEC61850:
-    def _report_callback_function(param, report):
-        pass

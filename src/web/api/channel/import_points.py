@@ -322,14 +322,6 @@ async def import_icd(
                             log.warning(f"注册 RCB 异常 ({rc_info.get('name', '')}): {rc_err}")
                     log.info(f"ReportControl 注册完成: {rc_registered}/{len(report_controls)}")
 
-                # 缓存已知 RCB 名称供客户端探测使用
-                if report_controls:
-                    try:
-                        from src.web.api.channel.report import set_known_rcb_names
-                        rcb_names = [rc["name"] for rc in report_controls if rc.get("name")]
-                        set_known_rcb_names(channel_id, rcb_names)
-                    except Exception as e:
-                        log.warning(f"缓存已知 RCB 名称失败: {e}")
 
                 # ===== 2b. 创建 GOOSE Publisher（注册 GSEControlBlock） =====
                 # GoCB 引用的 DataSet 会在 add_goose_control_block 内部创建

@@ -4,7 +4,6 @@
 回调注册和报告数据缓存等完整生命周期。
 """
 
-import datetime
 import re
 from typing import Any, Dict, List, Optional, Callable
 
@@ -37,16 +36,7 @@ class ReportsPlugin:
         self._connection = None
         self._registry = None
         self._initialized = False
-        # 从 ICD 配置中获取的已知 RCB 名称（自定义命名）
-        self._known_rcb_names: List[str] = []
-
-    def set_known_rcb_names(self, names: List[str]) -> None:
-        """设置已知的 RCB 名称（从 ICD 导入获取）
-
-        用于发现自定义命名（非 brcb/urcb 前缀）的 RCB。
-        """
-        self._known_rcb_names = list(names)
-        log.info(f"已设置 {len(names)} 个已知 RCB 名称")
+        self._rcb_type_map: Dict[str, str] = {}  # ref -> "BRCB"/"URCB", 发现时填充
 
     @property
     def name(self) -> str:
@@ -79,19 +69,10 @@ class ReportsPlugin:
 
     # ==================== RCB 发现 ====================
 
-    # 回退探测: 常见的 RCB 名称模式 (brcb01..brcb20, urcb01..urcb20)
-    # 自定义 RCB 名通过 set_known_rcb_names() 从 ICD 导入注入
-    _FALLBACK_RCB_NAMES = (
-        [f"brcb{i:02d}" for i in range(1, 21)] +
-        [f"urcb{i:02d}" for i in range(1, 21)]
-    )
-
     def discover_rcbs(self, ld: str = "", ln: str = "") -> List[Dict[str, Any]]:
         """发现报告控制块 (BRCB 和 URCB)
 
-        发现策略（两级）:
-        1. 通过 IedConnection_getLogicalNodeDirectory(acsi_class) 发现 BRCB/URCB
-        2. 回退: 探测常见 RCB 名称 (brcb01..brcb20, urcb01..urcb20) 的 RptEna 属性
+        通过 IedConnection_getLogicalNodeDirectory(acsi_class) 发现 BRCB 和 URCB
 
         Args:
             ld: 逻辑设备名过滤 (空字符串表示全部)
@@ -145,24 +126,27 @@ class ReportsPlugin:
             for ln_name in ln_list:
                 ln_ref = f"{ld_name}/{ln_name}"
 
-                # 3. 策略一: 通过 ACSI 目录发现 BRCB 和 URCB
+                # 3. 通过 ACSI 目录发现 BRCB 和 URCB
                 rcbs_found = self._discover_rcbs_via_directory(conn, ln_ref, ld_name, ln_name)
 
-                # 4. 策略二: 如果目录发现失败或无结果, 回退到探测法
-                if not rcbs_found:
-                    rcbs_found = self._discover_rcbs_via_probe(conn, ln_ref, ld_name, ln_name)
-
                 all_rcbs.extend(rcbs_found)
+
+        # 记录每个 RCB 的真实类型 (URCB/BRCB)，供 enable/disable 正确路由
+        for r in all_rcbs:
+            ref = r.get("ref")
+            rtype = r.get("rcb_type")
+            if ref and rtype:
+                self._rcb_type_map[ref] = rtype
 
         log.info(f"RCB 发现完成, 共发现 {len(all_rcbs)} 个报告控制块")
         return all_rcbs
 
     def _discover_rcbs_via_directory(self, conn, ln_ref: str,
                                       ld_name: str, ln_name: str) -> List[Dict]:
-        """策略一: 通过 ACSI 目录发现 RCB
+        """通过 ACSI 目录发现 RCB
 
         仅对 LLN0 执行 ACSI 目录查询（RCB 按 IEC 61850 标准只定义在 LLN0 下）。
-        非 LLN0 节点直接返回空，交由探测法处理。
+        非 LLN0 节点直接返回空。
         """
         if ln_name.upper() != "LLN0":
             return []
@@ -254,252 +238,6 @@ class ReportsPlugin:
                       f"提取 {len(valid_names)}/{len(raw_names)} 个合法名")
 
         return valid_names
-
-    def _discover_rcbs_via_probe(self, conn, ln_ref: str,
-                                  ld_name: str, ln_name: str) -> List[Dict]:
-        """策略二: 回退 - 用 getRCBValues 验证 RCB
-
-        RCB 通过专用 MMS 服务 (GetBRCBValues/GetURCBValues) 访问。
-        探测候选来源:
-        1. DATA_OBJECT 目录中的 DO（部分服务端将 RCB 也列入 DO 目录）
-        2. 标准 RCB 名称 brcb01..brcb20, urcb01..urcb20
-        3. ICD 导入时缓存的已知自定义 RCB 名称
-
-        验证使用 IedConnection_getRCBValues 标准 MMS 服务。
-        """
-        rcbs = []
-        candidates = []  # (rcb_ref, do_name)
-
-        # 途径 A: 从 DATA_OBJECT 目录中获取 DO 名作为候选
-        do_names = self._probe_do_names(conn, ln_ref)
-        if do_names:
-            for do_name in do_names:
-                candidates.append((f"{ln_ref}.{do_name}", do_name))
-
-        # 途径 B: 直接尝试已知标准 RCB 名称
-        for rcb_name in self._FALLBACK_RCB_NAMES:
-            rcb_ref = f"{ln_ref}.{rcb_name}"
-            if not any(c[0] == rcb_ref for c in candidates):
-                candidates.append((rcb_ref, rcb_name))
-
-        # 途径 C: 尝试从 ICD 配置中获取的已知 RCB 名称（自定义命名）
-        if self._known_rcb_names and ln_name.upper() == "LLN0":
-            for rcb_name in self._known_rcb_names:
-                rcb_ref = f"{ln_ref}.{rcb_name}"
-                if not any(c[0] == rcb_ref for c in candidates):
-                    candidates.append((rcb_ref, rcb_name))
-                    log.debug(f"加入已知 RCB 名: {rcb_name}")
-
-        if not candidates:
-            return rcbs
-
-        log.debug(f"探测法: {ln_ref} 下有 {len(candidates)} 个候选 RCB 待验证")
-
-        for rcb_ref, do_name in candidates:
-            # 先尝试 getRCBValues 验证（标准 MMS 服务）
-            rcb_type = self._infer_type_via_get_values(conn, rcb_ref, do_name)
-            if rcb_type is not None:
-                rcb_info = self._get_rcb_info(rcb_ref, rcb_type, ld_name, ln_name)
-                rcbs.append(rcb_info)
-                log.info(f"探测法发现 {rcb_type}: {rcb_ref} (getRCBValues)")
-                continue
-
-            # 回退: 通过 RptEna 读验证（正确检查 error 码）
-            verified, fc_hint = self._verify_by_rptena(conn, rcb_ref, do_name)
-            if not verified:
-                continue
-
-            # 按 FC 推断类型: RP→URCB, BR→BRCB
-            rcb_type = "URCB" if fc_hint == "RP" else "BRCB"
-            rcb_info = self._get_rcb_info(rcb_ref, rcb_type, ld_name, ln_name)
-            rcbs.append(rcb_info)
-            log.info(f"探测法发现 {rcb_type}: {rcb_ref} (RptEna)")
-
-        return rcbs
-
-    def _verify_by_rptena(self, conn, rcb_ref: str,
-                           do_name: str) -> tuple:
-        """通过读取 RptEna 验证 RCB 是否存在
-
-        IedConnection_readBooleanValue 返回 (value, error) 元组。
-        必须检查 error 码，不能仅检查 None。
-
-        Returns:
-            (is_valid, fc_hint) - 是否验证通过，以及成功时的 FC
-        """
-        if not HAS_IEC61850:
-            return False, ""
-
-        # 根据名称前缀优先尝试对应的 FC
-        lower = do_name.lower()
-        if lower.startswith("urcb"):
-            fcs_priority = ["RP", "BR"]
-        elif lower.startswith("brcb"):
-            fcs_priority = ["BR", "RP"]
-        else:
-            fcs_priority = ["RP", "BR"]
-
-        for fc_val in fcs_priority:
-            try:
-                fc_const = self._get_fc_const(fc_val)
-                if fc_const is None:
-                    continue
-                rpt_ena_ref = f"{rcb_ref}.RptEna"
-                result = iec61850.IedConnection_readBooleanValue(
-                    conn, rpt_ena_ref, fc_const
-                )
-                # 正确解析 (value, error) 返回格式
-                if isinstance(result, (list, tuple)) and len(result) >= 2:
-                    _val, err = result[0], result[1]
-                else:
-                    _val, err = result, 0
-
-                if err == iec61850.IED_ERROR_OK:
-                    # 读取 RptEna 成功 → 确认是 RCB
-                    log.debug(f"RptEna 验证成功: {rcb_ref} (FC={fc_val})")
-                    return True, fc_val
-                elif err in (iec61850.IED_ERROR_OBJECT_NOT_FOUND, 3):
-                    # OBJECT_NOT_FOUND 明确表示该路径不存在
-                    break
-            except Exception:
-                continue
-        return False, ""
-
-    def _infer_type_via_get_values(self, conn, rcb_ref: str,
-                                    do_name: str) -> Optional[str]:
-        """用 getRCBValues 二次确认 RCB 并推断类型
-
-        Returns: "BRCB" / "URCB" / None (非 RCB 或无法确认)
-        """
-        if not HAS_IEC61850:
-            return None
-
-        # RCB 名前缀决定优先尝试的 FC 段; getRCBValues 要求 LD/LN.{BR|RP}.name
-        lower = do_name.lower()
-        if "." in rcb_ref and "/" in rcb_ref:
-            ln_part, rcb_name = rcb_ref.rsplit(".", 1)
-        else:
-            ln_part, rcb_name = "", rcb_ref
-        if lower.startswith("urcb"):
-            fc_order = [("RP", "URCB"), ("BR", "BRCB")]
-        else:
-            fc_order = [("BR", "BRCB"), ("RP", "URCB")]
-
-        for fc, rcb_type in fc_order:
-            nref = f"{ln_part}.{fc}.{rcb_name}" if ln_part else rcb_ref
-            rcb_test = None
-            try:
-                rcb_test = self._create_rcb_block(nref)
-                if rcb_test is None:
-                    continue
-                result = iec61850.IedConnection_getRCBValues(conn, nref, rcb_test)
-                error = result[1] if isinstance(result, (list, tuple)) else result
-                if error == iec61850.IED_ERROR_OK:
-                    return rcb_type
-            except Exception:
-                pass
-            finally:
-                if rcb_test is not None:
-                    try:
-                        iec61850.ClientReportControlBlock_destroy(rcb_test)
-                    except Exception:
-                        pass
-        return None
-
-    @staticmethod
-    def _create_rcb_block(rcb_ref: str = ""):
-        """创建 ClientReportControlBlock
-
-        此版本 SWIG 绑定需要 rcbReference 参数。
-        """
-        if not HAS_IEC61850 or not rcb_ref:
-            return None
-        try:
-            rcb = iec61850.ClientReportControlBlock_create(rcb_ref)
-            if rcb is not None:
-                return rcb
-        except Exception as e:
-            log.debug(f"_create_rcb_block 失败: {e}, ref={rcb_ref}")
-        return None
-
-    def _probe_do_names(self, conn, ln_ref: str) -> List[str]:
-        """获取 LN 下的所有 DO 名称"""
-        try:
-            result = iec61850.IedConnection_getLogicalNodeDirectory(
-                conn, ln_ref, AcsiClass.DATA_OBJECT
-            )
-            do_raw = result[0] if isinstance(result, (list, tuple)) else result
-            error = result[1] if isinstance(result, (list, tuple)) else 0
-            if error == iec61850.IED_ERROR_OK and do_raw:
-                return get_list_from_linked_list(do_raw)
-        except Exception:
-            pass
-        return []
-
-    def _verify_rcb_by_rptena(self, conn, rcb_ref: str, fc: str = "RP") -> bool:
-        """通过读取 RptEna 属性验证 RCB 是否存在
-
-        RptEna 是所有 RCB 的必选属性, FC=RP (URCB) 或 BR (BRCB)。
-        尝试读取成功即确认该 RCB 存在。
-        """
-        if not HAS_IEC61850:
-            return False
-
-        # 尝试 RP 和 BR 两种 FC
-        fcs_to_try = ["RP", "BR"]
-        if fc and fc in fcs_to_try:
-            # 将指定 FC 放首位
-            fcs_to_try.remove(fc)
-            fcs_to_try.insert(0, fc)
-
-        for fc_val in fcs_to_try:
-            try:
-                fc_const = self._get_fc_const(fc_val)
-                if fc_const is None:
-                    continue
-                rpt_ena_ref = f"{rcb_ref}.RptEna"
-                val = iec61850.IedConnection_readBooleanValue(conn, rpt_ena_ref, fc_const)
-                if val is not None:
-                    log.debug(f"验证 RCB 成功: {rcb_ref} (FC={fc_val})")
-                    return True
-            except Exception:
-                continue
-
-        # 也尝试直接读取 RCB 值作为最终验证
-        try:
-            rcb_test = iec61850.ClientReportControlBlock_create()
-            if rcb_test:
-                try:
-                    result = iec61850.IedConnection_getRCBValues(conn, rcb_ref, rcb_test)
-                    error = result[1] if isinstance(result, (list, tuple)) else result
-                    if error == iec61850.IED_ERROR_OK:
-                        return True
-                finally:
-                    try:
-                        iec61850.ClientReportControlBlock_destroy(rcb_test)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-        return False
-
-    def _get_fc_const(self, fc: str):
-        """获取 FC 字符串对应的 pyiec61850 常量"""
-        if not HAS_IEC61850:
-            return None
-        try:
-            fc_map = {
-                "RP": iec61850.IEC61850_FC_RP,
-                "BR": iec61850.IEC61850_FC_BR,
-                "MX": iec61850.IEC61850_FC_MX,
-                "ST": iec61850.IEC61850_FC_ST,
-                "CO": iec61850.IEC61850_FC_CO,
-                "CF": iec61850.IEC61850_FC_CF,
-            }
-            return fc_map.get(fc)
-        except Exception:
-            return None
 
     def _get_rcb_info(self, rcb_ref: str, rcb_type: str,
                        ld_name: str, ln_name: str) -> Dict[str, Any]:
@@ -786,12 +524,19 @@ class ReportsPlugin:
     def _infer_rcb_type(self, rcb_ref: str) -> str:
         """从 RCB 引用推断类型 (BRCB/URCB)
 
-        优先通过名称前缀判断，默认返回 BRCB。
+        优先使用发现时记录的真实类型，其次按名称前缀，默认 BRCB。
         """
+        if rcb_ref in self._rcb_type_map:
+            return self._rcb_type_map[rcb_ref]
         rcb_name = rcb_ref.split(".")[-1].lower() if "." in rcb_ref else rcb_ref.lower()
         if rcb_name.startswith("urcb"):
             return "URCB"
         if rcb_name.startswith("brcb"):
+            return "BRCB"
+        # 自定义命名启发: rp* 多为非缓冲(URCB), br* 为缓冲(BRCB)
+        if rcb_name.startswith("rp"):
+            return "URCB"
+        if rcb_name.startswith("br"):
             return "BRCB"
         # 默认通过 AcsiClass 发现判断
         return "BRCB"

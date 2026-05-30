@@ -223,25 +223,37 @@ export function useIec61850Tree() {
 
   // 请求去重：缓存正在进行的 iec61850-structure 请求，防止同一 channel 重复请求
   const _pendingStructureRequests = new Map<number, Promise<any>>();
+  // 结果短缓存：避免短时间内多次 loadDeviceGroups 对同一 channel 重复请求后端
+  const _structureCache = new Map<number, { data: any; ts: number }>();
+  const _STRUCTURE_CACHE_TTL = 3000;
 
   const setStructureLoadedCallback = (cb: () => void) => {
     _structureLoadedCallback = cb;
   };
 
   /**
-   * 获取 IEC61850 结构（带去重），同一 channelId 并发时只发一次请求
+   * 获取 IEC61850 结构（带去重 + 短缓存），同一 channelId 并发或短时间内只发一次请求
    */
   const _fetchStructureDeduped = async (channelId: number): Promise<any> => {
+    // 命中短缓存直接返回
+    const cached = _structureCache.get(channelId);
+    if (cached && Date.now() - cached.ts < _STRUCTURE_CACHE_TTL) {
+      return cached.data;
+    }
     // 如果已有正在进行的请求，复用该 Promise
     const pending = _pendingStructureRequests.get(channelId);
     if (pending) {
-      console.log(`[IEC61850] 复用已有的 structure 请求, channelId=${channelId}`);
       return pending;
     }
     // 发起新请求并缓存
-    const promise = getIEC61850Structure(channelId).finally(() => {
-      _pendingStructureRequests.delete(channelId);
-    });
+    const promise = getIEC61850Structure(channelId)
+      .then((data) => {
+        _structureCache.set(channelId, { data, ts: Date.now() });
+        return data;
+      })
+      .finally(() => {
+        _pendingStructureRequests.delete(channelId);
+      });
     _pendingStructureRequests.set(channelId, promise);
     return promise;
   };

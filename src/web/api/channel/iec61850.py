@@ -602,17 +602,24 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
                 from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
 
                 if isinstance(protocol_handler, IEC61850ClientHandler):
+                    # 优先用连接时缓存的 RCB，避免首屏现场探测导致空白
+                    rcbs = []
+                    if hasattr(protocol_handler, 'get_discovered_rcbs'):
+                        rcbs = protocol_handler.get_discovered_rcbs()
                     client = getattr(protocol_handler, '_client', None)
-                    if client and hasattr(client, 'reports') and client.reports:
+                    if not rcbs and client and hasattr(client, 'reports') and client.reports:
                         rcbs = client.reports.discover_rcbs()
-                        for rcb in rcbs:
-                            active_mark = " 🟢" if rcb.get("rpt_ena") else ""
-                            report_items.append(
-                                f"{rcb['ref']} ({rcb['rcb_type']}){active_mark}"
-                            )
-                        log.info(f"通过 ReportsPlugin 发现 {len(rcbs)} 个 RCB")
-                        if not rcbs:
-                            log.info("远端 IED 未配置报告控制块 (BRCB/URCB)，需在 ICD 中声明 ReportControl")
+                        # 现场发现成功则回写缓存，供 /reports 页面复用
+                        if rcbs and hasattr(protocol_handler, 'set_discovered_rcbs'):
+                            protocol_handler.set_discovered_rcbs(rcbs)
+                    for rcb in rcbs:
+                        active_mark = " 🟢" if rcb.get("rpt_ena") else ""
+                        report_items.append(
+                            f"{rcb['ref']} ({rcb['rcb_type']}){active_mark}"
+                        )
+                    log.info(f"Reports: 返回 {len(rcbs)} 个 RCB")
+                    if not rcbs:
+                        log.info("远端 IED 未配置报告控制块 (BRCB/URCB)，需在 ICD 中声明 ReportControl")
                 elif isinstance(protocol_handler, IEC61850ServerHandler):
                     # 服务端模式：从 ReportManager 获取已注册的 RCB
                     server = getattr(protocol_handler, '_server', None)

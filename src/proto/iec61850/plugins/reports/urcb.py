@@ -19,15 +19,15 @@ if HAS_IEC61850:
 class UrcbHandler:
     """URCB (非缓冲报告控制块) 操作"""
 
-    # RCB changes 位掩码常量
-    RCB_RPT_ENA = 0x0001
-    RCB_DAT_SET_REF = 0x0002
-    RCB_RPT_ID = 0x0004
-    RCB_CONF_REV = 0x0020
-    RCB_TRG_OPS = 0x0040
-    RCB_OPT_FLDS = 0x0080
-    RCB_GI = 0x0800
-    RCB_INTG_PD = 0x1000
+    # RCB changes 位掩码常量 (与 libiec61850 RCB_ELEMENT_* 一致)
+    RCB_RPT_ID = 1
+    RCB_RPT_ENA = 2
+    RCB_DAT_SET_REF = 8
+    RCB_CONF_REV = 16
+    RCB_OPT_FLDS = 32
+    RCB_TRG_OPS = 256
+    RCB_INTG_PD = 512
+    RCB_GI = 1024
 
     @staticmethod
     def _normalize_ref(rcb_ref: str) -> str:
@@ -185,7 +185,7 @@ class UrcbHandler:
                     changes |= UrcbHandler.RCB_INTG_PD
 
                 # 写回服务器
-                result = iec61850.IedConnection_setRCBValues(conn, nref, rcb, changes)
+                result = iec61850.IedConnection_setRCBValues(conn, rcb, changes, True)
                 if isinstance(result, (list, tuple)):
                     set_error = result[1] if len(result) > 1 else 0
                 else:
@@ -232,7 +232,7 @@ class UrcbHandler:
 
                 iec61850.ClientReportControlBlock_setGI(rcb, True)
                 result = iec61850.IedConnection_setRCBValues(
-                    conn, nref, rcb, UrcbHandler.RCB_GI
+                    conn, rcb, UrcbHandler.RCB_GI, True
                 )
                 if isinstance(result, (list, tuple)):
                     set_error = result[1] if len(result) > 1 else 0

@@ -213,6 +213,7 @@ class IEC61850ClientHandler(ClientHandler):
         self._connect_progress = 0  # 连接进度 0-100
         self._discovered_goose_items: List[Dict[str, Any]] = []  # 发现的 GOOSE 控制块
         self._discovered_datasets: List[Dict[str, Any]] = []  # 发现的 DataSet 列表
+        self._discovered_rcbs: List[Dict[str, Any]] = []  # 发现的报告控制块 (连接时缓存)
 
     def set_on_points_discovered(self, callback):
         """设置测点发现回调
@@ -321,6 +322,18 @@ class IEC61850ClientHandler(ClientHandler):
                 if self._discovered_datasets and self._log:
                     self._log.info(f"发现 {len(self._discovered_datasets)} 个 DataSet: " +
                         ", ".join(ds.get("ref", ds.get("name", "")) for ds in self._discovered_datasets))
+
+            # 缓存报告控制块 (RCB)，避免 structure 接口每次现场探测导致首屏空白
+            self._discovered_rcbs.clear()
+            client = getattr(self, '_client', None)
+            if client and getattr(client, 'reports', None):
+                try:
+                    self._discovered_rcbs.extend(client.reports.discover_rcbs())
+                    if self._discovered_rcbs and self._log:
+                        self._log.info(f"发现 {len(self._discovered_rcbs)} 个报告控制块")
+                except Exception as e:
+                    if self._log:
+                        self._log.warning(f"缓存 RCB 失败: {e}")
 
         # 阶段4: 通知上层发现的测点
         if self._on_points_discovered:
@@ -513,6 +526,14 @@ class IEC61850ClientHandler(ClientHandler):
     def get_discovered_datasets(self) -> List[Dict[str, Any]]:
         """获取发现的 DataSet 列表"""
         return list(self._discovered_datasets)
+
+    def get_discovered_rcbs(self) -> List[Dict[str, Any]]:
+        """获取连接时缓存的报告控制块列表"""
+        return list(self._discovered_rcbs)
+
+    def set_discovered_rcbs(self, rcbs: List[Dict[str, Any]]) -> None:
+        """更新 RCB 缓存 (供首次现场发现成功后回写)"""
+        self._discovered_rcbs = list(rcbs)
 
     def read_dataset_values(self, dataset_ref: str) -> Dict[str, Any]:
         """通过 DataSet 批量读取所有成员值

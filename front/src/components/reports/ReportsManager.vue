@@ -180,8 +180,8 @@
                     <template #default="{ row }">
                       <div class="report-values">
                         <div
-                          v-for="(val, ref, idx) in row.data_values"
-                          :key="idx"
+                          v-for="(val, ref) in row.data_values"
+                          :key="ref"
                           class="report-value-item"
                         >
                           <span class="value-ref">{{ ref }}:</span>
@@ -282,7 +282,7 @@ const rcbTreeData = computed<RcbTreeNode[]>(() => {
   }));
 });
 
-const filterRcbNode = (value: string, data: RcbTreeNode): boolean => {
+const filterRcbNode = (value: string, data: Record<string, any>): boolean => {
   if (!value) return true;
   return data.label.toLowerCase().includes(value.toLowerCase());
 };
@@ -290,6 +290,17 @@ const filterRcbNode = (value: string, data: RcbTreeNode): boolean => {
 watch(searchText, (val) => {
   rcbTreeRef.value?.filter(val);
 });
+
+// 监听 channelId 变化，重新加载 RCB 列表
+watch(
+  () => props.channelId,
+  (newId) => {
+    if (newId) {
+      selectedRcb.value = null;
+      loadRcbs();
+    }
+  },
+);
 
 function onRcbSelect(data: RcbTreeNode) {
   if (!data.isRcb) return;

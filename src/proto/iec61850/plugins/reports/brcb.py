@@ -18,18 +18,18 @@ if HAS_IEC61850:
 class BrcbHandler:
     """BRCB (缓冲报告控制块) 操作"""
 
-    # RCB changes 位掩码常量
-    RCB_RPT_ENA = 0x0001
-    RCB_DAT_SET_REF = 0x0002
-    RCB_RPT_ID = 0x0004
-    RCB_CONF_REV = 0x0020
-    RCB_TRG_OPS = 0x0040
-    RCB_OPT_FLDS = 0x0080
-    RCB_BUF_TIME = 0x0100
-    RCB_ENTRY_ID = 0x0200
-    RCB_TIME_OF_ENTRY = 0x0400
-    RCB_GI = 0x0800
-    RCB_PURGE_BUF = 0x2000
+    # RCB changes 位掩码常量 (与 libiec61850 RCB_ELEMENT_* 一致)
+    RCB_RPT_ID = 1
+    RCB_RPT_ENA = 2
+    RCB_DAT_SET_REF = 8
+    RCB_CONF_REV = 16
+    RCB_OPT_FLDS = 32
+    RCB_BUF_TIME = 64
+    RCB_TRG_OPS = 256
+    RCB_GI = 1024
+    RCB_PURGE_BUF = 2048
+    RCB_ENTRY_ID = 4096
+    RCB_TIME_OF_ENTRY = 8192
 
     @staticmethod
     def _normalize_ref(rcb_ref: str) -> str:
@@ -190,7 +190,7 @@ class BrcbHandler:
                     changes |= BrcbHandler.RCB_OPT_FLDS
 
                 # 写回服务器
-                result = iec61850.IedConnection_setRCBValues(conn, nref, rcb, changes)
+                result = iec61850.IedConnection_setRCBValues(conn, rcb, changes, True)
                 if isinstance(result, (list, tuple)):
                     set_error = result[1] if len(result) > 1 else 0
                 else:
@@ -243,7 +243,7 @@ class BrcbHandler:
                 # 设置 GI
                 iec61850.ClientReportControlBlock_setGI(rcb, True)
                 result = iec61850.IedConnection_setRCBValues(
-                    conn, nref, rcb, BrcbHandler.RCB_GI
+                    conn, rcb, BrcbHandler.RCB_GI, True
                 )
                 if isinstance(result, (list, tuple)):
                     set_error = result[1] if len(result) > 1 else 0
@@ -291,7 +291,7 @@ class BrcbHandler:
 
                 iec61850.ClientReportControlBlock_setPurgeBuf(rcb, True)
                 result = iec61850.IedConnection_setRCBValues(
-                    conn, nref, rcb, BrcbHandler.RCB_PURGE_BUF
+                    conn, rcb, BrcbHandler.RCB_PURGE_BUF, True
                 )
                 if isinstance(result, (list, tuple)):
                     set_error = result[1] if len(result) > 1 else 0
