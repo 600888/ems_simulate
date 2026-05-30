@@ -30,6 +30,33 @@ class UrcbHandler:
     RCB_INTG_PD = 0x1000
 
     @staticmethod
+    def _normalize_ref(rcb_ref: str) -> str:
+        """规范化 URCB 引用, 插入 FC 段 .RP.
+
+        libiec61850 的 getRCBValues/create 要求引用形如 LD/LN.RP.rcbName。
+        发现得到的裸引用 LD/LN.rcbName 缺少 FC 段, 会导致 error=3 (OBJECT_NOT_FOUND)。
+        """
+        if not rcb_ref or "." not in rcb_ref or "/" not in rcb_ref:
+            return rcb_ref
+        ln_part, rcb_name = rcb_ref.rsplit(".", 1)
+        if rcb_name in ("BR", "RP"):  # 已含 FC 段
+            return rcb_ref
+        return f"{ln_part}.RP.{rcb_name}"
+
+    @staticmethod
+    def _create_rcb_block(rcb_ref: str = ""):
+        """创建 ClientReportControlBlock"""
+        if not HAS_IEC61850 or not rcb_ref:
+            return None
+        try:
+            rcb = iec61850.ClientReportControlBlock_create(rcb_ref)
+            if rcb is not None:
+                return rcb
+        except Exception as e:
+            log.debug(f"_create_rcb_block 失败: {e}, ref={rcb_ref}")
+        return None
+
+    @staticmethod
     def get_rcb_values(connection, rcb_ref: str) -> Optional[RCBInfo]:
         """获取 URCB 所有属性值
 
@@ -48,13 +75,13 @@ class UrcbHandler:
             return None
 
         try:
-            rcb = iec61850.ClientReportControlBlock_create()
+            rcb = UrcbHandler._create_rcb_block(UrcbHandler._normalize_ref(rcb_ref))
             if not rcb:
                 log.warning(f"ClientReportControlBlock_create 失败: {rcb_ref}")
                 return None
 
             try:
-                result = iec61850.IedConnection_getRCBValues(conn, rcb_ref, rcb)
+                result = iec61850.IedConnection_getRCBValues(conn, UrcbHandler._normalize_ref(rcb_ref), rcb)
                 if isinstance(result, (list, tuple)):
                     error = result[1] if len(result) > 1 else 0
                 else:
@@ -101,13 +128,14 @@ class UrcbHandler:
             return False
 
         try:
-            rcb = iec61850.ClientReportControlBlock_create()
+            nref = UrcbHandler._normalize_ref(rcb_ref)
+            rcb = UrcbHandler._create_rcb_block(nref)
             if not rcb:
                 return False
 
             try:
                 # 先读取当前值
-                result = iec61850.IedConnection_getRCBValues(conn, rcb_ref, rcb)
+                result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
                 if isinstance(result, (list, tuple)):
                     error = result[1] if len(result) > 1 else 0
                 else:
@@ -157,7 +185,7 @@ class UrcbHandler:
                     changes |= UrcbHandler.RCB_INTG_PD
 
                 # 写回服务器
-                result = iec61850.IedConnection_setRCBValues(conn, rcb_ref, rcb, changes)
+                result = iec61850.IedConnection_setRCBValues(conn, nref, rcb, changes)
                 if isinstance(result, (list, tuple)):
                     set_error = result[1] if len(result) > 1 else 0
                 else:
@@ -188,12 +216,13 @@ class UrcbHandler:
             return False
 
         try:
-            rcb = iec61850.ClientReportControlBlock_create()
+            nref = UrcbHandler._normalize_ref(rcb_ref)
+            rcb = UrcbHandler._create_rcb_block(nref)
             if not rcb:
                 return False
 
             try:
-                result = iec61850.IedConnection_getRCBValues(conn, rcb_ref, rcb)
+                result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
                 if isinstance(result, (list, tuple)):
                     error = result[1] if len(result) > 1 else 0
                 else:
@@ -203,7 +232,7 @@ class UrcbHandler:
 
                 iec61850.ClientReportControlBlock_setGI(rcb, True)
                 result = iec61850.IedConnection_setRCBValues(
-                    conn, rcb_ref, rcb, UrcbHandler.RCB_GI
+                    conn, nref, rcb, UrcbHandler.RCB_GI
                 )
                 if isinstance(result, (list, tuple)):
                     set_error = result[1] if len(result) > 1 else 0

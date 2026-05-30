@@ -5,6 +5,7 @@
 """
 
 import datetime
+import re
 from typing import Any, Dict, List, Optional, Callable
 
 from ..base import Iec61850Plugin
@@ -36,6 +37,16 @@ class ReportsPlugin:
         self._connection = None
         self._registry = None
         self._initialized = False
+        # 从 ICD 配置中获取的已知 RCB 名称（自定义命名）
+        self._known_rcb_names: List[str] = []
+
+    def set_known_rcb_names(self, names: List[str]) -> None:
+        """设置已知的 RCB 名称（从 ICD 导入获取）
+
+        用于发现自定义命名（非 brcb/urcb 前缀）的 RCB。
+        """
+        self._known_rcb_names = list(names)
+        log.info(f"已设置 {len(names)} 个已知 RCB 名称")
 
     @property
     def name(self) -> str:
@@ -69,6 +80,7 @@ class ReportsPlugin:
     # ==================== RCB 发现 ====================
 
     # 回退探测: 常见的 RCB 名称模式 (brcb01..brcb20, urcb01..urcb20)
+    # 自定义 RCB 名通过 set_known_rcb_names() 从 ICD 导入注入
     _FALLBACK_RCB_NAMES = (
         [f"brcb{i:02d}" for i in range(1, 21)] +
         [f"urcb{i:02d}" for i in range(1, 21)]
@@ -147,27 +159,40 @@ class ReportsPlugin:
 
     def _discover_rcbs_via_directory(self, conn, ln_ref: str,
                                       ld_name: str, ln_name: str) -> List[Dict]:
-        """策略一: 通过 ACSI 目录发现 RCB"""
+        """策略一: 通过 ACSI 目录发现 RCB
+
+        仅对 LLN0 执行 ACSI 目录查询（RCB 按 IEC 61850 标准只定义在 LLN0 下）。
+        非 LLN0 节点直接返回空，交由探测法处理。
+        """
+        if ln_name.upper() != "LLN0":
+            return []
+
         rcbs = []
         for _rcb_type, acsi_class in [("URCB", AcsiClass.URCB), ("BRCB", AcsiClass.BRCB)]:
             try:
                 result = iec61850.IedConnection_getLogicalNodeDirectory(
                     conn, ln_ref, acsi_class
                 )
-                rcb_names_raw = result[0] if isinstance(result, (list, tuple)) else result
-                error = result[1] if isinstance(result, (list, tuple)) else 0
 
-                if error != iec61850.IED_ERROR_OK:
-                    log.debug(f"ACSI目录法 获取 {_rcb_type} 失败: {ln_ref}, error={error}")
-                    continue
+                if isinstance(result, (list, tuple)):
+                    rcb_names_raw = result[0]
+                else:
+                    rcb_names_raw = result
 
                 if rcb_names_raw is None:
+                    log.debug(f"ACSI目录法: {_rcb_type} {ln_ref} 返回空")
                     continue
 
-                rcb_name_list = get_list_from_linked_list(rcb_names_raw)
+                rcb_name_list = self._extract_names_from_raw_result(
+                    rcb_names_raw, _rcb_type, ln_ref
+                )
 
-                if rcb_name_list:
-                    log.info(f"ACSI目录法: {ln_ref} 下发现 {len(rcb_name_list)} 个 {_rcb_type}: {rcb_name_list}")
+                if not rcb_name_list:
+                    log.debug(f"ACSI目录法: {_rcb_type} {ln_ref} 无有效 RCB 名称")
+                    continue
+
+                log.info(f"ACSI目录法: {ln_ref} 下发现 "
+                         f"{len(rcb_name_list)} 个 {_rcb_type}: {rcb_name_list}")
 
                 for rcb_name in rcb_name_list:
                     rcb_ref = f"{ln_ref}.{rcb_name}"
@@ -180,48 +205,222 @@ class ReportsPlugin:
                 continue
         return rcbs
 
+    def _extract_names_from_raw_result(self, raw_result, rcb_type: str,
+                                        ln_ref: str) -> List[str]:
+        """从 ACSI 目录原始结果中提取合法的 RCB 名称列表
+
+        过滤规则:
+        - 去除 C 指针地址（0x...）
+        - 去除 Python repr 垃圾（'sLinkedList', 'at', '*', '\\>' 等）
+        - 只保留字母数字和下划线开头的合法名
+        """
+        raw_names = []
+        try:
+            raw_names = get_list_from_linked_list(raw_result)
+        except Exception:
+            pass
+
+        valid_names = []
+        seen = set()
+        for name in raw_names:
+            if not name or not isinstance(name, str):
+                continue
+            name = name.strip()
+            if not name:
+                continue
+            # 过滤 C 指针地址
+            if name.startswith('0x') or name.startswith('0X'):
+                continue
+            if re.match(r'^0x[0-9a-fA-F]+', name):
+                continue
+            # 过滤明显不是 RCB 名的垃圾
+            # RCB 名应该是字母开头、长度适中
+            if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
+                continue
+            if len(name) > 100 or len(name) < 2:
+                continue
+            # 去重
+            key = name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            valid_names.append(name)
+
+        if raw_names and not valid_names:
+            log.debug(f"ACSI目录法 {rcb_type} {ln_ref}: "
+                      f"原始 {len(raw_names)} 个全部过滤")
+        elif valid_names:
+            log.debug(f"ACSI目录法 {rcb_type} {ln_ref}: "
+                      f"提取 {len(valid_names)}/{len(raw_names)} 个合法名")
+
+        return valid_names
+
     def _discover_rcbs_via_probe(self, conn, ln_ref: str,
                                   ld_name: str, ln_name: str) -> List[Dict]:
-        """策略二: 回退 - 探测 RptEna 属性发现 RCB
+        """策略二: 回退 - 用 getRCBValues 验证 RCB
 
-        当服务端不支持 ACSI 目录法时，通过尝试读取
-        LLN0.RP.brcb01.RptEna 等属性是否存在来探测 RCB。
+        RCB 通过专用 MMS 服务 (GetBRCBValues/GetURCBValues) 访问。
+        探测候选来源:
+        1. DATA_OBJECT 目录中的 DO（部分服务端将 RCB 也列入 DO 目录）
+        2. 标准 RCB 名称 brcb01..brcb20, urcb01..urcb20
+        3. ICD 导入时缓存的已知自定义 RCB 名称
+
+        验证使用 IedConnection_getRCBValues 标准 MMS 服务。
         """
         rcbs = []
-        fc_rp = self._connection.get_fc_value("RP") if hasattr(self._connection, 'get_fc_value') else None
-        fc_br = getattr(iec61850, 'IEC61850_FC_BR', None) if HAS_IEC61850 else None
+        candidates = []  # (rcb_ref, do_name)
 
-        # 备用: 使用 getLogicalNodeDirectory(DATA_OBJECT) 获取所有 DO
-        # 从中识别 RCB (名称以 brcb/urcb 开头)
+        # 途径 A: 从 DATA_OBJECT 目录中获取 DO 名作为候选
         do_names = self._probe_do_names(conn, ln_ref)
-        if not do_names:
-            return rcbs
+        if do_names:
+            for do_name in do_names:
+                candidates.append((f"{ln_ref}.{do_name}", do_name))
 
-        # 过滤出 RCB 名称 (brcb/urcb 开头的 DO)
-        rcb_candidates = []
-        for do_name in do_names:
-            lower = do_name.lower()
-            if lower.startswith("brcb") or lower.startswith("urcb"):
-                rcb_candidates.append(do_name)
-
-        if not rcb_candidates:
-            log.debug(f"探测法: {ln_ref} 下无 brcb/urcb 前缀的 DO")
-            return rcbs
-
-        log.info(f"探测法: {ln_ref} 下发现 {len(rcb_candidates)} 个 RCB 候选: {rcb_candidates}")
-
-        for rcb_name in rcb_candidates:
-            rcb_type = "BRCB" if rcb_name.lower().startswith("brcb") else "URCB"
-            guess_fc = "RP" if rcb_type == "URCB" else "BR"
+        # 途径 B: 直接尝试已知标准 RCB 名称
+        for rcb_name in self._FALLBACK_RCB_NAMES:
             rcb_ref = f"{ln_ref}.{rcb_name}"
+            if not any(c[0] == rcb_ref for c in candidates):
+                candidates.append((rcb_ref, rcb_name))
 
-            # 验证: 尝试读取 rptEna 属性 (FC=RP 或 BR)
-            if self._verify_rcb_by_rptena(conn, rcb_ref, guess_fc):
+        # 途径 C: 尝试从 ICD 配置中获取的已知 RCB 名称（自定义命名）
+        if self._known_rcb_names and ln_name.upper() == "LLN0":
+            for rcb_name in self._known_rcb_names:
+                rcb_ref = f"{ln_ref}.{rcb_name}"
+                if not any(c[0] == rcb_ref for c in candidates):
+                    candidates.append((rcb_ref, rcb_name))
+                    log.debug(f"加入已知 RCB 名: {rcb_name}")
+
+        if not candidates:
+            return rcbs
+
+        log.debug(f"探测法: {ln_ref} 下有 {len(candidates)} 个候选 RCB 待验证")
+
+        for rcb_ref, do_name in candidates:
+            # 先尝试 getRCBValues 验证（标准 MMS 服务）
+            rcb_type = self._infer_type_via_get_values(conn, rcb_ref, do_name)
+            if rcb_type is not None:
                 rcb_info = self._get_rcb_info(rcb_ref, rcb_type, ld_name, ln_name)
                 rcbs.append(rcb_info)
-                log.info(f"探测法发现 {rcb_type}: {rcb_ref}")
+                log.info(f"探测法发现 {rcb_type}: {rcb_ref} (getRCBValues)")
+                continue
+
+            # 回退: 通过 RptEna 读验证（正确检查 error 码）
+            verified, fc_hint = self._verify_by_rptena(conn, rcb_ref, do_name)
+            if not verified:
+                continue
+
+            # 按 FC 推断类型: RP→URCB, BR→BRCB
+            rcb_type = "URCB" if fc_hint == "RP" else "BRCB"
+            rcb_info = self._get_rcb_info(rcb_ref, rcb_type, ld_name, ln_name)
+            rcbs.append(rcb_info)
+            log.info(f"探测法发现 {rcb_type}: {rcb_ref} (RptEna)")
 
         return rcbs
+
+    def _verify_by_rptena(self, conn, rcb_ref: str,
+                           do_name: str) -> tuple:
+        """通过读取 RptEna 验证 RCB 是否存在
+
+        IedConnection_readBooleanValue 返回 (value, error) 元组。
+        必须检查 error 码，不能仅检查 None。
+
+        Returns:
+            (is_valid, fc_hint) - 是否验证通过，以及成功时的 FC
+        """
+        if not HAS_IEC61850:
+            return False, ""
+
+        # 根据名称前缀优先尝试对应的 FC
+        lower = do_name.lower()
+        if lower.startswith("urcb"):
+            fcs_priority = ["RP", "BR"]
+        elif lower.startswith("brcb"):
+            fcs_priority = ["BR", "RP"]
+        else:
+            fcs_priority = ["RP", "BR"]
+
+        for fc_val in fcs_priority:
+            try:
+                fc_const = self._get_fc_const(fc_val)
+                if fc_const is None:
+                    continue
+                rpt_ena_ref = f"{rcb_ref}.RptEna"
+                result = iec61850.IedConnection_readBooleanValue(
+                    conn, rpt_ena_ref, fc_const
+                )
+                # 正确解析 (value, error) 返回格式
+                if isinstance(result, (list, tuple)) and len(result) >= 2:
+                    _val, err = result[0], result[1]
+                else:
+                    _val, err = result, 0
+
+                if err == iec61850.IED_ERROR_OK:
+                    # 读取 RptEna 成功 → 确认是 RCB
+                    log.debug(f"RptEna 验证成功: {rcb_ref} (FC={fc_val})")
+                    return True, fc_val
+                elif err in (iec61850.IED_ERROR_OBJECT_NOT_FOUND, 3):
+                    # OBJECT_NOT_FOUND 明确表示该路径不存在
+                    break
+            except Exception:
+                continue
+        return False, ""
+
+    def _infer_type_via_get_values(self, conn, rcb_ref: str,
+                                    do_name: str) -> Optional[str]:
+        """用 getRCBValues 二次确认 RCB 并推断类型
+
+        Returns: "BRCB" / "URCB" / None (非 RCB 或无法确认)
+        """
+        if not HAS_IEC61850:
+            return None
+
+        # RCB 名前缀决定优先尝试的 FC 段; getRCBValues 要求 LD/LN.{BR|RP}.name
+        lower = do_name.lower()
+        if "." in rcb_ref and "/" in rcb_ref:
+            ln_part, rcb_name = rcb_ref.rsplit(".", 1)
+        else:
+            ln_part, rcb_name = "", rcb_ref
+        if lower.startswith("urcb"):
+            fc_order = [("RP", "URCB"), ("BR", "BRCB")]
+        else:
+            fc_order = [("BR", "BRCB"), ("RP", "URCB")]
+
+        for fc, rcb_type in fc_order:
+            nref = f"{ln_part}.{fc}.{rcb_name}" if ln_part else rcb_ref
+            rcb_test = None
+            try:
+                rcb_test = self._create_rcb_block(nref)
+                if rcb_test is None:
+                    continue
+                result = iec61850.IedConnection_getRCBValues(conn, nref, rcb_test)
+                error = result[1] if isinstance(result, (list, tuple)) else result
+                if error == iec61850.IED_ERROR_OK:
+                    return rcb_type
+            except Exception:
+                pass
+            finally:
+                if rcb_test is not None:
+                    try:
+                        iec61850.ClientReportControlBlock_destroy(rcb_test)
+                    except Exception:
+                        pass
+        return None
+
+    @staticmethod
+    def _create_rcb_block(rcb_ref: str = ""):
+        """创建 ClientReportControlBlock
+
+        此版本 SWIG 绑定需要 rcbReference 参数。
+        """
+        if not HAS_IEC61850 or not rcb_ref:
+            return None
+        try:
+            rcb = iec61850.ClientReportControlBlock_create(rcb_ref)
+            if rcb is not None:
+                return rcb
+        except Exception as e:
+            log.debug(f"_create_rcb_block 失败: {e}, ref={rcb_ref}")
+        return None
 
     def _probe_do_names(self, conn, ln_ref: str) -> List[str]:
         """获取 LN 下的所有 DO 名称"""

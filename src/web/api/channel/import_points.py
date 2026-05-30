@@ -272,6 +272,65 @@ async def import_icd(
                         except Exception as ds_err:
                             log.warning(f"注册纯 DataSet 失败 ({ds_info.get('ds_name', '')}): {ds_err}")
 
+                # ===== 2ab. 注册 ReportControl (RCB) =====
+                # 从 ICD 的 ReportControl 元素创建 RCB 对象到 IedModel
+                report_controls = goose_result.get("report_controls", [])
+                rc_registered = 0
+                if report_controls and iec61850_server:
+                    log.info(f"ReportControl 注册准备: {len(report_controls)}个")
+                    for rc_info in report_controls:
+                        try:
+                            # 确保 DataSet 已注册 (RCB 引用的 DataSet)
+                            ds_ref = rc_info.get("data_set_ref", "")
+                            if ds_ref and iec61850_server:
+                                ds_name = ds_ref.split("$")[-1] if "$" in ds_ref else ""
+                                if ds_name and not any(
+                                    d.get("ref") == ds_ref
+                                    for d in iec61850_server.browse_datasets()
+                                ):
+                                    iec61850_server.register_dataset(
+                                        ld_inst=rc_info["ld_inst"],
+                                        ds_name=ds_name,
+                                        data_set_ref=ds_ref,
+                                        entries=None,
+                                    )
+                            # 注册 RCB 到 MMS 模型
+                            trg_ops = rc_info.get("trg_ops", {})
+                            opt_fields = rc_info.get("opt_fields", {})
+                            # 如果 register_rcb 不可用，至少存到目录
+                            if hasattr(iec61850_server, 'reports') and iec61850_server.reports:
+                                success = iec61850_server.reports.register_rcb(
+                                    ld_inst=rc_info["ld_inst"],
+                                    name=rc_info["name"],
+                                    rcb_type=rc_info["rcb_type"],
+                                    rpt_id=rc_info.get("rpt_id", rc_info["name"]),
+                                    data_set_ref=ds_ref,
+                                    conf_rev=rc_info.get("conf_rev", 1),
+                                    buf_time=rc_info.get("buf_time", 0),
+                                    intg_period=rc_info.get("intg_period", 0),
+                                    trg_ops=trg_ops if any(trg_ops.values()) else None,
+                                    opt_fields=opt_fields if any(opt_fields.values()) else None,
+                                )
+                                if success:
+                                    rc_registered += 1
+                                    log.info(f"RCB 已注册: {rc_info['ld_inst']}/{rc_info['name']}")
+                                else:
+                                    log.warning(f"RCB 注册失败: {rc_info['ld_inst']}/{rc_info['name']}")
+                            else:
+                                log.warning(f"reports 管理器不可用，跳过 RCB 注册: {rc_info['name']}")
+                        except Exception as rc_err:
+                            log.warning(f"注册 RCB 异常 ({rc_info.get('name', '')}): {rc_err}")
+                    log.info(f"ReportControl 注册完成: {rc_registered}/{len(report_controls)}")
+
+                # 缓存已知 RCB 名称供客户端探测使用
+                if report_controls:
+                    try:
+                        from src.web.api.channel.report import set_known_rcb_names
+                        rcb_names = [rc["name"] for rc in report_controls if rc.get("name")]
+                        set_known_rcb_names(channel_id, rcb_names)
+                    except Exception as e:
+                        log.warning(f"缓存已知 RCB 名称失败: {e}")
+
                 # ===== 2b. 创建 GOOSE Publisher（注册 GSEControlBlock） =====
                 # GoCB 引用的 DataSet 会在 add_goose_control_block 内部创建
                 # 但纯 DataSet 已在 2a 步骤中提前注册到 IedModel

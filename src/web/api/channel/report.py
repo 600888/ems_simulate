@@ -16,6 +16,21 @@ from src.web.api.schemas.report import (
 )
 from src.web.log import log
 
+# 通道对应的已知 RCB 名称缓存（从 ICD 导入时填充）
+# key=channel_id, value=[rcb_name, ...]
+_known_rcb_names_cache: Dict[int, List[str]] = {}
+
+
+def set_known_rcb_names(channel_id: int, names: List[str]) -> None:
+    """设置某通道的已知 RCB 名称（ICD ReportControl 的 name 属性）"""
+    _known_rcb_names_cache[channel_id] = list(names)
+    log.info(f"已知 RCB 名称已缓存: channel={channel_id}, names={names}")
+
+
+def get_known_rcb_names(channel_id: int) -> List[str]:
+    """获取某通道已知的 RCB 名称"""
+    return _known_rcb_names_cache.get(channel_id, [])
+
 router = APIRouter(tags=["channel"])
 
 
@@ -109,10 +124,21 @@ def _is_server_mode(reports_obj: Any) -> bool:
     return hasattr(reports_obj, 'browse_rcbs') and not hasattr(reports_obj, 'discover_rcbs')
 
 
-def _discover_rcbs(reports: Any) -> list:
-    """统一获取 RCB 列表，兼容客户端和服务端模式"""
+def _discover_rcbs(reports: Any, channel_id: int = 0) -> list:
+    """统一获取 RCB 列表，兼容客户端和服务端模式
+
+    客户端模式: 先注入已知 ICD RCB 名称，再执行 MMS 发现
+    服务端模式: 直接从本地 ReportManager 获取
+    """
     if _is_server_mode(reports):
         return _server_rcbs_to_discovery_format(reports)
+
+    # 客户端模式: 注入已知 RCB 名称
+    known_names = get_known_rcb_names(channel_id)
+    if known_names and hasattr(reports, 'set_known_rcb_names'):
+        reports.set_known_rcb_names(known_names)
+        log.debug(f"注入 {len(known_names)} 个已知 RCB 名称到客户端插件")
+
     return reports.discover_rcbs()
 
 
@@ -124,7 +150,7 @@ async def list_rcbs(body: RcbListRequest, request: Request):
         if not reports:
             return BaseResponse(code=400, message="设备未就绪或 Reports 插件不可用", data={"rcbs": []})
 
-        rcbs = _discover_rcbs(reports)
+        rcbs = _discover_rcbs(reports, body.channel_id)
         return BaseResponse(message="获取 RCB 列表成功", data={"rcbs": rcbs})
     except Exception as e:
         log.error(f"获取 RCB 列表失败: {e}")

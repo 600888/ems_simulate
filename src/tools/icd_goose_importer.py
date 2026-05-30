@@ -226,6 +226,8 @@ class IcdGooseImporter:
         self._dataset_map: Dict[Tuple, List[ET.Element]] = {}
         # 未被 GSEControl 引用的纯 DataSet（无 GOOSE 发布）
         self._pure_datasets: List[Dict[str, Any]] = []
+        # ReportControl 列表（自定义 RCB）
+        self._report_controls: List[Dict[str, Any]] = []
 
     def _tag(self, name: str) -> str:
         """根据检测到的命名空间构造完整 tag"""
@@ -396,7 +398,6 @@ class IcdGooseImporter:
                     for ds_name, ds_elem in dataset_by_name.items():
                         if ds_name not in referenced_datasets:
                             pure_ds_members = self._parse_dataset(ds_elem, ld_inst)
-                            # 构建 data_set_ref: "CTMP01/LLN0$dsRack1CellTemp"
                             ln_name = self._build_ln_name(
                                 ln0.get("prefix", ""), ln0.get("lnClass", "LLN0"), ln0.get("inst", "")
                             )
@@ -419,6 +420,15 @@ class IcdGooseImporter:
                                 "member_count": len(pure_ds_members),
                                 "entries": entries,
                             })
+
+                    # 解析 ReportControl（自定义 RCB，非标准 brcb/urcb 命名）
+                    ln_name = self._build_ln_name(
+                        ln0.get("prefix", ""), ln0.get("lnClass", "LLN0"), ln0.get("inst", "")
+                    )
+                    for rc_elem in ln0.findall(self._tag("ReportControl")):
+                        rc_info = self._parse_report_control(rc_elem, ld_inst, ln_name)
+                        if rc_info:
+                            self._report_controls.append(rc_info)
 
     def _parse_gse_control(
         self,
@@ -536,6 +546,73 @@ class IcdGooseImporter:
 
         return members
 
+    def _parse_report_control(self, rc_elem: ET.Element, ld_inst: str,
+                                ln_name: str) -> Optional[Dict[str, Any]]:
+        """解析单个 ReportControl 元素"""
+        name = rc_elem.get("name", "")
+        if not name:
+            return None
+
+        buffered = rc_elem.get("buffered", "false").lower() == "true"
+        rcb_type = "BRCB" if buffered else "URCB"
+
+        rpt_id = rc_elem.get("rptID", name)
+        dat_set = rc_elem.get("datSet", "")
+        try:
+            conf_rev = int(rc_elem.get("confRev", "1"))
+        except ValueError:
+            conf_rev = 1
+        try:
+            buf_time = int(rc_elem.get("bufTime", "0"))
+        except ValueError:
+            buf_time = 0
+        try:
+            intg_period = int(rc_elem.get("intgPd", "0"))
+        except ValueError:
+            intg_period = 0
+
+        # 解析 TrgOps
+        trg_ops = {"dchg": False, "qchg": False, "dupd": False, "period": False, "gi": False}
+        trg_elem = rc_elem.find(self._tag("TrgOps"))
+        if trg_elem is not None:
+            for k in trg_ops:
+                v = trg_elem.get(k, "false")
+                trg_ops[k] = v.lower() == "true"
+
+        # 解析 OptFields
+        opt_fields = {
+            "seq_num": False, "time_stamp": False, "data_set": False,
+            "reason_code": False, "data_ref": False, "entry_id": False,
+            "config_ref": False, "buf_ovfl": False,
+        }
+        opt_elem = rc_elem.find(self._tag("OptFields"))
+        if opt_elem is not None:
+            key_map = {"seqNum": "seq_num", "timeStamp": "time_stamp",
+                       "dataSet": "data_set", "reasonCode": "reason_code",
+                       "dataRef": "data_ref", "entryID": "entry_id",
+                       "configRef": "config_ref", "bufOvfl": "buf_ovfl"}
+            for xml_key, py_key in key_map.items():
+                v = opt_elem.get(xml_key, "false")
+                opt_fields[py_key] = v.lower() == "true"
+
+        data_set_ref = f"{ld_inst}/{ln_name}${dat_set}" if dat_set else ""
+
+        rc_info = {
+            "ld_inst": ld_inst,
+            "name": name,
+            "rcb_type": rcb_type,
+            "rpt_id": rpt_id,
+            "data_set_ref": data_set_ref,
+            "conf_rev": conf_rev,
+            "buf_time": buf_time,
+            "intg_period": intg_period,
+            "ln_name": ln_name,
+            "trg_ops": trg_ops,
+            "opt_fields": opt_fields,
+        }
+        log.info(f"ICD ReportControl: {ld_inst}/{ln_name}.{name}, type={rcb_type}")
+        return rc_info
+
     def get_pure_datasets(self) -> List[Dict[str, Any]]:
         """获取未被 GSEControl 引用的纯 DataSet 列表
 
@@ -550,6 +627,26 @@ class IcdGooseImporter:
             }]
         """
         return list(self._pure_datasets)
+
+    def get_report_controls(self) -> List[Dict[str, Any]]:
+        """获取从 ICD 解析的 ReportControl 列表
+
+        Returns:
+            [{
+                "ld_inst": str,        # 逻辑设备实例名
+                "name": str,            # ReportControl name (如 rpRack1CellTemp)
+                "rcb_type": str,        # "BRCB" (buffered=true) / "URCB" (buffered=false)
+                "rpt_id": str,          # rptID 属性
+                "data_set_ref": str,    # datSet 属性引用的 DataSet 引用路径
+                "conf_rev": int,        # 配置修订号
+                "buf_time": int,        # 缓冲时间 (ms), 仅 BRCB
+                "intg_period": int,     # 完整性周期 (ms), 仅 URCB
+                "ln_name": str,         # 所属 LN 名称 (通常是 LLN0)
+                "trg_ops": dict,        # 触发选项
+                "opt_fields": dict,     # 可选字段
+            }]
+        """
+        return list(self._report_controls)
 
     def get_import_summary(self) -> Dict[str, Any]:
         """获取解析摘要"""
@@ -598,5 +695,6 @@ def import_goose_from_icd(file_path: str, interface: str = "eth0") -> Dict[str, 
         "publishers": publishers,
         "subscriptions": subscriptions,
         "pure_datasets": importer.get_pure_datasets(),
+        "report_controls": importer.get_report_controls(),
         "summary": importer.get_import_summary(),
     }

@@ -84,12 +84,12 @@ FRAME_TYPE_DESC = {
 
 # ===== ACSI 类常量 =====
 class AcsiClass(IntEnum):
-    """ACSI 类枚举"""
-    DATA_OBJECT = 0
-    DATA_SET = 3
-    BRCB = 5
-    URCB = 6
-    GOOSE = 9
+    """ACSI 类枚举 (值对应 pyiec61850 ACSIClass)"""
+    DATA_OBJECT = getattr(_iec61850, 'ACSI_CLASS_DATA_OBJECT', 0)
+    DATA_SET = getattr(_iec61850, 'ACSI_CLASS_DATA_SET', 1)
+    BRCB = getattr(_iec61850, 'ACSI_CLASS_BRCB', 2)
+    URCB = getattr(_iec61850, 'ACSI_CLASS_URCB', 3)
+    GOOSE = getattr(_iec61850, 'ACSI_CLASS_GoCB', 7)
 
 
 # ===== FC -> FrameType 推断映射 =====
