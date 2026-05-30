@@ -465,3 +465,146 @@ export async function getIEC61850DatasetDetail(
     throw error;
   }
 }
+
+// ===== IEC 61850 文件服务类型 =====
+
+export interface FileEntry {
+  name: string;
+  type: 'file' | 'directory';
+  size: number;
+  size_human: string;
+  last_modified: string | null;
+  full_path: string;
+}
+
+export interface FileDownloadResult {
+  filename: string;
+  data: string;  // Base64 编码
+  size: number;
+  cached: boolean;
+}
+
+export interface FileCacheEntry {
+  remote_path: string;
+  local_path: string;
+  file_size: number;
+  remote_modified: string | null;
+  download_time: string | null;
+  checksum: string | null;
+}
+
+// ===== IEC 61850 文件服务 API =====
+
+export async function getFileDirectory(
+  channelId: number,
+  directory: string = '',
+): Promise<{ directory: string; entries: FileEntry[]; total: number } | null> {
+  try {
+    return await requestApi(CHANNEL_API.IEC61850_FILE_DIRECTORY, 'post', {
+      channel_id: channelId,
+      directory,
+    });
+  } catch (error) {
+    console.error('Error fetching file directory:', error);
+    return null;
+  }
+}
+
+export async function getFileDirectoryTree(
+  channelId: number,
+  directory: string = '',
+  maxDepth: number = 5,
+): Promise<{ directory: string; entries: FileEntry[]; total: number } | null> {
+  try {
+    return await requestApi(CHANNEL_API.IEC61850_FILE_DIRECTORY_TREE, 'post', {
+      channel_id: channelId,
+      directory,
+      max_depth: maxDepth,
+    });
+  } catch (error) {
+    console.error('Error fetching file directory tree:', error);
+    return null;
+  }
+}
+
+export async function downloadRemoteFile(
+  channelId: number,
+  filename: string,
+  useCache: boolean = true,
+): Promise<FileDownloadResult | null> {
+  try {
+    return await requestApi(CHANNEL_API.IEC61850_FILE_DOWNLOAD, 'post', {
+      channel_id: channelId,
+      filename,
+      use_cache: useCache,
+      return_format: 'json',
+    });
+  } catch (error) {
+    console.error('Error downloading remote file:', error);
+    return null;
+  }
+}
+
+export async function uploadRemoteFile(
+  channelId: number,
+  remoteFilename: string,
+  fileData: string,  // Base64 编码
+): Promise<boolean> {
+  try {
+    const result = await requestApi(CHANNEL_API.IEC61850_FILE_UPLOAD, 'post', {
+      channel_id: channelId,
+      remote_filename: remoteFilename,
+      file_data: fileData,
+    });
+    return result !== null;
+  } catch (error) {
+    console.error('Error uploading remote file:', error);
+    return false;
+  }
+}
+
+export async function deleteRemoteFile(
+  channelId: number,
+  filename: string,
+): Promise<boolean> {
+  try {
+    const result = await requestApi(CHANNEL_API.IEC61850_FILE_DELETE, 'post', {
+      channel_id: channelId,
+      filename,
+    });
+    return result !== null;
+  } catch (error) {
+    console.error('Error deleting remote file:', error);
+    return false;
+  }
+}
+
+export async function getFileCacheList(
+  channelId: number,
+): Promise<FileCacheEntry[]> {
+  try {
+    const data = await requestApi(CHANNEL_API.IEC61850_FILE_CACHE_LIST, 'post', {
+      channel_id: channelId,
+    });
+    return data?.files || [];
+  } catch (error) {
+    console.error('Error fetching file cache list:', error);
+    return [];
+  }
+}
+
+export async function clearFileCache(
+  channelId: number,
+  remotePath: string = '',
+): Promise<number> {
+  try {
+    const data = await requestApi(CHANNEL_API.IEC61850_FILE_CACHE_CLEAR, 'post', {
+      channel_id: channelId,
+      remote_path: remotePath,
+    });
+    return data?.cleared || 0;
+  } catch (error) {
+    console.error('Error clearing file cache:', error);
+    return 0;
+  }
+}

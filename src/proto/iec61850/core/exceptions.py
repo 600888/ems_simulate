@@ -76,4 +76,19 @@ class FCResolveError(Iec61850Error):
 
 class TypeResolveError(Iec61850Error):
     """类型推断失败"""
+
+
+class FileError(Iec61850Error):
+    """文件服务相关异常"""
+    pass
+
+
+class FileTransferError(FileError):
+    """文件传输异常"""
+    pass
+
+
+class FileNotFoundError(FileError):
+    """远程文件不存在"""
+    pass
     pass

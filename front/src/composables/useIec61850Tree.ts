@@ -148,6 +148,20 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
           type: cat.label,
           linkTo: makeLinkTo('/reports'),
         }));
+      } else if (cat.key === 'Files') {
+        // Files 分类: 导航到文件浏览器页面
+        categoryChildren = items.map((item: string, itemIndex: number) => ({
+          nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${itemIndex}`,
+          label: item,
+          isGroup: false,
+          id: 0,
+          isIec61850Child: true,
+          iec61850Level: 'ld' as const,
+          name: item,
+          deviceName: deviceName,
+          type: cat.label,
+          linkTo: makeLinkTo('/files'),
+        }));
       } else {
         // 其他分类: 仍然为扁平列表
         categoryChildren = items.map((item: string, itemIndex: number) => ({
@@ -173,7 +187,7 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
         name: cat.label,
         deviceName: deviceName,
         type: cat.label,
-        linkTo: cat.key === 'GOOSE' ? makeLinkTo('/goose') : cat.key === 'Reports' ? makeLinkTo('/reports') : undefined,
+        linkTo: cat.key === 'GOOSE' ? makeLinkTo('/goose') : cat.key === 'Reports' ? makeLinkTo('/reports') : cat.key === 'Files' ? makeLinkTo('/files') : undefined,
         children: categoryChildren,
       });
     } else {
@@ -187,7 +201,7 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
         name: cat.label,
         deviceName: deviceName,
         type: cat.label,
-        linkTo: cat.key === 'GOOSE' ? makeLinkTo('/goose') : cat.key === 'Reports' ? makeLinkTo('/reports') : undefined,
+        linkTo: cat.key === 'GOOSE' ? makeLinkTo('/goose') : cat.key === 'Reports' ? makeLinkTo('/reports') : cat.key === 'Files' ? makeLinkTo('/files') : undefined,
       });
     }
   });

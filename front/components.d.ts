@@ -72,6 +72,7 @@ declare module 'vue' {
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
     ElTreeSelect: typeof import('element-plus/es')['ElTreeSelect']
     ElUpload: typeof import('element-plus/es')['ElUpload']
+    FileExplorer: typeof import('./src/components/files/FileExplorer.vue')['default']
     FloatRegister: typeof import('./src/components/register/FloatRegister.vue')['default']
     GooseCapture: typeof import('./src/components/goose/GooseCapture.vue')['default']
     GooseManager: typeof import('./src/components/goose/GooseManager.vue')['default']

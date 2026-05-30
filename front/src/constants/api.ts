@@ -29,6 +29,13 @@ export const CHANNEL_API = {
   IEC61850_READ_POINT: '/api/channels/iec61850-read-point',
   IEC61850_WRITE_POINT: '/api/channels/iec61850-write-point',
   IEC61850_DATASET_DETAIL: '/api/channels/iec61850-dataset-detail',
+  IEC61850_FILE_DIRECTORY: '/api/channels/iec61850-file-directory',
+  IEC61850_FILE_DIRECTORY_TREE: '/api/channels/iec61850-file-directory-tree',
+  IEC61850_FILE_DOWNLOAD: '/api/channels/iec61850-file-download',
+  IEC61850_FILE_UPLOAD: '/api/channels/iec61850-file-upload',
+  IEC61850_FILE_DELETE: '/api/channels/iec61850-file-delete',
+  IEC61850_FILE_CACHE_LIST: '/api/channels/iec61850-file-cache-list',
+  IEC61850_FILE_CACHE_CLEAR: '/api/channels/iec61850-file-cache-clear',
 } as const;
 
 // ===== 设备相关 =====

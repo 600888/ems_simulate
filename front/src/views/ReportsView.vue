@@ -24,8 +24,10 @@ watch(
 
 <style scoped>
 .reports-view {
-  height: 100%;
+  height: calc(100vh - var(--header-height) - var(--tags-height) - var(--footer-height));
   padding: 16px;
+  box-sizing: border-box;
   background: #f5f7fa;
+  overflow: hidden;
 }
 </style>

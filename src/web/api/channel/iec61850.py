@@ -633,9 +633,32 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
             except Exception as e:
                 log.warning(f"获取 Reports 信息失败: {e}")
 
+        # 获取 Files 信息（通过 FilesPlugin 浏览远程文件目录）
+        file_items = []
+        if protocol_handler:
+            try:
+                from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+
+                iec61850_client = None
+                if isinstance(protocol_handler, IEC61850ClientHandler):
+                    iec61850_client = getattr(protocol_handler, '_client', None)
+                elif isinstance(protocol_handler, IEC61850ServerHandler):
+                    iec61850_client = getattr(protocol_handler, '_server', None)
+
+                if iec61850_client and hasattr(iec61850_client, 'files') and iec61850_client.files:
+                    files_plugin = iec61850_client.files
+                    root_entries = files_plugin.list_directory("")
+                    for entry in root_entries:
+                        entry_type = "📁" if entry.get("type") == "directory" else "📄"
+                        size_str = entry.get("size_human", "")
+                        file_items.append(f"{entry_type} {entry.get('name', '')} ({size_str})")
+                    log.info(f"Files: 返回 {len(file_items)} 个根目录条目")
+            except Exception as e:
+                log.warning(f"获取 Files 信息失败: {e}")
+
         structure = {
             "GOOSE": goose_items, "Reports": report_items, "SettingGroups": [],
-            "Files": [],
+            "Files": file_items,
             "DataSets": dataset_items,
             "Data Model": data_model,
         }

@@ -2,7 +2,7 @@
   <div class="reports-manager">
     <div class="reports-header">
       <h3>{{ t('report.title') }}</h3>
-      <el-button type="primary" size="small" :loading="loading" @click="loadRcbs">
+      <el-button type="primary" :loading="loading" @click="loadRcbs">
         {{ t('common.refresh') }}
       </el-button>
     </div>
@@ -442,7 +442,7 @@ onMounted(() => {
 });
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .reports-manager {
   display: flex;
   flex-direction: column;
@@ -457,27 +457,58 @@ onMounted(() => {
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid #ebeef5;
-}
 
-.reports-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  @include bp.respond-to('small') {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
 }
 
 .reports-body {
   display: flex;
   flex: 1;
+  min-height: 0; // 防止 flex 子元素撑开父容器
   overflow: hidden;
   padding: 0;
+
+  // 空状态居中显示
+  .el-empty {
+    width: 100%;
+    padding: 48px 0;
+  }
+
+  @include bp.respond-to('small') {
+    flex-direction: column;
+  }
 }
 
 .rcb-tree-panel {
   width: 280px;
   min-width: 280px;
+  min-height: 0; // 防止 flex 子元素撑开
   border-right: 1px solid #ebeef5;
   padding: 8px;
   overflow-y: auto;
+
+  @include bp.respond-to('medium-down') {
+    width: 220px;
+    min-width: 220px;
+  }
+
+  @include bp.respond-to('small') {
+    width: 100%;
+    min-width: unset;
+    border-right: none;
+    border-bottom: 1px solid #ebeef5;
+    max-height: 200px;
+  }
 }
 
 .rcb-search {
@@ -498,18 +529,18 @@ onMounted(() => {
   font-size: 11px;
   font-weight: 600;
   line-height: 18px;
-}
 
-.rcb-type-badge.BRCB {
-  background: #ecf5ff;
-  color: #409eff;
-  border: 1px solid #d9ecff;
-}
+  &.BRCB {
+    background: #ecf5ff;
+    color: #409eff;
+    border: 1px solid #d9ecff;
+  }
 
-.rcb-type-badge.URCB {
-  background: #fdf6ec;
-  color: #e6a23c;
-  border: 1px solid #faecd8;
+  &.URCB {
+    background: #fdf6ec;
+    color: #e6a23c;
+    border: 1px solid #faecd8;
+  }
 }
 
 .rcb-active {
@@ -523,8 +554,14 @@ onMounted(() => {
 
 .rcb-detail-panel {
   flex: 1;
+  min-width: 0; // 防止 flex 子元素撑开
+  min-height: 0; // 防止 flex 子元素撑开
   padding: 16px;
   overflow-y: auto;
+
+  @include bp.respond-to('small') {
+    padding: 12px;
+  }
 }
 
 .rcb-detail-info {

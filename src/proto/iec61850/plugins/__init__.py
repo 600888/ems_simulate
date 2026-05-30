@@ -121,6 +121,5 @@ class PluginRegistry:
         self._plugins.clear()
 
 
-# 全局注册表实例 (不自动注册，由下方 _register_builtin_plugins 手动注册)
+# 全局注册表实例 (供外部按需使用，不自动注册插件)
 registry = PluginRegistry(auto_register=False)
-_register_builtin_plugins(registry)

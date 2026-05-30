@@ -30,7 +30,7 @@ from .core import (
     mms_value_to_python,
     get_list_from_linked_list,
 )
-from .plugins import PluginRegistry
+from .plugins import PluginRegistry, _register_builtin_plugins
 
 
 if HAS_IEC61850:
@@ -68,7 +68,8 @@ class IEC61850Client:
         self._writer = Iec61850Writer(self._conn, self._registry)
 
         # ===== 插件系统 =====
-        self._plugins = PluginRegistry()
+        self._plugins = PluginRegistry(auto_register=False)
+        _register_builtin_plugins(self._plugins)
         self._plugins.initialize_all(self._conn, registry=self._registry, client=self)
 
     # ===== 向后兼容属性: 委托给核心组件 =====
@@ -200,6 +201,27 @@ class IEC61850Client:
     def reports(self):
         """获取 Reports 插件"""
         return self._plugins.get("reports")
+
+    @property
+    def files(self):
+        """获取 Files 插件 (文件下载服务)"""
+        return self._plugins.get("files")
+
+    # ===== 文件操作 (委托给 Files 插件) =====
+
+    def list_remote_files(self, directory: str = "") -> List[Dict[str, Any]]:
+        """浏览远程 IED 文件目录"""
+        fp = self.files
+        if fp:
+            return fp.list_directory(directory)
+        return []
+
+    def download_remote_file(self, filename: str, local_path: str = "") -> bytes:
+        """从远程 IED 下载文件"""
+        fp = self.files
+        if fp:
+            return fp.get_file(filename, local_path)
+        return b""
 
     # ===== 模型发现 (委托给 DataModels 插件) =====
 
