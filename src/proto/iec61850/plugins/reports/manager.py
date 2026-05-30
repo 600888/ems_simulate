@@ -126,6 +126,13 @@ class ReportManager:
             "conf_rev": conf_rev,
             "buf_time": buf_time,
             "intg_period": intg_period,
+            "rpt_ena": False,
+            "sq_num": 0,
+            "purge_buf": False,
+            "entry_id": None,
+            "time_of_entry": None,
+            "owner": "",
+            "resv": False,
             "trg_ops": trg_ops or {"dchg": True, "qchg": False, "dupd": False, "period": False, "gi": True},
             "opt_fields": opt_fields or {"seq_num": True, "time_stamp": True, "data_set": True,
                                           "reason_code": True, "data_ref": False,
@@ -142,6 +149,9 @@ class ReportManager:
         """尝试使用 ReportControlBlock_create API 创建 RCB
 
         libIEC61850 的部分版本在 Python SWIG 绑定中可能未暴露此 API。
+
+        注意: ReportControlBlock_create 的 dataSet 参数应为 DataSet 名称
+        (如 "dsRack1CellTemp")，不是完整引用路径 (如 "LD0/LLN0$dsRack1CellTemp")。
         """
         if not HAS_IEC61850:
             return False
@@ -152,18 +162,22 @@ class ReportManager:
                 log.debug("ReportControlBlock_create API 不可用")
                 return False
 
+            # 从完整引用路径中提取 DataSet 名称
+            # data_set_ref 格式: "LD0/LLN0$dsRack1CellTemp" → "dsRack1CellTemp"
+            ds_name = data_set_ref.split("$")[-1] if "$" in data_set_ref else data_set_ref
+
             rcb = iec61850.ReportControlBlock_create(
-                name, lln0, rpt_id, data_set_ref, conf_rev,
+                name, lln0, rpt_id, ds_name, conf_rev,
                 buffered, buf_time, intg_period,
             )
             if rcb:
                 # 保持引用防止 GC
                 if hasattr(self._builder, 'keep_alive'):
                     self._builder.keep_alive.append(rcb)
-                log.info(f"ReportControlBlock_create 成功: {name}")
+                log.info(f"ReportControlBlock_create 成功: {name}, dataSet={ds_name}")
                 return True
             else:
-                log.warning(f"ReportControlBlock_create 返回 None: {name}")
+                log.warning(f"ReportControlBlock_create 返回 None: {name}, dataSet={ds_name}")
                 return False
         except Exception as e:
             log.debug(f"ReportControlBlock_create 不可用 (非致命): {e}")

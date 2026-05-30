@@ -394,13 +394,23 @@ class IcdGooseImporter:
                             if info.dat_set:
                                 referenced_datasets.add(info.dat_set)
 
-                    # 收集未被任何 GSEControl 引用的纯 DataSet
+                    # 解析 ReportControl（自定义 RCB，非标准 brcb/urcb 命名）
+                    ln_name = self._build_ln_name(
+                        ln0.get("prefix", ""), ln0.get("lnClass", "LLN0"), ln0.get("inst", "")
+                    )
+                    for rc_elem in ln0.findall(self._tag("ReportControl")):
+                        rc_info = self._parse_report_control(rc_elem, ld_inst, ln_name, dataset_by_name)
+                        if rc_info:
+                            self._report_controls.append(rc_info)
+                            # 追踪 ReportControl 引用的 DataSet，避免被加入 pure_datasets
+                            rc_dat_set = rc_info.get("dat_set", "")
+                            if rc_dat_set:
+                                referenced_datasets.add(rc_dat_set)
+
+                    # 收集未被任何 GSEControl/ReportControl 引用的纯 DataSet
                     for ds_name, ds_elem in dataset_by_name.items():
                         if ds_name not in referenced_datasets:
                             pure_ds_members = self._parse_dataset(ds_elem, ld_inst)
-                            ln_name = self._build_ln_name(
-                                ln0.get("prefix", ""), ln0.get("lnClass", "LLN0"), ln0.get("inst", "")
-                            )
                             ds_ref = f"{ld_inst}/{ln_name}${ds_name}"
                             entries = []
                             for m in pure_ds_members:
@@ -420,15 +430,6 @@ class IcdGooseImporter:
                                 "member_count": len(pure_ds_members),
                                 "entries": entries,
                             })
-
-                    # 解析 ReportControl（自定义 RCB，非标准 brcb/urcb 命名）
-                    ln_name = self._build_ln_name(
-                        ln0.get("prefix", ""), ln0.get("lnClass", "LLN0"), ln0.get("inst", "")
-                    )
-                    for rc_elem in ln0.findall(self._tag("ReportControl")):
-                        rc_info = self._parse_report_control(rc_elem, ld_inst, ln_name)
-                        if rc_info:
-                            self._report_controls.append(rc_info)
 
     def _parse_gse_control(
         self,
@@ -547,8 +548,17 @@ class IcdGooseImporter:
         return members
 
     def _parse_report_control(self, rc_elem: ET.Element, ld_inst: str,
-                                ln_name: str) -> Optional[Dict[str, Any]]:
-        """解析单个 ReportControl 元素"""
+                                ln_name: str,
+                                dataset_by_name: Optional[Dict[str, ET.Element]] = None,
+                                ) -> Optional[Dict[str, Any]]:
+        """解析单个 ReportControl 元素
+
+        Args:
+            rc_elem: ReportControl XML 元素
+            ld_inst: 逻辑设备实例名
+            ln_name: 逻辑节点名称
+            dataset_by_name: DataSet 名称到 XML 元素的映射，用于查找 RCB 引用的 DataSet 条目
+        """
         name = rc_elem.get("name", "")
         if not name:
             return None
@@ -597,11 +607,26 @@ class IcdGooseImporter:
 
         data_set_ref = f"{ld_inst}/{ln_name}${dat_set}" if dat_set else ""
 
+        # 解析 RCB 引用的 DataSet 条目 (FCDA entries)
+        entries = []
+        if dat_set and dataset_by_name and dat_set in dataset_by_name:
+            ds_members = self._parse_dataset(dataset_by_name[dat_set], ld_inst)
+            for m in ds_members:
+                iec_type = GooseGseControlInfo._fcda_to_iec_type(m)
+                default_val = GooseGseControlInfo._default_value_for_type(iec_type)
+                entries.append({
+                    "name": m.get("fcda_ref", ""),
+                    "value": default_val,
+                    "iec_type": iec_type,
+                    "fc": m.get("fc", ""),
+                })
+
         rc_info = {
             "ld_inst": ld_inst,
             "name": name,
             "rcb_type": rcb_type,
             "rpt_id": rpt_id,
+            "dat_set": dat_set,
             "data_set_ref": data_set_ref,
             "conf_rev": conf_rev,
             "buf_time": buf_time,
@@ -609,8 +634,9 @@ class IcdGooseImporter:
             "ln_name": ln_name,
             "trg_ops": trg_ops,
             "opt_fields": opt_fields,
+            "entries": entries,
         }
-        log.info(f"ICD ReportControl: {ld_inst}/{ln_name}.{name}, type={rcb_type}")
+        log.info(f"ICD ReportControl: {ld_inst}/{ln_name}.{name}, type={rcb_type}, datSet={dat_set}, entries={len(entries)}")
         return rc_info
 
     def get_pure_datasets(self) -> List[Dict[str, Any]]:

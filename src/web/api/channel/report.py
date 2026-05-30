@@ -66,22 +66,42 @@ def _server_rcbs_to_discovery_format(report_manager: Any) -> list:
     for rcb in report_manager.browse_rcbs():
         trg = rcb.get("trg_ops", {})
         opt = rcb.get("opt_fields", {})
+        ld_inst = rcb.get("ld_inst", "")
+        rcb_name = rcb.get("name", "")
+        rcb_type = rcb.get("rcb_type", "BRCB")
+
+        # entry_id: 支持 bytes 和 hex 字符串两种格式
+        entry_id_val = rcb.get("entry_id", None)
+        if isinstance(entry_id_val, bytes):
+            entry_id_val = entry_id_val.hex()
+        elif entry_id_val and not isinstance(entry_id_val, str):
+            entry_id_val = str(entry_id_val) if entry_id_val else None
+
+        # time_of_entry: 支持 int (ms) 或 datetime 字符串
+        time_of_entry_val = rcb.get("time_of_entry", None)
+
+        # purge_buf: 仅 BRCB 有意义
+        purge_buf_val = rcb.get("purge_buf", False) if rcb_type == "BRCB" else False
+
         rcbs.append({
-            "name": rcb.get("name", ""),
-            "ref": f"{rcb.get('ld_inst', '')}/{rcb.get('ld_inst', '')}.{rcb.get('name', '')}"
-                   if rcb.get("ld_inst") else rcb.get("name", ""),
-            "rcb_type": rcb.get("rcb_type", "BRCB"),
-            "ld": rcb.get("ld_inst", ""),
+            "name": rcb_name,
+            "ref": f"{ld_inst}/{ld_inst}.{rcb_name}"
+                   if ld_inst else rcb_name,
+            "rcb_type": rcb_type,
+            "ld": ld_inst,
             "ln": "LLN0",
             "rpt_id": rcb.get("rpt_id", ""),
-            "rpt_ena": False,
+            "rpt_ena": rcb.get("rpt_ena", False),
             "data_set_ref": rcb.get("data_set_ref", ""),
             "conf_rev": rcb.get("conf_rev", 1),
             "buf_time": rcb.get("buf_time", 0),
             "intg_period": rcb.get("intg_period", 0),
-            "purge_buf": False,
-            "entry_id": None,
-            "time_of_entry": None,
+            "sq_num": rcb.get("sq_num", 0),
+            "purge_buf": purge_buf_val,
+            "entry_id": entry_id_val,
+            "time_of_entry": time_of_entry_val,
+            "owner": rcb.get("owner", ""),
+            "resv": rcb.get("resv", False),
             "trg_ops": {
                 "dchg": trg.get("dchg", True),
                 "qchg": trg.get("qchg", False),

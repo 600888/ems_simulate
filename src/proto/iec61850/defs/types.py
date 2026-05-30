@@ -109,6 +109,9 @@ class RCBInfo:
     purge_buf: bool = False      # 清除缓冲, 仅 BRCB
     entry_id: Optional[bytes] = None   # 入口 ID, 仅 BRCB
     time_of_entry: Optional[int] = None  # 入口时间, 仅 BRCB
+    sq_num: int = 0              # 顺序号 (Sequence Number)
+    owner: str = ""              # 所有者 (Owner), 仅 URCB
+    resv: bool = False           # 保留状态 (Resv), 仅 URCB
     trg_ops: TrgOps = field(default_factory=TrgOps)
     opt_fields: OptFields = field(default_factory=OptFields)
 

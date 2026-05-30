@@ -90,6 +90,12 @@ class ServerDataSetManager:
             log.warning(f"register_dataset [{ds_name}]: 模型未初始化")
             return False
 
+        # 检查是否已注册过同名 DataSet（避免重复创建）
+        catalog = dataset_catalog if dataset_catalog is not None else self._dataset_catalog
+        if any(ds.get("ref") == data_set_ref for ds in catalog):
+            log.info(f"register_dataset [{ds_name}]: DataSet 已存在，跳过重复创建 (ref={data_set_ref})")
+            return True
+
         lln0_key = f"{ld_inst}/LLN0"
         lln0 = self._builder.ln_map.get(lln0_key)
         log.info(f"register_dataset [{ds_name}]: 查找 LLN0 key={lln0_key}, found={lln0 is not None}")

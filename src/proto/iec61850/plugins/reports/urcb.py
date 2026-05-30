@@ -322,4 +322,24 @@ class UrcbHandler:
         except Exception:
             pass
 
+        # sq_num
+        try:
+            info.sq_num = int(iec61850.ClientReportControlBlock_getSqNum(rcb))
+        except Exception:
+            pass
+
+        # owner (URCB only)
+        try:
+            owner_val = iec61850.ClientReportControlBlock_getOwner(rcb)
+            if owner_val:
+                info.owner = str(owner_val)
+        except Exception:
+            pass
+
+        # resv (URCB only)
+        try:
+            info.resv = bool(iec61850.ClientReportControlBlock_getResv(rcb))
+        except Exception:
+            pass
+
         return info

@@ -38,9 +38,12 @@ export interface RcbInfo {
   conf_rev: number;
   buf_time: number;
   intg_period: number;
+  sq_num: number;
   purge_buf: boolean;
   entry_id: string | null;
   time_of_entry: number | null;
+  owner: string;
+  resv: boolean;
   trg_ops: TrgOps;
   opt_fields: OptFields;
   active: boolean;

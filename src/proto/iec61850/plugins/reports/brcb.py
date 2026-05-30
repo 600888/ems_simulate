@@ -397,4 +397,10 @@ class BrcbHandler:
         except Exception:
             pass
 
+        # sq_num
+        try:
+            info.sq_num = int(iec61850.ClientReportControlBlock_getSqNum(rcb))
+        except Exception:
+            pass
+
         return info

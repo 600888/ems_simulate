@@ -265,7 +265,7 @@ class ReportsPlugin:
             if detail:
                 # 合并详细属性
                 for field_name in ("rpt_id", "rpt_ena", "data_set_ref", "conf_rev",
-                                    "buf_time", "intg_period", "trg_ops", "opt_fields"):
+                                    "buf_time", "intg_period", "sq_num", "trg_ops", "opt_fields"):
                     val = getattr(detail, field_name, None)
                     if val is not None and val != "" and val is not False:
                         if isinstance(val, (TrgOps, OptFields)):
@@ -280,6 +280,11 @@ class ReportsPlugin:
                         info.time_of_entry = detail.time_of_entry
                     if detail.purge_buf:
                         info.purge_buf = detail.purge_buf
+                elif rcb_type == "URCB":
+                    if detail.owner:
+                        info.owner = detail.owner
+                    if detail.resv:
+                        info.resv = detail.resv
         except Exception as e:
             log.debug(f"读取 RCB 属性失败: {rcb_ref}, {e}")
 
@@ -299,17 +304,13 @@ class ReportsPlugin:
             "conf_rev": info.conf_rev,
             "buf_time": info.buf_time,
             "intg_period": info.intg_period,
+            "sq_num": info.sq_num,
             "purge_buf": info.purge_buf,
             "entry_id": info.entry_id.hex() if info.entry_id else None,
             "time_of_entry": info.time_of_entry,
+            "owner": info.owner,
+            "resv": info.resv,
             "trg_ops": {
-                "dchg": info.trg_ops.dchg,
-                "qchg": info.trg_ops.qchg,
-                "dupd": info.trg_ops.dupd,
-                "period": info.trg_ops.period,
-                "gi": info.trg_ops.gi,
-            },
-            "opt_fields": {
                 "seq_num": info.opt_fields.seq_num,
                 "time_stamp": info.opt_fields.time_stamp,
                 "data_set": info.opt_fields.data_set,

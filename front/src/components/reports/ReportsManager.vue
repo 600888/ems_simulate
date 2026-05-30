@@ -53,36 +53,86 @@
             <!-- 属性 Tab -->
             <el-tab-pane :label="t('report.attributes')" name="attributes">
               <div class="rcb-detail-info">
-                <el-descriptions :column="2" border size="small">
-                  <el-descriptions-item :label="t('report.name')" width="120px">
+                <el-descriptions :column="2" border size="small" label-width="155px">
+                  <el-descriptions-item :label="`${t('report.name')} (Name)`">
                     {{ selectedRcb.name }}
                   </el-descriptions-item>
-                  <el-descriptions-item :label="t('report.rcbType')">
+                  <el-descriptions-item :label="`${t('report.rcbType')} (Type)`">
                     <el-tag :type="selectedRcb.rcb_type === 'BRCB' ? 'primary' : 'warning'" size="small">
                       {{ selectedRcb.rcb_type }}
                     </el-tag>
                   </el-descriptions-item>
-                  <el-descriptions-item :label="t('report.rptId')">
+                  <el-descriptions-item :label="t('report.ref')" :span="2">
+                    <span class="ref-text" :title="selectedRcb.ref">{{ selectedRcb.ref || '-' }}</span>
+                  </el-descriptions-item>
+                  <el-descriptions-item :label="`${t('report.rptId')} (RptID)`">
                     {{ selectedRcb.rpt_id || '-' }}
                   </el-descriptions-item>
-                  <el-descriptions-item :label="t('report.dataSet')">
+                  <el-descriptions-item :label="`${t('report.dataSet')} (DatSet)`">
                     {{ selectedRcb.data_set_ref || '-' }}
                   </el-descriptions-item>
-                  <el-descriptions-item :label="t('report.confRev')">
+                  <el-descriptions-item :label="`${t('report.confRev')} (ConfRev)`">
                     {{ selectedRcb.conf_rev }}
                   </el-descriptions-item>
-                  <el-descriptions-item :label="t('report.bufTime')">
-                    {{ selectedRcb.buf_time }} ms
+                  <el-descriptions-item :label="`${t('report.sqNum')} (SqNum)`">
+                    {{ selectedRcb.sq_num != null ? selectedRcb.sq_num : '-' }}
                   </el-descriptions-item>
-                  <el-descriptions-item :label="t('report.intgPeriod')">
-                    {{ selectedRcb.intg_period }} ms
-                  </el-descriptions-item>
-                  <el-descriptions-item :label="t('report.rptEna')">
+                  <el-descriptions-item :label="`${t('report.rptEna')} (RptEna)`">
                     <el-tag v-if="selectedRcb.rpt_ena" type="success" size="small">
                       {{ t('report.enabled') }}
                     </el-tag>
-                    <el-tag v-else type="info" size="small">
+                    <el-tag v-else type="danger" size="small">
                       {{ t('report.disabled') }}
+                    </el-tag>
+                  </el-descriptions-item>
+                  <el-descriptions-item :label="`${t('report.trgOps')} (TrgOps)`" :span="2">
+                    <span class="field-summary">{{ trgOpsSummary || '-' }}</span>
+                  </el-descriptions-item>
+                  <el-descriptions-item :label="`${t('report.optFields')} (OptFlds)`" :span="2">
+                    <span class="field-summary">{{ optFieldsSummary || '-' }}</span>
+                  </el-descriptions-item>
+                  <el-descriptions-item :label="`${t('report.bufTime')} (BufTm)`">
+                    {{ selectedRcb.buf_time }} ms
+                  </el-descriptions-item>
+                  <el-descriptions-item :label="`${t('report.intgPeriod')} (IntgPd)`">
+                    {{ selectedRcb.intg_period }} ms
+                  </el-descriptions-item>
+                  <el-descriptions-item :label="`${t('report.giLabel')} (GI)`">
+                    <el-tag v-if="giEnabled" type="success" size="small">True</el-tag>
+                    <el-tag v-else type="info" size="small">False</el-tag>
+                  </el-descriptions-item>
+                  <el-descriptions-item
+                    v-if="selectedRcb.rcb_type === 'BRCB'"
+                    :label="`${t('report.entryId')} (EntryID)`"
+                  >
+                    {{ selectedRcb.entry_id || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item
+                    v-if="selectedRcb.rcb_type === 'BRCB'"
+                    :label="`${t('report.timeOfEntry')} (TimeOfEntry)`"
+                  >
+                    {{ formatTimeOfEntry(selectedRcb.time_of_entry) }}
+                  </el-descriptions-item>
+                  <el-descriptions-item
+                    v-if="selectedRcb.rcb_type === 'BRCB'"
+                    :label="`${t('report.purgeBuf')} (PurgeBuf)`"
+                  >
+                    <el-tag :type="selectedRcb.purge_buf ? 'warning' : 'info'" size="small">
+                      {{ selectedRcb.purge_buf ? 'True' : 'False' }}
+                    </el-tag>
+                  </el-descriptions-item>
+                  <el-descriptions-item
+                    v-if="selectedRcb.rcb_type === 'URCB'"
+                    :label="`${t('report.owner')} (Owner)`"
+                  >
+                    {{ selectedRcb.owner || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item
+                    v-if="selectedRcb.rcb_type === 'URCB'"
+                    :label="`${t('report.resv')} (Resv)`"
+                  >
+                    <el-tag :type="selectedRcb.resv ? 'warning' : 'danger'" size="small">
+                      {{ selectedRcb.resv ? 'True' : 'False' }}
                     </el-tag>
                   </el-descriptions-item>
                 </el-descriptions>
@@ -109,6 +159,65 @@
                   <el-checkbox label="config_ref" :disabled="!canEdit">{{ t('report.configRef') }}</el-checkbox>
                   <el-checkbox label="buf_ovfl" :disabled="!canEdit">{{ t('report.bufOvfl') }}</el-checkbox>
                 </el-checkbox-group>
+
+                <!-- Information received in last Report -->
+                <h4 class="section-title">{{ t('report.lastReportInfo') }}</h4>
+                <el-alert
+                  v-if="!lastReport"
+                  :title="t('report.noData')"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                />
+                <template v-if="lastReport">
+                  <el-descriptions :column="2" border size="small" label-width="130px">
+                    <el-descriptions-item :label="t('report.rptId')">
+                      {{ lastReport.rpt_id || '-' }}
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="t('report.seqNum')">
+                      {{ lastReport.seq_num != null ? lastReport.seq_num : '-' }}
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="t('report.timeOfEntry')">
+                      {{ lastReport.time_stamp || '-' }}
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="t('report.dataSet')">
+                      {{ lastReport.data_set || '-' }}
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="t('report.confRev')">
+                      {{ lastReport.conf_rev != null ? lastReport.conf_rev : '-' }}
+                    </el-descriptions-item>
+                    <el-descriptions-item
+                      v-if="selectedRcb.rcb_type === 'BRCB'"
+                      :label="t('report.entryId')"
+                    >
+                      {{ lastReport.entry_id || '-' }}
+                    </el-descriptions-item>
+                  </el-descriptions>
+
+                  <h4 class="section-title">{{ t('report.reportDataItems') }}</h4>
+                  <el-table
+                    :data="lastReportDataItems"
+                    border
+                    size="small"
+                    max-height="400"
+                    style="width: 100%"
+                  >
+                    <el-table-column :label="t('report.dataRef')" prop="ref" min-width="180" />
+                    <el-table-column :label="t('report.value')" prop="value" min-width="120" />
+                    <el-table-column :label="t('report.reason')" width="130">
+                      <template #default="{ row }">
+                        <el-tag
+                          size="small"
+                          :type="row.reason === 'data-change' ? 'warning'
+                            : row.reason === 'gi' ? 'success'
+                            : row.reason === 'integrity' ? 'primary' : 'info'"
+                        >
+                          {{ row.reason }}
+                        </el-tag>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </template>
 
                 <!-- 操作按钮 -->
                 <div class="action-buttons">
@@ -243,6 +352,83 @@ const reportData = ref<any[]>([]);
 const reportDataTotal = ref(0);
 
 const canEdit = computed(() => !selectedRcb.value?.rpt_ena);
+
+// 全称映射
+const TRGOPS_NAME_MAP: Record<string, string> = {
+  dchg: 'DataChange',
+  qchg: 'QualityChange',
+  dupd: 'DataUpdate',
+  period: 'Integrity',
+  gi: 'GeneralInterrogation',
+};
+
+const OPTFLDS_NAME_MAP: Record<string, string> = {
+  seq_num: 'SeqNum',
+  time_stamp: 'TimeStamp',
+  data_set: 'DataSetRef',
+  reason_code: 'ReasonCode',
+  data_ref: 'DataRef',
+  entry_id: 'EntryID',
+  config_ref: 'ConfigRef',
+  buf_ovfl: 'BufOvfl',
+};
+
+// TrgOps 摘要 (如: "DataChange, GeneralInterrogation")
+const trgOpsSummary = computed(() => {
+  return trgOpsModel.value.map(k => TRGOPS_NAME_MAP[k] || k).join(', ') || '';
+});
+
+// OptFlds 摘要 (如: "SeqNum, TimeStamp, DataSetRef, ReasonCode")
+const optFieldsSummary = computed(() => {
+  return optFieldsModel.value.map(k => OPTFLDS_NAME_MAP[k] || k).join(', ') || '';
+});
+
+// GI 使能状态
+const giEnabled = computed(() => {
+  return trgOpsModel.value.includes('gi');
+});
+
+// 最近一次报告信息 (来自报告数据列表的第一条/最新一条)
+const lastReport = computed(() => {
+  if (reportData.value.length === 0) return null;
+  // 报告数据按接收时间排序，取最新一条 (最后一条)
+  return reportData.value[reportData.value.length - 1];
+});
+
+// 最近一条报告中的数据项 (ref, value, reason)
+interface LastReportItem {
+  ref: string;
+  value: any;
+  reason: string;
+}
+
+const lastReportDataItems = computed<LastReportItem[]>(() => {
+  if (!lastReport.value) return [];
+  const items: LastReportItem[] = [];
+  const dv = lastReport.value.data_values || {};
+  const rc = lastReport.value.reason_codes || {};
+  for (const key of Object.keys(dv)) {
+    items.push({
+      ref: key,
+      value: dv[key],
+      reason: rc[key] || 'unknown',
+    });
+  }
+  return items;
+});
+
+// 格式化 TimeOfEntry (毫秒级 Unix 时间戳 → 可读时间字符串)
+function formatTimeOfEntry(timeOfEntry: number | null | undefined): string {
+  if (timeOfEntry == null || timeOfEntry <= 0) return '-';
+  try {
+    const t = Number(timeOfEntry);
+    // 支持毫秒级时间戳
+    const ms = t > 1e12 ? t : t * 1000;
+    return new Date(ms).toLocaleString();
+  } catch {
+    return String(timeOfEntry);
+  }
+}
 
 // RCB 树形数据
 interface RcbTreeNode {
@@ -513,6 +699,18 @@ onMounted(() => {
 
 .rcb-search {
   margin-bottom: 8px;
+}
+
+.ref-text {
+  font-family: monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.field-summary {
+  font-family: monospace;
+  font-size: 12px;
+  color: #606266;
 }
 
 .rcb-tree-node {

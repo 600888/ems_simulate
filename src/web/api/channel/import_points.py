@@ -282,6 +282,7 @@ async def import_icd(
                         try:
                             # 确保 DataSet 已注册 (RCB 引用的 DataSet)
                             ds_ref = rc_info.get("data_set_ref", "")
+                            rc_entries = rc_info.get("entries", [])
                             if ds_ref and iec61850_server:
                                 ds_name = ds_ref.split("$")[-1] if "$" in ds_ref else ""
                                 if ds_name and not any(
@@ -292,7 +293,7 @@ async def import_icd(
                                         ld_inst=rc_info["ld_inst"],
                                         ds_name=ds_name,
                                         data_set_ref=ds_ref,
-                                        entries=None,
+                                        entries=rc_entries if rc_entries else None,
                                     )
                             # 注册 RCB 到 MMS 模型
                             trg_ops = rc_info.get("trg_ops", {})
@@ -369,7 +370,7 @@ async def import_icd(
                 # ===== 2c. 统一启动 MMS 服务器 =====
                 # 所有 DataSet 和 GoCB 已注册到 IedModel，现在启动 IedServer
                 # IedServer_create 一次性构建包含所有节点的 MMS 命名空间
-                need_start = (created_goose_count > 0 or pure_ds_count > 0 or was_running)
+                need_start = (created_goose_count > 0 or pure_ds_count > 0 or rc_registered > 0 or was_running)
                 if need_start and iec61850_server:
                     # 启动前诊断：确认 GoCB/DataSet 已注册到 IedModel
                     log.info(
