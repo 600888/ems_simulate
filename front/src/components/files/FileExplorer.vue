@@ -127,6 +127,47 @@ function formatTime(ts: string | null): string {
 
 // ===== 文件下载 =====
 
+/** 将 Base64 解码为 Uint8Array */
+function base64ToUint8Array(base64: string): Uint8Array {
+  const byteChars = atob(base64)
+  const byteArray = new Uint8Array(byteChars.length)
+  for (let i = 0; i < byteChars.length; i++) {
+    byteArray[i] = byteChars.charCodeAt(i)
+  }
+  return byteArray
+}
+
+/** 使用系统保存对话框写入文件（File System Access API） */
+async function saveWithPicker(fileName: string, data: Uint8Array): Promise<boolean> {
+  const blob = new Blob([data])
+  try {
+    const handle = await (window as any).showSaveFilePicker({
+      suggestedName: fileName,
+    })
+    const writable = await handle.createWritable()
+    await writable.write(blob)
+    await writable.close()
+    return true
+  } catch (e: any) {
+    // 用户取消选择
+    if (e?.name === 'AbortError') return false
+    throw e
+  }
+}
+
+/** 回退方式：自动下载到默认目录 */
+function saveWithFallback(fileName: string, data: Uint8Array) {
+  const blob = new Blob([data])
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 async function handleDownload() {
   if (!selectedEntry.value || selectedEntry.value.type === 'directory') {
     ElMessage.warning('请选择一个文件进行下载')
@@ -137,22 +178,20 @@ async function handleDownload() {
   try {
     const result = await downloadRemoteFile(props.channelId, selectedEntry.value.full_path)
     if (result && result.data) {
-      const byteChars = atob(result.data)
-      const byteNumbers = new Array(byteChars.length)
-      for (let i = 0; i < byteChars.length; i++) {
-        byteNumbers[i] = byteChars.charCodeAt(i)
+      const byteArray = base64ToUint8Array(result.data)
+      const fileName = selectedEntry.value.name
+
+      // 优先使用系统保存对话框，不支持时回退到自动下载
+      if (window.showSaveFilePicker) {
+        const saved = await saveWithPicker(fileName, byteArray)
+        if (!saved) {
+          // 用户取消了保存
+          return
+        }
+      } else {
+        saveWithFallback(fileName, byteArray)
       }
-      const byteArray = new Uint8Array(byteNumbers)
-      const blob = new Blob([byteArray])
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = selectedEntry.value.name
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      ElMessage.success(`文件下载成功: ${selectedEntry.value.name}${result.cached ? ' (缓存)' : ''}`)
+      ElMessage.success(`文件下载成功: ${fileName}${result.cached ? ' (缓存)' : ''}`)
     } else {
       ElMessage.error('文件下载失败')
     }

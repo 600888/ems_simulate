@@ -1,7 +1,7 @@
 """远程 IED 文件传输操作
 
 封装 pyiec61850 的 getFile / setFile / deleteFile 函数，提供:
-- 分块式文件下载 (IedClientGetFileHandler 回调)
+- 文件下载 (MmsConnection_downloadFile)
 - 文件上传 (SetFile / ObtainFile)
 - 文件删除 (DeleteFile)
 - 传输进度回调
@@ -11,9 +11,13 @@ pyiec61850 Python 绑定签名:
     IedConnection_setFile(self, sourceFilename, destinationFilename) → (data, error)
     IedConnection_deleteFile(self, fileName) → (data, error)
     IedConnection_setFilestoreBasepath(arg1, basepath) → None
+    MmsConnection_downloadFile(connection, mmsError, remoteFilePath, localFilePath) → bool
     MmsConnection_obtainFile(self, mmsError, sourceFile, destinationFile) → ...
 
-注意: 所有函数返回值格式统一为 (data, error_code)，error_code = IED_ERROR_OK(0) 表示成功。
+注意:
+- IedConnection_* 系列函数返回值格式为 (data, error_code)，error_code = IED_ERROR_OK(0) 表示成功。
+- MmsConnection_downloadFile 返回 bool，错误码通过 mmsError 输出参数获取。
+- libiec61850 在检查远程文件是否存在之前就会创建本地文件，失败下载会留下 0 字节残留。
 """
 
 import os
@@ -42,6 +46,17 @@ def _ied_error_name(error_code) -> str:
     return _map.get(error_code, f"UNKNOWN({error_code})")
 
 
+def _mms_error_name(error_code) -> str:
+    """将 MMS 错误码转换为可读名称"""
+    if error_code is None or error_code == 0:
+        return "OK"
+    try:
+        from pyiec61850 import pyiec61850 as iec
+        return iec.MmsError_toString(error_code)
+    except Exception:
+        return f"MMS_ERROR({error_code})"
+
+
 class FileTransfer:
     """远程 IED 文件传输器"""
 
@@ -50,6 +65,11 @@ class FileTransfer:
         self._active_transfers: dict[str, TransferProgress] = {}
 
     # ===== 公共 API =====
+
+    @staticmethod
+    def _normalize_remote(remote_filename: str) -> str:
+        """规范化远程文件名供 IED 使用 (统一正斜杠，去除多余分隔符)"""
+        return remote_filename.replace("\\", "/")
 
     def download_file(
         self,
@@ -60,8 +80,8 @@ class FileTransfer:
     ) -> TransferProgress:
         """从远程 IED 下载文件到本地磁盘
 
-        使用 IedConnection_getFile + IedClientGetFileHandler 回调，
-        分块接收文件数据并写入本地磁盘。
+        使用 MmsConnection_downloadFile 下载文件，直接落盘到本地路径。
+        参考 pyiec61850.mms.client.MmsClient.download_file 的官方实现。
 
         Args:
             remote_filename: 远程文件绝对路径 (如 "/logs/fault1.comtrade")
@@ -102,63 +122,73 @@ class FileTransfer:
             progress.status = TransferStatus.IN_PROGRESS
             self._notify_progress(progress, progress_callback)
 
-            # 创建输出文件
-            output_file = open(local_path, "wb")
+            mms_conn = iec61850.IedConnection_getMmsConnection(conn)
+            if not mms_conn:
+                progress.status = TransferStatus.FAILED
+                progress.error = "无法获取 MmsConnection"
+                log.error(f"下载文件失败: {remote_filename}, 无法获取 MmsConnection")
+                return progress
 
+            # MmsConnection_downloadFile 直接使用 localFilePath 写入本地文件，
+            # 不经过 filestore basepath 拼接。
+            local_path_fwd = local_path.replace("\\", "/")
+            mms_error = iec61850.MmsError_create()
+            succeeded = False
             try:
-                # 定义回调闭包
-                def get_file_handler(parameter, buffer, bytes_read):
-                    """IedClientGetFileHandler 回调"""
-                    if not buffer or bytes_read <= 0:
-                        return True
-
-                    try:
-                        output_file.write(buffer[:bytes_read])
-                        progress.bytes_transferred += bytes_read
-                        progress.status = TransferStatus.IN_PROGRESS
-                        self._notify_progress(progress, progress_callback)
-                    except Exception as e:
-                        log.error(f"写入文件数据失败: {e}")
-                        return False
-
-                    return True  # 继续传输
-
-                # 调用 GetFile
-                # Python 绑定: IedConnection_getFile(self, fileName, handler, handlerParameter) → [bytesReceived, error]
-                result = iec61850.IedConnection_getFile(
-                    conn, remote_filename, get_file_handler, None
+                ok = iec61850.MmsConnection_downloadFile(
+                    mms_conn, mms_error, self._normalize_remote(remote_filename), local_path_fwd
                 )
+                mms_code = iec61850.MmsError_getValue(mms_error)
 
-                # 解析返回值
-                if isinstance(result, (list, tuple)) and len(result) >= 2:
-                    bytes_received, error_code = result[0], result[1]
-                else:
-                    error_code = result
-                    bytes_received = 0
-
-                if error_code != iec61850.IED_ERROR_OK:
+                if not ok or mms_code != 0:
                     progress.status = TransferStatus.FAILED
-                    progress.error = f"IED 返回错误码: {error_code}"
-                    log.error(f"下载文件失败: {remote_filename}, 错误码: {error_code}")
+                    progress.error = f"MMS 下载失败: {_mms_error_name(mms_code)}({mms_code})"
+                    log.error(f"下载文件失败: {remote_filename}, MMS 错误: {_mms_error_name(mms_code)}({mms_code})")
+                    try:
+                        if os.path.exists(local_path):
+                            os.remove(local_path)
+                    except OSError:
+                        pass
                 else:
-                    progress.status = TransferStatus.COMPLETED
-                    progress.bytes_transferred = bytes_received if bytes_received > 0 else progress.bytes_transferred
-                    log.info(f"文件下载完成: {remote_filename} → {local_path} ({progress.bytes_transferred} bytes)")
-
+                    succeeded = True
             finally:
-                output_file.close()
+                # 注意: SWIG 导出的析构函数名是 MmsErrror_destroy (三个 r 的拼写错误)
+                try:
+                    iec61850.MmsErrror_destroy(mms_error)
+                except AttributeError:
+                    try:
+                        iec61850.MmsError_destroy(mms_error)
+                    except Exception:
+                        pass
 
-                # 如果失败，删除不完整的本地文件
-                if progress.status == TransferStatus.FAILED:
+            if succeeded:
+                downloaded_size = os.path.getsize(local_path) if os.path.exists(local_path) else 0
+                # libiec61850 在检查远程文件是否存在之前就会创建本地文件，
+                # 失败下载会留下 0 字节残留，需清理。
+                if downloaded_size == 0:
+                    progress.status = TransferStatus.FAILED
+                    progress.error = "下载文件为空 (0 bytes)，远程文件可能不存在"
+                    log.warning(f"下载文件失败: {remote_filename}, 下载结果为 0 字节")
                     try:
                         os.remove(local_path)
                     except OSError:
                         pass
+                else:
+                    progress.status = TransferStatus.COMPLETED
+                    progress.bytes_transferred = downloaded_size
+                    progress.total_bytes = downloaded_size
+                    log.info(f"文件下载完成: {remote_filename} → {local_path} ({downloaded_size} bytes)")
 
         except Exception as e:
             progress.status = TransferStatus.FAILED
             progress.error = str(e)
             log.error(f"下载文件异常: {remote_filename}, 错误: {e}")
+            # 清理可能残留的 0 字节文件
+            try:
+                if os.path.exists(local_path) and os.path.getsize(local_path) == 0:
+                    os.remove(local_path)
+            except OSError:
+                pass
 
         finally:
             self._notify_progress(progress, progress_callback)
@@ -190,50 +220,77 @@ class FileTransfer:
 
         progress = TransferProgress(filename=remote_filename, status=TransferStatus.PENDING)
         self._active_transfers[remote_filename] = progress
-        chunks: list[bytes] = []
 
         try:
+            import tempfile
             from pyiec61850 import pyiec61850 as iec61850
 
             conn = self._conn.connection
             progress.status = TransferStatus.IN_PROGRESS
             self._notify_progress(progress, progress_callback)
 
-            def get_file_handler(parameter, buffer, bytes_read):
-                """IedClientGetFileHandler 回调"""
-                if not buffer or bytes_read <= 0:
-                    return True
-
-                try:
-                    chunks.append(buffer[:bytes_read])
-                    progress.bytes_transferred += bytes_read
-                    progress.status = TransferStatus.IN_PROGRESS
-                    self._notify_progress(progress, progress_callback)
-                except Exception as e:
-                    log.error(f"缓存文件数据失败: {e}")
-                    return False
-
-                return True
-
-            # Python 绑定: IedConnection_getFile(self, fileName, handler, handlerParameter) → [bytesReceived, error]
-            result = iec61850.IedConnection_getFile(
-                conn, remote_filename, get_file_handler, None
-            )
-
-            # 解析返回值
-            if isinstance(result, (list, tuple)) and len(result) >= 2:
-                bytes_received, error_code = result[0], result[1]
-            else:
-                error_code = result
-                bytes_received = 0
-
-            if error_code != iec61850.IED_ERROR_OK:
+            mms_conn = iec61850.IedConnection_getMmsConnection(conn)
+            if not mms_conn:
                 progress.status = TransferStatus.FAILED
-                progress.error = f"IED 返回错误码: {error_code}"
-                log.error(f"下载文件到内存失败: {remote_filename}, 错误码: {error_code}")
+                progress.error = "无法获取 MmsConnection"
+                log.error(f"下载文件到内存失败: {remote_filename}, 无法获取 MmsConnection")
                 return b"", progress
 
-            file_data = b"".join(chunks)
+            # MmsConnection_downloadFile 直接使用 localFilePath 写入本地文件，
+            # 不经过 filestore basepath 拼接。先落盘到临时文件再读回内存。
+            # 注意: Windows 系统临时目录可能包含中文等 Unicode 字符，
+            # libiec61850 的 C 层 fopen() 无法处理，需使用纯 ASCII 路径。
+            from pathlib import Path
+            _tmp_dir = str(Path.cwd() / "data" / "_tmp")
+            os.makedirs(_tmp_dir, exist_ok=True)
+            tmp_fd, tmp_path = tempfile.mkstemp(suffix=".iecdl", dir=_tmp_dir)
+            os.close(tmp_fd)
+            tmp_path_fwd = tmp_path.replace("\\", "/")
+
+            try:
+                mms_error = iec61850.MmsError_create()
+                succeeded = False
+                try:
+                    ok = iec61850.MmsConnection_downloadFile(
+                        mms_conn, mms_error, self._normalize_remote(remote_filename), tmp_path_fwd
+                    )
+                    mms_code = iec61850.MmsError_getValue(mms_error)
+
+                    if not ok or mms_code != 0:
+                        progress.status = TransferStatus.FAILED
+                        progress.error = f"MMS 下载失败: {_mms_error_name(mms_code)}({mms_code})"
+                        log.error(f"下载文件到内存失败: {remote_filename}, MMS 错误: {_mms_error_name(mms_code)}({mms_code})")
+                        return b"", progress
+                    succeeded = True
+                finally:
+                    try:
+                        iec61850.MmsErrror_destroy(mms_error)
+                    except AttributeError:
+                        try:
+                            iec61850.MmsError_destroy(mms_error)
+                        except Exception:
+                            pass
+
+                if not succeeded:
+                    return b"", progress
+
+                with open(tmp_path, "rb") as f:
+                    file_data = f.read()
+            finally:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+            # libiec61850 在检查远程文件是否存在之前就会创建本地文件，
+            # 失败下载会留下 0 字节残留。
+            if not file_data:
+                progress.status = TransferStatus.FAILED
+                progress.error = "下载文件为空 (0 bytes)，远程文件可能不存在"
+                log.warning(f"下载文件到内存失败: {remote_filename}, 下载结果为 0 字节")
+                return b"", progress
+
+            progress.bytes_transferred = len(file_data)
             progress.status = TransferStatus.COMPLETED
             progress.total_bytes = len(file_data)
             log.info(f"文件下载到内存完成: {remote_filename} ({len(file_data)} bytes)")

@@ -164,6 +164,11 @@ class CacheManager:
         Returns:
             缓存文件路径
         """
+        # 空数据不缓存
+        if not data:
+            log.debug(f"跳过空数据缓存: {remote_path}")
+            return ""
+
         cache_path = self._remote_path_to_local(remote_path)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -226,7 +231,7 @@ class CacheManager:
         return valid
 
     def clear(self) -> int:
-        """清空所有缓存
+        """清空所有缓存，并删除缓存目录
 
         Returns:
             清理的文件数量
@@ -234,19 +239,11 @@ class CacheManager:
         count = len(self._index)
         try:
             if self._cache_dir.exists():
-                # 保留索引文件所在的根目录，只清空内容
-                for item in self._cache_dir.iterdir():
-                    if item.name == self.METADATA_FILE:
-                        continue
-                    if item.is_dir():
-                        shutil.rmtree(item, ignore_errors=True)
-                    else:
-                        item.unlink(missing_ok=True)
+                shutil.rmtree(self._cache_dir, ignore_errors=True)
         except Exception as e:
             log.error(f"清空缓存目录失败: {e}")
 
         self._index.clear()
-        self._save_index()
         log.info(f"缓存已清空，共清理 {count} 个文件")
         return count
 

@@ -58,6 +58,12 @@ class FilesPlugin:
         log.info("Files 插件已初始化 (文件下载服务)")
 
     def shutdown(self) -> None:
+        # 程序关闭时清理下载缓存目录
+        if self._cache:
+            try:
+                self._cache.clear()
+            except Exception as e:
+                log.debug(f"清理文件缓存失败: {e}")
         self._browser = None
         self._transfer = None
         self._cache = None
@@ -134,7 +140,7 @@ class FilesPlugin:
             )
             if progress.status == TransferStatus.COMPLETED and self._cache:
                 # 下载成功，加入缓存
-                self._cache.put(filename, local_path, progress_callback=None)
+                self._cache.put(filename, local_path)
             return b""
         else:
             data, progress = self._transfer.download_file_to_bytes(

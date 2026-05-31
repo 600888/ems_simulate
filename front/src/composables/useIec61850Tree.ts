@@ -32,12 +32,29 @@ export interface TreeNode {
  */
 export function buildIEC61850Children(structure: any, deviceName: string, keyPrefix: string, channelId?: number): TreeNode[] {
   const children: TreeNode[] = [];
+  // 为 Reports/GOOSE/Files 构造带 channel_id 的导航链接
+  const makeLinkTo = (basePath: string) => {
+    return channelId ? `${basePath}?channel_id=${channelId}` : basePath;
+  };
   IEC61850_CATEGORIES.forEach((cat) => {
+    // "Files" 分类在侧边栏显示为扁平导航项，不展示其下子列表（右侧 FileExplorer 页面已包含文件管理）
+    if (cat.key === 'Files') {
+      children.push({
+        nodeKey: `${keyPrefix}-${deviceName}-${cat.key}`,
+        label: cat.label,
+        isGroup: false,
+        id: 0,
+        isIec61850Child: true,
+        iec61850Level: 'category' as const,
+        name: cat.label,
+        deviceName: deviceName,
+        type: cat.label,
+        linkTo: makeLinkTo('/files'),
+      });
+      return;
+    }
+
     const items = structure[cat.key] || [];
-    // 为 Reports/GOOSE 构造带 channel_id 的导航链接
-    const makeLinkTo = (basePath: string) => {
-      return channelId ? `${basePath}?channel_id=${channelId}` : basePath;
-    };
     if (items.length > 0) {
       let categoryChildren: TreeNode[];
 
@@ -147,20 +164,6 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
           deviceName: deviceName,
           type: cat.label,
           linkTo: makeLinkTo('/reports'),
-        }));
-      } else if (cat.key === 'Files') {
-        // Files 分类: 导航到文件浏览器页面
-        categoryChildren = items.map((item: string, itemIndex: number) => ({
-          nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${itemIndex}`,
-          label: item,
-          isGroup: false,
-          id: 0,
-          isIec61850Child: true,
-          iec61850Level: 'ld' as const,
-          name: item,
-          deviceName: deviceName,
-          type: cat.label,
-          linkTo: makeLinkTo('/files'),
         }));
       } else {
         // 其他分类: 仍然为扁平列表
@@ -367,12 +370,22 @@ export function useIec61850Tree() {
     }
   };
 
+  /**
+   * 清除 IEC61850 结构缓存
+   * 在设备连接成功后调用，确保下次获取结构时从后端拉取最新数据
+   */
+  const invalidateStructureCache = () => {
+    _structureCache.clear();
+    _pendingStructureRequests.clear();
+  };
+
   return {
     iec61850UngroupedMap,
     fetchIEC61850Structure,
     markIEC61850Devices,
     markUngroupedIEC61850Devices,
     setStructureLoadedCallback,
+    invalidateStructureCache,
   };
 }
 

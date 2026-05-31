@@ -42,7 +42,7 @@ class DirectoryBrowser:
 
         try:
             raw_entries = self._collect_all_entries(directory)
-            return [self._parse_entry(e, directory) for e in raw_entries]
+            return raw_entries
         except Exception as e:
             log.error(f"浏览文件目录失败 (directory={directory!r}): {e}")
             return []
@@ -96,16 +96,14 @@ class DirectoryBrowser:
                 self._recursive_walk(subdir, max_depth, current_depth + 1, result, on_entry)
 
     def _collect_all_entries(self, directory: str) -> list:
-        """获取目录条目列表
+        """获取目录条目列表，迭代时即解析为 FileEntry
 
-        pyiec61850 的 Python 绑定签名:
-            IedConnection_getFileDirectory(self, directoryName) → [fileList, error]
-            IedConnection_getFileDirectoryEx(self, directoryName, continueAfter, moreFollows) → [fileList, error]
-
-        不需要传入 IedClientError 对象，错误码从返回值中获取。
+        条目内存由 file_list (LinkedList) 持有，必须在 LinkedList_destroy 之前
+        完成解析，且不可再单独 destroy 每个条目，否则造成 use-after-free / double-free
+        导致 C 层崩溃使进程终止。
 
         Returns:
-            FileDirectoryEntry 指针的列表
+            FileEntry 列表
         """
         from pyiec61850 import pyiec61850 as iec61850
 
@@ -133,85 +131,21 @@ class DirectoryBrowser:
             if not file_list:
                 return []
 
-            # 提取所有条目
+            # 迭代并即时解析 (条目内存由 file_list 持有，解析后随 list 一起释放)
             entry = iec61850.LinkedList_getNext(file_list)
             while entry:
                 data = iec61850.LinkedList_getData(entry)
                 if data is not None:
-                    all_entries.append(data)
+                    fd_entry = iec61850.toFileDirectoryEntry(data)
+                    all_entries.append(self._parse_entry(fd_entry, directory))
                 entry = iec61850.LinkedList_getNext(entry)
 
-            # 释放 LinkedList
+            # 释放 LinkedList (一并释放其持有的所有条目，勿再单独 destroy 条目)
             iec61850.LinkedList_destroy(file_list)
 
         except Exception as e:
             log.error(f"IedConnection_getFileDirectory 调用异常: {e}")
             return []
-
-        # 如果条目数量较大，尝试使用 Ex 版本处理分页
-        if len(all_entries) >= 100:
-            log.info(f"目录条目较多 ({len(all_entries)})，尝试使用分页获取完整列表")
-            all_entries = self._collect_entries_with_paging(conn, dir_name)
-
-        return all_entries
-
-    def _collect_entries_with_paging(self, conn, dir_name: Optional[str]) -> list:
-        """使用 getFileDirectoryEx 分页获取目录条目
-
-        pyiec61850 签名:
-            IedConnection_getFileDirectoryEx(self, directoryName, continueAfter, moreFollows)
-        返回值: [fileList, error]
-        moreFollows 是输出参数，SWIG 绑定中需要特殊处理。
-        """
-        from pyiec61850 import pyiec61850 as iec61850
-
-        all_entries = []
-        continue_after = None
-
-        while True:
-            try:
-                # moreFollows 参数: 传 None 让 SWIG 自动创建输出参数
-                result = iec61850.IedConnection_getFileDirectoryEx(
-                    conn, dir_name, continue_after, None
-                )
-
-                # 返回值格式: [fileList, error] 或 [fileList, error, moreFollows]
-                if isinstance(result, (list, tuple)) and len(result) >= 2:
-                    file_list, error_code = result[0], result[1]
-                    has_more = result[2] if len(result) > 2 else False
-                else:
-                    file_list = result
-                    error_code = iec61850.IED_ERROR_OK
-                    has_more = False
-
-                if error_code != iec61850.IED_ERROR_OK:
-                    log.warning(f"分页获取文件目录失败, 错误码: {error_code}")
-                    break
-
-                entry = iec61850.LinkedList_getNext(file_list)
-                last_filename = None
-                while entry:
-                    data = iec61850.LinkedList_getData(entry)
-                    if data is not None:
-                        all_entries.append(data)
-                        try:
-                            last_filename = iec61850.FileDirectoryEntry_getFileName(data)
-                        except Exception:
-                            pass
-                    entry = iec61850.LinkedList_getNext(entry)
-
-                iec61850.LinkedList_destroy(file_list)
-
-                # 检查是否还有更多条目
-                if not has_more or not last_filename:
-                    break
-
-                continue_after = last_filename
-                log.debug(f"文件目录分页继续: continueAfter={continue_after}")
-
-            except Exception as e:
-                log.error(f"分页获取文件目录失败: {e}")
-                break
 
         return all_entries
 
@@ -247,12 +181,8 @@ class DirectoryBrowser:
             full_path=full_path,
         )
 
-        # 释放 C 层条目
-        try:
-            iec61850.FileDirectoryEntry_destroy(entry)
-        except Exception:
-            pass
-
+        # 注意: 条目内存由 file_list (LinkedList) 持有，会随 LinkedList_destroy 一并释放，
+        # 此处不可单独 destroy，否则造成 double-free 使 C 层崩溃。
         return file_entry
 
     @staticmethod

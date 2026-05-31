@@ -137,7 +137,7 @@ const currentDeviceName = ref<string>('');
 const ungroupedExpanded = ref(true);
 
 // IEC61850 设备树 composable
-const { iec61850UngroupedMap, fetchIEC61850Structure, markIEC61850Devices, markUngroupedIEC61850Devices, setStructureLoadedCallback } = useIec61850Tree();
+const { iec61850UngroupedMap, fetchIEC61850Structure, markIEC61850Devices, markUngroupedIEC61850Devices, setStructureLoadedCallback, invalidateStructureCache } = useIec61850Tree();
 
 // IEC61850 结构加载完成后强制重建 el-tree
 setStructureLoadedCallback(() => {
@@ -534,6 +534,8 @@ watch(() => router.currentRoute.value.params.deviceName, (name) => {
 
 // 监听侧边栏刷新触发（如 IEC61850 客户端连接成功）
 watch(refreshCounter, () => {
+  // 清除结构缓存，强制从后端重新获取最新 IEC61850 结构数据
+  invalidateStructureCache();
   fetchDeviceGroupTree();
 });
 </script>
