@@ -1,4 +1,4 @@
-# Tauri Windows packaging script (Sidecar mode)
+﻿# Tauri Windows packaging script (Sidecar mode)
 param([switch]$SkipBuild, [switch]$SkipBackend, [switch]$Msix, [switch]$Help)
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -178,6 +178,13 @@ if (-not $SkipBackend) {
 }
 
 # Build Tauri
+# 确保 binaries/ 目录中只有 triple 命名的 sidecar 文件，清理可能残留的旧文件
+WriteStep "清理 binaries/ 目录中非 triple 命名的文件..."
+Get-ChildItem -Path $BINARIES_DIR -Filter "*.exe" | Where-Object {
+    $_.Name -ne "ems_simulate_backend-$SIDECAR_TARGET.exe"
+} | Remove-Item -Force -ErrorAction SilentlyContinue
+WriteOk "binaries/ 目录已清理"
+
 $tauriExe = Join-Path $TAURI_DIR "target\release\ems-simulate.exe"
 $tauriSrc = Join-Path $TAURI_DIR "src"
 $tauriCargo = Join-Path $TAURI_DIR "Cargo.toml"
@@ -299,7 +306,7 @@ if ($Msix) {
     if ($msixFile) {
         WriteOk "MSIX package created: $($msixFile.FullName)"
     } else {
-        Write-Host "[WARN] MSIX file not found in project root" -ForegroundColor Yellow
+        Write-Host '[WARN] MSIX file not found in project root' -ForegroundColor Yellow
     }
 
     # Install instructions

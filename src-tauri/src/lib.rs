@@ -101,18 +101,35 @@ fn init_file_logger(data_dir: &std::path::Path) {
 }
 
 /// 确保可写数据目录存在
+///
+/// 优先使用程序安装目录（MSI 安装场景），若不可写则回退到 %LOCALAPPDATA%
+/// （MSIX 沙盒环境禁止写入安装目录，须回退到用户数据区）。
 fn ensure_data_dir() -> Result<std::path::PathBuf, String> {
-    let local_app_data = std::env::var("LOCALAPPDATA")
-        .map_err(|_| "无法获取 LOCALAPPDATA".to_string())?;
-    let data_dir = std::path::Path::new(&local_app_data).join("ems_simulate");
+    // 候选路径 1: 程序安装目录
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
 
-    for sub in &["", "data", "log", "config", "upload", "plan"] {
-        std::fs::create_dir_all(&data_dir.join(sub))
-            .map_err(|e| format!("创建目录失败: {}", e))?;
+    let candidate_dirs: [Option<std::path::PathBuf>; 2] = [
+        exe_dir.clone(),
+        std::env::var("LOCALAPPDATA").ok().map(|p| std::path::Path::new(&p).join("ems_simulate")),
+    ];
+
+    for candidate in candidate_dirs.iter().flatten() {
+        let mut ok = true;
+        for sub in &["", "data", "log", "config", "upload", "plan"] {
+            if std::fs::create_dir_all(&candidate.join(sub)).is_err() {
+                ok = false;
+                break;
+            }
+        }
+        if ok {
+            log::info!("数据目录就绪: {}", candidate.display());
+            return Ok(candidate.clone());
+        }
     }
 
-    log::info!("数据目录就绪: {}", data_dir.display());
-    Ok(data_dir)
+    Err("无法创建数据目录（尝试了安装目录和 LOCALAPPDATA 均失败）".to_string())
 }
 
 /// 解析 sidecar 二进制路径（优先 resource_dir，回退到 exe 目录）
@@ -142,12 +159,24 @@ fn resolve_sidecar_path(app_handle: &AppHandle) -> Result<std::path::PathBuf, St
                 return Ok(p);
             }
 
-            // 候选路径 3: exe 目录直接放置（无 binaries 子目录）
+            // 候选路径 3: exe 目录直接放置（含三元组后缀，无 binaries 子目录）
             let p2 = exe_dir.join(&filename);
-            log::info!("[路径] exe目录直接 候选: {} (存在: {})", p2.display(), p2.exists());
+            log::info!("[路径] exe目录直接(含三元组) 候选: {} (存在: {})", p2.display(), p2.exists());
             if p2.exists() {
-                log::info!("[路径] 使用 exe 目录直接路径");
+                log::info!("[路径] 使用 exe 目录直接路径(含三元组)");
                 return Ok(p2);
+            }
+
+            // 候选路径 4: exe 目录直接放置（无三元组后缀，Tauri v2 build 会将 sidecar 复制到 exe 同级）
+            let p3 = if cfg!(target_os = "windows") {
+                exe_dir.join(format!("{}.exe", SIDECAR_NAME))
+            } else {
+                exe_dir.join(SIDECAR_NAME)
+            };
+            log::info!("[路径] exe目录直接(无三元组) 候选: {} (存在: {})", p3.display(), p3.exists());
+            if p3.exists() {
+                log::info!("[路径] 使用 exe 目录直接路径(无三元组)");
+                return Ok(p3);
             }
         }
     }
@@ -175,6 +204,12 @@ fn build_path_diagnostic(app_handle: &AppHandle) -> String {
         if let Some(dir) = p.parent() {
             let sidecar = dir.join("binaries").join(&filename);
             parts.push(format!("  -> sidecar: {} (存在: {})", sidecar.display(), sidecar.exists()));
+            let bare = if cfg!(target_os = "windows") {
+                dir.join(format!("{}.exe", SIDECAR_NAME))
+            } else {
+                dir.join(SIDECAR_NAME)
+            };
+            parts.push(format!("  -> sidecar(无三元组): {} (存在: {})", bare.display(), bare.exists()));
         }
     }
 
@@ -480,7 +515,7 @@ fn get_app_config() -> serde_json::Value {
     serde_json::json!({
         "backend_url": "http://127.0.0.1:8991",
         "api_docs": "http://127.0.0.1:8991/docs",
-        "version": "1.0.0"
+        "version": "1.1.0"
     })
 }
 
