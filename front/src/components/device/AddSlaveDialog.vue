@@ -1,8 +1,8 @@
 <template>
   <el-dialog
     v-model="visible"
-    :title="$t('slave.addSlaveTitle')"
-    width="400px"
+    :title="$t('slave.addSlave')"
+    width="520px"
     :close-on-click-modal="false"
     @close="handleClose"
   >
@@ -10,7 +10,7 @@
       ref="formRef"
       :model="formData"
       :rules="rules"
-      label-width="100px"
+      label-width="120px"
       label-position="right"
     >
       <el-form-item :label="$t('slave.slaveAddress')" prop="slave_id">

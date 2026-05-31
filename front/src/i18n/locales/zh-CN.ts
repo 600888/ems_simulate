@@ -220,6 +220,9 @@ export default {
     adjustSetting: '遥调设置',
   },
   slave: {
+    slaveAddress: '从机地址',
+    slaveAddressPlaceholder: '请输入从机地址',
+    existingSlaves: '已存在的从机: {list}',
     slaveData: '测点数据',
     slaveLabel: '从机 {id}',
     editSlave: '编辑从机',

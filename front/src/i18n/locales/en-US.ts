@@ -220,6 +220,9 @@ export default {
     adjustSetting: 'Adjust Setting',
   },
   slave: {
+    slaveAddress: 'Slave Address',
+    slaveAddressPlaceholder: 'Please enter slave address',
+    existingSlaves: 'Existing slaves: {list}',
     slaveData: 'Point Data',
     slaveLabel: 'Slave {id}',
     editSlave: 'Edit Slave',
