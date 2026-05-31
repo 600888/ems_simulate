@@ -284,8 +284,8 @@ class Device:
 
         if goose_subs:
             try:
-                from src.proto.iec61850.goose_manager import get_goose_manager
-                gm = get_goose_manager()
+                from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
+                gm = GooseResourceManager()
                 sub_list = []
                 for g in goose_subs:
                     sub_list.append({

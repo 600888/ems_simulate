@@ -163,10 +163,10 @@ class WebSocketSessionManager:
         params = message.get("params", {})
 
         try:
-            from src.proto.iec61850.goose_capture import GooseCapture
+            from src.proto.iec61850.plugins.goose.capture import GooseCaptureEngine
 
             if action == Action.START:
-                await self._handle_start(ws, params, GooseCapture)
+                await self._handle_start(ws, params, GooseCaptureEngine)
             elif action == Action.STOP:
                 await self._handle_stop(ws)
             elif action == Action.CLEAR:
@@ -187,7 +187,7 @@ class WebSocketSessionManager:
                 "message": f"指令处理失败: {e}",
             })
 
-    async def _handle_start(self, ws: WebSocket, params: Dict[str, Any], GooseCapture):
+    async def _handle_start(self, ws: WebSocket, params: Dict[str, Any], GooseCaptureEngine):
         """启动 GOOSE 抓包"""
         from src.web.api.channel.goose import GOOSE_CAPTURE_INSTANCES
 
@@ -200,7 +200,7 @@ class WebSocketSessionManager:
         capture = GOOSE_CAPTURE_INSTANCES.get(key)
 
         if capture is None:
-            capture = GooseCapture(interface=interface)
+            capture = GooseCaptureEngine(interface=interface)
             GOOSE_CAPTURE_INSTANCES[key] = capture
 
         capture._max_packets = max_packets

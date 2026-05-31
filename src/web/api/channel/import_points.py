@@ -216,8 +216,8 @@ async def import_icd(
 
             # 清除管理器中的旧 Publisher 记录（防止 go_cb_ref 缓存导致新 Publisher 跳过创建）
             try:
-                from src.proto.iec61850.goose_manager import GooseManager
-                old_manager: Optional[GooseManager] = getattr(
+                from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
+                old_manager: Optional[GooseResourceManager] = getattr(
                     request.app.state, "goose_manager", None
                 )
                 if old_manager:
@@ -328,8 +328,8 @@ async def import_icd(
                 # GoCB 引用的 DataSet 会在 add_goose_control_block 内部创建
                 # 但纯 DataSet 已在 2a 步骤中提前注册到 IedModel
                 if auto_create_goose and goose_result.get("publishers"):
-                    from src.proto.iec61850.goose_manager import GooseManager
-                    manager: Optional[GooseManager] = getattr(
+                    from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
+                    manager: Optional[GooseResourceManager] = getattr(
                         request.app.state, "goose_manager", None
                     )
                     if manager:

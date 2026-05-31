@@ -99,8 +99,8 @@ async def _init_device_controller():
 async def _init_goose_manager(device_controller):
     """后台初始化 GOOSE 管理器"""
     try:
-        from src.proto.iec61850.goose_manager import get_goose_manager
-        goose_manager = get_goose_manager()
+        from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
+        goose_manager = GooseResourceManager()
         log.info("GOOSE 管理器初始化成功")
 
         # 从数据库加载已持久化的 GOOSE Publisher 配置

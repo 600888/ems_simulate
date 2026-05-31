@@ -30,7 +30,7 @@ from src.web.api.schemas.goose import (
     GooseCaptureListRequest,
 )
 from src.web.log import log
-from src.proto.iec61850.goose_manager import GooseManager
+from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
 
 router = APIRouter(tags=["goose"])
 
@@ -61,7 +61,7 @@ async def create_goose_publisher(
 ):
     """创建 GOOSE Publisher"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -110,7 +110,7 @@ async def create_goose_publisher(
 async def list_goose_publishers(request: Request):
     """获取所有 GOOSE Publisher 列表"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -128,7 +128,7 @@ async def get_goose_publisher(
 ):
     """获取指定 GOOSE Publisher 状态"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -148,7 +148,7 @@ async def update_goose_publisher(
 ):
     """更新 GOOSE Publisher 配置"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -174,7 +174,7 @@ async def delete_goose_publisher(
 ):
     """删除 GOOSE Publisher"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -194,7 +194,7 @@ async def start_goose_publisher(
 ):
     """启动 GOOSE Publisher"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -214,7 +214,7 @@ async def stop_goose_publisher(
 ):
     """停止 GOOSE Publisher"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -234,7 +234,7 @@ async def publish_goose_now(
 ):
     """立即发布 GOOSE 报文 (手动触发)"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -256,7 +256,7 @@ async def add_publisher_entry(
 ):
     """向 Publisher 添加数据集条目"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -281,7 +281,7 @@ async def update_publisher_entry(
 ):
     """更新 Publisher 数据集条目值"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -331,7 +331,7 @@ async def remove_publisher_entry(
 ):
     """移除 Publisher 数据集条目"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -356,7 +356,7 @@ async def create_goose_receiver(
 ):
     """创建 GOOSE Receiver"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -386,7 +386,7 @@ async def create_goose_receiver(
 async def list_goose_receivers(request: Request):
     """获取所有 GOOSE Receiver 列表"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -404,7 +404,7 @@ async def get_goose_receiver(
 ):
     """获取指定 GOOSE Receiver 状态"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -424,7 +424,7 @@ async def delete_goose_receiver(
 ):
     """删除 GOOSE Receiver"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -444,7 +444,7 @@ async def start_goose_receiver(
 ):
     """启动 GOOSE Receiver"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -464,7 +464,7 @@ async def stop_goose_receiver(
 ):
     """停止 GOOSE Receiver"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -486,7 +486,7 @@ async def add_receiver_subscription(
 ):
     """向 Receiver 添加订阅"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -512,7 +512,7 @@ async def remove_receiver_subscription(
 ):
     """从 Receiver 移除订阅"""
     try:
-        manager: Optional[GooseManager] = _get_goose_manager(request)
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
         if not manager:
             return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
 
@@ -539,8 +539,8 @@ def _get_capture(interface: str = "") -> Optional[Any]:
     capture = GOOSE_CAPTURE_INSTANCES.get(key)
     if capture is None:
         try:
-            from src.proto.iec61850.goose_capture import GooseCapture
-            capture = GooseCapture(interface=interface)
+            from src.proto.iec61850.plugins.goose.capture import GooseCaptureEngine
+            capture = GooseCaptureEngine(interface=interface)
             GOOSE_CAPTURE_INSTANCES[key] = capture
         except Exception as e:
             log.error(f"创建 GOOSE Capture 失败: {e}")
