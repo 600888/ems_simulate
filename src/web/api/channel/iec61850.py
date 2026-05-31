@@ -268,6 +268,12 @@ def _build_iec61850_tree(
 
         do_info = do_map[do_ref]
 
+        # 累积 DO 描述: 取第一个非空、且不等于 DO 名的测点名 (即 dU 描述)
+        if not do_info.get("desc"):
+            pn = str(point.name) if point.name is not None else ""
+            if pn and pn != do_name:
+                do_info["desc"] = pn
+
         # 记录顶级 DA 名称
         if da_path:
             top_da = da_path.split(".")[0]
@@ -353,14 +359,23 @@ def _build_iec61850_tree(
             is_struct = std_da["is_struct"]
             bda_list = KNOWN_STRUCT_DA_BDAS.get(da_name, [])
 
+            # 对于 dU，使用累积到的 DO 描述作为值（dU 不单独创建测点）
+            dU_value = ""
+            dU_name = da_name
+            if da_name == "dU":
+                dU_value = do_info.get("desc", "")
+                if dU_value:
+                    dU_name = dU_value
+                do_info["du_name"] = dU_value
+
             da_map[da_name] = {
                 "da_name": da_name,
                 "da_path": da_name,
                 "fc": fc,
                 "is_struct": is_struct,
                 "point_code": "",
-                "point_name": da_name,
-                "value": "",
+                "point_name": dU_name,
+                "value": dU_value,
                 "status": "",
                 "children": [
                     {
@@ -423,7 +438,7 @@ def _build_iec61850_tree(
             "do_ref": do_info["do_ref"],
             "ld": do_info["ld"],
             "ln": do_info["ln"],
-            "du_name": do_info["du_name"],
+            "du_name": do_info["du_name"] or do_info.get("desc", ""),
             "fc": do_info["fc"],
             "frame_type": do_info["frame_type"],
             "status": do_status,

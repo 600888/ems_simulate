@@ -207,6 +207,7 @@ class DataModelsPlugin:
                                     self._registry.set_ref(address, ref)
                                     self._registry.set_fc(address, fc)
                                     self._registry.set_iec_type(address, iec_type)
+                                    self._registry.set_name(address, name)
                                     discovered_points.append({
                                         "address": address, "frame_type": frame_type,
                                         "ref": ref, "code": code, "name": name, "fc": fc,
@@ -234,6 +235,7 @@ class DataModelsPlugin:
                                 self._registry.set_ref(address, ref)
                                 self._registry.set_fc(address, fc)
                                 self._registry.set_iec_type(address, iec_type)
+                                self._registry.set_name(address, name)
                                 discovered_points.append({
                                     "address": address, "frame_type": frame_type,
                                     "ref": ref, "code": code, "name": name, "fc": fc,
@@ -445,7 +447,7 @@ class DataModelsPlugin:
             fc = self._registry.get_fc(addr)
             iec_type = self._registry.get_iec_type(addr) or IEC_TYPE_UNKNOWN
             parsed = parse_ref(addr)
-            name = parsed[2] if parsed else code
+            name = self._registry.get_name(addr) or (parsed[2] if parsed else code)
             da_path = parsed[3] if parsed else ""
             frame_type = 0
             if da_path:
@@ -572,19 +574,25 @@ class DataModelsPlugin:
         return []
 
     def _read_du_description(self, do_ref: str) -> str:
-        """读取 DO 的 du (描述) 数据属性值"""
+        """读取 DO 的描述数据属性值
+
+        不同 IED 的描述属性名/FC 不一致, 依次尝试: dU(DC)、d(DC)、dU(CF)、d(CF)。
+        """
         if not self._connection or not self._connection.is_connected:
             return ""
-        du_ref = f"{do_ref}.dU"
-        try:
-            if hasattr(iec61850, 'IedConnection_readStringValue'):
+        if not hasattr(iec61850, 'IedConnection_readStringValue'):
+            return ""
+        for da_name, fc in (("dU", iec61850.IEC61850_FC_DC), ("d", iec61850.IEC61850_FC_DC),
+                            ("dU", iec61850.IEC61850_FC_CF), ("d", iec61850.IEC61850_FC_CF)):
+            try:
                 [value, error] = iec61850.IedConnection_readStringValue(
-                    self._connection.connection, du_ref, iec61850.IEC61850_FC_DC
+                    self._connection.connection, f"{do_ref}.{da_name}", fc
                 )
                 if error == iec61850.IED_ERROR_OK and value:
                     return str(value).strip()
-        except Exception:
-            pass
+            except Exception:
+                continue
+        log.debug(f"读取描述失败 (尝试 dU/d, DC/CF 均无): {do_ref}")
         return ""
 
     def _extract_code_from_address(self, address: str) -> str:

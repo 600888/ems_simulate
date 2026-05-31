@@ -31,6 +31,8 @@ class PointRegistry:
         self._point_fc: Dict[str, str] = {}
         # 地址 -> iec_type 的映射
         self._point_iec_type: Dict[str, str] = {}
+        # 地址 -> 描述 (dU) 的映射
+        self._point_name: Dict[str, str] = {}
         # 发现的 GOOSE 控制块列表
         self._discovered_goose_items: list = []
         # 发现的 DataSet 列表
@@ -86,6 +88,10 @@ class PointRegistry:
         """获取测点的 iec_type"""
         return self._point_iec_type.get(str(address), "")
 
+    def get_name(self, address) -> str:
+        """获取测点的描述 (dU)"""
+        return self._point_name.get(str(address), "")
+
     def has_point(self, address) -> bool:
         """判断测点是否已注册"""
         return str(address) in self._point_refs
@@ -116,6 +122,10 @@ class PointRegistry:
     def set_iec_type(self, address: str, iec_type: str) -> None:
         """直接设置地址的 iec_type"""
         self._point_iec_type[str(address)] = iec_type
+
+    def set_name(self, address: str, name: str) -> None:
+        """直接设置地址的描述 (dU)"""
+        self._point_name[str(address)] = name
 
     @property
     def discovered_goose_items(self) -> list:
