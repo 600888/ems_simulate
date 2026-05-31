@@ -280,7 +280,7 @@ class UrcbHandler:
             pass
 
         try:
-            ds_ref = iec61850.ClientReportControlBlock_getDataSetRef(rcb)
+            ds_ref = iec61850.ClientReportControlBlock_getDataSetReference(rcb)
             if ds_ref:
                 info.data_set_ref = str(ds_ref)
         except Exception:
@@ -332,7 +332,7 @@ class UrcbHandler:
         try:
             owner_val = iec61850.ClientReportControlBlock_getOwner(rcb)
             if owner_val:
-                info.owner = str(owner_val)
+                info.owner = str(mms_value_to_python(owner_val))
         except Exception:
             pass
 

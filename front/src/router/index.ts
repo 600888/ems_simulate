@@ -1,6 +1,6 @@
 // src/router/index.js
 import { createRouter, createWebHashHistory } from 'vue-router';
-import { addView } from '@/store/tagsView';
+import { addView, visitedViews } from '@/store/tagsView';
 
 // 创建路由器实例
 const menuRouter = createRouter({
@@ -36,6 +36,7 @@ const menuRouter = createRouter({
 menuRouter.afterEach((to) => {
   // 我们只收集设备页面或者其他需要标签页的页面
   if (to.name || to.path.startsWith('/device') || to.path.startsWith('/goose') || to.path.startsWith('/reports') || to.path.startsWith('/files')) {
+    // addView 内部已按 fullPath 去重：已存在则定位到该标签，不存在才新建
     addView(to);
   }
 });

@@ -109,7 +109,8 @@ class ReportManager:
 
         # 尝试使用 ReportControlBlock_create API
         success = self._try_api_create(name, lln0, rpt_id, data_set_ref,
-                                        conf_rev, buffered, buf_time, intg_period)
+                                        conf_rev, buffered, buf_time, intg_period,
+                                        trg_ops, opt_fields)
         if success:
             log.info(f"RCB 通过 API 创建成功: {name}, ld={ld_inst}, type={rcb_type}")
         else:
@@ -145,13 +146,16 @@ class ReportManager:
     def _try_api_create(self, name: str, lln0, rpt_id: str,
                          data_set_ref: str, conf_rev: int,
                          buffered: bool, buf_time: int,
-                         intg_period: int) -> bool:
+                         intg_period: int,
+                         trg_ops: Optional[Dict[str, bool]] = None,
+                         opt_fields: Optional[Dict[str, bool]] = None) -> bool:
         """尝试使用 ReportControlBlock_create API 创建 RCB
 
         libIEC61850 的部分版本在 Python SWIG 绑定中可能未暴露此 API。
 
-        注意: ReportControlBlock_create 的 dataSet 参数应为 DataSet 名称
-        (如 "dsRack1CellTemp")，不是完整引用路径 (如 "LD0/LLN0$dsRack1CellTemp")。
+        注意: ReportControlBlock_create 的真实签名为
+        (name, parent, rptId, isBuffered, dataSetName, confRef, trgOps, options, bufTm, intgPd)。
+        dataSetName 期望 "LNName$dataSetName" 形式 (parent 已是 LN, 不含 LD 前缀)。
         """
         if not HAS_IEC61850:
             return False
@@ -162,13 +166,22 @@ class ReportManager:
                 log.debug("ReportControlBlock_create API 不可用")
                 return False
 
-            # 从完整引用路径中提取 DataSet 名称
-            # data_set_ref 格式: "LD0/LLN0$dsRack1CellTemp" → "dsRack1CellTemp"
-            ds_name = data_set_ref.split("$")[-1] if "$" in data_set_ref else data_set_ref
+            # data_set_ref: "LD/LN$ds" -> dataSetName: "LN$ds"
+            ds_name = data_set_ref.split("/", 1)[-1] if "/" in data_set_ref else data_set_ref
+
+            t = trg_ops or {}
+            trg_val = ((0x01 if t.get("dchg") else 0) | (0x02 if t.get("qchg") else 0) |
+                       (0x04 if t.get("dupd") else 0) | (0x08 if t.get("period") else 0) |
+                       (0x10 if t.get("gi") else 0)) or (0x01 | 0x10)
+            o = opt_fields or {}
+            opt_val = ((0x01 if o.get("seq_num") else 0) | (0x02 if o.get("time_stamp") else 0) |
+                       (0x04 if o.get("reason_code") else 0) | (0x08 if o.get("data_set") else 0) |
+                       (0x10 if o.get("data_ref") else 0) | (0x40 if o.get("entry_id") else 0) |
+                       (0x80 if o.get("config_ref") else 0)) or (0x01 | 0x02 | 0x08)
 
             rcb = iec61850.ReportControlBlock_create(
-                name, lln0, rpt_id, ds_name, conf_rev,
-                buffered, buf_time, intg_period,
+                name, lln0, rpt_id, buffered, ds_name, conf_rev,
+                trg_val, opt_val, buf_time, intg_period,
             )
             if rcb:
                 # 保持引用防止 GC

@@ -145,6 +145,8 @@ export default {
     onlineDoc: 'Online Documentation',
     settings: 'Settings',
     deviceDetail: 'Device Details',
+    reportsManagement: 'Reports Management',
+    filesExplorer: 'Files Explorer',
   },
   addDevice: {
     titleEdit: 'Edit Device',

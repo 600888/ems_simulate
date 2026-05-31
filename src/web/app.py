@@ -19,9 +19,9 @@ from src.web.log import log
 def create_app():
     app = FastAPI(
         title="EMS Simulator API",
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
 
     # 配置CORS

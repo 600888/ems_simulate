@@ -145,6 +145,8 @@ export default {
     onlineDoc: '在线文档',
     settings: '设置',
     deviceDetail: '设备详情',
+    reportsManagement: '报告管理',
+    filesExplorer: '文件浏览',
   },
   addDevice: {
     titleEdit: '编辑设备',

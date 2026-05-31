@@ -340,7 +340,7 @@ class BrcbHandler:
             pass
 
         try:
-            ds_ref = iec61850.ClientReportControlBlock_getDataSetRef(rcb)
+            ds_ref = iec61850.ClientReportControlBlock_getDataSetReference(rcb)
             if ds_ref:
                 info.data_set_ref = str(ds_ref)
         except Exception:
@@ -352,19 +352,19 @@ class BrcbHandler:
             pass
 
         try:
-            info.buf_time = int(iec61850.ClientReportControlBlock_getBufTime(rcb))
+            info.buf_time = int(iec61850.ClientReportControlBlock_getBufTm(rcb))
         except Exception:
             pass
 
         try:
-            entry_id = iec61850.ClientReportControlBlock_getEntryID(rcb)
+            entry_id = iec61850.ClientReportControlBlock_getEntryId(rcb)
             if entry_id:
                 info.entry_id = bytes(entry_id)
         except Exception:
             pass
 
         try:
-            info.time_of_entry = int(iec61850.ClientReportControlBlock_getTimeOfEntry(rcb))
+            info.time_of_entry = int(iec61850.ClientReportControlBlock_getEntryTime(rcb))
         except Exception:
             pass
 

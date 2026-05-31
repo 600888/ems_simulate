@@ -99,7 +99,7 @@
                   </el-descriptions-item>
                   <el-descriptions-item :label="`${t('report.giLabel')} (GI)`">
                     <el-tag v-if="giEnabled" type="success" size="small">True</el-tag>
-                    <el-tag v-else type="info" size="small">False</el-tag>
+                    <el-tag v-else type="danger" size="small">False</el-tag>
                   </el-descriptions-item>
                   <el-descriptions-item
                     v-if="selectedRcb.rcb_type === 'BRCB'"
@@ -502,9 +502,9 @@ function onRcbSelect(data: RcbTreeNode) {
 function syncCheckboxes() {
   if (!selectedRcb.value) return;
   const trg = selectedRcb.value.trg_ops;
-  trgOpsModel.value = Object.keys(trg).filter((k) => (trg as any)[k]);
+  trgOpsModel.value = trg ? Object.keys(trg).filter((k) => (trg as any)[k]) : [];
   const opt = selectedRcb.value.opt_fields;
-  optFieldsModel.value = Object.keys(opt).filter((k) => (opt as any)[k]);
+  optFieldsModel.value = opt ? Object.keys(opt).filter((k) => (opt as any)[k]) : [];
 }
 
 async function loadRcbs() {

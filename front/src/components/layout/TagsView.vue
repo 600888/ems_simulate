@@ -3,7 +3,7 @@
     <el-scrollbar wrap-class="tags-view-wrapper">
       <router-link
         v-for="tag in visitedViews"
-        :key="tag.path"
+        :key="tag.fullPath || tag.path"
         :to="{ path: tag.path, query: tag.query }"
         class="tags-view-item"
         :class="isActive(tag) ? 'active' : ''"
@@ -19,21 +19,45 @@
         </el-icon>
       </router-link>
     </el-scrollbar>
+
+    <!-- 右键菜单 -->
+    <div
+      v-show="contextMenuVisible"
+      class="context-menu"
+      :style="{ left: contextMenuX + 'px', top: contextMenuY + 'px' }"
+      @click.stop
+    >
+      <div class="context-menu-item" @click="closeOthers">
+        <span>关闭其他标签页</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Close } from '@element-plus/icons-vue';
-import { visitedViews, delView, type TagView } from '@/store/tagsView';
+import { visitedViews, delView, delOthersViews, type TagView } from '@/store/tagsView';
 import Sortable from 'sortablejs';
 
 const route = useRoute();
 const router = useRouter();
 
+// 右键菜单状态
+const contextMenuVisible = ref(false);
+const contextMenuX = ref(0);
+const contextMenuY = ref(0);
+const contextMenuTag = ref<TagView | null>(null);
+
+// 点击其他区域关闭菜单
+const closeContextMenu = () => {
+  contextMenuVisible.value = false;
+};
+
 onMounted(() => {
   initSortable();
+  document.addEventListener('click', closeContextMenu);
 });
 
 const initSortable = () => {
@@ -55,7 +79,7 @@ const initSortable = () => {
 };
 
 const isActive = (tag: TagView) => {
-  return tag.path === route.path;
+  return (tag.fullPath || tag.path) === route.fullPath;
 };
 
 const closeSelectedTag = async (view: TagView) => {
@@ -76,7 +100,27 @@ const toLastView = (views: TagView[], view: TagView) => {
 };
 
 const openMenu = (tag: TagView, e: MouseEvent) => {
-  // context menu logic can be added here if needed
+  contextMenuTag.value = tag;
+  contextMenuX.value = e.clientX;
+  contextMenuY.value = e.clientY;
+  contextMenuVisible.value = true;
+};
+
+const closeOthers = async () => {
+  if (!contextMenuTag.value) return;
+  const currentTag = contextMenuTag.value;
+  const currentPath = route.fullPath;
+  contextMenuVisible.value = false;
+  await delOthersViews(currentTag);
+  // 如果当前激活的标签被删除了，跳转到其他标签
+  if ((currentTag.fullPath || currentTag.path) !== currentPath) {
+    const remaining = visitedViews.value.slice(-1)[0];
+    if (remaining) {
+      router.push((remaining.fullPath || remaining.path) as string);
+    } else {
+      router.push('/');
+    }
+  }
 };
 </script>
 
@@ -165,6 +209,30 @@ const openMenu = (tag: TagView, e: MouseEvent) => {
         opacity: 0.3;
         background-color: var(--color-primary-light-9, #ecf5ff);
       }
+    }
+  }
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 3000;
+  background: var(--panel-bg, #fff);
+  border: 1px solid var(--sidebar-border, #e4e7ed);
+  border-radius: 4px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px 0;
+  min-width: 140px;
+
+  .context-menu-item {
+    padding: 6px 16px;
+    font-size: 13px;
+    color: var(--text-primary, #303133);
+    cursor: pointer;
+    white-space: nowrap;
+
+    &:hover {
+      background-color: var(--color-primary-light-9, #ecf5ff);
+      color: var(--color-primary, #409eff);
     }
   }
 }

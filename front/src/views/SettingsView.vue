@@ -400,11 +400,6 @@ function copyText(text: string) {
 .copy-icon {
   flex-shrink: 0;
   color: var(--text-secondary);
-  opacity: 0;
-  transition: opacity 0.2s;
-
-  .contact-card:hover & {
-    opacity: 1;
-  }
+  opacity: 1;
 }
 </style>

@@ -191,8 +191,6 @@ class DataSetsPlugin:
             if dir_error != iec61850.IED_ERROR_OK or s_data_set is None:
                 return []
 
-            log.debug(f"s_data_set type={type(s_data_set).__name__}, dir={dir(s_data_set)}")
-
             fcdas = getattr(s_data_set, 'fcdas', None)
             is_direct_ll = False
             if fcdas is None:

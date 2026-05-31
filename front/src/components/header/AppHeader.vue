@@ -87,6 +87,14 @@ const updateBreadcrumb = () => {
     breadList.value = [
       { path: '/goose', meta: { title: t('header.gooseManagement') } }
     ];
+  } else if (route.path.startsWith('/reports')) {
+    breadList.value = [
+      { path: '/reports', meta: { title: t('header.reportsManagement') } }
+    ];
+  } else if (route.path.startsWith('/files')) {
+    breadList.value = [
+      { path: '/files', meta: { title: t('header.filesExplorer') } }
+    ];
   } else {
     breadList.value = route.matched.filter((item) => item.meta?.title);
   }
