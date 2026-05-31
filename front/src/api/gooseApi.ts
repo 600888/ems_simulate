@@ -121,6 +121,35 @@ export interface GooseSubscriptionCreateRequest {
   description?: string;
 }
 
+/** 发现的远端 GOOSE 控制块 */
+export interface DiscoveredGooseItem {
+  go_cb_ref: string;
+  go_id: string;
+  app_id: number | null;
+  data_set_ref: string;
+  conf_rev: number;
+  name: string;
+  ld_inst: string;
+}
+
+/** 获取客户端发现的远端 GOOSE 控制块列表 */
+export async function getDiscoveredGoose(channelId: number): Promise<DiscoveredGooseItem[]> {
+  const data = await requestApi(GOOSE_API.DISCOVERED_LIST, 'post', { channel_id: channelId });
+  return data?.items || [];
+}
+
+/** 将发现的远端 GOOSE 控制块导入为 Receiver 订阅 */
+export async function importDiscoveredGoose(
+  channelId: number,
+  iface = 'eth0',
+): Promise<{ imported: number; receiver: GooseReceiverStatus | null }> {
+  const data = await requestApi(GOOSE_API.DISCOVERED_IMPORT, 'post', {
+    channel_id: channelId,
+    interface: iface,
+  });
+  return data || { imported: 0, receiver: null };
+}
+
 // ===== Publisher API =====
 
 /** 获取所有 GOOSE Publisher 列表 */

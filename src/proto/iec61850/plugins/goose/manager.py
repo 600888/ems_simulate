@@ -385,6 +385,8 @@ class GooseResourceManager:
                         app_id=s.get("app_id"),
                         dst_mac=s.get("dst_mac"),
                         description=s.get("description", ""),
+                        data_set_ref=s.get("data_set_ref", ""),
+                        conf_rev=s.get("conf_rev", 0),
                     )
 
             # 使用接口名作为 ID
@@ -446,6 +448,43 @@ class GooseResourceManager:
         return True
 
     # ===== Receiver 订阅管理 =====
+
+    def import_discovered(
+        self,
+        discovered: list[dict[str, Any]],
+        interface: str = "eth0",
+    ) -> dict[str, Any] | None:
+        """将发现的远端 GOOSE 控制块导入为 Receiver 订阅 (幂等)
+
+        在指定接口上复用/创建 Receiver，对每个发现的 GoCB 添加订阅。
+        已存在的订阅 (相同 go_cb_ref) 由底层去重，不会重复添加。
+        Receiver 运行中则跳过添加。
+        """
+        if not discovered:
+            recv_id = self._interface_to_rid.get(interface)
+            return self.get_receiver_status(recv_id) if recv_id else None
+
+        recv_id = self._interface_to_rid.get(interface)
+        if not recv_id:
+            status = self.create_receiver(interface=interface)
+            recv_id = status.get("id") if status else None
+        if not recv_id:
+            return None
+
+        receiver = self._receivers.get(recv_id)
+        if receiver and not receiver.is_running:
+            for g in discovered:
+                go_cb_ref = g.get("go_cb_ref", "")
+                if go_cb_ref:
+                    receiver.add_subscription(
+                        go_cb_ref=go_cb_ref,
+                        app_id=g.get("app_id"),
+                        dst_mac=g.get("dst_mac"),
+                        description="auto-discovered",
+                        data_set_ref=g.get("data_set_ref", ""),
+                        conf_rev=g.get("conf_rev", 0),
+                    )
+        return self.get_receiver_status(recv_id)
 
     def add_subscription(
         self,

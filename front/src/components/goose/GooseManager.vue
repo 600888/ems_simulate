@@ -167,6 +167,33 @@
         </el-table>
       </el-tab-pane>
 
+      <!-- 已发现的远端控制块 -->
+      <el-tab-pane :label="$t('goose.discovered')" name="discovered">
+        <div class="tab-header">
+          <el-button :icon="Refresh" @click="refreshDiscovered" :loading="loading">
+            {{ $t('goose.refresh') }}
+          </el-button>
+        </div>
+        <el-table :data="discovered" stripe border style="width: 100%">
+          <el-table-column prop="go_cb_ref" label="GoCBRef" min-width="240" show-overflow-tooltip />
+          <el-table-column prop="go_id" label="GoID" width="120" show-overflow-tooltip />
+          <el-table-column prop="app_id" label="APPID" width="90">
+            <template #default="{ row }">
+              {{ row.app_id != null ? '0x' + row.app_id.toString(16).toUpperCase().padStart(4, '0') : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="data_set_ref" label="DataSet" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="conf_rev" label="confRev" width="90" align="center" />
+          <el-table-column :label="$t('common.operation')" width="160" fixed="right">
+            <template #default="{ row }">
+              <el-button type="primary" size="small" @click="createPublisherFromDiscovered(row)">
+                {{ $t('goose.newPublisher') }}
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+
       <!-- GOOSE 抓包 -->
       <el-tab-pane :label="$t('goose.captureTitle')" name="capture">
         <GooseCapture />
@@ -316,7 +343,7 @@
     <!-- 订阅管理对话框 -->
     <el-dialog v-model="subManagerVisible" :title="$t('goose.subscriptionManager') + ' - ' + (editingReceiver?.interface || '')" width="700px" destroy-on-close>
       <div class="tab-header">
-        <el-button type="primary" :icon="Plus" size="small" @click="showAddSubscriptionForm = true" v-if="!editingReceiver?.is_running">
+        <el-button type="primary" :icon="Plus" @click="showAddSubscriptionForm = true" v-if="!editingReceiver?.is_running">
           {{ $t('goose.addSub') }}
         </el-button>
         <el-alert v-else type="warning" :closable="false" style="margin-bottom: 12px">
@@ -324,16 +351,16 @@
         </el-alert>
       </div>
 
-      <div v-if="showAddSubscriptionForm" style="margin-bottom: 12px; padding: 12px; border: 1px solid #EBEEF5; border-radius: 4px;">
-        <el-form :inline="true" size="small">
+      <div v-if="showAddSubscriptionForm" style="margin-bottom: 14px; padding: 16px 20px; border: 1px solid #DCDFE6; border-radius: 4px;">
+        <el-form :inline="true">
           <el-form-item :label="$t('goose.subGoCbRef')">
-            <el-input v-model="newSubForm.go_cb_ref" :placeholder="$t('goose.subGoCbRefPlaceholder')" style="width: 250px" />
+            <el-input v-model="newSubForm.go_cb_ref" :placeholder="$t('goose.subGoCbRefPlaceholder')" style="width: 280px" />
           </el-form-item>
           <el-form-item :label="$t('goose.subAppId')">
-            <el-input-number v-model="newSubForm.app_id" :min="0" :max="65535" />
+            <el-input-number v-model="newSubForm.app_id" :min="0" :max="65535" :style="{width:'140px'}" controls-position="right" />
           </el-form-item>
           <el-form-item :label="$t('goose.subDescription')">
-            <el-input v-model="newSubForm.description" style="width: 150px" />
+            <el-input v-model="newSubForm.description" style="width: 180px" />
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="addSubscription">{{ $t('goose.confirm') }}</el-button>
@@ -342,39 +369,41 @@
         </el-form>
       </div>
 
-      <el-table :data="editingReceiver?.subscriptions || []" border size="small">
-        <el-table-column prop="go_cb_ref" :label="$t('goose.subGoCbRef')" min-width="250" show-overflow-tooltip />
-        <el-table-column :label="$t('goose.subAppId')" width="100">
-          <template #default="{ row }">
-            {{ row.app_id != null ? '0x' + row.app_id.toString(16).toUpperCase().padStart(4, '0') : '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('goose.goId')" width="110" prop="go_id" />
-        <el-table-column :label="$t('goose.stNum')" width="85" align="center" prop="st_num" />
-        <el-table-column :label="$t('goose.sqNum')" width="85" align="center" prop="sq_num" />
-        <el-table-column :label="$t('goose.subState')" width="95" align="center">
-          <template #default="{ row }">
-            <el-tag :color="GOOSE_STATE_COLOR[row.state] || '#909399'" style="color: #fff" size="small">
-              {{ GOOSE_STATE_LABEL[row.state] || row.state }}
+      <template v-if="editingReceiver?.subscriptions?.length">
+        <div v-for="sub in editingReceiver.subscriptions" :key="sub.go_cb_ref" class="sub-card">
+          <div class="sub-card__row">
+            <span class="sub-card__label">{{ $t('goose.subGoCbRef') }}:</span>
+            <span class="sub-card__value cell-wrap">{{ sub.go_cb_ref }}</span>
+          </div>
+          <div class="sub-card__row">
+            <span class="sub-card__label">{{ $t('goose.subAppId') }}:</span>
+            <span class="sub-card__value">{{ sub.app_id != null ? '0x' + sub.app_id.toString(16).toUpperCase().padStart(4, '0') : '-' }}</span>
+            <span class="sub-card__label" style="margin-left:16px">{{ $t('goose.goId') }}:</span>
+            <span class="sub-card__value">{{ sub.go_id || '-' }}</span>
+            <span class="sub-card__label" style="margin-left:16px">状态号:</span>
+            <span class="sub-card__value">{{ sub.st_num }}</span>
+            <span class="sub-card__label" style="margin-left:16px">顺序号:</span>
+            <span class="sub-card__value">{{ sub.sq_num }}</span>
+          </div>
+          <div class="sub-card__row">
+            <span class="sub-card__label">{{ $t('goose.subState') }}:</span>
+            <el-tag :color="GOOSE_STATE_COLOR[sub.state] || '#909399'" style="color: #fff">
+              {{ GOOSE_STATE_LABEL[sub.state] || sub.state }}
             </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('goose.subDataValue')" min-width="200">
-          <template #default="{ row }">
-            <div v-if="row.data_values?.length" class="data-values">
-              <span v-for="dv in row.data_values" :key="dv.index" class="data-value-item">
-                {{ dv.value }}
-              </span>
-            </div>
-            <span v-else class="text-muted">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('goose.subOperation')" width="90" align="center" v-if="!editingReceiver?.is_running">
-          <template #default="{ row }">
-            <el-button type="danger" :icon="Delete" circle size="small" @click="removeSubscription(row.go_cb_ref)" />
-          </template>
-        </el-table-column>
-      </el-table>
+            <span class="sub-card__label" style="margin-left:20px">{{ $t('goose.subDataValue') }}:</span>
+            <span class="sub-card__value">
+              <template v-if="sub.data_values?.length">
+                <span v-for="dv in sub.data_values" :key="dv.index" class="data-value-item">{{ dv.value }}</span>
+              </template>
+              <span v-else class="text-muted">-</span>
+            </span>
+            <el-button v-if="!editingReceiver?.is_running" type="danger" :icon="Delete" circle
+              style="margin-left:auto; flex-shrink:0"
+              @click="removeSubscription(sub.go_cb_ref)" />
+          </div>
+        </div>
+      </template>
+      <span v-else class="text-muted" style="display:block;text-align:center;padding:24px">{{ $t('goose.noSubscription') }}</span>
     </el-dialog>
 
     <!-- 订阅详情对话框 -->
@@ -410,13 +439,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Delete } from '@element-plus/icons-vue'
 import GooseCapture from './GooseCapture.vue'
 import {
-  getGoosePublishers, getGooseReceivers,
+  getGoosePublishers, getGooseReceivers, getDiscoveredGoose, importDiscoveredGoose,
   createGoosePublisher, deleteGoosePublisher,
   startGoosePublisher, stopGoosePublisher, publishGooseNow,
   createGooseReceiver, deleteGooseReceiver,
@@ -429,9 +458,15 @@ import {
 } from '@/constants/protocol'
 import type {
   GoosePublisherStatus, GooseReceiverStatus, GooseSubscriptionStatus,
+  DiscoveredGooseItem,
 } from '@/api/gooseApi'
 
 const { t } = useI18n()
+
+// ===== Props =====
+const props = defineProps<{
+  channelId?: number
+}>()
 
 // ===== 通用状态 =====
 const loading = ref(false)
@@ -441,6 +476,9 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 // ===== Publisher 状态 =====
 const publishers = ref<GoosePublisherStatus[]>([])
+
+// ===== 发现的远端控制块 =====
+const discovered = ref<DiscoveredGooseItem[]>([])
 const createPublisherVisible = ref(false)
 const publisherFormRef = ref()
 const publisherForm = reactive({
@@ -517,8 +555,62 @@ async function refreshReceivers() {
   }
 }
 
+async function refreshDiscovered() {
+  if (!props.channelId) {
+    discovered.value = []
+    return
+  }
+  try {
+    discovered.value = await getDiscoveredGoose(props.channelId)
+  } catch (e) {
+    console.error('刷新发现的 GOOSE 控制块失败:', e)
+  }
+}
+
 async function refreshAll() {
-  await Promise.all([refreshPublishers(), refreshReceivers()])
+  await Promise.all([refreshPublishers(), refreshReceivers(), refreshDiscovered()])
+}
+
+// channelId 变化时重新加载发现列表，并自动导入为订阅（每个通道仅导入一次）
+const importedChannels = new Set<number>()
+watch(
+  () => props.channelId,
+  async (id) => {
+    if (!id) return
+    activeTab.value = 'discovered'
+    await refreshDiscovered()
+    if (discovered.value.length > 0 && !importedChannels.has(id)) {
+      importedChannels.add(id)
+      try {
+        const res = await importDiscoveredGoose(id)
+        if (res.imported > 0) {
+          ElMessage.success(t('goose.autoImported', { count: res.imported }))
+          await refreshReceivers()
+        }
+      } catch (e) {
+        console.error('自动导入发现的 GOOSE 控制块失败:', e)
+      }
+    }
+  },
+  { immediate: true },
+)
+
+/** 基于发现的控制块快速创建 Publisher */
+function createPublisherFromDiscovered(item: DiscoveredGooseItem) {
+  Object.assign(publisherForm, {
+    interface: 'eth0',
+    go_cb_ref: item.go_cb_ref,
+    go_id: item.go_id || '',
+    data_set_ref: item.data_set_ref || '',
+    app_id: item.app_id ?? 0x0001,
+    conf_rev: item.conf_rev || 1,
+    time_allowed_to_live: 1000,
+    vlan_id: 0,
+    vlan_prio: 4,
+    simulation: true,
+    entries: [],
+  })
+  createPublisherVisible.value = true
 }
 
 // ===== Publisher 操作 =====
@@ -871,12 +963,49 @@ onUnmounted(() => {
   gap: 4px;
 }
 
+.sub-card {
+  border: 1px solid #DCDFE6;
+  border-radius: 4px;
+  padding: 16px 20px;
+  margin-bottom: 14px;
+}
+
+.sub-card__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sub-card__row:last-child {
+  margin-bottom: 0;
+}
+
+.sub-card__label {
+  font-size: 14px;
+  color: #909399;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sub-card__value {
+  font-size: 14px;
+  color: #303133;
+}
+
+.cell-wrap {
+  word-break: break-all;
+  white-space: normal;
+  line-height: 1.4;
+}
+
 .data-value-item {
   display: inline-block;
-  padding: 2px 6px;
-  background: #f5f7fa;
-  border-radius: 3px;
-  font-size: 12px;
+  padding: 3px 10px;
+  background: #f0f2f5;
+  border-radius: 4px;
+  font-size: 14px;
   font-family: monospace;
 }
 

@@ -413,6 +413,8 @@ export default {
     publish: 'GOOSE 发布',
     subscribe: 'GOOSE 订阅',
     capture: 'GOOSE 抓包',
+    discovered: '已发现',
+    autoImported: '已自动导入 {count} 个发现的 GOOSE 控制块为订阅',
     newPublisher: '新建 Publisher',
     newReceiver: '新建 Receiver',
     refresh: '刷新',

@@ -18,6 +18,8 @@ from src.web.api.schemas.goose import (
     GoosePublisherCreate,
     GoosePublisherUpdate,
     GoosePublisherIdRequest,
+    GooseChannelRequest,
+    GooseImportDiscoveredRequest,
     GoosePublisherEntryAdd,
     GoosePublisherEntryUpdate,
     GoosePublisherEntryRemove,
@@ -50,6 +52,15 @@ def _validate_iec61850_channel(channel_id: int):
 def _get_goose_manager(request: Request):
     """获取 GOOSE 管理器"""
     return getattr(request.app.state, "goose_manager", None)
+
+
+def _get_discovered_goose(channel_id: int, request: Request) -> List[Dict[str, Any]]:
+    """获取通道对应客户端连接时发现的远端 GOOSE 控制块"""
+    device_controller = getattr(request.app.state, "device_controller", None)
+    device = device_controller.get_device_by_channel_id(channel_id) if device_controller else None
+    handler = getattr(device, "protocol_handler", None) if device else None
+    discovered = getattr(handler, "_discovered_goose_items", None)
+    return list(discovered) if discovered else []
 
 
 # ===== GOOSE Publisher 管理 =====
@@ -119,6 +130,39 @@ async def list_goose_publishers(request: Request):
     except Exception as e:
         log.error(f"获取 GOOSE Publisher 列表失败: {e}")
         return BaseResponse(code=500, message=f"获取 GOOSE Publisher 列表失败: {e}", data={})
+
+
+@router.post("/goose/discovered/list", response_model=BaseResponse)
+async def list_discovered_goose(body: GooseChannelRequest, request: Request):
+    """获取客户端连接时发现的远端 GOOSE 控制块列表"""
+    try:
+        items = _get_discovered_goose(body.channel_id, request)
+        return BaseResponse(message="获取发现的 GOOSE 控制块成功", data={"items": items})
+    except Exception as e:
+        log.error(f"获取发现的 GOOSE 控制块失败: {e}")
+        return BaseResponse(code=500, message=f"获取发现的 GOOSE 控制块失败: {e}", data={"items": []})
+
+
+@router.post("/goose/discovered/import", response_model=BaseResponse)
+async def import_discovered_goose(body: GooseImportDiscoveredRequest, request: Request):
+    """将客户端发现的远端 GOOSE 控制块自动导入为 Receiver 订阅 (幂等)"""
+    try:
+        manager: Optional[GooseResourceManager] = _get_goose_manager(request)
+        if not manager:
+            return BaseResponse(code=500, message="GOOSE 管理器未初始化", data={})
+
+        items = _get_discovered_goose(body.channel_id, request)
+        if not items:
+            return BaseResponse(message="没有可导入的 GOOSE 控制块", data={"imported": 0, "receiver": None})
+
+        receiver = manager.import_discovered(items, interface=body.interface)
+        return BaseResponse(
+            message=f"已导入 {len(items)} 个 GOOSE 控制块",
+            data={"imported": len(items), "receiver": receiver},
+        )
+    except Exception as e:
+        log.error(f"导入发现的 GOOSE 控制块失败: {e}")
+        return BaseResponse(code=500, message=f"导入发现的 GOOSE 控制块失败: {e}", data={})
 
 
 @router.post("/goose/publishers/detail", response_model=BaseResponse)

@@ -133,6 +133,8 @@ class GooseReceiver:
         app_id: int | None = None,
         dst_mac: list[int] | None = None,
         description: str = "",
+        data_set_ref: str = "",
+        conf_rev: int = 0,
     ) -> GooseSubscriptionInfo:
         """添加 GOOSE 订阅"""
         with self._lock:
@@ -144,6 +146,8 @@ class GooseReceiver:
                 app_id=app_id,
                 dst_mac=dst_mac,
                 description=description,
+                data_set_ref=data_set_ref,
+                conf_rev=conf_rev,
             )
             self._subscriptions[go_cb_ref] = sub
             return sub
@@ -239,7 +243,8 @@ class GooseReceiver:
             # 添加所有订阅者
             with self._lock:
                 for go_cb_ref, sub in self._subscriptions.items():
-                    subscriber = iec61850.GooseSubscriber_create(go_cb_ref, None)
+                    data_set_ref = sub.data_set_ref if sub.data_set_ref else None
+                    subscriber = iec61850.GooseSubscriber_create(go_cb_ref, data_set_ref)
                     if not subscriber:
                         log.warning(f"GooseSubscriber_create 失败: {go_cb_ref}")
                         continue

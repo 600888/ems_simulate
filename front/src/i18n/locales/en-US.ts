@@ -413,6 +413,8 @@ export default {
     publish: 'GOOSE Publish',
     subscribe: 'GOOSE Subscribe',
     capture: 'GOOSE Capture',
+    discovered: 'Discovered',
+    autoImported: 'Auto-imported {count} discovered GOOSE control block(s) as subscriptions',
     newPublisher: 'New Publisher',
     newReceiver: 'New Receiver',
     refresh: 'Refresh',

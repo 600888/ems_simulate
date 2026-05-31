@@ -124,6 +124,8 @@ export const GOOSE_API = {
   // Publisher
   PUBLISHERS: '/api/channels/goose/publishers',
   PUBLISHERS_LIST: '/api/channels/goose/publishers/list',
+  DISCOVERED_LIST: '/api/channels/goose/discovered/list',
+  DISCOVERED_IMPORT: '/api/channels/goose/discovered/import',
   PUBLISHER_DETAIL: '/api/channels/goose/publishers/detail',
   PUBLISHER_UPDATE: '/api/channels/goose/publishers/update',
   PUBLISHER_DELETE: '/api/channels/goose/publishers/delete',

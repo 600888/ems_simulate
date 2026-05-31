@@ -30,6 +30,8 @@ export const PROTOCOL_DEFAULT_PORTS: Record<number, number> = {
 
 // 协议客户端默认 IP 映射（仅 TCP 客户端模式使用）
 export const PROTOCOL_DEFAULT_CLIENT_IP: Record<number, string> = {
+  [PROTOCOL_TYPE.IEC104]: '127.0.0.1',
+  [PROTOCOL_TYPE.DLT645]: '127.0.0.1',
   [PROTOCOL_TYPE.IEC61850]: '127.0.0.1',
 } as const;
 

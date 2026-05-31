@@ -301,47 +301,65 @@ class DataModelsPlugin:
         return go_cb_names
 
     def _read_goose_control_block_info(self, ld: str, cb_name: str) -> Dict[str, Any]:
-        """读取 GOOSE 控制块详细信息"""
-        cb_ref = f"{ld}/LLN0.{cb_name}"
+        """读取 GOOSE 控制块详细信息
+
+        优先使用 libiec61850 的 GoCB 专用 API (IedConnection_getGoCBValues)，
+        它能正确读取 appID（位于目标地址子结构）、datSet、confRev、goID；
+        逐属性读取 .appID 叶子节点在多数 IED 上不可用，会导致 APPID/DataSet 为空。
+        """
         app_id = None
         dat_set = ""
         conf_rev = 0
         go_id = ""
-        if hasattr(iec61850, 'IEC61850_FC_GO'):
-            try:
-                appid_ref = f"{cb_ref}.appID"
-                [value, err] = iec61850.IedConnection_readUnsigned32Value(
-                    self._connection.connection, appid_ref, iec61850.IEC61850_FC_GO
+
+        # libiec61850 的 getGoCBValues/create 要求引用含 FC 段 .GO.，
+        # 形如 LD/LLN0.GO.gcbName；缺少则返回 OBJECT_NOT_FOUND，导致属性全空
+        gocb_ref = f"{ld}/LLN0.GO.{cb_name}"
+        gocb = None
+        try:
+            gocb = iec61850.ClientGooseControlBlock_create(gocb_ref)
+            if gocb is not None:
+                result = iec61850.IedConnection_getGoCBValues(
+                    self._connection.connection, gocb_ref, gocb
                 )
-                if err == iec61850.IED_ERROR_OK:
-                    app_id = int(value)
-            except Exception:
-                pass
+                if isinstance(result, (list, tuple)):
+                    err = result[1] if len(result) > 1 else 0
+                else:
+                    err = result
+                if err != iec61850.IED_ERROR_OK:
+                    log.warning(f"getGoCBValues 失败: ref={gocb_ref}, err={err}")
+                    try:
+                        iec61850.ClientGooseControlBlock_destroy(gocb)
+                    except Exception:
+                        pass
+                    gocb = None
+            else:
+                log.warning(f"ClientGooseControlBlock_create 失败: ref={gocb_ref}")
+        except Exception as e:
+            log.warning(f"getGoCBValues 异常: ref={gocb_ref}, {type(e).__name__}: {e}")
+            gocb = None
+
+        if gocb is not None:
             try:
-                ds_ref = f"{cb_ref}.datSet"
-                [value, err] = iec61850.IedConnection_readStringValue(
-                    self._connection.connection, ds_ref, iec61850.IEC61850_FC_GO
-                )
-                if err == iec61850.IED_ERROR_OK:
-                    dat_set = str(value or "")
-            except Exception:
-                pass
+                appid_val = iec61850.ClientGooseControlBlock_getDstAddress_appid(gocb)
+                if appid_val is not None:
+                    app_id = int(appid_val)
+            except Exception as e:
+                log.debug(f"读取 GoCB appID 失败: {e}")
             try:
-                cr_ref = f"{cb_ref}.confRev"
-                [value, err] = iec61850.IedConnection_readUnsigned32Value(
-                    self._connection.connection, cr_ref, iec61850.IEC61850_FC_GO
-                )
-                if err == iec61850.IED_ERROR_OK:
-                    conf_rev = int(value)
-            except Exception:
-                pass
+                dat_set = str(iec61850.ClientGooseControlBlock_getDatSet(gocb) or "")
+            except Exception as e:
+                log.debug(f"读取 GoCB datSet 失败: {e}")
             try:
-                gid_ref = f"{cb_ref}.goID"
-                [value, err] = iec61850.IedConnection_readStringValue(
-                    self._connection.connection, gid_ref, iec61850.IEC61850_FC_GO
-                )
-                if err == iec61850.IED_ERROR_OK:
-                    go_id = str(value or "")
+                conf_rev = int(iec61850.ClientGooseControlBlock_getConfRev(gocb) or 0)
+            except Exception as e:
+                log.debug(f"读取 GoCB confRev 失败: {e}")
+            try:
+                go_id = str(iec61850.ClientGooseControlBlock_getGoID(gocb) or "")
+            except Exception as e:
+                log.debug(f"读取 GoCB goID 失败: {e}")
+            try:
+                iec61850.ClientGooseControlBlock_destroy(gocb)
             except Exception:
                 pass
 

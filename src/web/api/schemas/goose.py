@@ -63,6 +63,17 @@ class GoosePublisherIdRequest(BaseModel):
     publisher_id: str = Field(..., description="Publisher 标识 (go_cb_ref)")
 
 
+class GooseChannelRequest(BaseModel):
+    """GOOSE 通道查询请求 (用于按通道获取发现的远端控制块)"""
+    channel_id: int = Field(..., description="关联的通道ID", ge=1)
+
+
+class GooseImportDiscoveredRequest(BaseModel):
+    """将发现的远端 GOOSE 控制块导入为订阅"""
+    channel_id: int = Field(..., description="关联的通道ID", ge=1)
+    interface: str = Field("eth0", description="GOOSE 接收使用的网络接口", min_length=1)
+
+
 class GoosePublisherUpdate(BaseModel):
     """更新 GOOSE Publisher 配置"""
     publisher_id: str = Field(..., description="Publisher 标识 (go_cb_ref)")
