@@ -3,7 +3,7 @@
     <el-scrollbar wrap-class="tags-view-wrapper">
       <router-link
         v-for="tag in visitedViews"
-        :key="tag.fullPath || tag.path"
+        :key="tag.path"
         :to="{ path: tag.path, query: tag.query }"
         class="tags-view-item"
         :class="isActive(tag) ? 'active' : ''"
@@ -38,7 +38,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Close } from '@element-plus/icons-vue';
-import { visitedViews, delView, delOthersViews, type TagView } from '@/store/tagsView';
+import { visitedViews, delView, delOthersViews, getDeviceNameByChannelId, type TagView } from '@/store/tagsView';
 import Sortable from 'sortablejs';
 
 const route = useRoute();
@@ -79,7 +79,14 @@ const initSortable = () => {
 };
 
 const isActive = (tag: TagView) => {
-  return (tag.fullPath || tag.path) === route.fullPath;
+  // 正常路径匹配
+  if (tag.path === route.path) return true;
+  // 报告/文件是设备的子页面，高亮对应的设备标签
+  if ((route.path === '/reports' || route.path === '/files') && route.query.channel_id) {
+    const deviceName = getDeviceNameByChannelId(Number(route.query.channel_id));
+    if (deviceName) return tag.path === `/device/${deviceName}`;
+  }
+  return false;
 };
 
 const closeSelectedTag = async (view: TagView) => {
@@ -92,7 +99,7 @@ const closeSelectedTag = async (view: TagView) => {
 const toLastView = (views: TagView[], view: TagView) => {
   const latestView = views.slice(-1)[0];
   if (latestView) {
-    router.push((latestView.fullPath || latestView.path) as string);
+    router.push(latestView.path as string);
   } else {
     // default redirect to home or somewhere safe if no views
     router.push('/');
@@ -109,14 +116,14 @@ const openMenu = (tag: TagView, e: MouseEvent) => {
 const closeOthers = async () => {
   if (!contextMenuTag.value) return;
   const currentTag = contextMenuTag.value;
-  const currentPath = route.fullPath;
+  const currentPath = route.path;
   contextMenuVisible.value = false;
   await delOthersViews(currentTag);
   // 如果当前激活的标签被删除了，跳转到其他标签
-  if ((currentTag.fullPath || currentTag.path) !== currentPath) {
+  if (currentTag.path !== currentPath) {
     const remaining = visitedViews.value.slice(-1)[0];
     if (remaining) {
-      router.push((remaining.fullPath || remaining.path) as string);
+      router.push(remaining.path as string);
     } else {
       router.push('/');
     }

@@ -165,7 +165,7 @@ interface TreeNode {
   isIec61850Child?: boolean;
   iec61850Level?: 'category' | 'ld' | 'ln';
   name: string;
-  type?: 'GOOSE' | 'Reports' | 'SettingGroups' | 'Files' | 'DataSets' | 'Data Model';
+  type?: 'GOOSE' | 'Reports' | 'SettingGroups' | 'Files' | 'DataSets' | 'DataModel';
   value?: string;
   deviceName?: string;
   children?: TreeNode[];

@@ -19,11 +19,11 @@ function loadViews(): TagView[] {
     return [];
 }
 
-// 去重：以 fullPath（含 query）为唯一键，保留每个 key 的最后一次出现
+// 去重：以 path 为唯一键（不含 query），保留每个 key 的最后一次出现
 function dedupByPath(views: TagView[]): TagView[] {
     const map = new Map<string, TagView>();
     for (const v of views) {
-        const key = v.fullPath || v.path;
+        const key = v.path;
         if (key) {
             map.set(key, v);
         }
@@ -39,9 +39,9 @@ watch(visitedViews, (val) => {
 }, { deep: true });
 
 export const addView = (view: RouteLocationNormalized) => {
-    // 同时检查 path 和 fullPath，提高匹配可靠性
-    const key = view.fullPath || view.path;
-    if (visitedViews.value.some(v => (v.fullPath || v.path) === key)) return;
+    // 以 path 作为唯一键去重，避免因 query 参数差异导致同一设备打开多个标签
+    const key = view.path;
+    if (visitedViews.value.some(v => v.path === key)) return;
     visitedViews.value.push(
         Object.assign({}, view, {
             title: (view.meta.title as string) || (view.params.deviceName as string) || (view.name as string) || '标签页'
@@ -51,7 +51,7 @@ export const addView = (view: RouteLocationNormalized) => {
 
 export const delView = (view: TagView): Promise<TagView[]> => {
     return new Promise(resolve => {
-        const index = visitedViews.value.findIndex(v => (v.fullPath || v.path) === (view.fullPath || view.path));
+        const index = visitedViews.value.findIndex(v => v.path === view.path);
         if (index > -1) {
             visitedViews.value.splice(index, 1);
         }
@@ -61,7 +61,7 @@ export const delView = (view: TagView): Promise<TagView[]> => {
 
 export const delOthersViews = (view: TagView): Promise<TagView[]> => {
     return new Promise(resolve => {
-        visitedViews.value = visitedViews.value.filter(v => (v.fullPath || v.path) === (view.fullPath || view.path));
+        visitedViews.value = visitedViews.value.filter(v => v.path === view.path);
         resolve([...visitedViews.value]);
     });
 };
@@ -72,3 +72,14 @@ export const delAllViews = (): Promise<void> => {
         resolve();
     });
 };
+
+// channelId -> deviceName 映射，用于报告/文件页面高亮对应的设备标签
+const channelIdDeviceMap = new Map<number, string>();
+
+export function updateChannelIdDeviceMap(channelId: number, deviceName: string) {
+    channelIdDeviceMap.set(channelId, deviceName);
+}
+
+export function getDeviceNameByChannelId(channelId: number): string | undefined {
+    return channelIdDeviceMap.get(channelId);
+}

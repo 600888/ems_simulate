@@ -138,13 +138,13 @@ const handleNodeClick = (data: any) => {
     return;
   }
   if (data.isIec61850Child) {
-    // 从 nodeKey 推断 category: nodeKey 格式如 "device-{name}-Data Model" 或 "device-{name}-Data Model-{idx}"
+    // 从 nodeKey 推断 category: nodeKey 格式如 "device-{name}-DataModel" 或 "device-{name}-DataModel-{idx}"
     // type 字段在构建树时已经设置
     const enrichedData = { ...data };
     // 如果没有 type 字段，从 nodeKey 中提取
     if (!enrichedData.type && enrichedData.nodeKey) {
       // 尝试匹配 category: "device-{deviceName}-{category}" 或 "ungrouped-{deviceName}-{category}-{idx}"
-      const categories = ['GOOSE', 'Reports', 'SettingGroups', 'Files', 'DataSets', 'Data Model'];
+      const categories = ['GOOSE', 'Reports', 'SettingGroups', 'Files', 'DataSets', 'DataModel'];
       for (const cat of categories) {
         if (String(enrichedData.nodeKey).includes(cat.replace(' ', ''))) {
           enrichedData.type = cat;
@@ -261,7 +261,7 @@ watch(() => props.currentNodeKey, setCurrentKey);
   padding-left: 4px;
 }
 
-/* category 层 (Data Model, GOOSE...) - 对应未分组 .child-row */
+/* category 层 (DataModel, GOOSE...) - 对应未分组 .child-row */
 .tree-node-content.is-iec61850-category .node-label {
   font-size: 12.5px;
   color: var(--text-secondary);

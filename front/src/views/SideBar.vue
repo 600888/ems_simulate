@@ -95,7 +95,7 @@ import CopyDeviceDialog from "@/components/device/CopyDeviceDialog.vue";
 import { currentTheme } from "@/utils/theme";
 import { isCollapse, sidebarOverlayMode } from "@/components/header/isCollapse";
 import menuRouter from "@/router/index";
-import { delView, visitedViews } from "@/store/tagsView";
+import { delView, visitedViews, updateChannelIdDeviceMap } from "@/store/tagsView";
 import { deleteChannel, getChannelList } from "@/api/channelApi";
 import {
   getDeviceGroupTree,
@@ -248,6 +248,12 @@ const fetchDeviceGroupTree = async () => {
     // 标记并获取未分组设备的 IEC61850 结构
     await markUngroupedIEC61850Devices(newUngrouped);
 
+    // 构建 channelId -> deviceName 映射，供 TagsView 在报告/文件页面高亮对应设备标签
+    const channels = await getChannelList();
+    channels.forEach(ch => {
+      if (ch.name) updateChannelIdDeviceMap(ch.id, ch.name);
+    });
+
     // 如果是未分组设备，展开未分组区域
     if (currentDeviceName.value) {
       const isUngrouped = newUngrouped.some(d => d.name === currentDeviceName.value);
@@ -275,14 +281,14 @@ const handleNodeClick = (data: TreeNode) => {
   }
   if (data.isIec61850Child) {
     // IEC61850 子节点点击: 携带 category/item 导航到设备页面
-    // data.type 是分类 (如 "Data Model")，data.value 是完整过滤路径 (如 "GenericLD/MMXU1")
+    // data.type 是分类 (如 "DataModel")，data.value 是完整过滤路径 (如 "GenericLD/MMXU1")
     const deviceName = data.deviceName || data.name;
     const category = data.type || (data.isGroup ? data.name : '');
     // DataSets 下的分组节点(LD/LN)只做展开/折叠，不做导航
     if (category === 'DataSets' && data.isGroup) {
       return;
     }
-    // 优先使用 value (Data Model 下 LN 节点的完整路径)，其次使用 name
+    // 优先使用 value (DataModel 下 LN 节点的完整路径)，其次使用 name
     const item = data.isGroup ? '' : (data.value || data.name || data.label);
     navigateToDevice(deviceName, false, data.isIec61850Child, { ...data, _category: category, _item: item });
     return;
@@ -303,7 +309,7 @@ const handleUngroupedNodeClick = (data: any) => {
     // 找到该子节点所属的设备名
     const deviceName = data.deviceName || currentDeviceName.value;
     // 构建 category 和 item 信息
-    // data.type 是分类 (如 "Data Model")，data.value 是完整过滤路径 (如 "GenericLD/MMXU1")
+    // data.type 是分类 (如 "DataModel")，data.value 是完整过滤路径 (如 "GenericLD/MMXU1")
     const category = data.type || (data.isGroup ? data.name : '');
     const item = data.isGroup ? '' : (data.value || data.name);
     navigateToDevice(deviceName, false, true, { ...data, _category: category, _item: item });
@@ -410,7 +416,7 @@ const handleDeleteDeviceByName = async (deviceName: string) => {
       // Navigate to another view if available
       const latestView = visitedViews.value.slice(-1)[0];
       if (latestView) {
-        router.push((latestView.fullPath || latestView.path) as string);
+        router.push(latestView.path as string);
       } else {
         router.push('/');
       }

@@ -45,7 +45,7 @@ export const IEC61850_CATEGORIES: ReadonlyArray<{ key: string; label: string }> 
   { key: 'SettingGroups', label: 'SettingGroups' },
   { key: 'Files', label: 'Files' },
   { key: 'DataSets', label: 'DataSets' },
-  { key: 'Data Model', label: 'Data Model' },
+  { key: 'DataModel', label: 'DataModel' },
 ] as const;
 
 // GOOSE 订阅状态

@@ -58,8 +58,8 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
     if (items.length > 0) {
       let categoryChildren: TreeNode[];
 
-      if (cat.key === 'Data Model') {
-        // Data Model 返回层级结构: [{name: "LD0", children: ["LLN0", "MMXU1"]}, ...]
+      if (cat.key === 'DataModel') {
+        // DataModel 返回层级结构: [{name: "LD0", children: ["LLN0", "MMXU1"]}, ...]
         categoryChildren = items.map((ldItem: any, ldIndex: number) => {
           const ldName = typeof ldItem === 'string' ? ldItem : ldItem.name;
           const lnList = typeof ldItem === 'object' && ldItem.children ? ldItem.children : [];

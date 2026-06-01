@@ -697,7 +697,7 @@ const iec61850FlatRows = computed(() => {
       continue; // 跳过 DO 行逻辑
     }
 
-    // === 以下为常规 DO/DA 树形模式（Data Model 等）===
+    // === 以下为常规 DO/DA 树形模式（DataModel 等）===
     // 从 DO 的 DA 列表中查找主值作为根节点显示值
     const hasValue = (v: any) => v !== '' && v !== undefined && v !== null;
     const getDoDisplayValue = (daList: any[]): any => {

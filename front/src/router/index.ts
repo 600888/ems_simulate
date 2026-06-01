@@ -34,9 +34,9 @@ const menuRouter = createRouter({
 
 // 全局后置钩子，用于收集访问过的页面作为标签页
 menuRouter.afterEach((to) => {
-  // 我们只收集设备页面或者其他需要标签页的页面
-  if (to.name || to.path.startsWith('/device') || to.path.startsWith('/goose') || to.path.startsWith('/reports') || to.path.startsWith('/files')) {
-    // addView 内部已按 fullPath 去重：已存在则定位到该标签，不存在才新建
+  // 只有设备和 GOOSE 页面有独立标签页；Reports 和 Files 是设备子页面，不单独创建标签
+  if (to.path.startsWith('/device') || to.path.startsWith('/goose')) {
+    // addView 内部已按 path 去重：已存在则跳过，不存在才新建
     addView(to);
   }
 });

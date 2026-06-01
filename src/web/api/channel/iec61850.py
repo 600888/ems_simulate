@@ -212,8 +212,8 @@ def _build_iec61850_tree(
     if category and category == "DataSets":
         return _build_iec61850_dataset_tree(device, item)
 
-    # category 过滤: 非 Data Model 分类 (如 GOOSE/Reports) 无 MMS 测点
-    if category and category != "Data Model":
+    # category 过滤: 非 DataModel 分类 (如 GOOSE/Reports) 无 MMS 测点
+    if category and category != "DataModel":
         return {"items": [], "total": 0}
 
     # 1. 收集所有测点, 构建 DO 分组
@@ -236,7 +236,7 @@ def _build_iec61850_tree(
             continue
 
         # category/item 过滤
-        if category == "Data Model" and item:
+        if category == "DataModel" and item:
             if not (address.startswith(f"{item}/") or address.startswith(f"{item}.")):
                 continue
 
@@ -715,7 +715,7 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
             "SettingGroups": [],
             "Files": file_items,
             "DataSets": dataset_items,
-            "Data Model": data_model,
+            "DataModel": data_model,
         }
         return BaseResponse(message="获取 IEC61850 结构成功", data=structure)
     except Exception as e:
@@ -1046,8 +1046,8 @@ def _get_iec61850_filtered_points(device, category: str, item: str) -> list[Base
     if category and category == "DataSets":
         return []
 
-    # GOOSE/Reports 等非 Data Model 分类没有 MMS 测点
-    if category and category != "Data Model":
+    # GOOSE/Reports 等非 DataModel 分类没有 MMS 测点
+    if category and category != "DataModel":
         return []
 
     all_points = []
@@ -1062,7 +1062,7 @@ def _get_iec61850_filtered_points(device, category: str, item: str) -> list[Base
     if not category:
         return all_points
 
-    if category == "Data Model" and item:
+    if category == "DataModel" and item:
         result = []
         for point in all_points:
             address = str(point.address) if hasattr(point, "address") else ""
@@ -1154,10 +1154,10 @@ def _filter_iec61850_rows(rows: list[str], category: str, item: str) -> list[str
     if not category:
         return rows
 
-    if category and category != "Data Model":
+    if category and category != "DataModel":
         return []
 
-    if category == "Data Model" and item:
+    if category == "DataModel" and item:
         result = []
         for row in rows:
             address = str(row[0]) if row else ""

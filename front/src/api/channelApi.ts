@@ -83,7 +83,7 @@ export interface IEC61850Structure {
   SettingGroups: string[];
   Files: string[];
   DataSets: IEC61850DataSetLdItem[];
-  "Data Model": IEC61850DataModelItem[];
+  DataModel: IEC61850DataModelItem[];
 }
 
 export interface IEC61850TableDataResponse {

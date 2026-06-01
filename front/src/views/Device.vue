@@ -432,7 +432,7 @@ onUnmounted(() => {
   stopIec61850ProgressPolling();
 });
 
-watch(() => route.fullPath, async () => {
+watch(() => route.path, async () => {
   const newName = getDeviceNameFromRoute();
   
   if (newName && newName === initialDeviceName) {

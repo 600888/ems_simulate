@@ -25,7 +25,8 @@ from src.web.api.schemas import (
     SlaveEditRequest,
 )
 from src.web.log import log
-from src.web.ws.manager import manager
+
+# from src.web.ws.manager import manager  # TODO: WebSocket 模块尚未实现
 
 device_router = APIRouter(prefix="/api/devices", tags=["设备管理"])
 
@@ -265,7 +266,8 @@ async def manual_read(req: ManualReadRequest, request: Request):
         device = _get_device(req.device_name, request)
 
         async def event_emitter(data):
-            await manager.broadcast(data, req.device_name)
+            # await manager.broadcast(data, req.device_name)  # TODO: ws 模块未实现
+            pass
 
         stats = await device.single_read(event_emitter=event_emitter, interval_ms=req.interval)
         return BaseResponse(message="手动读取成功!", data=stats)

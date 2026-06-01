@@ -359,7 +359,7 @@ const fetchDeviceTable = async (name: string, sid: number, q: string, pi: number
       return;
     }
 
-    // Data Model 及其他: 使用 tree-data 接口
+    // DataModel 及其他: 使用 tree-data 接口
     const treeResp = await getIEC61850TreeData(
       channelId.value,
       iec61850Category.value,
