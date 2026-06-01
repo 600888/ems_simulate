@@ -5,10 +5,11 @@ BRCB 与 URCB 的主要区别:
 - BRCB 有 entryId / timeOfEntry / purgeBuf 等缓冲特有属性
 """
 
+import contextlib
 from typing import Any, Dict, Optional
 
 from ...defs.constants import HAS_IEC61850
-from ...defs.types import RCBInfo, TrgOps, OptFields
+from ...defs.types import OptFields, RCBInfo, TrgOps
 from ...log import log
 
 if HAS_IEC61850:
@@ -84,10 +85,7 @@ class BrcbHandler:
 
             try:
                 result = iec61850.IedConnection_getRCBValues(conn, BrcbHandler._normalize_ref(rcb_ref), rcb)
-                if isinstance(result, (list, tuple)):
-                    error = result[1] if len(result) > 1 else 0
-                else:
-                    error = result
+                error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if error != iec61850.IED_ERROR_OK:
                     log.warning(f"获取 BRCB 值失败: ref={rcb_ref}, error={error}")
@@ -97,18 +95,16 @@ class BrcbHandler:
                 rcb_info = BrcbHandler._parse_rcb(rcb, rcb_ref, "BRCB")
                 return rcb_info
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     iec61850.ClientReportControlBlock_destroy(rcb)
-                except Exception:
-                    pass
         except Exception as e:
             log.error(f"获取 BRCB 值异常: {rcb_ref}, {e}")
             return None
 
     @staticmethod
-    def set_rpt_ena(connection, rcb_ref: str, enable: bool,
-                    trg_ops: Optional[TrgOps] = None,
-                    opt_fields: Optional[OptFields] = None) -> bool:
+    def set_rpt_ena(
+        connection, rcb_ref: str, enable: bool, trg_ops: Optional[TrgOps] = None, opt_fields: Optional[OptFields] = None
+    ) -> bool:
         """设置 BRCB 的 RptEna 及相关属性
 
         Args:
@@ -137,10 +133,7 @@ class BrcbHandler:
             try:
                 # 先读取当前值
                 result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
-                if isinstance(result, (list, tuple)):
-                    error = result[1] if len(result) > 1 else 0
-                else:
-                    error = result
+                error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if error != iec61850.IED_ERROR_OK:
                     log.warning(f"设置 BRCB RptEna 前读取失败: ref={rcb_ref}, error={error}")
                     return False
@@ -191,10 +184,7 @@ class BrcbHandler:
 
                 # 写回服务器
                 result = iec61850.IedConnection_setRCBValues(conn, rcb, changes, True)
-                if isinstance(result, (list, tuple)):
-                    set_error = result[1] if len(result) > 1 else 0
-                else:
-                    set_error = result
+                set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:
                     log.warning(f"设置 BRCB 值失败: ref={rcb_ref}, error={set_error}")
@@ -203,10 +193,8 @@ class BrcbHandler:
                 log.info(f"BRCB RptEna 已{'使能' if enable else '禁用'}: {rcb_ref}")
                 return True
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     iec61850.ClientReportControlBlock_destroy(rcb)
-                except Exception:
-                    pass
         except Exception as e:
             log.error(f"设置 BRCB RptEna 异常: {rcb_ref}, {e}")
             return False
@@ -233,22 +221,14 @@ class BrcbHandler:
             try:
                 # 先读取当前值
                 result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
-                if isinstance(result, (list, tuple)):
-                    error = result[1] if len(result) > 1 else 0
-                else:
-                    error = result
+                error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if error != iec61850.IED_ERROR_OK:
                     return False
 
                 # 设置 GI
                 iec61850.ClientReportControlBlock_setGI(rcb, True)
-                result = iec61850.IedConnection_setRCBValues(
-                    conn, rcb, BrcbHandler.RCB_GI, True
-                )
-                if isinstance(result, (list, tuple)):
-                    set_error = result[1] if len(result) > 1 else 0
-                else:
-                    set_error = result
+                result = iec61850.IedConnection_setRCBValues(conn, rcb, BrcbHandler.RCB_GI, True)
+                set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:
                     log.warning(f"BRCB GI 触发失败: ref={rcb_ref}, error={set_error}")
@@ -257,10 +237,8 @@ class BrcbHandler:
                 log.info(f"BRCB GI 已触发: {rcb_ref}")
                 return True
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     iec61850.ClientReportControlBlock_destroy(rcb)
-                except Exception:
-                    pass
         except Exception as e:
             log.error(f"BRCB GI 触发异常: {rcb_ref}, {e}")
             return False
@@ -282,21 +260,13 @@ class BrcbHandler:
 
             try:
                 result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
-                if isinstance(result, (list, tuple)):
-                    error = result[1] if len(result) > 1 else 0
-                else:
-                    error = result
+                error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if error != iec61850.IED_ERROR_OK:
                     return False
 
                 iec61850.ClientReportControlBlock_setPurgeBuf(rcb, True)
-                result = iec61850.IedConnection_setRCBValues(
-                    conn, rcb, BrcbHandler.RCB_PURGE_BUF, True
-                )
-                if isinstance(result, (list, tuple)):
-                    set_error = result[1] if len(result) > 1 else 0
-                else:
-                    set_error = result
+                result = iec61850.IedConnection_setRCBValues(conn, rcb, BrcbHandler.RCB_PURGE_BUF, True)
+                set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:
                     log.warning(f"BRCB 清除缓冲失败: ref={rcb_ref}, error={set_error}")
@@ -305,10 +275,8 @@ class BrcbHandler:
                 log.info(f"BRCB 缓冲已清除: {rcb_ref}")
                 return True
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     iec61850.ClientReportControlBlock_destroy(rcb)
-                except Exception:
-                    pass
         except Exception as e:
             log.error(f"BRCB 清除缓冲异常: {rcb_ref}, {e}")
             return False
@@ -329,15 +297,11 @@ class BrcbHandler:
             ln_part = parts[1].split(".")[0] if "." in parts[1] else parts[1]
             info.ln = ln_part
 
-        try:
+        with contextlib.suppress(Exception):
             info.rpt_id = str(iec61850.ClientReportControlBlock_getRptId(rcb))
-        except Exception:
-            pass
 
-        try:
+        with contextlib.suppress(Exception):
             info.rpt_ena = bool(iec61850.ClientReportControlBlock_getRptEna(rcb))
-        except Exception:
-            pass
 
         try:
             ds_ref = iec61850.ClientReportControlBlock_getDataSetReference(rcb)
@@ -346,15 +310,11 @@ class BrcbHandler:
         except Exception:
             pass
 
-        try:
+        with contextlib.suppress(Exception):
             info.conf_rev = int(iec61850.ClientReportControlBlock_getConfRev(rcb))
-        except Exception:
-            pass
 
-        try:
+        with contextlib.suppress(Exception):
             info.buf_time = int(iec61850.ClientReportControlBlock_getBufTm(rcb))
-        except Exception:
-            pass
 
         try:
             entry_id = iec61850.ClientReportControlBlock_getEntryId(rcb)
@@ -363,10 +323,8 @@ class BrcbHandler:
         except Exception:
             pass
 
-        try:
+        with contextlib.suppress(Exception):
             info.time_of_entry = int(iec61850.ClientReportControlBlock_getEntryTime(rcb))
-        except Exception:
-            pass
 
         # 解析 TrgOps
         try:
@@ -398,9 +356,7 @@ class BrcbHandler:
             pass
 
         # sq_num
-        try:
+        with contextlib.suppress(Exception):
             info.sq_num = int(iec61850.ClientReportControlBlock_getSqNum(rcb))
-        except Exception:
-            pass
 
         return info

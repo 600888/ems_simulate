@@ -43,9 +43,7 @@ def read_register(slave_id: int, address: int, register_cnt: int):
     try:
         # 读取保持寄存器
         # 注意：在Modbus协议中，保持寄存器的功能码是 0x03
-        response = client.read_holding_registers(
-            address=address, count=register_cnt, slave=slave_id
-        )
+        response = client.read_holding_registers(address=address, count=register_cnt, slave=slave_id)
 
         # 检查响应是否有效
         if response.isError():

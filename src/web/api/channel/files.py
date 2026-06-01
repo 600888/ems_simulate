@@ -4,6 +4,7 @@
 """
 
 import base64
+import contextlib
 import os
 import tempfile
 from typing import Optional
@@ -19,6 +20,7 @@ router = APIRouter(tags=["channel"])
 
 
 # ===== 请求模型 =====
+
 
 class FileDirectoryRequest(BaseModel):
     channel_id: int = Field(..., description="通道ID")
@@ -60,6 +62,7 @@ class FileCacheClearRequest(BaseModel):
 
 # ===== 辅助函数 =====
 
+
 def _get_iec61850_client(request: Request, channel_id: int):
     """获取 IEC61850 客户端实例
 
@@ -79,21 +82,21 @@ def _get_iec61850_client(request: Request, channel_id: int):
     if not device:
         return None, BaseResponse(code=404, message="设备未找到", data={})
 
-    protocol_handler = getattr(device, 'protocol_handler', None)
+    protocol_handler = getattr(device, "protocol_handler", None)
     if not protocol_handler:
         return None, BaseResponse(code=400, message="协议处理器未初始化", data={})
 
     # 获取客户端或服务端的 files 插件
     client = None
-    if hasattr(protocol_handler, '_client') and protocol_handler._client:
+    if hasattr(protocol_handler, "_client") and protocol_handler._client:
         client = protocol_handler._client
-    elif hasattr(protocol_handler, '_server') and protocol_handler._server:
+    elif hasattr(protocol_handler, "_server") and protocol_handler._server:
         client = protocol_handler._server
 
     if not client:
         return None, BaseResponse(code=400, message="IEC61850 客户端/服务端未初始化", data={})
 
-    files_plugin = getattr(client, 'files', None)
+    files_plugin = getattr(client, "files", None)
     if not files_plugin:
         return None, BaseResponse(code=400, message="文件服务插件不可用", data={})
 
@@ -101,6 +104,7 @@ def _get_iec61850_client(request: Request, channel_id: int):
 
 
 # ===== 路由端点 =====
+
 
 @router.post("/iec61850-file-directory", response_model=BaseResponse)
 async def get_file_directory(body: FileDirectoryRequest, request: Request):
@@ -232,10 +236,8 @@ async def upload_file(body: FileUploadRequest, request: Request):
                 return BaseResponse(code=500, message="文件上传失败", data={})
         finally:
             # 清理临时文件
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
 
     except Exception as e:
         log.error(f"文件上传失败: {e}")

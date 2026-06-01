@@ -4,7 +4,9 @@
 提供连接状态监控和 LD 列表缓存能力。
 """
 
-from ..defs.constants import HAS_IEC61850, FC_MX
+import contextlib
+
+from ..defs.constants import FC_MX, HAS_IEC61850
 from ..log import log
 
 
@@ -51,9 +53,7 @@ class Iec61850Connection:
 
         try:
             self._connection = iec61850.IedConnection_create()
-            result = iec61850.IedConnection_connect(
-                self._connection, self.ip, self.port
-            )
+            result = iec61850.IedConnection_connect(self._connection, self.ip, self.port)
 
             error = result
             if isinstance(result, (list, tuple)):
@@ -85,20 +85,16 @@ class Iec61850Connection:
         """断开连接"""
         if self._connection:
             from pyiec61850 import pyiec61850 as iec61850
-            try:
+
+            with contextlib.suppress(Exception):
                 iec61850.IedConnection_close(self._connection)
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 iec61850.IedConnection_destroy(self._connection)
-            except Exception:
-                pass
             self._connection = None
             self._is_connected = False
             log.info("IEC 61850 连接已断开")
 
-    def try_reconnect(self, max_retries: int = 3, interval: float = 5.0,
-                      discover_callback=None) -> bool:
+    def try_reconnect(self, max_retries: int = 3, interval: float = 5.0, discover_callback=None) -> bool:
         """自动重连 (指数退避)
 
         Args:
@@ -109,7 +105,7 @@ class Iec61850Connection:
         import time
 
         for attempt in range(max_retries):
-            wait = interval * (2 ** attempt)
+            wait = interval * (2**attempt)
             log.info(f"重连尝试 {attempt + 1}/{max_retries}, 等待 {wait:.1f}s...")
             time.sleep(wait)
 
@@ -126,6 +122,7 @@ class Iec61850Connection:
         if self._connection:
             try:
                 from pyiec61850 import pyiec61850 as iec61850
+
                 iec61850.IedConnection_destroy(self._connection)
             except Exception:
                 pass
@@ -133,7 +130,7 @@ class Iec61850Connection:
 
     def get_fc_value(self, fc: str):
         """将 FC 字符串转换为 pyiec61850 常量值"""
-        from ..defs.constants import FC_MX, FC_ST, FC_CO
+        from ..defs.constants import FC_CO, FC_ST
 
         if not fc or not HAS_IEC61850:
             return FC_MX
@@ -146,11 +143,11 @@ class Iec61850Connection:
 
     def build_dataset_ref(self, dataset_ref: str) -> str:
         """构建 MMS DataSet 引用，确保包含 model_name 前缀"""
-        if not dataset_ref or '/' not in dataset_ref:
+        if not dataset_ref or "/" not in dataset_ref:
             return dataset_ref
         if not self.model_name:
             return self._resolve_dataset_ref_with_ld_prefix(dataset_ref)
-        ld_part, rest = dataset_ref.split('/', 1)
+        ld_part, rest = dataset_ref.split("/", 1)
         if ld_part.startswith(self.model_name):
             return dataset_ref
         return f"{self.model_name}{ld_part}/{rest}"
@@ -170,9 +167,9 @@ class Iec61850Connection:
 
     def _resolve_dataset_ref_with_ld_prefix(self, dataset_ref: str) -> str:
         """当 model_name 未知时，从已发现的 LD 列表中匹配完整 LD 名称"""
-        if '/' not in dataset_ref:
+        if "/" not in dataset_ref:
             return dataset_ref
-        ld_part, rest = dataset_ref.split('/', 1)
+        ld_part, rest = dataset_ref.split("/", 1)
 
         if not self._discovered_lds:
             log.debug(f"LD 缓存为空，尝试实时获取, dataset_ref={dataset_ref}")
@@ -194,7 +191,7 @@ class Iec61850Connection:
                 if full_ld == ld_part:
                     return dataset_ref
                 if full_ld.endswith(ld_part):
-                    prefix = full_ld[:-len(ld_part)]
+                    prefix = full_ld[: -len(ld_part)]
                     if prefix:
                         return f"{full_ld}/{rest}"
             log.warning(f"在 {len(self._discovered_lds)} 个 LD 中未匹配到 ld_part={ld_part}")
@@ -213,6 +210,7 @@ class Iec61850Connection:
             return []
 
         from pyiec61850 import pyiec61850 as iec61850
+
         from .linked_list import get_list_from_linked_list
 
         try:

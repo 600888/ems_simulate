@@ -2,14 +2,17 @@
 
 from fastapi import APIRouter, Request
 
-from src.data.service.channel_service import ChannelService
-from src.web.api.schemas import BaseResponse, ChannelIdRequest, CopyDeviceRequest
-from src.web.api.channel.helpers import (
-    get_device_builder, configure_builder_network, is_client_protocol,
-    reload_device_instance, increment_ip,
-)
-from src.enums.modbus_def import ProtocolType
 from src.config.config import Config
+from src.data.service.channel_service import ChannelService
+from src.enums.modbus_def import ProtocolType
+from src.web.api.channel.helpers import (
+    configure_builder_network,
+    get_device_builder,
+    increment_ip,
+    is_client_protocol,
+    reload_device_instance,
+)
+from src.web.api.schemas import BaseResponse, ChannelIdRequest, CopyDeviceRequest
 from src.web.log import log
 
 router = APIRouter(tags=["channel"])
@@ -34,8 +37,10 @@ async def create_and_start_device(req: ChannelIdRequest, request: Request):
         configure_builder_network(builder, conn_type, channel_protocol_type, ip, port, channel)
 
         general_device = builder.makeGeneralDevice(
-            device_id=req.channel_id, device_name=channel_name,
-            protocol_type=channel_protocol_type, is_start=True,
+            device_id=req.channel_id,
+            device_name=channel_name,
+            protocol_type=channel_protocol_type,
+            is_start=True,
         )
         general_device.name = channel_name
 
@@ -87,8 +92,8 @@ async def reload_device_config(req: ChannelIdRequest, request: Request):
 async def copy_device(req: CopyDeviceRequest, request: Request):
     """复制设备（包括点表）"""
     try:
-        from src.data.service.device_service import DeviceService
         from src.data.dao.point_dao import PointDao
+        from src.data.service.device_service import DeviceService
 
         source_channel = ChannelService.get_channel_by_id(req.channel_id)
         if not source_channel:
@@ -118,17 +123,23 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
                 continue
 
             new_device_id = DeviceService.create_device(
-                code=new_code, name=new_name, device_type=0, group_id=source_group_id,
+                code=new_code,
+                name=new_name,
+                device_type=0,
+                group_id=source_group_id,
             )
             if new_device_id <= 0:
                 log.error(f"创建设备记录失败: {new_code}")
                 continue
 
             new_channel_id = ChannelService.create_channel(
-                code=new_code, name=new_name, device_id=new_device_id,
+                code=new_code,
+                name=new_name,
+                device_id=new_device_id,
                 protocol_type=source_channel.get("protocol_type", 1),
                 conn_type=source_channel.get("conn_type", 2),
-                ip=new_ip, port=new_port,
+                ip=new_ip,
+                port=new_port,
                 com_port=source_channel.get("com_port"),
                 baud_rate=source_channel.get("baud_rate", 9600),
                 data_bits=source_channel.get("data_bits", 8),
@@ -168,12 +179,12 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
                 builder = get_device_builder(new_channel_id, new_code)
                 channel_protocol_type = ChannelService.get_protocol_type(source_channel)
                 conn_type = source_channel.get("conn_type", 1)
-                configure_builder_network(
-                    builder, conn_type, channel_protocol_type, new_ip, new_port, source_channel
-                )
+                configure_builder_network(builder, conn_type, channel_protocol_type, new_ip, new_port, source_channel)
                 new_device = builder.makeGeneralDevice(
-                    device_id=new_channel_id, device_name=new_name,
-                    protocol_type=channel_protocol_type, is_start=False,
+                    device_id=new_channel_id,
+                    device_name=new_name,
+                    protocol_type=channel_protocol_type,
+                    is_start=False,
                 )
                 new_device.name = new_name
                 device_controller.device_list.append(new_device)
@@ -182,14 +193,20 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
             except Exception as e:
                 log.error(f"内存同步复制设备失败: {e}")
 
-            copied_channels.append({
-                "channel_id": new_channel_id, "device_id": new_device_id,
-                "name": new_name, "code": new_code, "ip": new_ip, "port": new_port,
-            })
+            copied_channels.append(
+                {
+                    "channel_id": new_channel_id,
+                    "device_id": new_device_id,
+                    "name": new_name,
+                    "code": new_code,
+                    "ip": new_ip,
+                    "port": new_port,
+                }
+            )
 
         return BaseResponse(
             message=f"成功复制 {len(copied_channels)} 个设备",
-            data={"copied_count": len(copied_channels), "devices": copied_channels}
+            data={"copied_count": len(copied_channels), "devices": copied_channels},
         )
     except Exception as e:
         log.error(f"复制设备失败: {e}")

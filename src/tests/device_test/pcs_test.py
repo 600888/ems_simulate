@@ -5,8 +5,8 @@ from src.config.global_config import CSV_DIR
 
 sys.path.append("../../../")
 
-from src.device.types.pcs import Pcs
 from src.device.factory.pcs_builder import PcsBuilder
+from src.device.types.pcs import Pcs
 
 
 class PcsTestCase(unittest.TestCase):
@@ -36,9 +36,7 @@ class PcsTestCase(unittest.TestCase):
 
     def testGetValueByAddress(self):
         self.importDataPointCsv()
-        self.pcs.server.setValueByAddress(
-            1, 40001, 200, self.pcs.server.RegisterType.OUTPUT
-        )
+        self.pcs.server.setValueByAddress(1, 40001, 200, self.pcs.server.RegisterType.OUTPUT)
         # self.pcs.modbus_server.slaves[1].setValues(4, 1, [3293])
         print(self.pcs.server.slaves[1].getValues(3, 1))
         # print(self.pcs.modbus_server.getValueByAddress(1,40001))
@@ -49,11 +47,7 @@ class PcsTestCase(unittest.TestCase):
         self.pcs.startRandomSimulation()
         while True:
             for i in range(0, len(self.pcs.yc_dict)):
-                print(
-                    self.pcs.server.getValueByAddress(
-                        self.pcs.yc_dict[i].rtu_addr, self.pcs.yc_dict[i].address
-                    )
-                )
+                print(self.pcs.server.getValueByAddress(self.pcs.yc_dict[i].rtu_addr, self.pcs.yc_dict[i].address))
 
     def testHexValue(self):
         self.importDataPointCsv()

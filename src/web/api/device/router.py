@@ -1,22 +1,31 @@
 """设备管理 - 设备操作路由"""
 
-from fastapi import APIRouter, Request, Depends
 from copy import deepcopy
 
+from fastapi import APIRouter, Depends, Request
+
+from src.data.dao.channel_dao import ChannelDao
 from src.device.core.device import Device
 from src.enums.modbus_def import ProtocolType
-from src.data.dao.channel_dao import ChannelDao
-from src.web.log import log
 from src.web.api.schemas import (
-    BaseResponse, DeviceInfoRequest, DeviceTableRequest,
-    SimulationStartRequest, SimulationStopRequest,
-    DeviceStartRequest, DeviceStopRequest, DeviceResetRequest,
-    CurrentTableRequest, ManualReadRequest,
-    MessageListRequest, SlaveAddRequest, SlaveDeleteRequest, SlaveEditRequest,
+    BaseResponse,
+    CurrentTableRequest,
+    DeviceInfoRequest,
+    DeviceResetRequest,
+    DeviceStartRequest,
+    DeviceStopRequest,
+    DeviceTableRequest,
     ExportModelRequest,
+    ManualReadRequest,
+    MessageListRequest,
+    SimulationStartRequest,
+    SimulationStopRequest,
+    SlaveAddRequest,
+    SlaveDeleteRequest,
+    SlaveEditRequest,
 )
-
-# from src.web.ws.manager import manager
+from src.web.log import log
+from src.web.ws.manager import manager
 
 device_router = APIRouter(prefix="/api/devices", tags=["设备管理"])
 
@@ -31,7 +40,7 @@ async def get_device_name_list(request: Request):
     try:
         sorted_devices = sorted(
             request.app.state.device_controller.device_list,
-            key=lambda d: getattr(d, 'device_id', 0),
+            key=lambda d: getattr(d, "device_id", 0),
         )
         device_name_list = [deepcopy(device.name) for device in sorted_devices]
         return BaseResponse(data=device_name_list)
@@ -50,11 +59,11 @@ async def get_device_info(req: DeviceInfoRequest, request: Request):
             "port": device.port,
             "type": device.protocol_type.value,
             "simulation_status": device.isSimulationRunning(),
-            "serial_port": getattr(device, 'serial_port', None),
-            "baudrate": getattr(device, 'baudrate', 9600),
-            "databits": getattr(device, 'databits', 8),
-            "stopbits": getattr(device, 'stopbits', 1),
-            "parity": getattr(device, 'parity', 'N'),
+            "serial_port": getattr(device, "serial_port", None),
+            "baudrate": getattr(device, "baudrate", 9600),
+            "databits": getattr(device, "databits", 8),
+            "stopbits": getattr(device, "stopbits", 1),
+            "parity": getattr(device, "parity", "N"),
         }
 
         channels = ChannelDao.get_all_channels()
@@ -92,8 +101,13 @@ async def get_table_by_slave_id(req: DeviceTableRequest, request: Request):
     try:
         device = _get_device(req.device_name, request)
         table_data, total = device.get_table_data(
-            req.slave_id, req.point_name, req.page_index, req.page_size,
-            req.point_types, req.order_by, req.order_direction,
+            req.slave_id,
+            req.point_name,
+            req.page_index,
+            req.page_size,
+            req.point_types,
+            req.order_by,
+            req.order_direction,
         )
         data_dict = {"total": total, "table_data": table_data}
         return BaseResponse(message="获取从机信息成功!", data=data_dict)
@@ -132,12 +146,14 @@ async def get_current_table(req: CurrentTableRequest, request: Request):
     """获取当前表数据"""
     try:
         device = _get_device(req.device_name, request)
-        data_list, hex_data_list, real_data_list, max_limit_list, min_limit_list = (
-            device.getSlaveValueList(req.slave_id, req.point_name)
+        data_list, hex_data_list, real_data_list, max_limit_list, min_limit_list = device.getSlaveValueList(
+            req.slave_id, req.point_name
         )
         data_dict = {
-            "data_list": data_list, "hex_data_list": hex_data_list,
-            "real_data_list": real_data_list, "max_limit_list": max_limit_list,
+            "data_list": data_list,
+            "hex_data_list": hex_data_list,
+            "real_data_list": real_data_list,
+            "max_limit_list": max_limit_list,
             "min_limit_list": min_limit_list,
         }
         return BaseResponse(message="获取当前表数据成功!", data=data_dict)
@@ -195,6 +211,7 @@ async def get_iec61850_connect_progress(req: DeviceInfoRequest, request: Request
 
 
 # ===== 自动读取控制 =====
+
 
 @device_router.post("/auto-read-status", response_model=BaseResponse)
 async def get_auto_read_status(req: DeviceInfoRequest, request: Request):
@@ -261,6 +278,7 @@ async def manual_read(req: ManualReadRequest, request: Request):
 
 # ===== 报文捕获 =====
 
+
 @device_router.post("/messages", response_model=BaseResponse)
 async def get_messages(req: MessageListRequest, request: Request):
     """获取设备报文历史"""
@@ -304,6 +322,7 @@ async def get_avg_time(req: DeviceInfoRequest, request: Request):
 
 
 # ===== 从机管理 =====
+
 
 @device_router.post("/add-slave", response_model=BaseResponse)
 async def add_slave(req: SlaveAddRequest, request: Request):
@@ -358,6 +377,7 @@ async def edit_slave(req: SlaveEditRequest, request: Request):
 
 # ===== IEC 61850 模型导出 =====
 
+
 @device_router.post("/export-model")
 async def export_model(req: ExportModelRequest, request: Request):
     """导出 IEC 61850 服务器模型为指定格式文件
@@ -366,6 +386,7 @@ async def export_model(req: ExportModelRequest, request: Request):
     """
     import os
     import tempfile
+
     from fastapi.responses import FileResponse
 
     try:
@@ -387,15 +408,17 @@ async def export_model(req: ExportModelRequest, request: Request):
     # 导出类型映射
     export_type = req.export_type.lower()
     type_config = {
-        "icd":  {"ext": ".icd",  "media": "application/xml",        "method": "export_icd"},
-        "json": {"ext": ".json", "media": "application/json",       "method": "export_json"},
-        "xml":  {"ext": ".xml",  "media": "application/xml",        "method": "export_xml"},
-        "csv":  {"ext": ".csv",  "media": "text/csv",               "method": "export_csv"},
-        "tree": {"ext": ".txt",  "media": "text/plain",             "method": "export_tree_text"},
+        "icd": {"ext": ".icd", "media": "application/xml", "method": "export_icd"},
+        "json": {"ext": ".json", "media": "application/json", "method": "export_json"},
+        "xml": {"ext": ".xml", "media": "application/xml", "method": "export_xml"},
+        "csv": {"ext": ".csv", "media": "text/csv", "method": "export_csv"},
+        "tree": {"ext": ".txt", "media": "text/plain", "method": "export_tree_text"},
     }
 
     if export_type not in type_config:
-        return BaseResponse(code=400, message=f"不支持的导出类型: {req.export_type}，支持: icd/json/xml/csv/tree", data=False)
+        return BaseResponse(
+            code=400, message=f"不支持的导出类型: {req.export_type}，支持: icd/json/xml/csv/tree", data=False
+        )
 
     config = type_config[export_type]
 

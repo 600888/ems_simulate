@@ -60,7 +60,7 @@ class DbMysqlConfig(DbConfig):
     def read_config_from_json(self, file_path: str = default_path) -> None:
         if file_path:
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
                     host = data["host"]
                     port = data["port"]
@@ -126,8 +126,9 @@ class DbMysqlAsyncConfig(DbMysqlConfig):
             with self.engine.connect() as connection:
                 connection.execute(text("DROP DATABASE IF EXISTS " + db_name))
                 connection.execute(text("CREATE DATABASE IF NOT EXISTS " + db_name))
-        self.engine = create_async_engine(mysql_url, echo=False, future=True, pool_size=100, max_overflow=50,
-                                          pool_pre_ping=True)
+        self.engine = create_async_engine(
+            mysql_url, echo=False, future=True, pool_size=100, max_overflow=50, pool_pre_ping=True
+        )
 
     async def is_connect(self) -> bool:
         try:

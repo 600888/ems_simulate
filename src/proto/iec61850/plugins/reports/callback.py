@@ -4,15 +4,16 @@
 回调在 libIEC61850 的接收线程中执行，使用 queue 异步处理避免阻塞。
 """
 
+from collections import OrderedDict
+import contextlib
+from dataclasses import dataclass, field
 import datetime
 import threading
-from collections import OrderedDict
-from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
+from ...core.mms_value import mms_value_to_python
 from ...defs.constants import HAS_IEC61850
 from ...defs.types import ReportDataEntry
-from ...core.mms_value import mms_value_to_python
 from ...log import log
 
 if HAS_IEC61850:
@@ -21,18 +22,19 @@ if HAS_IEC61850:
 
 # 全局回调映射表: rcb_ref -> callback_info
 # C 回调无法绑定到实例方法，需通过静态函数 + 全局字典分发
-_CALLBACK_REGISTRY: Dict[str, '_CallbackInfo'] = {}
+_CALLBACK_REGISTRY: dict[str, "_CallbackInfo"] = {}
 _CALLBACK_LOCK = threading.Lock()
 
 
 @dataclass
 class _CallbackInfo:
     """回调注册信息"""
+
     rcb_ref: str
-    handler: Any = None               # _PyRCBHandler 实例 (保持引用防 GC)
-    subscriber: Any = None            # RCBSubscriber 实例 (保持引用防 GC)
+    handler: Any = None  # _PyRCBHandler 实例 (保持引用防 GC)
+    subscriber: Any = None  # RCBSubscriber 实例 (保持引用防 GC)
     on_report: Optional[Callable] = None  # Python 回调函数
-    data_cache: List[ReportDataEntry] = field(default_factory=list)
+    data_cache: list[ReportDataEntry] = field(default_factory=list)
     max_cache: int = 1000
     enabled_at: str = ""
 
@@ -62,9 +64,13 @@ class ReportCallbackHandler:
     """
 
     @staticmethod
-    def install(connection, rcb_ref: str,
-                on_report: Optional[Callable[[ReportDataEntry], None]] = None,
-                max_cache: int = 1000, rpt_id: str = "") -> bool:
+    def install(
+        connection,
+        rcb_ref: str,
+        on_report: Optional[Callable[[ReportDataEntry], None]] = None,
+        max_cache: int = 1000,
+        rpt_id: str = "",
+    ) -> bool:
         """安装报告回调
 
         Args:
@@ -145,16 +151,13 @@ class ReportCallbackHandler:
             return True
 
     @staticmethod
-    def get_cache(rcb_ref: str) -> List[Dict[str, Any]]:
+    def get_cache(rcb_ref: str) -> list[dict[str, Any]]:
         """获取指定 RCB 的缓存报告数据"""
         with _CALLBACK_LOCK:
             info = _CALLBACK_REGISTRY.get(rcb_ref)
             if not info:
                 return []
-            return [
-                ReportCallbackHandler._entry_to_dict(entry)
-                for entry in info.data_cache
-            ]
+            return [ReportCallbackHandler._entry_to_dict(entry) for entry in info.data_cache]
 
     @staticmethod
     def clear_cache(rcb_ref: str) -> None:
@@ -171,7 +174,7 @@ class ReportCallbackHandler:
             return rcb_ref in _CALLBACK_REGISTRY
 
     @staticmethod
-    def get_active_rcbs() -> List[Dict[str, Any]]:
+    def get_active_rcbs() -> list[dict[str, Any]]:
         """获取所有活跃回调信息"""
         with _CALLBACK_LOCK:
             return [
@@ -190,16 +193,14 @@ class ReportCallbackHandler:
             for rcb_ref in list(_CALLBACK_REGISTRY.keys()):
                 try:
                     if connection and connection.connection:
-                        iec61850.IedConnection_uninstallReportHandler(
-                            connection.connection, _normalize_ref(rcb_ref)
-                        )
+                        iec61850.IedConnection_uninstallReportHandler(connection.connection, _normalize_ref(rcb_ref))
                 except Exception:
                     pass
             _CALLBACK_REGISTRY.clear()
             log.info("所有报告回调已关闭")
 
     @staticmethod
-    def _entry_to_dict(entry: ReportDataEntry) -> Dict[str, Any]:
+    def _entry_to_dict(entry: ReportDataEntry) -> dict[str, Any]:
         """将 ReportDataEntry 转为字典"""
         return {
             "seq_num": entry.seq_num,
@@ -237,6 +238,7 @@ def _dispatch_report(rcb_ref: str, report) -> None:
 
 
 if HAS_IEC61850 and hasattr(iec61850, "RCBHandler"):
+
     class _PyRCBHandler(iec61850.RCBHandler):
         """SWIG director 子类, C++ 收到报告时回调 trigger()"""
 
@@ -250,6 +252,7 @@ if HAS_IEC61850 and hasattr(iec61850, "RCBHandler"):
             except Exception as e:
                 log.error(f"RCBHandler.trigger 异常: {self._rcb_ref}, {e}")
 else:
+
     class _PyRCBHandler:  # 占位, 不会被使用
         def __init__(self, rcb_ref: str):
             self._rcb_ref = rcb_ref
@@ -288,10 +291,8 @@ def _parse_client_report(report, rcb_ref: str) -> Optional[ReportDataEntry]:
             pass
 
         # confRev
-        try:
+        with contextlib.suppress(Exception):
             entry.conf_rev = int(iec61850.ClientReport_getConfRev(report))
-        except Exception:
-            pass
 
         # entryId (BRCB)
         try:
@@ -302,18 +303,16 @@ def _parse_client_report(report, rcb_ref: str) -> Optional[ReportDataEntry]:
             pass
 
         # seqNum
-        try:
+        with contextlib.suppress(Exception):
             entry.seq_num = int(iec61850.ClientReport_getSeqNum(report))
-        except Exception:
-            pass
 
         # timeOfEntry
         try:
             time_ms = iec61850.ClientReport_getTimeOfEntry(report)
             if time_ms and int(time_ms) > 0:
-                entry.time_stamp = datetime.datetime.fromtimestamp(
-                    int(time_ms) / 1000.0
-                ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                entry.time_stamp = datetime.datetime.fromtimestamp(int(time_ms) / 1000.0).strftime(
+                    "%Y-%m-%d %H:%M:%S.%f"
+                )[:-3]
         except Exception:
             pass
 
@@ -327,10 +326,8 @@ def _parse_client_report(report, rcb_ref: str) -> Optional[ReportDataEntry]:
 
             if values:
                 array_size = 0
-                try:
+                with contextlib.suppress(Exception):
                     array_size = iec61850.MmsValue_getArraySize(values)
-                except Exception:
-                    pass
 
                 if array_size > 0:
                     for i in range(array_size):

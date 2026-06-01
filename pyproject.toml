@@ -1,0 +1,103 @@
+[project]
+name = "ems_simulate"
+version = "0.1.0"
+description = "电力模拟仿真系统，支持 IEC61850 / IEC104 / Modbus / DLT645 协议"
+requires-python = ">=3.9"
+dependencies = [
+    "pymodbus==3.12.0",
+    "pyserial==3.5",
+    "blinker==1.9.0",
+    "sqlalchemy==2.0.45",
+    "pymysql==1.1.2",
+    "cryptography==46.0.3",
+    "pydantic==2.12.5",
+    "loguru==0.7.3",
+    "openpyxl==3.1.5",
+    "c104==2.2.1",
+    "fastapi==0.128.0",
+    "uvicorn[standard]==0.40.0",
+    "python-multipart==0.0.21",
+    "dlt645==1.3.6",
+    "pyiec61850-ng==1.6.1.2",
+    "xmltodict==1.0.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff==0.15.15",
+]
+build = [
+    "pyinstaller==6.18.0",
+]
+
+[tool.ruff]
+# 目标 Python 版本
+target-version = "py39"
+
+# 排除目录
+exclude = [
+    ".git",
+    ".codebuddy",
+    ".claude",
+    "debian",
+    "front",
+    "resources",
+    "scripts",
+    "src-tauri",
+    "data",
+    "docs",
+]
+
+# 行长度
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "F",    # pyflakes - 检测未使用导入、未定义变量等关键错误
+    "E",    # pycodestyle - PEP 8 风格错误
+    "W",    # pycodestyle - 警告
+    "I",    # isort - import 排序
+    "UP",   # pyupgrade - Python 3.9+ 语法升级
+    "N",    # PEP 8 命名规范
+    "YTT",  # 日期/时区相关
+    "RSE",  # 空序列检测
+    "B",    # bugbear - Bug 检测
+    "SIM",  # 代码简化
+    "ARG",  # 未使用的函数参数
+    "PTH",  # pathlib 建议
+]
+
+# 第 2 阶段逐步启用，仍需忽略的部分
+ignore = [
+    "F401", # 未使用的导入（批次 D 修复）
+    "F403", # from XXX import *（部分模块有意使用）
+    "F405", # * 导入变量后续使用（与 F403 配套）
+    "UP035", # 从 typing 导入已弃用的类型别名（需要逐步替换，120+ 处）
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"src/tests/**" = ["F401", "F841", "E402", "N802", "N803", "N806", "PTH", "ARG", "SIM"]
+"src/enums/point_data.py" = ["E402"]                    # 向后兼容导入
+"src/proto/pyModbus/server/modbus_server.py" = ["E402"] # 条件导入检测 pymodbus
+"src/proto/**" = ["N802", "N803", "N806", "PTH", "ARG", "SIM"] # 协议代码宽松处理
+"src/device/**" = ["N802", "N803", "N806", "PTH", "ARG", "SIM"]# 设备模拟宽松处理
+"src/tools/**" = ["N802", "N803", "N806", "PTH", "ARG", "SIM"]# 工具模块宽松处理
+"src/tools/export_point.py" = ["UP031"]                 # % 格式化用于 openpyxl 单元格引用
+"src/web/**" = ["N802", "N803", "N806", "B008", "PTH", "ARG", "SIM"] # Web 路由宽松处理
+"src/proto/pyModbus/**" = ["N999"]                      # pyModbus 包名遵循 PyModbus 命名
+"src/config/**" = ["N802", "PTH", "ARG", "SIM"]         # 配置模块兼容处理
+"src/enums/**" = ["PTH", "ARG", "SIM"]                         # 枚举模块兼容
+"src/device_controller.py" = ["ARG", "PTH"]             # 设备控制器未使用参数
+"src/create_server.py" = ["ARG", "PTH", "SIM"]          # 命令行工具
+"src/log.py" = ["ARG", "PTH", "SIM"]                    # 根级日志模块
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+force-sort-within-sections = true
+
+[tool.ruff.format]
+# 与 Black 兼容的格式化配置
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

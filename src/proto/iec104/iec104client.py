@@ -1,15 +1,15 @@
-from typing import List, Optional, Callable, Dict, Any
-import c104
-import time
 import asyncio
-from src.proto.iec104.log import log
+import time
+from typing import Any, Callable, Dict, List, Optional
+
+import c104
+
 from src.device.core.message.message_capture import MessageCapture
+from src.proto.iec104.log import log
 
 
 class IEC104Client:
-    def __init__(
-        self, ip: str = "127.0.0.1", port: int = 2404, common_address: int = 1
-    ):
+    def __init__(self, ip: str = "127.0.0.1", port: int = 2404, common_address: int = 1):
         """
         初始化IEC 104客户端
         :param ip: 服务器IP地址，默认127.0.0.1
@@ -21,28 +21,28 @@ class IEC104Client:
         self.common_address = common_address
         self.client = c104.Client()
         self.connection: c104.Connection = self.client.add_connection(
-            ip=self.ip, port=self.port, init=c104.Init.INTERROGATION    # 连接时触发全召唤
+            ip=self.ip,
+            port=self.port,
+            init=c104.Init.INTERROGATION,  # 连接时触发全召唤
         )
         # 添加从站
-        self.station: c104.Station = self.connection.add_station(
-            common_address=self.common_address
-        )
-        self.points: List[c104.Point] = []
+        self.station: c104.Station = self.connection.add_station(common_address=self.common_address)
+        self.points: list[c104.Point] = []
         self._on_data_received: Optional[Callable] = None
         self._on_command_response: Optional[Callable] = None
 
         # 报文捕获器
         self.message_capture = MessageCapture()
-        
+
         # 注册原始报文回调
         if self.connection:
-             self.connection.on_receive_raw(callable=self._on_receive_raw)
-             self.connection.on_send_raw(callable=self._on_send_raw)
+            self.connection.on_receive_raw(callable=self._on_receive_raw)
+            self.connection.on_send_raw(callable=self._on_send_raw)
 
     def _on_receive_raw(self, connection: c104.Connection, data: bytes) -> None:
         """接收原始报文回调"""
         try:
-             self.message_capture.add_rx(data)
+            self.message_capture.add_rx(data)
         except Exception as e:
             log.error(f"记录接收报文失败: {e}")
 
@@ -53,7 +53,7 @@ class IEC104Client:
         except Exception as e:
             log.error(f"记录发送报文失败: {e}")
 
-    def get_captured_messages(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_captured_messages(self, limit: int = 100) -> list[dict[str, Any]]:
         """获取捕获的报文列表"""
         return self.message_capture.get_messages(limit)
 
@@ -88,10 +88,10 @@ class IEC104Client:
         """断开与服务器的连接"""
         if self.connection and self.connection.is_connected:
             self.connection.disconnect()
-        
+
         if self.client:
             self.client.stop()
-        
+
         log.info("已断开与服务器的连接")
 
     @property
@@ -173,8 +173,9 @@ class IEC104Client:
                 point.info = c104.SingleCmd(on=bool(value), qualifier=c104.Qoc.SHORT_PULSE)
             elif pt_type in (c104.Type.C_DC_NA_1, c104.Type.C_DC_TA_1):
                 # 双点遥控: 使用 DoubleCmd
-                point.info = c104.DoubleCmd(state=c104.Double.ON if bool(value) else c104.Double.OFF,
-                                            qualifier=c104.Qoc.LONG_PULSE)
+                point.info = c104.DoubleCmd(
+                    state=c104.Double.ON if bool(value) else c104.Double.OFF, qualifier=c104.Qoc.LONG_PULSE
+                )
             elif pt_type in (c104.Type.C_SE_NA_1, c104.Type.C_SE_TA_1):
                 # 设定值-归一化: 使用 NormalizedFloat
                 point.value = c104.NormalizedFloat(float(value))
@@ -289,6 +290,7 @@ class IEC104Client:
 
 if __name__ == "__main__":
     import asyncio
+
     async def main():
         # 示例用法
         client = IEC104Client(ip="10.8.0.102", port=2404, common_address=1)

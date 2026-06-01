@@ -5,20 +5,22 @@
 """
 
 import re
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional
 
-from ..base import Iec61850Plugin
-from ...defs.constants import HAS_IEC61850, AcsiClass
-from ...defs.types import RCBInfo, TrgOps, OptFields, ReportDataEntry
 from ...core.linked_list import get_list_from_linked_list
+from ...defs.constants import HAS_IEC61850, AcsiClass
+from ...defs.types import OptFields, RCBInfo, ReportDataEntry, TrgOps
 from ...log import log
+from ..base import Iec61850Plugin
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
 
+import contextlib
+
 from .brcb import BrcbHandler
-from .urcb import UrcbHandler
 from .callback import ReportCallbackHandler
+from .urcb import UrcbHandler
 
 
 class ReportsPlugin:
@@ -36,7 +38,7 @@ class ReportsPlugin:
         self._connection = None
         self._registry = None
         self._initialized = False
-        self._rcb_type_map: Dict[str, str] = {}  # ref -> "BRCB"/"URCB", 发现时填充
+        self._rcb_type_map: dict[str, str] = {}  # ref -> "BRCB"/"URCB", 发现时填充
 
     @property
     def name(self) -> str:
@@ -69,7 +71,7 @@ class ReportsPlugin:
 
     # ==================== RCB 发现 ====================
 
-    def discover_rcbs(self, ld: str = "", ln: str = "") -> List[Dict[str, Any]]:
+    def discover_rcbs(self, ld: str = "", ln: str = "") -> list[dict[str, Any]]:
         """发现报告控制块 (BRCB 和 URCB)
 
         通过 IedConnection_getLogicalNodeDirectory(acsi_class) 发现 BRCB 和 URCB
@@ -141,8 +143,7 @@ class ReportsPlugin:
         log.info(f"RCB 发现完成, 共发现 {len(all_rcbs)} 个报告控制块")
         return all_rcbs
 
-    def _discover_rcbs_via_directory(self, conn, ln_ref: str,
-                                      ld_name: str, ln_name: str) -> List[Dict]:
+    def _discover_rcbs_via_directory(self, conn, ln_ref: str, ld_name: str, ln_name: str) -> list[dict]:
         """通过 ACSI 目录发现 RCB
 
         仅对 LLN0 执行 ACSI 目录查询（RCB 按 IEC 61850 标准只定义在 LLN0 下）。
@@ -154,29 +155,21 @@ class ReportsPlugin:
         rcbs = []
         for _rcb_type, acsi_class in [("URCB", AcsiClass.URCB), ("BRCB", AcsiClass.BRCB)]:
             try:
-                result = iec61850.IedConnection_getLogicalNodeDirectory(
-                    conn, ln_ref, acsi_class
-                )
+                result = iec61850.IedConnection_getLogicalNodeDirectory(conn, ln_ref, acsi_class)
 
-                if isinstance(result, (list, tuple)):
-                    rcb_names_raw = result[0]
-                else:
-                    rcb_names_raw = result
+                rcb_names_raw = result[0] if isinstance(result, (list, tuple)) else result
 
                 if rcb_names_raw is None:
                     log.debug(f"ACSI目录法: {_rcb_type} {ln_ref} 返回空")
                     continue
 
-                rcb_name_list = self._extract_names_from_raw_result(
-                    rcb_names_raw, _rcb_type, ln_ref
-                )
+                rcb_name_list = self._extract_names_from_raw_result(rcb_names_raw, _rcb_type, ln_ref)
 
                 if not rcb_name_list:
                     log.debug(f"ACSI目录法: {_rcb_type} {ln_ref} 无有效 RCB 名称")
                     continue
 
-                log.info(f"ACSI目录法: {ln_ref} 下发现 "
-                         f"{len(rcb_name_list)} 个 {_rcb_type}: {rcb_name_list}")
+                log.info(f"ACSI目录法: {ln_ref} 下发现 {len(rcb_name_list)} 个 {_rcb_type}: {rcb_name_list}")
 
                 for rcb_name in rcb_name_list:
                     rcb_ref = f"{ln_ref}.{rcb_name}"
@@ -189,8 +182,7 @@ class ReportsPlugin:
                 continue
         return rcbs
 
-    def _extract_names_from_raw_result(self, raw_result, rcb_type: str,
-                                        ln_ref: str) -> List[str]:
+    def _extract_names_from_raw_result(self, raw_result, rcb_type: str, ln_ref: str) -> list[str]:
         """从 ACSI 目录原始结果中提取合法的 RCB 名称列表
 
         过滤规则:
@@ -199,10 +191,8 @@ class ReportsPlugin:
         - 只保留字母数字和下划线开头的合法名
         """
         raw_names = []
-        try:
+        with contextlib.suppress(Exception):
             raw_names = get_list_from_linked_list(raw_result)
-        except Exception:
-            pass
 
         valid_names = []
         seen = set()
@@ -213,13 +203,13 @@ class ReportsPlugin:
             if not name:
                 continue
             # 过滤 C 指针地址
-            if name.startswith('0x') or name.startswith('0X'):
+            if name.startswith("0x") or name.startswith("0X"):
                 continue
-            if re.match(r'^0x[0-9a-fA-F]+', name):
+            if re.match(r"^0x[0-9a-fA-F]+", name):
                 continue
             # 过滤明显不是 RCB 名的垃圾
             # RCB 名应该是字母开头、长度适中
-            if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
+            if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", name):
                 continue
             if len(name) > 100 or len(name) < 2:
                 continue
@@ -231,16 +221,13 @@ class ReportsPlugin:
             valid_names.append(name)
 
         if raw_names and not valid_names:
-            log.debug(f"ACSI目录法 {rcb_type} {ln_ref}: "
-                      f"原始 {len(raw_names)} 个全部过滤")
+            log.debug(f"ACSI目录法 {rcb_type} {ln_ref}: 原始 {len(raw_names)} 个全部过滤")
         elif valid_names:
-            log.debug(f"ACSI目录法 {rcb_type} {ln_ref}: "
-                      f"提取 {len(valid_names)}/{len(raw_names)} 个合法名")
+            log.debug(f"ACSI目录法 {rcb_type} {ln_ref}: 提取 {len(valid_names)}/{len(raw_names)} 个合法名")
 
         return valid_names
 
-    def _get_rcb_info(self, rcb_ref: str, rcb_type: str,
-                       ld_name: str, ln_name: str) -> Dict[str, Any]:
+    def _get_rcb_info(self, rcb_ref: str, rcb_type: str, ld_name: str, ln_name: str) -> dict[str, Any]:
         """获取单个 RCB 的详细信息
 
         尝试通过 getRCBValues 读取属性，失败时返回基本信息。
@@ -264,8 +251,17 @@ class ReportsPlugin:
 
             if detail:
                 # 合并详细属性
-                for field_name in ("rpt_id", "rpt_ena", "data_set_ref", "conf_rev",
-                                    "buf_time", "intg_period", "sq_num", "trg_ops", "opt_fields"):
+                for field_name in (
+                    "rpt_id",
+                    "rpt_ena",
+                    "data_set_ref",
+                    "conf_rev",
+                    "buf_time",
+                    "intg_period",
+                    "sq_num",
+                    "trg_ops",
+                    "opt_fields",
+                ):
                     val = getattr(detail, field_name, None)
                     if val is not None and val != "" and val is not False:
                         if isinstance(val, (TrgOps, OptFields)):
@@ -290,7 +286,7 @@ class ReportsPlugin:
 
         return self._rcb_info_to_dict(info)
 
-    def _rcb_info_to_dict(self, info: RCBInfo) -> Dict[str, Any]:
+    def _rcb_info_to_dict(self, info: RCBInfo) -> dict[str, Any]:
         """将 RCBInfo 对象转为字典"""
         result = {
             "name": info.name,
@@ -326,10 +322,14 @@ class ReportsPlugin:
 
     # ==================== 报告使能/禁用 ====================
 
-    def enable_report(self, rcb_ref: str, gi: bool = True,
-                      trg_ops: Optional[Dict[str, bool]] = None,
-                      opt_fields: Optional[Dict[str, bool]] = None,
-                      on_report: Optional[Callable[[ReportDataEntry], None]] = None) -> bool:
+    def enable_report(
+        self,
+        rcb_ref: str,
+        gi: bool = True,
+        trg_ops: Optional[dict[str, bool]] = None,
+        opt_fields: Optional[dict[str, bool]] = None,
+        on_report: Optional[Callable[[ReportDataEntry], None]] = None,
+    ) -> bool:
         """使能报告控制块
 
         设置 RptEna=True，配置 TrgOps/OptFields，安装报告回调。
@@ -374,13 +374,9 @@ class ReportsPlugin:
 
         # 设置 RptEna
         if rcb_type == "BRCB":
-            success = BrcbHandler.set_rpt_ena(
-                self._connection, rcb_ref, True, trg, opt
-            )
+            success = BrcbHandler.set_rpt_ena(self._connection, rcb_ref, True, trg, opt)
         else:
-            success = UrcbHandler.set_rpt_ena(
-                self._connection, rcb_ref, True, trg, opt
-            )
+            success = UrcbHandler.set_rpt_ena(self._connection, rcb_ref, True, trg, opt)
 
         if not success:
             log.warning(f"设置 RptEna 失败: {rcb_ref}")
@@ -388,7 +384,8 @@ class ReportsPlugin:
 
         # 安装报告回调
         callback_ok = ReportCallbackHandler.install(
-            self._connection, rcb_ref,
+            self._connection,
+            rcb_ref,
             on_report=on_report,
         )
         if not callback_ok:
@@ -462,7 +459,7 @@ class ReportsPlugin:
 
     # ==================== 报告数据查询 ====================
 
-    def get_report_data(self, rcb_ref: str, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_report_data(self, rcb_ref: str, limit: int = 100) -> list[dict[str, Any]]:
         """获取指定 RCB 最近接收的报告数据
 
         Args:
@@ -483,7 +480,7 @@ class ReportsPlugin:
 
     # ==================== 状态查询 ====================
 
-    def list_active_reports(self) -> List[Dict[str, Any]]:
+    def list_active_reports(self) -> list[dict[str, Any]]:
         """列出当前活跃 (已使能) 的报告订阅
 
         Returns:
@@ -495,7 +492,7 @@ class ReportsPlugin:
         """检查指定 RCB 是否处于活跃状态"""
         return ReportCallbackHandler.is_active(rcb_ref)
 
-    def get_rcb_detail(self, rcb_ref: str) -> Optional[Dict[str, Any]]:
+    def get_rcb_detail(self, rcb_ref: str) -> Optional[dict[str, Any]]:
         """获取单个 RCB 的详细信息
 
         Args:
@@ -509,7 +506,7 @@ class ReportsPlugin:
 
         rcb_type = self._infer_rcb_type(rcb_ref)
 
-        rcb_name = rcb_ref.split(".")[-1] if "." in rcb_ref else rcb_ref
+        rcb_ref.split(".")[-1] if "." in rcb_ref else rcb_ref
         ld_name = ""
         ln_name = ""
         if rcb_ref and "/" in rcb_ref:
@@ -542,7 +539,7 @@ class ReportsPlugin:
         # 默认通过 AcsiClass 发现判断
         return "BRCB"
 
-    def _browse_logical_nodes(self, ld: str) -> List[str]:
+    def _browse_logical_nodes(self, ld: str) -> list[str]:
         """浏览指定逻辑设备下的逻辑节点
 
         使用 IedConnection_getLogicalDeviceDirectory 获取 LN 列表，

@@ -1,22 +1,24 @@
 import asyncio
 import time
-from src.proto.iec61850.iec61850_server import IEC61850Server
+
 from src.proto.iec61850 import pyiec61850 as iec61850
+from src.proto.iec61850.iec61850_server import IEC61850Server
+
 
 async def debug_browsing():
     server = IEC61850Server(port=10103, model_name="DEBUG", ld_name="LD0")
     server.add_point(address=1, frame_type=0)
     server.start()
     time.sleep(1)
-    
+
     conn = iec61850.IedConnection_create()
     iec61850.IedConnection_connect(conn, "127.0.0.1", 10103)
-    
+
     try:
         ld = "DEBUGLD0"
         ln = "MMXU1"
         ln_ref = f"{ld}/{ln}"
-        
+
         print(f"Testing browsing for {ln_ref}")
         for i in range(0, 5):
             result = iec61850.IedConnection_getLogicalNodeDirectory(conn, ln_ref, i)
@@ -41,6 +43,7 @@ async def debug_browsing():
         iec61850.IedConnection_destroy(conn)
         server.stop()
         server.destroy()
+
 
 if __name__ == "__main__":
     asyncio.run(debug_browsing())

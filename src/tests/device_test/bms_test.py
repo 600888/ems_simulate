@@ -8,9 +8,7 @@ class BmsTestCase(unittest.TestCase):
         self.bms = Bms()
         self.bms.initModbusTcpServer(port=10502)
         self.bms.importDataPointFromCsv("../../config/point_csv/linping_bms1.csv")
-        self.bms.importClusterDataPoint(
-            "../../config/point_csv/linping_bms1_cluster.csv"
-        )
+        self.bms.importClusterDataPoint("../../config/point_csv/linping_bms1_cluster.csv")
 
     def testExportDataPointCsv(self):
         self.importDataPointCsv()

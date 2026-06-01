@@ -4,31 +4,49 @@
 从 IEC61850Client 的 discover_model/browse_* 方法迁移而来。
 """
 
+import contextlib
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..base import Iec61850Plugin
-from ...defs.constants import (
-    HAS_IEC61850,
-    IEC_TYPE_FLOAT, IEC_TYPE_BOOLEAN, IEC_TYPE_INTEGER,
-    IEC_TYPE_STRING, IEC_TYPE_TIMESTAMP, IEC_TYPE_UNKNOWN,
-)
-from ...defs.ln_classes import (
-    YC_LN_CLASSES, YX_LN_CLASSES, YK_LN_CLASSES, YT_LN_CLASSES,
-    ALL_LN_CLASSES, SKIP_SYSTEM_DOS, SIGNAL_DOS,
-)
-from ...defs.da_patterns import (
-    DA_PATTERNS, DA_PATH_TO_FRAME_TYPE, EXTRA_DA_INFO,
-    ENC_DO_DA_TYPE_OVERRIDE, SKIP_DA_NAMES, BDA_TYPE_MAP,
-    STRUCT_DA_EXPAND_ONLINE, KNOWN_BDA_FALLBACK_ONLINE,
-)
-from ...defs.address import (
-    is_full_ref, parse_ref, infer_fc_from_address, infer_iec_type_from_address,
-    extract_ln_class,
-)
 from ...core.linked_list import get_list_from_linked_list
 from ...core.mms_value import mms_value_to_python
+from ...defs.address import (
+    extract_ln_class,
+    infer_fc_from_address,
+    infer_iec_type_from_address,
+    is_full_ref,
+    parse_ref,
+)
+from ...defs.constants import (
+    HAS_IEC61850,
+    IEC_TYPE_BOOLEAN,
+    IEC_TYPE_FLOAT,
+    IEC_TYPE_INTEGER,
+    IEC_TYPE_STRING,
+    IEC_TYPE_TIMESTAMP,
+    IEC_TYPE_UNKNOWN,
+)
+from ...defs.da_patterns import (
+    BDA_TYPE_MAP,
+    DA_PATH_TO_FRAME_TYPE,
+    DA_PATTERNS,
+    ENC_DO_DA_TYPE_OVERRIDE,
+    EXTRA_DA_INFO,
+    KNOWN_BDA_FALLBACK_ONLINE,
+    SKIP_DA_NAMES,
+    STRUCT_DA_EXPAND_ONLINE,
+)
+from ...defs.ln_classes import (
+    ALL_LN_CLASSES,
+    SIGNAL_DOS,
+    SKIP_SYSTEM_DOS,
+    YC_LN_CLASSES,
+    YK_LN_CLASSES,
+    YT_LN_CLASSES,
+    YX_LN_CLASSES,
+)
 from ...log import log
+from ..base import Iec61850Plugin
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
@@ -69,7 +87,7 @@ class DataModelsPlugin:
 
     # ===== 模型发现 =====
 
-    def discover_model(self) -> List[Dict[str, Any]]:
+    def discover_model(self) -> list[dict[str, Any]]:
         """动态发现并映射服务端的数据模型
 
         支持两种模型结构:
@@ -84,7 +102,7 @@ class DataModelsPlugin:
 
         log.info("开始 IEC 61850 动态模型发现...")
         start_time = time.time()
-        discovered_points: List[Dict[str, Any]] = []
+        discovered_points: list[dict[str, Any]] = []
         self._registry.discovered_goose_items.clear()
 
         # 1. 获取逻辑设备列表
@@ -120,7 +138,8 @@ class DataModelsPlugin:
                 for acsi_val in [0, 2, 3, 1]:
                     try:
                         result = iec61850.IedConnection_getLogicalNodeDirectory(
-                            self._connection.connection, ln_ref, acsi_val)
+                            self._connection.connection, ln_ref, acsi_val
+                        )
                         do_list = result[0] if isinstance(result, (list, tuple)) else result
                         error = result[1] if isinstance(result, (list, tuple)) else 0
                         if error == iec61850.IED_ERROR_OK and do_list is not None:
@@ -150,7 +169,16 @@ class DataModelsPlugin:
                             self._registry.set_ref(address, ref)
                             self._registry.set_fc(address, fc)
                             self._registry.set_iec_type(address, iec_type)
-                            discovered_points.append({"address": address, "frame_type": frame_type, "ref": ref, "code": addr, "fc": fc, "iec_type": iec_type})
+                            discovered_points.append(
+                                {
+                                    "address": address,
+                                    "frame_type": frame_type,
+                                    "ref": ref,
+                                    "code": addr,
+                                    "fc": fc,
+                                    "iec_type": iec_type,
+                                }
+                            )
                         elif do.startswith("SPS_"):
                             addr = do[4:]
                             da_path = "stVal"
@@ -162,7 +190,16 @@ class DataModelsPlugin:
                             self._registry.set_ref(address, ref)
                             self._registry.set_fc(address, fc)
                             self._registry.set_iec_type(address, iec_type)
-                            discovered_points.append({"address": address, "frame_type": frame_type, "ref": ref, "code": addr, "fc": fc, "iec_type": iec_type})
+                            discovered_points.append(
+                                {
+                                    "address": address,
+                                    "frame_type": frame_type,
+                                    "ref": ref,
+                                    "code": addr,
+                                    "fc": fc,
+                                    "iec_type": iec_type,
+                                }
+                            )
                         elif do.startswith("SPC_"):
                             addr = do[4:]
                             da_path = "ctlVal"
@@ -174,7 +211,16 @@ class DataModelsPlugin:
                             self._registry.set_ref(address, ref)
                             self._registry.set_fc(address, fc)
                             self._registry.set_iec_type(address, iec_type)
-                            discovered_points.append({"address": address, "frame_type": frame_type, "ref": ref, "code": addr, "fc": fc, "iec_type": iec_type})
+                            discovered_points.append(
+                                {
+                                    "address": address,
+                                    "frame_type": frame_type,
+                                    "ref": ref,
+                                    "code": addr,
+                                    "fc": fc,
+                                    "iec_type": iec_type,
+                                }
+                            )
                         elif do.startswith("APC_"):
                             addr = do[4:]
                             da_path = "ctlVal"
@@ -186,7 +232,16 @@ class DataModelsPlugin:
                             self._registry.set_ref(address, ref)
                             self._registry.set_fc(address, fc)
                             self._registry.set_iec_type(address, iec_type)
-                            discovered_points.append({"address": address, "frame_type": frame_type, "ref": ref, "code": addr, "fc": fc, "iec_type": iec_type})
+                            discovered_points.append(
+                                {
+                                    "address": address,
+                                    "frame_type": frame_type,
+                                    "ref": ref,
+                                    "code": addr,
+                                    "fc": fc,
+                                    "iec_type": iec_type,
+                                }
+                            )
                         else:
                             # 动态模型模式 (ICD 导入)
                             da_paths = self._discover_da_paths(full_do_ref)
@@ -196,7 +251,7 @@ class DataModelsPlugin:
                                 for da_path, frame_type, fc, iec_type in da_paths:
                                     # ENC 类型 DO 的 stVal/ctlVal 是整型而非布尔
                                     if do in ENC_DO_DA_TYPE_OVERRIDE:
-                                        da_top = da_path.split('.')[0]
+                                        da_top = da_path.split(".")[0]
                                         override_type = ENC_DO_DA_TYPE_OVERRIDE[do].get(da_top)
                                         if override_type:
                                             iec_type = override_type
@@ -208,11 +263,17 @@ class DataModelsPlugin:
                                     self._registry.set_fc(address, fc)
                                     self._registry.set_iec_type(address, iec_type)
                                     self._registry.set_name(address, name)
-                                    discovered_points.append({
-                                        "address": address, "frame_type": frame_type,
-                                        "ref": ref, "code": code, "name": name, "fc": fc,
-                                        "iec_type": iec_type,
-                                    })
+                                    discovered_points.append(
+                                        {
+                                            "address": address,
+                                            "frame_type": frame_type,
+                                            "ref": ref,
+                                            "code": code,
+                                            "name": name,
+                                            "fc": fc,
+                                            "iec_type": iec_type,
+                                        }
+                                    )
                             else:
                                 # 回退到推断模式
                                 frame_type = self._infer_frame_type_from_do(ln, do)
@@ -236,27 +297,35 @@ class DataModelsPlugin:
                                 self._registry.set_fc(address, fc)
                                 self._registry.set_iec_type(address, iec_type)
                                 self._registry.set_name(address, name)
-                                discovered_points.append({
-                                    "address": address, "frame_type": frame_type,
-                                    "ref": ref, "code": code, "name": name, "fc": fc,
-                                    "iec_type": iec_type,
-                                })
+                                discovered_points.append(
+                                    {
+                                        "address": address,
+                                        "frame_type": frame_type,
+                                        "ref": ref,
+                                        "code": code,
+                                        "name": name,
+                                        "fc": fc,
+                                        "iec_type": iec_type,
+                                    }
+                                )
                     except Exception as e:
                         log.error(f"解析测点地址失败: {do}, 错误: {e}")
                         continue
 
                 # 4. 对于 LLN0, 发现 GOOSE 控制块
-                go_cb_names: List[str] = []
-                if ln == "LLN0" and hasattr(iec61850, 'ACSI_CLASS_GoCB'):
+                go_cb_names: list[str] = []
+                if ln == "LLN0" and hasattr(iec61850, "ACSI_CLASS_GoCB"):
                     go_cb_names = self._discover_goose_control_blocks(ld, ln_ref)
 
                     for cb_name in go_cb_names:
                         goose_item = self._read_goose_control_block_info(ld, cb_name)
                         discovered_points.append(goose_item)
                         self._registry.discovered_goose_items.append(goose_item)
-                        log.info(f"发现 GOOSE 控制块: {goose_item['go_cb_ref']}, "
-                                 f"appID=0x{(goose_item.get('app_id') or 0):04X}, "
-                                 f"ds={goose_item.get('data_set_ref', '')}")
+                        log.info(
+                            f"发现 GOOSE 控制块: {goose_item['go_cb_ref']}, "
+                            f"appID=0x{(goose_item.get('app_id') or 0):04X}, "
+                            f"ds={goose_item.get('data_set_ref', '')}"
+                        )
 
                 if not go_cb_names and ln == "LLN0":
                     log.warning(f"LLN0({ln_ref}) 下未发现任何 GoCB (可能服务器不支持 GoCB 浏览)")
@@ -270,11 +339,13 @@ class DataModelsPlugin:
             log.debug(f"自动发现 DataSet 失败: {e}")
             self._registry.discovered_datasets = []
 
-        log.info(f"IEC 61850 动态发现完成, 耗时: {time.time() - start_time:.2f}s, "
-                 f"发现并映射了 {len(discovered_points)} 个测点")
+        log.info(
+            f"IEC 61850 动态发现完成, 耗时: {time.time() - start_time:.2f}s, "
+            f"发现并映射了 {len(discovered_points)} 个测点"
+        )
         return discovered_points
 
-    def _discover_goose_control_blocks(self, ld: str, ln_ref: str) -> List[str]:
+    def _discover_goose_control_blocks(self, ld: str, ln_ref: str) -> list[str]:
         """发现 LLN0 下的 GOOSE 控制块名称列表"""
         go_cb_names = []
         try:
@@ -285,7 +356,7 @@ class DataModelsPlugin:
             gse_error = gse_result[1] if isinstance(gse_result, (list, tuple)) else 0
             if gse_error == iec61850.IED_ERROR_OK and gse_list is not None:
                 names = get_list_from_linked_list(gse_list)
-                for name in (names or []):
+                for name in names or []:
                     if name and name not in go_cb_names:
                         try:
                             goena_ref = f"{ln_ref}.{name}.GoEna"
@@ -300,7 +371,7 @@ class DataModelsPlugin:
             pass
         return go_cb_names
 
-    def _read_goose_control_block_info(self, ld: str, cb_name: str) -> Dict[str, Any]:
+    def _read_goose_control_block_info(self, ld: str, cb_name: str) -> dict[str, Any]:
         """读取 GOOSE 控制块详细信息
 
         优先使用 libiec61850 的 GoCB 专用 API (IedConnection_getGoCBValues)，
@@ -319,19 +390,12 @@ class DataModelsPlugin:
         try:
             gocb = iec61850.ClientGooseControlBlock_create(gocb_ref)
             if gocb is not None:
-                result = iec61850.IedConnection_getGoCBValues(
-                    self._connection.connection, gocb_ref, gocb
-                )
-                if isinstance(result, (list, tuple)):
-                    err = result[1] if len(result) > 1 else 0
-                else:
-                    err = result
+                result = iec61850.IedConnection_getGoCBValues(self._connection.connection, gocb_ref, gocb)
+                err = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if err != iec61850.IED_ERROR_OK:
                     log.warning(f"getGoCBValues 失败: ref={gocb_ref}, err={err}")
-                    try:
+                    with contextlib.suppress(Exception):
                         iec61850.ClientGooseControlBlock_destroy(gocb)
-                    except Exception:
-                        pass
                     gocb = None
             else:
                 log.warning(f"ClientGooseControlBlock_create 失败: ref={gocb_ref}")
@@ -358,10 +422,8 @@ class DataModelsPlugin:
                 go_id = str(iec61850.ClientGooseControlBlock_getGoID(gocb) or "")
             except Exception as e:
                 log.debug(f"读取 GoCB goID 失败: {e}")
-            try:
+            with contextlib.suppress(Exception):
                 iec61850.ClientGooseControlBlock_destroy(gocb)
-            except Exception:
-                pass
 
         go_cb_ref = f"{ld}/LLN0$GO${cb_name}"
         return {
@@ -377,13 +439,13 @@ class DataModelsPlugin:
 
     # ===== 浏览方法 =====
 
-    def browse_logical_devices(self) -> List[str]:
+    def browse_logical_devices(self) -> list[str]:
         """浏览远端 IED 的逻辑设备列表"""
         if not self._connection or not self._connection.is_connected:
             return []
         return self._connection.browse_logical_devices()
 
-    def browse_logical_nodes(self, ld: str) -> List[str]:
+    def browse_logical_nodes(self, ld: str) -> list[str]:
         """浏览指定逻辑设备下的逻辑节点列表"""
         if not self._connection or not self._connection.is_connected:
             return []
@@ -399,15 +461,13 @@ class DataModelsPlugin:
             log.error(f"浏览逻辑节点失败: {e}")
             return []
 
-    def browse_data_objects(self, ld: str, ln: str) -> List[Dict[str, Any]]:
+    def browse_data_objects(self, ld: str, ln: str) -> list[dict[str, Any]]:
         """浏览指定逻辑节点下的数据对象列表"""
         if not self._connection or not self._connection.is_connected:
             return []
         ln_ref = f"{ld}/{ln}"
         try:
-            result = iec61850.IedConnection_getLogicalNodeDirectory(
-                self._connection.connection, ln_ref, 0
-            )
+            result = iec61850.IedConnection_getLogicalNodeDirectory(self._connection.connection, ln_ref, 0)
             do_list = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
             if error != iec61850.IED_ERROR_OK or do_list is None:
@@ -422,7 +482,7 @@ class DataModelsPlugin:
             log.error(f"浏览数据对象失败: {e}")
             return []
 
-    def browse_data_attributes(self, ld: str, ln: str, do_name: str) -> List[Dict[str, Any]]:
+    def browse_data_attributes(self, ld: str, ln: str, do_name: str) -> list[dict[str, Any]]:
         """浏览指定数据对象下的数据属性列表"""
         if not self._connection or not self._connection.is_connected:
             return []
@@ -457,7 +517,7 @@ class DataModelsPlugin:
             log.debug(f"浏览数据属性失败: {do_ref}, 错误: {e}")
             return []
 
-    def get_discovered_points(self) -> List[Dict[str, Any]]:
+    def get_discovered_points(self) -> list[dict[str, Any]]:
         """获取当前已映射的测点列表（含 GOOSE 控制块）"""
         result = []
         for addr, ref in self._registry.point_refs.items():
@@ -469,12 +529,22 @@ class DataModelsPlugin:
             da_path = parsed[3] if parsed else ""
             frame_type = 0
             if da_path:
-                top_da = da_path.split('.')[0]
+                top_da = da_path.split(".")[0]
                 if top_da in DA_PATTERNS:
                     frame_type = DA_PATTERNS[top_da][1]
                 elif top_da in EXTRA_DA_INFO:
                     frame_type = 1
-            result.append({"address": addr, "frame_type": frame_type, "ref": ref, "code": code, "name": name, "fc": fc, "iec_type": iec_type})
+            result.append(
+                {
+                    "address": addr,
+                    "frame_type": frame_type,
+                    "ref": ref,
+                    "code": code,
+                    "name": name,
+                    "fc": fc,
+                    "iec_type": iec_type,
+                }
+            )
         result.extend(self._registry.discovered_goose_items)
         return result
 
@@ -522,13 +592,11 @@ class DataModelsPlugin:
             return "mag.f"
         elif frame_type == 1:
             return "stVal"
-        elif frame_type == 2:
-            return "ctlVal"
-        elif frame_type == 3:
+        elif frame_type == 2 or frame_type == 3:
             return "ctlVal"
         return ""
 
-    def _discover_da_paths(self, do_ref: str) -> List[Tuple[str, int, str, str]]:
+    def _discover_da_paths(self, do_ref: str) -> list[tuple[str, int, str, str]]:
         """通过查询服务器模型发现 DO 下的 DA 路径"""
         try:
             result = iec61850.IedConnection_getDataDirectory(self._connection.connection, do_ref)
@@ -562,7 +630,9 @@ class DataModelsPlugin:
             log.debug(f"查询 DA 目录失败: {do_ref}, 错误: {e}")
             return []
 
-    def _discover_sub_da_paths(self, parent_ref: str, parent_fc: str, parent_path_prefix: str = "") -> List[Tuple[str, int, str, str]]:
+    def _discover_sub_da_paths(
+        self, parent_ref: str, parent_fc: str, parent_path_prefix: str = ""
+    ) -> list[tuple[str, int, str, str]]:
         """递归发现结构体 DA 的子 BDA 路径"""
         try:
             result = iec61850.IedConnection_getDataDirectory(self._connection.connection, parent_ref)
@@ -598,10 +668,14 @@ class DataModelsPlugin:
         """
         if not self._connection or not self._connection.is_connected:
             return ""
-        if not hasattr(iec61850, 'IedConnection_readStringValue'):
+        if not hasattr(iec61850, "IedConnection_readStringValue"):
             return ""
-        for da_name, fc in (("dU", iec61850.IEC61850_FC_DC), ("d", iec61850.IEC61850_FC_DC),
-                            ("dU", iec61850.IEC61850_FC_CF), ("d", iec61850.IEC61850_FC_CF)):
+        for da_name, fc in (
+            ("dU", iec61850.IEC61850_FC_DC),
+            ("d", iec61850.IEC61850_FC_DC),
+            ("dU", iec61850.IEC61850_FC_CF),
+            ("d", iec61850.IEC61850_FC_CF),
+        ):
             try:
                 [value, error] = iec61850.IedConnection_readStringValue(
                     self._connection.connection, f"{do_ref}.{da_name}", fc
@@ -621,6 +695,6 @@ class DataModelsPlugin:
             if do_name.startswith(("MV_", "SPS_", "SPC_", "APC_")):
                 for prefix in ("MV_", "SPS_", "SPC_", "APC_"):
                     if do_name.startswith(prefix):
-                        return do_name[len(prefix):]
+                        return do_name[len(prefix) :]
                     return f"{ln_name}.{do_name}"
         return address

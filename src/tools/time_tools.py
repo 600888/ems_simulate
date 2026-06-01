@@ -1,6 +1,5 @@
-import time
-from builtins import str
 from datetime import datetime, timedelta
+import time
 
 
 class TimeTools:

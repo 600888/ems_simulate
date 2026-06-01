@@ -32,10 +32,11 @@ ICD 文件中 GOOSE 相关结构:
           </GSE>
 """
 
+import contextlib
 import os
 import re
-import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional, Tuple
+import xml.etree.ElementTree as ET
 
 from src.data.log import log
 
@@ -46,17 +47,17 @@ SCL_NS = "http://www.iec.ch/61850/2003/SCL"
 # ICD 文件的 FCDA 中 daName 只给出顶级 DA 名（如 "mag"），
 # 但 MMS 引用需要完整路径（如 "mag.f"），用于值读取和树形展示
 _KNOWN_STRUCT_DA_TO_FULL_PATH = {
-    "mag": "mag.f",              # MV CDC: 浮点测量值
-    "instMag": "instMag.f",      # SAV CDC: 瞬时测量值
-    "cVal": "cVal.mag.f",        # CMV CDC: 复数测量值
-    "mxVal": "mxVal.f",          # 某些实现
-    "fCVal": "fCVal.mag.f",      # 复数浮点
-    "wVal": "wVal.f",            # 设定值
-    "setMag": "setMag.f",        # 设定幅值
-    "Oper": "Oper.ctlVal",       # SPC/DPC CDC: 操作
-    "SBOw": "SBOw.ctlVal",       # SBO 带值
-    "Cancel": "Cancel.ctlVal",   # 取消操作
-    "origin": "origin.orCat",    # Origin 结构体
+    "mag": "mag.f",  # MV CDC: 浮点测量值
+    "instMag": "instMag.f",  # SAV CDC: 瞬时测量值
+    "cVal": "cVal.mag.f",  # CMV CDC: 复数测量值
+    "mxVal": "mxVal.f",  # 某些实现
+    "fCVal": "fCVal.mag.f",  # 复数浮点
+    "wVal": "wVal.f",  # 设定值
+    "setMag": "setMag.f",  # 设定幅值
+    "Oper": "Oper.ctlVal",  # SPC/DPC CDC: 操作
+    "SBOw": "SBOw.ctlVal",  # SBO 带值
+    "Cancel": "Cancel.ctlVal",  # 取消操作
+    "origin": "origin.orCat",  # Origin 结构体
 }
 
 
@@ -64,13 +65,13 @@ class GooseGseControlInfo:
     """GSEControl 解析结果"""
 
     def __init__(self):
-        self.name: str = ""               # GSEControl name (如 "gcb1")
-        self.go_cb_ref: str = ""          # 完整引用 (如 "LD0/LLN0$GO$gcb1")
-        self.app_id: str = ""             # appID 属性值
-        self.dat_set: str = ""            # 数据集名称
-        self.conf_rev: int = 1            # 配置修订号
+        self.name: str = ""  # GSEControl name (如 "gcb1")
+        self.go_cb_ref: str = ""  # 完整引用 (如 "LD0/LLN0$GO$gcb1")
+        self.app_id: str = ""  # appID 属性值
+        self.dat_set: str = ""  # 数据集名称
+        self.conf_rev: int = 1  # 配置修订号
         self.control_type: str = "GOOSE"  # type 属性
-        self.desc: str = ""               # 描述
+        self.desc: str = ""  # 描述
 
         # 所属 LD/LN 信息
         self.ied_name: str = ""
@@ -80,35 +81,31 @@ class GooseGseControlInfo:
         self.ln_prefix: str = ""
 
         # 通信地址 (从 GSE 元素获取)
-        self.gse_app_id: str = ""          # APPID (通信部分)
-        self.mac_address: str = ""         # 组播 MAC 地址
+        self.gse_app_id: str = ""  # APPID (通信部分)
+        self.mac_address: str = ""  # 组播 MAC 地址
         self.vlan_id: int = 0
         self.vlan_priority: int = 4
-        self.min_time: int = 10            # ms, 最小重发时间 (T1)
-        self.max_time: int = 1000          # ms, 最大重发时间 (T0, 即 TimeAllowedToLive)
+        self.min_time: int = 10  # ms, 最小重发时间 (T1)
+        self.max_time: int = 1000  # ms, 最大重发时间 (T0, 即 TimeAllowedToLive)
 
         # 数据集成员
-        self.dataset_members: List[Dict[str, str]] = []
+        self.dataset_members: list[dict[str, str]] = []
 
-    def to_publisher_dict(self, interface: str = "eth0") -> Dict[str, Any]:
+    def to_publisher_dict(self, interface: str = "eth0") -> dict[str, Any]:
         """转换为 GoosePublisher 创建参数"""
         app_id_int = 0x0001
         if self.app_id:
             try:
                 app_id_int = int(self.app_id, 16)
             except ValueError:
-                try:
+                with contextlib.suppress(ValueError):
                     app_id_int = int(self.app_id)
-                except ValueError:
-                    pass
         elif self.gse_app_id:
             try:
                 app_id_int = int(self.gse_app_id, 16)
             except ValueError:
-                try:
+                with contextlib.suppress(ValueError):
                     app_id_int = int(self.gse_app_id)
-                except ValueError:
-                    pass
 
         dst_mac = None
         if self.mac_address:
@@ -117,19 +114,20 @@ class GooseGseControlInfo:
         entries = []
         for member in self.dataset_members:
             iec_type = self._fcda_to_iec_type(member)
-            entries.append({
-                "name": member.get("fcda_ref", ""),
-                "value": self._default_value_for_type(iec_type),
-                "iec_type": iec_type,
-                "fc": member.get("fc", ""),
-            })
+            entries.append(
+                {
+                    "name": member.get("fcda_ref", ""),
+                    "value": self._default_value_for_type(iec_type),
+                    "iec_type": iec_type,
+                    "fc": member.get("fc", ""),
+                }
+            )
 
         return {
             "interface": interface,
             "go_cb_ref": self.go_cb_ref,
             "go_id": self.name,
-            "data_set_ref": f"{self.ld_inst}/{self.ln_class}${self.dat_set}"
-            if self.dat_set else "",
+            "data_set_ref": f"{self.ld_inst}/{self.ln_class}${self.dat_set}" if self.dat_set else "",
             "app_id": app_id_int,
             "conf_rev": self.conf_rev,
             "time_allowed_to_live": self.max_time,
@@ -140,7 +138,7 @@ class GooseGseControlInfo:
             "entries": entries,
         }
 
-    def to_subscription_dict(self) -> Dict[str, Any]:
+    def to_subscription_dict(self) -> dict[str, Any]:
         """转换为 GooseSubscription 创建参数"""
         app_id_int = None
         aid = self.gse_app_id or self.app_id
@@ -148,10 +146,8 @@ class GooseGseControlInfo:
             try:
                 app_id_int = int(aid, 16)
             except ValueError:
-                try:
+                with contextlib.suppress(ValueError):
                     app_id_int = int(aid)
-                except ValueError:
-                    pass
 
         dst_mac = None
         if self.mac_address:
@@ -165,10 +161,10 @@ class GooseGseControlInfo:
         }
 
     @staticmethod
-    def _parse_mac(mac_str: str) -> Optional[List[int]]:
+    def _parse_mac(mac_str: str) -> Optional[list[int]]:
         """解析 MAC 地址字符串为字节数组"""
         # 支持格式: 01-0C-CD-01-00-01, 01:0C:CD:01:00:01
-        parts = re.split(r'[-:]', mac_str.strip())
+        parts = re.split(r"[-:]", mac_str.strip())
         if len(parts) != 6:
             return None
         try:
@@ -177,7 +173,7 @@ class GooseGseControlInfo:
             return None
 
     @staticmethod
-    def _fcda_to_iec_type(fcda: Dict[str, str]) -> str:
+    def _fcda_to_iec_type(fcda: dict[str, str]) -> str:
         """根据 FCDA 的 fc 推断 IEC 数据类型"""
         fc = fcda.get("fc", "")
         if fc == "ST":
@@ -207,9 +203,7 @@ class GooseGseControlInfo:
             return 0.0
         elif iec_type == "string":
             return ""
-        elif iec_type == "bitstring":
-            return 0
-        elif iec_type == "timestamp":
+        elif iec_type == "bitstring" or iec_type == "timestamp":
             return 0
         return False
 
@@ -219,15 +213,15 @@ class IcdGooseImporter:
 
     def __init__(self):
         self._ns_prefix: str = ""
-        self._gse_controls: List[GooseGseControlInfo] = []
+        self._gse_controls: list[GooseGseControlInfo] = []
         # IED name -> ConnectedAP 下的 GSE 信息缓存
-        self._gse_address_map: Dict[str, List[Dict[str, Any]]] = {}
+        self._gse_address_map: dict[str, list[dict[str, Any]]] = {}
         # (ied_name, ld_inst, ln_class, ln_inst, ln_prefix) -> [DataSet]
-        self._dataset_map: Dict[Tuple, List[ET.Element]] = {}
+        self._dataset_map: dict[tuple, list[ET.Element]] = {}
         # 未被 GSEControl 引用的纯 DataSet（无 GOOSE 发布）
-        self._pure_datasets: List[Dict[str, Any]] = []
+        self._pure_datasets: list[dict[str, Any]] = []
         # ReportControl 列表（自定义 RCB）
-        self._report_controls: List[Dict[str, Any]] = []
+        self._report_controls: list[dict[str, Any]] = []
 
     def _tag(self, name: str) -> str:
         """根据检测到的命名空间构造完整 tag"""
@@ -244,7 +238,7 @@ class IcdGooseImporter:
         else:
             self._ns_prefix = ""
 
-    def parse_icd(self, file_path: str) -> List[GooseGseControlInfo]:
+    def parse_icd(self, file_path: str) -> list[GooseGseControlInfo]:
         """解析 ICD/SCD/CID 文件，提取 GOOSE 配置
 
         Args:
@@ -294,9 +288,9 @@ class IcdGooseImporter:
                         self._gse_address_map[ied_name] = []
                     self._gse_address_map[ied_name].append(gse_info)
 
-    def _parse_gse_element(self, gse: ET.Element) -> Dict[str, Any]:
+    def _parse_gse_element(self, gse: ET.Element) -> dict[str, Any]:
         """解析单个 GSE 元素"""
-        info: Dict[str, Any] = {
+        info: dict[str, Any] = {
             "ld_inst": gse.get("ldInst", ""),
             "ln_class": gse.get("lnClass", "LLN0"),
             "ln_inst": gse.get("lnInst", ""),
@@ -377,7 +371,7 @@ class IcdGooseImporter:
 
                     # 收集数据集
                     datasets = ln0.findall(self._tag("DataSet"))
-                    dataset_by_name: Dict[str, ET.Element] = {}
+                    dataset_by_name: dict[str, ET.Element] = {}
                     for ds in datasets:
                         ds_name = ds.get("name", "")
                         if ds_name:
@@ -386,9 +380,7 @@ class IcdGooseImporter:
                     # 解析 GSEControl，并记录已引用的 DataSet 名称
                     referenced_datasets: set = set()
                     for gse_ctrl in ln0.findall(self._tag("GSEControl")):
-                        info = self._parse_gse_control(
-                            gse_ctrl, ied_name, ld_inst, ln0, dataset_by_name
-                        )
+                        info = self._parse_gse_control(gse_ctrl, ied_name, ld_inst, ln0, dataset_by_name)
                         if info:
                             self._gse_controls.append(info)
                             if info.dat_set:
@@ -416,20 +408,24 @@ class IcdGooseImporter:
                             for m in pure_ds_members:
                                 iec_type = GooseGseControlInfo._fcda_to_iec_type(m)
                                 default_val = GooseGseControlInfo._default_value_for_type(iec_type)
-                                entries.append({
-                                    "name": m.get("fcda_ref", ""),
-                                    "value": default_val,
-                                    "iec_type": iec_type,
-                                    "fc": m.get("fc", ""),
-                                })
-                            self._pure_datasets.append({
-                                "ld_inst": ld_inst,
-                                "ds_name": ds_name,
-                                "ds_ref": ds_ref,
-                                "data_set_ref": ds_ref,
-                                "member_count": len(pure_ds_members),
-                                "entries": entries,
-                            })
+                                entries.append(
+                                    {
+                                        "name": m.get("fcda_ref", ""),
+                                        "value": default_val,
+                                        "iec_type": iec_type,
+                                        "fc": m.get("fc", ""),
+                                    }
+                                )
+                            self._pure_datasets.append(
+                                {
+                                    "ld_inst": ld_inst,
+                                    "ds_name": ds_name,
+                                    "ds_ref": ds_ref,
+                                    "data_set_ref": ds_ref,
+                                    "member_count": len(pure_ds_members),
+                                    "entries": entries,
+                                }
+                            )
 
     def _parse_gse_control(
         self,
@@ -437,7 +433,7 @@ class IcdGooseImporter:
         ied_name: str,
         ld_inst: str,
         ln0: ET.Element,
-        dataset_by_name: Dict[str, ET.Element],
+        dataset_by_name: dict[str, ET.Element],
     ) -> Optional[GooseGseControlInfo]:
         """解析单个 GSEControl 元素"""
         info = GooseGseControlInfo()
@@ -517,7 +513,7 @@ class IcdGooseImporter:
             return da_name
         return _KNOWN_STRUCT_DA_TO_FULL_PATH.get(da_name, da_name)
 
-    def _parse_dataset(self, ds_elem: ET.Element, ld_inst: str) -> List[Dict[str, str]]:
+    def _parse_dataset(self, ds_elem: ET.Element, ld_inst: str) -> list[dict[str, str]]:
         """解析 DataSet 中的 FCDA 元素"""
         members = []
         for fcda in ds_elem.findall(self._tag("FCDA")):
@@ -533,9 +529,7 @@ class IcdGooseImporter:
 
             # 构建完整的 FCDA 引用路径
             fcda_ld = member["ld_inst"] or ld_inst
-            fcda_ln = self._build_ln_name(
-                member["ln_prefix"], member["ln_class"], member["ln_inst"]
-            )
+            fcda_ln = self._build_ln_name(member["ln_prefix"], member["ln_class"], member["ln_inst"])
             ref_parts = [fcda_ld, fcda_ln]
             if member["do_name"]:
                 ref_parts.append(member["do_name"])
@@ -547,10 +541,13 @@ class IcdGooseImporter:
 
         return members
 
-    def _parse_report_control(self, rc_elem: ET.Element, ld_inst: str,
-                                ln_name: str,
-                                dataset_by_name: Optional[Dict[str, ET.Element]] = None,
-                                ) -> Optional[Dict[str, Any]]:
+    def _parse_report_control(
+        self,
+        rc_elem: ET.Element,
+        ld_inst: str,
+        ln_name: str,
+        dataset_by_name: Optional[dict[str, ET.Element]] = None,
+    ) -> Optional[dict[str, Any]]:
         """解析单个 ReportControl 元素
 
         Args:
@@ -591,16 +588,27 @@ class IcdGooseImporter:
 
         # 解析 OptFields
         opt_fields = {
-            "seq_num": False, "time_stamp": False, "data_set": False,
-            "reason_code": False, "data_ref": False, "entry_id": False,
-            "config_ref": False, "buf_ovfl": False,
+            "seq_num": False,
+            "time_stamp": False,
+            "data_set": False,
+            "reason_code": False,
+            "data_ref": False,
+            "entry_id": False,
+            "config_ref": False,
+            "buf_ovfl": False,
         }
         opt_elem = rc_elem.find(self._tag("OptFields"))
         if opt_elem is not None:
-            key_map = {"seqNum": "seq_num", "timeStamp": "time_stamp",
-                       "dataSet": "data_set", "reasonCode": "reason_code",
-                       "dataRef": "data_ref", "entryID": "entry_id",
-                       "configRef": "config_ref", "bufOvfl": "buf_ovfl"}
+            key_map = {
+                "seqNum": "seq_num",
+                "timeStamp": "time_stamp",
+                "dataSet": "data_set",
+                "reasonCode": "reason_code",
+                "dataRef": "data_ref",
+                "entryID": "entry_id",
+                "configRef": "config_ref",
+                "bufOvfl": "buf_ovfl",
+            }
             for xml_key, py_key in key_map.items():
                 v = opt_elem.get(xml_key, "false")
                 opt_fields[py_key] = v.lower() == "true"
@@ -614,12 +622,14 @@ class IcdGooseImporter:
             for m in ds_members:
                 iec_type = GooseGseControlInfo._fcda_to_iec_type(m)
                 default_val = GooseGseControlInfo._default_value_for_type(iec_type)
-                entries.append({
-                    "name": m.get("fcda_ref", ""),
-                    "value": default_val,
-                    "iec_type": iec_type,
-                    "fc": m.get("fc", ""),
-                })
+                entries.append(
+                    {
+                        "name": m.get("fcda_ref", ""),
+                        "value": default_val,
+                        "iec_type": iec_type,
+                        "fc": m.get("fc", ""),
+                    }
+                )
 
         rc_info = {
             "ld_inst": ld_inst,
@@ -636,10 +646,12 @@ class IcdGooseImporter:
             "opt_fields": opt_fields,
             "entries": entries,
         }
-        log.info(f"ICD ReportControl: {ld_inst}/{ln_name}.{name}, type={rcb_type}, datSet={dat_set}, entries={len(entries)}")
+        log.info(
+            f"ICD ReportControl: {ld_inst}/{ln_name}.{name}, type={rcb_type}, datSet={dat_set}, entries={len(entries)}"
+        )
         return rc_info
 
-    def get_pure_datasets(self) -> List[Dict[str, Any]]:
+    def get_pure_datasets(self) -> list[dict[str, Any]]:
         """获取未被 GSEControl 引用的纯 DataSet 列表
 
         Returns:
@@ -654,7 +666,7 @@ class IcdGooseImporter:
         """
         return list(self._pure_datasets)
 
-    def get_report_controls(self) -> List[Dict[str, Any]]:
+    def get_report_controls(self) -> list[dict[str, Any]]:
         """获取从 ICD 解析的 ReportControl 列表
 
         Returns:
@@ -674,7 +686,7 @@ class IcdGooseImporter:
         """
         return list(self._report_controls)
 
-    def get_import_summary(self) -> Dict[str, Any]:
+    def get_import_summary(self) -> dict[str, Any]:
         """获取解析摘要"""
         return {
             "gse_control_count": len(self._gse_controls),
@@ -693,7 +705,7 @@ class IcdGooseImporter:
         }
 
 
-def import_goose_from_icd(file_path: str, interface: str = "eth0") -> Dict[str, Any]:
+def import_goose_from_icd(file_path: str, interface: str = "eth0") -> dict[str, Any]:
     """从 ICD 文件导入 GOOSE 配置
 
     Args:

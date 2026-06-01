@@ -1,11 +1,13 @@
 import sys
+
 import questionary
 
 sys.path.append("../")
 
 from prettytable import PrettyTable
+
 from device_controller import get_device_controller
-from src.enums.point_data import DeviceType
+from src.enums.point_data import DeviceType, Dlt645
 
 
 def get_first_choice():
@@ -86,9 +88,7 @@ if __name__ == "__main__":
                                         if fourth_choice == slave_list[i]:
                                             current_slave = i + 1
                                             break
-                                    device_controller.current_device.showDataPointInCmd(
-                                        current_slave
-                                    )
+                                    device_controller.current_device.showDataPointInCmd(current_slave)
                     elif third_choice == "开启随机值模拟":
                         device_controller.current_device.startRandomSimulation()
                     elif third_choice == "关闭模拟":
@@ -120,9 +120,7 @@ if __name__ == "__main__":
                         port = device.server.serial_port
                     else:
                         port = device.server.port
-                simulation_status = (
-                    "运行中" if device.simulation_thread.isAlive() else "已停止"
-                )
+                simulation_status = "运行中" if device.simulation_thread.isAlive() else "已停止"
                 if isinstance(device, Dlt645):
                     table.add_row(
                         [

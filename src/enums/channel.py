@@ -1,4 +1,5 @@
 from typing import Optional
+
 from pydantic import BaseModel
 
 from src.enums.connection_type import ConnectionType
@@ -28,4 +29,9 @@ class Channel(BaseModel):
     rtu_config: Optional[RtuConfig] = None
 
     def __repr__(self):
-        return f"Channel(id={self.id}, code={self.code}, name={self.name}, connection_type={self.connection_type}, protocol_type={self.protocol_type}, net_config={self.net_config}, rtu_config={self.rtu_config})"
+        return (
+            f"Channel(id={self.id}, code={self.code}, name={self.name}, "
+            f"connection_type={self.connection_type}, "
+            f"protocol_type={self.protocol_type}, "
+            f"net_config={self.net_config}, rtu_config={self.rtu_config})"
+        )

@@ -1,25 +1,25 @@
+import asyncio
 import json
 import os.path
 import sys
 import time
-import asyncio
-from typing import Union, List, Optional, Type
+from typing import List, Optional, Type, Union
 
 from src.data.service.channel_service import ChannelService
 from src.data.service.yc_service import YcService
 from src.device.data_update.data_update_thread import DataUpdateThread
 from src.device.factory.general_device_builder import GeneralDeviceBuilder
+from src.device.types.circuit_breaker import CircuitBreaker
 from src.device.types.general_device import GeneralDevice
 from src.device.types.pcs import Pcs
-from src.device.types.circuit_breaker import CircuitBreaker
 from src.enums.data_source import DataSource
 from src.enums.modbus_def import ProtocolType, get_protocol_type_by_value
 
 sys.path.append("../")
 
-from src.config.global_config import CSV_DIR, CONFIG_JSON_DIR
-from src.device.core.device import Device
 from src.config.config import Config
+from src.config.global_config import CONFIG_JSON_DIR, CSV_DIR
+from src.device.core.device import Device
 from src.log import log
 
 
@@ -28,7 +28,7 @@ class DeviceController:
 
     def __init__(self):
         # 指定列表类型为ModbusServer
-        self.device_list: List[Device] = []
+        self.device_list: list[Device] = []
         # 当前选中的ModbusServer
         self.current_device: Device = Device()
         # 根据名称映射ModbusServer
@@ -67,14 +67,14 @@ class DeviceController:
     def get_device_by_id(self, device_id: int) -> Optional[Device]:
         """根据设备 ID 查找设备"""
         for device in self.device_list:
-            if getattr(device, 'device_id', None) == device_id:
+            if getattr(device, "device_id", None) == device_id:
                 return device
         return None
 
     def get_device_by_channel_id(self, channel_id: int) -> Optional[Device]:
         """根据通道 ID 查找设备（创建设备时 device_id == channel_id）"""
         for device in self.device_list:
-            if getattr(device, 'device_id', None) == channel_id:
+            if getattr(device, "device_id", None) == channel_id:
                 return device
         return None
 
@@ -89,11 +89,11 @@ class DeviceController:
             # 停止更新线程
             if hasattr(device, "data_update_thread") and device.data_update_thread:
                 device.data_update_thread.stop()
-            
+
             # 停止模拟
             if hasattr(device, "simulation_controller"):
                 device.simulation_controller.stop_simulation()
-            
+
             # 停止协议服务端/客户端
             if hasattr(device, "protocol_handler") and device.protocol_handler:
                 await device.protocol_handler.stop()
@@ -103,16 +103,16 @@ class DeviceController:
         # 从列表和映射中移除
         if device in self.device_list:
             self.device_list.remove(device)
-        
+
         # 移除映射中的条目（可能存在多个指向同一对象的映射，例如旧名称和新名称）
         keys_to_remove = [k for k, v in self.device_map.items() if v == device]
         for k in keys_to_remove:
             del self.device_map[k]
-        
+
         # 如果是储能电表，清理变量
         if self.enerey_meter == device:
             self.enerey_meter = None
-            
+
         return True
 
     def sync_pcs_power_to_meter(self):
@@ -138,36 +138,30 @@ class DeviceController:
     async def import_device_from_db(self):
         try:
             channel_list = ChannelService.get_all_channels()
-            
+
             # 并发创建所有设备
             async def _build_device(channel):
                 """单个设备的构建逻辑"""
                 channel_code = channel["code"]
                 channel_name = channel["name"]
                 channel_id = channel["id"]
-                protocol_type = channel["protocol_type"]
+                channel["protocol_type"]
                 conn_type = channel["conn_type"]
                 ip = channel.get("ip", Config.DEFAULT_IP)
                 port = channel.get("port", Config.DEFAULT_PORT)
-                
+
                 log.info(f"导入设备: {channel_code}")
-                
+
                 # 获取协议类型枚举
                 channel_protocol_type = ChannelService.get_protocol_type(channel)
-                
+
                 if channel_code.upper().find("PCS") != -1:
-                    general_device_builder = GeneralDeviceBuilder(
-                        channel_id=channel_id, device=Pcs()
-                    )
+                    general_device_builder = GeneralDeviceBuilder(channel_id=channel_id, device=Pcs())
                 elif channel_code.upper().find("BREAKER") != -1:
                     log.info(f"导入断路器设备: {channel_code}")
-                    general_device_builder = GeneralDeviceBuilder(
-                        channel_id=channel_id, device=CircuitBreaker()
-                    )
+                    general_device_builder = GeneralDeviceBuilder(channel_id=channel_id, device=CircuitBreaker())
                 else:
-                    general_device_builder = GeneralDeviceBuilder(
-                        channel_id=channel_id, device=GeneralDevice()
-                    )
+                    general_device_builder = GeneralDeviceBuilder(channel_id=channel_id, device=GeneralDevice())
 
                 # 设置网络/串口配置
                 if conn_type in [0, 3]:  # 串口连接（主站或从站）
@@ -176,7 +170,7 @@ class DeviceController:
                         baudrate=channel.get("baud_rate", 9600),
                         databits=channel.get("data_bits", 8),
                         stopbits=channel.get("stop_bits", 1),
-                        parity=channel.get("parity", "E")
+                        parity=channel.get("parity", "E"),
                     )
                 elif (
                     channel_protocol_type == ProtocolType.Iec104Client
@@ -184,13 +178,9 @@ class DeviceController:
                     or channel_protocol_type == ProtocolType.Dlt645Client
                     or channel_protocol_type == ProtocolType.Iec61850Client
                 ):  # TCP 客户端
-                    general_device_builder.setDeviceNetConfig(
-                        port=port, ip=ip
-                    )
+                    general_device_builder.setDeviceNetConfig(port=port, ip=ip)
                 else:  # TCP 服务端
-                    general_device_builder.setDeviceNetConfig(
-                        port=port, ip=Config.DEFAULT_IP
-                    )
+                    general_device_builder.setDeviceNetConfig(port=port, ip=Config.DEFAULT_IP)
 
                 # 传递 IEC61850 IED 模型名称
                 if channel_protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client):
@@ -215,10 +205,7 @@ class DeviceController:
                 return general_device, is_energy_meter
 
             # 使用 asyncio.gather 并发创建所有设备
-            results = await asyncio.gather(
-                *[_build_device(ch) for ch in channel_list],
-                return_exceptions=True
-            )
+            results = await asyncio.gather(*[_build_device(ch) for ch in channel_list], return_exceptions=True)
 
             # 收集结果
             for result in results:
@@ -243,25 +230,18 @@ class DeviceController:
     async def import_device_from_json(self, file_path=config_json_path):
         if file_path:
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
                     for device in data:
                         device_id = device["id"]
-                        device_type = device["type"]
-                        protocol_type = get_protocol_type_by_value(
-                            device["protocol_type"]
-                        )
+                        device["type"]
+                        protocol_type = get_protocol_type_by_value(device["protocol_type"])
                         default_status = device["default_status"]
                         path = device["csv_path"]
-                        if default_status == "start":
-                            is_start = True
-                        else:
-                            is_start = False
+                        is_start = default_status == "start"
                         builder = GeneralDeviceBuilder()
                         other_device_path = CSV_DIR + path
-                        other_device = builder.makeOtherDevice(
-                            device_id, other_device_path, protocol_type, is_start
-                        )
+                        other_device = builder.makeOtherDevice(device_id, other_device_path, protocol_type, is_start)
                         self.device_list.append(other_device)
                         self.device_map[other_device.name] = other_device
                 log.info("通过csv文件导入设备配置文件成功!")
@@ -307,9 +287,8 @@ class DeviceController:
                 elif hasattr(device.server, "stop"):
                     device.server.stop()
             # 停止客户端
-            if hasattr(device, "client") and device.client:
-                if hasattr(device.client, "disconnect"):
-                    device.client.disconnect()
+            if hasattr(device, "client") and device.client and hasattr(device.client, "disconnect"):
+                device.client.disconnect()
 
         # 停止数据同步线程
         if hasattr(self, "data_sync_thread"):

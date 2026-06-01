@@ -3,9 +3,10 @@
 支持从 config.ini 加载数据库和数据源配置
 """
 
-import os
 from configparser import ConfigParser
+import os
 from typing import Optional
+
 from src.enums.data_source import DataSource
 
 
@@ -38,7 +39,7 @@ class Config:
     @classmethod
     def load_config(cls, config_file: str) -> None:
         """加载配置文件并更新配置类属性
-        
+
         Args:
             config_file: 配置文件路径
         """
@@ -50,9 +51,7 @@ class Config:
                 # 数据库类型配置
                 if "database" in config:
                     cls.db_type = config["database"].get("type", cls.db_type)
-                    cls.sqlite_path = config["database"].get(
-                        "sqlite_path", cls.sqlite_path
-                    )
+                    cls.sqlite_path = config["database"].get("sqlite_path", cls.sqlite_path)
 
                 # MySQL 配置
                 if "mysql" in config:
@@ -65,10 +64,8 @@ class Config:
                 # 数据源配置
                 if "data_source" in config and "type" in config["data_source"]:
                     data_source = config["data_source"]["type"]
-                    cls.data_source = (
-                        DataSource.Db if data_source == "db" else DataSource.CSV
-                    )
-                
+                    cls.data_source = DataSource.Db if data_source == "db" else DataSource.CSV
+
                 # Server 配置
                 if "server" in config:
                     cls.web_port = int(config["server"].get("port", cls.web_port))

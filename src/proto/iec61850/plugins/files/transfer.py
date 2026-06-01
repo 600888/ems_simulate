@@ -20,14 +20,14 @@ pyiec61850 Python 绑定签名:
 - libiec61850 在检查远程文件是否存在之前就会创建本地文件，失败下载会留下 0 字节残留。
 """
 
+import contextlib
 import os
-from typing import Optional, Callable
+from typing import Callable, Optional
 
 from ...core.connection import Iec61850Connection
 from ...defs.constants import HAS_IEC61850
 from ...log import log
 from .types import TransferProgress, TransferStatus
-
 
 # 进度回调类型: (progress: TransferProgress) -> None
 ProgressCallback = Callable[[TransferProgress], None]
@@ -40,6 +40,7 @@ def _ied_error_name(error_code) -> str:
     _map = {}
     try:
         from pyiec61850 import pyiec61850 as iec
+
         _map = {v: k for k, v in vars(iec).items() if k.startswith("IED_ERROR") and isinstance(v, int)}
     except Exception:
         pass
@@ -52,6 +53,7 @@ def _mms_error_name(error_code) -> str:
         return "OK"
     try:
         from pyiec61850 import pyiec61850 as iec
+
         return iec.MmsError_toString(error_code)
     except Exception:
         return f"MMS_ERROR({error_code})"
@@ -101,8 +103,7 @@ class FileTransfer:
         # 检查本地文件
         if os.path.exists(local_path) and not overwrite:
             return TransferProgress(
-                remote_filename, status=TransferStatus.FAILED,
-                error=f"本地文件已存在: {local_path}"
+                remote_filename, status=TransferStatus.FAILED, error=f"本地文件已存在: {local_path}"
             )
 
         progress = TransferProgress(filename=remote_filename, status=TransferStatus.PENDING)
@@ -156,10 +157,8 @@ class FileTransfer:
                 try:
                     iec61850.MmsErrror_destroy(mms_error)
                 except AttributeError:
-                    try:
+                    with contextlib.suppress(Exception):
                         iec61850.MmsError_destroy(mms_error)
-                    except Exception:
-                        pass
 
             if succeeded:
                 downloaded_size = os.path.getsize(local_path) if os.path.exists(local_path) else 0
@@ -169,10 +168,8 @@ class FileTransfer:
                     progress.status = TransferStatus.FAILED
                     progress.error = "下载文件为空 (0 bytes)，远程文件可能不存在"
                     log.warning(f"下载文件失败: {remote_filename}, 下载结果为 0 字节")
-                    try:
+                    with contextlib.suppress(OSError):
                         os.remove(local_path)
-                    except OSError:
-                        pass
                 else:
                     progress.status = TransferStatus.COMPLETED
                     progress.bytes_transferred = downloaded_size
@@ -223,6 +220,7 @@ class FileTransfer:
 
         try:
             import tempfile
+
             from pyiec61850 import pyiec61850 as iec61850
 
             conn = self._conn.connection
@@ -241,6 +239,7 @@ class FileTransfer:
             # 注意: Windows 系统临时目录可能包含中文等 Unicode 字符，
             # libiec61850 的 C 层 fopen() 无法处理，需使用纯 ASCII 路径。
             from pathlib import Path
+
             _tmp_dir = str(Path.cwd() / "data" / "_tmp")
             os.makedirs(_tmp_dir, exist_ok=True)
             tmp_fd, tmp_path = tempfile.mkstemp(suffix=".iecdl", dir=_tmp_dir)
@@ -259,17 +258,17 @@ class FileTransfer:
                     if not ok or mms_code != 0:
                         progress.status = TransferStatus.FAILED
                         progress.error = f"MMS 下载失败: {_mms_error_name(mms_code)}({mms_code})"
-                        log.error(f"下载文件到内存失败: {remote_filename}, MMS 错误: {_mms_error_name(mms_code)}({mms_code})")
+                        log.error(
+                            f"下载文件到内存失败: {remote_filename}, MMS 错误: {_mms_error_name(mms_code)}({mms_code})"
+                        )
                         return b"", progress
                     succeeded = True
                 finally:
                     try:
                         iec61850.MmsErrror_destroy(mms_error)
                     except AttributeError:
-                        try:
+                        with contextlib.suppress(Exception):
                             iec61850.MmsError_destroy(mms_error)
-                        except Exception:
-                            pass
 
                 if not succeeded:
                     return b"", progress
@@ -277,10 +276,8 @@ class FileTransfer:
                 with open(tmp_path, "rb") as f:
                     file_data = f.read()
             finally:
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(tmp_path)
-                except OSError:
-                    pass
 
             # libiec61850 在检查远程文件是否存在之前就会创建本地文件，
             # 失败下载会留下 0 字节残留。
@@ -333,8 +330,7 @@ class FileTransfer:
 
         if not os.path.isfile(local_path):
             return TransferProgress(
-                remote_filename, status=TransferStatus.FAILED,
-                error=f"本地文件不存在: {local_path}"
+                remote_filename, status=TransferStatus.FAILED, error=f"本地文件不存在: {local_path}"
             )
 
         progress = TransferProgress(filename=remote_filename, status=TransferStatus.PENDING)
@@ -355,8 +351,7 @@ class FileTransfer:
             # Windows: 将反斜杠转为正斜杠，避免 C 层路径解析异常
             local_dir_fwd = local_dir.replace("\\", "/")
 
-            log.info(f"准备上传: {local_path} → {remote_filename}, "
-                      f"basepath={local_dir_fwd}, sourceName={local_name}")
+            log.info(f"准备上传: {local_path} → {remote_filename}, basepath={local_dir_fwd}, sourceName={local_name}")
 
             try:
                 iec61850.IedConnection_setFilestoreBasepath(conn, local_dir_fwd)
@@ -379,9 +374,7 @@ class FileTransfer:
                 log.warning(f"setFile 上传失败: {err_name}({error_code}), 尝试 obtainFile...")
 
                 # 方式 2: MmsConnection_obtainFile (备选)
-                error_code = self._upload_via_obtain_file(
-                    iec61850, conn, local_dir_fwd, local_name, remote_filename
-                )
+                error_code = self._upload_via_obtain_file(iec61850, conn, local_dir_fwd, local_name, remote_filename)
                 err_name = _ied_error_name(error_code)
 
                 if error_code == iec61850.IED_ERROR_OK:
@@ -391,8 +384,7 @@ class FileTransfer:
                 else:
                     progress.status = TransferStatus.FAILED
                     progress.error = f"上传失败: {err_name}({error_code})"
-                    log.error(f"上传文件失败: {local_path} → {remote_filename}, "
-                              f"错误码: {err_name}({error_code})")
+                    log.error(f"上传文件失败: {local_path} → {remote_filename}, 错误码: {err_name}({error_code})")
 
         except Exception as e:
             progress.status = TransferStatus.FAILED
@@ -405,9 +397,7 @@ class FileTransfer:
 
         return progress
 
-    def _upload_via_obtain_file(
-        self, iec61850, conn, local_dir: str, local_name: str, remote_filename: str
-    ) -> int:
+    def _upload_via_obtain_file(self, iec61850, conn, local_dir: str, local_name: str, remote_filename: str) -> int:
         """使用 MmsConnection_obtainFile 上传文件 (备选方案)
 
         某些 IED 设备不支持 SetFile 服务但支持 ObtainFile。
@@ -440,9 +430,7 @@ class FileTransfer:
 
             # obtainFile 签名: (self, mmsError, sourceFile, destinationFile)
             # mmsError 是输出参数，传 None
-            result = iec61850.MmsConnection_obtainFile(
-                mms_conn, None, source_file, remote_filename
-            )
+            result = iec61850.MmsConnection_obtainFile(mms_conn, None, source_file, remote_filename)
 
             error_code = self._parse_error_code(result)
             if error_code != iec61850.IED_ERROR_OK:

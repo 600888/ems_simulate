@@ -1,5 +1,7 @@
-from pydantic import BaseModel, Field
 from typing import Optional
+
+from pydantic import BaseModel, Field
+
 from src.config.config import Config
 
 
@@ -46,6 +48,7 @@ class ChannelDetailRequest(BaseModel):
 
 class ChannelIdRequest(BaseModel):
     """通用通道ID请求"""
+
     channel_id: int = Field(..., description="通道ID")
 
 
@@ -55,6 +58,7 @@ class CreateAndStartDeviceRequest(BaseModel):
 
 class CopyDeviceRequest(BaseModel):
     """复制设备请求"""
+
     channel_id: int = Field(..., description="源通道ID")
     count: int = Field(2, ge=1, le=100, description="复制数量（1-100）")
     ip_start_offset: int = Field(1, ge=1, description="IP起始偏移量")

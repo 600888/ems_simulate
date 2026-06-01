@@ -10,17 +10,16 @@
 - cache.py      — CacheManager 本地缓存与版本管理
 """
 
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional
 
-from ..base import Iec61850Plugin
-from ...defs.constants import HAS_IEC61850
 from ...core.connection import Iec61850Connection
+from ...defs.constants import HAS_IEC61850
 from ...log import log
-
+from ..base import Iec61850Plugin
+from .cache import CacheManager
 from .directory import DirectoryBrowser
 from .transfer import FileTransfer, ProgressCallback
-from .cache import CacheManager
-from .types import FileEntry, TransferProgress, TransferStatus, FileMetadata, FileType
+from .types import FileEntry, FileMetadata, FileType, TransferProgress, TransferStatus
 
 
 class FilesPlugin:
@@ -72,7 +71,7 @@ class FilesPlugin:
 
     # ===== 目录浏览 (委托 DirectoryBrowser) =====
 
-    def get_file_list(self, directory: str = "") -> List[Dict[str, Any]]:
+    def get_file_list(self, directory: str = "") -> list[dict[str, Any]]:
         """获取远程 IED 的文件/目录列表
 
         Args:
@@ -88,7 +87,7 @@ class FilesPlugin:
         entries = self._browser.list_directory(directory)
         return [e.to_dict() for e in entries]
 
-    def list_directory(self, directory: str = "") -> List[Dict[str, Any]]:
+    def list_directory(self, directory: str = "") -> list[dict[str, Any]]:
         """获取远程 IED 的文件/目录列表 (get_file_list 的别名)"""
         return self.get_file_list(directory)
 
@@ -96,7 +95,7 @@ class FilesPlugin:
         self,
         directory: str = "",
         max_depth: int = 5,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """递归获取完整目录树
 
         Args:
@@ -135,17 +134,13 @@ class FilesPlugin:
             return b""
 
         if local_path:
-            progress = self._transfer.download_file(
-                filename, local_path, progress_callback, overwrite
-            )
+            progress = self._transfer.download_file(filename, local_path, progress_callback, overwrite)
             if progress.status == TransferStatus.COMPLETED and self._cache:
                 # 下载成功，加入缓存
                 self._cache.put(filename, local_path)
             return b""
         else:
-            data, progress = self._transfer.download_file_to_bytes(
-                filename, progress_callback
-            )
+            data, progress = self._transfer.download_file_to_bytes(filename, progress_callback)
             if progress.status == TransferStatus.COMPLETED and self._cache:
                 # 下载到内存成功，也加入缓存
                 self._cache.put_bytes(filename, data)
@@ -173,18 +168,13 @@ class FilesPlugin:
             return TransferProgress(filename, status=TransferStatus.FAILED, error="插件未初始化")
 
         if local_path:
-            progress = self._transfer.download_file(
-                filename, local_path, progress_callback, overwrite
-            )
+            progress = self._transfer.download_file(filename, local_path, progress_callback, overwrite)
         else:
-            _, progress = self._transfer.download_file_to_bytes(
-                filename, progress_callback
-            )
+            _, progress = self._transfer.download_file_to_bytes(filename, progress_callback)
 
         # 缓存处理
-        if progress.status == TransferStatus.COMPLETED and self._cache:
-            if local_path:
-                self._cache.put(filename, local_path)
+        if progress.status == TransferStatus.COMPLETED and self._cache and local_path:
+            self._cache.put(filename, local_path)
             # download_file_to_bytes 的缓存在 get_file 中处理
 
         return progress
@@ -260,7 +250,7 @@ class FilesPlugin:
             return False
         return self._cache.is_cache_valid(remote_path, remote_modified)
 
-    def list_cached_files(self) -> List[Dict[str, Any]]:
+    def list_cached_files(self) -> list[dict[str, Any]]:
         """列出所有本地缓存文件"""
         if not self._cache:
             return []

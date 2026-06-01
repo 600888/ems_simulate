@@ -6,11 +6,11 @@
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..defs.address import infer_fc_from_address, infer_iec_type_from_address
 from ..defs.constants import (
     HAS_IEC61850,
     IecType,
 )
-from ..defs.address import infer_fc_from_address, infer_iec_type_from_address
 from ..log import log
 
 # 类型别名 (使用 IecType 枚举值作为策略键)
@@ -59,7 +59,7 @@ class BooleanReader:
             if error == iec61850.IED_ERROR_OK:
                 return bool(value)
             # 布尔读取失败, 尝试整数读取
-            if hasattr(iec61850, 'IedConnection_readIntegerValue'):
+            if hasattr(iec61850, "IedConnection_readIntegerValue"):
                 try:
                     [int_value, int_error] = iec61850.IedConnection_readIntegerValue(conn, ref, fc_val)
                     if int_error == iec61850.IED_ERROR_OK:
@@ -79,7 +79,7 @@ class BooleanReader:
                     results[addr_str] = bool(value)
                     continue
                 # 布尔读取失败, 尝试整数读取
-                if hasattr(iec61850, 'IedConnection_readIntegerValue'):
+                if hasattr(iec61850, "IedConnection_readIntegerValue"):
                     try:
                         [int_value, int_error] = iec61850.IedConnection_readIntegerValue(conn, ref, fc_val)
                         if int_error == iec61850.IED_ERROR_OK:
@@ -96,7 +96,7 @@ class IntegerReader:
     """整数值读取策略"""
 
     def read(self, conn, ref: str, fc_val) -> Any:
-        if not hasattr(iec61850, 'IedConnection_readIntegerValue'):
+        if not hasattr(iec61850, "IedConnection_readIntegerValue"):
             log.debug("pyiec61850 不支持 readIntegerValue")
             return None
         try:
@@ -109,7 +109,7 @@ class IntegerReader:
         return None
 
     def read_batch(self, conn, items: list, results: dict) -> None:
-        if not hasattr(iec61850, 'IedConnection_readIntegerValue'):
+        if not hasattr(iec61850, "IedConnection_readIntegerValue"):
             log.debug("pyiec61850 不支持 readIntegerValue, 跳过整批量读取")
             return
         for addr_str, ref, fc_val, _ in items:
@@ -127,7 +127,7 @@ class StringReader:
     """字符串值读取策略"""
 
     def read(self, conn, ref: str, fc_val) -> Any:
-        if not hasattr(iec61850, 'IedConnection_readStringValue'):
+        if not hasattr(iec61850, "IedConnection_readStringValue"):
             log.debug("pyiec61850 不支持 readStringValue")
             return None
         try:
@@ -140,7 +140,7 @@ class StringReader:
         return None
 
     def read_batch(self, conn, items: list, results: dict) -> None:
-        if not hasattr(iec61850, 'IedConnection_readStringValue'):
+        if not hasattr(iec61850, "IedConnection_readStringValue"):
             return
         for addr_str, ref, fc_val, _ in items:
             try:
@@ -158,7 +158,7 @@ class TimestampReader:
 
     def read(self, conn, ref: str, fc_val) -> Any:
         # 先尝试整数，再回退浮点
-        if hasattr(iec61850, 'IedConnection_readIntegerValue'):
+        if hasattr(iec61850, "IedConnection_readIntegerValue"):
             try:
                 [value, error] = iec61850.IedConnection_readIntegerValue(conn, ref, fc_val)
                 if error == iec61850.IED_ERROR_OK:
@@ -202,7 +202,7 @@ class AutoDetectReader:
             pass
 
         # 尝试整数
-        if hasattr(iec61850, 'IedConnection_readIntegerValue'):
+        if hasattr(iec61850, "IedConnection_readIntegerValue"):
             try:
                 [value, error] = iec61850.IedConnection_readIntegerValue(conn, ref, fc_val)
                 if error == iec61850.IED_ERROR_OK:
@@ -211,7 +211,7 @@ class AutoDetectReader:
                 pass
 
         # 尝试字符串
-        if hasattr(iec61850, 'IedConnection_readStringValue'):
+        if hasattr(iec61850, "IedConnection_readStringValue"):
             try:
                 [value, error] = iec61850.IedConnection_readStringValue(conn, ref, fc_val)
                 if error == iec61850.IED_ERROR_OK:
@@ -278,7 +278,7 @@ class Iec61850Reader:
             log.error(f"IEC61850 读取异常: address={address}, error={e}")
             return None
 
-    def read_batch(self, addresses: List[str], fc_map: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    def read_batch(self, addresses: list[str], fc_map: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """批量读取多个测点值
 
         按 iec_type 分组批量读取。
@@ -292,7 +292,7 @@ class Iec61850Reader:
             return {}
 
         # 按 iec_type 分组
-        groups: Dict[str, list] = {}
+        groups: dict[str, list] = {}
         for addr in addresses:
             addr_str = str(addr)
             ref = self._build_ref(addr_str)
@@ -306,7 +306,7 @@ class Iec61850Reader:
                 groups[iec_type] = []
             groups[iec_type].append((addr_str, ref, fc_val, iec_type))
 
-        results: Dict[str, Any] = {}
+        results: dict[str, Any] = {}
         for iec_type, items in groups.items():
             strategy = READ_STRATEGIES.get(iec_type, READ_STRATEGIES[IEC_TYPE_UNKNOWN])
             strategy.read_batch(conn, items, results)
@@ -326,10 +326,10 @@ class Iec61850Reader:
             parsed = parse_ref(address)
             if parsed:
                 ld_inst = parsed[0]
-                rest = address.split('/', 1)[1]
+                rest = address.split("/", 1)[1]
                 return f"{self._connection.model_name}{ld_inst}/{rest}"
 
-        safe_addr = str(address).replace('.', '_').replace('/', '_').replace('\\', '_').replace('-', '_')
+        safe_addr = str(address).replace(".", "_").replace("/", "_").replace("\\", "_").replace("-", "_")
         iec_type = self._resolve_iec_type(address)
         if iec_type == IEC_TYPE_FLOAT:
             return f"{self._connection.model_name}{self._connection.ld_name}/MMXU1.MV_{safe_addr}.mag.f"

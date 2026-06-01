@@ -1,5 +1,6 @@
-from pydantic import BaseModel, field_serializer
 from typing import Any
+
+from pydantic import BaseModel, field_serializer
 
 
 def _sanitize_for_serialization(obj: Any) -> Any:

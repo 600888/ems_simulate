@@ -120,10 +120,10 @@ Write-Success "Build directories created"
 
 # Step 3: Install Python dependencies
 Write-Step "Installing Python dependencies..."
-$REQUIREMENTS_FILE = Join-Path $PROJECT_ROOT "requirements.txt"
+$PROJECT_ROOT_DIR = Split-Path $PSScriptRoot -Parent
 
-if (Test-Path $REQUIREMENTS_FILE) {
-    pip install -r $REQUIREMENTS_FILE
+if (Test-Path (Join-Path $PROJECT_ROOT_DIR "pyproject.toml")) {
+    pip install .
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to install Python dependencies"
         exit 1

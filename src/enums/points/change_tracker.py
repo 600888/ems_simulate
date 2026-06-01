@@ -11,23 +11,24 @@
 
 from __future__ import annotations
 
-import time
-from datetime import datetime
-from contextvars import ContextVar
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+import time
 from typing import Any, Optional
 
 
 class ChangeSource(Enum):
     """变更原因枚举"""
-    MANUAL = "manual"           # 手动置值（前端/API）
-    SIMULATION = "simulation"   # 自动模拟
-    MAPPING = "mapping"         # 关联测点更新（映射计算）
-    PROTOCOL = "protocol"       # 通过协议远程修改（Modbus/IEC104/DLT645 服务端被写入）
-    CLIENT_READ = "client_read" # 客户端读取远程数据变化
-    INTERNAL = "internal"       # 内部默认（未明确指定来源）
+
+    MANUAL = "manual"  # 手动置值（前端/API）
+    SIMULATION = "simulation"  # 自动模拟
+    MAPPING = "mapping"  # 关联测点更新（映射计算）
+    PROTOCOL = "protocol"  # 通过协议远程修改（Modbus/IEC104/DLT645 服务端被写入）
+    CLIENT_READ = "client_read"  # 客户端读取远程数据变化
+    INTERNAL = "internal"  # 内部默认（未明确指定来源）
 
     @property
     def label(self) -> str:
@@ -55,6 +56,7 @@ class ChangeRecord:
         timestamp: 变更时间戳 (Unix epoch)
         detail: 可选的补充描述
     """
+
     source: ChangeSource
     old_value: Any
     new_value: Any
@@ -86,19 +88,13 @@ class ChangeRecord:
 # ===== 线程安全的上下文变量 =====
 
 # 当前变更原因，默认为 INTERNAL
-change_source_ctx: ContextVar[ChangeSource] = ContextVar(
-    "change_source_ctx", default=ChangeSource.INTERNAL
-)
+change_source_ctx: ContextVar[ChangeSource] = ContextVar("change_source_ctx", default=ChangeSource.INTERNAL)
 
 # 当前变更详情描述
-change_detail_ctx: ContextVar[str] = ContextVar(
-    "change_detail_ctx", default=""
-)
+change_detail_ctx: ContextVar[str] = ContextVar("change_detail_ctx", default="")
 
 # 当前变更机器信息(IP或串口)
-change_client_info_ctx: ContextVar[str] = ContextVar(
-    "change_client_info_ctx", default=""
-)
+change_client_info_ctx: ContextVar[str] = ContextVar("change_client_info_ctx", default="")
 
 
 @contextmanager
@@ -141,6 +137,7 @@ def get_current_client_info() -> str:
 @dataclass
 class ChangeContext:
     """用于跨线程传递的变更上下文快照"""
+
     source: ChangeSource
     detail: str
     client_info: str
@@ -149,9 +146,7 @@ class ChangeContext:
 def capture_context() -> ChangeContext:
     """捕获当前变更上下文快照"""
     return ChangeContext(
-        source=change_source_ctx.get(),
-        detail=change_detail_ctx.get(),
-        client_info=change_client_info_ctx.get()
+        source=change_source_ctx.get(), detail=change_detail_ctx.get(), client_info=change_client_info_ctx.get()
     )
 
 

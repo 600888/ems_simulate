@@ -4,12 +4,12 @@ Contains common functions get get_command_line() to avoid duplicating
 code that are not relevant for the code as such, like e.g.
 get_command_line
 """
+
 import argparse
 import logging
 import os
 
 from pymodbus import pymodbus_apply_logging_config
-
 
 _logger = logging.getLogger(__file__)
 

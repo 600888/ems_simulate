@@ -6,8 +6,9 @@
 - 目录条目解析 (FileDirectoryEntry → FileEntry)
 """
 
+import contextlib
 from datetime import datetime, timezone
-from typing import List, Optional, Callable
+from typing import Callable, List, Optional
 
 from ...core.connection import Iec61850Connection
 from ...defs.constants import HAS_IEC61850
@@ -23,7 +24,7 @@ class DirectoryBrowser:
 
     # ===== 公共 API =====
 
-    def list_directory(self, directory: str = "") -> List[FileEntry]:
+    def list_directory(self, directory: str = "") -> list[FileEntry]:
         """获取指定目录下的文件和子目录列表
 
         Args:
@@ -52,7 +53,7 @@ class DirectoryBrowser:
         directory: str = "",
         max_depth: int = 5,
         on_entry: Optional[Callable[[FileEntry], None]] = None,
-    ) -> List[FileEntry]:
+    ) -> list[FileEntry]:
         """递归获取完整文件目录树
 
         Args:
@@ -63,7 +64,7 @@ class DirectoryBrowser:
         Returns:
             所有层级的 FileEntry 扁平列表
         """
-        all_entries: List[FileEntry] = []
+        all_entries: list[FileEntry] = []
         self._recursive_walk(directory, max_depth, 0, all_entries, on_entry)
         return all_entries
 
@@ -74,7 +75,7 @@ class DirectoryBrowser:
         directory: str,
         max_depth: int,
         current_depth: int,
-        result: List[FileEntry],
+        result: list[FileEntry],
         on_entry: Optional[Callable[[FileEntry], None]] = None,
     ) -> None:
         """递归遍历目录"""
@@ -86,10 +87,8 @@ class DirectoryBrowser:
         for entry in entries:
             result.append(entry)
             if on_entry:
-                try:
+                with contextlib.suppress(Exception):
                     on_entry(entry)
-                except Exception:
-                    pass
 
             if entry.is_directory:
                 subdir = entry.full_path
@@ -168,10 +167,8 @@ class DirectoryBrowser:
         # 转换时间戳
         last_modified = None
         if last_modified_ms and last_modified_ms > 0:
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 last_modified = datetime.fromtimestamp(last_modified_ms / 1000.0, tz=timezone.utc)
-            except (OSError, ValueError):
-                pass
 
         file_entry = FileEntry(
             name=filename.rstrip("/") if filename else "unknown",

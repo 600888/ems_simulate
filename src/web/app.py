@@ -1,16 +1,17 @@
 import asyncio
+
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
 
 from src.web.api import (
     channel_router,
-    device_router,
-    point_router,
-    point_mapping_router,
-    point_tree_router,
     device_group_router,
+    device_router,
+    point_mapping_router,
+    point_router,
+    point_tree_router,
 )
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
@@ -55,12 +56,12 @@ async def health_check():
     """
     健康检查端点 - 供 Tauri 桌面客户端检测后端服务是否就绪
     返回后端服务状态、版本信息和数据库连接状态
-    
+
     状态区分:
     - initialized=False: 服务已启动但设备初始化尚未完成（返回 503）
     - initialized=True: 服务完全就绪（返回 200）
     """
-    initialized = getattr(app.state, 'initialized', False)
+    initialized = getattr(app.state, "initialized", False)
 
     health_data = {
         "status": "ok" if initialized else "initializing",
@@ -70,6 +71,7 @@ async def health_check():
     }
     try:
         from datetime import datetime, timezone
+
         health_data["timestamp"] = datetime.now(timezone.utc).isoformat()
     except Exception:
         pass
@@ -77,6 +79,7 @@ async def health_check():
     # 检查数据库连接（可选）
     try:
         from src.config.config import Config
+
         health_data["database"] = Config.db_type
     except Exception:
         health_data["database"] = "unknown"
@@ -93,6 +96,7 @@ async def health_check():
 async def _init_device_controller():
     """后台初始化设备控制器"""
     from src.device_controller import get_device_controller
+
     return await get_device_controller()
 
 
@@ -100,6 +104,7 @@ async def _init_goose_manager(device_controller):
     """后台初始化 GOOSE 管理器"""
     try:
         from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
+
         goose_manager = GooseResourceManager()
         log.info("GOOSE 管理器初始化成功")
 
@@ -109,10 +114,10 @@ async def _init_goose_manager(device_controller):
 
             server_map = {}
             for device in device_controller.device_list:
-                device_id = getattr(device, 'device_id', None) or getattr(device, 'id', None)
-                if device_id and hasattr(device, 'protocol_handler') and device.protocol_handler:
+                device_id = getattr(device, "device_id", None) or getattr(device, "id", None)
+                if device_id and hasattr(device, "protocol_handler") and device.protocol_handler:
                     handler = device.protocol_handler
-                    if hasattr(handler, 'server') and handler.server:
+                    if hasattr(handler, "server") and handler.server:
                         if isinstance(handler.server, IEC61850Server):
                             server_map[device_id] = handler.server
 
@@ -131,10 +136,11 @@ async def _init_goose_manager(device_controller):
 
 async def _background_init():
     """后台初始化：设备控制器 + GOOSE 管理器
-    
+
     不阻塞 uvicorn 端口监听，Tauri 通过 /api/health 检测初始化状态
     """
     import time
+
     t0 = time.perf_counter()
     log.info("开始后台初始化...")
 
@@ -142,14 +148,16 @@ async def _background_init():
         # 1. 初始化设备控制器
         device_controller = await _init_device_controller()
         app.state.device_controller = device_controller
-        log.info(f"设备控制器初始化完成 ({len(device_controller.device_list)} 个设备), 耗时 {time.perf_counter()-t0:.2f}s")
+        log.info(
+            f"设备控制器初始化完成 ({len(device_controller.device_list)} 个设备), 耗时 {time.perf_counter() - t0:.2f}s"
+        )
 
         # 2. 初始化 GOOSE 管理器
         app.state.goose_manager = await _init_goose_manager(device_controller)
 
         # 3. 标记初始化完成
         app.state.initialized = True
-        log.info(f"后台初始化全部完成, 总耗时 {time.perf_counter()-t0:.2f}s")
+        log.info(f"后台初始化全部完成, 总耗时 {time.perf_counter() - t0:.2f}s")
 
     except Exception as e:
         log.error(f"后台初始化失败: {e}")
@@ -174,4 +182,5 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8888, log_level="info")

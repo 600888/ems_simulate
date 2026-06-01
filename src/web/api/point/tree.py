@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter
 
-from src.web.api.schemas import BaseResponse
 from src.data.service.point_tree_service import PointTreeService
+from src.web.api.schemas import BaseResponse
 
 point_tree_router = APIRouter(prefix="/api/point-tree", tags=["测点树"])
 

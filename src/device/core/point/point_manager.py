@@ -5,31 +5,32 @@
 
 from typing import Dict, List, Optional, Union
 
-from src.enums.points.base_point import BasePoint
-from src.enums.point_data import Yc, Yx, Yt, Yk
-from src.enums.modbus_def import ProtocolType
 from src.data.service.yc_service import YcService
 from src.data.service.yx_service import YxService
+from src.enums.modbus_def import ProtocolType
+from src.enums.point_data import Yc, Yk, Yt, Yx
+from src.enums.points.base_point import BasePoint
 from src.log import log
+
 
 class PointManager:
     """测点管理器"""
 
     def __init__(self):
         # 按从机 ID 分组存储
-        self.yc_dict: Dict[int, List[Yc]] = {}
-        self.yx_dict: Dict[int, List[Yx]] = {}
-        self.yt_dict: Dict[int, List[Yt]] = {}
-        self.yk_dict: Dict[int, List[Yk]] = {}
+        self.yc_dict: dict[int, list[Yc]] = {}
+        self.yx_dict: dict[int, list[Yx]] = {}
+        self.yt_dict: dict[int, list[Yt]] = {}
+        self.yk_dict: dict[int, list[Yk]] = {}
 
         # 按编码索引
-        self.code_map: Dict[str, BasePoint] = {}
+        self.code_map: dict[str, BasePoint] = {}
 
         # 按地址索引（用于快速查找）
-        self.address_map: Dict[int, Dict[int, BasePoint]] = {}
+        self.address_map: dict[int, dict[int, BasePoint]] = {}
 
         # 从机 ID 列表
-        self.slave_id_list: List[int] = []
+        self.slave_id_list: list[int] = []
 
         # 初始化字典
         self._init_dicts()
@@ -44,7 +45,7 @@ class PointManager:
 
     def add_point(self, slave_id: int, point: BasePoint) -> None:
         """添加测点
-        
+
         Args:
             slave_id: 从机 ID
             point: 测点对象
@@ -71,9 +72,7 @@ class PointManager:
         """根据编码获取测点"""
         return self.code_map.get(code)
 
-    def get_points_by_slave(
-        self, slave_id: int
-    ) -> tuple[List[Yc], List[Yx], List[Yt], List[Yk]]:
+    def get_points_by_slave(self, slave_id: int) -> tuple[list[Yc], list[Yx], list[Yt], list[Yk]]:
         """获取指定从机的所有测点"""
         return (
             self.yc_dict.get(slave_id, []),
@@ -82,9 +81,9 @@ class PointManager:
             self.yk_dict.get(slave_id, []),
         )
 
-    def get_points_by_type(self, frame_type: int) -> List[BasePoint]:
+    def get_points_by_type(self, frame_type: int) -> list[BasePoint]:
         """根据帧类型获取所有测点"""
-        result: List[BasePoint] = []
+        result: list[BasePoint] = []
         if frame_type == 0:
             for points in self.yc_dict.values():
                 result.extend(points)
@@ -115,9 +114,9 @@ class PointManager:
                 return point
         return None
 
-    def get_all_points(self) -> List[BasePoint]:
+    def get_all_points(self) -> list[BasePoint]:
         """获取所有测点"""
-        result: List[BasePoint] = []
+        result: list[BasePoint] = []
         for slave_id in self.slave_id_list:
             yc, yx, yt, yk = self.get_points_by_slave(slave_id)
             result.extend(yc)
@@ -128,16 +127,17 @@ class PointManager:
 
     def import_from_db(self, channel_id: int, protocol_type: ProtocolType) -> None:
         """从数据库导入测点
-        
+
         Args:
             channel_id: 通道ID
             protocol_type: 协议类型
         """
         log.debug(f"PointManager: Importing points for channel_id={channel_id}, protocol={protocol_type}")
-        
+
         # 1. 首先加载从机配置 (Slave 表)
         try:
             from src.data.service.slave_service import SlaveService
+
             slave_ids = SlaveService.get_slave_ids_by_channel(channel_id)
             for slave_id in slave_ids:
                 if slave_id not in self.slave_id_list:
@@ -157,9 +157,10 @@ class PointManager:
         for point in yx_list:
             slave_id = point.rtu_addr
             self.add_point(slave_id, point)
-            
+
         # 导入遥调
         from src.data.service.yt_service import YtService
+
         yt_list = YtService.get_list(channel_id, protocol_type)
         for point in yt_list:
             slave_id = point.rtu_addr
@@ -167,19 +168,22 @@ class PointManager:
 
         # 导入遥控
         from src.data.service.yk_service import YkService
+
         yk_list = YkService.get_list(channel_id, protocol_type)
         for point in yk_list:
             slave_id = point.rtu_addr
             self.add_point(slave_id, point)
-            
-        log.debug(f"PointManager: Imported {len(yc_list)} YC, {len(yx_list)} YX, {len(yt_list)} YT, {len(yk_list)} YK points")
+
+        log.debug(
+            f"PointManager: Imported {len(yc_list)} YC, {len(yx_list)} YX, {len(yt_list)} YT, {len(yk_list)} YK points"
+        )
 
     def reset_all_values(self) -> None:
         """重置所有测点值为 0"""
         for point in self.code_map.values():
             point.value = 0
 
-    def get_point_count(self) -> Dict[str, int]:
+    def get_point_count(self) -> dict[str, int]:
         """获取各类型测点数量"""
         return {
             "yc": sum(len(points) for points in self.yc_dict.values()),
@@ -190,6 +194,6 @@ class PointManager:
         }
 
     @staticmethod
-    def frame_type_dict() -> Dict[int, str]:
+    def frame_type_dict() -> dict[int, str]:
         """帧类型名称映射"""
         return {0: "遥测", 1: "遥信", 2: "遥控", 3: "遥调"}

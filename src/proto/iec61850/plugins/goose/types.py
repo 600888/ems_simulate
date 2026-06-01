@@ -7,14 +7,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum, IntEnum
+from enum import IntEnum, StrEnum
 from typing import Any
-
 
 # ===== 枚举类型 =====
 
+
 class GooseState(StrEnum):
     """GOOSE 订阅状态"""
+
     INIT = "init"
     CONNECTED = "connected"
     LOST = "lost"
@@ -23,6 +24,7 @@ class GooseState(StrEnum):
 
 class IecDataType(StrEnum):
     """IEC 61850 数据类型标识"""
+
     BOOLEAN = "boolean"
     INTEGER = "integer"
     FLOAT = "float"
@@ -33,6 +35,7 @@ class IecDataType(StrEnum):
 
 class MmsType(IntEnum):
     """MMS 数据类型常量 (与 pyiec61850 对应)"""
+
     BOOLEAN = 0
     BIT_STRING = 1
     INTEGER = 2
@@ -60,12 +63,14 @@ GOOSE_STATE_COLOR: dict[GooseState, str] = {
 
 # ===== 数据类 =====
 
+
 @dataclass(frozen=True, slots=True)
 class GooseDataSetEntry:
     """GOOSE 数据集条目 (不可变值对象)
 
     修改时创建新实例，而非原地修改 value 字段。
     """
+
     name: str
     value: Any = False
     iec_type: IecDataType = IecDataType.BOOLEAN
@@ -74,6 +79,7 @@ class GooseDataSetEntry:
 @dataclass
 class GooseSubscriptionInfo:
     """GOOSE 订阅信息 (可变状态)"""
+
     go_cb_ref: str
     app_id: int | None = None
     dst_mac: list[int] | None = None
@@ -111,6 +117,7 @@ class GooseSubscriptionInfo:
 @dataclass(frozen=True, slots=True)
 class PublisherConfig:
     """GOOSE Publisher 创建配置 (不可变)"""
+
     interface: str = "eth0"
     go_cb_ref: str = ""
     go_id: str = ""
@@ -127,4 +134,5 @@ class PublisherConfig:
 @dataclass(frozen=True, slots=True)
 class ReceiverConfig:
     """GOOSE Receiver 创建配置 (不可变)"""
+
     interface: str = "eth0"

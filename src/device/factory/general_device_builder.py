@@ -3,18 +3,18 @@
 负责根据配置创建和初始化设备实例
 """
 
-from typing import Optional
 import asyncio
+from typing import Optional
 
-from src.data.service.point_service import PointService
 from src.data.service.channel_service import ChannelService
+from src.data.service.point_service import PointService
 from src.data.service.yc_service import YcService
-from src.data.service.yx_service import YxService
 from src.data.service.yk_service import YkService
 from src.data.service.yt_service import YtService
+from src.data.service.yx_service import YxService
 from src.device.core.device import Device
-from src.enums.modbus_def import ProtocolType
 from src.enums.data_source import DataSource
+from src.enums.modbus_def import ProtocolType
 
 # 协议模块延迟导入，减少启动时间
 # from src.proto.iec104.iec104client import IEC104Client
@@ -57,12 +57,7 @@ class GeneralDeviceBuilder:
         self.general_device.model_name = model_name
 
     def setDeviceSerialConfig(
-        self, 
-        serial_port: str, 
-        baudrate: int = 9600, 
-        databits: int = 8, 
-        stopbits: int = 1, 
-        parity: str = "E"
+        self, serial_port: str, baudrate: int = 9600, databits: int = 8, stopbits: int = 1, parity: str = "E"
     ) -> None:
         """设置串口配置"""
         self.general_device.serial_port = serial_port
@@ -72,14 +67,10 @@ class GeneralDeviceBuilder:
         self.general_device.parity = parity
 
     def initModbusTcpClient(self) -> None:
-        self.general_device.initModbusTcpClient(
-            self.general_device.ip, self.general_device.port
-        )
+        self.general_device.initModbusTcpClient(self.general_device.ip, self.general_device.port)
 
     def initModbusTcpServer(self) -> None:
-        self.general_device.initModbusTcpServer(
-            self.general_device.port, self.protocol_type
-        )
+        self.general_device.initModbusTcpServer(self.general_device.port, self.protocol_type)
 
     def initModbusSerialServer(self) -> None:
         self.general_device.initModbusSerialServer()
@@ -108,9 +99,7 @@ class GeneralDeviceBuilder:
     def importDataPoints(self) -> None:
         """导入测点数据"""
         if self.import_method == DataSource.Db:
-            self.general_device.importDataPointFromChannel(
-                channel_id=self.channel_id, protocol_type=self.protocol_type
-            )
+            self.general_device.importDataPointFromChannel(channel_id=self.channel_id, protocol_type=self.protocol_type)
         elif self.path:
             self.general_device.importDataPointFromCsv(file_name=self.path)
 
@@ -153,6 +142,7 @@ class GeneralDeviceBuilder:
     @property
     def generalDeviceIec104Server(self) -> Device:
         from src.proto.iec104.iec104server import IEC104Server
+
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
         self.importDataPoints()
@@ -166,15 +156,14 @@ class GeneralDeviceBuilder:
     @property
     def generalDeviceIec104Client(self) -> Device:
         from src.proto.iec104.iec104client import IEC104Client
+
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
         self.importDataPoints()
         self.initIec104Client()
         self.general_device.setSpecialDataPointValues()
         if self.is_start and isinstance(self.general_device.client, IEC104Client):
-            print(
-                f"start client: {self.general_device.client.ip} port: {self.general_device.client.port}"
-            )
+            print(f"start client: {self.general_device.client.ip} port: {self.general_device.client.port}")
             self.general_device.client.connect()
         return self.general_device
 

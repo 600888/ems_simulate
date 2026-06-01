@@ -123,7 +123,7 @@ if (-not $SkipBackend) {
         (Join-Path $PROJECT_ROOT "start_back_end.py"),
         (Join-Path $PROJECT_ROOT "src"),
         (Join-Path $PROJECT_ROOT "config.ini"),
-        (Join-Path $PROJECT_ROOT "requirements.txt")
+        (Join-Path $PROJECT_ROOT "pyproject.toml")
     )
     if ((Test-Path $BE_SIDECAR_EXE) -and (IsUpToDate $BE_SIDECAR_EXE $beSources)) {
         WriteSkip "Python backend (sidecar) is up-to-date"

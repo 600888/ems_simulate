@@ -1,8 +1,9 @@
-from pymodbus.framer import FramerSocket, FramerRTU
+from pymodbus.framer import FramerRTU, FramerSocket
 
 
 def CreateCaptureSocketFramer(message_capture):
     """创建带报文捕获功能的 Socket Framer 类"""
+
     class CaptureSocketFramer(FramerSocket):
         def handleFrame(self, data, exp_devid, exp_tid):
             if data and message_capture:
@@ -14,11 +15,13 @@ def CreateCaptureSocketFramer(message_capture):
             if data and message_capture:
                 message_capture.add_tx(data)
             return data
+
     return CaptureSocketFramer
 
 
 def CreateCaptureRtuFramer(message_capture):
     """创建带报文捕获功能的 RTU Framer 类"""
+
     class CaptureRtuFramer(FramerRTU):
         def handleFrame(self, data, exp_devid, exp_tid):
             if data and message_capture:
@@ -30,4 +33,5 @@ def CreateCaptureRtuFramer(message_capture):
             if data and message_capture:
                 message_capture.add_tx(data)
             return data
+
     return CaptureRtuFramer

@@ -10,10 +10,13 @@ _is_full_ref, _parse_ref, _extract_ln_class, _split_ln_name 等函数。
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from .constants import IecType, IEC_TYPE_UNKNOWN, IEC_TYPE_FLOAT, IEC_TYPE_BOOLEAN
+from .constants import IEC_TYPE_BOOLEAN, IEC_TYPE_FLOAT, IEC_TYPE_UNKNOWN, IecType
 from .da_patterns import (
-    DA_PATTERNS, DA_PATH_TO_FRAME_TYPE, EXTRA_DA_INFO,
-    ENC_DO_DA_TYPE_OVERRIDE, BDA_TYPE_MAP,
+    BDA_TYPE_MAP,
+    DA_PATH_TO_FRAME_TYPE,
+    DA_PATTERNS,
+    ENC_DO_DA_TYPE_OVERRIDE,
+    EXTRA_DA_INFO,
 )
 from .ln_classes import ALL_LN_CLASSES
 
@@ -21,6 +24,7 @@ from .ln_classes import ALL_LN_CLASSES
 @dataclass(frozen=True, slots=True)
 class ParsedRef:
     """解析后的 IEC 61850 引用路径"""
+
     ld_inst: str
     ln_name: str
     do_name: str
@@ -32,10 +36,10 @@ def is_full_ref(address) -> bool:
 
     原 client.py:38 和 server.py:37 的 _is_full_ref() 统一。
     """
-    return isinstance(address, str) and '/' in address
+    return isinstance(address, str) and "/" in address
 
 
-def parse_ref(address: str) -> Optional[Tuple[str, str, str, str]]:
+def parse_ref(address: str) -> Optional[tuple[str, str, str, str]]:
     """解析完整 IEC 61850 引用路径
 
     格式: {ld_inst}/{ln_name}.{do_name}.{da_path}
@@ -47,12 +51,12 @@ def parse_ref(address: str) -> Optional[Tuple[str, str, str, str]]:
         (ld_inst, ln_name, do_name, da_path) 或 None (解析失败)
     """
     try:
-        parts = address.split('/', 1)
+        parts = address.split("/", 1)
         if len(parts) != 2:
             return None
         ld_inst = parts[0]
         rest = parts[1]
-        rest_parts = rest.split('.', 2)
+        rest_parts = rest.split(".", 2)
         if len(rest_parts) < 2:
             return None
         ln_name = rest_parts[0]
@@ -76,23 +80,23 @@ def infer_fc_from_address(address: str) -> str:
     Returns:
         FC 字符串, 如 "MX", "ST", "CO", "DC" 等; 无法推断时返回空字符串
     """
-    if not address or '/' not in address:
-        return ''
+    if not address or "/" not in address:
+        return ""
 
     try:
-        slash_idx = address.index('/')
-        rest = address[slash_idx + 1:]
-        dot_idx = rest.index('.')
-        da_part = rest[dot_idx + 1:]
-        first_dot = da_part.index('.')
-        da_path = da_part[first_dot + 1:] if first_dot >= 0 else ''
+        slash_idx = address.index("/")
+        rest = address[slash_idx + 1 :]
+        dot_idx = rest.index(".")
+        da_part = rest[dot_idx + 1 :]
+        first_dot = da_part.index(".")
+        da_path = da_part[first_dot + 1 :] if first_dot >= 0 else ""
     except (ValueError, IndexError):
-        return ''
+        return ""
 
     if not da_path:
-        return ''
+        return ""
 
-    top_da = da_path.split('.')[0]
+    top_da = da_path.split(".")[0]
 
     # 先查附加 DA 表
     if top_da in EXTRA_DA_INFO:
@@ -101,10 +105,10 @@ def infer_fc_from_address(address: str) -> str:
     # 再查主值 DA 表
     if top_da in DA_PATTERNS:
         frame_type = DA_PATTERNS[top_da][1]
-        fc_map = {0: 'MX', 1: 'ST', 2: 'CO', 3: 'CO'}
-        return fc_map.get(frame_type, '')
+        fc_map = {0: "MX", 1: "ST", 2: "CO", 3: "CO"}
+        return fc_map.get(frame_type, "")
 
-    return ''
+    return ""
 
 
 def infer_iec_type_from_address(address: str) -> str:
@@ -120,23 +124,23 @@ def infer_iec_type_from_address(address: str) -> str:
     Returns:
         iec_type 字符串, 如 "float", "boolean", "integer", "string", "timestamp"
     """
-    if not address or '/' not in address:
+    if not address or "/" not in address:
         return IEC_TYPE_UNKNOWN
 
     try:
-        slash_idx = address.index('/')
-        rest = address[slash_idx + 1:]
-        dot_idx = rest.index('.')
-        da_part = rest[dot_idx + 1:]
-        first_dot = da_part.index('.')
-        da_path = da_part[first_dot + 1:] if first_dot >= 0 else ''
+        slash_idx = address.index("/")
+        rest = address[slash_idx + 1 :]
+        dot_idx = rest.index(".")
+        da_part = rest[dot_idx + 1 :]
+        first_dot = da_part.index(".")
+        da_path = da_part[first_dot + 1 :] if first_dot >= 0 else ""
     except (ValueError, IndexError):
         return IEC_TYPE_UNKNOWN
 
     if not da_path:
         return IEC_TYPE_UNKNOWN
 
-    parts = da_path.split('.')
+    parts = da_path.split(".")
     top_da = parts[0]
 
     # 查完整 DA 路径表
@@ -176,7 +180,7 @@ def extract_ln_class(ln_name: str) -> Optional[str]:
     例如: METMMXU1 → prefix=MET, lnClass=MMXU, inst=1
           TRIPPTRC1 → prefix=TRIP, lnClass=PTRC, inst=1
     """
-    alpha = ''.join(c for c in ln_name if c.isalpha())
+    alpha = "".join(c for c in ln_name if c.isalpha())
     # 直接匹配
     if alpha in ALL_LN_CLASSES:
         return alpha
@@ -188,7 +192,7 @@ def extract_ln_class(ln_name: str) -> Optional[str]:
     return None
 
 
-def split_ln_name(ln_name: str) -> Tuple[str, str]:
+def split_ln_name(ln_name: str) -> tuple[str, str]:
     """将完整 LN 名称拆分为 (ln_class, ln_inst)
 
     原 server.py:69 的 _split_ln_name 统一。
@@ -216,12 +220,13 @@ def split_ln_name(ln_name: str) -> Tuple[str, str]:
     if known_class:
         idx = ln_name.find(known_class)
         if idx >= 0:
-            inst_part = ln_name[idx + len(known_class):]
+            inst_part = ln_name[idx + len(known_class) :]
             return (known_class, inst_part)
 
     # 方法2: 回退 - 按最后一个字母/数字边界拆分
     import re
-    match = re.match(r'^(\D+)(\d*)$', ln_name)
+
+    match = re.match(r"^(\D+)(\d*)$", ln_name)
     if match:
         return (match.group(1), match.group(2))
 

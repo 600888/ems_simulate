@@ -1,6 +1,7 @@
 """测点映射路由"""
 
 from typing import List, Optional
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -14,7 +15,7 @@ point_mapping_router = APIRouter(prefix="/api/point-mappings", tags=["测点映�
 class PointMappingCreateRequest(BaseModel):
     device_name: str
     target_point_code: str
-    source_point_codes: List[SourcePointItem]
+    source_point_codes: list[SourcePointItem]
     formula: str
     enable: bool = True
 
@@ -23,7 +24,7 @@ class PointMappingUpdateRequest(BaseModel):
     id: int
     device_name: Optional[str] = None
     target_point_code: Optional[str] = None
-    source_point_codes: Optional[List[SourcePointItem]] = None
+    source_point_codes: Optional[list[SourcePointItem]] = None
     formula: Optional[str] = None
     enable: Optional[bool] = None
 
@@ -47,6 +48,7 @@ async def create_mapping(request: PointMappingCreateRequest):
 
     try:
         from src.device_controller import get_device_controller
+
         dc = await get_device_controller()
         device = dc.device_map.get(request.device_name)
         if device:
@@ -71,7 +73,7 @@ async def update_mapping(request: PointMappingUpdateRequest):
     if not device_name:
         existing = PointMappingService.get_mapping_by_id(request.id)
         if existing:
-            device_name = existing.get('device_name')
+            device_name = existing.get("device_name")
 
     data = request.dict(exclude_unset=True)
     mapping_id = data.pop("id")
@@ -81,6 +83,7 @@ async def update_mapping(request: PointMappingUpdateRequest):
         if device_name:
             try:
                 from src.device_controller import get_device_controller
+
                 dc = await get_device_controller()
                 device = dc.device_map.get(device_name)
                 if device:
@@ -97,13 +100,14 @@ async def delete_mapping(request: PointMappingDeleteRequest):
     device_name = None
     existing = PointMappingService.get_mapping_by_id(request.mapping_id)
     if existing:
-        device_name = existing.get('device_name')
+        device_name = existing.get("device_name")
 
     success = PointMappingService.delete_mapping(request.mapping_id)
     if success:
         if device_name:
             try:
                 from src.device_controller import get_device_controller
+
                 dc = await get_device_controller()
                 device = dc.device_map.get(device_name)
                 if device:

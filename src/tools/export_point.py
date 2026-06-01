@@ -1,7 +1,7 @@
 import csv
 
 from openpyxl import Workbook
-from openpyxl.styles import PatternFill, Alignment, Border, Side
+from openpyxl.styles import Alignment, Border, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 
@@ -52,7 +52,7 @@ class PointExporter:
             # 创建一个填充对象
             yellow = PatternFill(fill_type="solid", fgColor="FFFF00")
             green = PatternFill(fill_type="solid", fgColor="00FF00")
-            red = PatternFill(fill_type="solid", fgColor="FF0000")
+            PatternFill(fill_type="solid", fgColor="FF0000")
             blue = PatternFill(fill_type="solid", fgColor="0000FF")
 
             row = 1  # 记录行数

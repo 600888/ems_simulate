@@ -1,12 +1,15 @@
 """Debug: simulate loading Channel 22 (IEC61850_SERVER) points"""
+
 import time
-from src.proto.iec61850.iec61850_server import IEC61850Server
+
+from pyiec61850 import pyiec61850 as iec61850
+
 from src.data.service.yc_service import YcService
-from src.data.service.yx_service import YxService
 from src.data.service.yk_service import YkService
 from src.data.service.yt_service import YtService
+from src.data.service.yx_service import YxService
 from src.enums.modbus_def import ProtocolType
-from pyiec61850 import pyiec61850 as iec61850
+from src.proto.iec61850.iec61850_server import IEC61850Server
 
 channel_id = 22
 protocol_type = ProtocolType.Iec61850Server
@@ -26,7 +29,7 @@ for i, p in enumerate(yx_list[:5]):
     print(f"  yx[{i}]: address={p.address} (type={type(p.address).__name__}), code={p.code}, frame_type={p.frame_type}")
 
 # 创建服务端并添加测点
-server = IEC61850Server(port=10103, model_name='EMS', ld_name='GenericLD')
+server = IEC61850Server(port=10103, model_name="EMS", ld_name="GenericLD")
 
 add_ok = 0
 add_fail = 0
@@ -51,7 +54,7 @@ time.sleep(0.5)
 
 # 用客户端连接测试发现
 conn = iec61850.IedConnection_create()
-result = iec61850.IedConnection_connect(conn, '127.0.0.1', 10103)
+result = iec61850.IedConnection_connect(conn, "127.0.0.1", 10103)
 error = result if not isinstance(result, (list, tuple)) else result[1]
 
 if error == 0:
@@ -64,7 +67,7 @@ if error == 0:
         it = iec61850.LinkedList_getNext(it)
     iec61850.LinkedList_destroy(ld_list)
     print(f"LDs: {lds}")
-    
+
     total_dos = 0
     for ld in lds:
         result = iec61850.IedConnection_getLogicalDeviceDirectory(conn, ld)
@@ -75,7 +78,7 @@ if error == 0:
             lns.append(iec61850.toCharP(it.data))
             it = iec61850.LinkedList_getNext(it)
         iec61850.LinkedList_destroy(ln_list)
-        
+
         for ln in lns:
             ln_ref = f"{ld}/{ln}"
             result = iec61850.IedConnection_getLogicalNodeDirectory(conn, ln_ref, 0)
@@ -92,7 +95,7 @@ if error == 0:
                 total_dos += len(dos)
                 if total_dos <= 20:
                     print(f"  {ln_ref}: DOs={dos}")
-    
+
     print(f"Total discovered DOs: {total_dos}")
 
 iec61850.IedConnection_destroy(conn)

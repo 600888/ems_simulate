@@ -1,9 +1,11 @@
 import inspect
 import json
-from loguru import logger
 import os
 import sys
 from typing import Any, Dict, Optional, Union
+
+from loguru import logger
+
 from src.config.env import log_path
 
 LOG_COLORS = {
@@ -43,7 +45,7 @@ class Log:
             Log._default_handler_removed = True
 
         self.is_backtrace = is_backtrace
-        
+
         # 设置日志文件路径
         if filename is None:
             filename = getattr(sys.modules["__main__"], "__file__", "log.py")
@@ -51,7 +53,7 @@ class Log:
 
         # 规范化文件路径，确保 bind 和 filter 使用相同的路径格式
         filename = os.path.normpath(os.path.abspath(filename))
-        
+
         # 绑定 task 到 logger（必须使用规范化后的路径）
         self.logger = logger.bind(task=filename)
 
@@ -61,7 +63,7 @@ class Log:
             os.makedirs(log_dir)
 
         # 控制台输出配置
-        stderr_handler_id = self.logger.add(
+        self.logger.add(
             sys.stderr,
             level=cmdlevel,
             format=self._formatter,
@@ -73,7 +75,7 @@ class Log:
 
         # 文件输出配置
         rotation_config = self._get_rotation_config(when, limit)
-        file_handler_id = self.logger.add(
+        self.logger.add(
             filename,
             level=filelevel,
             format=self._formatter,
@@ -88,12 +90,13 @@ class Log:
     def _create_filter(self, filename):
         # 直接使用 filename 进行比较
         target_filename = filename
-        
+
         def filter_func(record):
             task = record["extra"].get("task")
             if not task:
                 return False
             return task == target_filename
+
         return filter_func
 
     def _formatter(self, record):
@@ -109,10 +112,7 @@ class Log:
         if self.is_backtrace:
             frame = inspect.currentframe()
             while frame:
-                if (
-                    "loguru" not in frame.f_code.co_filename
-                    and "logger.py" not in frame.f_code.co_filename
-                ):
+                if "loguru" not in frame.f_code.co_filename and "logger.py" not in frame.f_code.co_filename:
                     break
                 frame = frame.f_back
             file_info = (
@@ -122,7 +122,7 @@ class Log:
             )
         else:
             file_info = f"[{record['file']}:{record['line']}]"
-        
+
         # Escape Loguru tags in file_info and message
         file_info = file_info.replace("<", "\\<").replace(">", "\\>")
         message = message.replace("<", "\\<").replace(">", "\\>")

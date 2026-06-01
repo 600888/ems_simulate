@@ -8,30 +8,44 @@ IEC 61850 MMS 客户端封装 (门面模式)
 import time
 from typing import Any, Dict, List, Optional
 
-from .log import log
-from .defs import (
-    HAS_IEC61850,
-    FC_MX, FC_ST, FC_CO,
-    IecType,
-    YC_LN_CLASSES, YX_LN_CLASSES, YK_LN_CLASSES, YT_LN_CLASSES,
-    ALL_LN_CLASSES, SKIP_SYSTEM_DOS, SIGNAL_DOS,
-    DA_PATTERNS, DA_PATH_TO_FRAME_TYPE, EXTRA_DA_INFO,
-    ENC_DO_DA_TYPE_OVERRIDE, SKIP_DA_NAMES, BDA_TYPE_MAP,
-    STRUCT_DA_EXPAND_ONLINE, KNOWN_BDA_FALLBACK_ONLINE,
-    is_full_ref, parse_ref,
-    infer_fc_from_address, infer_iec_type_from_address,
-    extract_ln_class, split_ln_name,
-)
 from .core import (
     Iec61850Connection,
     Iec61850Reader,
     Iec61850Writer,
     PointRegistry,
-    mms_value_to_python,
     get_list_from_linked_list,
+    mms_value_to_python,
 )
+from .defs import (
+    ALL_LN_CLASSES,
+    BDA_TYPE_MAP,
+    DA_PATH_TO_FRAME_TYPE,
+    DA_PATTERNS,
+    ENC_DO_DA_TYPE_OVERRIDE,
+    EXTRA_DA_INFO,
+    FC_CO,
+    FC_MX,
+    FC_ST,
+    HAS_IEC61850,
+    KNOWN_BDA_FALLBACK_ONLINE,
+    SIGNAL_DOS,
+    SKIP_DA_NAMES,
+    SKIP_SYSTEM_DOS,
+    STRUCT_DA_EXPAND_ONLINE,
+    YC_LN_CLASSES,
+    YK_LN_CLASSES,
+    YT_LN_CLASSES,
+    YX_LN_CLASSES,
+    IecType,
+    extract_ln_class,
+    infer_fc_from_address,
+    infer_iec_type_from_address,
+    is_full_ref,
+    parse_ref,
+    split_ln_name,
+)
+from .log import log
 from .plugins import PluginRegistry, _register_builtin_plugins
-
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
@@ -85,17 +99,17 @@ class IEC61850Client:
         return self._conn.is_connected
 
     @property
-    def _point_refs(self) -> Dict[str, str]:
+    def _point_refs(self) -> dict[str, str]:
         """地址 -> MMS 引用映射 (向后兼容, 委托给 registry)"""
         return self._registry.point_refs
 
     @property
-    def _point_fc(self) -> Dict[str, str]:
+    def _point_fc(self) -> dict[str, str]:
         """地址 -> FC 映射 (向后兼容, 委托给 registry)"""
         return self._registry.point_fc
 
     @property
-    def _point_iec_type(self) -> Dict[str, str]:
+    def _point_iec_type(self) -> dict[str, str]:
         """地址 -> iec_type 映射 (向后兼容, 委托给 registry)"""
         return self._registry.point_iec_type
 
@@ -147,7 +161,7 @@ class IEC61850Client:
         """读取测点值 (委托给 Iec61850Reader)"""
         return self._reader.read(address, fc)
 
-    def read_points_batch(self, addresses: List[str], fc_map: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    def read_points_batch(self, addresses: list[str], fc_map: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """批量读取多个测点值 (委托给 Iec61850Reader)"""
         return self._reader.read_batch(addresses, fc_map)
 
@@ -176,7 +190,7 @@ class IEC61850Client:
         """将 MmsValue 转换为 Python 类型 (委托给 core)"""
         return mms_value_to_python(mms_value, iec_type)
 
-    def _get_list_from_linked_list(self, linked_list) -> List[str]:
+    def _get_list_from_linked_list(self, linked_list) -> list[str]:
         """从 LinkedList 提取字符串列表 (委托给 core)"""
         return get_list_from_linked_list(linked_list)
 
@@ -209,7 +223,7 @@ class IEC61850Client:
 
     # ===== 文件操作 (委托给 Files 插件) =====
 
-    def list_remote_files(self, directory: str = "") -> List[Dict[str, Any]]:
+    def list_remote_files(self, directory: str = "") -> list[dict[str, Any]]:
         """浏览远程 IED 文件目录"""
         fp = self.files
         if fp:
@@ -225,45 +239,45 @@ class IEC61850Client:
 
     # ===== 模型发现 (委托给 DataModels 插件) =====
 
-    def discover_model(self) -> List[Dict[str, Any]]:
+    def discover_model(self) -> list[dict[str, Any]]:
         """动态发现并映射服务端的数据模型 (委托给 DataModels 插件)"""
         dm = self.datamodels
         if dm:
             return dm.discover_model()
         return []
 
-    def get_discovered_points(self) -> List[Dict[str, Any]]:
+    def get_discovered_points(self) -> list[dict[str, Any]]:
         """获取当前已映射的测点列表 (委托给 DataModels 插件)"""
         dm = self.datamodels
         if dm:
             return dm.get_discovered_points()
         return []
 
-    def get_discovered_datasets(self) -> List[Dict[str, Any]]:
+    def get_discovered_datasets(self) -> list[dict[str, Any]]:
         """获取当前已发现的 DataSet 列表"""
         return list(self._registry.discovered_datasets)
 
     # ===== 浏览方法 (委托给 DataModels 插件) =====
 
-    def browse_logical_devices(self) -> List[str]:
+    def browse_logical_devices(self) -> list[str]:
         """浏览远端 IED 的逻辑设备列表"""
         return self._conn.browse_logical_devices()
 
-    def browse_logical_nodes(self, ld: str) -> List[str]:
+    def browse_logical_nodes(self, ld: str) -> list[str]:
         """浏览指定逻辑设备下的逻辑节点列表"""
         dm = self.datamodels
         if dm:
             return dm.browse_logical_nodes(ld)
         return []
 
-    def browse_data_objects(self, ld: str, ln: str) -> List[Dict[str, Any]]:
+    def browse_data_objects(self, ld: str, ln: str) -> list[dict[str, Any]]:
         """浏览指定逻辑节点下的数据对象列表"""
         dm = self.datamodels
         if dm:
             return dm.browse_data_objects(ld, ln)
         return []
 
-    def browse_data_attributes(self, ld: str, ln: str, do_name: str) -> List[Dict[str, Any]]:
+    def browse_data_attributes(self, ld: str, ln: str, do_name: str) -> list[dict[str, Any]]:
         """浏览指定数据对象下的数据属性列表"""
         dm = self.datamodels
         if dm:
@@ -272,21 +286,21 @@ class IEC61850Client:
 
     # ===== DataSet 操作 (委托给 DataSets 插件) =====
 
-    def discover_datasets(self) -> List[Dict[str, Any]]:
+    def discover_datasets(self) -> list[dict[str, Any]]:
         """发现所有逻辑设备下的 DataSet 引用 (委托给 DataSets 插件)"""
         ds = self.datasets
         if ds:
             return ds.discover_datasets()
         return []
 
-    def browse_dataset_directory(self, dataset_ref: str) -> List[Dict[str, Any]]:
+    def browse_dataset_directory(self, dataset_ref: str) -> list[dict[str, Any]]:
         """浏览 DataSet 目录 (委托给 DataSets 插件)"""
         ds = self.datasets
         if ds:
             return ds.browse_dataset_directory(dataset_ref)
         return []
 
-    def read_dataset_values(self, dataset_ref: str) -> Dict[str, Any]:
+    def read_dataset_values(self, dataset_ref: str) -> dict[str, Any]:
         """通过 DataSet 一次 MMS 调用读取所有成员的值 (委托给 DataSets 插件)"""
         ds = self.datasets
         if ds:
@@ -324,14 +338,14 @@ class IEC61850Client:
             return dm._read_du_description(do_ref)
         return ""
 
-    def _discover_da_paths(self, do_ref: str) -> List[tuple]:
+    def _discover_da_paths(self, do_ref: str) -> list[tuple]:
         """发现 DA 路径 (委托给 DataModels 插件)"""
         dm = self.datamodels
         if dm:
             return dm._discover_da_paths(do_ref)
         return []
 
-    def _discover_sub_da_paths(self, parent_ref: str, parent_fc: str, parent_path_prefix: str = "") -> List[tuple]:
+    def _discover_sub_da_paths(self, parent_ref: str, parent_fc: str, parent_path_prefix: str = "") -> list[tuple]:
         """发现子 DA 路径 (委托给 DataModels 插件)"""
         dm = self.datamodels
         if dm:
@@ -350,36 +364,43 @@ class IEC61850Client:
     def _read_floats_batch(self, items, results):
         """批量读取浮点值 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
+
         READ_STRATEGIES[IecType.FLOAT].read_batch(self._conn.connection, items, results)
 
     def _read_booleans_batch(self, items, results):
         """批量读取布尔值 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
+
         READ_STRATEGIES[IecType.BOOLEAN].read_batch(self._conn.connection, items, results)
 
     def _read_integers_batch(self, items, results):
         """批量读取整数值 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
+
         READ_STRATEGIES[IecType.INTEGER].read_batch(self._conn.connection, items, results)
 
     def _read_strings_batch(self, items, results):
         """批量读取字符串值 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
+
         READ_STRATEGIES[IecType.STRING].read_batch(self._conn.connection, items, results)
 
     def _read_timestamps_batch(self, items, results):
         """批量读取时标值 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
+
         READ_STRATEGIES[IecType.TIMESTAMP].read_batch(self._conn.connection, items, results)
 
     def _read_unknowns_batch(self, items, results):
         """批量自动探测读取 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
+
         READ_STRATEGIES[IecType.UNKNOWN].read_batch(self._conn.connection, items, results)
 
     def _read_point_auto_detect(self, ref: str, fc_val) -> Any:
         """自动探测数据类型并读取值 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
+
         return READ_STRATEGIES[IecType.UNKNOWN].read(self._conn.connection, ref, fc_val)
 
     def _resolve_dataset_ref_with_ld_prefix(self, dataset_ref: str) -> str:

@@ -1,9 +1,12 @@
 """Debug: simulate the full device initialization flow for IEC61850_SERVER"""
+
 import time
+
+from pyiec61850 import pyiec61850 as iec61850
+
 from src.device.factory.general_device_builder import GeneralDeviceBuilder
 from src.device.types.general_device import GeneralDevice
 from src.enums.modbus_def import ProtocolType
-from pyiec61850 import pyiec61850 as iec61850
 
 # 模拟 builder 创建 IEC61850 服务端设备
 channel_id = 22
@@ -37,7 +40,7 @@ if device.protocol_handler and device.protocol_handler._server:
 # 用客户端连接测试
 time.sleep(0.5)
 conn = iec61850.IedConnection_create()
-result = iec61850.IedConnection_connect(conn, '127.0.0.1', 10103)
+result = iec61850.IedConnection_connect(conn, "127.0.0.1", 10103)
 error = result if not isinstance(result, (list, tuple)) else result[1]
 
 if error == 0:
@@ -55,5 +58,6 @@ iec61850.IedConnection_destroy(conn)
 
 # 停止设备
 import asyncio
+
 asyncio.run(device.stop())
 print("Done")

@@ -2,18 +2,30 @@
 
 from fastapi import APIRouter, Request
 
+from src.data.dao.channel_dao import ChannelDao
 from src.device.core.device import Device
 from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import Yc, Yt
-from src.data.dao.channel_dao import ChannelDao
-from src.web.log import log
 from src.web.api.schemas import (
-    BaseResponse, PointEditDataRequest, PointLimitEditRequest, PointMetadataEditRequest,
+    BaseResponse,
+    ChangeTrackingConfigRequest,
+    ClearPointsRequest,
+    DeviceResetRequest,
     Iec104MetadataEditRequest,
-    PointInfoRequest, SimulateMethodSetRequest, SimulateStepSetRequest, SimulateRangeSetRequest,
-    PointCreateRequest, PointDeleteRequest, PointsBatchCreateRequest, PointLimitGetRequest,
-    PointChangeHistoryRequest, ChangeTrackingConfigRequest, ClearPointsRequest, DeviceResetRequest,
+    PointChangeHistoryRequest,
+    PointCreateRequest,
+    PointDeleteRequest,
+    PointEditDataRequest,
+    PointInfoRequest,
+    PointLimitEditRequest,
+    PointLimitGetRequest,
+    PointMetadataEditRequest,
+    PointsBatchCreateRequest,
+    SimulateMethodSetRequest,
+    SimulateRangeSetRequest,
+    SimulateStepSetRequest,
 )
+from src.web.log import log
 
 point_router = APIRouter(prefix="/api/points", tags=["测点管理"])
 
@@ -27,11 +39,17 @@ async def edit_point_data(req: PointEditDataRequest, request: Request):
     """修改测点数据"""
     try:
         device = _get_device(req.device_name, request)
-        if device.protocol_type in (ProtocolType.ModbusRtu, ProtocolType.ModbusRtuClient, ProtocolType.ModbusRtuServer, ProtocolType.ModbusRtuOverTcp):
+        if device.protocol_type in (
+            ProtocolType.ModbusRtu,
+            ProtocolType.ModbusRtuClient,
+            ProtocolType.ModbusRtuServer,
+            ProtocolType.ModbusRtuOverTcp,
+        ):
             client_info = device.serial_port or "未知串口"
         else:
             client_info = f"{device.ip}:{device.port}"
         from src.enums.points.change_tracker import change_client_info_ctx
+
         token = change_client_info_ctx.set(client_info)
         try:
             success = await device.edit_point_data_async(req.point_code, req.point_value)
@@ -207,11 +225,17 @@ async def add_point(req: PointCreateRequest, request: Request):
 
         channel_id = channel["id"]
         point_data = {
-            "code": req.code, "name": req.name, "rtu_addr": req.rtu_addr,
-            "reg_addr": req.reg_addr, "func_code": req.func_code,
-            "decode_code": req.decode_code, "bit": req.bit,
-            "mul_coe": req.mul_coe, "add_coe": req.add_coe,
-            "iec_type_id": req.iec_type_id, "iec_quality": req.iec_quality,
+            "code": req.code,
+            "name": req.name,
+            "rtu_addr": req.rtu_addr,
+            "reg_addr": req.reg_addr,
+            "func_code": req.func_code,
+            "decode_code": req.decode_code,
+            "bit": req.bit,
+            "mul_coe": req.mul_coe,
+            "add_coe": req.add_coe,
+            "iec_type_id": req.iec_type_id,
+            "iec_quality": req.iec_quality,
         }
         success = device.add_point_dynamic(channel_id, req.frame_type, point_data)
         if success:
@@ -303,6 +327,7 @@ async def reset_point_data(req: DeviceResetRequest, request: Request):
 
 # ===== 变更追溯 =====
 
+
 @point_router.post("/change-history", response_model=BaseResponse)
 async def get_point_change_history(req: PointChangeHistoryRequest, request: Request):
     """获取测点变更历史"""
@@ -318,7 +343,7 @@ async def get_point_change_history(req: PointChangeHistoryRequest, request: Requ
             data={
                 "point_code": req.point_code,
                 "tracking_enabled": point.change_tracking_enabled,
-                "maxlen": getattr(point, '_change_history_maxlen', 50),
+                "maxlen": getattr(point, "_change_history_maxlen", 50),
                 "history": history,
                 "count": len(history),
             },

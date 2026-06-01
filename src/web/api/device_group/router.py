@@ -5,15 +5,15 @@ from fastapi import APIRouter, Request
 from src.data.service.device_group_service import DeviceGroupService
 from src.web.api.schemas import (
     BaseResponse,
+    BatchDeviceOperationRequest,
     DeviceGroupCreateRequest,
-    DeviceGroupUpdateRequest,
     DeviceGroupDeleteRequest,
     DeviceGroupIdRequest,
+    DeviceGroupStatusRequest,
+    DeviceGroupUpdateRequest,
+    DevicesToGroupRequest,
     DeviceToGroupRequest,
     RemoveDeviceRequest,
-    DevicesToGroupRequest,
-    BatchDeviceOperationRequest,
-    DeviceGroupStatusRequest,
 )
 from src.web.log import log
 
@@ -108,8 +108,10 @@ async def create_group(request: DeviceGroupCreateRequest):
             return BaseResponse(code=400, message=f"设备组编码 '{request.code}' 已存在")
 
         group_id = DeviceGroupService.create_group(
-            code=request.code, name=request.name,
-            parent_id=request.parent_id, description=request.description,
+            code=request.code,
+            name=request.name,
+            parent_id=request.parent_id,
+            description=request.description,
         )
         if group_id > 0:
             return BaseResponse(data={"group_id": group_id}, message="设备组创建成功")
@@ -157,7 +159,8 @@ async def add_device_to_group(request: DeviceToGroupRequest):
     """将设备添加到设备组"""
     try:
         success = DeviceGroupService.add_device_to_group(
-            device_id=request.device_id, group_id=request.group_id,
+            device_id=request.device_id,
+            group_id=request.group_id,
         )
         if success:
             return BaseResponse(message="设备已添加到设备组")
@@ -187,7 +190,8 @@ async def move_devices_to_group(request: DevicesToGroupRequest):
     """批量移动设备到指定设备组"""
     try:
         count = DeviceGroupService.move_devices_to_group(
-            device_ids=request.device_ids, group_id=request.group_id,
+            device_ids=request.device_ids,
+            group_id=request.group_id,
         )
         return BaseResponse(data={"moved_count": count}, message=f"成功移动 {count} 个设备")
     except Exception as e:

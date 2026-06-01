@@ -1,10 +1,9 @@
-import random
 import math
+import random
 import time
-
 from typing import Union
 
-from src.enums.point_data import Yc, Yx, SimulateMethod
+from src.enums.point_data import SimulateMethod, Yc, Yx
 
 
 class PointSimulator:
@@ -25,7 +24,7 @@ class PointSimulator:
         """模拟测点值变化"""
         # 如果测点被映射锁定，则不进行模拟
         if self.point.is_locked_by_mapping:
-           return
+            return
 
         current_time = time.time()
 
@@ -35,10 +34,7 @@ class PointSimulator:
                 # 随机模拟：50%的概率改变状态
                 if random.random() < 0.5:
                     self.point.value = 1 - self.point.value
-            elif (
-                hasattr(SimulateMethod, "Pulse")
-                and self.simulate_method == SimulateMethod.Pulse
-            ):
+            elif hasattr(SimulateMethod, "Pulse") and self.simulate_method == SimulateMethod.Pulse:
                 # 脉冲模拟
                 pulse_duration = 1  # 脉冲持续时间
                 if int(current_time) % self.cycle < pulse_duration:
@@ -49,7 +45,7 @@ class PointSimulator:
                 # 默认行为（如果选了不支持的方法）：也按50%概率翻转
                 if random.random() < 0.5:
                     self.point.value = 1 - self.point.value
-        elif hasattr(self.point, 'min_value_limit') and hasattr(self.point, 'max_value_limit'):
+        elif hasattr(self.point, "min_value_limit") and hasattr(self.point, "max_value_limit"):
             # 遥测点模拟（只有 Yc 类型有 min_value_limit/max_value_limit）
             if self.simulate_method == SimulateMethod.AutoIncrement:
                 # 自增模拟，随机步长
@@ -83,34 +79,20 @@ class PointSimulator:
                 self.point.set_real_value(value)
 
             # 添加新的模拟方法
-            elif (
-                hasattr(SimulateMethod, "SineWave")
-                and self.simulate_method == SimulateMethod.SineWave
-            ):
+            elif hasattr(SimulateMethod, "SineWave") and self.simulate_method == SimulateMethod.SineWave:
                 # 正弦波模拟
-                amplitude = (
-                    self.point.max_value_limit - self.point.min_value_limit
-                ) / 2
-                mid_value = (
-                    self.point.max_value_limit + self.point.min_value_limit
-                ) / 2
+                amplitude = (self.point.max_value_limit - self.point.min_value_limit) / 2
+                mid_value = (self.point.max_value_limit + self.point.min_value_limit) / 2
                 # 使用当前时间作为角度，产生连续的正弦波
-                angle = (
-                    2 * math.pi * (current_time % self.cycle) / self.cycle + self.phase
-                )
+                angle = 2 * math.pi * (current_time % self.cycle) / self.cycle + self.phase
                 value = mid_value + amplitude * math.sin(angle)
                 self.point.set_real_value(value)
 
-            elif (
-                hasattr(SimulateMethod, "Ramp")
-                and self.simulate_method == SimulateMethod.Ramp
-            ):
+            elif hasattr(SimulateMethod, "Ramp") and self.simulate_method == SimulateMethod.Ramp:
                 # 斜坡模拟
                 if self.ramp_start_time == 0:
                     self.ramp_start_time = current_time
-                    self.target_value = random.uniform(
-                        self.point.min_value_limit, self.point.max_value_limit
-                    )
+                    self.target_value = random.uniform(self.point.min_value_limit, self.point.max_value_limit)
 
                 elapsed = current_time - self.ramp_start_time
                 if elapsed >= self.ramp_time:
@@ -121,16 +103,10 @@ class PointSimulator:
                 else:
                     # 计算斜坡中间值
                     progress = elapsed / self.ramp_time
-                    value = (
-                        self.last_value
-                        + (self.target_value - self.last_value) * progress
-                    )
+                    value = self.last_value + (self.target_value - self.last_value) * progress
                     self.point.set_real_value(value)
 
-            elif (
-                hasattr(SimulateMethod, "Pulse")
-                and self.simulate_method == SimulateMethod.Pulse
-            ):
+            elif hasattr(SimulateMethod, "Pulse") and self.simulate_method == SimulateMethod.Pulse:
                 # 脉冲模拟
                 pulse_duration = 1  # 脉冲持续时间（秒）
                 if int(current_time) % self.cycle < pulse_duration:

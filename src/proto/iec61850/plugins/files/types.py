@@ -5,19 +5,21 @@
 
 from __future__ import annotations
 
-import enum
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import enum
 
 
 class FileType(enum.Enum):
     """文件/目录类型"""
+
     FILE = "file"
     DIRECTORY = "directory"
 
 
 class TransferStatus(enum.Enum):
     """传输状态"""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -34,11 +36,12 @@ class FileEntry:
     - fileSize: 文件大小 (字节), 未知时为 -1
     - lastModified: 最后修改时间 (UTC 毫秒时间戳)
     """
-    name: str                              # 文件/目录名
-    file_type: FileType = FileType.FILE    # 文件类型
-    size: int = -1                         # 文件大小 (字节), -1 表示未知
+
+    name: str  # 文件/目录名
+    file_type: FileType = FileType.FILE  # 文件类型
+    size: int = -1  # 文件大小 (字节), -1 表示未知
     last_modified: datetime | None = None  # 最后修改时间
-    full_path: str = ""                    # 完整路径 (用于下载/删除)
+    full_path: str = ""  # 完整路径 (用于下载/删除)
 
     @property
     def is_directory(self) -> bool:
@@ -70,11 +73,12 @@ class FileEntry:
 @dataclass
 class TransferProgress:
     """文件传输进度"""
-    filename: str                          # 远程文件名
+
+    filename: str  # 远程文件名
     status: TransferStatus = TransferStatus.PENDING
-    bytes_transferred: int = 0             # 已传输字节数
-    total_bytes: int = -1                  # 总字节数, -1 表示未知
-    error: str | None = None               # 错误信息
+    bytes_transferred: int = 0  # 已传输字节数
+    total_bytes: int = -1  # 总字节数, -1 表示未知
+    error: str | None = None  # 错误信息
 
     @property
     def progress_percent(self) -> float:
@@ -101,12 +105,13 @@ class TransferProgress:
 @dataclass
 class FileMetadata:
     """本地缓存文件元数据"""
-    remote_path: str                       # 远程文件路径 (唯一键)
-    local_path: str                        # 本地缓存路径
-    file_size: int                         # 文件大小
+
+    remote_path: str  # 远程文件路径 (唯一键)
+    local_path: str  # 本地缓存路径
+    file_size: int  # 文件大小
     remote_modified: datetime | None = None  # 远程最后修改时间
     download_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    checksum: str | None = None            # 文件校验和 (MD5)
+    checksum: str | None = None  # 文件校验和 (MD5)
 
     def to_dict(self) -> dict[str, object]:
         return {

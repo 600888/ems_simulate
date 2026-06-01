@@ -5,6 +5,7 @@ frame_type = 2
 """
 
 from typing import Dict, Optional
+
 from blinker import Signal
 
 from src.enums.points.base_point import BasePoint, decimal_to_hex_formatted
@@ -109,13 +110,11 @@ class Yk(BasePoint):
                 if isinstance(self.value, int):
                     self.hex_value = decimal_to_hex_formatted(value)
 
-                if self._change_tracking_enabled:   # 如果变更追踪已启用
+                if self._change_tracking_enabled:  # 如果变更追踪已启用
                     self._record_change(old_value, value)
-                    
+
                 if self.is_send_signal:
-                    self.value_changed.send(
-                        old_point=self, related_point=self.related_point
-                    )
+                    self.value_changed.send(old_point=self, related_point=self.related_point)
             finally:
                 self._is_updating = False
 

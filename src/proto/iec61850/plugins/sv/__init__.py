@@ -5,9 +5,9 @@
 
 from typing import Any
 
-from ..base import Iec61850Plugin
 from ...defs.constants import HAS_IEC61850
 from ...log import log
+from ..base import Iec61850Plugin
 
 
 class SVPlugin:

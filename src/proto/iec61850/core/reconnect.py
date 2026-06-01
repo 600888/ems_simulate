@@ -3,9 +3,9 @@
 提供指数退避重连、重试装饰器等鲁棒性增强功能。
 """
 
-import time
 import functools
-from typing import Callable, Type, Tuple, Optional
+import time
+from typing import Callable, Optional, Tuple, Type
 
 from ..log import log
 from .exceptions import ConnectionError, ConnectionLostError
@@ -16,7 +16,7 @@ def retry_with_backoff(
     base_delay: float = 1.0,
     max_delay: float = 60.0,
     exponential_base: float = 2.0,
-    exceptions: Tuple[Type[Exception], ...] = (ConnectionError, ConnectionLostError),
+    exceptions: tuple[type[Exception], ...] = (ConnectionError, ConnectionLostError),
     on_retry: Optional[Callable] = None,
 ):
     """指数退避重试装饰器
@@ -29,6 +29,7 @@ def retry_with_backoff(
         exceptions: 触发重试的异常类型
         on_retry: 重试回调 (attempt, exception)
     """
+
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -39,20 +40,19 @@ def retry_with_backoff(
                 except exceptions as e:
                     last_exception = e
                     if attempt < max_retries:
-                        delay = min(base_delay * (exponential_base ** attempt), max_delay)
+                        delay = min(base_delay * (exponential_base**attempt), max_delay)
                         log.warning(
-                            f"{func.__name__} 失败 (尝试 {attempt + 1}/{max_retries + 1}), "
-                            f"{delay:.1f}s 后重试: {e}"
+                            f"{func.__name__} 失败 (尝试 {attempt + 1}/{max_retries + 1}), {delay:.1f}s 后重试: {e}"
                         )
                         if on_retry:
                             on_retry(attempt, e)
                         time.sleep(delay)
                     else:
-                        log.error(
-                            f"{func.__name__} 失败，已达最大重试次数 {max_retries + 1}: {e}"
-                        )
+                        log.error(f"{func.__name__} 失败，已达最大重试次数 {max_retries + 1}: {e}")
             raise last_exception
+
         return wrapper
+
     return decorator
 
 
@@ -85,7 +85,7 @@ class ReconnectionManager:
 
     def get_delay(self, attempt: int) -> float:
         """计算第 N 次重试的延迟时间"""
-        return min(self.base_delay * (self.exponential_base ** attempt), self.max_delay)
+        return min(self.base_delay * (self.exponential_base**attempt), self.max_delay)
 
     def attempt_reconnect(self, connect_func: Callable[[], bool]) -> bool:
         """尝试重连

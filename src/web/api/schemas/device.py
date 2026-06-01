@@ -1,5 +1,7 @@
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
-from typing import List, Optional, Any, Dict
+
 from src.enums.point_data import SimulateMethod
 
 
@@ -29,7 +31,7 @@ class DeviceTableRequest(BaseModel):
     point_name: Optional[str] = None
     page_index: int = 1
     page_size: int = 10
-    point_types: List[int] = Field(default_factory=list)
+    point_types: list[int] = Field(default_factory=list)
     order_by: Optional[str] = None
     order_direction: Optional[str] = None
 
@@ -63,6 +65,7 @@ class CurrentTableRequest(BaseModel):
 
 class DeviceGroupStatusRequest(BaseModel):
     """设备组状态更新请求"""
+
     group_id: int = Field(..., description="设备组ID")
     status: int = Field(..., description="设备组状态")
 
@@ -74,24 +77,28 @@ class ManualReadRequest(BaseModel):
 
 class MessageListRequest(BaseModel):
     """获取报文列表请求"""
+
     device_name: str = Field(..., description="设备名称")
     limit: Optional[int] = Field(100, description="最大返回数量")
 
 
 class SlaveAddRequest(BaseModel):
     """添加从机请求"""
+
     device_name: str = Field(..., description="设备名称")
     slave_id: int = Field(..., description="从机地址 (1-255)")
 
 
 class SlaveDeleteRequest(BaseModel):
     """删除从机请求"""
+
     device_name: str = Field(..., description="设备名称")
     slave_id: int = Field(..., description="从机地址")
 
 
 class SlaveEditRequest(BaseModel):
     """编辑从机请求"""
+
     device_name: str = Field(..., description="设备名称")
     old_slave_id: int = Field(..., description="旧从机地址")
     new_slave_id: int = Field(..., description="新从机地址 (1-255)")
@@ -99,6 +106,7 @@ class SlaveEditRequest(BaseModel):
 
 class ExportModelRequest(BaseModel):
     """IEC 61850 模型导出请求"""
+
     device_name: str = Field(..., description="设备名称")
     export_type: str = Field("icd", description="导出类型: icd/json/xml/csv/tree")
     ied_name: str = Field("", description="IED 名称 (ICD 导出时使用，为空则自动推断)")

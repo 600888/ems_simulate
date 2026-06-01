@@ -3,7 +3,7 @@
 所有 IEC 61850 功能模块插件必须实现此协议。
 """
 
-from typing import Protocol, runtime_checkable, Any
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable

@@ -15,7 +15,8 @@ class BlinkerTest(unittest.TestCase):
         new_value = extra.get("new_value")
         related_point.value = new_value
         print(
-            f"yc1 value changed, old_point: {old_point.value}, related_point: {related_point.value}, new_value: {new_value}"
+            f"yc1 value changed, old_point: {old_point.value}, "
+            f"related_point: {related_point.value}, new_value: {new_value}"
         )
 
     def test_set_yc(self):

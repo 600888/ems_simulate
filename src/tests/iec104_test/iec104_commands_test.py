@@ -6,11 +6,11 @@ IEC104 命令类型端到端测试
 
 import asyncio
 import unittest
+
 import c104
 
-from src.proto.iec104.iec104server import IEC104Server
 from src.proto.iec104.iec104client import IEC104Client
-
+from src.proto.iec104.iec104server import IEC104Server
 
 SERVER_PORT = 14204
 COMMON_ADDR = 1
@@ -18,6 +18,7 @@ COMMON_ADDR = 1
 
 class _ServerCtx:
     """管理 IEC104 服务端的生命周期"""
+
     def __init__(self, port: int = SERVER_PORT):
         self.server = IEC104Server(ip="127.0.0.1", port=port, common_address=COMMON_ADDR)
         self.server.start()
@@ -34,6 +35,7 @@ class _ServerCtx:
 
 class _ClientCtx:
     """管理 IEC104 客户端的生命周期"""
+
     def __init__(self, port: int = SERVER_PORT):
         self.client = IEC104Client(ip="127.0.0.1", port=port, common_address=COMMON_ADDR)
 
@@ -166,8 +168,7 @@ class TestIEC104Commands(unittest.TestCase):
             self.assertTrue(ret, "归一化设定值写入失败")
             self._run_async(asyncio.sleep(0.3))
             val = svr.get_point_value(IOA, frame_type=3)
-            self.assertAlmostEqual(float(val), 1.0, places=4,
-                                   msg="服务端归一化值偏差过大")
+            self.assertAlmostEqual(float(val), 1.0, places=4, msg="服务端归一化值偏差过大")
         finally:
             cli.disconnect()
             svr.stop()
@@ -186,8 +187,7 @@ class TestIEC104Commands(unittest.TestCase):
             self.assertTrue(ret, "标度化设定值 transmit 失败")
             self._run_async(asyncio.sleep(0.3))
             val = svr.get_point_value(IOA, frame_type=3)
-            self.assertAlmostEqual(float(val), 100.0, delta=1.5,
-                                   msg="服务端标度化值偏差过大")
+            self.assertAlmostEqual(float(val), 100.0, delta=1.5, msg="服务端标度化值偏差过大")
         finally:
             cli.disconnect()
             svr.stop()
@@ -203,8 +203,7 @@ class TestIEC104Commands(unittest.TestCase):
             self.assertTrue(ret, "短浮点设定值写入失败")
             self._run_async(asyncio.sleep(0.3))
             val = svr.get_point_value(IOA, frame_type=3)
-            self.assertAlmostEqual(float(val), 12.34, places=4,
-                                   msg="服务端短浮点值偏差过大")
+            self.assertAlmostEqual(float(val), 12.34, places=4, msg="服务端短浮点值偏差过大")
         finally:
             cli.disconnect()
             svr.stop()

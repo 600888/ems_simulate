@@ -4,11 +4,11 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from src.enums.points.iec104_type import (
-    IEC104Type,
     IEC104_DEFAULT_TYPE,
+    IEC104Type,
     get_iec104_types_by_frame_type,
 )
 
@@ -27,7 +27,7 @@ class ProtocolStrategy(ABC):
         pass
 
     @abstractmethod
-    def get_point_type_mapping(self) -> Dict[int, Any]:
+    def get_point_type_mapping(self) -> dict[int, Any]:
         """获取帧类型到协议点类型的映射"""
         pass
 
@@ -46,7 +46,7 @@ class ModbusStrategy(ProtocolStrategy):
     def get_default_decode(self) -> str:
         return "0x41"  # 默认大端有符号长整型
 
-    def get_point_type_mapping(self) -> Dict[int, Any]:
+    def get_point_type_mapping(self) -> dict[int, Any]:
         return {
             0: "yc",  # 遥测 - 保持寄存器
             1: "yx",  # 遥信 - 线圈/离散输入
@@ -79,7 +79,7 @@ class IEC104Strategy(ProtocolStrategy):
     def get_default_decode(self) -> str:
         return "0x42"  # IEC104 默认使用浮点数
 
-    def get_point_type_mapping(self) -> Dict[int, Any]:
+    def get_point_type_mapping(self) -> dict[int, Any]:
         """获取帧类型到默认 IEC104 类型的映射（向后兼容）"""
         return {ft: t.value for ft, t in IEC104_DEFAULT_TYPE.items()}
 
@@ -105,6 +105,7 @@ class IEC104Strategy(ProtocolStrategy):
             IEC104Type 枚举
         """
         from src.enums.points.iec104_type import resolve_iec104_type
+
         return resolve_iec104_type(type_id, frame_type)
 
     def process_address(self, address: str, frame_type: int) -> str:
@@ -123,7 +124,7 @@ class DLT645Strategy(ProtocolStrategy):
     def get_default_decode(self) -> str:
         return "0x20"  # DLT645 使用 BCD 编码
 
-    def get_point_type_mapping(self) -> Dict[int, Any]:
+    def get_point_type_mapping(self) -> dict[int, Any]:
         return {
             0: "read_data",  # 遥测 - 读数据
             1: "read_status",  # 遥信 - 读状态
@@ -145,10 +146,10 @@ class IEC61850Strategy(ProtocolStrategy):
     def get_default_decode(self) -> str:
         return "0x42"  # IEC61850 默认使用浮点数
 
-    def get_point_type_mapping(self) -> Dict[int, Any]:
+    def get_point_type_mapping(self) -> dict[int, Any]:
         # IEC61850 使用逻辑节点和数据对象模型
         return {
-            0: "MV",   # 遥测 - Measured Value (MMXU)
+            0: "MV",  # 遥测 - Measured Value (MMXU)
             1: "SPS",  # 遥信 - Single Point Status (GGIO)
             2: "SPC",  # 遥控 - Single Point Control (GGIO)
             3: "APC",  # 遥调 - Analog Point Control (GGIO)

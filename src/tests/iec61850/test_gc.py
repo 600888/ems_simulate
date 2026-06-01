@@ -1,6 +1,11 @@
-import time, gc, threading
-from src.proto.iec61850.iec61850_server import IEC61850Server
+import gc
+import threading
+import time
+
 import pyiec61850.pyiec61850 as pyiec61850
+
+from src.proto.iec61850.iec61850_server import IEC61850Server
+
 
 def build():
     s = IEC61850Server()
@@ -8,6 +13,7 @@ def build():
     for i in range(1000):
         s.add_point(i, 0)
     return s
+
 
 s = build()
 gc.collect()

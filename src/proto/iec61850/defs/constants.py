@@ -9,6 +9,7 @@ from enum import IntEnum, StrEnum
 # ===== pyiec61850 可用性检测 =====
 try:
     from pyiec61850 import pyiec61850 as _iec61850
+
     HAS_IEC61850 = True
 except ImportError:
     _iec61850 = None
@@ -16,17 +17,18 @@ except ImportError:
 
 # ===== 功能约束 (FunctionalConstraint) - 运行时常量 =====
 # 来自 pyiec61850，仅在 HAS_IEC61850 时有值
-FC_MX = getattr(_iec61850, 'IEC61850_FC_MX', None)  # 测量值
-FC_ST = getattr(_iec61850, 'IEC61850_FC_ST', None)  # 状态
-FC_CO = getattr(_iec61850, 'IEC61850_FC_CO', None)  # 控制
-FC_CF = getattr(_iec61850, 'IEC61850_FC_CF', None)  # 配置
-FC_DC = getattr(_iec61850, 'IEC61850_FC_DC', None)  # 描述
-FC_RP = getattr(_iec61850, 'IEC61850_FC_RP', None)  # 未缓冲报告 (URCB)
-FC_BR = getattr(_iec61850, 'IEC61850_FC_BR', None)  # 缓冲报告 (BRCB)
+FC_MX = getattr(_iec61850, "IEC61850_FC_MX", None)  # 测量值
+FC_ST = getattr(_iec61850, "IEC61850_FC_ST", None)  # 状态
+FC_CO = getattr(_iec61850, "IEC61850_FC_CO", None)  # 控制
+FC_CF = getattr(_iec61850, "IEC61850_FC_CF", None)  # 配置
+FC_DC = getattr(_iec61850, "IEC61850_FC_DC", None)  # 描述
+FC_RP = getattr(_iec61850, "IEC61850_FC_RP", None)  # 未缓冲报告 (URCB)
+FC_BR = getattr(_iec61850, "IEC61850_FC_BR", None)  # 缓冲报告 (BRCB)
 
 
 class FunctionalConstraint(StrEnum):
     """功能约束枚举"""
+
     MX = "MX"  # 测量值
     ST = "ST"  # 状态
     CO = "CO"  # 控制
@@ -49,6 +51,7 @@ class FunctionalConstraint(StrEnum):
 # ===== IEC 61850 数据类型 =====
 class IecType(StrEnum):
     """IEC 61850 数据类型枚举"""
+
     FLOAT = "float"
     BOOLEAN = "boolean"
     INTEGER = "integer"
@@ -69,6 +72,7 @@ IEC_TYPE_UNKNOWN = IecType.UNKNOWN
 # ===== 遥测/遥信/遥控/遥调 帧类型 =====
 class FrameType(IntEnum):
     """帧类型枚举"""
+
     YC = 0  # 遥测
     YX = 1  # 遥信
     YK = 2  # 遥控
@@ -82,14 +86,16 @@ FRAME_TYPE_DESC = {
     FrameType.YT: "遥调(YT)",
 }
 
+
 # ===== ACSI 类常量 =====
 class AcsiClass(IntEnum):
     """ACSI 类枚举 (值对应 pyiec61850 ACSIClass)"""
-    DATA_OBJECT = getattr(_iec61850, 'ACSI_CLASS_DATA_OBJECT', 0)
-    DATA_SET = getattr(_iec61850, 'ACSI_CLASS_DATA_SET', 1)
-    BRCB = getattr(_iec61850, 'ACSI_CLASS_BRCB', 2)
-    URCB = getattr(_iec61850, 'ACSI_CLASS_URCB', 3)
-    GOOSE = getattr(_iec61850, 'ACSI_CLASS_GoCB', 7)
+
+    DATA_OBJECT = getattr(_iec61850, "ACSI_CLASS_DATA_OBJECT", 0)
+    DATA_SET = getattr(_iec61850, "ACSI_CLASS_DATA_SET", 1)
+    BRCB = getattr(_iec61850, "ACSI_CLASS_BRCB", 2)
+    URCB = getattr(_iec61850, "ACSI_CLASS_URCB", 3)
+    GOOSE = getattr(_iec61850, "ACSI_CLASS_GoCB", 7)
 
 
 # ===== FC -> FrameType 推断映射 =====

@@ -1,9 +1,9 @@
 from pymodbus.pdu import ExceptionResponse
 
 # Function code 3 (Read Holding Registers), Exception Code 2 (Illegal Data Address)
-e = ExceptionResponse(0x03, 0x02) 
+e = ExceptionResponse(0x03, 0x02)
 
-print(f"Original Function code passed: 0x03")
+print("Original Function code passed: 0x03")
 print(f"Object Function code: {e.function_code} (Hex: {hex(e.function_code)})")
 print(f"Exception code: {e.exception_code}")
 print(f"Is Error: {e.isError()}")

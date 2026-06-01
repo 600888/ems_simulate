@@ -1,12 +1,17 @@
-import time, gc, threading
-from src.proto.iec61850.iec61850_server import IEC61850Server
+import gc
+import threading
+import time
+
 from src.proto.iec61850.iec61850_client import IEC61850Client
+from src.proto.iec61850.iec61850_server import IEC61850Server
+
 
 def build():
     s = IEC61850Server(port=10102)
     for i in range(100):
         s.add_point(i, 0)
     return s
+
 
 s = build()
 gc.collect()
@@ -16,12 +21,14 @@ print("Starting server...")
 s.start()
 print("Server started!")
 
+
 def client_thread():
     time.sleep(1)
     print("Client connecting...")
     c = IEC61850Client(port=10102)
     try:
         import asyncio
+
         asyncio.run(c.connect())
         print("Client connected!")
         val = c.read_point(0, 0)
@@ -30,6 +37,7 @@ def client_thread():
         print(f"Client error: {e}")
     finally:
         c.disconnect()
+
 
 t = threading.Thread(target=client_thread)
 t.start()

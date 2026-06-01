@@ -4,25 +4,25 @@
 支持按需加载、热插拔、依赖检查。
 """
 
-from typing import Type, Dict, Optional, Any
+from typing import Any, Dict, Optional, Type
 
-from .base import Iec61850Plugin
 from ..log import log
+from .base import Iec61850Plugin
 
 
 # 注册内置插件 (延迟导入，避免循环依赖)
 def _register_builtin_plugins(target_registry: "PluginRegistry" = None):
     """注册所有内置插件到指定注册表 (默认使用全局单例)"""
     reg = target_registry or registry
-    from .goose import GoosePlugin
-    from .datasets import DataSetsPlugin
     from .datamodels import DataModelsPlugin
-    from .reports import ReportsPlugin
-    from .sv import SVPlugin
-    from .log_plugin import LogPlugin
-    from .setting_groups import SettingGroupsPlugin
+    from .datasets import DataSetsPlugin
     from .files import FilesPlugin
+    from .goose import GoosePlugin
+    from .log_plugin import LogPlugin
     from .model_exporter import ModelExporterPlugin
+    from .reports import ReportsPlugin
+    from .setting_groups import SettingGroupsPlugin
+    from .sv import SVPlugin
 
     reg.register("goose", GoosePlugin)
     reg.register("datasets", DataSetsPlugin)
@@ -42,12 +42,12 @@ class PluginRegistry:
     """
 
     def __init__(self, auto_register: bool = True):
-        self._plugins: Dict[str, Iec61850Plugin] = {}
-        self._factories: Dict[str, Type[Iec61850Plugin]] = {}
+        self._plugins: dict[str, Iec61850Plugin] = {}
+        self._factories: dict[str, type[Iec61850Plugin]] = {}
         if auto_register:
             _register_builtin_plugins(self)
 
-    def register(self, name: str, factory: Type[Iec61850Plugin]) -> None:
+    def register(self, name: str, factory: type[Iec61850Plugin]) -> None:
         """注册插件工厂
 
         Args:
@@ -85,7 +85,7 @@ class PluginRegistry:
             log.error(f"创建插件 {name} 失败: {e}")
             return None
 
-    def get_all_available(self) -> Dict[str, Iec61850Plugin]:
+    def get_all_available(self) -> dict[str, Iec61850Plugin]:
         """获取所有可用插件"""
         result = {}
         for name in self._factories:

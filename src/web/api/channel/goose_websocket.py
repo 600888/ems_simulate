@@ -24,11 +24,13 @@ GOOSE 抓包 WebSocket 实时推送
 """
 
 import asyncio
+import contextlib
 import json
 import threading
 from typing import Any, Dict, Optional, Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
 from src.web.log import log
 
 
@@ -39,7 +41,9 @@ def _get_event_loop():
     except RuntimeError:
         return None
 
+
 # ===== 消息类型常量 =====
+
 
 class MsgType:
     COMMAND = "command"
@@ -58,6 +62,7 @@ class Action:
 
 
 # ===== WebSocket 会话管理器 (单例) =====
+
 
 class WebSocketSessionManager:
     """WebSocket 会话管理器
@@ -79,7 +84,7 @@ class WebSocketSessionManager:
             return
         self._initialized = True
 
-        self._connections: Set[WebSocket] = set()
+        self._connections: set[WebSocket] = set()
         self._lock = threading.Lock()
         self._capture_instance: Optional[Any] = None
         self._capture_callback_registered = False
@@ -107,7 +112,7 @@ class WebSocketSessionManager:
 
     # ---- 消息广播 ----
 
-    async def broadcast(self, message: Dict[str, Any]):
+    async def broadcast(self, message: dict[str, Any]):
         """向所有已连接的客户端广播消息"""
         if not self._connections:
             return
@@ -122,7 +127,7 @@ class WebSocketSessionManager:
             for ws in disconnected:
                 self._connections.discard(ws)
 
-    async def send_to(self, ws: WebSocket, message: Dict[str, Any]):
+    async def send_to(self, ws: WebSocket, message: dict[str, Any]):
         """向指定客户端发送消息"""
         try:
             payload = json.dumps(message, ensure_ascii=False, default=str)
@@ -133,7 +138,7 @@ class WebSocketSessionManager:
 
     # ---- 报文回调 — 从捕获引擎接收实时报文 ----
 
-    def _on_packet_captured(self, packet_dict: Dict[str, Any]):
+    def _on_packet_captured(self, packet_dict: dict[str, Any]):
         """GOOSE 报文捕获回调 (在捕获引擎的线程中调用)
 
         由于回调在非异步线程中执行，使用 run_coroutine_threadsafe
@@ -146,10 +151,12 @@ class WebSocketSessionManager:
                 return
 
             asyncio.run_coroutine_threadsafe(
-                self.broadcast({
-                    "type": MsgType.PACKET,
-                    "data": packet_dict,
-                }),
+                self.broadcast(
+                    {
+                        "type": MsgType.PACKET,
+                        "data": packet_dict,
+                    }
+                ),
                 loop,
             )
         except Exception as e:
@@ -157,7 +164,7 @@ class WebSocketSessionManager:
 
     # ---- 指令处理 ----
 
-    async def handle_command(self, ws: WebSocket, message: Dict[str, Any]):
+    async def handle_command(self, ws: WebSocket, message: dict[str, Any]):
         """处理来自客户端的指令"""
         action = message.get("action", "")
         params = message.get("params", {})
@@ -176,18 +183,24 @@ class WebSocketSessionManager:
             elif action == Action.STATUS:
                 await self._handle_status(ws)
             else:
-                await self.send_to(ws, {
-                    "type": MsgType.ERROR,
-                    "message": f"未知指令: {action}",
-                })
+                await self.send_to(
+                    ws,
+                    {
+                        "type": MsgType.ERROR,
+                        "message": f"未知指令: {action}",
+                    },
+                )
         except Exception as e:
             log.error(f"处理指令 {action} 异常: {e}")
-            await self.send_to(ws, {
-                "type": MsgType.ERROR,
-                "message": f"指令处理失败: {e}",
-            })
+            await self.send_to(
+                ws,
+                {
+                    "type": MsgType.ERROR,
+                    "message": f"指令处理失败: {e}",
+                },
+            )
 
-    async def _handle_start(self, ws: WebSocket, params: Dict[str, Any], GooseCaptureEngine):
+    async def _handle_start(self, ws: WebSocket, params: dict[str, Any], GooseCaptureEngine):
         """启动 GOOSE 抓包"""
         from src.web.api.channel.goose import GOOSE_CAPTURE_INSTANCES
 
@@ -217,19 +230,25 @@ class WebSocketSessionManager:
         if success:
             self._capture_started = True
             log.info(f"WebSocket 启动 GOOSE 抓包: interface={interface or 'auto'}")
-            await self.send_to(ws, {
-                "type": MsgType.RESPONSE,
-                "command": Action.START,
-                "success": True,
-                "data": {"interface": interface or "auto", "is_running": True},
-            })
+            await self.send_to(
+                ws,
+                {
+                    "type": MsgType.RESPONSE,
+                    "command": Action.START,
+                    "success": True,
+                    "data": {"interface": interface or "auto", "is_running": True},
+                },
+            )
         else:
-            await self.send_to(ws, {
-                "type": MsgType.RESPONSE,
-                "command": Action.START,
-                "success": False,
-                "message": "启动失败 (可能需要管理员/root 权限)",
-            })
+            await self.send_to(
+                ws,
+                {
+                    "type": MsgType.RESPONSE,
+                    "command": Action.START,
+                    "success": False,
+                    "message": "启动失败 (可能需要管理员/root 权限)",
+                },
+            )
 
     async def _handle_stop(self, ws: WebSocket):
         """停止 GOOSE 抓包
@@ -242,21 +261,22 @@ class WebSocketSessionManager:
         for capture in GOOSE_CAPTURE_INSTANCES.values():
             if capture.is_running:
                 # 先移除回调，防止停止过程中推送残留报文
-                try:
+                with contextlib.suppress(Exception):
                     capture.set_callback(None)
-                except Exception:
-                    pass
                 # 非阻塞停止 — 仅设标记，不 join 线程
                 capture.signal_stop()
 
         self._capture_started = False
         log.info("WebSocket 停止 GOOSE 抓包")
-        await self.send_to(ws, {
-            "type": MsgType.RESPONSE,
-            "command": Action.STOP,
-            "success": True,
-            "data": {},
-        })
+        await self.send_to(
+            ws,
+            {
+                "type": MsgType.RESPONSE,
+                "command": Action.STOP,
+                "success": True,
+                "data": {},
+            },
+        )
 
     async def _handle_clear(self, ws: WebSocket):
         """清空捕获的报文"""
@@ -265,14 +285,17 @@ class WebSocketSessionManager:
         for capture in GOOSE_CAPTURE_INSTANCES.values():
             capture.clear()
 
-        await self.send_to(ws, {
-            "type": MsgType.RESPONSE,
-            "command": Action.CLEAR,
-            "success": True,
-            "data": {},
-        })
+        await self.send_to(
+            ws,
+            {
+                "type": MsgType.RESPONSE,
+                "command": Action.CLEAR,
+                "success": True,
+                "data": {},
+            },
+        )
 
-    async def _handle_list(self, ws: WebSocket, params: Dict[str, Any]):
+    async def _handle_list(self, ws: WebSocket, params: dict[str, Any]):
         """获取捕获的报文列表"""
         from src.web.api.channel.goose import GOOSE_CAPTURE_INSTANCES
 
@@ -286,28 +309,34 @@ class WebSocketSessionManager:
                 break
 
         if not capture:
-            await self.send_to(ws, {
-                "type": MsgType.RESPONSE,
-                "command": Action.LIST,
-                "success": False,
-                "message": "没有正在运行的 GOOSE 抓包会话",
-            })
+            await self.send_to(
+                ws,
+                {
+                    "type": MsgType.RESPONSE,
+                    "command": Action.LIST,
+                    "success": False,
+                    "message": "没有正在运行的 GOOSE 抓包会话",
+                },
+            )
             return
 
         packets = capture.get_packets(count=count, filter_app_id=filter_app_id)
         stats = capture.get_statistics()
         status = capture.get_status()
 
-        await self.send_to(ws, {
-            "type": MsgType.RESPONSE,
-            "command": Action.LIST,
-            "success": True,
-            "data": {
-                "packets": packets,
-                "statistics": stats,
-                "status": status,
+        await self.send_to(
+            ws,
+            {
+                "type": MsgType.RESPONSE,
+                "command": Action.LIST,
+                "success": True,
+                "data": {
+                    "packets": packets,
+                    "statistics": stats,
+                    "status": status,
+                },
             },
-        })
+        )
 
     async def _handle_status(self, ws: WebSocket):
         """获取抓包状态"""
@@ -317,12 +346,15 @@ class WebSocketSessionManager:
         for capture in GOOSE_CAPTURE_INSTANCES.values():
             results.append(capture.get_status())
 
-        await self.send_to(ws, {
-            "type": MsgType.RESPONSE,
-            "command": Action.STATUS,
-            "success": True,
-            "data": {"captures": results},
-        })
+        await self.send_to(
+            ws,
+            {
+                "type": MsgType.RESPONSE,
+                "command": Action.STATUS,
+                "success": True,
+                "data": {"captures": results},
+            },
+        )
 
     # ---- 属性 ----
 
@@ -359,10 +391,13 @@ async def goose_capture_websocket(ws: WebSocket):
             try:
                 message = json.loads(raw)
             except json.JSONDecodeError:
-                await manager.send_to(ws, {
-                    "type": MsgType.ERROR,
-                    "message": "无效的 JSON 消息",
-                })
+                await manager.send_to(
+                    ws,
+                    {
+                        "type": MsgType.ERROR,
+                        "message": "无效的 JSON 消息",
+                    },
+                )
                 continue
 
             msg_type = message.get("type", "")
@@ -370,10 +405,13 @@ async def goose_capture_websocket(ws: WebSocket):
             if msg_type == MsgType.COMMAND:
                 await manager.handle_command(ws, message)
             else:
-                await manager.send_to(ws, {
-                    "type": MsgType.ERROR,
-                    "message": f"不支持的消息类型: {msg_type}",
-                })
+                await manager.send_to(
+                    ws,
+                    {
+                        "type": MsgType.ERROR,
+                        "message": f"不支持的消息类型: {msg_type}",
+                    },
+                )
 
     except WebSocketDisconnect:
         await manager.disconnect(ws)

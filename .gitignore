@@ -167,3 +167,7 @@ dist
 dist_msix
 *.msix
 *.appxmanifest
+
+.claude
+.codebuddy
+.codex

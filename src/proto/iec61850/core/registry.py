@@ -6,11 +6,16 @@
 
 from typing import Any, Dict, Optional
 
-from ..defs.constants import (
-    IEC_TYPE_FLOAT, IEC_TYPE_BOOLEAN, IEC_TYPE_UNKNOWN,
-)
 from ..defs.address import (
-    is_full_ref, parse_ref, infer_fc_from_address, infer_iec_type_from_address,
+    infer_fc_from_address,
+    infer_iec_type_from_address,
+    is_full_ref,
+    parse_ref,
+)
+from ..defs.constants import (
+    IEC_TYPE_BOOLEAN,
+    IEC_TYPE_FLOAT,
+    IEC_TYPE_UNKNOWN,
 )
 from ..log import log
 
@@ -26,13 +31,13 @@ class PointRegistry:
         self.ld_name = ld_name
 
         # 地址 -> MMS 引用路径的映射
-        self._point_refs: Dict[str, str] = {}
+        self._point_refs: dict[str, str] = {}
         # 地址 -> FC 的映射
-        self._point_fc: Dict[str, str] = {}
+        self._point_fc: dict[str, str] = {}
         # 地址 -> iec_type 的映射
-        self._point_iec_type: Dict[str, str] = {}
+        self._point_iec_type: dict[str, str] = {}
         # 地址 -> 描述 (dU) 的映射
-        self._point_name: Dict[str, str] = {}
+        self._point_name: dict[str, str] = {}
         # 发现的 GOOSE 控制块列表
         self._discovered_goose_items: list = []
         # 发现的 DataSet 列表
@@ -66,10 +71,7 @@ class PointRegistry:
         iec_type = infer_iec_type_from_address(addr_str)
         if iec_type == IEC_TYPE_UNKNOWN and not is_full_ref(addr_str):
             # 简单地址模式：按 frame_type 推断
-            if frame_type == 0 or frame_type == 3:
-                iec_type = IEC_TYPE_FLOAT
-            else:
-                iec_type = IEC_TYPE_BOOLEAN
+            iec_type = IEC_TYPE_FLOAT if frame_type == 0 or frame_type == 3 else IEC_TYPE_BOOLEAN
         self._point_iec_type[addr_str] = iec_type
 
         # 构建并存储 MMS 引用路径
@@ -97,17 +99,17 @@ class PointRegistry:
         return str(address) in self._point_refs
 
     @property
-    def point_refs(self) -> Dict[str, str]:
+    def point_refs(self) -> dict[str, str]:
         """所有已注册的地址 -> 引用映射"""
         return self._point_refs
 
     @property
-    def point_fc(self) -> Dict[str, str]:
+    def point_fc(self) -> dict[str, str]:
         """所有已注册的地址 -> FC 映射"""
         return self._point_fc
 
     @property
-    def point_iec_type(self) -> Dict[str, str]:
+    def point_iec_type(self) -> dict[str, str]:
         """所有已注册的地址 -> iec_type 映射"""
         return self._point_iec_type
 
@@ -153,12 +155,12 @@ class PointRegistry:
             parsed = parse_ref(addr_str)
             if parsed:
                 ld_inst = parsed[0]
-                rest = addr_str.split('/', 1)[1]
+                rest = addr_str.split("/", 1)[1]
                 return f"{self.model_name}{ld_inst}/{rest}"
             log.warning(f"无法解析引用路径 {addr_str}，回退到简单模式")
 
         # 简单地址模式
-        safe_addr = addr_str.replace('.', '_').replace('/', '_').replace('\\', '_').replace('-', '_')
+        safe_addr = addr_str.replace(".", "_").replace("/", "_").replace("\\", "_").replace("-", "_")
 
         iec_type = self._point_iec_type.get(addr_str, "")
         if iec_type == IEC_TYPE_FLOAT:

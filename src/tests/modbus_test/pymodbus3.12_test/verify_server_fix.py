@@ -1,13 +1,16 @@
-import sys
-import os
 import asyncio
+import os
+import sys
+
 sys.path.append(os.getcwd())
 
-from pymodbus.server import ModbusTcpServer
-from pymodbus.datastore import ModbusServerContext, ModbusDeviceContext, ModbusSequentialDataBlock
+from pymodbus.datastore import ModbusDeviceContext, ModbusSequentialDataBlock, ModbusServerContext
 from pymodbus.framer import FRAMER_NAME_TO_CLASS
-from src.proto.pyModbus.server.capture import CreateCaptureSocketFramer
+from pymodbus.server import ModbusTcpServer
+
 from src.device.core.message.message_capture import MessageCapture
+from src.proto.pyModbus.server.capture import CreateCaptureSocketFramer
+
 
 async def test_server_init():
     try:
@@ -16,11 +19,11 @@ async def test_server_init():
         framer_cls = CreateCaptureSocketFramer(capture)
         framer_key = "TEST_CAPTURE_FRAMER"
         FRAMER_NAME_TO_CLASS[framer_key] = framer_cls
-        
+
         server = ModbusTcpServer(
-            context=ModbusServerContext(devices=ModbusDeviceContext(di=ModbusSequentialDataBlock(0, [17]*100))),
+            context=ModbusServerContext(devices=ModbusDeviceContext(di=ModbusSequentialDataBlock(0, [17] * 100))),
             address=("127.0.0.1", 50201),
-            framer=framer_key
+            framer=framer_key,
         )
 
         print("ModbusTcpServer instantiated successfully with custom framer key.")
@@ -28,7 +31,9 @@ async def test_server_init():
     except Exception as e:
         print(f"Failed to instantiate ModbusTcpServer: {e}")
         import traceback
+
         traceback.print_exc()
+
 
 if __name__ == "__main__":
     asyncio.run(test_server_init())

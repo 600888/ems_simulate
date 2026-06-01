@@ -1,11 +1,13 @@
-import threading
-import time
 from collections import deque
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+import threading
+import time
+from typing import Any, Dict, List, Optional
+
 
 class MessageRecord:
     """单条报文记录"""
+
     def __init__(self, direction: str, data: bytes, sequence_id: int = 0):
         self.direction = direction
         self.data = data
@@ -25,7 +27,7 @@ class MessageRecord:
         dt = datetime.fromtimestamp(self.timestamp)
         return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """转为字典格式"""
         return {
             "sequence_id": self.sequence_id,
@@ -34,11 +36,13 @@ class MessageRecord:
             "hex_string": self.hex_string,
             "timestamp": self.timestamp,
             "time": self.formatted_time,
-            "length": len(self.data)
+            "length": len(self.data),
         }
+
 
 class MessageCapture:
     """报文捕获器"""
+
     def __init__(self, max_size: int = 200):
         self._max_size = max_size
         self._queue = deque(maxlen=max_size)
@@ -49,10 +53,10 @@ class MessageCapture:
         # 平均收发时间统计：追踪 TX→RX 配对的延迟
         self._tx_count: int = 0
         self._rx_count: int = 0
-        self._pending_tx_time: float = 0.0   # 最近一次 TX 的时间戳，等待配对 RX (客户端模式)
-        self._pending_rx_time: float = 0.0   # 最近一次 RX 的时间戳，等待配对 TX (服务端模式)
-        self._pair_count: int = 0             # 已配对的 TX→RX / RX→TX 次数
-        self._total_latency: float = 0.0      # 所有配对延迟的累计（秒）
+        self._pending_tx_time: float = 0.0  # 最近一次 TX 的时间戳，等待配对 RX (客户端模式)
+        self._pending_rx_time: float = 0.0  # 最近一次 RX 的时间戳，等待配对 TX (服务端模式)
+        self._pair_count: int = 0  # 已配对的 TX→RX / RX→TX 次数
+        self._total_latency: float = 0.0  # 所有配对延迟的累计（秒）
 
     def enable(self):
         self._enabled = True
@@ -66,11 +70,12 @@ class MessageCapture:
 
     def add_tx(self, data: bytes):
         """添加发送报文"""
-        if not self._enabled: return
+        if not self._enabled:
+            return
         with self._lock:
             now = time.time()
             self._tx_count += 1
-            
+
             # 服务端模式：如果刚才收到了 RX，现在发送 TX，则是响应
             if self._pending_rx_time > 0:
                 latency = now - self._pending_rx_time
@@ -86,7 +91,8 @@ class MessageCapture:
 
     def add_rx(self, data: bytes):
         """添加接收报文"""
-        if not self._enabled: return
+        if not self._enabled:
+            return
         with self._lock:
             now = time.time()
             self._rx_count += 1
@@ -98,13 +104,13 @@ class MessageCapture:
                 self._pair_count += 1
                 self._pending_tx_time = 0.0
             else:
-                 # 服务端模式：收到 RX，等待 TX
+                # 服务端模式：收到 RX，等待 TX
                 self._pending_rx_time = now
 
             seq = self._get_next_sequence()
             self._queue.append(MessageRecord("RX", data, seq))
 
-    def get_avg_time(self) -> Dict[str, Any]:
+    def get_avg_time(self) -> dict[str, Any]:
         """获取平均收发时间
 
         计算 TX→RX 配对的平均延迟（即请求到响应的平均耗时）。
@@ -115,9 +121,7 @@ class MessageCapture:
         with self._lock:
             avg_latency_ms = 0.0
             if self._pair_count > 0:
-                avg_latency_ms = round(
-                    (self._total_latency / self._pair_count) * 1000, 2
-                )
+                avg_latency_ms = round((self._total_latency / self._pair_count) * 1000, 2)
 
             return {
                 "tx_count": self._tx_count,
@@ -127,7 +131,7 @@ class MessageCapture:
                 "avg_latency_ms": avg_latency_ms,
             }
 
-    def get_messages(self, count: int = 0) -> List[Dict[str, Any]]:
+    def get_messages(self, count: int = 0) -> list[dict[str, Any]]:
         """获取报文列表"""
         with self._lock:
             messages = list(self._queue)

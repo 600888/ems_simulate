@@ -6,7 +6,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 EMS_ROOT_DIR = os.environ.get("EMS_ROOT_DIR")
 if EMS_ROOT_DIR:
     ROOT_DIR = EMS_ROOT_DIR
-elif getattr(sys, 'frozen', False):
+elif getattr(sys, "frozen", False):
     ROOT_DIR = os.path.dirname(sys.executable)
 else:
     ROOT_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "../.."))

@@ -3,14 +3,18 @@
 提取遥测、遥信、遥调、遥控的公共属性和方法
 """
 
+import builtins
 from collections import deque
 from typing import Dict, List, Optional, Union
+
 from blinker import Signal
 
 from src.enums.points.change_tracker import (
-    ChangeRecord, ChangeSource,
-    get_current_source, get_current_detail,
-    get_current_client_info
+    ChangeRecord,
+    ChangeSource,
+    get_current_client_info,
+    get_current_detail,
+    get_current_source,
 )
 from src.enums.points.iec104_quality import IEC104QualityDescriptor
 
@@ -40,15 +44,20 @@ class BasePoint:
     ) -> None:
         self._is_updating = False
         self._rtu_addr: int = int(rtu_addr)
-        
+
         # Handle string addresses like IEC61850 paths
-        if isinstance(address, str) and not address.startswith("0x") and not address.isnumeric() and any(c.isalpha() and c.lower() not in 'abcdef' for c in address):
+        if (
+            isinstance(address, str)
+            and not address.startswith("0x")
+            and not address.isnumeric()
+            and any(c.isalpha() and c.lower() not in "abcdef" for c in address)
+        ):
             self._address = address
             self._hex_address = address
         else:
-            self._address: int|str = int(address, 16) if isinstance(address, str) else int(address)
+            self._address: int | str = int(address, 16) if isinstance(address, str) else int(address)
             self._hex_address: str = str(address)
-            
+
         self._func_code: int = int(func_code)
         self._name: str = name
         self._code: str = code
@@ -63,19 +72,19 @@ class BasePoint:
         self._fc: str = fc
 
         self.is_send_signal = False
-        self.related_point: Optional["BasePoint"] = None
-        self.related_value: Dict[int, int] | None = None
+        self.related_point: Optional[BasePoint] = None
+        self.related_value: dict[int, int] | None = None
         self.value_changed = Signal()
         self.is_signed = False
-        self.is_valid: Optional[bool]= None  # 数据是否有效（None:未知, True:成功, False:失败）
-        self.is_locked_by_mapping = False # 是否被映射锁定（如果为True，则模拟器不应修改此值）
+        self.is_valid: Optional[bool] = None  # 数据是否有效（None:未知, True:成功, False:失败）
+        self.is_locked_by_mapping = False  # 是否被映射锁定（如果为True，则模拟器不应修改此值）
 
         # 变更追溯（默认开启）
         self._change_tracking_enabled: bool = True
         self._change_history_maxlen: int = 50
         self._change_history: deque[ChangeRecord] = deque(maxlen=self._change_history_maxlen)
 
-    def list(self) -> list[str|int|bool]:
+    def list(self) -> list[str | int | bool]:
         """返回测点属性列表，供表格显示使用"""
         return [
             self.rtu_addr,
@@ -101,7 +110,7 @@ class BasePoint:
         self._rtu_addr = rtu_addr
 
     @property
-    def address(self) -> int|str:
+    def address(self) -> int | str:
         return self._address
 
     @address.setter
@@ -170,14 +179,12 @@ class BasePoint:
                 self._value = value
                 if isinstance(value, int):
                     self._hex_value = decimal_to_hex_formatted(value)
-                
-                if self._change_tracking_enabled:   # 如果变更追踪已启用
+
+                if self._change_tracking_enabled:  # 如果变更追踪已启用
                     self._record_change(old_value, value)
-                
+
                 if self.is_send_signal:
-                    self.value_changed.send(
-                        self, old_point=self, related_point=self.related_point
-                    )
+                    self.value_changed.send(self, old_point=self, related_point=self.related_point)
             finally:
                 self._is_updating = False
 
@@ -298,7 +305,7 @@ class BasePoint:
         self._change_history.append(record)
 
     @property
-    def change_history(self) -> List[ChangeRecord]:
+    def change_history(self) -> builtins.list[ChangeRecord]:
         """返回变更历史记录列表（从旧到新）"""
         return list(self._change_history)
 

@@ -8,13 +8,13 @@ import concurrent.futures
 import time
 from typing import Any, Dict, List, Optional, Union
 
-from src.device.protocol.base_handler import ServerHandler, ClientHandler
-from src.enums.points.base_point import BasePoint
-from src.enums.point_data import Yc, Yx, Yt, Yk
+from src.config.config import Config
+from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.enums.modbus_def import ProtocolType
 from src.enums.modbus_register import Decode
-from src.enums.points.change_tracker import ChangeSource, track_change, get_current_client_info
-from src.config.config import Config
+from src.enums.point_data import Yc, Yk, Yt, Yx
+from src.enums.points.base_point import BasePoint
+from src.enums.points.change_tracker import ChangeSource, get_current_client_info, track_change
 
 # 线程池用于执行同步阻塞的 Modbus 操作
 _executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="modbus_client")
@@ -27,12 +27,12 @@ class ModbusServerHandler(ServerHandler):
         super().__init__()
         self._server = None
         self._log = log
-        self._slave_id_list: List[int] = []
-        self._points: List[BasePoint] = []
+        self._slave_id_list: list[int] = []
+        self._points: list[BasePoint] = []
 
-    def initialize(self, config: Dict[str, Any]) -> None:
+    def initialize(self, config: dict[str, Any]) -> None:
         """初始化 Modbus 服务器
-        
+
         Args:
             config: 配置字典，包含:
                 - port: 服务端口
@@ -45,7 +45,7 @@ class ModbusServerHandler(ServerHandler):
         port = config.get("port", Config.DEFAULT_PORT)
         self._slave_id_list = config.get("slave_id_list", [1])
         protocol_type = config.get("protocol_type", ProtocolType.ModbusTcp)
-        
+
         # 串口配置
         serial_port = config.get("serial_port", "COM1")
         baudrate = config.get("baudrate", 9600)
@@ -57,15 +57,15 @@ class ModbusServerHandler(ServerHandler):
             self._log.info(f"Modbus 服务端初始化: port={port}, slave_id_list={self._slave_id_list}")
 
         self._server = ModbusServer(
-            logger=self._log, 
-            slave_id_list=self._slave_id_list, 
-            port=port, 
+            logger=self._log,
+            slave_id_list=self._slave_id_list,
+            port=port,
             protocol_type=protocol_type,
             serial_port=serial_port,
             baudrate=baudrate,
             bytesize=bytesize,
             stopbits=stopbits,
-            parity=parity
+            parity=parity,
         )
         # 设置回调函数，用于处理来自 Modbus 客户端的写入请求，记录测点变化日志
         self._server.on_write_callback = self._on_modbus_client_write
@@ -79,7 +79,7 @@ class ModbusServerHandler(ServerHandler):
                 return True
             return False
         except Exception as e:
-            if self._log: 
+            if self._log:
                 self._log.error(f"启动 Modbus 服务器失败: {e}")
             return False
 
@@ -100,9 +100,7 @@ class ModbusServerHandler(ServerHandler):
         """读取测点值"""
         if self._server and hasattr(point, "func_code"):
             slave_id = point.rtu_addr
-            val = self._server.getValueByAddress(
-                point.func_code, slave_id, point.address, point.decode
-            )
+            val = self._server.getValueByAddress(point.func_code, slave_id, point.address, point.decode)
             bit_offset = getattr(point, "bit", None)
             if bit_offset is not None and val is not None:
                 try:
@@ -119,22 +117,15 @@ class ModbusServerHandler(ServerHandler):
             write_val = value
             bit_offset = getattr(point, "bit", None)
             if bit_offset is not None:
-                cur_val = self._server.getValueByAddress(
-                    point.func_code, slave_id, point.address, point.decode
-                )
+                cur_val = self._server.getValueByAddress(point.func_code, slave_id, point.address, point.decode)
                 if cur_val is not None:
                     try:
                         cur_int = int(cur_val)
-                        if int(value):
-                            write_val = cur_int | (1 << bit_offset)
-                        else:
-                            write_val = cur_int & ~(1 << bit_offset)
+                        write_val = cur_int | 1 << bit_offset if int(value) else cur_int & ~(1 << bit_offset)
                     except (ValueError, TypeError):
                         pass
 
-            self._server.setValueByAddress(
-                point.func_code, slave_id, point.address, write_val, point.decode
-            )
+            self._server.setValueByAddress(point.func_code, slave_id, point.address, write_val, point.decode)
             self._log.info(f"写入测点 {point.code} 成功: value={write_val}")
             return True
 
@@ -144,17 +135,17 @@ class ModbusServerHandler(ServerHandler):
         """异步写入测点值（包装同步方法）"""
         return self.write_value(point, value)
 
-    def add_points(self, points: List[BasePoint]) -> None:
+    def add_points(self, points: list[BasePoint]) -> None:
         """添加测点"""
         for p in points:
             if p not in self._points:
                 self._points.append(p)
 
-    def _on_modbus_client_write(self, slave_id: int, fx: int, address: int, values: List[int]) -> None:
+    def _on_modbus_client_write(self, slave_id: int, fx: int, address: int, values: list[int]) -> None:
         """处理来自 Modbus 客户端的写入请求，并同步回设备测点"""
         if not self._points:
             return
-            
+
         # 根据功能码判断是否支持
         if fx not in (5, 6, 15, 16):
             return
@@ -168,7 +159,7 @@ class ModbusServerHandler(ServerHandler):
                 # (线圈 1, 5, 15 -> 修改时 fx 为 5 或 15)
                 is_holding_reg = (point.func_code in (3, 6, 16)) and (fx in (6, 16))
                 is_coil = (point.func_code in (1, 5, 15)) and (fx in (5, 15))
-                
+
                 if is_holding_reg or is_coil:
                     # 计算测点占据的寄存器范围
                     # Decode.get_decode_register_cnt 可以获取寄存器数，向后兼容 hasattr
@@ -177,8 +168,11 @@ class ModbusServerHandler(ServerHandler):
                         point_end_addr = point.address + point.register_cnt - 1
                     else:
                         from src.enums.modbus_register import Decode
-                        point_end_addr = point.address + Decode.get_decode_register_cnt(getattr(point, "decode", "0x41")) - 1
-                    
+
+                        point_end_addr = (
+                            point.address + Decode.get_decode_register_cnt(getattr(point, "decode", "0x41")) - 1
+                        )
+
                     # 判断地址是否有交集
                     if max(point_start_addr, write_start_addr) <= min(point_end_addr, write_end_addr):
                         # 重新读取点位值并设置
@@ -188,17 +182,13 @@ class ModbusServerHandler(ServerHandler):
                             with track_change(ChangeSource.PROTOCOL, f"Modbus客户端远程写入 {point.code}", client_info):
                                 point.value = new_value
 
-    def get_value_by_address(
-        self, func_code: int, slave_id: int, address: int
-    ) -> Any:
+    def get_value_by_address(self, func_code: int, slave_id: int, address: int) -> Any:
         """根据地址获取值"""
         if self._server:
-            return self._server.getValueByAddress(func_code, slave_id, address) # 这里可能需要默认值或外部传入 decode
+            return self._server.getValueByAddress(func_code, slave_id, address)  # 这里可能需要默认值或外部传入 decode
         return 0
 
-    def set_value_by_address(
-        self, func_code: int, slave_id: int, address: int, value: Any
-    ) -> None:
+    def set_value_by_address(self, func_code: int, slave_id: int, address: int, value: Any) -> None:
         """根据地址设置值"""
         if self._server:
             self._server.setValueByAddress(func_code, slave_id, address, value)
@@ -208,7 +198,7 @@ class ModbusServerHandler(ServerHandler):
         """获取底层服务器对象（用于兼容旧代码）"""
         return self._server
 
-    def get_captured_messages(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_captured_messages(self, limit: int = 100) -> list[dict[str, Any]]:
         """获取捕获的报文列表"""
         if self._server:
             return self._server.getCapturedMessages(limit)
@@ -221,7 +211,7 @@ class ModbusServerHandler(ServerHandler):
 
     def get_avg_time(self) -> dict:
         """获取平均收发时间"""
-        if self._server and hasattr(self._server, 'message_capture'):
+        if self._server and hasattr(self._server, "message_capture"):
             return self._server.message_capture.get_avg_time()
         return {}
 
@@ -235,31 +225,31 @@ class ModbusClientHandler(ClientHandler):
         self._log = log
         self._loop = None  # 事件循环引用
         # 重连相关状态
-        self._reconnect_count = 0          # 连续重连尝试次数
+        self._reconnect_count = 0  # 连续重连尝试次数
         self._last_reconnect_attempt = 0.0  # 上次重连尝试时间戳
-        self._max_reconnect_interval = 30   # 最大重连间隔（秒）
+        self._max_reconnect_interval = 30  # 最大重连间隔（秒）
 
-    def initialize(self, config: Dict[str, Any]) -> None:
+    def initialize(self, config: dict[str, Any]) -> None:
         """初始化 Modbus 客户端
-        
+
         Args:
             config: 配置字典，包含:
                 - ip: 服务器 IP
                 - port: 服务器端口
         """
-        from src.proto.pyModbus.client.modbus_client import ModbusClient
         from src.proto.pyModbus.client.async_client import AsyncModbusClient
+        from src.proto.pyModbus.client.modbus_client import ModbusClient
 
         self._config = config
         ip = config.get("ip", "127.0.0.1")
         port = config.get("port", Config.DEFAULT_PORT)
         protocol_type = config.get("protocol_type", ProtocolType.ModbusTcp)
-        
+
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
             self._loop = None
-        
+
         # 串口配置
         serial_port = config.get("serial_port", "COM1")
         baudrate = config.get("baudrate", 9600)
@@ -269,24 +259,18 @@ class ModbusClientHandler(ClientHandler):
 
         # 对于 TCP 客户端，使用专门的异步客户端以避免同一进程中的阻塞
         if protocol_type == ProtocolType.ModbusTcpClient or protocol_type == ProtocolType.ModbusTcp:
-            self._client = AsyncModbusClient(
-                host=ip,
-                port=port,
-                timeout=1.0,
-                retries=1,
-                log=self._log
-            )
+            self._client = AsyncModbusClient(host=ip, port=port, timeout=1.0, retries=1, log=self._log)
         else:
             self._client = ModbusClient(
-                host=ip, 
-                port=port, 
+                host=ip,
+                port=port,
                 protocol_type=protocol_type,
                 serial_port=serial_port,
                 baudrate=baudrate,
                 bytesize=bytesize,
                 stopbits=stopbits,
                 parity=parity,
-                log=self._log
+                log=self._log,
             )
 
     async def start(self) -> bool:
@@ -303,7 +287,7 @@ class ModbusClientHandler(ClientHandler):
         try:
             if self._client:
                 # 检查是否是异步客户端
-                if hasattr(self._client, 'connect') and asyncio.iscoroutinefunction(self._client.connect):
+                if hasattr(self._client, "connect") and asyncio.iscoroutinefunction(self._client.connect):
                     is_connected = await self._client.connect()
                 else:
                     # 同步客户端 (在线程池中执行连接以免阻塞)
@@ -311,7 +295,7 @@ class ModbusClientHandler(ClientHandler):
                         is_connected = await self._loop.run_in_executor(None, self._client.connect)
                     else:
                         is_connected = self._client.connect()
-                
+
                 self._is_running = is_connected
                 if is_connected:
                     self._reconnect_count = 0  # 连接成功，重置退避计数器
@@ -325,7 +309,7 @@ class ModbusClientHandler(ClientHandler):
     async def disconnect(self) -> None:
         """断开连接"""
         if self._client:
-            if hasattr(self._client, 'disconnect') and asyncio.iscoroutinefunction(self._client.disconnect):
+            if hasattr(self._client, "disconnect") and asyncio.iscoroutinefunction(self._client.disconnect):
                 await self._client.disconnect()
             else:
                 self._client.disconnect()
@@ -343,7 +327,7 @@ class ModbusClientHandler(ClientHandler):
         """
         now = time.time()
         # 指数退避：2, 4, 8, 16, 30, 30, 30...
-        min_interval = min(2 ** self._reconnect_count, self._max_reconnect_interval)
+        min_interval = min(2**self._reconnect_count, self._max_reconnect_interval)
         if now - self._last_reconnect_attempt < min_interval:
             return False
 
@@ -353,7 +337,7 @@ class ModbusClientHandler(ClientHandler):
         if self._log:
             self._log.info(
                 f"尝试重连 Modbus 服务器 (第{self._reconnect_count}次, "
-                f"下次间隔{min(2 ** self._reconnect_count, self._max_reconnect_interval)}秒)..."
+                f"下次间隔{min(2**self._reconnect_count, self._max_reconnect_interval)}秒)..."
             )
 
         try:
@@ -384,7 +368,7 @@ class ModbusClientHandler(ClientHandler):
             bool: 重连是否成功
         """
         now = time.time()
-        min_interval = min(2 ** self._reconnect_count, self._max_reconnect_interval)
+        min_interval = min(2**self._reconnect_count, self._max_reconnect_interval)
         if now - self._last_reconnect_attempt < min_interval:
             return False
 
@@ -398,63 +382,62 @@ class ModbusClientHandler(ClientHandler):
             if self._log:
                 self._log.debug(f"跨线程重连失败: {e}")
             return False
+
     @property
     def is_running(self) -> bool:
         """检测客户端的真实连接状态
-        
+
         重写父类方法，实时检测连接状态而不只是返回标志位。
         当服务端主动断开时，这个属性能反映真实状态。
         """
         if not self._is_running:
             return False
-        
+
         if not self._client:
             return False
-        
+
         # 检测 AsyncModbusClient 的连接状态
-        if hasattr(self._client, 'connected'):
+        if hasattr(self._client, "connected"):
             if not self._client.connected:
                 self._is_running = False
                 return False
-            
+
             # 进一步检查底层 pymodbus 客户端的连接状态
-            inner_client = getattr(self._client, 'client', None)
-            if inner_client and hasattr(inner_client, 'connected'):
-                if not inner_client.connected:
-                    self._is_running = False
-                    self._client.connected = False
-                    return False
-        
-        # 检测同步 ModbusClient 的连接状态
-        if hasattr(self._client, 'is_connected'):
-            if not self._client.is_connected():
+            inner_client = getattr(self._client, "client", None)
+            if inner_client and hasattr(inner_client, "connected") and not inner_client.connected:
                 self._is_running = False
+                self._client.connected = False
                 return False
-        
+
+        # 检测同步 ModbusClient 的连接状态
+        if hasattr(self._client, "is_connected") and not self._client.is_connected():
+            self._is_running = False
+            return False
+
         return True
 
     def read_value(self, point: BasePoint) -> Any:
         """读取测点值（同步调用，用于 DataUpdateThread 等线程环境）"""
         if not self._client or not hasattr(point, "func_code"):
             return None
-        
+
         # 先检查连接状态，避免不必要的超时等待
         if not self.is_running:
             # 尝试跨线程自动重连
             if not self._try_reconnect_from_thread():
                 return None
-            
+
         # 检查是否是异步客户端
-        is_async = hasattr(self._client, 'read_value_by_address') and asyncio.iscoroutinefunction(self._client.read_value_by_address)
-        
+        is_async = hasattr(self._client, "read_value_by_address") and asyncio.iscoroutinefunction(
+            self._client.read_value_by_address
+        )
+
         if is_async:
             # 如果是异步客户端，必须跨线程调用到主事件循环
             if self._loop and self._loop.is_running():
                 future = asyncio.run_coroutine_threadsafe(
-                    self._client.read_value_by_address(
-                        point.func_code, point.rtu_addr, point.address, point.decode
-                    ),
-                    self._loop
+                    self._client.read_value_by_address(point.func_code, point.rtu_addr, point.address, point.decode),
+                    self._loop,
                 )
                 try:
                     val = future.result(timeout=1)  # 1秒超时
@@ -467,10 +450,8 @@ class ModbusClientHandler(ClientHandler):
                 return None
         else:
             # 同步客户端直接调用
-            val = self._client.read_value_by_address(
-                point.func_code, point.rtu_addr, point.address, point.decode
-            )
-            
+            val = self._client.read_value_by_address(point.func_code, point.rtu_addr, point.address, point.decode)
+
         bit_offset = getattr(point, "bit", None)
         if bit_offset is not None and val is not None:
             try:
@@ -485,32 +466,34 @@ class ModbusClientHandler(ClientHandler):
             return None
 
         # 连接断开时尝试自动重连
-        if not self.is_running:
-            if not await self._try_reconnect():
-                return None
+        if not self.is_running and not await self._try_reconnect():
+            return None
 
         # 检查是否是异步客户端
-        is_async = hasattr(self._client, 'read_value_by_address') and asyncio.iscoroutinefunction(self._client.read_value_by_address)
+        is_async = hasattr(self._client, "read_value_by_address") and asyncio.iscoroutinefunction(
+            self._client.read_value_by_address
+        )
 
         try:
             if is_async:
                 # 使用 asyncio.wait_for 添加超时保护
                 val = await asyncio.wait_for(
-                    self._client.read_value_by_address(
-                        point.func_code, point.rtu_addr, point.address, point.decode
-                    ),
-                    timeout=1.0  # 1秒超时
+                    self._client.read_value_by_address(point.func_code, point.rtu_addr, point.address, point.decode),
+                    timeout=1.0,  # 1秒超时
                 )
             else:
                 # 同步客户端，放到线程池执行
                 loop = asyncio.get_running_loop()
                 val = await asyncio.wait_for(
                     loop.run_in_executor(
-                        None, # 使用默认执行器
+                        None,  # 使用默认执行器
                         self._client.read_value_by_address,
-                        point.func_code, point.rtu_addr, point.address, point.decode
+                        point.func_code,
+                        point.rtu_addr,
+                        point.address,
+                        point.decode,
                     ),
-                    timeout=1.0  # 1秒超时
+                    timeout=1.0,  # 1秒超时
                 )
             bit_offset = getattr(point, "bit", None)
             if bit_offset is not None and val is not None:
@@ -529,52 +512,46 @@ class ModbusClientHandler(ClientHandler):
             return None
 
     async def read_registers_batch_async(
-        self, 
-        func_code: int, 
-        slave_id: int, 
-        start_address: int, 
-        count: int
-    ) -> List[int]:
+        self, func_code: int, slave_id: int, start_address: int, count: int
+    ) -> list[int]:
         """批量读取连续寄存器（优化方法）
-        
+
         Args:
             func_code: 功能码 (1=线圈, 2=离散输入, 3=保持寄存器, 4=输入寄存器)
             slave_id: 从站地址
             start_address: 起始寄存器地址
             count: 读取的寄存器数量
-            
+
         Returns:
             寄存器值列表，失败返回空列表
         """
         if not self._client:
             return []
-        
+
         if not self.is_running:
             # 连接断开，尝试自动重连
             if not await self._try_reconnect():
                 return []
-        
+
         # 检查是否是异步客户端
-        is_async_client = hasattr(self._client, 'read_holding_registers') and \
-                          asyncio.iscoroutinefunction(self._client.read_holding_registers)
-        
+        is_async_client = hasattr(self._client, "read_holding_registers") and asyncio.iscoroutinefunction(
+            self._client.read_holding_registers
+        )
+
         try:
             if is_async_client:
                 # 异步客户端
                 return await asyncio.wait_for(
-                    self._read_registers_by_func_code_async(func_code, slave_id, start_address, count),
-                    timeout=2.0
+                    self._read_registers_by_func_code_async(func_code, slave_id, start_address, count), timeout=2.0
                 )
             else:
                 # 同步客户端，放到线程池执行
                 loop = asyncio.get_running_loop()
                 return await asyncio.wait_for(
                     loop.run_in_executor(
-                        None,
-                        self._read_registers_by_func_code_sync,
-                        func_code, slave_id, start_address, count
+                        None, self._read_registers_by_func_code_sync, func_code, slave_id, start_address, count
                     ),
-                    timeout=2.0
+                    timeout=2.0,
                 )
         except asyncio.TimeoutError:
             if self._log:
@@ -586,12 +563,8 @@ class ModbusClientHandler(ClientHandler):
             return []
 
     async def _read_registers_by_func_code_async(
-        self,
-        func_code: int,
-        slave_id: int,
-        start_address: int,
-        count: int
-    ) -> List[int]:
+        self, func_code: int, slave_id: int, start_address: int, count: int
+    ) -> list[int]:
         """根据功能码异步读取寄存器"""
         if func_code in (3, 6, 16):  # 保持寄存器
             return await self._client.read_holding_registers(slave_id, start_address, count)
@@ -607,12 +580,8 @@ class ModbusClientHandler(ClientHandler):
             return []
 
     def _read_registers_by_func_code_sync(
-        self,
-        func_code: int,
-        slave_id: int,
-        start_address: int,
-        count: int
-    ) -> List[int]:
+        self, func_code: int, slave_id: int, start_address: int, count: int
+    ) -> list[int]:
         """根据功能码同步读取寄存器"""
         if func_code in (3, 6, 16):  # 保持寄存器
             return self._client.read_holding_registers(slave_id, start_address, count)
@@ -627,17 +596,19 @@ class ModbusClientHandler(ClientHandler):
                 self._log.warning(f"不支持的功能码批量读取: {func_code}")
             return []
 
-
     def write_value(self, point: BasePoint, value: Any) -> bool:
         """写入测点值（同步调用）"""
         if not self._client or not hasattr(point, "func_code"):
             return False
-            
+
         # 检查是否是异步客户端
-        is_async = hasattr(self._client, 'write_value_by_address') and asyncio.iscoroutinefunction(self._client.write_value_by_address)
-        
+        is_async = hasattr(self._client, "write_value_by_address") and asyncio.iscoroutinefunction(
+            self._client.write_value_by_address
+        )
+
         if is_async:
             if self._loop and self._loop.is_running():
+
                 async def _do_write():
                     write_val = value
                     bit_offset = getattr(point, "bit", None)
@@ -648,10 +619,7 @@ class ModbusClientHandler(ClientHandler):
                         if cur_val is not None:
                             try:
                                 cur_int = int(cur_val)
-                                if int(value):
-                                    write_val = cur_int | (1 << bit_offset)
-                                else:
-                                    write_val = cur_int & ~(1 << bit_offset)
+                                write_val = cur_int | 1 << bit_offset if int(value) else cur_int & ~(1 << bit_offset)
                             except (ValueError, TypeError):
                                 pass
                     return await self._client.write_value_by_address(
@@ -680,19 +648,12 @@ class ModbusClientHandler(ClientHandler):
                 if cur_val is not None:
                     try:
                         cur_int = int(cur_val)
-                        if int(value):
-                            write_val = cur_int | (1 << bit_offset)
-                        else:
-                            write_val = cur_int & ~(1 << bit_offset)
+                        write_val = cur_int | 1 << bit_offset if int(value) else cur_int & ~(1 << bit_offset)
                     except (ValueError, TypeError):
                         pass
 
-            self._client.write_value_by_address(
-                point.func_code, point.rtu_addr, point.address, write_val, point.decode
-            )
+            self._client.write_value_by_address(point.func_code, point.rtu_addr, point.address, write_val, point.decode)
             return True
-
-
 
     async def write_value_async(self, point: BasePoint, value: Any) -> bool:
         """异步写入测点值（用于 async 环境）"""
@@ -700,7 +661,9 @@ class ModbusClientHandler(ClientHandler):
             return False
 
         # 检查是否是异步客户端
-        is_async = hasattr(self._client, 'write_value_by_address') and asyncio.iscoroutinefunction(self._client.write_value_by_address)
+        is_async = hasattr(self._client, "write_value_by_address") and asyncio.iscoroutinefunction(
+            self._client.write_value_by_address
+        )
 
         write_val = value
         bit_offset = getattr(point, "bit", None)
@@ -713,10 +676,7 @@ class ModbusClientHandler(ClientHandler):
                 if cur_val is not None:
                     try:
                         cur_int = int(cur_val)
-                        if int(value):
-                            write_val = cur_int | (1 << bit_offset)
-                        else:
-                            write_val = cur_int & ~(1 << bit_offset)
+                        write_val = cur_int | 1 << bit_offset if int(value) else cur_int & ~(1 << bit_offset)
                     except (ValueError, TypeError):
                         pass
 
@@ -724,12 +684,12 @@ class ModbusClientHandler(ClientHandler):
                 self._client.write_value_by_address(
                     point.func_code, point.rtu_addr, point.address, write_val, point.decode
                 ),
-                timeout=2.0
+                timeout=2.0,
             )
         else:
             # 同步客户端，放到线程池执行
             loop = asyncio.get_running_loop()
-            
+
             def _sync_write():
                 w_val = value
                 if bit_offset is not None:
@@ -739,23 +699,15 @@ class ModbusClientHandler(ClientHandler):
                     if cur_val is not None:
                         try:
                             cur_int = int(cur_val)
-                            if int(value):
-                                w_val = cur_int | (1 << bit_offset)
-                            else:
-                                w_val = cur_int & ~(1 << bit_offset)
+                            w_val = cur_int | 1 << bit_offset if int(value) else cur_int & ~(1 << bit_offset)
                         except (ValueError, TypeError):
                             pass
-                self._client.write_value_by_address(
-                    point.func_code, point.rtu_addr, point.address, w_val, point.decode
-                )
+                self._client.write_value_by_address(point.func_code, point.rtu_addr, point.address, w_val, point.decode)
                 return True
-                
-            return await asyncio.wait_for(
-                loop.run_in_executor(None, _sync_write),
-                timeout=2.0
-            )
 
-    def add_points(self, points: List[BasePoint]) -> None:
+            return await asyncio.wait_for(loop.run_in_executor(None, _sync_write), timeout=2.0)
+
+    def add_points(self, points: list[BasePoint]) -> None:
         """添加测点（Modbus 客户端按需读写，无需预先添加）"""
         pass
 
@@ -764,7 +716,7 @@ class ModbusClientHandler(ClientHandler):
         """获取底层客户端对象（用于兼容旧代码）"""
         return self._client
 
-    def get_captured_messages(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_captured_messages(self, limit: int = 100) -> list[dict[str, Any]]:
         """获取捕获的报文列表"""
         if self._client:
             return self._client.getCapturedMessages(limit)
@@ -777,6 +729,6 @@ class ModbusClientHandler(ClientHandler):
 
     def get_avg_time(self) -> dict:
         """获取平均收发时间"""
-        if self._client and hasattr(self._client, 'message_capture'):
+        if self._client and hasattr(self._client, "message_capture"):
             return self._client.message_capture.get_avg_time()
         return {}

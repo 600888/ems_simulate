@@ -7,40 +7,42 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
-from src.enums.point_data import SimulateMethod, Yc, Yx, Yt, Yk, BasePoint
-from src.enums.modbus_def import ProtocolType
-from src.enums.points.change_tracker import ChangeSource, track_change
-from src.device.protocol.base_handler import ClientHandler
-from src.data.service.point_service import PointService
+from src.data.dao.channel_dao import ChannelDao
 from src.data.dao.point_dao import PointDao
+from src.data.service.point_service import PointService
 from src.data.service.yc_service import YcService
-from src.data.service.yx_service import YxService
 from src.data.service.yk_service import YkService
 from src.data.service.yt_service import YtService
-from src.data.dao.channel_dao import ChannelDao
+from src.data.service.yx_service import YxService
+from src.device.protocol.base_handler import ClientHandler
+from src.enums.modbus_def import ProtocolType
+from src.enums.point_data import BasePoint, SimulateMethod, Yc, Yk, Yt, Yx
+from src.enums.points.change_tracker import ChangeSource, track_change
 
 if TYPE_CHECKING:
     from src.device.core.device import Device
 
 # Modbus 客户端协议集合: 这些协议下 Yc/Yx 带有 func_code=01/03 的测点允许客户端写入
-_MODBUS_PROTOCOLS = frozenset({
-    ProtocolType.ModbusTcpClient,
-    ProtocolType.ModbusTcp,
-    ProtocolType.ModbusRtu,
-    ProtocolType.ModbusRtuClient,
-    ProtocolType.ModbusRtuServer,
-    ProtocolType.ModbusRtuOverTcp,
-    ProtocolType.ModbusUdp,
-})
+_MODBUS_PROTOCOLS = frozenset(
+    {
+        ProtocolType.ModbusTcpClient,
+        ProtocolType.ModbusTcp,
+        ProtocolType.ModbusRtu,
+        ProtocolType.ModbusRtuClient,
+        ProtocolType.ModbusRtuServer,
+        ProtocolType.ModbusRtuOverTcp,
+        ProtocolType.ModbusUdp,
+    }
+)
 
 
 class PointOperator:
     """测点操作器
-    
+
     处理测点的增删改查操作，协调内存状态、协议处理器和数据库的一致性。
     """
 
-    def __init__(self, device: "Device") -> None:
+    def __init__(self, device: Device) -> None:
         self._device = device
 
     @property
@@ -61,7 +63,7 @@ class PointOperator:
     def _get_client_info(self) -> str:
         """获取作为客户端时的真实远程服务地址(IP:Port 或 串口号)"""
         if isinstance(self._handler, ClientHandler):
-            if hasattr(self._device, 'serial_port') and self._device.serial_port:
+            if hasattr(self._device, "serial_port") and self._device.serial_port:
                 return self._device.serial_port
             return f"{self._device.ip}:{self._device.port}"
         return ""
@@ -79,11 +81,7 @@ class PointOperator:
     # ===== 测点值读写 =====
 
     def edit_value(
-        self, 
-        point_code: str, 
-        real_value: float, 
-        source: Optional[ChangeSource] = None,
-        detail: Optional[str] = None
+        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None
     ) -> bool:
         """编辑测点值，失败时抛出异常以便上层返回具体原因"""
         point = self._pm.get_point_by_code(point_code)
@@ -92,8 +90,8 @@ class PointOperator:
 
         if isinstance(self._handler, ClientHandler) and isinstance(point, (Yc, Yx)):
             # Modbus 协议: func_code=01(读线圈)/03(读保持寄存器) 的 Yc/Yx 允许客户端写入
-            if not (self._device.protocol_type in _MODBUS_PROTOCOLS and getattr(point, 'func_code', None) in (1, 3)):
-                raise ValueError(f"作为客户端时，只允许对遥控(Yk)和遥调(Yt)类测点进行写入操作")
+            if not (self._device.protocol_type in _MODBUS_PROTOCOLS and getattr(point, "func_code", None) in (1, 3)):
+                raise ValueError("作为客户端时，只允许对遥控(Yk)和遥调(Yt)类测点进行写入操作")
 
         # 如果未指定来源，默认使用 MANUAL
         effective_source = source or ChangeSource.MANUAL
@@ -116,11 +114,7 @@ class PointOperator:
                 raise SystemError(f"测点 {point_code} 协议处理器未配置，无法写入")
 
     async def edit_value_async(
-        self, 
-        point_code: str, 
-        real_value: float,
-        source: Optional[ChangeSource] = None,
-        detail: Optional[str] = None
+        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None
     ) -> bool:
         """异步编辑测点值，失败时抛出异常以便上层返回具体原因"""
         point = self._pm.get_point_by_code(point_code)
@@ -129,8 +123,8 @@ class PointOperator:
 
         if isinstance(self._handler, ClientHandler) and isinstance(point, (Yc, Yx)):
             # Modbus 协议: func_code=01(读线圈)/03(读保持寄存器) 的 Yc/Yx 允许客户端写入
-            if not (self._device.protocol_type in _MODBUS_PROTOCOLS and getattr(point, 'func_code', None) in (1, 3)):
-                raise SystemError(f"作为客户端时，只允许对遥控(Yk)和遥调(Yt)类测点进行操作")
+            if not (self._device.protocol_type in _MODBUS_PROTOCOLS and getattr(point, "func_code", None) in (1, 3)):
+                raise SystemError("作为客户端时，只允许对遥控(Yk)和遥调(Yt)类测点进行操作")
 
         # 如果未指定来源，默认使用 MANUAL
         effective_source = source or ChangeSource.MANUAL
@@ -143,7 +137,7 @@ class PointOperator:
 
             if self._handler:
                 try:
-                    if hasattr(self._handler, 'write_value_async'):
+                    if hasattr(self._handler, "write_value_async"):
                         result = await self._handler.write_value_async(point, point.value)
                     else:
                         result = self._handler.write_value(point, point.value)
@@ -159,12 +153,12 @@ class PointOperator:
                 self._log.error(f"测点 {point_code} 协议处理器未配置，无法写入")
                 raise ValueError(f"测点 {point_code} 协议处理器未配置，无法写入")
 
-    def read_single_point(self, point_code: str) -> Optional[float]:
+    def read_single_point(self, point_code: str) -> float | None:
         """读取单个测点的值
-        
+
         Args:
             point_code: 测点编码
-            
+
         Returns:
             Optional[float]: 读取成功返回值，失败返回None
         """
@@ -183,21 +177,25 @@ class PointOperator:
                     point.value = value
                 point.is_valid = True
                 self._log.info(f"读取测点 {point_code} 成功: {value}")
-                return float(point.value) if getattr(point, 'bit', None) is not None else (point.real_value if hasattr(point, 'real_value') else float(value))
+                return (
+                    float(point.value)
+                    if getattr(point, "bit", None) is not None
+                    else (point.real_value if hasattr(point, "real_value") else float(value))
+                )
             else:
                 point.is_valid = False
                 self._log.info(f"读取测点 {point_code} 失败: {value}")
         except Exception as e:
             self._log.error(f"读取测点 {point_code} 失败: {e}")
             point.is_valid = False
-            raise ValueError(f"读取测点 {point_code} 失败: {e}")
+            raise ValueError(f"读取测点 {point_code} 失败: {e}") from e
 
-    async def read_single_point_async(self, point_code: str) -> Optional[float]:
+    async def read_single_point_async(self, point_code: str) -> float | None:
         """异步读取单个测点的值
-        
+
         Args:
             point_code: 测点编码
-            
+
         Returns:
             Optional[float]: 读取成功返回值，失败返回None
         """
@@ -216,7 +214,11 @@ class PointOperator:
                     point.value = value
                 point.is_valid = True
                 self._log.info(f"异步读取测点 {point_code} 成功: {value}")
-                return float(point.value) if getattr(point, 'bit', None) is not None else (point.real_value if hasattr(point, 'real_value') else float(value))
+                return (
+                    float(point.value)
+                    if getattr(point, "bit", None) is not None
+                    else (point.real_value if hasattr(point, "real_value") else float(value))
+                )
             else:
                 point.is_valid = False
                 self._log.info(f"异步读取测点 {point_code} 失败: {value}")
@@ -236,7 +238,7 @@ class PointOperator:
 
         # 记录是否需要重新同步值到协议处理器
         need_resync = False
-        current_real_value = getattr(point, 'real_value', None)
+        current_real_value = getattr(point, "real_value", None)
 
         # 1. 更新内存配置
         if "name" in metadata and metadata["name"]:
@@ -256,14 +258,13 @@ class PointOperator:
             if old_decode != metadata["decode_code"]:
                 need_resync = True  # 解析码变更需要重新同步
 
-        if isinstance(point, (Yk, Yx)):
-            if "bit" in metadata:
-                old_bit = getattr(point, 'bit', None)
-                val = metadata["bit"]
-                new_bit = int(val) if val is not None and str(val) != "" else None
-                point.bit = new_bit
-                if old_bit != new_bit:
-                    need_resync = True
+        if isinstance(point, (Yk, Yx)) and "bit" in metadata:
+            old_bit = getattr(point, "bit", None)
+            val = metadata["bit"]
+            new_bit = int(val) if val is not None and str(val) != "" else None
+            point.bit = new_bit
+            if old_bit != new_bit:
+                need_resync = True
 
         if isinstance(point, (Yc, Yt)):
             if "mul_coe" in metadata and str(metadata["mul_coe"]) != "":
@@ -279,7 +280,7 @@ class PointOperator:
 
         # 处理 IEC104 类型标识修改
         if "iec_type_id" in metadata:
-            old_iec_type_id = getattr(point, 'iec_type_id', None)
+            old_iec_type_id = getattr(point, "iec_type_id", None)
             new_iec_type_id = metadata["iec_type_id"] if metadata["iec_type_id"] else None
             if old_iec_type_id != new_iec_type_id:
                 point.iec_type_id = new_iec_type_id
@@ -331,7 +332,7 @@ class PointOperator:
                             self._log.warning(f"重新同步测点 {point.code} 值失败: 编辑完配置同步失败")
                 except Exception as e:
                     self._log.warning(f"重新同步测点 {point.code} 值失败: {e}")
-                
+
         # 4. 更新数据库
         try:
             channel_id = self._get_channel_id()
@@ -340,9 +341,7 @@ class PointOperator:
             self._log.error(f"更新测点元数据失败: {e}")
             return False
 
-    def edit_limit(
-        self, point_code: str, min_value_limit: int, max_value_limit: int
-    ) -> bool:
+    def edit_limit(self, point_code: str, min_value_limit: int, max_value_limit: int) -> bool:
         """编辑测点限值"""
         point = self._pm.get_point_by_code(point_code)
         if not point or not isinstance(point, (Yc, Yt)):
@@ -359,7 +358,7 @@ class PointOperator:
             self._log.error(f"更新测点限值失败: {e}")
             return False
 
-    def get_point_data(self, point_code_list: List[str]) -> Optional[BasePoint]:
+    def get_point_data(self, point_code_list: list[str]) -> BasePoint | None:
         """获取测点"""
         for code in point_code_list:
             point = self._pm.get_point_by_code(code)
@@ -369,16 +368,14 @@ class PointOperator:
 
     # ===== 动态测点操作 =====
 
-    def add_point_dynamic(
-        self, channel_id: int, frame_type: int, point_data: dict
-    ) -> bool:
+    def add_point_dynamic(self, channel_id: int, frame_type: int, point_data: dict) -> bool:
         """动态添加测点
-        
+
         Args:
             channel_id: 通道ID
             frame_type: 测点类型 (0=遥测, 1=遥信, 2=遥控, 3=遥调)
             point_data: 测点数据
-            
+
         Returns:
             是否添加成功
         """
@@ -409,17 +406,13 @@ class PointOperator:
             self._pm.add_point(slave_id, point)
 
             # 4. 添加到模拟控制器
-            self._device.simulation_controller.add_point(
-                point, SimulateMethod.Random, 1
-            )
+            self._device.simulation_controller.add_point(point, SimulateMethod.Random, 1)
             self._device.simulation_controller.set_point_status(point, True)
 
             # 5. 添加到协议处理器
             if self._handler:
                 # IEC104 协议需要重新初始化
-                if protocol_type in [
-                    ProtocolType.Iec104Server, ProtocolType.Iec104Client
-                ]:
+                if protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
                     self._device._reinit_protocol_for_iec104()
                 else:
                     self._handler.add_points([point])
@@ -431,32 +424,28 @@ class PointOperator:
             self._log.error(f"动态添加测点失败: {e}")
             return False
 
-    def add_points_dynamic_batch(
-        self, channel_id: int, frame_type: int, points_data_list: List[dict]
-    ) -> bool:
+    def add_points_dynamic_batch(self, channel_id: int, frame_type: int, points_data_list: list[dict]) -> bool:
         """动态批量添加测点
-        
+
         Args:
             channel_id: 通道ID
             frame_type: 测点类型 (0=遥测, 1=遥信, 2=遥控, 3=遥调)
             points_data_list: 测点数据列表
-            
+
         Returns:
             是否添加成功
         """
         try:
             from src.data.dao.point_dao import PointDao
             from src.data.service.yc_service import YcService
-            from src.data.service.yx_service import YxService
             from src.data.service.yk_service import YkService
             from src.data.service.yt_service import YtService
+            from src.data.service.yx_service import YxService
 
             protocol_type = self._device.protocol_type
 
             # 1. 批量写入数据库
-            db_points = PointDao.create_points_batch(
-                channel_id, frame_type, points_data_list
-            )
+            db_points = PointDao.create_points_batch(channel_id, frame_type, points_data_list)
             if not db_points:
                 return False
 
@@ -482,18 +471,14 @@ class PointOperator:
                 self._pm.add_point(slave_id, point)
 
                 # 4. 添加到模拟控制器
-                self._device.simulation_controller.add_point(
-                    point, SimulateMethod.Random, 1
-                )
+                self._device.simulation_controller.add_point(point, SimulateMethod.Random, 1)
                 self._device.simulation_controller.set_point_status(point, True)
 
                 memory_points.append(point)
 
             # 5. 添加到协议处理器
             if self._handler:
-                if protocol_type in [
-                    ProtocolType.Iec104Server, ProtocolType.Iec104Client
-                ]:
+                if protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
                     self._device._reinit_protocol_for_iec104()
                 else:
                     self._handler.add_points(memory_points)
@@ -507,10 +492,10 @@ class PointOperator:
 
     def delete_point_dynamic(self, point_code: str) -> bool:
         """动态删除测点
-        
+
         Args:
             point_code: 测点编码
-            
+
         Returns:
             是否删除成功
         """
@@ -528,30 +513,20 @@ class PointOperator:
                 # 从对应的列表中移除
                 slave_id = point.rtu_addr
                 if isinstance(point, Yc) and slave_id in self._pm.yc_dict:
-                    self._pm.yc_dict[slave_id] = [
-                        p for p in self._pm.yc_dict[slave_id] if p.code != point_code
-                    ]
+                    self._pm.yc_dict[slave_id] = [p for p in self._pm.yc_dict[slave_id] if p.code != point_code]
                 elif isinstance(point, Yx) and slave_id in self._pm.yx_dict:
-                    self._pm.yx_dict[slave_id] = [
-                        p for p in self._pm.yx_dict[slave_id] if p.code != point_code
-                    ]
+                    self._pm.yx_dict[slave_id] = [p for p in self._pm.yx_dict[slave_id] if p.code != point_code]
                 elif isinstance(point, Yk) and slave_id in self._pm.yk_dict:
-                    self._pm.yk_dict[slave_id] = [
-                        p for p in self._pm.yk_dict[slave_id] if p.code != point_code
-                    ]
+                    self._pm.yk_dict[slave_id] = [p for p in self._pm.yk_dict[slave_id] if p.code != point_code]
                 elif isinstance(point, Yt) and slave_id in self._pm.yt_dict:
-                    self._pm.yt_dict[slave_id] = [
-                        p for p in self._pm.yt_dict[slave_id] if p.code != point_code
-                    ]
+                    self._pm.yt_dict[slave_id] = [p for p in self._pm.yt_dict[slave_id] if p.code != point_code]
 
                 # 从 code_map 移除
                 if point_code in self._pm.code_map:
                     del self._pm.code_map[point_code]
 
             # 3. IEC104 协议需要重新初始化（如果需要）
-            if self._device.protocol_type in [
-                ProtocolType.Iec104Server, ProtocolType.Iec104Client
-            ]:
+            if self._device.protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
                 self._device._reinit_protocol_for_iec104()
 
             self._log.info(f"动态删除测点成功: {point_code}")
@@ -573,17 +548,9 @@ class PointOperator:
 
         try:
             if old_point.related_value is None:
-                change_value = (
-                    old_point.value
-                    if isinstance(old_point, Yx)
-                    else old_point.real_value
-                )
+                change_value = old_point.value if isinstance(old_point, Yx) else old_point.real_value
             else:
-                key = (
-                    old_point.value
-                    if isinstance(old_point, Yx)
-                    else int(old_point.real_value)
-                )
+                key = old_point.value if isinstance(old_point, Yx) else int(old_point.real_value)
                 change_value = old_point.related_value.get(key)
                 if change_value is None:
                     return
@@ -592,9 +559,7 @@ class PointOperator:
         except Exception as e:
             self._log.error(f"处理点值变化事件失败: {e}")
 
-    def set_related_point(
-        self, point: BasePoint, related_point: BasePoint
-    ) -> None:
+    def set_related_point(self, point: BasePoint, related_point: BasePoint) -> None:
         """设置测点关联（值变化时联动写入）"""
         if not point or not related_point:
             return

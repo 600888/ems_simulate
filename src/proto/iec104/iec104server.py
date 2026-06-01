@@ -1,9 +1,11 @@
-from typing import List, Dict, Any
-import c104
 import random
 import time
-from src.proto.iec104.log import log
+from typing import Any, Dict, List
+
+import c104
+
 from src.device.core.message.message_capture import MessageCapture
+from src.proto.iec104.log import log
 
 
 class IEC104Server:
@@ -21,7 +23,7 @@ class IEC104Server:
         # 添加一个站
         self.station = self.server.add_station(common_address=common_address)
         # 存储所有监控点的列表
-        self.points: List[c104.Point] = []
+        self.points: list[c104.Point] = []
         # 存储所有命令点的列表
         self.commands = []
         # 关联测点map
@@ -42,7 +44,7 @@ class IEC104Server:
     def _on_receive_raw(self, server: c104.Server, data: bytes) -> None:
         """接收原始报文回调"""
         try:
-             self.message_capture.add_rx(data)
+            self.message_capture.add_rx(data)
         except Exception as e:
             log.error(f"记录接收报文失败: {e}")
 
@@ -53,7 +55,7 @@ class IEC104Server:
         except Exception as e:
             log.error(f"记录发送报文失败: {e}")
 
-    def get_captured_messages(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_captured_messages(self, limit: int = 100) -> list[dict[str, Any]]:
         """获取捕获的报文列表"""
         return self.message_capture.get_messages(limit)
 
@@ -66,9 +68,7 @@ class IEC104Server:
         # 初始化通用命令接收处理函数
         self._on_command_received = self._default_command_handler
 
-    def add_monitoring_point(
-        self, io_address, point_type=c104.Type.M_ME_NC_1, report_ms=1000
-    ):
+    def add_monitoring_point(self, io_address, point_type=c104.Type.M_ME_NC_1, report_ms=1000):
         """
         添加一个监控点到站
         :param io_address: 信息对象地址(IOA)
@@ -77,9 +77,7 @@ class IEC104Server:
         :return: 创建的监控点对象
         """
         # 创建监控点
-        point = self.station.add_point(
-            io_address=io_address, type=point_type, report_ms=report_ms
-        )
+        point = self.station.add_point(io_address=io_address, type=point_type, report_ms=report_ms)
         if point:
             # # 设置自动传输前的回调
             # point.on_before_auto_transmit(callable=self._before_auto_transmit)
@@ -89,9 +87,7 @@ class IEC104Server:
             self.points.append(point)
         return point
 
-    def add_command_point(
-        self, io_address, point_type=c104.Type.C_RC_TA_1, related_point_ioa=None
-    ):
+    def add_command_point(self, io_address, point_type=c104.Type.C_RC_TA_1, related_point_ioa=None):
         """
         添加一个命令点到站
         :param io_address: 信息对象地址(IOA)
@@ -137,9 +133,7 @@ class IEC104Server:
             log.info(f"获取监控点值失败: {e}")
             raise e
 
-    def set_point_value(
-        self, io_address: int, value, frame_type: int = 0
-    ) -> None:
+    def set_point_value(self, io_address: int, value, frame_type: int = 0) -> None:
         """
         设置指定IOA的监控点值
         :param io_address: 信息对象地址(IOA)
@@ -164,9 +158,7 @@ class IEC104Server:
             log.info(f"设置监控点值失败: {e}")
             raise e
 
-    def set_point_quality(
-        self, io_address: int, quality: int, frame_type: int = 0
-    ) -> None:
+    def set_point_quality(self, io_address: int, quality: int, frame_type: int = 0) -> None:
         """
         设置指定IOA的品质描述符
         :param io_address: 信息对象地址(IOA)
@@ -178,13 +170,13 @@ class IEC104Server:
                 for point in self.points:
                     if point.io_address == io_address:
                         point = self.station.get_point(io_address=io_address)
-                        if point and hasattr(point, 'quality'):
+                        if point and hasattr(point, "quality"):
                             point.quality = quality
             elif frame_type == 2 or frame_type == 3:
                 for command in self.commands:
                     if command.io_address == io_address:
                         command = self.station.get_point(io_address=io_address)
-                        if command and hasattr(command, 'quality'):
+                        if command and hasattr(command, "quality"):
                             command.quality = quality
         except Exception as e:
             log.info(f"设置监控点品质失败: {e}")
@@ -201,13 +193,13 @@ class IEC104Server:
                 for point in self.points:
                     if point.io_address == io_address:
                         point = self.station.get_point(io_address=io_address)
-                        if point and hasattr(point, 'quality'):
+                        if point and hasattr(point, "quality"):
                             return int(point.quality)
             elif frame_type == 2 or frame_type == 3:
                 for command in self.commands:
                     if command.io_address == io_address:
                         command = self.station.get_point(io_address=io_address)
-                        if command and hasattr(command, 'quality'):
+                        if command and hasattr(command, "quality"):
                             return int(command.quality)
             return 0
         except Exception as e:
@@ -230,6 +222,7 @@ class IEC104Server:
         :param timeout: 超时时间(秒)，默认30秒
         """
         import asyncio
+
         # 等待客户端连接
         while not self.server.has_active_connections:
             print("等待客户端连接...")
@@ -266,11 +259,7 @@ class IEC104Server:
         :param message: 接收到的消息
         :return: 响应状态(SUCCESS/FAILURE)
         """
-        log.info(
-            "收到命令 - IOA: {0}, 类型: {1}, 值: {2}".format(
-                point.io_address, point.type, point.value
-            )
-        )
+        log.info(f"收到命令 - IOA: {point.io_address}, 类型: {point.type}, 值: {point.value}")
         # 通知应用层回调（如果有注册），传递 IOA、值和帧类型
         if self._on_command_received_callback:
             try:
@@ -293,9 +282,8 @@ class IEC104Server:
         :return: 响应状态(SUCCESS/FAILURE)
         """
         log.info(
-            "{0} 收到步进命令, IOA: {1}, 消息: {2}, 前值: {3}, 真实值: {4}".format(
-                point.type, point.io_address, message, previous_info, point.info
-            )
+            f"{point.type} 收到步进命令, IOA: {point.io_address}, "
+            f"消息: {message}, 前值: {previous_info}, 真实值: {point.info}"
         )
 
         if point.value == c104.Step.LOWER:
@@ -315,11 +303,7 @@ class IEC104Server:
         """
         # 生成随机值模拟数据变化
         point.value = random.random() * 100
-        log.info(
-            "{0} 自动上报前更新值, IOA: {1}, 新值: {2}".format(
-                point.type, point.io_address, point.value
-            )
-        )
+        log.info(f"{point.type} 自动上报前更新值, IOA: {point.io_address}, 新值: {point.value}")
 
     def _default_before_read(self, point: c104.Point) -> None:
         """
@@ -394,11 +378,12 @@ class IEC104Server:
             a_point.on_before_read(callable=self._before_read)
             log.info(f"绑定成功, {a_point.io_address} 关联 {b_point.io_address}")
         else:
-            log.error(f"绑定104关联测点失败")
+            log.error("绑定104关联测点失败")
 
 
 if __name__ == "__main__":
     import asyncio
+
     async def main():
         # 创建服务器实例
         server = IEC104Server(ip="0.0.0.0", port=2404, common_address=1)
@@ -410,5 +395,5 @@ if __name__ == "__main__":
         # 启动服务器并运行主循环
         server.start()
         await server.run(timeout=30)
-        
+
     asyncio.run(main())

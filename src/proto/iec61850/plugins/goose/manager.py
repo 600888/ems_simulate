@@ -6,19 +6,22 @@
 
 from __future__ import annotations
 
-import uuid
 from typing import Any
+import uuid
 
 from ...defs.constants import HAS_IEC61850
 from ...log import log
-from .types import (
-    PublisherConfig, ReceiverConfig, GooseDataSetEntry, IecDataType,
-    GOOSE_MULTICAST_MAC_PREFIX,
-)
-from .publisher import GoosePublisher
-from .subscriber import GooseReceiver, GooseSubscriptionInfo
 from .capture import GooseCaptureEngine
 from .persistence import PersistenceAdapter
+from .publisher import GoosePublisher
+from .subscriber import GooseReceiver, GooseSubscriptionInfo
+from .types import (
+    GOOSE_MULTICAST_MAC_PREFIX,
+    GooseDataSetEntry,
+    IecDataType,
+    PublisherConfig,
+    ReceiverConfig,
+)
 
 
 class GooseResourceManager:
@@ -162,7 +165,7 @@ class GooseResourceManager:
                 except Exception as e:
                     log.warning(f"注册 GSEControlBlock 到 MMS 模型失败: {e}")
 
-                if not skip_model_rebuild and hasattr(server, 'apply_model_changes'):
+                if not skip_model_rebuild and hasattr(server, "apply_model_changes"):
                     try:
                         server.apply_model_changes()
                     except Exception as rebuild_err:
@@ -176,10 +179,7 @@ class GooseResourceManager:
 
     def list_publishers(self) -> list[dict[str, Any]]:
         """列出所有 Publisher 状态"""
-        return [
-            self.get_publisher_status(pid) or {"id": pid, "error": "状态获取失败"}
-            for pid in self._publishers
-        ]
+        return [self.get_publisher_status(pid) or {"id": pid, "error": "状态获取失败"} for pid in self._publishers]
 
     def get_publisher_status(self, publisher_id: str) -> dict[str, Any] | None:
         """获取 Publisher 状态"""
@@ -218,7 +218,9 @@ class GooseResourceManager:
             data_set_ref=config.data_set_ref,
             app_id=config.app_id,
             conf_rev=conf_rev if conf_rev is not None else config.conf_rev,
-            time_allowed_to_live=time_allowed_to_live if time_allowed_to_live is not None else config.time_allowed_to_live,
+            time_allowed_to_live=time_allowed_to_live
+            if time_allowed_to_live is not None
+            else config.time_allowed_to_live,
             dst_mac=config.dst_mac,
             vlan_id=config.vlan_id,
             vlan_prio=config.vlan_prio,
@@ -228,7 +230,6 @@ class GooseResourceManager:
         # 需要重建 publisher (frozen config 不可变，只能重建)
         # 保持 entries 和运行状态
         entries = publisher.get_entries()
-        was_running = publisher.is_running
 
         new_publisher = GoosePublisher(new_config)
         # 恢复数据集条目
@@ -402,10 +403,7 @@ class GooseResourceManager:
 
     def list_receivers(self) -> list[dict[str, Any]]:
         """列出所有 Receiver 状态"""
-        return [
-            self.get_receiver_status(rid) or {"id": rid, "error": "状态获取失败"}
-            for rid in self._receivers
-        ]
+        return [self.get_receiver_status(rid) or {"id": rid, "error": "状态获取失败"} for rid in self._receivers]
 
     def get_receiver_status(self, receiver_id: str) -> dict[str, Any] | None:
         """获取 Receiver 状态"""
@@ -550,7 +548,9 @@ class GooseResourceManager:
                 eng.stop()
         return True
 
-    def get_captured_packets(self, interface: str = "", count: int = 0, filter_app_id: int | None = None) -> list[dict[str, Any]]:
+    def get_captured_packets(
+        self, interface: str = "", count: int = 0, filter_app_id: int | None = None
+    ) -> list[dict[str, Any]]:
         """获取捕获的报文列表"""
         engine = self._capture_engines.get(interface or "__default__")
         if not engine:
@@ -655,14 +655,16 @@ class GooseResourceManager:
                     if effective_server is None:
                         if server_map:
                             pending_srv = next(iter(server_map.values()), None)
-                            if pending_srv and hasattr(pending_srv, '_pending_goose_registrations'):
-                                pending_srv._pending_goose_registrations.append({
-                                    "_type": "dataset",
-                                    "ld_inst": ds_info["ld_inst"],
-                                    "ds_name": ds_info["ds_name"],
-                                    "data_set_ref": ds_info["data_set_ref"],
-                                    "entries": ds_info.get("entries", []),
-                                })
+                            if pending_srv and hasattr(pending_srv, "_pending_goose_registrations"):
+                                pending_srv._pending_goose_registrations.append(
+                                    {
+                                        "_type": "dataset",
+                                        "ld_inst": ds_info["ld_inst"],
+                                        "ds_name": ds_info["ds_name"],
+                                        "data_set_ref": ds_info["data_set_ref"],
+                                        "entries": ds_info.get("entries", []),
+                                    }
+                                )
                                 log.info(f"纯 DataSet '{ds_info.get('ds_name', '')}' 已暂存到待注册队列")
                         continue
                     try:
@@ -782,7 +784,7 @@ class GooseResourceManager:
                                 pending_server = server_map[db_ch_id]
                             else:
                                 pending_server = next(iter(server_map.values()), None)
-                        if pending_server is not None and hasattr(pending_server, '_pending_goose_registrations'):
+                        if pending_server is not None and hasattr(pending_server, "_pending_goose_registrations"):
                             gocb_kwargs["_type"] = "gocb"
                             pending_server._pending_goose_registrations.append(gocb_kwargs)
                             log.info(f"GoCB '{gse_name}' 已暂存到待注册队列 (server={pending_server.ied_name})")
@@ -796,14 +798,14 @@ class GooseResourceManager:
             # ===== 3. 应用模型变更 =====
             if server_map:
                 for sid, srv in server_map.items():
-                    if hasattr(srv, 'apply_model_changes'):
+                    if hasattr(srv, "apply_model_changes"):
                         try:
                             rebuilt = srv.apply_model_changes()
                             if rebuilt:
                                 log.info(f"IEC61850 服务器 (channel={sid}) IedServer 已重建以更新 MMS 命名空间")
                         except Exception as rebuild_err:
                             log.warning(f"重建 IedServer (channel={sid}) 失败: {rebuild_err}")
-            elif server and hasattr(server, 'apply_model_changes'):
+            elif server and hasattr(server, "apply_model_changes"):
                 try:
                     server.apply_model_changes()
                 except Exception as rebuild_err:

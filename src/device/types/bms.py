@@ -1,7 +1,7 @@
+from dataclasses import dataclass
 import random
 import threading
 import time
-from dataclasses import dataclass
 
 from src.device.core.device import Device, DeviceType
 from src.tools.import_point import PointImporter

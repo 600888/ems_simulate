@@ -12,11 +12,9 @@ class PointImporter:
 
     def importDataPointCsv(self) -> None:
         # 读取 modbus_point.csv 数据表
-        with open(self.file_name, "r", encoding="utf-8", newline="") as f:
+        with open(self.file_name, encoding="utf-8", newline="") as f:
             reader = csv.reader(f, skipinitialspace=True)
-            rows = [
-                row for row in reader if any(field.strip() for field in row)
-            ]  # 去除没有数据的空行
+            rows = [row for row in reader if any(field.strip() for field in row)]  # 去除没有数据的空行
             count = 0  # 记录读取到第几行
 
             try:
@@ -47,9 +45,7 @@ class PointImporter:
                 for row in modbus_rows:
                     count += 1
                     # 跳过yc开始标志
-                    if str(row[0]).find("yc") != -1:
-                        continue
-                    elif str(row[0]).find("rtu_addr") != -1:
+                    if str(row[0]).find("yc") != -1 or str(row[0]).find("rtu_addr") != -1:
                         continue
                     elif str(row[0]).find("yx") != -1:
                         is_yx = True
@@ -106,11 +102,9 @@ class PointImporter:
     # 导入电池簇相关测点csv文件
     def importClusterDataPoint(self) -> None:
         # 读取 modbus_point.csv 数据表
-        with open(self.file_name, "r", encoding="utf-8", newline="") as f:
+        with open(self.file_name, encoding="utf-8", newline="") as f:
             reader = csv.reader(f, skipinitialspace=True)
-            rows = [
-                row for row in reader if any(field.strip() for field in row)
-            ]  # 去除没有数据的空行
+            rows = [row for row in reader if any(field.strip() for field in row)]  # 去除没有数据的空行
             count = 0  # 记录读取到第几行
             slave_cnt = 0  # 记录从机数量
             try:
@@ -133,9 +127,7 @@ class PointImporter:
                 for row in modbus_rows:
                     count += 1
                     # 跳过yc开始标志
-                    if str(row[0]).find("yc") != -1:
-                        continue
-                    elif str(row[0]).find("rtu_addr") != -1:
+                    if str(row[0]).find("yc") != -1 or str(row[0]).find("rtu_addr") != -1:
                         continue
                     elif str(row[0]).find("yx") != -1:
                         is_yx = True

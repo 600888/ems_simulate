@@ -1,12 +1,26 @@
 # 更新日志
 ## 未发布的更新
-**新增 Tauri 2.x 桌面客户端支持**（Phase 1 概念验证）
+### 代码质量
+1. 引入 Ruff (v0.15.15) 替代 pylint 1.4.3，作为统一 Python linter + formatter
+2. 创建 `pyproject.toml` 作为 Python 工具统一配置入口
+3. 启用 12 个规则组：F, E, W, I, UP, N, YTT, RSE, B, SIM, ARG, PTH
+4. 全项目 230 个 Python 文件完成格式化基准（`ruff format`）
+5. 修复 672 个代码问题：
+   - 181 个 import 排序重排
+   - 537 个 UP 语法升级（`typing.Dict` → `dict`, `typing.List` → `list` 等）
+   - 10 个 F 类关键错误（未定义名称 `Dlt645`/`Yc`/`manager` 等真实 Bug）
+   - 17 个 E 类风格错误（行超长、bare except 等）
+   - 7 个 B 类 Bug 模式（异常链丢失、未使用抽象方法等）
+   - 其他 N/RSE/YTT/SIM 规则修复
+
+### 新增 Tauri 2.x 桌面客户端支持**（Phase 1 概念验证）
     - Rust 核心：窗口管理、系统托盘、菜单
     - Python 后端生命周期管理（启动/健康检查/优雅关闭）
     - 后端新增 `/api/health` 健康检查端点
     - 前端新增 `@tauri-apps/api` 原生能力集成
     - Windows `.msi` / Linux `.deb` / `.AppImage` 打包支持
     - 安装包体积预估 ~40MB（相比 Electron 方案减少 60%+）
+### 主要更新
 1. 增加IEC61850客户端导出模型功能，支持icd、xml、json、csv、text等格式
 2. 优化程序初始化逻辑，大幅提升程序启动速度
 3. 完成界面基础设置功能（屏幕缩放比例、中英文切换）

@@ -1,20 +1,18 @@
-import struct
-from typing import List, Optional, Union
-from pymodbus.client import ModbusTcpClient, ModbusSerialClient
-from pymodbus.exceptions import ModbusException
-from src.enums.modbus_register import Decode, DecodeType
-
 # from pymodbus.pdu import ModbusRequest
 from datetime import datetime
-from src.enums.modbus_def import ProtocolType
+import struct
+from typing import List, Optional, Union
+
+from pymodbus.client import ModbusSerialClient, ModbusTcpClient
+from pymodbus.exceptions import ModbusException
+
 from src.device.core.message.message_capture import MessageCapture
+from src.enums.modbus_def import ProtocolType
+from src.enums.modbus_register import Decode, DecodeType
 
 # 从子模块导入捕获客户端
-from .capture import (
-    ModbusTcpClientWithCapture,
-    ModbusSerialClientWithCapture,
-    ModbusRtuOverTcpClientWithCapture
-)
+from .capture import ModbusRtuOverTcpClientWithCapture, ModbusSerialClientWithCapture, ModbusTcpClientWithCapture
+
 
 class ModbusClient:
     """
@@ -58,7 +56,7 @@ class ModbusClient:
         self.client = None
         self.connected = False
         self.log = log
-        self.message_capture = MessageCapture() # 报文捕获器
+        self.message_capture = MessageCapture()  # 报文捕获器
 
     def getCapturedMessages(self, limit: int = 100):
         """获取捕获的报文"""
@@ -87,19 +85,15 @@ class ModbusClient:
         try:
             if self.protocol_type == ProtocolType.ModbusTcp or self.protocol_type == ProtocolType.ModbusTcpClient:
                 self.client = ModbusTcpClientWithCapture(
-                    host=self.host, 
-                    port=self.port, 
+                    host=self.host,
+                    port=self.port,
                     message_capture=self.message_capture,
                     timeout=1.0,  # 减少超时时间，避免长时间阻塞
-                    retries=1     # 减少重试次数
+                    retries=1,  # 减少重试次数
                 )
             elif self.protocol_type == ProtocolType.ModbusRtuOverTcp:
                 self.client = ModbusRtuOverTcpClientWithCapture(
-                    host=self.host, 
-                    port=self.port, 
-                    message_capture=self.message_capture,
-                    timeout=1.0,
-                    retries=1
+                    host=self.host, port=self.port, message_capture=self.message_capture, timeout=1.0, retries=1
                 )
             elif self.protocol_type in (ProtocolType.ModbusRtu, ProtocolType.ModbusRtuClient):
                 self.client = ModbusSerialClientWithCapture(
@@ -108,7 +102,7 @@ class ModbusClient:
                     bytesize=self.bytesize,
                     parity=self.parity,
                     stopbits=self.stopbits,
-                    message_capture=self.message_capture
+                    message_capture=self.message_capture,
                 )
             else:
                 if self.log:
@@ -117,14 +111,14 @@ class ModbusClient:
                     print(f"Unsupported protocol type: {self.protocol_type}")
 
             self.connected = self.client.connect()
-            
+
             # 双重检查：确认 socket 是否真正建立
             if self.connected:
                 if self.log:
                     self.log.info(f"Modbus 客户端已连接到 {self.host}:{self.port}")
                 # 某些版本的 pymodbus 可能在连接失败时仍返回 True (因为启用了重试机制)
                 # 这里强制检查 socket 对象是否创建
-                socket_obj = getattr(self.client, 'socket', None)
+                socket_obj = getattr(self.client, "socket", None)
                 if socket_obj is None:
                     if self.log:
                         self.log.error("Modbus client connect() returned True but socket is None")
@@ -149,7 +143,7 @@ class ModbusClient:
             self.client.close()
         self.connected = False
 
-    def read_coils(self, slave_id: int, address: int, count: int = 1) -> List[bool]:
+    def read_coils(self, slave_id: int, address: int, count: int = 1) -> list[bool]:
         """
         读取线圈状态 (功能码 0x01)
 
@@ -181,9 +175,7 @@ class ModbusClient:
                 print(f"Modbus error reading coils: {e}")
             return []
 
-    def read_discrete_inputs(
-        self, slave_id: int, address: int, count: int = 1
-    ) -> List[bool]:
+    def read_discrete_inputs(self, slave_id: int, address: int, count: int = 1) -> list[bool]:
         """
         读取离散输入 (功能码 0x02)
 
@@ -215,9 +207,7 @@ class ModbusClient:
                 print(f"Modbus error reading discrete inputs: {e}")
             return []
 
-    def read_holding_registers(
-        self, slave_id: int, address: int, count: int = 1
-    ) -> List[int]:
+    def read_holding_registers(self, slave_id: int, address: int, count: int = 1) -> list[int]:
         """
         读取保持寄存器 (功能码 0x03)
 
@@ -240,10 +230,8 @@ class ModbusClient:
             # 调试日志
             if self.log:
                 self.log.debug(f"读取保持寄存器: slave={slave_id}, addr={address}, count={count}")
-            
-            response = self.client.read_holding_registers(
-                address, count=count, device_id=slave_id
-            )
+
+            response = self.client.read_holding_registers(address, count=count, device_id=slave_id)
             if not response.isError():
                 return response.registers
             else:
@@ -259,9 +247,7 @@ class ModbusClient:
                 print(f"Modbus error reading holding registers: {e}")
             return []
 
-    def read_input_registers(
-        self, slave_id: int, address: int, count: int = 1
-    ) -> List[int]:
+    def read_input_registers(self, slave_id: int, address: int, count: int = 1) -> list[int]:
         """
         读取输入寄存器 (功能码 0x04)
 
@@ -352,9 +338,7 @@ class ModbusClient:
                 print(f"Modbus error writing single register: {e}")
             return False
 
-    def write_multiple_coils(
-        self, slave_id: int, address: int, values: List[bool]
-    ) -> bool:
+    def write_multiple_coils(self, slave_id: int, address: int, values: list[bool]) -> bool:
         """
         写入多个线圈 (功能码 0x0F)
 
@@ -382,9 +366,7 @@ class ModbusClient:
                 print(f"Modbus error writing multiple coils: {e}")
             return False
 
-    def write_multiple_registers(
-        self, slave_id: int, address: int, values: List[int]
-    ) -> bool:
+    def write_multiple_registers(self, slave_id: int, address: int, values: list[int]) -> bool:
         """
         写入多个保持寄存器 (功能码 0x10)
 
@@ -478,7 +460,7 @@ class ModbusClient:
             if info.is_signed and value > 0x7FFF:
                 value -= 0x10000
             return value
-        
+
         # 使用统一的解包方法
         return Decode.unpack_value(info.pack_format, packed)
 
@@ -510,10 +492,10 @@ class ModbusClient:
         # 获取解析码完整信息
         info = Decode.get_info(decode)
         register_cnt = info.register_cnt
-        
+
         # 使用统一的打包方法
         packed = Decode.pack_value(info.pack_format, value)
-        
+
         # 将打包后的字节转换为寄存器值列表
         if register_cnt == 4:  # 64位
             registers = list(struct.unpack(">HHHH" if info.is_big_endian else "<HHHH", packed))

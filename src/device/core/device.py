@@ -14,39 +14,40 @@ Device 类 - 设备模拟器核心类 (Facade)
 
 import asyncio
 import time
-from typing import Any, Literal, Union, Optional, Dict, List, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-from src.config.log.device_logger import get_device_logger, DeviceLoggerManager
-from src.device.data_update.data_update_thread import DataUpdateThread
-from src.device.simulator.simulation_controller import SimulationController
-from src.device.core.point.point_manager import PointManager
+from src.config.log.device_logger import DeviceLoggerManager, get_device_logger
 from src.device.core.data.data_exporter import DataExporter
 from src.device.core.data.data_reader import DataReader
-from src.device.core.point.point_operator import PointOperator
-from src.device.core.slave_manager import SlaveManager
 from src.device.core.message.message_formatter import MessageFormatter
-from src.device.protocol.base_handler import ProtocolHandler, ServerHandler, ClientHandler
+
 # 协议处理器延迟导入，减少启动时间
 # from src.device.protocol.modbus_handler import ModbusServerHandler, ModbusClientHandler
 # from src.device.protocol.iec104_handler import IEC104ServerHandler, IEC104ClientHandler
 # from src.device.protocol.dlt645_handler import DLT645ServerHandler, DLT645ClientHandler
 # from src.device.protocol.iec61850_handler import IEC61850ServerHandler, IEC61850ClientHandler
 from src.device.core.point.point_calculator import PointCalculator
-from src.enums.point_data import SimulateMethod, Yc, Yx, Yt, Yk, DeviceType, BasePoint
+from src.device.core.point.point_manager import PointManager
+from src.device.core.point.point_operator import PointOperator
+from src.device.core.slave_manager import SlaveManager
+from src.device.data_update.data_update_thread import DataUpdateThread
+from src.device.protocol.base_handler import ClientHandler, ProtocolHandler, ServerHandler
+from src.device.simulator.simulation_controller import SimulationController
 from src.enums.modbus_def import ProtocolType
+from src.enums.point_data import BasePoint, DeviceType, SimulateMethod, Yc, Yk, Yt, Yx
 from src.enums.points.change_tracker import ChangeSource
 
 
 class Device:
     """设备模拟器核心类 (Facade)
-    
+
     作为统一入口，将各类操作委托给专用组件处理。
     所有公开方法签名保持向后兼容。
     """
 
     def __init__(self, protocol_type: ProtocolType = ProtocolType.ModbusTcp) -> None:
         """初始化设备实例
-        
+
         Args:
             protocol_type: 协议类型
         """
@@ -76,7 +77,7 @@ class Device:
         self.point_operator: PointOperator = PointOperator(self)
         self.slave_manager: SlaveManager = SlaveManager(self)
         self.message_formatter: MessageFormatter = MessageFormatter(self)
-        
+
         # 测点计算器
         self.point_calculator: PointCalculator = PointCalculator(self)
 
@@ -86,28 +87,26 @@ class Device:
 
         # 其他
         self.plan: Optional[Any] = None
-        self.data_update_thread: DataUpdateThread = DataUpdateThread(
-            task=self.update_data
-        )
+        self.data_update_thread: DataUpdateThread = DataUpdateThread(task=self.update_data)
 
     # ===== 只读属性 =====
     @property
-    def yc_dict(self) -> Dict[int, List[Yc]]:
+    def yc_dict(self) -> dict[int, list[Yc]]:
         """获取遥测字典"""
         return self.point_manager.yc_dict
 
     @property
-    def yx_dict(self) -> Dict[int, List[Yx]]:
+    def yx_dict(self) -> dict[int, list[Yx]]:
         """获取遥信字典"""
         return self.point_manager.yx_dict
 
     @property
-    def slave_id_list(self) -> List[int]:
+    def slave_id_list(self) -> list[int]:
         """获取从机 ID 列表"""
         return self.point_manager.slave_id_list
 
     @property
-    def codeToDataPointMap(self) -> Dict[str, BasePoint]:
+    def codeToDataPointMap(self) -> dict[str, BasePoint]:
         """获取编码到测点的映射"""
         return self.point_manager.code_map
 
@@ -127,7 +126,7 @@ class Device:
 
     def is_protocol_running(self) -> bool:
         """统一获取协议运行状态
-        
+
         Returns:
             bool: 协议是否正在运行
         """
@@ -139,10 +138,10 @@ class Device:
 
     def _create_protocol_handler(self) -> ProtocolHandler:
         """根据协议类型创建处理器（延迟导入协议模块）"""
-        from src.device.protocol.modbus_handler import ModbusServerHandler, ModbusClientHandler
-        from src.device.protocol.iec104_handler import IEC104ServerHandler, IEC104ClientHandler
-        from src.device.protocol.dlt645_handler import DLT645ServerHandler, DLT645ClientHandler
-        from src.device.protocol.iec61850_handler import IEC61850ServerHandler, IEC61850ClientHandler
+        from src.device.protocol.dlt645_handler import DLT645ClientHandler, DLT645ServerHandler
+        from src.device.protocol.iec104_handler import IEC104ClientHandler, IEC104ServerHandler
+        from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+        from src.device.protocol.modbus_handler import ModbusClientHandler, ModbusServerHandler
 
         handler_map = {
             ProtocolType.ModbusTcp: lambda: ModbusServerHandler(self.log),
@@ -186,18 +185,14 @@ class Device:
 
         # IEC61850 客户端: 注册测点发现回调
         if self.protocol_type == ProtocolType.Iec61850Client:
-            self.protocol_handler.set_on_points_discovered(
-                self._on_iec61850_points_discovered
-            )
+            self.protocol_handler.set_on_points_discovered(self._on_iec61850_points_discovered)
 
         # 添加测点
         all_points = self.point_manager.get_all_points()
         self.protocol_handler.add_points(all_points)
 
     # 初始化方法
-    def initModbusTcpServer(
-        self, port: int, protocol_type: ProtocolType = ProtocolType.ModbusTcp
-    ) -> None:
+    def initModbusTcpServer(self, port: int, protocol_type: ProtocolType = ProtocolType.ModbusTcp) -> None:
         """初始化 Modbus TCP 服务器"""
         self.port = port
         self.protocol_type = protocol_type
@@ -285,14 +280,17 @@ class Device:
         if goose_subs:
             try:
                 from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
+
                 gm = GooseResourceManager()
                 sub_list = []
                 for g in goose_subs:
-                    sub_list.append({
-                        "go_cb_ref": g.get("go_cb_ref", ""),
-                        "app_id": g.get("app_id"),
-                        "description": f"自动发现: {g.get('data_set_ref', '')}",
-                    })
+                    sub_list.append(
+                        {
+                            "go_cb_ref": g.get("go_cb_ref", ""),
+                            "app_id": g.get("app_id"),
+                            "description": f"自动发现: {g.get('data_set_ref', '')}",
+                        }
+                    )
                 gm.create_receiver(interface="", subscriptions=sub_list)
                 self.log.info(f"已自动创建 GOOSE 订阅: {len(sub_list)} 个 (interface 为空，启动前请先配置网卡)")
             except Exception as e:
@@ -303,7 +301,7 @@ class Device:
                 continue
             addr = dp["address"]
             ft = dp["frame_type"]
-            ref = dp["ref"]
+            dp["ref"]
 
             # 检查是否已存在（根据 address + frame_type 去重）
             existing = self.point_manager.find_point_by_address_and_type(addr, ft)
@@ -313,7 +311,7 @@ class Device:
             # 根据 frame_type 创建对应的 BasePoint 对象
             # 优先使用 code 字段（短编码），否则回退到 address
             auto_code = dp.get("code", str(addr))
-            ft_label = frame_type_names.get(ft, str(ft))
+            frame_type_names.get(ft, str(ft))
             auto_name = dp.get("name", dp.get("code", str(addr)))
             point_fc = dp.get("fc", "")
 
@@ -368,9 +366,7 @@ class Device:
                 self.point_manager.add_point(slave_id, point)
 
                 # 添加到模拟控制器
-                self.simulation_controller.add_point(
-                    point, SimulateMethod.Random, 1
-                )
+                self.simulation_controller.add_point(point, SimulateMethod.Random, 1)
                 self.simulation_controller.set_point_status(point, True)
 
                 added_count += 1
@@ -440,7 +436,7 @@ class Device:
         必须使用客户端连接时所在的事件循环，否则 async 操作会失败。
         """
         if self.protocol_handler and isinstance(self.protocol_handler, ClientHandler):
-            loop = getattr(self.protocol_handler, '_loop', None)
+            loop = getattr(self.protocol_handler, "_loop", None)
             if loop:
                 return loop
         return None
@@ -452,19 +448,15 @@ class Device:
             yx_list = self.yx_dict.get(slave_id, [])
             await self.getSlaveRegisterValuesAsync(yc_list, yx_list)
 
-    def getSlaveRegisterValues(
-        self, yc_list: List[Yc], yx_list: List[Yx]
-    ) -> None:
+    def getSlaveRegisterValues(self, yc_list: list[Yc], yx_list: list[Yx]) -> None:
         """从协议处理器获取数据值"""
         self.data_reader.get_slave_values(yc_list, yx_list)
 
     async def getSlaveRegisterValuesAsync(
-        self, yc_list: List[Yc], yx_list: List[Yx], interval_ms: int = 0
-    ) -> Tuple[int, int]:
+        self, yc_list: list[Yc], yx_list: list[Yx], interval_ms: int = 0
+    ) -> tuple[int, int]:
         """从协议处理器获取数据值（异步版，支持批量读取优化）"""
-        return await self.data_reader.get_slave_values_async(
-            yc_list, yx_list, interval_ms
-        )
+        return await self.data_reader.get_slave_values_async(yc_list, yx_list, interval_ms)
 
     # ===== 自动读取控制 =====
 
@@ -480,13 +472,13 @@ class Device:
         """检查自动读取是否正在运行"""
         return self.data_update_thread.is_alive()
 
-    async def single_read(self, event_emitter=None, interval_ms: int = 0) -> Dict[str, int]:
+    async def single_read(self, event_emitter=None, interval_ms: int = 0) -> dict[str, int]:
         """执行单次读取操作
-        
+
         Args:
             event_emitter: 进度事件发送器
             interval_ms: 批量读取时每次请求之间的间隔(毫秒)
-            
+
         Returns:
             Dict[str, int]: {'success': int, 'fail': int}
         """
@@ -497,13 +489,11 @@ class Device:
             yc_list = self.yc_dict.get(slave_id, [])
             yx_list = self.yx_dict.get(slave_id, [])
 
-            s_count, f_count = await self.getSlaveRegisterValuesAsync(
-                yc_list, yx_list, interval_ms=interval_ms
-            )
+            s_count, f_count = await self.getSlaveRegisterValuesAsync(yc_list, yx_list, interval_ms=interval_ms)
             success_total += s_count
             fail_total += f_count
 
-        return {'success': success_total, 'fail': fail_total}
+        return {"success": success_total, "fail": fail_total}
 
     # ===== 测点操作（委托给 PointOperator） =====
 
@@ -516,21 +506,13 @@ class Device:
         return await self.point_operator.read_single_point_async(point_code)
 
     def editPointData(
-        self, 
-        point_code: str, 
-        real_value: float,
-        source: Optional[ChangeSource] = None,
-        detail: Optional[str] = None
+        self, point_code: str, real_value: float, source: Optional[ChangeSource] = None, detail: Optional[str] = None
     ) -> bool:
         """编辑测点值"""
         return self.point_operator.edit_value(point_code, real_value, source, detail)
 
     async def edit_point_data_async(
-        self, 
-        point_code: str, 
-        real_value: float,
-        source: Optional[ChangeSource] = None,
-        detail: Optional[str] = None
+        self, point_code: str, real_value: float, source: Optional[ChangeSource] = None, detail: Optional[str] = None
     ) -> bool:
         """异步编辑测点值"""
         return await self.point_operator.edit_value_async(point_code, real_value, source, detail)
@@ -539,13 +521,11 @@ class Device:
         """编辑测点元数据"""
         return self.point_operator.edit_metadata(point_code, metadata)
 
-    def edit_point_limit(
-        self, point_code: str, min_value_limit: int, max_value_limit: int
-    ) -> bool:
+    def edit_point_limit(self, point_code: str, min_value_limit: int, max_value_limit: int) -> bool:
         """编辑测点限值"""
         return self.point_operator.edit_limit(point_code, min_value_limit, max_value_limit)
 
-    def get_point_data(self, point_code_list: List[str]) -> Optional[BasePoint]:
+    def get_point_data(self, point_code_list: list[str]) -> Optional[BasePoint]:
         """获取测点"""
         return self.point_operator.get_point_data(point_code_list)
 
@@ -559,13 +539,9 @@ class Device:
         """动态添加测点"""
         return self.point_operator.add_point_dynamic(channel_id, frame_type, point_data)
 
-    def add_points_dynamic_batch(
-        self, channel_id: int, frame_type: int, points_data_list: List[dict]
-    ) -> bool:
+    def add_points_dynamic_batch(self, channel_id: int, frame_type: int, points_data_list: list[dict]) -> bool:
         """动态批量添加测点"""
-        return self.point_operator.add_points_dynamic_batch(
-            channel_id, frame_type, points_data_list
-        )
+        return self.point_operator.add_points_dynamic_batch(channel_id, frame_type, points_data_list)
 
     def delete_point_dynamic(self, point_code: str) -> bool:
         """动态删除测点"""
@@ -605,15 +581,11 @@ class Device:
         except ValueError:
             self.log.error(f"无效的模拟方法: {simulate_method}")
 
-    def setSinglePointSimulateMethod(
-        self, point_code: str, simulate_method: Union[str, SimulateMethod]
-    ) -> bool:
+    def setSinglePointSimulateMethod(self, point_code: str, simulate_method: Union[str, SimulateMethod]) -> bool:
         """设置单个点的模拟方法"""
         try:
             method = SimulateMethod(simulate_method)
-            return self.simulation_controller.set_single_point_simulate_method(
-                point_code, method
-            )
+            return self.simulation_controller.set_single_point_simulate_method(point_code, method)
         except ValueError:
             self.log.error(f"无效的模拟方法: {simulate_method}")
             return False
@@ -621,15 +593,11 @@ class Device:
     def setSinglePointStep(self, point_code: str, step: int) -> bool:
         return self.simulation_controller.set_single_point_step(point_code, step)
 
-    def getPointInfo(self, point_code: str) -> Dict:
+    def getPointInfo(self, point_code: str) -> dict:
         return self.simulation_controller.get_point_info(point_code)
 
-    def setPointSimulationRange(
-        self, point_code: str, min_value: float, max_value: float
-    ) -> bool:
-        return self.simulation_controller.set_point_simulation_range(
-            point_code, min_value, max_value
-        )
+    def setPointSimulationRange(self, point_code: str, min_value: float, max_value: float) -> bool:
+        return self.simulation_controller.set_point_simulation_range(point_code, min_value, max_value)
 
     def startSimulation(self) -> None:
         self.simulation_controller.start_simulation()
@@ -652,9 +620,7 @@ class Device:
 
     # ===== 数据导入导出（委托给 DataExporter） =====
 
-    def importDataPointFromChannel(
-        self, channel_id: int, protocol_type: ProtocolType = ProtocolType.ModbusTcp
-    ) -> None:
+    def importDataPointFromChannel(self, channel_id: int, protocol_type: ProtocolType = ProtocolType.ModbusTcp) -> None:
         """从通道导入测点"""
         self.protocol_type = protocol_type
         self.point_manager.import_from_db(channel_id, protocol_type)
@@ -673,7 +639,7 @@ class Device:
     def exportDataPointXlsx(self, file_path: str) -> None:
         self.data_exporter.export_xlsx(file_path)
 
-    def get_table_head(self) -> List[str]:
+    def get_table_head(self) -> list[str]:
         return self.data_exporter.get_table_head()
 
     def get_table_data(
@@ -682,10 +648,10 @@ class Device:
         name: Optional[str] = None,
         page_index: Optional[int] = 1,
         page_size: Optional[int] = 10,
-        point_types: Optional[List[int]] = None,
+        point_types: Optional[list[int]] = None,
         order_by: Optional[str] = None,
         order_direction: Optional[str] = None,
-    ) -> tuple[List[List[str]], int]:
+    ) -> tuple[list[list[str]], int]:
         # 对于 IEC104 客户端，在获取表格数据前同步 c104.Point 的值到内部点
         if self.protocol_type == ProtocolType.Iec104Client and self.protocol_handler:
             if self.protocol_handler.is_running:
@@ -701,8 +667,14 @@ class Device:
         ]
 
         return self.data_exporter.get_table_data(
-            slave_id, name, page_index, page_size, point_types, mask_error=mask_error,
-            order_by=order_by, order_direction=order_direction
+            slave_id,
+            name,
+            page_index,
+            page_size,
+            point_types,
+            mask_error=mask_error,
+            order_by=order_by,
+            order_direction=order_direction,
         )
 
     def _sync_iec104_client_values(self, slave_id: int) -> None:
@@ -711,7 +683,7 @@ class Device:
 
     # ===== 报文捕获（委托给 MessageFormatter） =====
 
-    def get_messages(self, limit: Optional[int] = None) -> List[dict]:
+    def get_messages(self, limit: Optional[int] = None) -> list[dict]:
         """获取报文历史记录"""
         return self.message_formatter.get_messages(limit)
 
@@ -728,20 +700,18 @@ class Device:
     @property
     def log(self):
         """获取设备日志器（延迟初始化）
-        
+
         使用 loguru 的 bind() 模式，每个设备有独立的日志上下文。
         日志文件自动路由到 log/{device_name}/{device_name}.log
         """
         if self._logger is None:
             device_name = self.name or "unknown_device"
-            self._logger = get_device_logger(
-                device_name, auto_register=self._logger_initialized
-            )
+            self._logger = get_device_logger(device_name, auto_register=self._logger_initialized)
         return self._logger
 
     def initLog(self) -> None:
         """初始化日志
-        
+
         注册设备日志处理器，创建独立的日志文件。
         调用后该设备的日志将写入 log/{device_name}/{device_name}.log
         """
@@ -766,7 +736,7 @@ class Device:
         self.name = name
 
     @staticmethod
-    def frame_type_dict() -> Dict[int, str]:
+    def frame_type_dict() -> dict[int, str]:
         return PointManager.frame_type_dict()
 
     @staticmethod
@@ -787,9 +757,7 @@ class Device:
         """处理测点值变化事件"""
         self.point_operator.on_point_value_changed(sender, **extra)
 
-    def setRelatedPoint(
-        self, point: BasePoint, related_point: BasePoint
-    ) -> None:
+    def setRelatedPoint(self, point: BasePoint, related_point: BasePoint) -> None:
         """设置测点关联"""
         self.point_operator.set_related_point(point, related_point)
 

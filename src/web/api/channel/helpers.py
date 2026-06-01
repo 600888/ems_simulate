@@ -1,12 +1,12 @@
 """通道模块 - 公共辅助函数"""
 
-from src.device.factory.general_device_builder import GeneralDeviceBuilder
-from src.device.types.general_device import GeneralDevice
-from src.device.types.pcs import Pcs
-from src.device.types.circuit_breaker import CircuitBreaker
-from src.enums.modbus_def import ProtocolType
 from src.config.config import Config
 from src.data.service.channel_service import ChannelService
+from src.device.factory.general_device_builder import GeneralDeviceBuilder
+from src.device.types.circuit_breaker import CircuitBreaker
+from src.device.types.general_device import GeneralDevice
+from src.device.types.pcs import Pcs
+from src.enums.modbus_def import ProtocolType
 from src.web.log import log
 
 
@@ -69,7 +69,11 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
     builder = get_device_builder(channel_id, channel_code)
     conn_type = channel.get("conn_type", 1)
 
-    log.info(f"Preparing to reload device {device_name}. Protocol: {channel_protocol_type}, ConnType: {conn_type}, IP: {ip}, Port: {port}")
+    log.info(
+        f"Preparing to reload device {device_name}. "
+        f"Protocol: {channel_protocol_type}, ConnType: {conn_type}, "
+        f"IP: {ip}, Port: {port}"
+    )
 
     configure_builder_network(builder, conn_type, channel_protocol_type, ip, port, channel)
 
@@ -108,7 +112,7 @@ def increment_ip(ip: str, offset: int) -> str:
     if offset <= 0:
         return ip
     try:
-        parts = ip.split('.')
+        parts = ip.split(".")
         if len(parts) != 4:
             return ip
         last_octet = int(parts[3])
@@ -116,6 +120,6 @@ def increment_ip(ip: str, offset: int) -> str:
         if new_last_octet > 255:
             new_last_octet = new_last_octet % 256
         parts[3] = str(new_last_octet)
-        return '.'.join(parts)
+        return ".".join(parts)
     except Exception:
         return ip

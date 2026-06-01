@@ -5,10 +5,11 @@ frame_type = 3
 """
 
 from typing import Dict, Optional, Union
+
 from blinker import Signal
 
-from src.enums.points.base_point import BasePoint, decimal_to_hex_formatted
 from src.enums.modbus_register import Decode
+from src.enums.points.base_point import BasePoint, decimal_to_hex_formatted
 
 
 class Yt(BasePoint):
@@ -56,9 +57,7 @@ class Yt(BasePoint):
 
         # Modbus 解析相关
         self.register_cnt = Decode.get_decode_register_cnt(self.decode)
-        self._hex_value = decimal_to_hex_formatted(
-            self._value, length=self.register_cnt * 4
-        )
+        self._hex_value = decimal_to_hex_formatted(self._value, length=self.register_cnt * 4)
         self.is_signed = Decode.is_decode_signed(self.decode)
 
     def list(self):
@@ -82,11 +81,11 @@ class Yt(BasePoint):
         """当解析码改变时触发此回调"""
         if not hasattr(self, "_mul_coe"):
             return  # 初始化期间不触发
-            
+
         self.register_cnt = Decode.get_decode_register_cnt(self.decode)
         self.is_signed = Decode.is_decode_signed(self.decode)
         self.endian = Decode.get_byteorder(self.decode)
-        
+
         if not self._is_updating:
             # 保持寄存器值不变，重新计算真实值和十六进制表示
             val = self._value
@@ -157,14 +156,12 @@ class Yt(BasePoint):
                 hex_str = "".join(f"{b:02X}" for b in buffer)
                 self._hex_value = f"0x{hex_str}"
                 self.real_value = value * self._mul_coe + self._add_coe
-                
-                if self._change_tracking_enabled:   # 如果变更追踪已启用
+
+                if self._change_tracking_enabled:  # 如果变更追踪已启用
                     self._record_change(old_value, value, old_real_value, self.real_value)
 
                 if self.is_send_signal:
-                    self.value_changed.send(
-                        old_point=self, related_point=self.related_point
-                    )
+                    self.value_changed.send(old_point=self, related_point=self.related_point)
             finally:
                 self._is_updating = False
 
@@ -184,12 +181,12 @@ class Yt(BasePoint):
                 return False
 
         info = Decode.get_info(self.decode)
-        
+
         if info.is_float:
             register_value = float((real_value - self.add_coe) / self.mul_coe)
             self.value = register_value
             return True
-            
+
         register_value = int((real_value - self.add_coe) / self.mul_coe)
         register_cnt = info.register_cnt
         is_signed = info.is_signed
@@ -198,7 +195,7 @@ class Yt(BasePoint):
         bounds = {
             1: (0, 0xFFFF) if not is_signed else (-0x8000, 0x7FFF),
             2: (0, 0xFFFFFFFF) if not is_signed else (-0x80000000, 0x7FFFFFFF),
-            4: (0, 0xFFFFFFFFFFFFFFFF) if not is_signed else (-0x8000000000000000, 0x7FFFFFFFFFFFFFFF)
+            4: (0, 0xFFFFFFFFFFFFFFFF) if not is_signed else (-0x8000000000000000, 0x7FFFFFFFFFFFFFFF),
         }
 
         if register_cnt not in bounds:

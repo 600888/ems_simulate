@@ -3,8 +3,11 @@
 
 平均收发时间 = TX→RX 配对的平均延迟（请求到响应的耗时）
 """
+
 import time
+
 import pytest
+
 from src.device.core.message.message_capture import MessageCapture
 
 

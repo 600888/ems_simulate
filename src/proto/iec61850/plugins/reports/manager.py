@@ -11,7 +11,7 @@
 from typing import Any, Dict, List, Optional
 
 from ...defs.constants import HAS_IEC61850
-from ...defs.types import TrgOps, OptFields
+from ...defs.types import OptFields, TrgOps
 from ...log import log
 
 if HAS_IEC61850:
@@ -34,11 +34,11 @@ class ReportManager:
         """
         self._builder = builder
         self.model_name = model_name
-        self._rcb_list: List[Dict[str, Any]] = []
+        self._rcb_list: list[dict[str, Any]] = []
         self._model_changed: bool = False
 
     @property
-    def rcb_list(self) -> List[Dict[str, Any]]:
+    def rcb_list(self) -> list[dict[str, Any]]:
         """获取已注册的 RCB 列表"""
         return list(self._rcb_list)
 
@@ -60,8 +60,8 @@ class ReportManager:
         conf_rev: int = 1,
         buf_time: int = 0,
         intg_period: int = 0,
-        trg_ops: Optional[Dict[str, bool]] = None,
-        opt_fields: Optional[Dict[str, bool]] = None,
+        trg_ops: Optional[dict[str, bool]] = None,
+        opt_fields: Optional[dict[str, bool]] = None,
     ) -> bool:
         """在 MMS 模型中注册 ReportControlBlock
 
@@ -97,7 +97,7 @@ class ReportManager:
                 self._builder.ensure_base_ld()
                 lln0 = self._builder.ln_map.get(lln0_key)
             else:
-                ld = self._builder.get_or_create_ld(ld_inst)
+                self._builder.get_or_create_ld(ld_inst)
                 lln0 = self._builder.ln_map.get(lln0_key)
                 log.info(f"为 register_rcb 自动创建 LD/LLN0: {ld_inst}")
 
@@ -105,12 +105,12 @@ class ReportManager:
             log.warning(f"无法注册 RCB: LLN0 未找到 (ld_inst={ld_inst})")
             return False
 
-        buffered = (rcb_type == "BRCB")
+        buffered = rcb_type == "BRCB"
 
         # 尝试使用 ReportControlBlock_create API
-        success = self._try_api_create(name, lln0, rpt_id, data_set_ref,
-                                        conf_rev, buffered, buf_time, intg_period,
-                                        trg_ops, opt_fields)
+        success = self._try_api_create(
+            name, lln0, rpt_id, data_set_ref, conf_rev, buffered, buf_time, intg_period, trg_ops, opt_fields
+        )
         if success:
             log.info(f"RCB 通过 API 创建成功: {name}, ld={ld_inst}, type={rcb_type}")
         else:
@@ -135,20 +135,35 @@ class ReportManager:
             "owner": "",
             "resv": False,
             "trg_ops": trg_ops or {"dchg": True, "qchg": False, "dupd": False, "period": False, "gi": True},
-            "opt_fields": opt_fields or {"seq_num": True, "time_stamp": True, "data_set": True,
-                                          "reason_code": True, "data_ref": False,
-                                          "entry_id": True, "config_ref": False, "buf_ovfl": False},
+            "opt_fields": opt_fields
+            or {
+                "seq_num": True,
+                "time_stamp": True,
+                "data_set": True,
+                "reason_code": True,
+                "data_ref": False,
+                "entry_id": True,
+                "config_ref": False,
+                "buf_ovfl": False,
+            },
         }
         self._rcb_list.append(rcb_info)
         self._model_changed = True
         return True
 
-    def _try_api_create(self, name: str, lln0, rpt_id: str,
-                         data_set_ref: str, conf_rev: int,
-                         buffered: bool, buf_time: int,
-                         intg_period: int,
-                         trg_ops: Optional[Dict[str, bool]] = None,
-                         opt_fields: Optional[Dict[str, bool]] = None) -> bool:
+    def _try_api_create(
+        self,
+        name: str,
+        lln0,
+        rpt_id: str,
+        data_set_ref: str,
+        conf_rev: int,
+        buffered: bool,
+        buf_time: int,
+        intg_period: int,
+        trg_ops: Optional[dict[str, bool]] = None,
+        opt_fields: Optional[dict[str, bool]] = None,
+    ) -> bool:
         """尝试使用 ReportControlBlock_create API 创建 RCB
 
         libIEC61850 的部分版本在 Python SWIG 绑定中可能未暴露此 API。
@@ -162,7 +177,7 @@ class ReportManager:
 
         try:
             # 检查 API 是否可用
-            if not hasattr(iec61850, 'ReportControlBlock_create'):
+            if not hasattr(iec61850, "ReportControlBlock_create"):
                 log.debug("ReportControlBlock_create API 不可用")
                 return False
 
@@ -170,22 +185,39 @@ class ReportManager:
             ds_name = data_set_ref.split("/", 1)[-1] if "/" in data_set_ref else data_set_ref
 
             t = trg_ops or {}
-            trg_val = ((0x01 if t.get("dchg") else 0) | (0x02 if t.get("qchg") else 0) |
-                       (0x04 if t.get("dupd") else 0) | (0x08 if t.get("period") else 0) |
-                       (0x10 if t.get("gi") else 0)) or (0x01 | 0x10)
+            trg_val = (
+                (0x01 if t.get("dchg") else 0)
+                | (0x02 if t.get("qchg") else 0)
+                | (0x04 if t.get("dupd") else 0)
+                | (0x08 if t.get("period") else 0)
+                | (0x10 if t.get("gi") else 0)
+            ) or (0x01 | 0x10)
             o = opt_fields or {}
-            opt_val = ((0x01 if o.get("seq_num") else 0) | (0x02 if o.get("time_stamp") else 0) |
-                       (0x04 if o.get("reason_code") else 0) | (0x08 if o.get("data_set") else 0) |
-                       (0x10 if o.get("data_ref") else 0) | (0x40 if o.get("entry_id") else 0) |
-                       (0x80 if o.get("config_ref") else 0)) or (0x01 | 0x02 | 0x08)
+            opt_val = (
+                (0x01 if o.get("seq_num") else 0)
+                | (0x02 if o.get("time_stamp") else 0)
+                | (0x04 if o.get("reason_code") else 0)
+                | (0x08 if o.get("data_set") else 0)
+                | (0x10 if o.get("data_ref") else 0)
+                | (0x40 if o.get("entry_id") else 0)
+                | (0x80 if o.get("config_ref") else 0)
+            ) or (0x01 | 0x02 | 0x08)
 
             rcb = iec61850.ReportControlBlock_create(
-                name, lln0, rpt_id, buffered, ds_name, conf_rev,
-                trg_val, opt_val, buf_time, intg_period,
+                name,
+                lln0,
+                rpt_id,
+                buffered,
+                ds_name,
+                conf_rev,
+                trg_val,
+                opt_val,
+                buf_time,
+                intg_period,
             )
             if rcb:
                 # 保持引用防止 GC
-                if hasattr(self._builder, 'keep_alive'):
+                if hasattr(self._builder, "keep_alive"):
                     self._builder.keep_alive.append(rcb)
                 log.info(f"ReportControlBlock_create 成功: {name}, dataSet={ds_name}")
                 return True
@@ -196,11 +228,11 @@ class ReportManager:
             log.debug(f"ReportControlBlock_create 不可用 (非致命): {e}")
             return False
 
-    def browse_rcbs(self) -> List[Dict[str, Any]]:
+    def browse_rcbs(self) -> list[dict[str, Any]]:
         """返回服务器上所有已注册的 RCB 目录"""
         return list(self._rcb_list)
 
-    def add_to_pending(self, rcb_config: Dict[str, Any]) -> None:
+    def add_to_pending(self, rcb_config: dict[str, Any]) -> None:
         """添加 RCB 配置到待注册队列（启动后批量注册）
 
         Args:

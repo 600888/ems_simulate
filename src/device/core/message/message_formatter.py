@@ -7,12 +7,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, List, Optional
 
-from src.enums.modbus_def import ProtocolType
 from src.device.core.message.message_parser import (
-    ModbusMessageParser,
     DLT645MessageParser,
     IEC104MessageParser,
+    ModbusMessageParser,
 )
+from src.enums.modbus_def import ProtocolType
 
 if TYPE_CHECKING:
     from src.device.core.device import Device
@@ -50,11 +50,11 @@ _IEC104_TYPES = {
 
 class MessageFormatter:
     """报文格式化器
-    
+
     从协议处理器获取原始报文记录，统一处理方向推导和格式化。
     """
 
-    def __init__(self, device: "Device") -> None:
+    def __init__(self, device: Device) -> None:
         self._device = device
 
     @property
@@ -62,18 +62,18 @@ class MessageFormatter:
         """获取协议处理器"""
         return self._device.protocol_handler
 
-    def get_messages(self, limit: Optional[int] = None) -> List[dict]:
+    def get_messages(self, limit: int | None = None) -> list[dict]:
         """获取报文历史记录
-        
+
         从协议处理器获取原始报文。
-        
+
         Args:
             limit: 最大返回数量，None表示返回全部
-            
+
         Returns:
             报文记录列表（字典格式）
         """
-        if not self._handler or not hasattr(self._handler, 'get_captured_messages'):
+        if not self._handler or not hasattr(self._handler, "get_captured_messages"):
             return []
 
         messages = self._handler.get_captured_messages(limit or 100)
@@ -116,9 +116,7 @@ class MessageFormatter:
             if is_modbus and raw_hex:
                 if msg_type == "Request":
                     # 提取请求信息用于后续响应关联
-                    last_request_info = ModbusMessageParser.extract_request_info(
-                        raw_hex, is_tcp=is_tcp
-                    )
+                    last_request_info = ModbusMessageParser.extract_request_info(raw_hex, is_tcp=is_tcp)
                     # 解析请求描述
                     if is_tcp:
                         description = ModbusMessageParser.parse_tcp(raw_hex)
@@ -127,13 +125,9 @@ class MessageFormatter:
                 else:
                     # 解析响应描述（传入上一条请求信息）
                     if is_tcp:
-                        description = ModbusMessageParser.parse_tcp(
-                            raw_hex, last_request_info
-                        )
+                        description = ModbusMessageParser.parse_tcp(raw_hex, last_request_info)
                     else:
-                        description = ModbusMessageParser.parse_rtu(
-                            raw_hex, last_request_info
-                        )
+                        description = ModbusMessageParser.parse_rtu(raw_hex, last_request_info)
                     # 响应处理完后清空请求信息，避免错误关联
                     last_request_info = None
             elif is_dlt645 and raw_hex:
@@ -148,17 +142,19 @@ class MessageFormatter:
                 # 从hex_data计算字节长度
                 length = len(hex_data.replace(" ", "")) // 2
 
-            result.append({
-                "sequence_id": msg.get("sequence_id", 0),
-                "timestamp": msg.get("timestamp", 0),
-                "formatted_time": msg.get("time", msg.get("formatted_time", "")),
-                "direction": direction,
-                "msg_type": msg_type,
-                "hex_data": hex_data,
-                "raw_hex": raw_hex,
-                "description": description,
-                "length": length,
-            })
+            result.append(
+                {
+                    "sequence_id": msg.get("sequence_id", 0),
+                    "timestamp": msg.get("timestamp", 0),
+                    "formatted_time": msg.get("time", msg.get("formatted_time", "")),
+                    "direction": direction,
+                    "msg_type": msg_type,
+                    "hex_data": hex_data,
+                    "raw_hex": raw_hex,
+                    "description": description,
+                    "length": length,
+                }
+            )
 
         # 按序号正序排列
         result.sort(
@@ -169,7 +165,7 @@ class MessageFormatter:
 
     def clear_messages(self) -> None:
         """清空报文历史记录"""
-        if self._handler and hasattr(self._handler, 'clear_captured_messages'):
+        if self._handler and hasattr(self._handler, "clear_captured_messages"):
             self._handler.clear_captured_messages()
 
     def get_avg_time(self) -> dict:
@@ -178,6 +174,6 @@ class MessageFormatter:
         Returns:
             统计字典，包含发送/接收报文数量、平均间隔等
         """
-        if self._handler and hasattr(self._handler, 'get_avg_time'):
+        if self._handler and hasattr(self._handler, "get_avg_time"):
             return self._handler.get_avg_time()
         return {}

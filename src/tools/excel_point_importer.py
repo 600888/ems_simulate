@@ -6,15 +6,16 @@ Excel 需包含 4 个 sheet: 遥测, 遥信, 遥控, 遥调
 
 import os
 from typing import List, Optional, Tuple
-from openpyxl import load_workbook, Workbook
+
+from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from src.data.controller.db import local_session
+from src.data.log import log
 from src.data.model.point_yc import PointYc
-from src.data.model.point_yx import PointYx
 from src.data.model.point_yk import PointYk
 from src.data.model.point_yt import PointYt
-from src.data.log import log
+from src.data.model.point_yx import PointYx
 from src.enums.modbus_register import Decode
 
 
@@ -31,55 +32,55 @@ class ExcelPointImporter:
 
     # 遥测表头
     YC_HEADERS = [
-        "code",           # 测点编码
-        "name",           # 测点名称
-        "rtu_addr",       # 从机地址
-        "reg_addr",       # 寄存器地址
-        "func_code",      # 功能码
-        "decode_code",    # 解析码
-        "mul_coe",        # 乘系数
-        "add_coe",        # 加系数
-        "max_limit",      # 上限值
-        "min_limit",      # 下限值
+        "code",  # 测点编码
+        "name",  # 测点名称
+        "rtu_addr",  # 从机地址
+        "reg_addr",  # 寄存器地址
+        "func_code",  # 功能码
+        "decode_code",  # 解析码
+        "mul_coe",  # 乘系数
+        "add_coe",  # 加系数
+        "max_limit",  # 上限值
+        "min_limit",  # 下限值
     ]
 
     # 遥信表头
     YX_HEADERS = [
-        "code",           # 测点编码
-        "name",           # 测点名称
-        "rtu_addr",       # 从机地址
-        "reg_addr",       # 寄存器地址
-        "func_code",      # 功能码
-        "decode_code",    # 解析码
-        "bit",            # 位偏移
-        "reverse",        # 是否反转
+        "code",  # 测点编码
+        "name",  # 测点名称
+        "rtu_addr",  # 从机地址
+        "reg_addr",  # 寄存器地址
+        "func_code",  # 功能码
+        "decode_code",  # 解析码
+        "bit",  # 位偏移
+        "reverse",  # 是否反转
     ]
 
     # 遥控表头
     YK_HEADERS = [
-        "code",           # 测点编码
-        "name",           # 测点名称
-        "rtu_addr",       # 从机地址
-        "reg_addr",       # 寄存器地址
-        "func_code",      # 功能码
-        "decode_code",    # 解析码
-        "bit",            # 位偏移
-        "command_type",   # 命令类型
+        "code",  # 测点编码
+        "name",  # 测点名称
+        "rtu_addr",  # 从机地址
+        "reg_addr",  # 寄存器地址
+        "func_code",  # 功能码
+        "decode_code",  # 解析码
+        "bit",  # 位偏移
+        "command_type",  # 命令类型
         "related_yx_code",  # 关联遥信编码
     ]
 
     # 遥调表头
     YT_HEADERS = [
-        "code",           # 测点编码
-        "name",           # 测点名称
-        "rtu_addr",       # 从机地址
-        "reg_addr",       # 寄存器地址
-        "func_code",      # 功能码
-        "decode_code",    # 解析码
-        "mul_coe",        # 乘系数
-        "add_coe",        # 加系数
-        "max_limit",      # 上限值
-        "min_limit",      # 下限值
+        "code",  # 测点编码
+        "name",  # 测点名称
+        "rtu_addr",  # 从机地址
+        "reg_addr",  # 寄存器地址
+        "func_code",  # 功能码
+        "decode_code",  # 解析码
+        "mul_coe",  # 乘系数
+        "add_coe",  # 加系数
+        "max_limit",  # 上限值
+        "min_limit",  # 下限值
         "related_yc_code",  # 关联遥测编码
     ]
 
@@ -98,28 +99,27 @@ class ExcelPointImporter:
         """清除该通道已有的测点数据"""
         from src.data.controller.db import local_session
         from src.data.model.point_yc import PointYc
-        from src.data.model.point_yx import PointYx
         from src.data.model.point_yk import PointYk
         from src.data.model.point_yt import PointYt
-        
+        from src.data.model.point_yx import PointYx
+
         try:
-            with local_session() as session:
-                with session.begin():
-                    session.query(PointYc).where(PointYc.channel_id == self.channel_id).delete()
-                    session.query(PointYx).where(PointYx.channel_id == self.channel_id).delete()
-                    session.query(PointYk).where(PointYk.channel_id == self.channel_id).delete()
-                    session.query(PointYt).where(PointYt.channel_id == self.channel_id).delete()
+            with local_session() as session, session.begin():
+                session.query(PointYc).where(PointYc.channel_id == self.channel_id).delete()
+                session.query(PointYx).where(PointYx.channel_id == self.channel_id).delete()
+                session.query(PointYk).where(PointYk.channel_id == self.channel_id).delete()
+                session.query(PointYt).where(PointYt.channel_id == self.channel_id).delete()
             log.info(f"已清除通道 {self.channel_id} 的旧测点数据")
         except Exception as e:
             log.error(f"清除旧测点数据失败: {e}")
             raise e
 
-    def import_from_excel(self, file_path: str) -> Tuple[int, int, int, int]:
+    def import_from_excel(self, file_path: str) -> tuple[int, int, int, int]:
         """从 Excel 导入测点
-        
+
         Args:
             file_path: Excel 文件路径
-            
+
         Returns:
             (yc_count, yx_count, yk_count, yt_count) 各类型导入数量
         """
@@ -144,119 +144,120 @@ class ExcelPointImporter:
         wb.close()
 
         log.info(
-            f"Excel导入完成: 遥测={self.yc_count}, 遥信={self.yx_count}, "
-            f"遥控={self.yk_count}, 遥调={self.yt_count}"
+            f"Excel导入完成: 遥测={self.yc_count}, 遥信={self.yx_count}, 遥控={self.yk_count}, 遥调={self.yt_count}"
         )
         return (self.yc_count, self.yx_count, self.yk_count, self.yt_count)
 
     def _import_yc(self, sheet: Worksheet) -> None:
         """导入遥测点"""
         rows = list(sheet.iter_rows(min_row=2, values_only=True))
-        with local_session() as session:
-            with session.begin():
-                for row in rows:
-                    if not row[0]:  # 跳过空行
-                        continue
-                    decode_code = str(row[5]) if row[5] else "0x41"
-                    mul_coe = float(row[6]) if row[6] else 1.0
-                    add_coe = float(row[7]) if row[7] else 0.0
-                    calc_max, calc_min = Decode.get_limits_by_code(decode_code, mul_coe, add_coe)
-                    
-                    point = PointYc(
-                        code=str(row[0]),
-                        name=str(row[1]) if row[1] else "",
-                        channel_id=self.channel_id,
-                        rtu_addr=int(row[2]) if row[2] else 1,
-                        reg_addr=str(row[3]) if row[3] else "0x0000",
-                        func_code=int(row[4]) if row[4] else 3,
-                        decode_code=decode_code,
-                        mul_coe=mul_coe,
-                        add_coe=add_coe,
-                        max_limit=float(row[8]) if row[8] is not None and str(row[8]).strip() != "" else calc_max,
-                        min_limit=float(row[9]) if len(row) > 9 and row[9] is not None and str(row[9]).strip() != "" else calc_min,
-                    )
-                    session.add(point)
-                    self.yc_count += 1
+        with local_session() as session, session.begin():
+            for row in rows:
+                if not row[0]:  # 跳过空行
+                    continue
+                decode_code = str(row[5]) if row[5] else "0x41"
+                mul_coe = float(row[6]) if row[6] else 1.0
+                add_coe = float(row[7]) if row[7] else 0.0
+                calc_max, calc_min = Decode.get_limits_by_code(decode_code, mul_coe, add_coe)
+
+                point = PointYc(
+                    code=str(row[0]),
+                    name=str(row[1]) if row[1] else "",
+                    channel_id=self.channel_id,
+                    rtu_addr=int(row[2]) if row[2] else 1,
+                    reg_addr=str(row[3]) if row[3] else "0x0000",
+                    func_code=int(row[4]) if row[4] else 3,
+                    decode_code=decode_code,
+                    mul_coe=mul_coe,
+                    add_coe=add_coe,
+                    max_limit=float(row[8]) if row[8] is not None and str(row[8]).strip() != "" else calc_max,
+                    min_limit=float(row[9])
+                    if len(row) > 9 and row[9] is not None and str(row[9]).strip() != ""
+                    else calc_min,
+                )
+                session.add(point)
+                self.yc_count += 1
 
     def _import_yx(self, sheet: Worksheet) -> None:
         """导入遥信点"""
         rows = list(sheet.iter_rows(min_row=2, values_only=True))
-        with local_session() as session:
-            with session.begin():
-                for row in rows:
-                    if not row[0]:
-                        continue
-                    point = PointYx(
-                        code=str(row[0]),
-                        name=str(row[1]) if row[1] else "",
-                        channel_id=self.channel_id,
-                        rtu_addr=int(row[2]) if row[2] else 1,
-                        reg_addr=str(row[3]) if row[3] else "0x0000",
-                        func_code=int(row[4]) if row[4] else 1,
-                        decode_code=str(row[5]) if row[5] else "0x20",
-                        bit=int(row[6]) if row[6] else None,
-                        reverse=bool(row[7]) if len(row) > 7 and row[7] else False,
-                    )
-                    session.add(point)
-                    self.yx_count += 1
+        with local_session() as session, session.begin():
+            for row in rows:
+                if not row[0]:
+                    continue
+                point = PointYx(
+                    code=str(row[0]),
+                    name=str(row[1]) if row[1] else "",
+                    channel_id=self.channel_id,
+                    rtu_addr=int(row[2]) if row[2] else 1,
+                    reg_addr=str(row[3]) if row[3] else "0x0000",
+                    func_code=int(row[4]) if row[4] else 1,
+                    decode_code=str(row[5]) if row[5] else "0x20",
+                    bit=int(row[6]) if row[6] else None,
+                    reverse=bool(row[7]) if len(row) > 7 and row[7] else False,
+                )
+                session.add(point)
+                self.yx_count += 1
 
     def _import_yk(self, sheet: Worksheet) -> None:
         """导入遥控点"""
         rows = list(sheet.iter_rows(min_row=2, values_only=True))
-        with local_session() as session:
-            with session.begin():
-                for row in rows:
-                    if not row[0]:
-                        continue
-                    point = PointYk(
-                        code=str(row[0]),
-                        name=str(row[1]) if row[1] else "",
-                        channel_id=self.channel_id,
-                        rtu_addr=int(row[2]) if row[2] else 1,
-                        reg_addr=str(row[3]) if row[3] else "0x0000",
-                        func_code=int(row[4]) if row[4] else 5,
-                        decode_code=str(row[5]) if row[5] else "0x20",
-                        bit=int(row[6]) if row[6] else None,
-                        command_type=int(row[7]) if len(row) > 7 and row[7] else 0,
-                        # related_yx_id 需要后续通过 code 查找
-                    )
-                    session.add(point)
-                    self.yk_count += 1
+        with local_session() as session, session.begin():
+            for row in rows:
+                if not row[0]:
+                    continue
+                point = PointYk(
+                    code=str(row[0]),
+                    name=str(row[1]) if row[1] else "",
+                    channel_id=self.channel_id,
+                    rtu_addr=int(row[2]) if row[2] else 1,
+                    reg_addr=str(row[3]) if row[3] else "0x0000",
+                    func_code=int(row[4]) if row[4] else 5,
+                    decode_code=str(row[5]) if row[5] else "0x20",
+                    bit=int(row[6]) if row[6] else None,
+                    command_type=int(row[7]) if len(row) > 7 and row[7] else 0,
+                    # related_yx_id 需要后续通过 code 查找
+                )
+                session.add(point)
+                self.yk_count += 1
 
     def _import_yt(self, sheet: Worksheet) -> None:
         """导入遥调点"""
         rows = list(sheet.iter_rows(min_row=2, values_only=True))
-        with local_session() as session:
-            with session.begin():
-                for row in rows:
-                    if not row[0]:
-                        continue
-                    decode_code = str(row[5]) if row[5] else "0x41"
-                    mul_coe = float(row[6]) if row[6] else 1.0
-                    add_coe = float(row[7]) if row[7] else 0.0
-                    calc_max, calc_min = Decode.get_limits_by_code(decode_code, mul_coe, add_coe)
-                    
-                    point = PointYt(
-                        code=str(row[0]),
-                        name=str(row[1]) if row[1] else "",
-                        channel_id=self.channel_id,
-                        rtu_addr=int(row[2]) if row[2] else 1,
-                        reg_addr=str(row[3]) if row[3] else "0x0000",
-                        func_code=int(row[4]) if row[4] else 6,
-                        decode_code=decode_code,
-                        mul_coe=mul_coe,
-                        add_coe=add_coe,
-                        max_limit=float(row[8]) if len(row) > 8 and row[8] is not None and str(row[8]).strip() != "" else calc_max,
-                        min_limit=float(row[9]) if len(row) > 9 and row[9] is not None and str(row[9]).strip() != "" else calc_min,
-                        # related_yc_id 需要后续通过 code 查找
-                    )
-                    session.add(point)
-                    self.yt_count += 1
+        with local_session() as session, session.begin():
+            for row in rows:
+                if not row[0]:
+                    continue
+                decode_code = str(row[5]) if row[5] else "0x41"
+                mul_coe = float(row[6]) if row[6] else 1.0
+                add_coe = float(row[7]) if row[7] else 0.0
+                calc_max, calc_min = Decode.get_limits_by_code(decode_code, mul_coe, add_coe)
+
+                point = PointYt(
+                    code=str(row[0]),
+                    name=str(row[1]) if row[1] else "",
+                    channel_id=self.channel_id,
+                    rtu_addr=int(row[2]) if row[2] else 1,
+                    reg_addr=str(row[3]) if row[3] else "0x0000",
+                    func_code=int(row[4]) if row[4] else 6,
+                    decode_code=decode_code,
+                    mul_coe=mul_coe,
+                    add_coe=add_coe,
+                    max_limit=float(row[8])
+                    if len(row) > 8 and row[8] is not None and str(row[8]).strip() != ""
+                    else calc_max,
+                    min_limit=float(row[9])
+                    if len(row) > 9 and row[9] is not None and str(row[9]).strip() != ""
+                    else calc_min,
+                    # related_yc_id 需要后续通过 code 查找
+                )
+                session.add(point)
+                self.yt_count += 1
 
 
 def create_excel_template(file_path: str) -> None:
     """创建 Excel 模板文件
-    
+
     Args:
         file_path: 输出文件路径
     """
@@ -265,31 +266,37 @@ def create_excel_template(file_path: str) -> None:
     # 遥测 sheet
     ws_yc = wb.active
     ws_yc.title = "遥测"
-    ws_yc.append([
-        "测点编码", "测点名称", "从机地址", "寄存器地址", "功能码",
-        "解析码", "乘系数", "加系数", "上限值", "下限值"
-    ])
+    ws_yc.append(
+        ["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "乘系数", "加系数", "上限值", "下限值"]
+    )
 
     # 遥信 sheet
     ws_yx = wb.create_sheet("遥信")
-    ws_yx.append([
-        "测点编码", "测点名称", "从机地址", "寄存器地址", "功能码",
-        "解析码", "位偏移", "是否反转"
-    ])
+    ws_yx.append(["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "位偏移", "是否反转"])
 
     # 遥控 sheet
     ws_yk = wb.create_sheet("遥控")
-    ws_yk.append([
-        "测点编码", "测点名称", "从机地址", "寄存器地址", "功能码",
-        "解析码", "位偏移", "命令类型", "关联遥信编码"
-    ])
+    ws_yk.append(
+        ["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "位偏移", "命令类型", "关联遥信编码"]
+    )
 
     # 遥调 sheet
     ws_yt = wb.create_sheet("遥调")
-    ws_yt.append([
-        "测点编码", "测点名称", "从机地址", "寄存器地址", "功能码",
-        "解析码", "乘系数", "加系数", "上限值", "下限值", "关联遥测编码"
-    ])
+    ws_yt.append(
+        [
+            "测点编码",
+            "测点名称",
+            "从机地址",
+            "寄存器地址",
+            "功能码",
+            "解析码",
+            "乘系数",
+            "加系数",
+            "上限值",
+            "下限值",
+            "关联遥测编码",
+        ]
+    )
 
     wb.save(file_path)
     wb.close()
@@ -298,7 +305,7 @@ def create_excel_template(file_path: str) -> None:
 
 def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
     """创建示例 Excel 文件
-    
+
     Args:
         file_path: 输出文件路径
         protocol: 协议类型 (modbus/iec104/dlt645)
@@ -308,10 +315,9 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
     # ===== 遥测 sheet =====
     ws_yc = wb.active
     ws_yc.title = "遥测"
-    ws_yc.append([
-        "测点编码", "测点名称", "从机地址", "寄存器地址", "功能码",
-        "解析码", "乘系数", "加系数", "上限值", "下限值"
-    ])
+    ws_yc.append(
+        ["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "乘系数", "加系数", "上限值", "下限值"]
+    )
 
     if protocol == "modbus":
         sample_yc = [
@@ -342,10 +348,7 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
 
     # ===== 遥信 sheet =====
     ws_yx = wb.create_sheet("遥信")
-    ws_yx.append([
-        "测点编码", "测点名称", "从机地址", "寄存器地址", "功能码",
-        "解析码", "位偏移", "是否反转"
-    ])
+    ws_yx.append(["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "位偏移", "是否反转"])
 
     if protocol == "modbus":
         sample_yx = [
@@ -369,10 +372,9 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
 
     # ===== 遥控 sheet =====
     ws_yk = wb.create_sheet("遥控")
-    ws_yk.append([
-        "测点编码", "测点名称", "从机地址", "寄存器地址", "功能码",
-        "解析码", "位偏移", "命令类型", "关联遥信编码"
-    ])
+    ws_yk.append(
+        ["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "位偏移", "命令类型", "关联遥信编码"]
+    )
 
     if protocol == "modbus":
         sample_yk = [
@@ -393,10 +395,21 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
 
     # ===== 遥调 sheet =====
     ws_yt = wb.create_sheet("遥调")
-    ws_yt.append([
-        "测点编码", "测点名称", "从机地址", "寄存器地址", "功能码",
-        "解析码", "乘系数", "加系数", "上限值", "下限值", "关联遥测编码"
-    ])
+    ws_yt.append(
+        [
+            "测点编码",
+            "测点名称",
+            "从机地址",
+            "寄存器地址",
+            "功能码",
+            "解析码",
+            "乘系数",
+            "加系数",
+            "上限值",
+            "下限值",
+            "关联遥测编码",
+        ]
+    )
 
     if protocol == "modbus":
         sample_yt = [

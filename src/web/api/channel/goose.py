@@ -13,31 +13,32 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Request
 
 from src.data.service.channel_service import ChannelService
+from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
 from src.web.api.schemas import BaseResponse
 from src.web.api.schemas.goose import (
-    GoosePublisherCreate,
-    GoosePublisherUpdate,
-    GoosePublisherIdRequest,
+    GooseCaptureListRequest,
+    GooseCaptureStartRequest,
     GooseChannelRequest,
     GooseImportDiscoveredRequest,
+    GoosePublisherCreate,
     GoosePublisherEntryAdd,
-    GoosePublisherEntryUpdate,
     GoosePublisherEntryRemove,
-    GooseSubscriptionCreate,
-    GooseSubscriptionRemove,
+    GoosePublisherEntryUpdate,
+    GoosePublisherIdRequest,
+    GoosePublisherUpdate,
+    GoosePublishNow,
     GooseReceiverCreate,
     GooseReceiverIdRequest,
-    GoosePublishNow,
-    GooseCaptureStartRequest,
-    GooseCaptureListRequest,
+    GooseSubscriptionCreate,
+    GooseSubscriptionRemove,
 )
 from src.web.log import log
-from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
 
 router = APIRouter(tags=["goose"])
 
 
 # ===== 辅助函数 =====
+
 
 def _validate_iec61850_channel(channel_id: int):
     """验证通道是否为 IEC61850 协议"""
@@ -54,7 +55,7 @@ def _get_goose_manager(request: Request):
     return getattr(request.app.state, "goose_manager", None)
 
 
-def _get_discovered_goose(channel_id: int, request: Request) -> List[Dict[str, Any]]:
+def _get_discovered_goose(channel_id: int, request: Request) -> list[dict[str, Any]]:
     """获取通道对应客户端连接时发现的远端 GOOSE 控制块"""
     device_controller = getattr(request.app.state, "device_controller", None)
     device = device_controller.get_device_by_channel_id(channel_id) if device_controller else None
@@ -64,6 +65,7 @@ def _get_discovered_goose(channel_id: int, request: Request) -> List[Dict[str, A
 
 
 # ===== GOOSE Publisher 管理 =====
+
 
 @router.post("/goose/publishers", response_model=BaseResponse)
 async def create_goose_publisher(
@@ -83,9 +85,9 @@ async def create_goose_publisher(
                 device_controller = getattr(request.app.state, "device_controller", None)
                 if device_controller:
                     _device = device_controller.get_device_by_id(body.channel_id)
-                    if _device and hasattr(_device, 'protocol_handler') and _device.protocol_handler:
+                    if _device and hasattr(_device, "protocol_handler") and _device.protocol_handler:
                         _handler = _device.protocol_handler
-                        if hasattr(_handler, 'server'):
+                        if hasattr(_handler, "server"):
                             iec61850_server = _handler.server
             except Exception as e:
                 log.warning(f"获取 IEC61850Server 失败: {e}")
@@ -102,10 +104,7 @@ async def create_goose_publisher(
             vlan_id=body.vlan_id,
             vlan_prio=body.vlan_prio,
             simulation=body.simulation,
-            entries=[
-                {"name": e.name, "value": e.value, "iec_type": e.iec_type}
-                for e in body.entries
-            ],
+            entries=[{"name": e.name, "value": e.value, "iec_type": e.iec_type} for e in body.entries],
             server=iec61850_server,
             channel_id=body.channel_id,
         )
@@ -293,6 +292,7 @@ async def publish_goose_now(
 
 # ===== GOOSE Publisher 数据集管理 =====
 
+
 @router.post("/goose/publishers/entries/add", response_model=BaseResponse)
 async def add_publisher_entry(
     request: Request,
@@ -342,9 +342,9 @@ async def update_publisher_entry(
                     device_controller = getattr(request.app.state, "device_controller", None)
                     if device_controller:
                         _device = device_controller.get_device_by_id(channel_id)
-                        if _device and hasattr(_device, 'protocol_handler') and _device.protocol_handler:
+                        if _device and hasattr(_device, "protocol_handler") and _device.protocol_handler:
                             _handler = _device.protocol_handler
-                            if hasattr(_handler, 'server') and _handler.server:
+                            if hasattr(_handler, "server") and _handler.server:
                                 iec61850_server = _handler.server
                                 publisher = manager._publishers.get(body.publisher_id)
                                 if publisher:
@@ -392,6 +392,7 @@ async def remove_publisher_entry(
 
 
 # ===== GOOSE Receiver/Subscriber 管理 =====
+
 
 @router.post("/goose/receivers", response_model=BaseResponse)
 async def create_goose_receiver(
@@ -523,6 +524,7 @@ async def stop_goose_receiver(
 
 # ===== GOOSE Receiver 订阅管理 =====
 
+
 @router.post("/goose/receivers/subscriptions/add", response_model=BaseResponse)
 async def add_receiver_subscription(
     request: Request,
@@ -574,7 +576,7 @@ async def remove_receiver_subscription(
 
 # ===== GOOSE 报文抓包 =====
 
-GOOSE_CAPTURE_INSTANCES: Dict[str, Any] = {}  # interface -> GooseCapture
+GOOSE_CAPTURE_INSTANCES: dict[str, Any] = {}  # interface -> GooseCapture
 
 
 def _get_capture(interface: str = "") -> Optional[Any]:
@@ -584,6 +586,7 @@ def _get_capture(interface: str = "") -> Optional[Any]:
     if capture is None:
         try:
             from src.proto.iec61850.plugins.goose.capture import GooseCaptureEngine
+
             capture = GooseCaptureEngine(interface=interface)
             GOOSE_CAPTURE_INSTANCES[key] = capture
         except Exception as e:

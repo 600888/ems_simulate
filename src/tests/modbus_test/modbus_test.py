@@ -1,5 +1,6 @@
-from pymodbus.client import ModbusTcpClient
 from datetime import datetime
+
+from pymodbus.client import ModbusTcpClient
 
 
 class DebugModbusTcpClient(ModbusTcpClient):

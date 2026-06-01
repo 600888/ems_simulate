@@ -4,14 +4,18 @@
 供 Client/Server/ModelExporter 共用。
 """
 
+from typing import Any
+
 from ..defs.constants import (
     HAS_IEC61850,
-    IEC_TYPE_FLOAT, IEC_TYPE_BOOLEAN, IEC_TYPE_INTEGER,
-    IEC_TYPE_STRING, IEC_TYPE_TIMESTAMP, IEC_TYPE_UNKNOWN,
+    IEC_TYPE_BOOLEAN,
+    IEC_TYPE_FLOAT,
+    IEC_TYPE_INTEGER,
+    IEC_TYPE_STRING,
+    IEC_TYPE_TIMESTAMP,
+    IEC_TYPE_UNKNOWN,
 )
 from ..log import log
-
-from typing import Any
 
 
 def mms_value_to_python(mms_value, iec_type: str = IEC_TYPE_UNKNOWN) -> Any:
@@ -34,11 +38,11 @@ def mms_value_to_python(mms_value, iec_type: str = IEC_TYPE_UNKNOWN) -> Any:
     if mms_value is None:
         return None
 
-    if not hasattr(iec61850, 'MmsValue_getType'):
+    if not hasattr(iec61850, "MmsValue_getType"):
         return None
 
     # 优先按已知 iec_type 读取
-    if iec_type == IEC_TYPE_FLOAT or iec_type == IEC_TYPE_INTEGER:
+    if iec_type in (IEC_TYPE_FLOAT, IEC_TYPE_INTEGER):
         try:
             return float(iec61850.MmsValue_toFloat(mms_value))
         except Exception:
@@ -68,7 +72,7 @@ def mms_value_to_python(mms_value, iec_type: str = IEC_TYPE_UNKNOWN) -> Any:
         type_str = iec61850.MmsValue_getTypeString(mms_value)
 
         # FLOAT 类型
-        if mms_type in (iec61850.MMS_FLOAT,) or 'float' in type_str.lower():
+        if mms_type in (iec61850.MMS_FLOAT,) or "float" in type_str.lower():
             try:
                 return float(iec61850.MmsValue_toFloat(mms_value))
             except Exception:

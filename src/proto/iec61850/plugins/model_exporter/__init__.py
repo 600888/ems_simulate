@@ -4,11 +4,11 @@
 """
 
 import csv
+from dataclasses import dataclass, field
 import json
 import os
 import time
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import xmltodict
 
@@ -18,14 +18,18 @@ if TYPE_CHECKING:
     from ...iec61850_client import IEC61850Client
 
 from ...defs import (
+    BDA_TYPE_MAP,
+    DA_PATH_TO_FRAME_TYPE,
+    DA_PATTERNS,
+    ENC_DO_DA_TYPE_OVERRIDE,
+    EXTRA_DA_INFO,
+    FRAME_TYPE_DESC,
     HAS_IEC61850,
-    IecType,
-    DA_PATTERNS, EXTRA_DA_INFO, ENC_DO_DA_TYPE_OVERRIDE,
-    BDA_TYPE_MAP, STRUCT_DA_EXPAND_ONLINE, KNOWN_BDA_FALLBACK_ONLINE,
+    KNOWN_BDA_FALLBACK_ONLINE,
+    STRUCT_DA_EXPAND_ONLINE,
     AcsiClass,
     FrameType,
-    FRAME_TYPE_DESC,
-    DA_PATH_TO_FRAME_TYPE,
+    IecType,
 )
 
 if HAS_IEC61850:
@@ -42,37 +46,42 @@ _KNOWN_BDA_FALLBACK_ONLINE = KNOWN_BDA_FALLBACK_ONLINE
 
 # ========== 模型数据类 ==========
 
+
 @dataclass
 class DAInfo:
     """数据属性 (DA) 信息"""
+
     name: str = ""
     path: str = ""
     fc: str = ""
     iec_type: str = ""
-    sub_das: List['DAInfo'] = field(default_factory=list)
+    sub_das: list["DAInfo"] = field(default_factory=list)
 
 
 @dataclass
 class DOInfo:
     """数据对象 (DO) 信息"""
+
     name: str = ""
     ref: str = ""
     frame_type: int = -1
-    das: List[DAInfo] = field(default_factory=list)
+    das: list[DAInfo] = field(default_factory=list)
 
 
 @dataclass
 class DataSetInfo:
     """数据集 (DataSet) 信息"""
+
     name: str = ""
     ref: str = ""
     is_deletable: bool = False
-    members: List[Dict[str, str]] = field(default_factory=list)
+    members: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
 class RCBInfo:
     """报告控制块 (RCB) 信息"""
+
     name: str = ""
     ref: str = ""
     rcb_type: str = ""
@@ -81,6 +90,7 @@ class RCBInfo:
 @dataclass
 class GoCBInfo:
     """GOOSE 控制块信息"""
+
     name: str = ""
     ref: str = ""
 
@@ -88,30 +98,33 @@ class GoCBInfo:
 @dataclass
 class LNInfo:
     """逻辑节点 (LN) 信息"""
+
     name: str = ""
     ln_class: str = ""
     ref: str = ""
-    dos: List[DOInfo] = field(default_factory=list)
-    datasets: List[DataSetInfo] = field(default_factory=list)
-    rcb_list: List[RCBInfo] = field(default_factory=list)
-    gocb_list: List[GoCBInfo] = field(default_factory=list)
+    dos: list[DOInfo] = field(default_factory=list)
+    datasets: list[DataSetInfo] = field(default_factory=list)
+    rcb_list: list[RCBInfo] = field(default_factory=list)
+    gocb_list: list[GoCBInfo] = field(default_factory=list)
 
 
 @dataclass
 class LDInfo:
     """逻辑设备 (LD) 信息"""
+
     name: str = ""
     inst: str = ""
-    lns: List[LNInfo] = field(default_factory=list)
+    lns: list[LNInfo] = field(default_factory=list)
 
 
 @dataclass
 class ServerModel:
     """服务端完整模型"""
+
     host: str = ""
     port: int = 102
     discover_time: str = ""
-    lds: List[LDInfo] = field(default_factory=list)
+    lds: list[LDInfo] = field(default_factory=list)
 
 
 class IEC61850ModelExporter:
@@ -178,10 +191,7 @@ class IEC61850ModelExporter:
             model.lds.append(ld_info)
 
         elapsed = time.time() - start_time
-        total_das = sum(
-            len(do.das)
-            for ld in model.lds for ln in ld.lns for do in ln.dos
-        )
+        total_das = sum(len(do.das) for ld in model.lds for ln in ld.lns for do in ln.dos)
         log.info(
             f"结构化模型发现完成, 耗时 {elapsed:.2f}s, "
             f"{len(model.lds)} LD, "
@@ -191,7 +201,7 @@ class IEC61850ModelExporter:
 
         return model
 
-    def _discover_data_objects(self, ld_name: str, ln_ref: str, ln_name: str) -> List[DOInfo]:
+    def _discover_data_objects(self, ld_name: str, ln_ref: str, ln_name: str) -> list[DOInfo]:
         """发现逻辑节点下的所有数据对象 (DO) 及其数据属性 (DA)"""
         do_list = []
 
@@ -215,9 +225,14 @@ class IEC61850ModelExporter:
 
                 das = self._discover_data_attributes(ld_name, do_ref, do_name, ln_name, frame_type)
 
-                do_list.append(DOInfo(
-                    name=do_name, ref=do_ref, frame_type=frame_type, das=das,
-                ))
+                do_list.append(
+                    DOInfo(
+                        name=do_name,
+                        ref=do_ref,
+                        frame_type=frame_type,
+                        das=das,
+                    )
+                )
 
         except Exception as e:
             log.debug(f"发现数据对象异常: {ln_ref}, {e}")
@@ -225,9 +240,13 @@ class IEC61850ModelExporter:
         return do_list
 
     def _discover_data_attributes(
-        self, ld_name: str, do_ref: str, do_name: str,
-        ln_name: str, do_frame_type: int,
-    ) -> List[DAInfo]:
+        self,
+        ld_name: str,
+        do_ref: str,
+        do_name: str,
+        ln_name: str,
+        do_frame_type: int,
+    ) -> list[DAInfo]:
         """发现 DO 下的所有数据属性 (DA)，包括递归展开子 DA (BDA)"""
         da_list = []
 
@@ -257,7 +276,7 @@ class IEC61850ModelExporter:
 
         return da_list
 
-    def _discover_sub_das(self, parent_ref: str, parent_fc: str, path_prefix: str) -> List[DAInfo]:
+    def _discover_sub_das(self, parent_ref: str, parent_fc: str, path_prefix: str) -> list[DAInfo]:
         """递归发现子数据属性 (BDA)"""
         sub_das = []
         try:
@@ -271,26 +290,34 @@ class IEC61850ModelExporter:
                 if parent_name in _KNOWN_BDA_FALLBACK_ONLINE:
                     bda_type_map = {"orCat": IecType.INTEGER, "orIdent": IecType.UNKNOWN}
                     for bda_name in _KNOWN_BDA_FALLBACK_ONLINE.get(parent_name, []):
-                        sub_das.append(DAInfo(
-                            name=bda_name, path=f"{path_prefix}{bda_name}",
-                            fc=parent_fc, iec_type=bda_type_map.get(bda_name, IecType.UNKNOWN),
-                        ))
+                        sub_das.append(
+                            DAInfo(
+                                name=bda_name,
+                                path=f"{path_prefix}{bda_name}",
+                                fc=parent_fc,
+                                iec_type=bda_type_map.get(bda_name, IecType.UNKNOWN),
+                            )
+                        )
                 return sub_das
 
             bda_name_list = self._client._get_list_from_linked_list(bda_names_raw)
             for bda_name in bda_name_list:
                 bda_type = _BDA_TYPE_MAP.get(bda_name, IecType.UNKNOWN)
-                sub_das.append(DAInfo(
-                    name=bda_name, path=f"{path_prefix}{bda_name}",
-                    fc=parent_fc, iec_type=bda_type,
-                ))
+                sub_das.append(
+                    DAInfo(
+                        name=bda_name,
+                        path=f"{path_prefix}{bda_name}",
+                        fc=parent_fc,
+                        iec_type=bda_type,
+                    )
+                )
 
         except Exception as e:
             log.debug(f"发现子数据属性异常: {parent_ref}, {e}")
 
         return sub_das
 
-    def _discover_datasets(self, ld_name: str, ln_ref: str) -> List[DataSetInfo]:
+    def _discover_datasets(self, ld_name: str, ln_ref: str) -> list[DataSetInfo]:
         """发现逻辑节点下的所有数据集"""
         datasets = []
 
@@ -317,7 +344,7 @@ class IEC61850ModelExporter:
 
         return datasets
 
-    def _discover_rcbs(self, ln_ref: str) -> List[RCBInfo]:
+    def _discover_rcbs(self, ln_ref: str) -> list[RCBInfo]:
         """发现逻辑节点下的报告控制块"""
         rcb_list = []
         for _rcb_type, acsi_class, type_name in [
@@ -325,9 +352,7 @@ class IEC61850ModelExporter:
             ("BRCB", AcsiClass.BRCB, "BRCB"),
         ]:
             try:
-                result = iec61850.IedConnection_getLogicalNodeDirectory(
-                    self._client._connection, ln_ref, acsi_class
-                )
+                result = iec61850.IedConnection_getLogicalNodeDirectory(self._client._connection, ln_ref, acsi_class)
                 rcb_names_raw = result[0] if isinstance(result, (list, tuple)) else result
                 error = result[1] if isinstance(result, (list, tuple)) else 0
 
@@ -336,21 +361,23 @@ class IEC61850ModelExporter:
 
                 rcb_name_list = self._client._get_list_from_linked_list(rcb_names_raw)
                 for rcb_name in rcb_name_list:
-                    rcb_list.append(RCBInfo(
-                        name=rcb_name, ref=f"{ln_ref}.{rcb_name}", rcb_type=type_name,
-                    ))
+                    rcb_list.append(
+                        RCBInfo(
+                            name=rcb_name,
+                            ref=f"{ln_ref}.{rcb_name}",
+                            rcb_type=type_name,
+                        )
+                    )
             except Exception:
                 pass
 
         return rcb_list
 
-    def _discover_gocbs(self, ln_ref: str) -> List[GoCBInfo]:
+    def _discover_gocbs(self, ln_ref: str) -> list[GoCBInfo]:
         """发现逻辑节点下的 GOOSE 控制块"""
         gocb_list = []
         try:
-            result = iec61850.IedConnection_getLogicalNodeDirectory(
-                self._client._connection, ln_ref, AcsiClass.GOOSE
-            )
+            result = iec61850.IedConnection_getLogicalNodeDirectory(self._client._connection, ln_ref, AcsiClass.GOOSE)
             gocb_names_raw = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
 
@@ -378,7 +405,8 @@ class IEC61850ModelExporter:
 
         if do_name in _ENC_DO_DA_TYPE_OVERRIDE and da_name in _ENC_DO_DA_TYPE_OVERRIDE[do_name]:
             return DAInfo(
-                name=da_name, path=da_name,
+                name=da_name,
+                path=da_name,
                 fc="ST" if da_name == "stVal" else "CO",
                 iec_type=_ENC_DO_DA_TYPE_OVERRIDE[do_name][da_name],
             )
@@ -422,8 +450,7 @@ class IEC61850ModelExporter:
             f.write(xml_str)
         log.info(f"模型已导出为 XML: {output_path}")
 
-    def export_icd(self, model: ServerModel, output_path: str,
-                   ied_name: str = "", pretty: bool = True) -> None:
+    def export_icd(self, model: ServerModel, output_path: str, ied_name: str = "", pretty: bool = True) -> None:
         """导出模型为 IEC 61850 SCL/ICD 标准格式
 
         生成符合 IEC 61850-6 SCL Schema 的 XML 文件，可直接导入支持 SCL 的工具。
@@ -475,10 +502,20 @@ class IEC61850ModelExporter:
 
         with open(output_path, "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([
-                "逻辑设备(LD)", "逻辑节点(LN)", "LN类", "数据对象(DO)",
-                "DA路径", "FC", "数据类型", "帧类型", "帧类型描述", "完整引用",
-            ])
+            writer.writerow(
+                [
+                    "逻辑设备(LD)",
+                    "逻辑节点(LN)",
+                    "LN类",
+                    "数据对象(DO)",
+                    "DA路径",
+                    "FC",
+                    "数据类型",
+                    "帧类型",
+                    "帧类型描述",
+                    "完整引用",
+                ]
+            )
             for row in rows:
                 writer.writerow(row)
 
@@ -496,7 +533,7 @@ class IEC61850ModelExporter:
         for ld in model.lds:
             lines.append(f"├── LD: {ld.name}")
             for i, ln in enumerate(ld.lns):
-                is_last_ln = (i == len(ld.lns) - 1)
+                is_last_ln = i == len(ld.lns) - 1
                 ln_prefix = "└──" if is_last_ln else "├──"
                 ln_indent = "│   " if not is_last_ln else "    "
                 ln_class_str = f" [{ln.ln_class}]" if ln.ln_class else ""
@@ -520,7 +557,7 @@ class IEC61850ModelExporter:
                         if da.sub_das:
                             bda_indent = do_indent + ("    " if is_last_da else "│   ")
                             for m, bda in enumerate(da.sub_das):
-                                is_last_bda = (m == len(da.sub_das) - 1)
+                                is_last_bda = m == len(da.sub_das) - 1
                                 bda_prefix = "└──" if is_last_bda else "├──"
                                 lines.append(f"│   {bda_indent}{bda_prefix} BDA: {bda.path} ({bda.iec_type})")
 
@@ -530,7 +567,7 @@ class IEC61850ModelExporter:
                     lines.append(f"│   {ln_indent}{ds_prefix} DS: {ds.name} ({len(ds.members)} 成员)")
                     ds_indent = ln_indent + ("    " if is_last else "│   ")
                     for m, member in enumerate(ds.members):
-                        is_last_m = (m == len(ds.members) - 1)
+                        is_last_m = m == len(ds.members) - 1
                         m_prefix = "└──" if is_last_m else "├──"
                         lines.append(f"│   {ds_indent}{m_prefix} {member.get('ref', '')} [{member.get('fc', '')}]")
 
@@ -540,7 +577,7 @@ class IEC61850ModelExporter:
                     lines.append(f"│   {ln_indent}{rcb_prefix} RCB: {rcb.name} ({rcb.rcb_type})")
 
                 for j, gocb in enumerate(ln.gocb_list):
-                    is_last = (j == len(ln.gocb_list) - 1)
+                    is_last = j == len(ln.gocb_list) - 1
                     gocb_prefix = "└──" if is_last else "├──"
                     lines.append(f"│   {ln_indent}{gocb_prefix} GoCB: {gocb.name}")
 
@@ -553,15 +590,17 @@ class IEC61850ModelExporter:
         total_ds = sum(len(ln.datasets) for ld in model.lds for ln in ld.lns)
         total_rcb = sum(len(ln.rcb_list) for ld in model.lds for ln in ld.lns)
         total_gocb = sum(len(ln.gocb_list) for ld in model.lds for ln in ld.lns)
-        lines.append(f"统计: {total_lds} LD, {total_lns} LN, {total_dos} DO, {total_das} DA, "
-                     f"{total_ds} DataSet, {total_rcb} RCB, {total_gocb} GoCB")
+        lines.append(
+            f"统计: {total_lds} LD, {total_lns} LN, {total_dos} DO, {total_das} DA, "
+            f"{total_ds} DataSet, {total_rcb} RCB, {total_gocb} GoCB"
+        )
 
         with open(output_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 
         log.info(f"模型已导出为树形文本: {output_path}")
 
-    def export_all(self, model: ServerModel, output_dir: str, ied_name: str = "") -> Dict[str, str]:
+    def export_all(self, model: ServerModel, output_dir: str, ied_name: str = "") -> dict[str, str]:
         """导出所有格式到指定目录
 
         Returns:
@@ -586,7 +625,7 @@ class IEC61850ModelExporter:
 
     # ========== 序列化辅助 ==========
 
-    def _model_to_dict(self, model: ServerModel) -> Dict[str, Any]:
+    def _model_to_dict(self, model: ServerModel) -> dict[str, Any]:
         """将 ServerModel 转换为可序列化的字典"""
         return {
             "host": model.host,
@@ -638,13 +677,9 @@ class IEC61850ModelExporter:
                                 for ds in ln.datasets
                             ],
                             "reportControlBlocks": [
-                                {"name": rcb.name, "ref": rcb.ref, "type": rcb.rcb_type}
-                                for rcb in ln.rcb_list
+                                {"name": rcb.name, "ref": rcb.ref, "type": rcb.rcb_type} for rcb in ln.rcb_list
                             ],
-                            "gooseControlBlocks": [
-                                {"name": gocb.name, "ref": gocb.ref}
-                                for gocb in ln.gocb_list
-                            ],
+                            "gooseControlBlocks": [{"name": gocb.name, "ref": gocb.ref} for gocb in ln.gocb_list],
                         }
                         for ln in ld.lns
                     ],
@@ -662,7 +697,7 @@ class IEC61850ModelExporter:
             },
         }
 
-    def _flatten_model(self, model: ServerModel) -> List[List[str]]:
+    def _flatten_model(self, model: ServerModel) -> list[list[str]]:
         """将模型扁平化为 CSV 行列表
 
         Returns:
@@ -676,21 +711,39 @@ class IEC61850ModelExporter:
                     ft_desc = FRAME_TYPE_DESC.get(ft, "未知")
                     for da in do_info.das:
                         full_ref = f"{do_info.ref}.{da.path}"
-                        rows.append([
-                            ld.name, ln.name, ln.ln_class or "",
-                            do_info.name, da.path, da.fc,
-                            da.iec_type, str(ft), ft_desc, full_ref,
-                        ])
+                        rows.append(
+                            [
+                                ld.name,
+                                ln.name,
+                                ln.ln_class or "",
+                                do_info.name,
+                                da.path,
+                                da.fc,
+                                da.iec_type,
+                                str(ft),
+                                ft_desc,
+                                full_ref,
+                            ]
+                        )
                         for bda in da.sub_das:
                             full_ref_bda = f"{do_info.ref}.{bda.path}"
-                            rows.append([
-                                ld.name, ln.name, ln.ln_class or "",
-                                do_info.name, bda.path, bda.fc,
-                                bda.iec_type, str(ft), ft_desc, full_ref_bda,
-                            ])
+                            rows.append(
+                                [
+                                    ld.name,
+                                    ln.name,
+                                    ln.ln_class or "",
+                                    do_info.name,
+                                    bda.path,
+                                    bda.fc,
+                                    bda.iec_type,
+                                    str(ft),
+                                    ft_desc,
+                                    full_ref_bda,
+                                ]
+                            )
         return rows
 
-    def _model_to_xml_dict(self, model: ServerModel) -> Dict[str, Any]:
+    def _model_to_xml_dict(self, model: ServerModel) -> dict[str, Any]:
         """将 ServerModel 转换为 xmltodict 兼容的字典结构"""
         ld_list = []
         for ld in model.lds:
@@ -719,13 +772,17 @@ class IEC61850ModelExporter:
                                 if da.sub_das:
                                     bda_list = []
                                     for bda in da.sub_das:
-                                        bda_list.append({
-                                            "@name": bda.name,
-                                            "@path": bda.path,
-                                            "@fc": bda.fc,
-                                            "@iecType": bda.iec_type,
-                                        })
-                                    da_item["SubDataAttributes"] = {"SubDataAttribute": bda_list if len(bda_list) > 1 else bda_list[0]}
+                                        bda_list.append(
+                                            {
+                                                "@name": bda.name,
+                                                "@path": bda.path,
+                                                "@fc": bda.fc,
+                                                "@iecType": bda.iec_type,
+                                            }
+                                        )
+                                    da_item["SubDataAttributes"] = {
+                                        "SubDataAttribute": bda_list if len(bda_list) > 1 else bda_list[0]
+                                    }
                                 da_list.append(da_item)
                             do_item["DataAttributes"] = {"DataAttribute": da_list if len(da_list) > 1 else da_list[0]}
                         do_list.append(do_item)
@@ -754,13 +811,17 @@ class IEC61850ModelExporter:
                     rcb_list = []
                     for rcb in ln.rcb_list:
                         rcb_list.append({"@name": rcb.name, "@ref": rcb.ref, "@type": rcb.rcb_type})
-                    ln_item["ReportControlBlocks"] = {"ReportControlBlock": rcb_list if len(rcb_list) > 1 else rcb_list[0]}
+                    ln_item["ReportControlBlocks"] = {
+                        "ReportControlBlock": rcb_list if len(rcb_list) > 1 else rcb_list[0]
+                    }
 
                 if ln.gocb_list:
                     gocb_list = []
                     for gocb in ln.gocb_list:
                         gocb_list.append({"@name": gocb.name, "@ref": gocb.ref})
-                    ln_item["GooseControlBlocks"] = {"GooseControlBlock": gocb_list if len(gocb_list) > 1 else gocb_list[0]}
+                    ln_item["GooseControlBlocks"] = {
+                        "GooseControlBlock": gocb_list if len(gocb_list) > 1 else gocb_list[0]
+                    }
 
                 ln_list.append(ln_item)
 
@@ -801,12 +862,50 @@ class IEC61850ModelExporter:
         "ACT": {"general": ("BOOLEAN", None), "q": ("Quality", None), "t": ("Timestamp", None)},
         "ACD": {"general": ("BOOLEAN", None), "q": ("Quality", None), "t": ("Timestamp", None)},
         "SEC": {"Cnt": ("INT32", None), "q": ("Quality", None), "t": ("Timestamp", None)},
-        "SPC": {"stVal": ("BOOLEAN", None), "ctlVal": ("BOOLEAN", None), "Oper": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None), "ctlModel": ("Enum", "ctlModel")},
-        "DPC": {"stVal": ("Dbpos", None), "ctlVal": ("Dbpos", None), "Oper": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None), "ctlModel": ("Enum", "ctlModel")},
-        "ENC": {"stVal": ("Enum", None), "ctlVal": ("Enum", None), "Oper": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None), "ctlModel": ("Enum", "ctlModel")},
-        "INC": {"stVal": ("INT32", None), "Oper": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None), "ctlModel": ("Enum", "ctlModel")},
-        "APC": {"setVal": ("FLOAT32", None), "Oper": ("Struct", None), "q": ("Quality", None), "t": ("Timestamp", None), "ctlModel": ("Enum", "ctlModel")},
-        "ASG": {"setMag": ("Struct", None), "setVal": ("FLOAT32", None), "q": ("Quality", None), "t": ("Timestamp", None)},
+        "SPC": {
+            "stVal": ("BOOLEAN", None),
+            "ctlVal": ("BOOLEAN", None),
+            "Oper": ("Struct", None),
+            "q": ("Quality", None),
+            "t": ("Timestamp", None),
+            "ctlModel": ("Enum", "ctlModel"),
+        },
+        "DPC": {
+            "stVal": ("Dbpos", None),
+            "ctlVal": ("Dbpos", None),
+            "Oper": ("Struct", None),
+            "q": ("Quality", None),
+            "t": ("Timestamp", None),
+            "ctlModel": ("Enum", "ctlModel"),
+        },
+        "ENC": {
+            "stVal": ("Enum", None),
+            "ctlVal": ("Enum", None),
+            "Oper": ("Struct", None),
+            "q": ("Quality", None),
+            "t": ("Timestamp", None),
+            "ctlModel": ("Enum", "ctlModel"),
+        },
+        "INC": {
+            "stVal": ("INT32", None),
+            "Oper": ("Struct", None),
+            "q": ("Quality", None),
+            "t": ("Timestamp", None),
+            "ctlModel": ("Enum", "ctlModel"),
+        },
+        "APC": {
+            "setVal": ("FLOAT32", None),
+            "Oper": ("Struct", None),
+            "q": ("Quality", None),
+            "t": ("Timestamp", None),
+            "ctlModel": ("Enum", "ctlModel"),
+        },
+        "ASG": {
+            "setMag": ("Struct", None),
+            "setVal": ("FLOAT32", None),
+            "q": ("Quality", None),
+            "t": ("Timestamp", None),
+        },
         "LPL": {"vendor": ("VisString255", None), "swRev": ("VisString255", None), "d": ("VisString255", None)},
         "DPL": {"vendor": ("VisString255", None), "swRev": ("VisString255", None), "d": ("VisString255", None)},
     }
@@ -821,15 +920,46 @@ class IEC61850ModelExporter:
     }
 
     _DA_NAME_FC_MAP = {
-        "mag": "MX", "cVal": "MX", "instMag": "MX", "mxVal": "MX", "fCVal": "MX", "setMag": "SP", "setVal": "SP", "wVal": "SP",
-        "stVal": "ST", "general": "ST", "Cnt": "ST", "frVal": "ST", "frTm": "ST", "actVal": "ST", "subVal": "SV", "subEna": "SV",
-        "ctlVal": "CO", "Oper": "CO", "SBO": "CO", "SBOw": "CO", "Cancel": "CO", "origin": "OR", "ctlNum": "CO", "AddCause": "CO", "valWTr": "CO",
-        "q": "MX", "t": "MX", "blkEna": "BL",
-        "dU": "DC", "du": "DC", "vendor": "DC", "swRev": "DC", "configRev": "DC", "d": "DC", "lnNs": "DC",
-        "ctlModel": "CF", "dbRef": "CF",
+        "mag": "MX",
+        "cVal": "MX",
+        "instMag": "MX",
+        "mxVal": "MX",
+        "fCVal": "MX",
+        "setMag": "SP",
+        "setVal": "SP",
+        "wVal": "SP",
+        "stVal": "ST",
+        "general": "ST",
+        "Cnt": "ST",
+        "frVal": "ST",
+        "frTm": "ST",
+        "actVal": "ST",
+        "subVal": "SV",
+        "subEna": "SV",
+        "ctlVal": "CO",
+        "Oper": "CO",
+        "SBO": "CO",
+        "SBOw": "CO",
+        "Cancel": "CO",
+        "origin": "OR",
+        "ctlNum": "CO",
+        "AddCause": "CO",
+        "valWTr": "CO",
+        "q": "MX",
+        "t": "MX",
+        "blkEna": "BL",
+        "dU": "DC",
+        "du": "DC",
+        "vendor": "DC",
+        "swRev": "DC",
+        "configRev": "DC",
+        "d": "DC",
+        "lnNs": "DC",
+        "ctlModel": "CF",
+        "dbRef": "CF",
     }
 
-    def _model_to_scl_dict(self, model: ServerModel, ied_name: str) -> Dict[str, Any]:
+    def _model_to_scl_dict(self, model: ServerModel, ied_name: str) -> dict[str, Any]:
         type_templates = self._build_data_type_templates(model, ied_name)
         ied = self._build_ied_section(model, ied_name, type_templates)
         communication = {
@@ -866,8 +996,7 @@ class IEC61850ModelExporter:
         }
         return scl_dict
 
-    def _build_ied_section(self, model: ServerModel, ied_name: str,
-                            type_templates: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_ied_section(self, model: ServerModel, ied_name: str, type_templates: dict[str, Any]) -> dict[str, Any]:
         ldevice_list = []
         for ld in model.lds:
             ld_inst = self._extract_ld_inst(ld.name, ied_name)
@@ -932,21 +1061,35 @@ class IEC61850ModelExporter:
         }
         return ied
 
-    def _build_data_type_templates(self, model: ServerModel, ied_name: str) -> Dict[str, Any]:
+    def _build_data_type_templates(self, model: ServerModel, ied_name: str) -> dict[str, Any]:
         lnode_types = []
         do_types = []
         da_types = []
         enum_types = {}
         enum_types["ctlModel"] = [
             {"@ord": str(i), "#text": v}
-            for i, v in enumerate(["status-only", "direct-with-normal-security",
-                                    "sbo-with-normal-security", "direct-with-enhanced-security",
-                                    "sbo-with-enhanced-security"])
+            for i, v in enumerate(
+                [
+                    "status-only",
+                    "direct-with-normal-security",
+                    "sbo-with-normal-security",
+                    "direct-with-enhanced-security",
+                    "sbo-with-enhanced-security",
+                ]
+            )
         ]
         enum_types["orCategory"] = [
             {"@ord": str(i), "#text": v}
-            for i, v in enumerate(["not-supported", "bay-control", "station-control",
-                                    "remote-control", "automatic-control", "maintenance-control"])
+            for i, v in enumerate(
+                [
+                    "not-supported",
+                    "bay-control",
+                    "station-control",
+                    "remote-control",
+                    "automatic-control",
+                    "maintenance-control",
+                ]
+            )
         ]
         for ld in model.lds:
             ld_inst = self._extract_ld_inst(ld.name, ied_name)
@@ -966,9 +1109,8 @@ class IEC61850ModelExporter:
                         da_ref = {"@name": da.name, "@fc": fc, "@bType": btype}
                         if da_type_ref:
                             da_ref["@type"] = da_type_ref
-                        if btype == "Enum" and da_type_ref:
-                            if da_type_ref not in enum_types:
-                                enum_types[da_type_ref] = [{"@ord": "0", "#text": "unknown"}]
+                        if btype == "Enum" and da_type_ref and da_type_ref not in enum_types:
+                            enum_types[da_type_ref] = [{"@ord": "0", "#text": "unknown"}]
                         da_refs.append(da_ref)
                         if da.sub_das:
                             da_type_id = f"{ln_type_id}.{do_info.name}.{da.name}"
@@ -1011,7 +1153,7 @@ class IEC61850ModelExporter:
             result["EnumType"] = enum_list if len(enum_list) > 1 else enum_list[0]
         return result
 
-    def _build_dois(self, ln: LNInfo) -> List[Dict[str, Any]]:
+    def _build_dois(self, ln: LNInfo) -> list[dict[str, Any]]:
         doi_list = []
         for do_info in ln.dos:
             doi = {"@name": do_info.name}
@@ -1024,8 +1166,7 @@ class IEC61850ModelExporter:
             doi_list.append(doi)
         return doi_list if len(doi_list) > 1 else (doi_list[0] if doi_list else [])
 
-    def _build_datasets(self, datasets: List[DataSetInfo],
-                        ld_inst: str, ln: LNInfo) -> Any:
+    def _build_datasets(self, datasets: list[DataSetInfo], ld_inst: str, ln: LNInfo) -> Any:
         ds_list = []
         for ds in datasets:
             ds_item = {"@name": ds.name}
@@ -1051,7 +1192,7 @@ class IEC61850ModelExporter:
             ds_list.append(ds_item)
         return ds_list if len(ds_list) > 1 else (ds_list[0] if ds_list else [])
 
-    def _build_report_controls(self, rcb_list: List[RCBInfo]) -> Any:
+    def _build_report_controls(self, rcb_list: list[RCBInfo]) -> Any:
         rcb_items = []
         for rcb in rcb_list:
             buffered = "true" if rcb.rcb_type == "BRCB" else "false"
@@ -1063,8 +1204,13 @@ class IEC61850ModelExporter:
                 "@confRev": "1",
                 "TrgOps": {"@dchg": "true", "@qchg": "false", "@dupd": "false", "@period": "false"},
                 "OptFields": {
-                    "@seqNum": "false", "@timeStamp": "false", "@dataSet": "false",
-                    "@reasonCode": "false", "@dataRef": "false", "@entryID": "false", "@configRef": "false",
+                    "@seqNum": "false",
+                    "@timeStamp": "false",
+                    "@dataSet": "false",
+                    "@reasonCode": "false",
+                    "@dataRef": "false",
+                    "@entryID": "false",
+                    "@configRef": "false",
                 },
                 "RptEnabled": {"@max": "1"},
             }
@@ -1073,26 +1219,28 @@ class IEC61850ModelExporter:
 
     def _extract_ld_inst(self, ld_name: str, ied_name: str) -> str:
         if ld_name.startswith(ied_name + "_"):
-            return ld_name[len(ied_name) + 1:]
+            return ld_name[len(ied_name) + 1 :]
         if ld_name.startswith(ied_name):
-            return ld_name[len(ied_name):]
+            return ld_name[len(ied_name) :]
         return ld_name
 
     def _extract_ln_inst(self, ln_name: str) -> str:
         if ln_name == "LLN0":
             return ""
         import re
-        m = re.search(r'(\d+)$', ln_name)
+
+        m = re.search(r"(\d+)$", ln_name)
         return m.group(1) if m else "1"
 
     def _extract_ln_class_from_name(self, ln_name: str) -> str:
         if ln_name == "LLN0":
             return "LLN0"
         import re
-        m = re.match(r'^[A-Z]*(\d+)?([A-Z]+)\d*$', ln_name)
+
+        m = re.match(r"^[A-Z]*(\d+)?([A-Z]+)\d*$", ln_name)
         if m:
             return m.group(2)
-        return re.sub(r'\d+$', '', ln_name)
+        return re.sub(r"\d+$", "", ln_name)
 
     def _infer_cdc_from_do(self, do_name: str, ln_class: str) -> str:
         if do_name in ("Mod", "Beh", "Health"):
@@ -1123,8 +1271,7 @@ class IEC61850ModelExporter:
             return "SPS"
         return "MV"
 
-    def _resolve_btype(self, da: DAInfo, do_name: str, cdc: str,
-                       ln_type_id: str) -> tuple:
+    def _resolve_btype(self, da: DAInfo, do_name: str, cdc: str, ln_type_id: str) -> tuple:
         if da.name == "q":
             return ("Quality", None)
         if da.name == "t":
@@ -1138,7 +1285,7 @@ class IEC61850ModelExporter:
             return ("Enum", "Origin")
         return (btype, None)
 
-    def _get_fixed_dos(self, ln_class: str) -> List[Dict[str, Any]]:
+    def _get_fixed_dos(self, ln_class: str) -> list[dict[str, Any]]:
         dos = []
         if ln_class != "LLN0":
             dos.append({"@name": "Mod", "@type": f"_ENC_{ln_class}_Mod"})
@@ -1150,6 +1297,7 @@ class IEC61850ModelExporter:
 
 
 # ===== 插件封装 =====
+
 
 class ModelExporterPlugin:
     """ModelExporter 插件

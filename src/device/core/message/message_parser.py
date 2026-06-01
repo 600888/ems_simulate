@@ -4,12 +4,13 @@
 支持 Modbus、DLT645 和 IEC104 协议。
 """
 
-from typing import Optional, Dict        
+from typing import Dict, Optional
+
 from dlt645.protocol.frame import Frame
 from dlt645.protocol.protocol import DLT645Protocol
 
 # Modbus 异常码名称映射
-MODBUS_EXCEPTION_CODES: Dict[int, str] = {
+MODBUS_EXCEPTION_CODES: dict[int, str] = {
     0x01: "非法功能码",
     0x02: "非法数据地址",
     0x03: "非法数据值",
@@ -22,7 +23,7 @@ MODBUS_EXCEPTION_CODES: Dict[int, str] = {
 }
 
 # 功能码名称映射
-FUNC_CODE_NAMES: Dict[int, str] = {
+FUNC_CODE_NAMES: dict[int, str] = {
     0x01: "读线圈",
     0x02: "读离散输入",
     0x03: "读保持寄存器",
@@ -36,7 +37,7 @@ FUNC_CODE_NAMES: Dict[int, str] = {
 
 class ModbusMessageParser:
     """Modbus 报文解析器
-    
+
     纯静态方法实现，不依赖设备状态。
     支持 Modbus TCP (含 MBAP 头) 和 Modbus RTU 帧格式。
     """
@@ -51,12 +52,12 @@ class ModbusMessageParser:
     @staticmethod
     def parse_tcp(raw_hex: str, last_request_info: Optional[dict] = None) -> str:
         """解析 Modbus TCP 报文
-        
+
         Args:
             raw_hex: 不带空格的十六进制字符串 (e.g. "000100000006010300000009")
             last_request_info: 上一条请求的解析信息，用于关联响应
                                格式: {"func_code": int, "slave_id": int, "start_addr": int, "end_addr": int}
-        
+
         Returns:
             人类可读的描述字符串
         """
@@ -71,18 +72,18 @@ class ModbusMessageParser:
             return ""
 
         slave_id = data[6]  # Unit ID
-        pdu = data[7:]      # PDU 部分
+        pdu = data[7:]  # PDU 部分
 
         return ModbusMessageParser._parse_pdu(pdu, slave_id, last_request_info)
 
     @staticmethod
     def parse_rtu(raw_hex: str, last_request_info: Optional[dict] = None) -> str:
         """解析 Modbus RTU 报文
-        
+
         Args:
             raw_hex: 不带空格的十六进制字符串
             last_request_info: 上一条请求的解析信息
-        
+
         Returns:
             人类可读的描述字符串
         """
@@ -103,12 +104,12 @@ class ModbusMessageParser:
     @staticmethod
     def _parse_pdu(pdu: bytes, slave_id: int, last_request_info: Optional[dict] = None) -> str:
         """解析 Modbus PDU（协议数据单元）
-        
+
         Args:
             pdu: PDU 字节数据（功能码 + 数据）
             slave_id: 从站地址
             last_request_info: 上一条请求的解析结果，用于为响应补充地址信息
-        
+
         Returns:
             解析描述字符串
         """
@@ -127,7 +128,7 @@ class ModbusMessageParser:
                 return f"{fc_name} 异常响应: {exc_name} (从站 {slave_id})"
             return f"{fc_name} 异常响应 (从站 {slave_id})"
 
-        fc_name = FUNC_CODE_NAMES.get(func_code, None)
+        fc_name = FUNC_CODE_NAMES.get(func_code)
         if fc_name is None:
             return f"未知功能码 0x{func_code:02X} (从站 {slave_id})"
 
@@ -164,11 +165,8 @@ class ModbusMessageParser:
             if len(pdu) >= 5:
                 addr = (pdu[1] << 8) | pdu[2]
                 value = (pdu[3] << 8) | pdu[4]
-                if func_code == 0x05:
-                    val_desc = "ON" if value == 0xFF00 else "OFF"
-                else:
-                    val_desc = str(value)
-                
+                val_desc = ("ON" if value == 65280 else "OFF") if func_code == 5 else str(value)
+
                 # 区分请求和响应：通过 last_request_info 判断
                 # 如果上一条请求的 func_code 和当前相同，说明这是响应
                 if last_request_info and last_request_info.get("func_code") == func_code:
@@ -202,11 +200,11 @@ class ModbusMessageParser:
     @staticmethod
     def extract_request_info(raw_hex: str, is_tcp: bool = True) -> Optional[dict]:
         """从请求报文中提取关键信息，用于关联后续响应
-        
+
         Args:
             raw_hex: 不带空格的十六进制字符串
             is_tcp: True 表示 TCP 格式，False 表示 RTU 格式
-        
+
         Returns:
             解析信息字典，包含 func_code, slave_id, start_addr, end_addr
             如果不是可识别的请求，返回 None
@@ -269,17 +267,18 @@ class ModbusMessageParser:
 
 class DLT645MessageParser:
     """DLT645 报文解析器
-    
+
     解析 DLT645-2007 协议帧格式：
     68 ADDR(6字节) 68 CTRL(1字节) LEN(1字节) DATA(N字节) CS(1字节) 16
     """
+
     @staticmethod
     def parse(raw_hex: str) -> str:
         """解析 DLT645 报文
-        
+
         Args:
             raw_hex: 不带空格的十六进制字符串
-        
+
         Returns:
             人类可读的描述字符串
         """
@@ -295,72 +294,73 @@ class DLT645MessageParser:
             return ""
         return frame.description
 
+
 class IEC104MessageParser:
     """IEC104 报文解析器
-    
+
     解析 IEC 60870-5-104 协议 APCI/APDU 帧格式：
     启动字节(0x68) + 长度(1字节) + 控制域(4字节) + [ASDU]
     """
 
     # ASDU 类型标识 (TypeID) → 中文名称
-    TYPE_IDS: Dict[int, str] = {
+    TYPE_IDS: dict[int, str] = {
         # 监视方向 - 过程信息
-        1:  "单点遥信",            # M_SP_NA_1
-        2:  "单点遥信(带时标)",     # M_SP_TA_1
-        3:  "双点遥信",            # M_DP_NA_1
-        4:  "双点遥信(带时标)",     # M_DP_TA_1
-        5:  "步位置信息",          # M_ST_NA_1
-        7:  "32位串",             # M_BO_NA_1
-        9:  "归一化遥测",          # M_ME_NA_1
-        11: "标度化遥测",          # M_ME_NB_1
-        13: "短浮点遥测",          # M_ME_NC_1
-        15: "累计量",             # M_IT_NA_1
+        1: "单点遥信",  # M_SP_NA_1
+        2: "单点遥信(带时标)",  # M_SP_TA_1
+        3: "双点遥信",  # M_DP_NA_1
+        4: "双点遥信(带时标)",  # M_DP_TA_1
+        5: "步位置信息",  # M_ST_NA_1
+        7: "32位串",  # M_BO_NA_1
+        9: "归一化遥测",  # M_ME_NA_1
+        11: "标度化遥测",  # M_ME_NB_1
+        13: "短浮点遥测",  # M_ME_NC_1
+        15: "累计量",  # M_IT_NA_1
         20: "带状态的成组单点遥信",  # M_PS_NA_1
         21: "归一化遥测(不带品质)",  # M_ME_ND_1
         # CP56Time2a 时标版本
-        30: "单点遥信(CP56)",      # M_SP_TB_1
-        31: "双点遥信(CP56)",      # M_DP_TB_1
-        32: "步位置信息(CP56)",     # M_ST_TB_1
-        33: "32位串(CP56)",        # M_BO_TB_1
-        34: "归一化遥测(CP56)",     # M_ME_TD_1
-        35: "标度化遥测(CP56)",     # M_ME_TE_1
-        36: "短浮点遥测(CP56)",     # M_ME_TF_1
-        37: "累计量(CP56)",        # M_IT_TB_1
-        38: "带保护的事件(CP56)",   # M_EP_TD_1
-        39: "成组保护事件(CP56)",   # M_EP_TE_1
-        40: "成组保护输出(CP56)",   # M_EP_TF_1
+        30: "单点遥信(CP56)",  # M_SP_TB_1
+        31: "双点遥信(CP56)",  # M_DP_TB_1
+        32: "步位置信息(CP56)",  # M_ST_TB_1
+        33: "32位串(CP56)",  # M_BO_TB_1
+        34: "归一化遥测(CP56)",  # M_ME_TD_1
+        35: "标度化遥测(CP56)",  # M_ME_TE_1
+        36: "短浮点遥测(CP56)",  # M_ME_TF_1
+        37: "累计量(CP56)",  # M_IT_TB_1
+        38: "带保护的事件(CP56)",  # M_EP_TD_1
+        39: "成组保护事件(CP56)",  # M_EP_TE_1
+        40: "成组保护输出(CP56)",  # M_EP_TF_1
         # 控制方向 - 过程命令
-        45: "单点遥控",            # C_SC_NA_1
-        46: "双点遥控",            # C_DC_NA_1
-        47: "步调节命令",          # C_RC_NA_1
-        48: "设定值(归一化)",       # C_SE_NA_1
-        49: "设定值(标度化)",       # C_SE_NB_1
-        50: "设定值(短浮点)",       # C_SE_NC_1
-        51: "32位串命令",          # C_BO_NA_1
-        58: "单点遥控(CP56)",      # C_SC_TA_1
-        59: "双点遥控(CP56)",      # C_DC_TA_1
-        60: "步调节命令(CP56)",     # C_RC_TA_1
-        61: "设定值归一化(CP56)",   # C_SE_TA_1
-        62: "设定值标度化(CP56)",   # C_SE_TB_1
-        63: "设定值短浮点(CP56)",   # C_SE_TC_1
+        45: "单点遥控",  # C_SC_NA_1
+        46: "双点遥控",  # C_DC_NA_1
+        47: "步调节命令",  # C_RC_NA_1
+        48: "设定值(归一化)",  # C_SE_NA_1
+        49: "设定值(标度化)",  # C_SE_NB_1
+        50: "设定值(短浮点)",  # C_SE_NC_1
+        51: "32位串命令",  # C_BO_NA_1
+        58: "单点遥控(CP56)",  # C_SC_TA_1
+        59: "双点遥控(CP56)",  # C_DC_TA_1
+        60: "步调节命令(CP56)",  # C_RC_TA_1
+        61: "设定值归一化(CP56)",  # C_SE_TA_1
+        62: "设定值标度化(CP56)",  # C_SE_TB_1
+        63: "设定值短浮点(CP56)",  # C_SE_TC_1
         # 系统命令
-        100: "总召唤",             # C_IC_NA_1
-        101: "电度量召唤",          # C_CI_NA_1
-        102: "读命令",             # C_RD_NA_1
-        103: "时钟同步",           # C_CS_NA_1
-        104: "测试命令",           # C_TS_NA_1
-        105: "复位进程",           # C_RP_NA_1
-        106: "延时获得",           # C_CD_NA_1
-        107: "测试命令(CP56)",     # C_TS_TA_1
+        100: "总召唤",  # C_IC_NA_1
+        101: "电度量召唤",  # C_CI_NA_1
+        102: "读命令",  # C_RD_NA_1
+        103: "时钟同步",  # C_CS_NA_1
+        104: "测试命令",  # C_TS_NA_1
+        105: "复位进程",  # C_RP_NA_1
+        106: "延时获得",  # C_CD_NA_1
+        107: "测试命令(CP56)",  # C_TS_TA_1
         # 文件传输
-        110: "初始化结束",          # P_ME_NA_1
-        111: "参数激活",            # P_ME_NB_1
-        112: "参数定义(标度化)",     # P_ME_NC_1
-        113: "参数激活",            # P_AC_NA_1
+        110: "初始化结束",  # P_ME_NA_1
+        111: "参数激活",  # P_ME_NB_1
+        112: "参数定义(标度化)",  # P_ME_NC_1
+        113: "参数激活",  # P_AC_NA_1
     }
 
     # 传送原因 (Cause of Transmission)
-    COT_NAMES: Dict[int, str] = {
+    COT_NAMES: dict[int, str] = {
         1: "周期传送",
         2: "背景扫描",
         3: "突发(自发)",
@@ -385,10 +385,10 @@ class IEC104MessageParser:
     @staticmethod
     def parse(raw_hex: str) -> str:
         """解析 IEC104 报文
-        
+
         Args:
             raw_hex: 不带空格的十六进制字符串
-        
+
         Returns:
             人类可读的描述字符串
         """
@@ -405,7 +405,7 @@ class IEC104MessageParser:
         if data[0] != 0x68:
             return ""
 
-        apdu_len = data[1]
+        data[1]
         ctrl = data[2:6]
 
         # 判断帧类型
@@ -414,13 +414,13 @@ class IEC104MessageParser:
             return IEC104MessageParser._parse_u_frame(ctrl)
         elif (ctrl[0] & 0x01) == 0x01:
             # S 帧（监视帧）
-            recv_seq = ((ctrl[2] | (ctrl[3] << 8)) >> 1)
+            recv_seq = (ctrl[2] | (ctrl[3] << 8)) >> 1
             return f"S帧 确认接收序号:{recv_seq}"
         else:
             # I 帧（信息帧）
-            send_seq = ((ctrl[0] | (ctrl[1] << 8)) >> 1)
-            recv_seq = ((ctrl[2] | (ctrl[3] << 8)) >> 1)
-            
+            send_seq = (ctrl[0] | (ctrl[1] << 8)) >> 1
+            recv_seq = (ctrl[2] | (ctrl[3] << 8)) >> 1
+
             # I 帧包含 ASDU
             if len(data) > 6:
                 asdu_desc = IEC104MessageParser._parse_asdu(data[6:])
@@ -448,7 +448,7 @@ class IEC104MessageParser:
     @staticmethod
     def _parse_asdu(asdu: bytes) -> str:
         """解析 ASDU (应用服务数据单元)
-        
+
         ASDU 结构:
         TypeID(1) + VSQ(1) + COT(2) + CommonAddr(2) + IOA(3) + ...
         """
@@ -458,7 +458,7 @@ class IEC104MessageParser:
         type_id = asdu[0]
         vsq = asdu[1]
         num_objects = vsq & 0x7F  # 信息体数量
-        sq = (vsq >> 7) & 0x01   # SQ标志
+        (vsq >> 7) & 0x01  # SQ标志
 
         # 传送原因（2字节，低字节为COT）
         cot = asdu[2] & 0x3F  # 取低6位
@@ -466,26 +466,19 @@ class IEC104MessageParser:
         is_negative = (asdu[2] >> 6) & 0x01
 
         # 公共地址（2字节）
-        common_addr = asdu[4] | (asdu[5] << 8)
+        asdu[4] | (asdu[5] << 8)
 
         # 类型标识名称
-        type_name = IEC104MessageParser.TYPE_IDS.get(
-            type_id, f"TypeID:{type_id}"
-        )
+        type_name = IEC104MessageParser.TYPE_IDS.get(type_id, f"TypeID:{type_id}")
 
         # 传送原因名称
-        cot_name = IEC104MessageParser.COT_NAMES.get(
-            cot, f"COT:{cot}"
-        )
+        cot_name = IEC104MessageParser.COT_NAMES.get(cot, f"COT:{cot}")
 
         # 尝试提取第一个 IOA
         ioa_desc = ""
         if len(asdu) >= 9:
             ioa = asdu[6] | (asdu[7] << 8) | (asdu[8] << 16)
-            if num_objects == 1:
-                ioa_desc = f" IOA:{ioa}"
-            else:
-                ioa_desc = f" IOA:{ioa} ({num_objects}个)"
+            ioa_desc = f" IOA:{ioa}" if num_objects == 1 else f" IOA:{ioa} ({num_objects}个)"
 
         # 构建描述
         extra = ""
@@ -495,4 +488,3 @@ class IEC104MessageParser:
             extra += " [测试]"
 
         return f"{type_name}{ioa_desc} ({cot_name}){extra}"
-

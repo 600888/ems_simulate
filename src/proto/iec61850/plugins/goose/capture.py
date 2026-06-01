@@ -9,19 +9,19 @@
 
 from __future__ import annotations
 
+from collections import deque
+import contextlib
+from dataclasses import dataclass, field
+from datetime import datetime
 import platform
 import socket
 import struct
 import threading
 import time
-from collections import deque
-from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any, Callable, Optional, Tuple
 
 from ...log import log
 from .types import MmsType
-
 
 # ===== 常量定义 =====
 
@@ -57,6 +57,7 @@ MMS_TAG_UNSIGNED = 0x06
 @dataclass(frozen=True, slots=True)
 class CapturedPacket:
     """单条捕获的 GOOSE 报文 (不可变值对象)"""
+
     timestamp: float
     src_mac: str
     dst_mac: str
@@ -115,7 +116,7 @@ class CapturedPacket:
         """格式化十六进制显示 (每16字节一行)"""
         lines = []
         for i in range(0, len(self.raw_bytes), 16):
-            chunk = self.raw_bytes[i:i + 16]
+            chunk = self.raw_bytes[i : i + 16]
             hex_part = " ".join(f"{b:02x}" for b in chunk)
             ascii_part = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
             lines.append(f"{i:04x}  {hex_part:<48}  {ascii_part}")
@@ -129,10 +130,17 @@ class _GoosePduParser:
     def parse(data: bytes, offset: int) -> dict[str, Any]:
         """解析 GOOSE PDU，返回解析后的字段字典"""
         result: dict[str, Any] = {
-            "go_cb_ref": "", "go_id": "", "data_set_ref": "",
-            "st_num": 0, "sq_num": 0, "time_allowed_to_live": 0,
-            "conf_rev": 0, "simulation": False, "nds_com": False,
-            "num_entries": 0, "data_values": [],
+            "go_cb_ref": "",
+            "go_id": "",
+            "data_set_ref": "",
+            "st_num": 0,
+            "sq_num": 0,
+            "time_allowed_to_live": 0,
+            "conf_rev": 0,
+            "simulation": False,
+            "nds_com": False,
+            "num_entries": 0,
+            "data_values": [],
         }
 
         if offset >= len(data):
@@ -191,7 +199,7 @@ class _GoosePduParser:
         return result
 
     @staticmethod
-    def _read_ber_length(data: bytes, offset: int) -> Tuple[Optional[int], int]:
+    def _read_ber_length(data: bytes, offset: int) -> tuple[int | None, int]:
         """读取 BER-TLV 长度字段"""
         if offset >= len(data):
             return None, offset
@@ -252,7 +260,7 @@ class _GoosePduParser:
                 entry["value"] = _GoosePduParser._parse_ber_integer(data, offset, field_end)
             elif mms_tag == MMS_TAG_BIT_STRING:
                 entry["type"] = "bitstring"
-                unused_bits = data[offset] if mms_length > 0 else 0
+                data[offset] if mms_length > 0 else 0
                 val = 0
                 for i in range(offset + 1, field_end):
                     val = (val << 8) | data[i]
@@ -269,7 +277,7 @@ class _GoosePduParser:
             elif mms_tag == MMS_TAG_FLOAT:
                 entry["type"] = "float"
                 if mms_length >= 4:
-                    entry["value"] = round(struct.unpack(">f", data[offset:offset + 4])[0], 6)
+                    entry["value"] = round(struct.unpack(">f", data[offset : offset + 4])[0], 6)
                 else:
                     entry["value"] = 0.0
             elif mms_tag == MMS_TAG_UNSIGNED:
@@ -289,7 +297,7 @@ class _RawSocketProvider:
     """跨平台原始套接字创建"""
 
     @staticmethod
-    def create(interface: str = "") -> Optional[socket.socket]:
+    def create(interface: str = "") -> socket.socket | None:
         """创建捕获套接字 (跨平台)"""
         system = platform.system().lower()
 
@@ -302,7 +310,7 @@ class _RawSocketProvider:
             return None
 
     @staticmethod
-    def _create_linux_socket(interface: str) -> Optional[socket.socket]:
+    def _create_linux_socket(interface: str) -> socket.socket | None:
         """Linux: 使用 AF_PACKET 原始套接字"""
         try:
             sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(0x0003))
@@ -318,7 +326,7 @@ class _RawSocketProvider:
             return None
 
     @staticmethod
-    def _create_windows_socket() -> Optional[socket.socket]:
+    def _create_windows_socket() -> socket.socket | None:
         """Windows: 使用原始 IP 套接字 + promiscuous 模式"""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
@@ -332,6 +340,7 @@ class _RawSocketProvider:
 
             try:
                 import win32file
+
                 sock.ioctl(0x98000001, 1)
                 log.info(f"Windows 原始套接字创建成功: IP={host_ip}")
             except ImportError:
@@ -352,7 +361,7 @@ class _RawSocketProvider:
             return None
 
     @staticmethod
-    def _get_windows_host_ip() -> Optional[str]:
+    def _get_windows_host_ip() -> str | None:
         """获取本机 IP 地址"""
         try:
             hostname = socket.gethostname()
@@ -376,22 +385,22 @@ class GooseCaptureEngine:
         self._max_packets = max_packets
         self._packets: deque[CapturedPacket] = deque(maxlen=max_packets)
         self._lock = threading.Lock()
-        self._capture_thread: Optional[threading.Thread] = None
+        self._capture_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._is_running = False
         self._packet_count = 0
 
         # 可选的 APPID 过滤
-        self._filter_app_id: Optional[int] = None
+        self._filter_app_id: int | None = None
         # 可选的 GoCBRef 过滤
         self._filter_go_cb_ref: str = ""
 
         # 接收回调 (可选)
-        self._callback: Optional[Callable[[CapturedPacket], None]] = None
+        self._callback: Callable[[CapturedPacket], None] | None = None
 
     # ===== 过滤设置 =====
 
-    def set_app_id_filter(self, app_id: Optional[int]) -> None:
+    def set_app_id_filter(self, app_id: int | None) -> None:
         """设置 APPID 过滤 (None 表示不过滤)"""
         self._filter_app_id = app_id
 
@@ -399,7 +408,7 @@ class GooseCaptureEngine:
         """设置 GoCBRef 过滤 (空字符串表示不过滤)"""
         self._filter_go_cb_ref = go_cb_ref
 
-    def set_callback(self, callback: Optional[Callable[[CapturedPacket], None]]) -> None:
+    def set_callback(self, callback: Callable[[CapturedPacket], None] | None) -> None:
         """设置捕获回调 (传入 None 清除回调)"""
         self._callback = callback
 
@@ -448,7 +457,7 @@ class GooseCaptureEngine:
 
     # ===== 数据访问 =====
 
-    def get_packets(self, count: int = 0, filter_app_id: Optional[int] = None) -> list[dict[str, Any]]:
+    def get_packets(self, count: int = 0, filter_app_id: int | None = None) -> list[dict[str, Any]]:
         """获取捕获的报文列表"""
         with self._lock:
             packets = list(self._packets)
@@ -516,13 +525,13 @@ class GooseCaptureEngine:
 
             while not self._stop_event.is_set():
                 try:
-                    if hasattr(sock, 'settimeout'):
+                    if hasattr(sock, "settimeout"):
                         sock.settimeout(1.0)
                     raw_data = sock.recv(65535)
                     self._process_packet(raw_data)
                 except socket.timeout:
                     continue
-                except (OSError, socket.error) as e:
+                except OSError as e:
                     if not self._stop_event.is_set():
                         log.warning(f"捕获套接字异常: {e}")
                     break
@@ -533,10 +542,8 @@ class GooseCaptureEngine:
             self._is_running = False
             self._stop_event.set()
             if sock:
-                try:
+                with contextlib.suppress(Exception):
                     sock.close()
-                except Exception:
-                    pass
 
     def _process_packet(self, raw_data: bytes) -> None:
         """处理捕获的原始数据包"""

@@ -1,7 +1,9 @@
 """
 Modbus 报文解析器单元测试
 """
+
 import unittest
+
 from src.device.core.message.message_parser import ModbusMessageParser
 
 
@@ -241,5 +243,5 @@ class TestExtractRequestInfo(unittest.TestCase):
         self.assertEqual(info["start_addr"], 0x006B)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

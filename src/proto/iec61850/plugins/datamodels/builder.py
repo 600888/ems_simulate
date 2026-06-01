@@ -6,9 +6,9 @@
 
 from typing import Any, Dict, List, Optional
 
-from ...defs.constants import HAS_IEC61850, FC_MX, FC_ST, FC_CO, FC_CF
 from ...defs.address import is_full_ref, parse_ref, split_ln_name
-from ...defs.ln_classes import YK_LN_CLASSES, YT_LN_CLASSES, YC_LN_CLASSES, YX_LN_CLASSES
+from ...defs.constants import FC_CF, FC_CO, FC_MX, FC_ST, HAS_IEC61850
+from ...defs.ln_classes import YC_LN_CLASSES, YK_LN_CLASSES, YT_LN_CLASSES, YX_LN_CLASSES
 from ...log import log
 
 if HAS_IEC61850:
@@ -46,22 +46,22 @@ class IedModelBuilder:
         self._ggio2 = None
 
         # 动态模型: LD/LN 缓存
-        self._ld_map: Dict[str, Any] = {}
-        self._ln_map: Dict[str, Any] = {}
-        self._do_map: Dict[str, Any] = {}
-        self._da_map: Dict[str, Any] = {}
+        self._ld_map: dict[str, Any] = {}
+        self._ln_map: dict[str, Any] = {}
+        self._do_map: dict[str, Any] = {}
+        self._da_map: dict[str, Any] = {}
 
         # 测点映射
-        self._point_refs: Dict[str, str] = {}
-        self._point_attrs: Dict[str, Any] = {}
-        self._point_fc: Dict[str, str] = {}
-        self._point_iec_type: Dict[str, str] = {}
+        self._point_refs: dict[str, str] = {}
+        self._point_attrs: dict[str, Any] = {}
+        self._point_fc: dict[str, str] = {}
+        self._point_iec_type: dict[str, str] = {}
 
         # 标准 DA 列表 (用于服务器启动后初始化默认值)
-        self._standard_bda_list: List[tuple] = []
+        self._standard_bda_list: list[tuple] = []
 
         # 保持底层 C 对象的 Python 引用
-        self._keep_alive: List[Any] = []
+        self._keep_alive: list[Any] = []
 
     @property
     def model(self):
@@ -69,35 +69,35 @@ class IedModelBuilder:
         return self._model
 
     @property
-    def point_refs(self) -> Dict[str, str]:
+    def point_refs(self) -> dict[str, str]:
         return self._point_refs
 
     @property
-    def point_attrs(self) -> Dict[str, Any]:
+    def point_attrs(self) -> dict[str, Any]:
         return self._point_attrs
 
     @property
-    def point_fc(self) -> Dict[str, str]:
+    def point_fc(self) -> dict[str, str]:
         return self._point_fc
 
     @property
-    def point_iec_type(self) -> Dict[str, str]:
+    def point_iec_type(self) -> dict[str, str]:
         return self._point_iec_type
 
     @property
-    def ld_map(self) -> Dict[str, Any]:
+    def ld_map(self) -> dict[str, Any]:
         return self._ld_map
 
     @property
-    def ln_map(self) -> Dict[str, Any]:
+    def ln_map(self) -> dict[str, Any]:
         return self._ln_map
 
     @property
-    def standard_bda_list(self) -> List[tuple]:
+    def standard_bda_list(self) -> list[tuple]:
         return self._standard_bda_list
 
     @property
-    def keep_alive(self) -> List[Any]:
+    def keep_alive(self) -> list[Any]:
         return self._keep_alive
 
     # ===== LD/LN 管理 =====
@@ -155,7 +155,7 @@ class IedModelBuilder:
         """简单地址模式: 使用固定结构添加测点"""
         self.ensure_base_ld()
         addr_str = str(address)
-        safe_addr = str(address).replace('.', '_').replace('/', '_').replace('\\', '_').replace('-', '_')
+        safe_addr = str(address).replace(".", "_").replace("/", "_").replace("\\", "_").replace("-", "_")
         ref = None
 
         if frame_type == 0:  # 遥测
@@ -173,7 +173,9 @@ class IedModelBuilder:
                 mag = iec61850.DataObject_create("mag", iec61850.toModelNode(do), 0)
                 self._do_map[mag_key] = mag
                 self._keep_alive.append(mag)
-            da = iec61850.DataAttribute_create("f", iec61850.toModelNode(mag), iec61850.IEC61850_FLOAT32, FC_MX, 0, 0, 0)
+            da = iec61850.DataAttribute_create(
+                "f", iec61850.toModelNode(mag), iec61850.IEC61850_FLOAT32, FC_MX, 0, 0, 0
+            )
             ref = f"{self.model_name}{self.ld_name}/MMXU1.{do_name}.mag.f"
             self._point_attrs[addr_str] = da
             self._point_fc[addr_str] = "MX"
@@ -189,7 +191,9 @@ class IedModelBuilder:
                 self._do_map[do_key] = do
                 self._keep_alive.append(do)
                 self._add_standard_das(do, do_key, "ST", 1, ["stVal"])
-            da = iec61850.DataAttribute_create("stVal", iec61850.toModelNode(do), iec61850.IEC61850_BOOLEAN, FC_ST, 0, 0, 0)
+            da = iec61850.DataAttribute_create(
+                "stVal", iec61850.toModelNode(do), iec61850.IEC61850_BOOLEAN, FC_ST, 0, 0, 0
+            )
             ref = f"{self.model_name}{self.ld_name}/GGIO1.{do_name}.stVal"
             self._point_attrs[addr_str] = da
             self._point_fc[addr_str] = "ST"
@@ -204,7 +208,9 @@ class IedModelBuilder:
                 do = iec61850.DataObject_create(do_name, iec61850.toModelNode(self._ggio1), 0)
                 self._do_map[do_key] = do
                 self._keep_alive.append(do)
-            da = iec61850.DataAttribute_create("ctlVal", iec61850.toModelNode(do), iec61850.IEC61850_BOOLEAN, FC_CO, 0, 0, 0)
+            da = iec61850.DataAttribute_create(
+                "ctlVal", iec61850.toModelNode(do), iec61850.IEC61850_BOOLEAN, FC_CO, 0, 0, 0
+            )
             ref = f"{self.model_name}{self.ld_name}/GGIO1.{do_name}.ctlVal"
             self._point_attrs[addr_str] = da
             self._point_fc[addr_str] = "CO"
@@ -219,7 +225,9 @@ class IedModelBuilder:
                 do = iec61850.DataObject_create(do_name, iec61850.toModelNode(self._ggio2), 0)
                 self._do_map[do_key] = do
                 self._keep_alive.append(do)
-            da = iec61850.DataAttribute_create("ctlVal", iec61850.toModelNode(do), iec61850.IEC61850_FLOAT32, FC_CO, 0, 0, 0)
+            da = iec61850.DataAttribute_create(
+                "ctlVal", iec61850.toModelNode(do), iec61850.IEC61850_FLOAT32, FC_CO, 0, 0, 0
+            )
             ref = f"{self.model_name}{self.ld_name}/GGIO2.{do_name}.ctlVal"
             self._point_attrs[addr_str] = da
             self._point_fc[addr_str] = "CO"
@@ -258,7 +266,7 @@ class IedModelBuilder:
 
         addr_str = str(address)
         ln = self.get_or_create_ln(ld_inst, ln_name)
-        da_parts = da_path.split('.') if da_path else []
+        da_parts = da_path.split(".") if da_path else []
 
         # 获取或创建 DO
         do_key = f"{ld_inst}/{ln_name}.{do_name}"
@@ -281,8 +289,8 @@ class IedModelBuilder:
         # 沿 da_path 逐级创建
         parent = do_obj
         for i, part in enumerate(da_parts):
-            is_leaf = (i == len(da_parts) - 1)
-            part_key = f"{ld_inst}/{ln_name}.{do_name}.{'.'.join(da_parts[:i+1])}"
+            is_leaf = i == len(da_parts) - 1
+            part_key = f"{ld_inst}/{ln_name}.{do_name}.{'.'.join(da_parts[: i + 1])}"
 
             if is_leaf:
                 existing_da = self._da_map.get(part_key)
@@ -320,11 +328,24 @@ class IedModelBuilder:
     @staticmethod
     def _infer_fc(frame_type: int, top_da: str) -> str:
         DA_FC_MAP = {
-            "mag": "MX", "instMag": "MX", "cVal": "MX", "mxVal": "MX", "fCVal": "MX",
-            "stVal": "ST", "ctlVal": "CO", "setVal": "CO",
-            "q": "MX", "t": "MX", "dU": "DC",
-            "origin": "OR", "subVal": "SV", "blkEna": "BL",
-            "Oper": "CO", "SBOw": "CO", "Cancel": "CO", "SBO": "CO",
+            "mag": "MX",
+            "instMag": "MX",
+            "cVal": "MX",
+            "mxVal": "MX",
+            "fCVal": "MX",
+            "stVal": "ST",
+            "ctlVal": "CO",
+            "setVal": "CO",
+            "q": "MX",
+            "t": "MX",
+            "dU": "DC",
+            "origin": "OR",
+            "subVal": "SV",
+            "blkEna": "BL",
+            "Oper": "CO",
+            "SBOw": "CO",
+            "Cancel": "CO",
+            "SBO": "CO",
         }
         fc = DA_FC_MAP.get(top_da)
         if fc:
@@ -336,14 +357,22 @@ class IedModelBuilder:
         if not HAS_IEC61850:
             return None
         FC_CONST_MAP = {
-            "MX": iec61850.IEC61850_FC_MX, "ST": iec61850.IEC61850_FC_ST,
-            "CO": iec61850.IEC61850_FC_CO, "CF": iec61850.IEC61850_FC_CF,
-            "DC": iec61850.IEC61850_FC_DC, "EX": iec61850.IEC61850_FC_EX,
-            "SG": iec61850.IEC61850_FC_SG, "SR": iec61850.IEC61850_FC_SR,
-            "OR": iec61850.IEC61850_FC_OR, "BL": iec61850.IEC61850_FC_BL,
-            "SV": iec61850.IEC61850_FC_SV, "SP": iec61850.IEC61850_FC_SP,
-            "SE": iec61850.IEC61850_FC_SE, "US": iec61850.IEC61850_FC_US,
-            "MS": iec61850.IEC61850_FC_MS, "RP": iec61850.IEC61850_FC_RP,
+            "MX": iec61850.IEC61850_FC_MX,
+            "ST": iec61850.IEC61850_FC_ST,
+            "CO": iec61850.IEC61850_FC_CO,
+            "CF": iec61850.IEC61850_FC_CF,
+            "DC": iec61850.IEC61850_FC_DC,
+            "EX": iec61850.IEC61850_FC_EX,
+            "SG": iec61850.IEC61850_FC_SG,
+            "SR": iec61850.IEC61850_FC_SR,
+            "OR": iec61850.IEC61850_FC_OR,
+            "BL": iec61850.IEC61850_FC_BL,
+            "SV": iec61850.IEC61850_FC_SV,
+            "SP": iec61850.IEC61850_FC_SP,
+            "SE": iec61850.IEC61850_FC_SE,
+            "US": iec61850.IEC61850_FC_US,
+            "MS": iec61850.IEC61850_FC_MS,
+            "RP": iec61850.IEC61850_FC_RP,
         }
         return FC_CONST_MAP.get(fc)
 
@@ -388,9 +417,29 @@ class IedModelBuilder:
             return "quality"
         if leaf == "t":
             return "timestamp"
-        if leaf in ("stVal", "ctlVal", "subEna", "blkEna", "LeapSecondsKnown", "ClockedFailure", "ClockNotSynchronized"):
+        if leaf in (
+            "stVal",
+            "ctlVal",
+            "subEna",
+            "blkEna",
+            "LeapSecondsKnown",
+            "ClockedFailure",
+            "ClockNotSynchronized",
+        ):
             return "boolean"
-        if leaf in ("validity", "source", "orCat", "ctlNum", "frVal", "actVal", "frValSec", "TimeAccuracy", "seconds", "fraction", "detailQuality"):
+        if leaf in (
+            "validity",
+            "source",
+            "orCat",
+            "ctlNum",
+            "frVal",
+            "actVal",
+            "frValSec",
+            "TimeAccuracy",
+            "seconds",
+            "fraction",
+            "detailQuality",
+        ):
             return "integer"
         if leaf in ("dU", "d", "du"):
             return "string"
@@ -441,21 +490,27 @@ class IedModelBuilder:
 
         q_key = f"{do_key}.q"
         if q_key not in self._da_map and qt_fc_const:
-            q_da = iec61850.DataAttribute_create("q", iec61850.toModelNode(do_obj), iec61850.IEC61850_QUALITY, qt_fc_const, 0, 0, 0)
+            q_da = iec61850.DataAttribute_create(
+                "q", iec61850.toModelNode(do_obj), iec61850.IEC61850_QUALITY, qt_fc_const, 0, 0, 0
+            )
             self._da_map[q_key] = q_da
             self._keep_alive.append(q_da)
             self._standard_bda_list.append((q_da, "q", "quality"))
 
         t_key = f"{do_key}.t"
         if t_key not in self._da_map and qt_fc_const:
-            t_da = iec61850.DataAttribute_create("t", iec61850.toModelNode(do_obj), iec61850.IEC61850_TIMESTAMP, qt_fc_const, 0, 0, 0)
+            t_da = iec61850.DataAttribute_create(
+                "t", iec61850.toModelNode(do_obj), iec61850.IEC61850_TIMESTAMP, qt_fc_const, 0, 0, 0
+            )
             self._da_map[t_key] = t_da
             self._keep_alive.append(t_da)
             self._standard_bda_list.append((t_da, "t", "timestamp"))
 
         du_key = f"{do_key}.dU"
         if du_key not in self._da_map and dc_fc_const:
-            du_da = iec61850.DataAttribute_create("dU", iec61850.toModelNode(do_obj), iec61850.IEC61850_VISIBLE_STRING_255, dc_fc_const, 0, 0, 0)
+            du_da = iec61850.DataAttribute_create(
+                "dU", iec61850.toModelNode(do_obj), iec61850.IEC61850_VISIBLE_STRING_255, dc_fc_const, 0, 0, 0
+            )
             self._da_map[du_key] = du_da
             self._keep_alive.append(du_da)
 
@@ -486,11 +541,13 @@ class IedModelBuilder:
 
         parent = do_obj
         for i, part in enumerate(da_path_parts):
-            is_leaf = (i == len(da_path_parts) - 1)
-            part_key = f"{ld_inst}/{ln_name}.{do_name}.{'.'.join(da_path_parts[:i+1])}"
+            is_leaf = i == len(da_path_parts) - 1
+            part_key = f"{ld_inst}/{ln_name}.{do_name}.{'.'.join(da_path_parts[: i + 1])}"
             if is_leaf:
                 if part_key not in self._da_map:
-                    da = iec61850.DataAttribute_create(part, iec61850.toModelNode(parent), iec_type_const, fc_const, 0, 0, 0)
+                    da = iec61850.DataAttribute_create(
+                        part, iec61850.toModelNode(parent), iec_type_const, fc_const, 0, 0, 0
+                    )
                     self._da_map[part_key] = da
                     self._keep_alive.append(da)
             else:
@@ -547,14 +604,13 @@ class IedModelBuilder:
         prefix = f"{ld_inst}/"
         for key in self._ln_map:
             if key.startswith(prefix):
-                ln_names.append(key[len(prefix):])
+                ln_names.append(key[len(prefix) :])
         return sorted(ln_names)
 
     def browse_data_objects(self, ld_inst: str, ln_name: str) -> list[dict]:
-        do_map: Dict[str, Optional[int]] = {}
-        prefix = f"{ld_inst}/{ln_name}."
-        for address, ref in self._point_refs.items():
-            if not isinstance(address, str) or '/' not in address:
+        do_map: dict[str, Optional[int]] = {}
+        for address, _ref in self._point_refs.items():
+            if not isinstance(address, str) or "/" not in address:
                 continue
             parsed = parse_ref(address)
             if parsed and parsed[0] == ld_inst and parsed[1] == ln_name:
@@ -564,16 +620,14 @@ class IedModelBuilder:
         return [{"name": name, "frame_type": ft} for name, ft in sorted(do_map.items())]
 
     def browse_data_attributes(self, ld_inst: str, ln_name: str, do_name: str) -> list[dict]:
-        fc_map = {0: "MX", 1: "ST", 2: "CO", 3: "CO"}
-        type_map = {0: "Float32", 1: "Boolean", 2: "Boolean", 3: "Float32"}
-        da_map: Dict[str, dict] = {}
-        for address, ref in self._point_refs.items():
-            if not isinstance(address, str) or '/' not in address:
+        da_map: dict[str, dict] = {}
+        for address, _ref in self._point_refs.items():
+            if not isinstance(address, str) or "/" not in address:
                 continue
             parsed = parse_ref(address)
             if parsed and parsed[0] == ld_inst and parsed[1] == ln_name and parsed[2] == do_name:
                 da_path = parsed[3]
                 if da_path and da_path not in da_map:
-                    first_da = da_path.split('.')[0]
+                    first_da = da_path.split(".")[0]
                     da_map[da_path] = {"name": first_da, "path": da_path, "fc": "", "type": ""}
         return sorted(da_map.values(), key=lambda x: x["path"])

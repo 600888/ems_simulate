@@ -7,12 +7,12 @@
 - 缓存清理
 """
 
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
-import shutil
-from datetime import datetime, timezone
 from pathlib import Path
+import shutil
 from typing import Dict, List, Optional
 
 from ...log import log
@@ -33,7 +33,7 @@ class CacheManager:
         """
         self._cache_dir = Path(cache_dir) if cache_dir else self._default_cache_dir()
         self._max_size_bytes = max_size_mb * 1024 * 1024
-        self._index: Dict[str, FileMetadata] = {}
+        self._index: dict[str, FileMetadata] = {}
         self._ensure_cache_dir()
         self._load_index()
 
@@ -212,7 +212,7 @@ class CacheManager:
         self._save_index()
         return True
 
-    def list_cached(self) -> List[FileMetadata]:
+    def list_cached(self) -> list[FileMetadata]:
         """列出所有缓存文件"""
         # 过滤已不存在的文件
         valid = []
@@ -300,7 +300,7 @@ class CacheManager:
             return
 
         try:
-            with open(index_path, "r", encoding="utf-8") as f:
+            with open(index_path, encoding="utf-8") as f:
                 data = json.load(f)
 
             for key, item in data.items():
@@ -309,8 +309,7 @@ class CacheManager:
                     local_path=item.get("local_path", ""),
                     file_size=item.get("file_size", 0),
                     remote_modified=self._parse_datetime(item.get("remote_modified")),
-                    download_time=self._parse_datetime(item.get("download_time"))
-                    or datetime.now(timezone.utc),
+                    download_time=self._parse_datetime(item.get("download_time")) or datetime.now(timezone.utc),
                     checksum=item.get("checksum"),
                 )
             log.debug(f"加载缓存索引: {len(self._index)} 条记录")

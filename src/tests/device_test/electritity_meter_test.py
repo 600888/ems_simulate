@@ -21,9 +21,7 @@ class ElectricityMeterTestCase(unittest.TestCase):
     def testStartPlan(self) -> None:
         csv_file_path = CSV_DIR + "tuobang_energyMeter.csv"
         electricity_builder = ElectricityMeterBuilder()
-        electricity_meter = electricity_builder.makeElectricityMeter(
-            1, csv_file_path, "tcp", True
-        )
+        electricity_meter = electricity_builder.makeElectricityMeter(1, csv_file_path, "tcp", True)
         electricity_meter.plan.clearAllPlan()
         electricity_meter.plan.importAllPlan()
         electricity_meter.plan.current_plan_name = "output.json"

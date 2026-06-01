@@ -1,8 +1,8 @@
 import unittest
 
 from src.config.global_config import CSV_DIR
-from src.device.grid_meter import GridMeter
 from src.device.factory.grid_meter_build import GridMeterBuilder
+from src.device.grid_meter import GridMeter
 
 
 class GridMeterTestCase(unittest.TestCase):

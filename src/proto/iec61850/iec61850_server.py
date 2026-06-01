@@ -5,21 +5,30 @@ IEC 61850 MMS 服务端封装 (门面模式)
 提供统一的服务端 API。保持与原有 IEC61850Server 接口完全向后兼容。
 """
 
+import contextlib
 import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from .log import log
 from .defs import (
+    ALL_LN_CLASSES,
+    FC_CF,
+    FC_CO,
+    FC_MX,
+    FC_ST,
     HAS_IEC61850,
-    FC_MX, FC_ST, FC_CO, FC_CF,
-    ALL_LN_CLASSES, YK_LN_CLASSES, YT_LN_CLASSES, YC_LN_CLASSES, YX_LN_CLASSES,
-    is_full_ref, parse_ref, split_ln_name,
+    YC_LN_CLASSES,
+    YK_LN_CLASSES,
+    YT_LN_CLASSES,
+    YX_LN_CLASSES,
+    is_full_ref,
+    parse_ref,
+    split_ln_name,
 )
+from .log import log
 from .plugins.datamodels.builder import IedModelBuilder
 from .plugins.datasets.server import ServerDataSetManager
 from .plugins.reports.manager import ReportManager
-
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
@@ -93,43 +102,43 @@ class IEC61850Server:
         return self._builder._ggio2
 
     @property
-    def _ld_map(self) -> Dict[str, Any]:
+    def _ld_map(self) -> dict[str, Any]:
         return self._builder.ld_map
 
     @property
-    def _ln_map(self) -> Dict[str, Any]:
+    def _ln_map(self) -> dict[str, Any]:
         return self._builder.ln_map
 
     @property
-    def _do_map(self) -> Dict[str, Any]:
+    def _do_map(self) -> dict[str, Any]:
         return self._builder._do_map
 
     @property
-    def _da_map(self) -> Dict[str, Any]:
+    def _da_map(self) -> dict[str, Any]:
         return self._builder._da_map
 
     @property
-    def _point_refs(self) -> Dict[str, str]:
+    def _point_refs(self) -> dict[str, str]:
         return self._builder.point_refs
 
     @property
-    def _point_attrs(self) -> Dict[str, Any]:
+    def _point_attrs(self) -> dict[str, Any]:
         return self._builder.point_attrs
 
     @property
-    def _point_fc(self) -> Dict[str, str]:
+    def _point_fc(self) -> dict[str, str]:
         return self._builder.point_fc
 
     @property
-    def _point_iec_type(self) -> Dict[str, str]:
+    def _point_iec_type(self) -> dict[str, str]:
         return self._builder.point_iec_type
 
     @property
-    def _standard_bda_list(self) -> List[tuple]:
+    def _standard_bda_list(self) -> list[tuple]:
         return self._builder.standard_bda_list
 
     @property
-    def _keep_alive(self) -> List[Any]:
+    def _keep_alive(self) -> list[Any]:
         return self._builder.keep_alive
 
     # ===== 向后兼容属性: 委托给 ds_manager =====
@@ -147,11 +156,11 @@ class IEC61850Server:
         return self._ds_manager.goose_publishing_enabled
 
     @property
-    def _goose_cb_list(self) -> List[Dict[str, Any]]:
+    def _goose_cb_list(self) -> list[dict[str, Any]]:
         return self._ds_manager.goose_cb_list
 
     @property
-    def _dataset_catalog(self) -> List[Dict[str, Any]]:
+    def _dataset_catalog(self) -> list[dict[str, Any]]:
         return self._ds_manager.dataset_catalog
 
     @property
@@ -163,7 +172,7 @@ class IEC61850Server:
         self._ds_manager.model_changed = value
 
     @property
-    def _pending_goose_registrations(self) -> List[Dict[str, Any]]:
+    def _pending_goose_registrations(self) -> list[dict[str, Any]]:
         return self._ds_manager.pending_registrations
 
     # ===== 模型构建 (委托给 IedModelBuilder) =====
@@ -239,6 +248,7 @@ class IEC61850Server:
         if not self._server or not self._is_running:
             return
         import time as time_module
+
         now_ms = int(time_module.time() * 1000)
         for da, name, iec_type in self._builder.standard_bda_list:
             try:
@@ -246,9 +256,8 @@ class IEC61850Server:
                     iec61850.IedServer_updateQuality(self._server, da, 0)
                 elif iec_type == "timestamp":
                     iec61850.IedServer_updateUTCTimeAttributeValue(self._server, da, now_ms)
-                elif iec_type == "string":
-                    if hasattr(iec61850, 'IedServer_updateStringAttributeValue'):
-                        iec61850.IedServer_updateStringAttributeValue(self._server, da, "")
+                elif iec_type == "string" and hasattr(iec61850, "IedServer_updateStringAttributeValue"):
+                    iec61850.IedServer_updateStringAttributeValue(self._server, da, "")
             except Exception as e:
                 log.warning(f"初始化标准 DA 默认值失败: {name}({iec_type}), error={e}")
 
@@ -271,6 +280,7 @@ class IEC61850Server:
                     log.warning(f"停止旧 IedServer 时出错: {e}")
                 self._server = None
             import time as _time
+
             _time.sleep(0.5)
             self._server = iec61850.IedServer_create(self._builder.model)
             if not self._server:
@@ -283,7 +293,9 @@ class IEC61850Server:
                 log.info("IedServer 重建成功")
                 self._init_standard_bda_defaults()
                 self._try_enable_goose_publishing()
-                import time as _time, platform
+                import platform
+                import time as _time
+
                 _time.sleep(0.3)
                 if platform.system() != "Windows":
                     self._enable_all_goose_cbs()
@@ -328,7 +340,9 @@ class IEC61850Server:
             except Exception as e:
                 log.warning(f"初始化标准 DA 默认值异常 (非致命): {e}")
             self._try_enable_goose_publishing()
-            import time as _time, platform
+            import platform
+            import time as _time
+
             _time.sleep(0.3)
             if platform.system() != "Windows":
                 try:
@@ -344,6 +358,7 @@ class IEC61850Server:
     def _try_enable_goose_publishing(self):
         """尝试启用 GOOSE 以太网发布（非致命）"""
         import platform
+
         if platform.system() == "Windows":
             log.info("GOOSE 发布: Windows 平台不支持原始套接字，已跳过")
             self._ds_manager._goose_publishing_enabled = False
@@ -352,6 +367,7 @@ class IEC61850Server:
         if interface and interface != "eth0":
             try:
                 import subprocess
+
                 result = subprocess.run(["ip", "link", "show", interface], capture_output=True, timeout=3)
                 if result.returncode != 0:
                     log.warning(f"GOOSE 网络接口 '{interface}' 不存在，跳过")
@@ -391,6 +407,7 @@ class IEC61850Server:
         self._server = None
         self._is_running = False
         import time as _time
+
         _time.sleep(1)
         self._server = iec61850.IedServer_create(self._builder.model)
         if not self._server:
@@ -403,14 +420,16 @@ class IEC61850Server:
             log.info(f"IEC 61850 服务器重启成功, 端口: {self.port}")
             self._init_standard_bda_defaults()
             self._try_enable_goose_publishing()
-            import time as _time, platform
+            import platform
+            import time as _time
+
             _time.sleep(0.3)
             if platform.system() != "Windows":
                 self._enable_all_goose_cbs()
             return True
         else:
             self._is_running = False
-            log.error(f"IEC 61850 服务器重启失败")
+            log.error("IEC 61850 服务器重启失败")
             return False
 
     @property
@@ -430,7 +449,7 @@ class IEC61850Server:
         if not da:
             log.warning(f"IEC61850 读取测点值时未找到 DataAttribute: address={address}")
             return 0
-        if not hasattr(da, 'this'):
+        if not hasattr(da, "this"):
             log.error(f"IEC61850 数据属性对象类型错误: address={address}")
             return 0
         iec_type = self._point_iec_type.get(resolved_addr, self._point_iec_type.get(addr_str, "unknown"))
@@ -442,23 +461,23 @@ class IEC61850Server:
                 value = iec61850.IedServer_getBooleanAttributeValue(self._server, da)
                 return bool(value) if value is not None else False
             elif iec_type == "integer":
-                if hasattr(iec61850, 'IedServer_getIntegerAttributeValue'):
+                if hasattr(iec61850, "IedServer_getIntegerAttributeValue"):
                     value = iec61850.IedServer_getIntegerAttributeValue(self._server, da)
                     return int(value) if value is not None else 0
                 value = iec61850.IedServer_getBooleanAttributeValue(self._server, da)
                 return bool(value) if value is not None else False
             elif iec_type == "string":
-                if hasattr(iec61850, 'IedServer_getStringAttributeValue'):
+                if hasattr(iec61850, "IedServer_getStringAttributeValue"):
                     value = iec61850.IedServer_getStringAttributeValue(self._server, da)
                     return str(value).strip() if value else ""
                 return ""
             elif iec_type == "quality":
-                if hasattr(iec61850, 'IedServer_getUnsignedAttributeValue'):
+                if hasattr(iec61850, "IedServer_getUnsignedAttributeValue"):
                     value = iec61850.IedServer_getUnsignedAttributeValue(self._server, da)
                     return int(value) if value is not None else 0
                 return 0
             elif iec_type == "timestamp":
-                if hasattr(iec61850, 'IedServer_getUTCTimeAttributeValue'):
+                if hasattr(iec61850, "IedServer_getUTCTimeAttributeValue"):
                     value = iec61850.IedServer_getUTCTimeAttributeValue(self._server, da)
                     return int(value) if value is not None else 0
                 return 0
@@ -473,7 +492,7 @@ class IEC61850Server:
                     return bool(value) if value is not None else False
                 except Exception:
                     pass
-                if hasattr(iec61850, 'IedServer_getIntegerAttributeValue'):
+                if hasattr(iec61850, "IedServer_getIntegerAttributeValue"):
                     try:
                         value = iec61850.IedServer_getIntegerAttributeValue(self._server, da)
                         return int(value) if value is not None else 0
@@ -493,19 +512,19 @@ class IEC61850Server:
         if not da:
             log.warning(f"IEC61850 设置测点值时未找到 DataAttribute: address={address}")
             return
-        if not hasattr(da, 'this'):
+        if not hasattr(da, "this"):
             log.error(f"IEC61850 数据属性对象类型错误(设置值): address={address}")
             return
         iec_type = self._point_iec_type.get(resolved_addr, self._point_iec_type.get(addr_str, "unknown"))
         try:
             if isinstance(value, str) or iec_type == "string":
-                if hasattr(iec61850, 'IedServer_updateStringAttributeValue'):
+                if hasattr(iec61850, "IedServer_updateStringAttributeValue"):
                     iec61850.IedServer_updateStringAttributeValue(self._server, da, str(value))
             elif iec_type == "float":
                 iec61850.IedServer_updateFloatAttributeValue(self._server, da, float(value))
             elif iec_type == "integer":
                 if isinstance(value, int) and not isinstance(value, bool):
-                    if hasattr(iec61850, 'IedServer_updateIntegerAttributeValue'):
+                    if hasattr(iec61850, "IedServer_updateIntegerAttributeValue"):
                         iec61850.IedServer_updateIntegerAttributeValue(self._server, da, int(value))
                     else:
                         iec61850.IedServer_updateBooleanAttributeValue(self._server, da, bool(value))
@@ -523,7 +542,7 @@ class IEC61850Server:
                 elif isinstance(value, bool):
                     iec61850.IedServer_updateBooleanAttributeValue(self._server, da, bool(value))
                 elif isinstance(value, int):
-                    if hasattr(iec61850, 'IedServer_updateIntegerAttributeValue'):
+                    if hasattr(iec61850, "IedServer_updateIntegerAttributeValue"):
                         iec61850.IedServer_updateIntegerAttributeValue(self._server, da, int(value))
                     else:
                         iec61850.IedServer_updateBooleanAttributeValue(self._server, da, bool(value))
@@ -559,9 +578,16 @@ class IEC61850Server:
                 "conf_rev": 1,
                 "buf_time": 0,
                 "trg_ops": {"dchg": True, "qchg": False, "dupd": False, "period": False, "gi": True},
-                "opt_fields": {"seq_num": True, "time_stamp": True, "data_set": True,
-                               "reason_code": True, "data_ref": False, "entry_id": True,
-                               "config_ref": False, "buf_ovfl": False},
+                "opt_fields": {
+                    "seq_num": True,
+                    "time_stamp": True,
+                    "data_set": True,
+                    "reason_code": True,
+                    "data_ref": False,
+                    "entry_id": True,
+                    "config_ref": False,
+                    "buf_ovfl": False,
+                },
             },
             {
                 "ld_inst": default_ld,
@@ -572,17 +598,23 @@ class IEC61850Server:
                 "conf_rev": 1,
                 "buf_time": 100,
                 "trg_ops": {"dchg": True, "qchg": True, "dupd": False, "period": True, "gi": True},
-                "opt_fields": {"seq_num": True, "time_stamp": True, "data_set": True,
-                               "reason_code": True, "data_ref": False, "entry_id": True,
-                               "config_ref": False, "buf_ovfl": False},
+                "opt_fields": {
+                    "seq_num": True,
+                    "time_stamp": True,
+                    "data_set": True,
+                    "reason_code": True,
+                    "data_ref": False,
+                    "entry_id": True,
+                    "config_ref": False,
+                    "buf_ovfl": False,
+                },
             },
         ]
 
         for rcb_cfg in default_rcbs:
             # 先注册 DataSet（如果还不存在）
             ds_name = rcb_cfg["data_set_ref"].split("$")[-1]
-            if not any(ds.get("ref") == rcb_cfg["data_set_ref"]
-                       for ds in self._ds_manager.browse_datasets()):
+            if not any(ds.get("ref") == rcb_cfg["data_set_ref"] for ds in self._ds_manager.browse_datasets()):
                 self._ds_manager.register_dataset(
                     ld_inst=rcb_cfg["ld_inst"],
                     ds_name=ds_name,
@@ -624,24 +656,49 @@ class IEC61850Server:
 
     # ===== GOOSE / DataSet (委托给 ds_manager) =====
 
-    def add_goose_control_block(self, name, app_id, data_set_ref, conf_rev, go_id="",
-                                 min_time=10, max_time=1000, ld_inst=None, entries=None,
-                                 dst_mac=None, vlan_id=0, vlan_prio=4) -> bool:
+    def add_goose_control_block(
+        self,
+        name,
+        app_id,
+        data_set_ref,
+        conf_rev,
+        go_id="",
+        min_time=10,
+        max_time=1000,
+        ld_inst=None,
+        entries=None,
+        dst_mac=None,
+        vlan_id=0,
+        vlan_prio=4,
+    ) -> bool:
         """在 LLN0 下创建 GSEControlBlock (委托给 ds_manager)"""
         result = self._ds_manager.add_goose_control_block(
-            name, app_id, data_set_ref, conf_rev, go_id, min_time, max_time,
-            ld_inst, entries, dst_mac, vlan_id, vlan_prio,
+            name,
+            app_id,
+            data_set_ref,
+            conf_rev,
+            go_id,
+            min_time,
+            max_time,
+            ld_inst,
+            entries,
+            dst_mac,
+            vlan_id,
+            vlan_prio,
         )
         if result and self._server and self._is_running:
             self._model_changed = True
             log.info(f"GoCB {name} 在 IedServer 运行时添加，需要重建 IedServer")
         return result
 
-    def register_dataset(self, ld_inst, ds_name, data_set_ref, entries=None,
-                          dataset_catalog=None) -> bool:
+    def register_dataset(self, ld_inst, ds_name, data_set_ref, entries=None, dataset_catalog=None) -> bool:
         """注册 DataSet (委托给 ds_manager)"""
         result = self._ds_manager.register_dataset(
-            ld_inst, ds_name, data_set_ref, entries, dataset_catalog,
+            ld_inst,
+            ds_name,
+            data_set_ref,
+            entries,
+            dataset_catalog,
         )
         if result and self._server and self._is_running:
             self._model_changed = True
@@ -652,7 +709,7 @@ class IEC61850Server:
         """向 DataSet 添加 FCDA 条目 (委托给 ds_manager)"""
         return self._ds_manager._add_fcda_entries_to_dataset(data_set, entries, default_ld_inst)
 
-    def browse_datasets(self) -> List[Dict[str, Any]]:
+    def browse_datasets(self) -> list[dict[str, Any]]:
         """浏览已注册的 DataSet (委托给 ds_manager)"""
         return self._ds_manager.browse_datasets()
 
@@ -670,10 +727,8 @@ class IEC61850Server:
         """设置 GOOSE 网络接口"""
         self._ds_manager.goose_interface = interface
         if self._server:
-            try:
+            with contextlib.suppress(Exception):
                 iec61850.IedServer_setGooseInterfaceId(self._server, interface)
-            except Exception:
-                pass
 
     def destroy(self):
         """销毁服务器和模型"""

@@ -5,9 +5,9 @@ IEC 61850 协议处理器
 
 from typing import Any, Dict, List, Optional
 
-from src.device.protocol.base_handler import ServerHandler, ClientHandler
+from src.device.protocol.base_handler import ClientHandler, ServerHandler
+from src.enums.point_data import Yc, Yk, Yt, Yx
 from src.enums.points.base_point import BasePoint
-from src.enums.point_data import Yc, Yx, Yt, Yk
 
 
 class IEC61850ServerHandler(ServerHandler):
@@ -18,7 +18,7 @@ class IEC61850ServerHandler(ServerHandler):
         self._server = None
         self._log = log
 
-    def initialize(self, config: Dict[str, Any]) -> None:
+    def initialize(self, config: dict[str, Any]) -> None:
         """初始化 IEC 61850 服务器
 
         Args:
@@ -34,8 +34,8 @@ class IEC61850ServerHandler(ServerHandler):
         self._config = config
         ip = config.get("ip", "0.0.0.0")
         port = config.get("port", 102)
-        model_name = config.get("model_name", None)
-        ied_name = config.get("ied_name", None)
+        model_name = config.get("model_name")
+        ied_name = config.get("ied_name")
         ld_name = config.get("ld_name", "GenericLD")
 
         # model_name 由 Device._build_protocol_config() 从通道配置传入，
@@ -79,16 +79,14 @@ class IEC61850ServerHandler(ServerHandler):
     def read_value(self, point: BasePoint) -> Any:
         """读取测点值"""
         if self._server:
-            fc = getattr(point, 'fc', '') or ''
-            return self._server.get_point_value(
-                address=point.address, fc=fc
-            )
+            fc = getattr(point, "fc", "") or ""
+            return self._server.get_point_value(address=point.address, fc=fc)
         return 0
 
     def write_value(self, point: BasePoint, value: Any) -> bool:
         """写入测点值"""
         if self._server:
-            fc = getattr(point, 'fc', '') or ''
+            fc = getattr(point, "fc", "") or ""
             self._server.set_point_value(
                 address=point.address,
                 value=value,
@@ -105,26 +103,26 @@ class IEC61850ServerHandler(ServerHandler):
         """异步写入测点值"""
         return self.write_value(point, value)
 
-    def add_points(self, points: List[BasePoint]) -> None:
+    def add_points(self, points: list[BasePoint]) -> None:
         """添加测点到 IEC 61850 服务器"""
         if not self._server:
             return
 
         for point in points:
-            fc = getattr(point, 'fc', '') or ''
+            fc = getattr(point, "fc", "") or ""
             self._server.add_point(
                 address=point.address,
                 frame_type=point.frame_type,
                 fc=fc,
             )
 
-    def get_discovered_datasets(self) -> List[Dict[str, Any]]:
+    def get_discovered_datasets(self) -> list[dict[str, Any]]:
         """获取服务端上已注册的 DataSet 列表"""
-        if self._server and hasattr(self._server, 'browse_datasets'):
+        if self._server and hasattr(self._server, "browse_datasets"):
             return self._server.browse_datasets()
         return []
 
-    def read_dataset_values(self, dataset_ref: str) -> Dict[str, Any]:
+    def read_dataset_values(self, dataset_ref: str) -> dict[str, Any]:
         """读取 DataSet 中所有成员的值（服务端模式从当前点值获取）
 
         Args:
@@ -159,17 +157,13 @@ class IEC61850ServerHandler(ServerHandler):
                 pass
         return values
 
-    def get_value_by_address(
-        self, func_code: int, slave_id: int, address: int
-    ) -> Any:
+    def get_value_by_address(self, func_code: int, slave_id: int, address: int) -> Any:
         """根据地址获取值"""
         if self._server:
             return self._server.get_point_value(address=address, fc="MX")
         return 0
 
-    def set_value_by_address(
-        self, func_code: int, slave_id: int, address: int, value: Any
-    ) -> None:
+    def set_value_by_address(self, func_code: int, slave_id: int, address: int, value: Any) -> None:
         """根据地址设置值"""
         if self._server:
             self._server.set_point_value(address=address, value=value, fc="MX")
@@ -179,7 +173,7 @@ class IEC61850ServerHandler(ServerHandler):
         """获取底层服务器对象"""
         return self._server
 
-    def get_captured_messages(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_captured_messages(self, limit: int = 100) -> list[dict[str, Any]]:
         """获取捕获的报文列表"""
         # IEC 61850 MMS 目前不支持报文捕获
         return []
@@ -197,11 +191,11 @@ class IEC61850ClientHandler(ClientHandler):
     """IEC 61850 客户端处理器"""
 
     # 连接阶段定义
-    PHASE_IDLE = "idle"                    # 未开始
-    PHASE_CONNECTING = "connecting"        # 正在连接服务器
-    PHASE_DISCOVERING = "discovering"      # 正在发现模型
-    PHASE_DONE = "done"                    # 连接完成
-    PHASE_FAILED = "failed"                # 连接失败
+    PHASE_IDLE = "idle"  # 未开始
+    PHASE_CONNECTING = "connecting"  # 正在连接服务器
+    PHASE_DISCOVERING = "discovering"  # 正在发现模型
+    PHASE_DONE = "done"  # 连接完成
+    PHASE_FAILED = "failed"  # 连接失败
 
     def __init__(self, log=None):
         super().__init__()
@@ -211,9 +205,9 @@ class IEC61850ClientHandler(ClientHandler):
         self._connecting = False  # 是否正在连接中（防止重复启动）
         self._connect_phase = self.PHASE_IDLE  # 当前连接阶段
         self._connect_progress = 0  # 连接进度 0-100
-        self._discovered_goose_items: List[Dict[str, Any]] = []  # 发现的 GOOSE 控制块
-        self._discovered_datasets: List[Dict[str, Any]] = []  # 发现的 DataSet 列表
-        self._discovered_rcbs: List[Dict[str, Any]] = []  # 发现的报告控制块 (连接时缓存)
+        self._discovered_goose_items: list[dict[str, Any]] = []  # 发现的 GOOSE 控制块
+        self._discovered_datasets: list[dict[str, Any]] = []  # 发现的 DataSet 列表
+        self._discovered_rcbs: list[dict[str, Any]] = []  # 发现的报告控制块 (连接时缓存)
 
     def set_on_points_discovered(self, callback):
         """设置测点发现回调
@@ -226,7 +220,7 @@ class IEC61850ClientHandler(ClientHandler):
         """
         self._on_points_discovered = callback
 
-    def initialize(self, config: Dict[str, Any]) -> None:
+    def initialize(self, config: dict[str, Any]) -> None:
         """初始化 IEC 61850 客户端
 
         Args:
@@ -272,6 +266,7 @@ class IEC61850ClientHandler(ClientHandler):
 
         self._connecting = True
         import threading
+
         thread = threading.Thread(target=self._connect_background, daemon=True)
         thread.start()
         return True  # 立即返回，表示连接任务已受理
@@ -313,20 +308,24 @@ class IEC61850ClientHandler(ClientHandler):
             self._discovered_goose_items.clear()
             self._discovered_goose_items.extend(self._client._discovered_goose_items)
             if self._discovered_goose_items and self._log:
-                self._log.info(f"发现 {len(self._discovered_goose_items)} 个 GOOSE 控制块: " +
-                    ", ".join(g.get("go_cb_ref", g.get("name", "")) for g in self._discovered_goose_items))
+                self._log.info(
+                    f"发现 {len(self._discovered_goose_items)} 个 GOOSE 控制块: "
+                    + ", ".join(g.get("go_cb_ref", g.get("name", "")) for g in self._discovered_goose_items)
+                )
 
             self._discovered_datasets.clear()
-            if hasattr(self._client, 'get_discovered_datasets'):
+            if hasattr(self._client, "get_discovered_datasets"):
                 self._discovered_datasets.extend(self._client.get_discovered_datasets())
                 if self._discovered_datasets and self._log:
-                    self._log.info(f"发现 {len(self._discovered_datasets)} 个 DataSet: " +
-                        ", ".join(ds.get("ref", ds.get("name", "")) for ds in self._discovered_datasets))
+                    self._log.info(
+                        f"发现 {len(self._discovered_datasets)} 个 DataSet: "
+                        + ", ".join(ds.get("ref", ds.get("name", "")) for ds in self._discovered_datasets)
+                    )
 
             # 缓存报告控制块 (RCB)，避免 structure 接口每次现场探测导致首屏空白
             self._discovered_rcbs.clear()
-            client = getattr(self, '_client', None)
-            if client and getattr(client, 'reports', None):
+            client = getattr(self, "_client", None)
+            if client and getattr(client, "reports", None):
                 try:
                     self._discovered_rcbs.extend(client.reports.discover_rcbs())
                     if self._discovered_rcbs and self._log:
@@ -406,10 +405,8 @@ class IEC61850ClientHandler(ClientHandler):
                 self._log.error("IEC 61850 客户端未连接")
             return None
 
-        fc = getattr(point, 'fc', '') or ''
-        real_val = self._client.read_point(
-            address=point.address, fc=fc
-        )
+        fc = getattr(point, "fc", "") or ""
+        real_val = self._client.read_point(address=point.address, fc=fc)
         if real_val is None:
             if self._log:
                 self._log.error("IEC 61850 客户端读取测点值失败")
@@ -433,7 +430,7 @@ class IEC61850ClientHandler(ClientHandler):
         real_to_send = value
 
         try:
-            fc = getattr(point, 'fc', '') or ''
+            fc = getattr(point, "fc", "") or ""
             if isinstance(point, (Yc, Yt)):
                 real_to_send = value * point.mul_coe + point.add_coe
                 return self._client.write_point(
@@ -454,7 +451,7 @@ class IEC61850ClientHandler(ClientHandler):
 
         return False
 
-    def read_points_batch(self, points: List[BasePoint]) -> Dict[str, Any]:
+    def read_points_batch(self, points: list[BasePoint]) -> dict[str, Any]:
         """批量读取测点值
 
         利用 IEC61850Client 的 read_points_batch 按 iec_type 分组读取，
@@ -473,12 +470,12 @@ class IEC61850ClientHandler(ClientHandler):
         addresses = []
         fc_map = {}
         addr_to_code = {}  # address -> point.code (用于结果映射)
-        point_map = {}     # address -> point (用于系数换算)
+        point_map = {}  # address -> point (用于系数换算)
 
         for point in points:
             addr = str(point.address)
             addresses.append(addr)
-            fc = getattr(point, 'fc', '') or ''
+            fc = getattr(point, "fc", "") or ""
             if fc:
                 fc_map[addr] = fc
             addr_to_code[addr] = point.code
@@ -488,7 +485,7 @@ class IEC61850ClientHandler(ClientHandler):
         raw_results = self._client.read_points_batch(addresses, fc_map)
 
         # 系数换算 (遥测点需反向换算)
-        results: Dict[str, Any] = {}
+        results: dict[str, Any] = {}
         for addr, value in raw_results.items():
             point = point_map.get(addr)
             code = addr_to_code.get(addr, addr)
@@ -510,32 +507,32 @@ class IEC61850ClientHandler(ClientHandler):
         """异步写入测点值"""
         return self.write_value(point, value)
 
-    def add_points(self, points: List[BasePoint]) -> None:
+    def add_points(self, points: list[BasePoint]) -> None:
         """注册测点到 IEC 61850 客户端"""
         if not self._client:
             return
 
         for point in points:
-            fc = getattr(point, 'fc', '') or ''
+            fc = getattr(point, "fc", "") or ""
             self._client.add_point(
                 address=point.address,
                 frame_type=point.frame_type,
                 fc=fc,
             )
 
-    def get_discovered_datasets(self) -> List[Dict[str, Any]]:
+    def get_discovered_datasets(self) -> list[dict[str, Any]]:
         """获取发现的 DataSet 列表"""
         return list(self._discovered_datasets)
 
-    def get_discovered_rcbs(self) -> List[Dict[str, Any]]:
+    def get_discovered_rcbs(self) -> list[dict[str, Any]]:
         """获取连接时缓存的报告控制块列表"""
         return list(self._discovered_rcbs)
 
-    def set_discovered_rcbs(self, rcbs: List[Dict[str, Any]]) -> None:
+    def set_discovered_rcbs(self, rcbs: list[dict[str, Any]]) -> None:
         """更新 RCB 缓存 (供首次现场发现成功后回写)"""
         self._discovered_rcbs = list(rcbs)
 
-    def read_dataset_values(self, dataset_ref: str) -> Dict[str, Any]:
+    def read_dataset_values(self, dataset_ref: str) -> dict[str, Any]:
         """通过 DataSet 批量读取所有成员值
 
         Args:
@@ -553,7 +550,7 @@ class IEC61850ClientHandler(ClientHandler):
         """获取底层客户端对象"""
         return self._client
 
-    def get_captured_messages(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_captured_messages(self, limit: int = 100) -> list[dict[str, Any]]:
         """获取捕获的报文列表"""
         return []
 

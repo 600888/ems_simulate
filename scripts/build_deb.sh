@@ -48,7 +48,7 @@ echo ">>> 构建后端 (PyInstaller)..."
 PROJECT_ROOT=$(pwd)
 
 echo "Installing Python dependencies..."
-pip install -r requirements.txt
+pip install .
 
 pyinstaller --noconfirm --onedir --name "${APP_NAME//-/_}" --clean \
     --distpath "build/dist" \

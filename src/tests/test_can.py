@@ -1,8 +1,9 @@
+from collections import defaultdict
 import socket
 import struct
-import can
 import time
-from collections import defaultdict
+
+import can
 
 # CAN over TCP配置
 TCP_IP = "192.168.11.105"

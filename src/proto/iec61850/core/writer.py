@@ -6,12 +6,15 @@
 
 from typing import Any
 
+from ..defs.address import infer_fc_from_address, infer_iec_type_from_address
 from ..defs.constants import (
     HAS_IEC61850,
-    IEC_TYPE_FLOAT, IEC_TYPE_BOOLEAN, IEC_TYPE_INTEGER,
-    IEC_TYPE_STRING, IEC_TYPE_UNKNOWN,
+    IEC_TYPE_BOOLEAN,
+    IEC_TYPE_FLOAT,
+    IEC_TYPE_INTEGER,
+    IEC_TYPE_STRING,
+    IEC_TYPE_UNKNOWN,
 )
-from ..defs.address import infer_fc_from_address, infer_iec_type_from_address
 from ..log import log
 
 if HAS_IEC61850:
@@ -63,7 +66,7 @@ class Iec61850Writer:
                 return error == iec61850.IED_ERROR_OK
 
             elif iec_type == IEC_TYPE_INTEGER:
-                if hasattr(iec61850, 'IedConnection_writeIntegerValue'):
+                if hasattr(iec61850, "IedConnection_writeIntegerValue"):
                     error = iec61850.IedConnection_writeIntegerValue(conn, ref, fc_val, int(value))
                     return error == iec61850.IED_ERROR_OK
                 else:
@@ -71,7 +74,7 @@ class Iec61850Writer:
                     return False
 
             elif iec_type == IEC_TYPE_STRING:
-                if hasattr(iec61850, 'IedConnection_writeStringValue'):
+                if hasattr(iec61850, "IedConnection_writeStringValue"):
                     error = iec61850.IedConnection_writeStringValue(conn, ref, fc_val, str(value))
                     return error == iec61850.IED_ERROR_OK
                 else:
@@ -87,14 +90,14 @@ class Iec61850Writer:
                     error = iec61850.IedConnection_writeBooleanValue(conn, ref, fc_val, bool(value))
                     return error == iec61850.IED_ERROR_OK
                 elif isinstance(value, int):
-                    if hasattr(iec61850, 'IedConnection_writeIntegerValue'):
+                    if hasattr(iec61850, "IedConnection_writeIntegerValue"):
                         error = iec61850.IedConnection_writeIntegerValue(conn, ref, fc_val, int(value))
                         return error == iec61850.IED_ERROR_OK
                     # 回退: 用浮点写入
                     error = iec61850.IedConnection_writeFloatValue(conn, ref, fc_val, float(value))
                     return error == iec61850.IED_ERROR_OK
                 elif isinstance(value, str):
-                    if hasattr(iec61850, 'IedConnection_writeStringValue'):
+                    if hasattr(iec61850, "IedConnection_writeStringValue"):
                         error = iec61850.IedConnection_writeStringValue(conn, ref, fc_val, str(value))
                         return error == iec61850.IED_ERROR_OK
                     return False
@@ -119,10 +122,10 @@ class Iec61850Writer:
             parsed = parse_ref(address)
             if parsed:
                 ld_inst = parsed[0]
-                rest = address.split('/', 1)[1]
+                rest = address.split("/", 1)[1]
                 return f"{self._connection.model_name}{ld_inst}/{rest}"
 
-        safe_addr = str(address).replace('.', '_').replace('/', '_').replace('\\', '_').replace('-', '_')
+        safe_addr = str(address).replace(".", "_").replace("/", "_").replace("\\", "_").replace("-", "_")
         iec_type = self._resolve_iec_type(address)
         if iec_type == IEC_TYPE_FLOAT:
             return f"{self._connection.model_name}{self._connection.ld_name}/MMXU1.MV_{safe_addr}.mag.f"

@@ -6,14 +6,19 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 from typing import Any
 
 from ...defs.constants import HAS_IEC61850
 from ...log import log
 from .types import (
-    GooseDataSetEntry, IecDataType, PublisherConfig,
-    GOOSE_MULTICAST_MAC_PREFIX, DEFAULT_ST_NUM, DEFAULT_SQ_NUM,
+    DEFAULT_SQ_NUM,
+    DEFAULT_ST_NUM,
+    GOOSE_MULTICAST_MAC_PREFIX,
+    GooseDataSetEntry,
+    IecDataType,
+    PublisherConfig,
 )
 
 if HAS_IEC61850:
@@ -42,9 +47,12 @@ class _IecApiAdapter:
 
         # 尝试大小写变体
         alt_names = [
-            name + "d", name[:-1],
-            name.replace("Id", "ID"), name.replace("ID", "Id"),
-            name.replace("id", "Id"), name.replace("Id", "id"),
+            name + "d",
+            name[:-1],
+            name.replace("Id", "ID"),
+            name.replace("ID", "Id"),
+            name.replace("id", "Id"),
+            name.replace("Id", "id"),
         ]
         for alt in alt_names:
             if alt != name:
@@ -84,8 +92,7 @@ class GoosePublisher:
 
         # 计算默认组播 MAC
         self._dst_mac = config.dst_mac or (
-            GOOSE_MULTICAST_MAC_PREFIX
-            + [(config.app_id >> 8) & 0xFF, config.app_id & 0xFF]
+            GOOSE_MULTICAST_MAC_PREFIX + [(config.app_id >> 8) & 0xFF, config.app_id & 0xFF]
         )
 
         # 底层状态
@@ -266,7 +273,9 @@ class GoosePublisher:
 
         # 设置 VLAN
         if self._config.vlan_id > 0:
-            ok, _ = adapter.call("GoosePublisher_setVlanTag", self._publisher, self._config.vlan_id, self._config.vlan_prio)
+            ok, _ = adapter.call(
+                "GoosePublisher_setVlanTag", self._publisher, self._config.vlan_id, self._config.vlan_prio
+            )
             if not ok:
                 adapter.call("GoosePublisher_setVlanId", self._publisher, self._config.vlan_id)
                 adapter.call("GoosePublisher_setVlanPriority", self._publisher, self._config.vlan_prio)
@@ -303,9 +312,7 @@ class GoosePublisher:
 
             # 启动定时重发线程
             self._retransmit_stop.clear()
-            self._retransmit_thread = threading.Thread(
-                target=self._retransmit_loop, daemon=True
-            )
+            self._retransmit_thread = threading.Thread(target=self._retransmit_loop, daemon=True)
             self._retransmit_thread.start()
 
             log.info(f"GOOSE Publisher 已启动: goCbRef={self._config.go_cb_ref}, interface={self._config.interface}")
@@ -379,10 +386,8 @@ class GoosePublisher:
                     try:
                         iec61850.LinkedList_destroyDeep(data_set_values, iec61850.MmsValue_delete)
                     except Exception:
-                        try:
+                        with contextlib.suppress(Exception):
                             iec61850.LinkedList_destroy(data_set_values)
-                        except Exception:
-                            pass
 
                 if result == 0:
                     log.debug(f"GOOSE 发布成功: stNum={self._st_num}, sqNum={self._sq_num}")

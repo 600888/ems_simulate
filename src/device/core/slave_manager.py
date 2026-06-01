@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, List
 
-from src.enums.point_data import Yc, Yx, Yt, Yk
 from src.enums.modbus_def import ProtocolType
+from src.enums.point_data import Yc, Yk, Yt, Yx
 
 if TYPE_CHECKING:
     from src.device.core.device import Device
@@ -16,11 +16,11 @@ if TYPE_CHECKING:
 
 class SlaveManager:
     """从机管理器
-    
+
     管理设备下属从机的增删改操作，协调内存、数据库和协议三层的一致性。
     """
 
-    def __init__(self, device: "Device") -> None:
+    def __init__(self, device: Device) -> None:
         self._device = device
 
     @property
@@ -35,10 +35,10 @@ class SlaveManager:
 
     def add_slave(self, slave_id: int) -> bool:
         """动态添加从机
-        
+
         Args:
             slave_id: 从机地址 (1-255)
-            
+
         Returns:
             是否添加成功
         """
@@ -76,10 +76,10 @@ class SlaveManager:
 
     def delete_slave(self, slave_id: int) -> bool:
         """动态删除从机
-        
+
         Args:
             slave_id: 从机地址
-            
+
         Returns:
             是否删除成功
         """
@@ -107,9 +107,7 @@ class SlaveManager:
                 server.remove_slave(slave_id)
 
             # 5. 如果是 IEC104，需要重新初始化
-            if self._device.protocol_type in [
-                ProtocolType.Iec104Server, ProtocolType.Iec104Client
-            ]:
+            if self._device.protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
                 self._device._reinit_protocol_for_iec104()
 
             self._log.info(f"动态删除从机成功: {slave_id}")
@@ -117,17 +115,18 @@ class SlaveManager:
 
         except Exception as e:
             import traceback
+
             traceback.print_exc()
             self._log.error(f"动态删除从机失败: {e}")
             return False
 
     def edit_slave(self, old_slave_id: int, new_slave_id: int) -> bool:
         """动态编辑从机（修改从机地址）
-        
+
         Args:
             old_slave_id: 旧从机地址
             new_slave_id: 新从机地址
-            
+
         Returns:
             是否编辑成功
         """
@@ -153,13 +152,11 @@ class SlaveManager:
 
             # 1. 更新数据库中的从机地址
             if not SlaveService.update_slave_id(device_id, old_slave_id, new_slave_id):
-                self._log.error(
-                    f"更新从机地址到数据库失败: {old_slave_id} -> {new_slave_id}"
-                )
+                self._log.error(f"更新从机地址到数据库失败: {old_slave_id} -> {new_slave_id}")
                 return False
 
             # 2. 迁移测点字典
-            for dict_attr in ['yc_dict', 'yx_dict', 'yk_dict', 'yt_dict']:
+            for dict_attr in ["yc_dict", "yx_dict", "yk_dict", "yt_dict"]:
                 d = getattr(self._pm, dict_attr)
                 if old_slave_id in d:
                     d[new_slave_id] = d.pop(old_slave_id)
@@ -175,6 +172,7 @@ class SlaveManager:
 
             # 4. 持久化到数据库 (测点表中的 rtu_addr)
             from src.data.dao.point_dao import PointDao
+
             PointDao.update_slave_id(device_id, old_slave_id, new_slave_id)
 
             # 5. 更新 slave_id_list
@@ -192,9 +190,7 @@ class SlaveManager:
                 server.remove_slave(old_slave_id)
 
             # 7. 协议重置 (IEC104)
-            if self._device.protocol_type in [
-                ProtocolType.Iec104Server, ProtocolType.Iec104Client
-            ]:
+            if self._device.protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
                 self._device._reinit_protocol_for_iec104()
 
             self._log.info(f"动态编辑从机成功: {old_slave_id} -> {new_slave_id}")
@@ -206,10 +202,10 @@ class SlaveManager:
 
     def clear_points_by_slave(self, slave_id: int) -> int:
         """清空指定从机的所有测点
-        
+
         Args:
             slave_id: 从机地址
-            
+
         Returns:
             删除的测点数量
         """
@@ -217,17 +213,15 @@ class SlaveManager:
             from src.data.dao.point_dao import PointDao
 
             # 1. 从内存中收集该从机下的所有测点 code，用于清理 code_map
-            point_codes: List[str] = []
-            for dict_attr in ['yc_dict', 'yx_dict', 'yk_dict', 'yt_dict']:
+            point_codes: list[str] = []
+            for dict_attr in ["yc_dict", "yx_dict", "yk_dict", "yt_dict"]:
                 d = getattr(self._pm, dict_attr)
                 if slave_id in d:
                     for point in d[slave_id]:
                         point_codes.append(point.code)
 
             # 2. 批量从数据库删除（单次事务）
-            deleted_count = PointDao.delete_points_by_slave(
-                self._device.device_id, slave_id
-            )
+            deleted_count = PointDao.delete_points_by_slave(self._device.device_id, slave_id)
 
             # 3. 清理内存中的 code_map
             for code in point_codes:
@@ -235,20 +229,16 @@ class SlaveManager:
                     del self._pm.code_map[code]
 
             # 4. 清空内存中的测点列表
-            for dict_attr in ['yc_dict', 'yx_dict', 'yk_dict', 'yt_dict']:
+            for dict_attr in ["yc_dict", "yx_dict", "yk_dict", "yt_dict"]:
                 d = getattr(self._pm, dict_attr)
                 if slave_id in d:
                     d[slave_id] = []
 
             # 5. IEC104 协议需要重新初始化
-            if self._device.protocol_type in [
-                ProtocolType.Iec104Server, ProtocolType.Iec104Client
-            ]:
+            if self._device.protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
                 self._device._reinit_protocol_for_iec104()
 
-            self._log.info(
-                f"清空从机 {slave_id} 的测点成功，共删除 {deleted_count} 个测点"
-            )
+            self._log.info(f"清空从机 {slave_id} 的测点成功，共删除 {deleted_count} 个测点")
 
             return deleted_count
 

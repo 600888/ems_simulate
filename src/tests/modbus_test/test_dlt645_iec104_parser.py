@@ -2,13 +2,14 @@
 DLT645 和 IEC104 报文解析器单元测试
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
+
 from src.device.core.message.message_parser import (
     DLT645MessageParser,
     IEC104MessageParser,
 )
-
 
 # =============================================================================
 # DLT645MessageParser 测试
@@ -20,22 +21,22 @@ class TestDLT645MessageParser:
 
     def _build_dlt645_frame(self, addr_bytes, ctrl, data_bytes):
         """构建 DLT645 帧
-        
+
         Args:
             addr_bytes: 地址字段（6字节，低字节在前）
             ctrl: 控制码
             data_bytes: 数据域（已加 0x33）
         """
         frame = bytearray()
-        frame.append(0x68)                      # 帧头
-        frame.extend(addr_bytes)                 # 地址
-        frame.append(0x68)                       # 帧头2
-        frame.append(ctrl)                       # 控制码
-        frame.append(len(data_bytes))            # 数据域长度
-        frame.extend(data_bytes)                 # 数据域
-        cs = sum(frame) & 0xFF                   # 校验和
+        frame.append(0x68)  # 帧头
+        frame.extend(addr_bytes)  # 地址
+        frame.append(0x68)  # 帧头2
+        frame.append(ctrl)  # 控制码
+        frame.append(len(data_bytes))  # 数据域长度
+        frame.extend(data_bytes)  # 数据域
+        cs = sum(frame) & 0xFF  # 校验和
         frame.append(cs)
-        frame.append(0x16)                       # 帧尾
+        frame.append(0x16)  # 帧尾
         return frame.hex()
 
     def _di_to_data_bytes(self, di_hex_str):
@@ -51,7 +52,7 @@ class TestDLT645MessageParser:
         di_data = self._di_to_data_bytes("02010100")  # A相电压
         raw_hex = self._build_dlt645_frame(addr, 0x11, di_data)
 
-        with patch.object(DLT645MessageParser, '_get_di_name', return_value="A相电压"):
+        with patch.object(DLT645MessageParser, "_get_di_name", return_value="A相电压"):
             result = DLT645MessageParser.parse(raw_hex)
 
         assert "读数据" in result
@@ -69,7 +70,7 @@ class TestDLT645MessageParser:
         data_field = di_data + value_data
         raw_hex = self._build_dlt645_frame(addr, 0x91, data_field)
 
-        with patch.object(DLT645MessageParser, '_get_di_name', return_value="A相电压"):
+        with patch.object(DLT645MessageParser, "_get_di_name", return_value="A相电压"):
             result = DLT645MessageParser.parse(raw_hex)
 
         assert "正常响应" in result
@@ -96,7 +97,7 @@ class TestDLT645MessageParser:
         data_field = di_data + extra
         raw_hex = self._build_dlt645_frame(addr, 0x14, data_field)
 
-        with patch.object(DLT645MessageParser, '_get_di_name', return_value=""):
+        with patch.object(DLT645MessageParser, "_get_di_name", return_value=""):
             result = DLT645MessageParser.parse(raw_hex)
 
         assert "写数据" in result
@@ -108,7 +109,7 @@ class TestDLT645MessageParser:
         di_data = self._di_to_data_bytes("04000101")
         raw_hex = self._build_dlt645_frame(addr, 0x94, di_data)
 
-        with patch.object(DLT645MessageParser, '_get_di_name', return_value=""):
+        with patch.object(DLT645MessageParser, "_get_di_name", return_value=""):
             result = DLT645MessageParser.parse(raw_hex)
 
         assert "写数据 正常响应" in result
@@ -135,20 +136,20 @@ class TestDLT645MessageParser:
         """测试通过 dlt645 库查找 DI 名称"""
         mock_item = MagicMock()
         mock_item.name = "B相电压"
-        
-        with patch('dlt645.model.data.data_handler.get_data_item', return_value=mock_item):
+
+        with patch("dlt645.model.data.data_handler.get_data_item", return_value=mock_item):
             result = DLT645MessageParser._get_di_name(0x02010200)
             assert result == "B相电压"
 
     def test_di_name_lookup_not_found(self):
         """测试 DI 查找失败"""
-        with patch('dlt645.model.data.data_handler.get_data_item', return_value=None):
+        with patch("dlt645.model.data.data_handler.get_data_item", return_value=None):
             result = DLT645MessageParser._get_di_name(0xFFFFFFFF)
             assert result == ""
 
     def test_di_name_lookup_exception(self):
         """测试 DI 查找异常"""
-        with patch('dlt645.model.data.data_handler.get_data_item', side_effect=Exception("import error")):
+        with patch("dlt645.model.data.data_handler.get_data_item", side_effect=Exception("import error")):
             result = DLT645MessageParser._get_di_name(0x02010100)
             assert result == ""
 
@@ -158,8 +159,8 @@ class TestDLT645MessageParser:
         mock_item1.name = "组合有功总电能"
         mock_item2 = MagicMock()
         mock_item2.name = "组合有功费率1电能"
-        
-        with patch('dlt645.model.data.data_handler.get_data_item', return_value=[mock_item1, mock_item2]):
+
+        with patch("dlt645.model.data.data_handler.get_data_item", return_value=[mock_item1, mock_item2]):
             result = DLT645MessageParser._get_di_name(0x00010000)
             assert result == "组合有功总电能"
 

@@ -9,13 +9,13 @@ import os
 import tempfile
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Request, File, UploadFile, Form
+from fastapi import APIRouter, File, Form, Request, UploadFile
 
 from src.data.service.channel_service import ChannelService
-from src.tools.excel_point_importer import ExcelPointImporter
 from src.enums.modbus_def import ProtocolType
-from src.web.api.schemas import BaseResponse
+from src.tools.excel_point_importer import ExcelPointImporter
 from src.web.api.channel.helpers import reload_device_instance
+from src.web.api.schemas import BaseResponse
 from src.web.log import log
 
 router = APIRouter(tags=["channel"])
@@ -29,16 +29,17 @@ async def import_points(
 ):
     """导入 Excel 点表"""
     try:
-        if not file.filename.endswith(('.xlsx', '.xls')):
+        if not file.filename.endswith((".xlsx", ".xls")):
             return BaseResponse(code=400, message="请上传 Excel 文件 (.xlsx 或 .xls)")
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
 
         try:
             from src.data.dao.point_dao import PointDao
+
             deleted_count = PointDao.delete_points_by_channel(channel_id)
             if deleted_count > 0:
                 log.info(f"重新导入前已删除 {deleted_count} 个旧测点")
@@ -65,8 +66,10 @@ async def import_points(
             return BaseResponse(
                 message="导入点表成功",
                 data={
-                    "yc_count": yc_count, "yx_count": yx_count,
-                    "yk_count": yk_count, "yt_count": yt_count,
+                    "yc_count": yc_count,
+                    "yx_count": yx_count,
+                    "yk_count": yk_count,
+                    "yt_count": yt_count,
                     "total": yc_count + yx_count + yk_count + yt_count,
                 },
             )
@@ -87,11 +90,11 @@ async def preview_icd(
 ):
     """预览 ICD/SCD/CID 文件（只解析不保存，返回 MMS 测点数量和 GOOSE 配置）"""
     try:
-        valid_extensions = ('.icd', '.scd', '.cid', '.xml')
+        valid_extensions = (".icd", ".scd", ".cid", ".xml")
         if not file.filename.lower().endswith(valid_extensions):
             return BaseResponse(code=400, message=f"请上传 ICD 文件 ({', '.join(valid_extensions)})")
 
-        suffix = os.path.splitext(file.filename)[1] or '.icd'
+        suffix = os.path.splitext(file.filename)[1] or ".icd"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             content = await file.read()
             tmp.write(content)
@@ -100,14 +103,16 @@ async def preview_icd(
         try:
             # ===== 1. MMS 测点预览（只计数不保存） =====
             from src.tools.icd_point_importer import IcdPointImporter
+
             importer = IcdPointImporter(channel_id=0)  # preview 不需要 channel_id
             yc_count, yx_count, yk_count, yt_count = importer.preview_from_icd(tmp_path)
 
             # ===== 2. GOOSE 配置预览 =====
-            goose_data: Dict[str, Any] = {}
-            goose_errors: List[str] = []
+            goose_data: dict[str, Any] = {}
+            goose_errors: list[str] = []
             try:
                 from src.tools.icd_goose_importer import import_goose_from_icd
+
                 goose_result = import_goose_from_icd(tmp_path, interface=interface)
                 goose_data = goose_result
             except Exception as e:
@@ -117,15 +122,19 @@ async def preview_icd(
             return BaseResponse(
                 message="ICD 文件预览成功",
                 data={
-                    "yc_count": yc_count, "yx_count": yx_count,
-                    "yk_count": yk_count, "yt_count": yt_count,
+                    "yc_count": yc_count,
+                    "yx_count": yx_count,
+                    "yk_count": yk_count,
+                    "yt_count": yt_count,
                     "total": yc_count + yx_count + yk_count + yt_count,
                     "goose": {
                         "summary": goose_data.get("summary", {"gse_control_count": 0, "gse_controls": []}),
                         "publishers": goose_data.get("publishers", []),
                         "subscriptions": goose_data.get("subscriptions", []),
                         "errors": goose_errors,
-                    } if goose_data else None,
+                    }
+                    if goose_data
+                    else None,
                 },
             )
         finally:
@@ -152,11 +161,11 @@ async def import_icd(
     - GOOSE 配置 (GSEControl/DataSet/GSE) → 返回给前端，可选自动创建 Publisher
     """
     try:
-        valid_extensions = ('.icd', '.scd', '.cid', '.xml')
+        valid_extensions = (".icd", ".scd", ".cid", ".xml")
         if not file.filename.lower().endswith(valid_extensions):
             return BaseResponse(code=400, message=f"请上传 ICD 文件 ({', '.join(valid_extensions)})")
 
-        suffix = os.path.splitext(file.filename)[1] or '.icd'
+        suffix = os.path.splitext(file.filename)[1] or ".icd"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             content = await file.read()
             tmp.write(content)
@@ -166,6 +175,7 @@ async def import_icd(
             # ===== 1. MMS 测点导入 =====
             # IcdPointImporter.import_from_icd() 内部会先清除旧测点，此处无需重复删除
             from src.tools.icd_point_importer import IcdPointImporter
+
             importer = IcdPointImporter(channel_id=channel_id)
             yc_count, yx_count, yk_count, yt_count = importer.import_from_icd(tmp_path)
 
@@ -190,7 +200,7 @@ async def import_icd(
                         # 关键：is_start=False，不立即启动服务器
                         # 先完成 DataSet 和 GoCB 注册，最后统一启动
                         await reload_device_instance(device_controller, channel_id, is_start=False)
-                        log.info(f"IEC 61850 服务端设备已重建 (暂未启动，待 DataSet/GoCB 注册后再启动)")
+                        log.info("IEC 61850 服务端设备已重建 (暂未启动，待 DataSet/GoCB 注册后再启动)")
                     else:
                         device.importDataPointFromChannel(channel_id, device.protocol_type)
                         log.info(f"已同步更新设备 {device.name} (ID: {channel_id}) 的内存点表")
@@ -200,14 +210,15 @@ async def import_icd(
                 log.error(f"同步内存点表失败: {e}")
 
             # ===== 2. GOOSE 配置解析 =====
-            goose_data: Dict[str, Any] = {}
-            goose_errors: List[str] = []
+            goose_data: dict[str, Any] = {}
+            goose_errors: list[str] = []
             created_goose_count = 0
-            pure_datasets: List[Dict[str, Any]] = []
+            pure_datasets: list[dict[str, Any]] = []
 
             # 先清除旧的 GOOSE 持久化记录和内存中的 Publisher
             try:
                 from src.data.dao.goose_publisher_dao import GoosePublisherDao
+
                 old_count = GoosePublisherDao.delete_by_channel(channel_id)
                 if old_count > 0:
                     log.info(f"重新导入前已删除 {old_count} 个旧 GOOSE Publisher 持久化记录")
@@ -217,14 +228,12 @@ async def import_icd(
             # 清除管理器中的旧 Publisher 记录（防止 go_cb_ref 缓存导致新 Publisher 跳过创建）
             try:
                 from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
-                old_manager: Optional[GooseResourceManager] = getattr(
-                    request.app.state, "goose_manager", None
-                )
+
+                old_manager: Optional[GooseResourceManager] = getattr(request.app.state, "goose_manager", None)
                 if old_manager:
                     # 仅清除当前通道的 Publisher（通过 _channel_map 过滤）
                     old_go_cb_refs = [
-                        go_cb_ref for go_cb_ref, cid in old_manager._channel_map.items()
-                        if cid == channel_id
+                        go_cb_ref for go_cb_ref, cid in old_manager._channel_map.items() if cid == channel_id
                     ]
                     deleted_old = 0
                     for go_cb_ref in old_go_cb_refs:
@@ -239,9 +248,9 @@ async def import_icd(
             iec61850_server = None
             try:
                 _device = device_controller.get_device_by_id(channel_id)
-                if _device and hasattr(_device, 'protocol_handler') and _device.protocol_handler:
+                if _device and hasattr(_device, "protocol_handler") and _device.protocol_handler:
                     _handler = _device.protocol_handler
-                    if hasattr(_handler, 'server'):
+                    if hasattr(_handler, "server"):
                         iec61850_server = _handler.server
                         log.info("已获取 IEC61850Server，将在 MMS 模型中注册 DataSet/GSEControlBlock")
             except Exception as e:
@@ -249,6 +258,7 @@ async def import_icd(
 
             try:
                 from src.tools.icd_goose_importer import import_goose_from_icd
+
                 goose_result = import_goose_from_icd(tmp_path, interface=interface)
                 goose_data = goose_result
 
@@ -257,7 +267,10 @@ async def import_icd(
                 # DataSet 必须先于引用它的 GSEControlBlock 存在于 IedModel 中
                 pure_datasets = goose_result.get("pure_datasets", [])
                 pure_ds_count = 0
-                log.info(f"纯 DataSet 注册准备: pure_datasets={len(pure_datasets)}个, iec61850_server={'可用' if iec61850_server else 'None'}")
+                log.info(
+                    f"纯 DataSet 注册准备: pure_datasets={len(pure_datasets)}个, "
+                    f"iec61850_server={'可用' if iec61850_server else 'None'}"
+                )
                 if pure_datasets and iec61850_server:
                     for ds_info in pure_datasets:
                         try:
@@ -286,8 +299,7 @@ async def import_icd(
                             if ds_ref and iec61850_server:
                                 ds_name = ds_ref.split("$")[-1] if "$" in ds_ref else ""
                                 if ds_name and not any(
-                                    d.get("ref") == ds_ref
-                                    for d in iec61850_server.browse_datasets()
+                                    d.get("ref") == ds_ref for d in iec61850_server.browse_datasets()
                                 ):
                                     iec61850_server.register_dataset(
                                         ld_inst=rc_info["ld_inst"],
@@ -299,7 +311,7 @@ async def import_icd(
                             trg_ops = rc_info.get("trg_ops", {})
                             opt_fields = rc_info.get("opt_fields", {})
                             # 如果 register_rcb 不可用，至少存到目录
-                            if hasattr(iec61850_server, 'reports') and iec61850_server.reports:
+                            if hasattr(iec61850_server, "reports") and iec61850_server.reports:
                                 success = iec61850_server.reports.register_rcb(
                                     ld_inst=rc_info["ld_inst"],
                                     name=rc_info["name"],
@@ -323,15 +335,13 @@ async def import_icd(
                             log.warning(f"注册 RCB 异常 ({rc_info.get('name', '')}): {rc_err}")
                     log.info(f"ReportControl 注册完成: {rc_registered}/{len(report_controls)}")
 
-
                 # ===== 2b. 创建 GOOSE Publisher（注册 GSEControlBlock） =====
                 # GoCB 引用的 DataSet 会在 add_goose_control_block 内部创建
                 # 但纯 DataSet 已在 2a 步骤中提前注册到 IedModel
                 if auto_create_goose and goose_result.get("publishers"):
                     from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
-                    manager: Optional[GooseResourceManager] = getattr(
-                        request.app.state, "goose_manager", None
-                    )
+
+                    manager: Optional[GooseResourceManager] = getattr(request.app.state, "goose_manager", None)
                     if manager:
                         for pub_config in goose_result["publishers"]:
                             try:
@@ -357,20 +367,16 @@ async def import_icd(
                                 if pub_result:
                                     created_goose_count += 1
                                 else:
-                                    goose_errors.append(
-                                        f"创建 Publisher 失败: {pub_config['go_cb_ref']}"
-                                    )
+                                    goose_errors.append(f"创建 Publisher 失败: {pub_config['go_cb_ref']}")
                             except Exception as e:
-                                goose_errors.append(
-                                    f"创建 Publisher 异常 ({pub_config['go_cb_ref']}): {e}"
-                                )
+                                goose_errors.append(f"创建 Publisher 异常 ({pub_config['go_cb_ref']}): {e}")
                     else:
                         goose_errors.append("GOOSE 管理器未初始化，无法自动创建 Publisher")
 
                 # ===== 2c. 统一启动 MMS 服务器 =====
                 # 所有 DataSet 和 GoCB 已注册到 IedModel，现在启动 IedServer
                 # IedServer_create 一次性构建包含所有节点的 MMS 命名空间
-                need_start = (created_goose_count > 0 or pure_ds_count > 0 or rc_registered > 0 or was_running)
+                need_start = created_goose_count > 0 or pure_ds_count > 0 or rc_registered > 0 or was_running
                 if need_start and iec61850_server:
                     # 启动前诊断：确认 GoCB/DataSet 已注册到 IedModel
                     log.info(
@@ -398,6 +404,7 @@ async def import_icd(
                 if pure_datasets:
                     try:
                         from src.data.dao.goose_publisher_dao import GoosePublisherDao
+
                         saved_pure_count = 0
                         for ds_info in pure_datasets:
                             dao_result = GoosePublisherDao.save_pure_dataset(
@@ -424,8 +431,10 @@ async def import_icd(
                 message="导入ICD文件成功",
                 data={
                     # MMS 测点
-                    "yc_count": yc_count, "yx_count": yx_count,
-                    "yk_count": yk_count, "yt_count": yt_count,
+                    "yc_count": yc_count,
+                    "yx_count": yx_count,
+                    "yk_count": yk_count,
+                    "yt_count": yt_count,
                     "total": yc_count + yx_count + yk_count + yt_count,
                     # GOOSE 配置
                     "goose": {
@@ -435,7 +444,9 @@ async def import_icd(
                         "created_count": created_goose_count,
                         "pure_dataset_count": len(pure_datasets) if pure_datasets else 0,
                         "errors": goose_errors,
-                    } if goose_data else None,
+                    }
+                    if goose_data
+                    else None,
                 },
             )
         finally:

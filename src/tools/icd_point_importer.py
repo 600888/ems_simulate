@@ -26,25 +26,25 @@ ICD 文件遵循 IEC 61850 SCL (Substation Configuration Language) 的 XML Schem
 """
 
 import os
+from typing import Dict, List, Optional, Tuple
 import xml.etree.ElementTree as ET
-from typing import List, Dict, Tuple, Optional
 
 from src.data.controller.db import local_session
+from src.data.log import log
 from src.data.model.point_yc import PointYc
-from src.data.model.point_yx import PointYx
 from src.data.model.point_yk import PointYk
 from src.data.model.point_yt import PointYt
-from src.data.log import log
+from src.data.model.point_yx import PointYx
 
 # IEC 61850 SCL 命名空间
 SCL_NS = "http://www.iec.ch/61850/2003/SCL"
 
 
 # CDC 到测点类型的映射
-CDC_YC = {"MV", "CMV", "SAV", "WYE", "DEL", "SEQ", "HMV"}          # 遥测
-CDC_YX = {"SPS", "DPS", "INS", "ENS", "ENC", "ACT", "ACD", "SEC", "BCR"}   # 遥信 (ENC=枚举控制, stVal为整型)
-CDC_YK = {"SPC", "DPC"}                                              # 遥控
-CDC_YT = {"APC", "INC", "ASG", "ING", "SPG", "BAC"}                 # 遥调
+CDC_YC = {"MV", "CMV", "SAV", "WYE", "DEL", "SEQ", "HMV"}  # 遥测
+CDC_YX = {"SPS", "DPS", "INS", "ENS", "ENC", "ACT", "ACD", "SEC", "BCR"}  # 遥信 (ENC=枚举控制, stVal为整型)
+CDC_YK = {"SPC", "DPC"}  # 遥控
+CDC_YT = {"APC", "INC", "ASG", "ING", "SPG", "BAC"}  # 遥调
 
 
 def _ns(tag: str) -> str:
@@ -61,12 +61,12 @@ class IcdPointImporter:
         self.yx_count = 0
         self.yk_count = 0
         self.yt_count = 0
-        self._ied_name: Optional[str] = None   # ICD 文件中的 IED 名称
+        self._ied_name: Optional[str] = None  # ICD 文件中的 IED 名称
 
         # DataTypeTemplates 缓存
-        self._ln_types: Dict[str, ET.Element] = {}   # id -> LNodeType
-        self._do_types: Dict[str, ET.Element] = {}   # id -> DOType
-        self._da_types: Dict[str, ET.Element] = {}   # id -> DAType
+        self._ln_types: dict[str, ET.Element] = {}  # id -> LNodeType
+        self._do_types: dict[str, ET.Element] = {}  # id -> DOType
+        self._da_types: dict[str, ET.Element] = {}  # id -> DAType
 
     def get_ied_name(self) -> Optional[str]:
         """获取从 ICD 文件提取的 IED 名称"""
@@ -75,18 +75,17 @@ class IcdPointImporter:
     def _clear_existing_points(self) -> None:
         """清除该通道已有的测点数据"""
         try:
-            with local_session() as session:
-                with session.begin():
-                    session.query(PointYc).where(PointYc.channel_id == self.channel_id).delete()
-                    session.query(PointYx).where(PointYx.channel_id == self.channel_id).delete()
-                    session.query(PointYk).where(PointYk.channel_id == self.channel_id).delete()
-                    session.query(PointYt).where(PointYt.channel_id == self.channel_id).delete()
+            with local_session() as session, session.begin():
+                session.query(PointYc).where(PointYc.channel_id == self.channel_id).delete()
+                session.query(PointYx).where(PointYx.channel_id == self.channel_id).delete()
+                session.query(PointYk).where(PointYk.channel_id == self.channel_id).delete()
+                session.query(PointYt).where(PointYt.channel_id == self.channel_id).delete()
             log.info(f"已清除通道 {self.channel_id} 的旧测点数据")
         except Exception as e:
             log.error(f"清除旧测点数据失败: {e}")
             raise e
 
-    def import_from_icd(self, file_path: str) -> Tuple[int, int, int, int]:
+    def import_from_icd(self, file_path: str) -> tuple[int, int, int, int]:
         """从 ICD/SCD/CID 文件导入测点
 
         Args:
@@ -160,7 +159,7 @@ class IcdPointImporter:
 
                             cdc = do_type_def.get("cdc", "")
                             ref_prefix = f"{ld_inst}/{ln_name}.{do_name}"
-                            
+
                             # 获取 DO 的描述 (优先从 IED 部分 DOI/DAI/Val 获取 dU 实际值)
                             do_desc = self._get_do_desc(do_elem, do_type_def, do_name, ln_elem)
 
@@ -171,111 +170,127 @@ class IcdPointImporter:
                             if cdc in CDC_YC:
                                 main_da_ref = self._get_value_ref(do_type_def, cdc, "MX")
                                 if main_da_ref:
-                                    yc_points.append({
-                                        "code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}",
-                                        "name": do_desc,
-                                        "reg_addr": f"{ref_prefix}.{main_da_ref}",
-                                        "cdc": cdc,
-                                        "da_name": main_da_ref,
-                                        "fc": "MX",
-                                    })
+                                    yc_points.append(
+                                        {
+                                            "code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}",
+                                            "name": do_desc,
+                                            "reg_addr": f"{ref_prefix}.{main_da_ref}",
+                                            "cdc": cdc,
+                                            "da_name": main_da_ref,
+                                            "fc": "MX",
+                                        }
+                                    )
                                 # 为其他非主值 DA 也创建测点 (q, t, du 等)
                                 for da_info in all_das:
-                                    da_name = da_info["name"]
+                                    da_info["name"]
                                     da_path = da_info["path"]
                                     da_fc = da_info["fc"]
                                     if da_path == main_da_ref:
                                         continue  # 主值已添加
                                     if da_fc in ("MX", "ST", "DC"):
-                                        yc_points.append({
-                                            "code": f"{ld_inst}_{ln_name}_{do_name}_{da_path.replace('.', '_')}",
-                                            "name": do_desc,
-                                            "reg_addr": f"{ref_prefix}.{da_path}",
-                                            "cdc": cdc,
-                                            "da_name": da_path,
-                                            "fc": da_fc,
-                                        })
+                                        yc_points.append(
+                                            {
+                                                "code": f"{ld_inst}_{ln_name}_{do_name}_{da_path.replace('.', '_')}",
+                                                "name": do_desc,
+                                                "reg_addr": f"{ref_prefix}.{da_path}",
+                                                "cdc": cdc,
+                                                "da_name": da_path,
+                                                "fc": da_fc,
+                                            }
+                                        )
 
                             elif cdc in CDC_YX:
                                 main_da_ref = self._get_value_ref(do_type_def, cdc, "ST")
                                 if main_da_ref:
-                                    yx_points.append({
-                                        "code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}",
-                                        "name": do_desc,
-                                        "reg_addr": f"{ref_prefix}.{main_da_ref}",
-                                        "cdc": cdc,
-                                        "da_name": main_da_ref,
-                                        "fc": "ST",
-                                    })
+                                    yx_points.append(
+                                        {
+                                            "code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}",
+                                            "name": do_desc,
+                                            "reg_addr": f"{ref_prefix}.{main_da_ref}",
+                                            "cdc": cdc,
+                                            "da_name": main_da_ref,
+                                            "fc": "ST",
+                                        }
+                                    )
                                 for da_info in all_das:
-                                    da_name = da_info["name"]
+                                    da_info["name"]
                                     da_path = da_info["path"]
                                     da_fc = da_info["fc"]
                                     if da_path == main_da_ref:
                                         continue
                                     if da_fc in ("ST", "MX", "DC"):
-                                        yx_points.append({
-                                            "code": f"{ld_inst}_{ln_name}_{do_name}_{da_path.replace('.', '_')}",
-                                            "name": do_desc,
-                                            "reg_addr": f"{ref_prefix}.{da_path}",
-                                            "cdc": cdc,
-                                            "da_name": da_path,
-                                            "fc": da_fc,
-                                        })
+                                        yx_points.append(
+                                            {
+                                                "code": f"{ld_inst}_{ln_name}_{do_name}_{da_path.replace('.', '_')}",
+                                                "name": do_desc,
+                                                "reg_addr": f"{ref_prefix}.{da_path}",
+                                                "cdc": cdc,
+                                                "da_name": da_path,
+                                                "fc": da_fc,
+                                            }
+                                        )
 
                             elif cdc in CDC_YK:
                                 main_da_ref = self._get_control_ref(do_type_def, cdc)
                                 if main_da_ref:
-                                    yk_points.append({
-                                        "code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}",
-                                        "name": do_desc,
-                                        "reg_addr": f"{ref_prefix}.{main_da_ref}",
-                                        "cdc": cdc,
-                                        "da_name": main_da_ref,
-                                        "fc": "CO",
-                                    })
+                                    yk_points.append(
+                                        {
+                                            "code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}",
+                                            "name": do_desc,
+                                            "reg_addr": f"{ref_prefix}.{main_da_ref}",
+                                            "cdc": cdc,
+                                            "da_name": main_da_ref,
+                                            "fc": "CO",
+                                        }
+                                    )
                                 for da_info in all_das:
-                                    da_name = da_info["name"]
+                                    da_info["name"]
                                     da_path = da_info["path"]
                                     da_fc = da_info["fc"]
                                     if da_path == main_da_ref:
                                         continue
                                     if da_fc in ("CO", "ST", "DC"):
-                                        yk_points.append({
-                                            "code": f"{ld_inst}_{ln_name}_{do_name}_{da_path.replace('.', '_')}",
-                                            "name": do_desc,
-                                            "reg_addr": f"{ref_prefix}.{da_path}",
-                                            "cdc": cdc,
-                                            "da_name": da_path,
-                                            "fc": da_fc,
-                                        })
+                                        yk_points.append(
+                                            {
+                                                "code": f"{ld_inst}_{ln_name}_{do_name}_{da_path.replace('.', '_')}",
+                                                "name": do_desc,
+                                                "reg_addr": f"{ref_prefix}.{da_path}",
+                                                "cdc": cdc,
+                                                "da_name": da_path,
+                                                "fc": da_fc,
+                                            }
+                                        )
 
                             elif cdc in CDC_YT:
                                 main_da_ref = self._get_control_ref(do_type_def, cdc)
                                 if main_da_ref:
-                                    yt_points.append({
-                                        "code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}",
-                                        "name": do_desc,
-                                        "reg_addr": f"{ref_prefix}.{main_da_ref}",
-                                        "cdc": cdc,
-                                        "da_name": main_da_ref,
-                                        "fc": "CO",
-                                    })
+                                    yt_points.append(
+                                        {
+                                            "code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}",
+                                            "name": do_desc,
+                                            "reg_addr": f"{ref_prefix}.{main_da_ref}",
+                                            "cdc": cdc,
+                                            "da_name": main_da_ref,
+                                            "fc": "CO",
+                                        }
+                                    )
                                 for da_info in all_das:
-                                    da_name = da_info["name"]
+                                    da_info["name"]
                                     da_path = da_info["path"]
                                     da_fc = da_info["fc"]
                                     if da_path == main_da_ref:
                                         continue
                                     if da_fc in ("CO", "ST", "DC"):
-                                        yt_points.append({
-                                            "code": f"{ld_inst}_{ln_name}_{do_name}_{da_path.replace('.', '_')}",
-                                            "name": do_desc,
-                                            "reg_addr": f"{ref_prefix}.{da_path}",
-                                            "cdc": cdc,
-                                            "da_name": da_path,
-                                            "fc": da_fc,
-                                        })
+                                        yt_points.append(
+                                            {
+                                                "code": f"{ld_inst}_{ln_name}_{do_name}_{da_path.replace('.', '_')}",
+                                                "name": do_desc,
+                                                "reg_addr": f"{ref_prefix}.{da_path}",
+                                                "cdc": cdc,
+                                                "da_name": da_path,
+                                                "fc": da_fc,
+                                            }
+                                        )
 
         # 批量写入数据库
         self._save_yc(yc_points)
@@ -283,13 +298,10 @@ class IcdPointImporter:
         self._save_yk(yk_points)
         self._save_yt(yt_points)
 
-        log.info(
-            f"ICD导入完成: 遥测={self.yc_count}, 遥信={self.yx_count}, "
-            f"遥控={self.yk_count}, 遥调={self.yt_count}"
-        )
+        log.info(f"ICD导入完成: 遥测={self.yc_count}, 遥信={self.yx_count}, 遥控={self.yk_count}, 遥调={self.yt_count}")
         return (self.yc_count, self.yx_count, self.yk_count, self.yt_count)
 
-    def preview_from_icd(self, file_path: str) -> Tuple[int, int, int, int]:
+    def preview_from_icd(self, file_path: str) -> tuple[int, int, int, int]:
         """预览 ICD 文件中的测点数量（只解析不保存）
 
         Args:
@@ -339,33 +351,37 @@ class IcdPointImporter:
                             if do_type_def is None:
                                 continue
                             cdc = do_type_def.get("cdc", "")
-                            ref_prefix = f"{ld_inst}/{ln_name}.{do_name}"
                             if cdc in CDC_YC:
                                 main_da_ref = self._get_value_ref(do_type_def, cdc, "MX")
                                 if main_da_ref:
-                                    yc_points.append({"code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}"})
+                                    yc_points.append(
+                                        {"code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}"}
+                                    )
                             elif cdc in CDC_YX:
                                 main_da_ref = self._get_value_ref(do_type_def, cdc, "ST")
                                 if main_da_ref:
-                                    yx_points.append({"code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}"})
+                                    yx_points.append(
+                                        {"code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}"}
+                                    )
                             elif cdc in CDC_YK:
                                 main_da_ref = self._get_control_ref(do_type_def, cdc)
                                 if main_da_ref:
-                                    yk_points.append({"code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}"})
+                                    yk_points.append(
+                                        {"code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}"}
+                                    )
                             elif cdc in CDC_YT:
                                 main_da_ref = self._get_control_ref(do_type_def, cdc)
                                 if main_da_ref:
-                                    yt_points.append({"code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}"})
+                                    yt_points.append(
+                                        {"code": f"{ld_inst}_{ln_name}_{do_name}_{main_da_ref.replace('.', '_')}"}
+                                    )
 
         yc_count = len(yc_points)
         yx_count = len(yx_points)
         yk_count = len(yk_points)
         yt_count = len(yt_points)
 
-        log.info(
-            f"ICD预览: 遥测={yc_count}, 遥信={yx_count}, "
-            f"遥控={yk_count}, 遥调={yt_count}"
-        )
+        log.info(f"ICD预览: 遥测={yc_count}, 遥信={yx_count}, 遥控={yk_count}, 遥调={yt_count}")
         return (yc_count, yx_count, yk_count, yt_count)
 
     def _detect_namespace(self, root: ET.Element) -> None:
@@ -443,8 +459,9 @@ class IcdPointImporter:
                             return val_elem.text.strip()
         return ""
 
-    def _get_do_desc(self, do_elem: ET.Element, do_type_def: ET.Element, do_name: str,
-                     ln_elem: ET.Element = None) -> str:
+    def _get_do_desc(
+        self, do_elem: ET.Element, do_type_def: ET.Element, do_name: str, ln_elem: ET.Element = None
+    ) -> str:
         """获取 DO 的描述信息
 
         优先级: DOI/DAI 中 dU 的 Val → DO 元素 desc → DOType desc →
@@ -493,9 +510,9 @@ class IcdPointImporter:
     # None 表示展开所有 BDA; 列表表示只展开指定的 BDA
     # 注意: mag/instMag/mxVal 等测量值 DA 不在这里展开，它们的主值路径在 _collect_all_das 中硬编码
     _STRUCT_DA_EXPAND = {
-        "q": [],          # Quality: MMS 映射为单值 BitString, 不展开子 BDA
-        "t": [],          # Timestamp: MMS 映射为单值 UTC_Time, 不展开子 BDA
-        "origin": None,   # Origin: 展开 orIdent, orCat, ...
+        "q": [],  # Quality: MMS 映射为单值 BitString, 不展开子 BDA
+        "t": [],  # Timestamp: MMS 映射为单值 UTC_Time, 不展开子 BDA
+        "origin": None,  # Origin: 展开 orIdent, orCat, ...
     }
 
     # 已知 struct DA 的硬编码 BDA 子节点 (当 ICD 文件中 DAType 缺失时使用)
@@ -519,7 +536,7 @@ class IcdPointImporter:
         ],
     }
 
-    def _expand_struct_da(self, da_name: str, da_fc: str, da_type_id: str) -> List[Dict[str, str]]:
+    def _expand_struct_da(self, da_name: str, da_fc: str, da_type_id: str) -> list[dict[str, str]]:
         """展开结构体 DA 的子 BDA
 
         优先从 ICD 文件的 DAType 定义中获取 BDA 列表;
@@ -554,12 +571,14 @@ class IcdPointImporter:
                 if bda_btype == "Struct":
                     continue
                 full_name = f"{da_name}.{bda_name}"
-                result.append({
-                    "name": full_name,
-                    "path": full_name,
-                    "fc": da_fc,
-                    "bType": bda_btype,
-                })
+                result.append(
+                    {
+                        "name": full_name,
+                        "path": full_name,
+                        "fc": da_fc,
+                        "bType": bda_btype,
+                    }
+                )
             if result:
                 return result
             log.warning(f"_expand_struct_da: DA '{da_name}' 的 DAType '{da_type_id}' 中无有效 BDA, 使用硬编码回退")
@@ -569,7 +588,9 @@ class IcdPointImporter:
             if not da_type_id:
                 log.info(f"_expand_struct_da: DA '{da_name}' 无 type 属性, 使用硬编码 BDA 回退")
             elif da_type_id not in self._da_types:
-                log.info(f"_expand_struct_da: DA '{da_name}' 的 type='{da_type_id}' 不在 _da_types 中, 使用硬编码 BDA 回退")
+                log.info(
+                    f"_expand_struct_da: DA '{da_name}' 的 type='{da_type_id}' 不在 _da_types 中, 使用硬编码 BDA 回退"
+                )
             result = []
             for bda_info in self._KNOWN_BDA_FALLBACK[da_name]:
                 bda_name = bda_info["name"]
@@ -581,12 +602,14 @@ class IcdPointImporter:
                 if bda_btype == "Struct":
                     continue
                 full_name = f"{da_name}.{bda_name}"
-                result.append({
-                    "name": full_name,
-                    "path": full_name,
-                    "fc": da_fc,
-                    "bType": bda_btype,
-                })
+                result.append(
+                    {
+                        "name": full_name,
+                        "path": full_name,
+                        "fc": da_fc,
+                        "bType": bda_btype,
+                    }
+                )
             return result
 
         if not da_type_id:
@@ -595,7 +618,7 @@ class IcdPointImporter:
             log.warning(f"_expand_struct_da: DA '{da_name}' 的 type='{da_type_id}' 不在 _da_types 中, 且无硬编码回退")
         return []
 
-    def _collect_all_das(self, do_type: ET.Element, cdc: str) -> List[Dict[str, str]]:
+    def _collect_all_das(self, do_type: ET.Element, cdc: str) -> list[dict[str, str]]:
         """收集 DOType 下所有 DA (包括主值和元数据)
 
         Returns:
@@ -614,21 +637,25 @@ class IcdPointImporter:
                 da_fc = da_fc or default_fc
                 # 结构体 DA: 展开子 BDA
                 if da_btype == "Struct" and da_name in self._STRUCT_DA_EXPAND:
-                    result.append({
-                        "name": da_name,
-                        "path": da_path,
-                        "fc": da_fc,
-                        "bType": da_btype,
-                    })
+                    result.append(
+                        {
+                            "name": da_name,
+                            "path": da_path,
+                            "fc": da_fc,
+                            "bType": da_btype,
+                        }
+                    )
                     expanded = self._expand_struct_da(da_name, da_fc, da_type_id)
                     result.extend(expanded)
                 else:
-                    result.append({
-                        "name": da_name,
-                        "path": da_path,
-                        "fc": da_fc,
-                        "bType": da_btype,
-                    })
+                    result.append(
+                        {
+                            "name": da_name,
+                            "path": da_path,
+                            "fc": da_fc,
+                            "bType": da_btype,
+                        }
+                    )
             elif da_name in ("mag", "cVal", "instMag", "mxVal", "fCVal"):
                 # 测量值类 DA - 使用硬编码主值路径 (不展开为 struct DA)
                 da_fc = da_fc or "MX"
@@ -644,20 +671,24 @@ class IcdPointImporter:
                     da_path = "fCVal.mag.f"
                 else:
                     da_path = da_name
-                result.append({
-                    "name": da_name,
-                    "path": da_path,
-                    "fc": da_fc,
-                    "bType": da_btype,
-                })
+                result.append(
+                    {
+                        "name": da_name,
+                        "path": da_path,
+                        "fc": da_fc,
+                        "bType": da_btype,
+                    }
+                )
             elif da_name in ("stVal", "ctlVal", "setVal", "wVal"):
                 da_path = da_name
-                result.append({
-                    "name": da_name,
-                    "path": da_path,
-                    "fc": da_fc,
-                    "bType": da_btype,
-                })
+                result.append(
+                    {
+                        "name": da_name,
+                        "path": da_path,
+                        "fc": da_fc,
+                        "bType": da_btype,
+                    }
+                )
             elif da_name in ("Oper", "SBOw", "Cancel", "SBO"):
                 if da_name == "Oper":
                     da_path = "Oper.ctlVal"
@@ -670,32 +701,38 @@ class IcdPointImporter:
                     da_fc = da_fc or "CO"
                 else:
                     da_path = da_name
-                result.append({
-                    "name": da_name,
-                    "path": da_path,
-                    "fc": da_fc,
-                    "bType": da_btype,
-                })
+                result.append(
+                    {
+                        "name": da_name,
+                        "path": da_path,
+                        "fc": da_fc,
+                        "bType": da_btype,
+                    }
+                )
             else:
                 # 其他 DA (如 pixTyp, frVal 等), 使用名称作为路径
                 da_path = da_name
                 # 结构体 DA: 展开子 BDA
                 if da_btype == "Struct":
-                    result.append({
-                        "name": da_name,
-                        "path": da_path,
-                        "fc": da_fc,
-                        "bType": da_btype,
-                    })
+                    result.append(
+                        {
+                            "name": da_name,
+                            "path": da_path,
+                            "fc": da_fc,
+                            "bType": da_btype,
+                        }
+                    )
                     expanded = self._expand_struct_da(da_name, da_fc, da_type_id)
                     result.extend(expanded)
                 else:
-                    result.append({
-                        "name": da_name,
-                        "path": da_path,
-                        "fc": da_fc,
-                        "bType": da_btype,
-                    })
+                    result.append(
+                        {
+                            "name": da_name,
+                            "path": da_path,
+                            "fc": da_fc,
+                            "bType": da_btype,
+                        }
+                    )
 
         return result
 
@@ -765,9 +802,7 @@ class IcdPointImporter:
                 # DA 有子类型
                 da_type_id = da.get("type", "")
                 if da_type_id and da_type_id in self._da_types:
-                    sub_result = self._find_bda_path(
-                        self._da_types[da_type_id], path_parts[1:]
-                    )
+                    sub_result = self._find_bda_path(self._da_types[da_type_id], path_parts[1:])
                     if sub_result:
                         return f"{name}.{sub_result}"
 
@@ -776,9 +811,7 @@ class IcdPointImporter:
             if sdo.get("name") == name:
                 sdo_type_id = sdo.get("type", "")
                 if sdo_type_id and sdo_type_id in self._do_types:
-                    sub_result = self._find_da_path(
-                        self._do_types[sdo_type_id], path_parts[1:], target_fc
-                    )
+                    sub_result = self._find_da_path(self._do_types[sdo_type_id], path_parts[1:], target_fc)
                     if sub_result:
                         return f"{name}.{sub_result}"
 
@@ -796,9 +829,7 @@ class IcdPointImporter:
                     return name
                 bda_type_id = bda.get("type", "")
                 if bda_type_id and bda_type_id in self._da_types:
-                    sub_result = self._find_bda_path(
-                        self._da_types[bda_type_id], path_parts[1:]
-                    )
+                    sub_result = self._find_bda_path(self._da_types[bda_type_id], path_parts[1:])
                     if sub_result:
                         return f"{name}.{sub_result}"
         return None
@@ -830,25 +861,24 @@ class IcdPointImporter:
         if len(unique_points) < len(points):
             log.warning(f"遥测测点去重: 原始 {len(points)} 条，去重后 {len(unique_points)} 条")
 
-        with local_session() as session:
-            with session.begin():
-                for p in unique_points:
-                    point = PointYc(
-                        code=p["code"],
-                        name=p["name"],
-                        channel_id=self.channel_id,
-                        rtu_addr=1,
-                        reg_addr=p["reg_addr"],
-                        func_code=0,  # IEC 61850 不需要功能码
-                        decode_code="",
-                        mul_coe=1.0,
-                        add_coe=0.0,
-                        max_limit=999999.0,
-                        min_limit=-999999.0,
-                        fc=p.get("fc"),
-                    )
-                    session.add(point)
-                    self.yc_count += 1
+        with local_session() as session, session.begin():
+            for p in unique_points:
+                point = PointYc(
+                    code=p["code"],
+                    name=p["name"],
+                    channel_id=self.channel_id,
+                    rtu_addr=1,
+                    reg_addr=p["reg_addr"],
+                    func_code=0,  # IEC 61850 不需要功能码
+                    decode_code="",
+                    mul_coe=1.0,
+                    add_coe=0.0,
+                    max_limit=999999.0,
+                    min_limit=-999999.0,
+                    fc=p.get("fc"),
+                )
+                session.add(point)
+                self.yc_count += 1
 
     def _save_yx(self, points: list) -> None:
         """批量保存遥信测点"""
@@ -865,23 +895,22 @@ class IcdPointImporter:
         if len(unique_points) < len(points):
             log.warning(f"遥信测点去重: 原始 {len(points)} 条，去重后 {len(unique_points)} 条")
 
-        with local_session() as session:
-            with session.begin():
-                for p in unique_points:
-                    point = PointYx(
-                        code=p["code"],
-                        name=p["name"],
-                        channel_id=self.channel_id,
-                        rtu_addr=1,
-                        reg_addr=p["reg_addr"],
-                        func_code=0,
-                        decode_code="",
-                        bit=None,
-                        reverse=False,
-                        fc=p.get("fc"),
-                    )
-                    session.add(point)
-                    self.yx_count += 1
+        with local_session() as session, session.begin():
+            for p in unique_points:
+                point = PointYx(
+                    code=p["code"],
+                    name=p["name"],
+                    channel_id=self.channel_id,
+                    rtu_addr=1,
+                    reg_addr=p["reg_addr"],
+                    func_code=0,
+                    decode_code="",
+                    bit=None,
+                    reverse=False,
+                    fc=p.get("fc"),
+                )
+                session.add(point)
+                self.yx_count += 1
 
     def _save_yk(self, points: list) -> None:
         """批量保存遥控测点"""
@@ -898,23 +927,22 @@ class IcdPointImporter:
         if len(unique_points) < len(points):
             log.warning(f"遥控测点去重: 原始 {len(points)} 条，去重后 {len(unique_points)} 条")
 
-        with local_session() as session:
-            with session.begin():
-                for p in unique_points:
-                    point = PointYk(
-                        code=p["code"],
-                        name=p["name"],
-                        channel_id=self.channel_id,
-                        rtu_addr=1,
-                        reg_addr=p["reg_addr"],
-                        func_code=0,
-                        decode_code="",
-                        bit=None,
-                        command_type=0,
-                        fc=p.get("fc"),
-                    )
-                    session.add(point)
-                    self.yk_count += 1
+        with local_session() as session, session.begin():
+            for p in unique_points:
+                point = PointYk(
+                    code=p["code"],
+                    name=p["name"],
+                    channel_id=self.channel_id,
+                    rtu_addr=1,
+                    reg_addr=p["reg_addr"],
+                    func_code=0,
+                    decode_code="",
+                    bit=None,
+                    command_type=0,
+                    fc=p.get("fc"),
+                )
+                session.add(point)
+                self.yk_count += 1
 
     def _save_yt(self, points: list) -> None:
         """批量保存遥调测点"""
@@ -931,22 +959,21 @@ class IcdPointImporter:
         if len(unique_points) < len(points):
             log.warning(f"遥调测点去重: 原始 {len(points)} 条，去重后 {len(unique_points)} 条")
 
-        with local_session() as session:
-            with session.begin():
-                for p in unique_points:
-                    point = PointYt(
-                        code=p["code"],
-                        name=p["name"],
-                        channel_id=self.channel_id,
-                        rtu_addr=1,
-                        reg_addr=p["reg_addr"],
-                        func_code=0,
-                        decode_code="",
-                        mul_coe=1.0,
-                        add_coe=0.0,
-                        max_limit=999999.0,
-                        min_limit=-999999.0,
-                        fc=p.get("fc"),
-                    )
-                    session.add(point)
-                    self.yt_count += 1
+        with local_session() as session, session.begin():
+            for p in unique_points:
+                point = PointYt(
+                    code=p["code"],
+                    name=p["name"],
+                    channel_id=self.channel_id,
+                    rtu_addr=1,
+                    reg_addr=p["reg_addr"],
+                    func_code=0,
+                    decode_code="",
+                    mul_coe=1.0,
+                    add_coe=0.0,
+                    max_limit=999999.0,
+                    min_limit=-999999.0,
+                    fc=p.get("fc"),
+                )
+                session.add(point)
+                self.yt_count += 1

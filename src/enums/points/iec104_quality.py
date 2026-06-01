@@ -26,8 +26,8 @@ from dataclasses import dataclass, field
 from enum import IntFlag
 from typing import Optional
 
-
 # ===== 品质标志位枚举 =====
+
 
 class IEC104QualityFlag(IntFlag):
     """IEC104 品质描述符标志位
@@ -36,12 +36,13 @@ class IEC104QualityFlag(IntFlag):
         flags = IEC104QualityFlag.OV | IEC104QualityFlag.IV
         if IEC104QualityFlag.OV in flags: ...
     """
-    NONE = 0          # 无标志
-    OV  = 0x01        # 溢出 (Overflow) — 仅遥测/遥调
-    BL  = 0x02        # 闭锁 (Blocked)
-    SB  = 0x04        # 取代 (Substituted)
-    NT  = 0x08        # 不刷新 (Not Topical)
-    IV  = 0x10        # 无效 (Invalid)
+
+    NONE = 0  # 无标志
+    OV = 0x01  # 溢出 (Overflow) — 仅遥测/遥调
+    BL = 0x02  # 闭锁 (Blocked)
+    SB = 0x04  # 取代 (Substituted)
+    NT = 0x08  # 不刷新 (Not Topical)
+    IV = 0x10  # 无效 (Invalid)
 
     @property
     def label(self) -> str:
@@ -81,7 +82,7 @@ class IEC104QualityFlag(IntFlag):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, bool]) -> "IEC104QualityFlag":
+    def from_dict(cls, data: dict[str, bool]) -> IEC104QualityFlag:
         """从布尔值字典创建标志位组合"""
         flags = cls.NONE
         if data.get("ov", False):
@@ -97,12 +98,13 @@ class IEC104QualityFlag(IntFlag):
         return flags
 
     @classmethod
-    def from_int(cls, value: int) -> "IEC104QualityFlag":
+    def from_int(cls, value: int) -> IEC104QualityFlag:
         """从整数值创建标志位"""
         return cls(value & 0x1F)  # 只取低5位
 
 
 # ===== 品质描述符结构体 =====
+
 
 @dataclass
 class IEC104QualityDescriptor:
@@ -118,6 +120,7 @@ class IEC104QualityDescriptor:
         not_topical: 不刷新标志
         invalid: 无效标志
     """
+
     overflow: bool = False
     blocked: bool = False
     substituted: bool = False
@@ -140,7 +143,7 @@ class IEC104QualityDescriptor:
         return value
 
     @classmethod
-    def from_int(cls, value: int) -> "IEC104QualityDescriptor":
+    def from_int(cls, value: int) -> IEC104QualityDescriptor:
         """从整数值创建品质描述符"""
         if value is None:
             return cls()
@@ -158,7 +161,7 @@ class IEC104QualityDescriptor:
         return IEC104QualityFlag.from_int(self.to_int())
 
     @classmethod
-    def from_flags(cls, flags: IEC104QualityFlag) -> "IEC104QualityDescriptor":
+    def from_flags(cls, flags: IEC104QualityFlag) -> IEC104QualityDescriptor:
         """从标志位枚举创建"""
         return cls.from_int(flags.value)
 
@@ -175,7 +178,7 @@ class IEC104QualityDescriptor:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "IEC104QualityDescriptor":
+    def from_dict(cls, data: dict) -> IEC104QualityDescriptor:
         """从字典反序列化"""
         return cls(
             overflow=data.get("overflow", False),
@@ -211,6 +214,7 @@ class IEC104QualityDescriptor:
 
 # ===== 品质描述符与 ASDU 类型的关系 =====
 
+
 def supports_overflow(frame_type: int) -> bool:
     """判断该帧类型是否支持溢出(OV)标志
 
@@ -231,10 +235,10 @@ def supports_quality(frame_type: int) -> bool:
 def get_quality_descriptor_for_frame_type(frame_type: int) -> str:
     """获取帧类型对应的品质描述符名称"""
     names = {
-        0: "QDS",   # Quality Descriptor (遥测)
+        0: "QDS",  # Quality Descriptor (遥测)
         1: "SIQ/DIQ",  # Single/Double-point Information Quality (遥信)
-        2: "无",    # 遥控不带品质
-        3: "QDS",   # Quality Descriptor (遥调)
+        2: "无",  # 遥控不带品质
+        3: "QDS",  # Quality Descriptor (遥调)
     }
     return names.get(frame_type, "未知")
 
@@ -244,21 +248,21 @@ def get_quality_descriptor_for_frame_type(frame_type: int) -> str:
 #   应用层: OV=0x01, BL=0x02, SB=0x04, NT=0x08, IV=0x10
 #   c104库: OV=0x01, BL=0x10, SB=0x20, NT=0x40, IV=0x80, ETI=0x08
 _C104_QUALITY_MASK = {
-    "OV": 0x01,   # Overflow
-    "BL": 0x10,   # Blocked
-    "SB": 0x20,   # Substituted
-    "NT": 0x40,   # NonTopical
-    "IV": 0x80,   # Invalid
+    "OV": 0x01,  # Overflow
+    "BL": 0x10,  # Blocked
+    "SB": 0x20,  # Substituted
+    "NT": 0x40,  # NonTopical
+    "IV": 0x80,  # Invalid
     "ETI": 0x08,  # ElapsedTimeInvalid (c104 库特有)
 }
 
 # 应用层品质位 → c104 品质位
 _APP_TO_C104 = {
-    0x01: _C104_QUALITY_MASK["OV"],   # OV
-    0x02: _C104_QUALITY_MASK["BL"],   # BL
-    0x04: _C104_QUALITY_MASK["SB"],   # SB
-    0x08: _C104_QUALITY_MASK["NT"],   # NT
-    0x10: _C104_QUALITY_MASK["IV"],   # IV
+    0x01: _C104_QUALITY_MASK["OV"],  # OV
+    0x02: _C104_QUALITY_MASK["BL"],  # BL
+    0x04: _C104_QUALITY_MASK["SB"],  # SB
+    0x08: _C104_QUALITY_MASK["NT"],  # NT
+    0x10: _C104_QUALITY_MASK["IV"],  # IV
 }
 
 # c104 品质位 → 应用层品质位
@@ -297,7 +301,7 @@ def decode_quality_from_c104(point, frame_type: int) -> IEC104QualityDescriptor:
         品质描述符对象
     """
     try:
-        if hasattr(point, 'quality') and point.quality is not None:
+        if hasattr(point, "quality") and point.quality is not None:
             c104_quality_int = int(point.quality)
             app_quality_int = _c104_quality_to_app(c104_quality_int)
             return IEC104QualityDescriptor.from_int(app_quality_int)

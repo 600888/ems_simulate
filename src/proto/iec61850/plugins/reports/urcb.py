@@ -6,10 +6,12 @@ URCB 与 BRCB 的区别:
 - URCB 有 intgPeriod (完整性周期) 属性
 """
 
+import contextlib
 from typing import Optional
 
+from ...core.mms_value import mms_value_to_python
 from ...defs.constants import HAS_IEC61850
-from ...defs.types import RCBInfo, TrgOps, OptFields
+from ...defs.types import OptFields, RCBInfo, TrgOps
 from ...log import log
 
 if HAS_IEC61850:
@@ -82,10 +84,7 @@ class UrcbHandler:
 
             try:
                 result = iec61850.IedConnection_getRCBValues(conn, UrcbHandler._normalize_ref(rcb_ref), rcb)
-                if isinstance(result, (list, tuple)):
-                    error = result[1] if len(result) > 1 else 0
-                else:
-                    error = result
+                error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if error != iec61850.IED_ERROR_OK:
                     log.warning(f"获取 URCB 值失败: ref={rcb_ref}, error={error}")
@@ -94,19 +93,21 @@ class UrcbHandler:
                 rcb_info = UrcbHandler._parse_rcb(rcb, rcb_ref, "URCB")
                 return rcb_info
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     iec61850.ClientReportControlBlock_destroy(rcb)
-                except Exception:
-                    pass
         except Exception as e:
             log.error(f"获取 URCB 值异常: {rcb_ref}, {e}")
             return None
 
     @staticmethod
-    def set_rpt_ena(connection, rcb_ref: str, enable: bool,
-                    trg_ops: Optional[TrgOps] = None,
-                    opt_fields: Optional[OptFields] = None,
-                    intg_period: int = 0) -> bool:
+    def set_rpt_ena(
+        connection,
+        rcb_ref: str,
+        enable: bool,
+        trg_ops: Optional[TrgOps] = None,
+        opt_fields: Optional[OptFields] = None,
+        intg_period: int = 0,
+    ) -> bool:
         """设置 URCB 的 RptEna 及相关属性
 
         Args:
@@ -136,10 +137,7 @@ class UrcbHandler:
             try:
                 # 先读取当前值
                 result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
-                if isinstance(result, (list, tuple)):
-                    error = result[1] if len(result) > 1 else 0
-                else:
-                    error = result
+                error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if error != iec61850.IED_ERROR_OK:
                     log.warning(f"设置 URCB RptEna 前读取失败: ref={rcb_ref}, error={error}")
                     return False
@@ -186,10 +184,7 @@ class UrcbHandler:
 
                 # 写回服务器
                 result = iec61850.IedConnection_setRCBValues(conn, rcb, changes, True)
-                if isinstance(result, (list, tuple)):
-                    set_error = result[1] if len(result) > 1 else 0
-                else:
-                    set_error = result
+                set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:
                     log.warning(f"设置 URCB 值失败: ref={rcb_ref}, error={set_error}")
@@ -198,10 +193,8 @@ class UrcbHandler:
                 log.info(f"URCB RptEna 已{'使能' if enable else '禁用'}: {rcb_ref}")
                 return True
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     iec61850.ClientReportControlBlock_destroy(rcb)
-                except Exception:
-                    pass
         except Exception as e:
             log.error(f"设置 URCB RptEna 异常: {rcb_ref}, {e}")
             return False
@@ -223,21 +216,13 @@ class UrcbHandler:
 
             try:
                 result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
-                if isinstance(result, (list, tuple)):
-                    error = result[1] if len(result) > 1 else 0
-                else:
-                    error = result
+                error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if error != iec61850.IED_ERROR_OK:
                     return False
 
                 iec61850.ClientReportControlBlock_setGI(rcb, True)
-                result = iec61850.IedConnection_setRCBValues(
-                    conn, rcb, UrcbHandler.RCB_GI, True
-                )
-                if isinstance(result, (list, tuple)):
-                    set_error = result[1] if len(result) > 1 else 0
-                else:
-                    set_error = result
+                result = iec61850.IedConnection_setRCBValues(conn, rcb, UrcbHandler.RCB_GI, True)
+                set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:
                     log.warning(f"URCB GI 触发失败: ref={rcb_ref}, error={set_error}")
@@ -246,10 +231,8 @@ class UrcbHandler:
                 log.info(f"URCB GI 已触发: {rcb_ref}")
                 return True
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     iec61850.ClientReportControlBlock_destroy(rcb)
-                except Exception:
-                    pass
         except Exception as e:
             log.error(f"URCB GI 触发异常: {rcb_ref}, {e}")
             return False
@@ -269,15 +252,11 @@ class UrcbHandler:
             ln_part = parts[1].split(".")[0] if "." in parts[1] else parts[1]
             info.ln = ln_part
 
-        try:
+        with contextlib.suppress(Exception):
             info.rpt_id = str(iec61850.ClientReportControlBlock_getRptId(rcb))
-        except Exception:
-            pass
 
-        try:
+        with contextlib.suppress(Exception):
             info.rpt_ena = bool(iec61850.ClientReportControlBlock_getRptEna(rcb))
-        except Exception:
-            pass
 
         try:
             ds_ref = iec61850.ClientReportControlBlock_getDataSetReference(rcb)
@@ -286,15 +265,11 @@ class UrcbHandler:
         except Exception:
             pass
 
-        try:
+        with contextlib.suppress(Exception):
             info.conf_rev = int(iec61850.ClientReportControlBlock_getConfRev(rcb))
-        except Exception:
-            pass
 
-        try:
+        with contextlib.suppress(Exception):
             info.intg_period = int(iec61850.ClientReportControlBlock_getIntgPd(rcb))
-        except Exception:
-            pass
 
         # 解析 TrgOps
         try:
@@ -323,10 +298,8 @@ class UrcbHandler:
             pass
 
         # sq_num
-        try:
+        with contextlib.suppress(Exception):
             info.sq_num = int(iec61850.ClientReportControlBlock_getSqNum(rcb))
-        except Exception:
-            pass
 
         # owner (URCB only)
         try:
@@ -337,9 +310,7 @@ class UrcbHandler:
             pass
 
         # resv (URCB only)
-        try:
+        with contextlib.suppress(Exception):
             info.resv = bool(iec61850.ClientReportControlBlock_getResv(rcb))
-        except Exception:
-            pass
 
         return info

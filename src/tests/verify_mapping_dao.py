@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 import time
 
 # Add project root to path
@@ -8,17 +8,18 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 from src.data.dao.point_mapping_dao import PointMappingDao
 from src.data.model.point_mapping import PointMapping
 
+
 def test_crud():
     print("Testing PointMappingDao CRUD...")
-    
+
     # 1. Create
     mapping_data = {
         "target_point_code": "TEST_T_001",
         "source_point_codes": '["TEST_S_001", "TEST_S_002"]',
         "formula": "TEST_S_001 + TEST_S_002",
-        "enable": True
+        "enable": True,
     }
-    
+
     print("Creating mapping...")
     mapping = PointMappingDao.create_mapping(mapping_data)
     if mapping:
@@ -62,7 +63,7 @@ def test_crud():
         updated_mapping = PointMappingDao.get_mapping_by_id(mapping_id)
         print(f"Updated mapping formula: {updated_mapping.formula}, enable: {updated_mapping.enable}")
         assert updated_mapping.formula == "TEST_S_001 * TEST_S_002"
-        assert updated_mapping.enable == False
+        assert not updated_mapping.enable
     else:
         print("Update failed")
         return
@@ -80,6 +81,7 @@ def test_crud():
     else:
         print("Delete failed")
 
+
 if __name__ == "__main__":
     try:
         test_crud()
@@ -87,4 +89,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Test failed with exception: {e}")
         import traceback
+
         traceback.print_exc()

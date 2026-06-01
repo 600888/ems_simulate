@@ -13,16 +13,20 @@ from .defs.constants import HAS_IEC61850
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850  # noqa: F401
 
+
 # 延迟导入关键类，避免循环依赖
 def __getattr__(name):
     """延迟导入，仅在首次访问时加载"""
     if name == "IEC61850Client":
         from .iec61850_client import IEC61850Client
+
         return IEC61850Client
     if name == "IEC61850Server":
         from .iec61850_server import IEC61850Server
+
         return IEC61850Server
     if name == "IEC61850ModelExporter":
         from .plugins.model_exporter import IEC61850ModelExporter
+
         return IEC61850ModelExporter
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

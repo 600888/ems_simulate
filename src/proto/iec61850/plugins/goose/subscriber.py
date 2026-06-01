@@ -29,16 +29,16 @@ class _DataSetParser:
         """解析 GOOSE 数据集值"""
         values: list[dict[str, Any]] = []
         try:
-            if not hasattr(iec61850, 'GooseSubscriber_getDataSetValues'):
+            if not hasattr(iec61850, "GooseSubscriber_getDataSetValues"):
                 return values
 
             dataset = iec61850.GooseSubscriber_getDataSetValues(subscriber)
             if not dataset:
                 return values
 
-            array_size = iec61850.MmsValue_getArraySize(dataset) if hasattr(iec61850, 'MmsValue_getArraySize') else 0
+            array_size = iec61850.MmsValue_getArraySize(dataset) if hasattr(iec61850, "MmsValue_getArraySize") else 0
             for i in range(array_size):
-                element = iec61850.MmsValue_getElement(dataset, i) if hasattr(iec61850, 'MmsValue_getElement') else None
+                element = iec61850.MmsValue_getElement(dataset, i) if hasattr(iec61850, "MmsValue_getElement") else None
                 if not element:
                     continue
 
@@ -54,7 +54,7 @@ class _DataSetParser:
         """解析单个 MMS 数据元素"""
         entry: dict[str, Any] = {"index": index, "type": "unknown", "value": None}
 
-        mms_type = iec61850.MmsValue_getType(element) if hasattr(iec61850, 'MmsValue_getType') else -1
+        mms_type = iec61850.MmsValue_getType(element) if hasattr(iec61850, "MmsValue_getType") else -1
 
         if mms_type == MmsType.BOOLEAN:
             entry["type"] = "boolean"
@@ -181,7 +181,7 @@ class GooseReceiver:
         """GOOSE 报文接收回调 (底层 C 回调的 Python 包装)"""
         try:
             go_cb_ref = ""
-            if hasattr(iec61850, 'GooseSubscriber_getGoCbRef'):
+            if hasattr(iec61850, "GooseSubscriber_getGoCbRef"):
                 go_cb_ref = iec61850.GooseSubscriber_getGoCbRef(subscriber) or ""
 
             with self._lock:
@@ -190,24 +190,24 @@ class GooseReceiver:
                     return
 
                 # 读取报文字段
-                if hasattr(iec61850, 'GooseSubscriber_getGoId'):
+                if hasattr(iec61850, "GooseSubscriber_getGoId"):
                     sub.go_id = iec61850.GooseSubscriber_getGoId(subscriber) or ""
-                if hasattr(iec61850, 'GooseSubscriber_getDataSet'):
+                if hasattr(iec61850, "GooseSubscriber_getDataSet"):
                     sub.data_set_ref = iec61850.GooseSubscriber_getDataSet(subscriber) or ""
-                if hasattr(iec61850, 'GooseSubscriber_getConfRev'):
+                if hasattr(iec61850, "GooseSubscriber_getConfRev"):
                     sub.conf_rev = iec61850.GooseSubscriber_getConfRev(subscriber)
-                if hasattr(iec61850, 'GooseSubscriber_getStNum'):
+                if hasattr(iec61850, "GooseSubscriber_getStNum"):
                     sub.st_num = iec61850.GooseSubscriber_getStNum(subscriber)
-                if hasattr(iec61850, 'GooseSubscriber_getSqNum'):
+                if hasattr(iec61850, "GooseSubscriber_getSqNum"):
                     sub.sq_num = iec61850.GooseSubscriber_getSqNum(subscriber)
-                if hasattr(iec61850, 'GooseSubscriber_getTimeAllowedToLive'):
+                if hasattr(iec61850, "GooseSubscriber_getTimeAllowedToLive"):
                     sub.time_allowed_to_live = iec61850.GooseSubscriber_getTimeAllowedToLive(subscriber)
-                if hasattr(iec61850, 'GooseSubscriber_getTimestamp'):
+                if hasattr(iec61850, "GooseSubscriber_getTimestamp"):
                     sub.timestamp = iec61850.GooseSubscriber_getTimestamp(subscriber)
 
                 # 检查有效性
                 is_valid = True
-                if hasattr(iec61850, 'GooseSubscriber_isValid'):
+                if hasattr(iec61850, "GooseSubscriber_isValid"):
                     is_valid = iec61850.GooseSubscriber_isValid(subscriber)
 
                 sub.state = GooseState.CONNECTED if is_valid else GooseState.ERROR
@@ -249,15 +249,13 @@ class GooseReceiver:
                         log.warning(f"GooseSubscriber_create 失败: {go_cb_ref}")
                         continue
 
-                    if sub.app_id is not None and hasattr(iec61850, 'GooseSubscriber_setAppId'):
+                    if sub.app_id is not None and hasattr(iec61850, "GooseSubscriber_setAppId"):
                         iec61850.GooseSubscriber_setAppId(subscriber, sub.app_id)
-                    if sub.dst_mac and hasattr(iec61850, 'GooseSubscriber_setDstMac'):
+                    if sub.dst_mac and hasattr(iec61850, "GooseSubscriber_setDstMac"):
                         iec61850.GooseSubscriber_setDstMac(subscriber, sub.dst_mac)
 
-                    if hasattr(iec61850, 'GooseSubscriber_setListener'):
-                        iec61850.GooseSubscriber_setListener(
-                            subscriber, self._on_goose_message, None
-                        )
+                    if hasattr(iec61850, "GooseSubscriber_setListener"):
+                        iec61850.GooseSubscriber_setListener(subscriber, self._on_goose_message, None)
 
                     iec61850.GooseReceiver_addSubscriber(self._receiver, subscriber)
 
@@ -267,9 +265,7 @@ class GooseReceiver:
 
             # 启动状态监控线程
             self._monitor_stop.clear()
-            self._monitor_thread = threading.Thread(
-                target=self._monitor_loop, daemon=True
-            )
+            self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
             self._monitor_thread.start()
 
             log.info(f"GOOSE Receiver 已启动: interface={self._config.interface}, 订阅数={len(self._subscriptions)}")
@@ -289,7 +285,7 @@ class GooseReceiver:
 
         if self._receiver:
             try:
-                if hasattr(iec61850, 'GooseReceiver_stop'):
+                if hasattr(iec61850, "GooseReceiver_stop"):
                     iec61850.GooseReceiver_stop(self._receiver)
                 iec61850.GooseReceiver_destroy(self._receiver)
             except Exception as e:
