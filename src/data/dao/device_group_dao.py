@@ -33,7 +33,7 @@ class DeviceGroupDao:
             with local_session() as session, session.begin():
                 result = (
                     session.query(DeviceGroup)
-                    .where(DeviceGroup.enable, DeviceGroup.parent_id is None)
+                    .where(DeviceGroup.enable, DeviceGroup.parent_id == None)
                     .order_by(DeviceGroup.id)
                     .all()
                 )
@@ -66,7 +66,7 @@ class DeviceGroupDao:
                 # 获取所有顶级设备组
                 root_groups = (
                     session.query(DeviceGroup)
-                    .where(DeviceGroup.enable, DeviceGroup.parent_id is None)
+                    .where(DeviceGroup.enable, DeviceGroup.parent_id == None)
                     .order_by(DeviceGroup.id)
                     .all()
                 )
@@ -80,7 +80,7 @@ class DeviceGroupDao:
         """获取未分组设备"""
         try:
             with local_session() as session, session.begin():
-                result = session.query(Device).where(Device.enable, Device.group_id is None).order_by(Device.id).all()
+                result = session.query(Device).where(Device.enable, Device.group_id == None).order_by(Device.id).all()
                 return [item.to_dict() for item in result]
         except Exception as e:
             log.error(f"获取未分组设备失败: {str(e)}")
