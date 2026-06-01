@@ -44,7 +44,7 @@ exclude = [
     "resources",
     "scripts",
     "src-tauri",
-    "data",
+    "./data",
     "docs",
 ]
 
@@ -67,13 +67,7 @@ select = [
     "PTH",  # pathlib 建议
 ]
 
-# 第 2 阶段逐步启用，仍需忽略的部分
-ignore = [
-    "F401", # 未使用的导入（批次 D 修复）
-    "F403", # from XXX import *（部分模块有意使用）
-    "F405", # * 导入变量后续使用（与 F403 配套）
-    "UP035", # 从 typing 导入已弃用的类型别名（需要逐步替换，120+ 处）
-]
+# 全部规则已启用，无忽略项
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
