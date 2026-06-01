@@ -28,6 +28,7 @@
                     :deviceName="deviceName"
                     :pointCode="scope.row['测点编码']"
                     :realValue="parseFloat(scope.row['真实值'] || 0)"
+                    :slaveId="slaveId"
                     @editSuccess="updatePointData"
                   />
                   <LongRegister
@@ -36,6 +37,7 @@
                     :deviceName="deviceName"
                     :pointCode="scope.row['测点编码']"
                     :realValue="parseFloat(scope.row['真实值'] || 0)"
+                    :slaveId="slaveId"
                     @editSuccess="updatePointData"
                   />
                   <FloatRegister
@@ -44,6 +46,7 @@
                     :deviceName="deviceName"
                     :pointCode="scope.row['测点编码']"
                     :realValue="parseFloat(scope.row['真实值'] || 0)"
+                    :slaveId="slaveId"
                     @editSuccess="updatePointData"
                   />
                   <EditPointLimit :deviceName="deviceName" :pointCode="scope.row['测点编码']" :active="activeName === '数据解析和设置'" />
@@ -94,6 +97,7 @@
                   :deviceName="deviceName"
                   :pointCode="scope.row['测点编码']"
                   :active="activeName === '变化回溯'"
+                  :slaveId="slaveId"
                 />
               </el-tab-pane>
             </el-tabs>
@@ -356,6 +360,7 @@
     :pointCode="currentPoint.code"
     :currentValue="currentPoint.value"
     :pointType="currentPoint.type"
+    :slaveId="slaveId"
     @success="handleWriteSuccess"
   />
   <!-- IEC61850 专用写入对话框 -->

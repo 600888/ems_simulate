@@ -62,7 +62,8 @@ const props = defineProps({
   deviceName: { type: String, required: true },
   pointCode: { type: String, required: true },
   currentValue: { type: [Number, String], default: '' },
-  pointType: { type: Number, required: true } // 2=YK, 3=YT
+  pointType: { type: Number, required: true }, // 2=YK, 3=YT
+  slaveId: { type: Number, default: undefined }
 });
 
 const emit = defineEmits(['update:modelValue', 'success']);
@@ -95,7 +96,7 @@ const handleSubmit = async () => {
   loading.value = true;
   try {
     const val = Number(form.value);
-    const success = await editPointData(props.deviceName, props.pointCode, val);
+    const success = await editPointData(props.deviceName, props.pointCode, val, props.slaveId);
     if (success) {
       ElMessage.success(t('writeDialog.writeSent'));
       visible.value = false;

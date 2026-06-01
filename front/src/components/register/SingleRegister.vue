@@ -68,7 +68,8 @@ const props = defineProps({
   pointCode: { type: String, required: true },
   realValue: { type: Number, required: true },
   mulCoe: { type: Number, default: 1.0 },
-  addCoe: { type: Number, default: 0.0 }
+  addCoe: { type: Number, default: 0.0 },
+  slaveId: { type: Number, default: undefined }
 });
 
 const pointRegister = ref<IntPointRegister>({
@@ -99,7 +100,8 @@ const editRegisterValue = async() => {
     const isSuccess = await editPointData(
       props.deviceName,
       props.pointCode,
-      parseFloat(pointRegister.value.real.toString())
+      parseFloat(pointRegister.value.real.toString()),
+      props.slaveId,
     );
     if (isSuccess) {
       emit("editSuccess",props.rowIndex, parseFloat(pointRegister.value.real.toString()), getIntHex(pointRegister.value.signed));

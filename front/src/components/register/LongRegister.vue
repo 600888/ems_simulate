@@ -75,7 +75,8 @@ const props = defineProps({
   pointCode: { type: String, required: true },
   realValue: { type: Number, required: true },
   mulCoe: { type: Number, default: 1.0 },
-  addCoe: { type: Number, default: 0.0 }
+  addCoe: { type: Number, default: 0.0 },
+  slaveId: { type: Number, default: undefined }
 });
 
 const longRegister = ref<LongPointRegister>({
@@ -106,7 +107,8 @@ const editRegisterValue = async() => {
     const isSuccess = await editPointData(
       props.deviceName,
       props.pointCode,
-      parseFloat(longRegister.value.real.toString())
+      parseFloat(longRegister.value.real.toString()),
+      props.slaveId,
     );
     if (isSuccess) {
       emit("editSuccess",props.rowIndex, parseFloat(longRegister.value.real.toString()), getLongHex(longRegister.value.longABCD));

@@ -93,10 +93,12 @@ interface Props {
   deviceName: string;
   pointCode: string;
   active?: boolean;
+  slaveId?: number;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  active: true
+  active: true,
+  slaveId: undefined,
 });
 
 const history = ref<ChangeRecord[]>([]);
@@ -108,7 +110,7 @@ const loadHistory = async () => {
   if (!props.pointCode) return;
   loading.value = true;
   try {
-    const res = await getPointChangeHistory(props.deviceName, props.pointCode);
+    const res = await getPointChangeHistory(props.deviceName, props.pointCode, props.slaveId);
     if (res) {
       history.value = res.history;
       trackingEnabled.value = res.tracking_enabled;
@@ -126,7 +128,7 @@ const loadHistory = async () => {
 
 const handleConfigChange = async () => {
   try {
-    const success = await setChangeTrackingConfig(props.deviceName, props.pointCode, trackingEnabled.value, maxlen.value);
+    const success = await setChangeTrackingConfig(props.deviceName, props.pointCode, trackingEnabled.value, maxlen.value, props.slaveId);
     if (success) {
       ElMessage.success(t('changeHistory.configUpdated'));
       loadHistory();
@@ -144,7 +146,7 @@ const handleClear = () => {
     type: 'warning'
   }).then(async () => {
     try {
-      const success = await clearPointChangeHistory(props.deviceName, props.pointCode);
+      const success = await clearPointChangeHistory(props.deviceName, props.pointCode, props.slaveId);
       if (success) {
         ElMessage.success(t('changeHistory.clearSuccess'));
         loadHistory();

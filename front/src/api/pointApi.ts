@@ -46,11 +46,12 @@ export interface PointChangeHistoryResponse {
 
 // ===== API 函数 =====
 
-export async function editPointData(deviceName: string, pointCode: string, pointValue: number): Promise<boolean> {
+export async function editPointData(deviceName: string, pointCode: string, pointValue: number, slaveId?: number): Promise<boolean> {
   return await requestApi(POINT_API.EDIT_DATA, 'post', {
     device_name: deviceName,
     point_code: pointCode,
     point_value: pointValue,
+    slave_id: slaveId,
   });
 }
 
@@ -148,10 +149,10 @@ export async function editIec104Metadata(deviceName: string, pointCode: string, 
   }
 }
 
-export async function readSinglePoint(deviceName: string, pointCode: string): Promise<number | null> {
+export async function readSinglePoint(deviceName: string, pointCode: string, slaveId?: number): Promise<number | null> {
   try {
     const data = await requestApi(POINT_API.READ_SINGLE, 'post', {
-      device_name: deviceName, point_code: pointCode,
+      device_name: deviceName, point_code: pointCode, slave_id: slaveId,
     });
     return data?.value ?? null;
   } catch (error) {
@@ -191,19 +192,19 @@ export async function deletePoint(deviceName: string, pointCode: string): Promis
 
 // ===== 变更追溯 =====
 
-export async function getPointChangeHistory(deviceName: string, pointCode: string): Promise<PointChangeHistoryResponse | null> {
+export async function getPointChangeHistory(deviceName: string, pointCode: string, slaveId?: number): Promise<PointChangeHistoryResponse | null> {
   try {
-    return await requestApi(POINT_API.CHANGE_HISTORY, 'post', { device_name: deviceName, point_code: pointCode });
+    return await requestApi(POINT_API.CHANGE_HISTORY, 'post', { device_name: deviceName, point_code: pointCode, slave_id: slaveId });
   } catch (error) {
     console.error('Error getting point change history:', error);
     return null;
   }
 }
 
-export async function setChangeTrackingConfig(deviceName: string, pointCode: string, enabled: boolean, maxlen?: number): Promise<boolean> {
+export async function setChangeTrackingConfig(deviceName: string, pointCode: string, enabled: boolean, maxlen?: number, slaveId?: number): Promise<boolean> {
   try {
     return await requestApi(POINT_API.SET_CHANGE_TRACKING, 'post', {
-      device_name: deviceName, point_code: pointCode, enabled: enabled, maxlen: maxlen,
+      device_name: deviceName, point_code: pointCode, enabled: enabled, maxlen: maxlen, slave_id: slaveId,
     });
   } catch (error) {
     console.error('Error setting change tracking config:', error);
@@ -211,9 +212,9 @@ export async function setChangeTrackingConfig(deviceName: string, pointCode: str
   }
 }
 
-export async function clearPointChangeHistory(deviceName: string, pointCode: string): Promise<boolean> {
+export async function clearPointChangeHistory(deviceName: string, pointCode: string, slaveId?: number): Promise<boolean> {
   try {
-    return await requestApi(POINT_API.CLEAR_CHANGE_HISTORY, 'post', { device_name: deviceName, point_code: pointCode });
+    return await requestApi(POINT_API.CLEAR_CHANGE_HISTORY, 'post', { device_name: deviceName, point_code: pointCode, slave_id: slaveId });
   } catch (error) {
     console.error('Error clearing point change history:', error);
     return false;

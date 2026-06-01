@@ -28,6 +28,7 @@ export function useRegisterEdit<T extends RegisterBase>(
     realValue: number;
     mulCoe?: number;
     addCoe?: number;
+    slaveId?: number;
   },
   updateFromReal: (value: number, register: Ref<T>) => void,
   defaultValue: T,
@@ -45,6 +46,7 @@ export function useRegisterEdit<T extends RegisterBase>(
         props.deviceName,
         props.pointCode,
         parseFloat(register.value.real.toString()),
+        props.slaveId,
       );
       if (isSuccess) {
         emit('editSuccess', props.rowIndex, parseFloat(register.value.real.toString()), hexStr);

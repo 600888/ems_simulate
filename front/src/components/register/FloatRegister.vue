@@ -64,7 +64,8 @@ const props = defineProps({
   pointCode: { type: String, required: true },
   realValue: { type: Number, required: true },
   mulCoe: { type: Number, default: 1.0 },
-  addCoe: { type: Number, default: 0.0 }
+  addCoe: { type: Number, default: 0.0 },
+  slaveId: { type: Number, default: undefined }
 });
 
 const floatRegister = ref<FloatPointRegister>({
@@ -95,7 +96,8 @@ const editRegisterValue = async() => {
     const isSuccess = await editPointData(
       props.deviceName,
       props.pointCode,
-      parseFloat(floatRegister.value.real.toString())
+      parseFloat(floatRegister.value.real.toString()),
+      props.slaveId,
     );
     if (isSuccess) {
       emit("editSuccess",props.rowIndex, parseFloat(floatRegister.value.real.toString()), getFloatHex(floatRegister.value.floatABCD));
