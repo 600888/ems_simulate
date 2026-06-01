@@ -78,7 +78,7 @@ class PointImporter:
                             self.device.set_frame_type(True, int(row[2])),
                         )
                         self.device.yc_dict[slave_id].append(yc_data)
-                        self.device.codeToDataPointMap[yc_data.code] = yc_data
+                        self.device.point_manager.add_point_to_index(slave_id, yc_data)
                     else:
                         slave_id = int(row[0])
                         if slave_id not in self.device.slave_id_list:
@@ -94,7 +94,7 @@ class PointImporter:
                             self.device.set_frame_type(False, int(row[3])),
                         )
                         self.device.yx_dict[slave_id].append(yx_data)
-                        self.device.codeToDataPointMap[yx_data.code] = yx_data
+                        self.device.point_manager.add_point_to_index(slave_id, yx_data)
             except Exception as e:
                 print(f"读取堆文件第{count}行出现错误：{e}")
                 raise e
@@ -181,13 +181,13 @@ class PointImporter:
                         yc_data.rtu_addr = str(slave_id)
                         yc_data.code = str("c" + str(cl_id) + "." + yc_data.code)
                         cluster_yc_list.append(yc_data)
-                        self.device.codeToDataPointMap[yc_data.code] = yc_data
+                        self.device.point_manager.add_point_to_index(slave_id, yc_data)
                     for j in range(0, len(temp_yx_list)):
                         yx_data = copy.deepcopy(temp_yx_list[j])  # 深拷贝
                         yx_data.rtu_addr = str(slave_id)
                         yx_data.code = str("c" + str(cl_id) + "." + yx_data.code)
                         cluster_yx_list.append(yx_data)
-                        self.device.codeToDataPointMap[yx_data.code] = yx_data
+                        self.device.point_manager.add_point_to_index(slave_id, yx_data)
                     self.device.yc_dict[slave_id] = cluster_yc_list
                     self.device.yx_dict[slave_id] = cluster_yx_list
             except Exception as e:

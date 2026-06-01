@@ -52,7 +52,7 @@ async def edit_point_data(req: PointEditDataRequest, request: Request):
 
         token = change_client_info_ctx.set(client_info)
         try:
-            success = await device.edit_point_data_async(req.point_code, req.point_value)
+            success = await device.edit_point_data_async(req.point_code, req.point_value, slave_id=req.slave_id)
         finally:
             change_client_info_ctx.reset(token)
         if success:
@@ -198,7 +198,7 @@ async def read_single_point(req: PointInfoRequest, request: Request):
     """读取单个测点值"""
     try:
         device = _get_device(req.device_name, request)
-        value = await device.read_single_point_async(req.point_code)
+        value = await device.read_single_point_async(req.point_code, slave_id=req.slave_id)
         if value is not None:
             return BaseResponse(message="读取成功!", data={"value": value})
         else:
@@ -333,7 +333,7 @@ async def get_point_change_history(req: PointChangeHistoryRequest, request: Requ
     """获取测点变更历史"""
     try:
         device = _get_device(req.device_name, request)
-        point = device.point_manager.get_point_by_code(req.point_code)
+        point = device.point_manager.get_point_by_code(req.point_code, req.slave_id)
         if not point:
             return BaseResponse(code=404, message=f"测点 {req.point_code} 不存在!", data=[])
 
@@ -363,7 +363,7 @@ async def set_change_tracking(req: ChangeTrackingConfigRequest, request: Request
 
         points_to_update = []
         if req.point_code:
-            point = device.point_manager.get_point_by_code(req.point_code)
+            point = device.point_manager.get_point_by_code(req.point_code, req.slave_id)
             if not point:
                 return BaseResponse(code=404, message=f"测点 {req.point_code} 不存在!", data=False)
             points_to_update = [point]
@@ -396,7 +396,7 @@ async def clear_point_change_history(req: PointChangeHistoryRequest, request: Re
     """清空测点变更历史"""
     try:
         device = _get_device(req.device_name, request)
-        point = device.point_manager.get_point_by_code(req.point_code)
+        point = device.point_manager.get_point_by_code(req.point_code, req.slave_id)
         if not point:
             return BaseResponse(code=404, message=f"测点 {req.point_code} 不存在!", data=False)
 

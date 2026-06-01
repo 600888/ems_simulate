@@ -21,7 +21,7 @@ class DataImporter:
                 self.rtu_addr_dict[yc.rtu_addr] = 1
                 self.device.slave_id_list.append(yc.rtu_addr)
             self.device.yc_dict[yc.rtu_addr].append(yc)
-            self.device.codeToDataPointMap[yc.code] = yc
+            self.device.point_manager.add_point_to_index(yc.rtu_addr, yc)
 
     def import_yx_point_data(self, grp_code: str, protocol_type: ProtocolType) -> None:
         yx_list = YxService.get_yx_list(grp_code, protocol_type)
@@ -30,4 +30,4 @@ class DataImporter:
                 self.rtu_addr_dict[yx.rtu_addr] = 1
                 self.device.slave_id_list.append(yx.rtu_addr)
             self.device.yx_dict[yx.rtu_addr].append(yx)
-            self.device.codeToDataPointMap[yx.code] = yx
+            self.device.point_manager.add_point_to_index(yx.rtu_addr, yx)

@@ -497,25 +497,27 @@ class Device:
 
     # ===== 测点操作（委托给 PointOperator） =====
 
-    def read_single_point(self, point_code: str) -> float | None:
+    def read_single_point(self, point_code: str, slave_id: int | None = None) -> float | None:
         """读取单个测点的值"""
-        return self.point_operator.read_single_point(point_code)
+        return self.point_operator.read_single_point(point_code, slave_id)
 
-    async def read_single_point_async(self, point_code: str) -> float | None:
+    async def read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | None:
         """异步读取单个测点的值"""
-        return await self.point_operator.read_single_point_async(point_code)
+        return await self.point_operator.read_single_point_async(point_code, slave_id)
 
     def editPointData(
-        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None
+        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None,
+        slave_id: int | None = None,
     ) -> bool:
         """编辑测点值"""
-        return self.point_operator.edit_value(point_code, real_value, source, detail)
+        return self.point_operator.edit_value(point_code, real_value, source, detail, slave_id)
 
     async def edit_point_data_async(
-        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None
+        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None,
+        slave_id: int | None = None,
     ) -> bool:
         """异步编辑测点值"""
-        return await self.point_operator.edit_value_async(point_code, real_value, source, detail)
+        return await self.point_operator.edit_value_async(point_code, real_value, source, detail, slave_id)
 
     def edit_point_metadata(self, point_code: str, metadata: dict) -> bool:
         """编辑测点元数据"""

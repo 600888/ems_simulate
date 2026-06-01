@@ -222,10 +222,9 @@ class SlaveManager:
             # 2. 批量从数据库删除（单次事务）
             deleted_count = PointDao.delete_points_by_slave(self._device.device_id, slave_id)
 
-            # 3. 清理内存中的 code_map
+            # 3. 从索引中移除
             for code in point_codes:
-                if code in self._pm.code_map:
-                    del self._pm.code_map[code]
+                self._pm.remove_point_from_index(code, slave_id)
 
             # 4. 清空内存中的测点列表
             for dict_attr in ["yc_dict", "yx_dict", "yk_dict", "yt_dict"]:

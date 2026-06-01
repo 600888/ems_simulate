@@ -9,6 +9,7 @@ class PointEditDataRequest(BaseModel):
     device_name: str
     point_code: str
     point_value: float
+    slave_id: int | None = Field(None, description="从机 ID，不同从站编码相同时用于精确定位测点")
 
 
 class PointLimitEditRequest(BaseModel):
@@ -36,28 +37,33 @@ class Iec104MetadataEditRequest(BaseModel):
 class PointInfoRequest(BaseModel):
     device_name: str
     point_code: str
+    slave_id: int | None = Field(None, description="从机 ID，不同从站编码相同时用于精确定位测点")
 
 
 class PointLimitGetRequest(BaseModel):
     device_name: str
     point_code: str
+    slave_id: int | None = Field(None, description="从机 ID，不同从站编码相同时用于精确定位测点")
 
 
 class SimulateMethodSetRequest(BaseModel):
     device_name: str
     point_code: str
+    slave_id: int | None = Field(None, description="从机 ID，不同从站编码相同时用于精确定位测点")
     simulate_method: SimulateMethod
 
 
 class SimulateStepSetRequest(BaseModel):
     device_name: str
     point_code: str
+    slave_id: int | None = Field(None, description="从机 ID，不同从站编码相同时用于精确定位测点")
     step: int
 
 
 class SimulateRangeSetRequest(BaseModel):
     device_name: str
     point_code: str
+    slave_id: int | None = Field(None, description="从机 ID，不同从站编码相同时用于精确定位测点")
     min_value: float
     max_value: float
 
@@ -121,6 +127,7 @@ class PointChangeHistoryRequest(BaseModel):
 
     device_name: str = Field(..., description="设备名称")
     point_code: str = Field(..., description="测点编码")
+    slave_id: int | None = Field(None, description="从机 ID，不同从站编码相同时用于精确定位测点")
 
 
 class ChangeTrackingConfigRequest(BaseModel):
@@ -128,5 +135,6 @@ class ChangeTrackingConfigRequest(BaseModel):
 
     device_name: str = Field(..., description="设备名称")
     point_code: str | None = Field(None, description="测点编码，若不传则应用到设备所有测点")
+    slave_id: int | None = Field(None, description="从机 ID，不同从站编码相同时用于精确定位测点")
     enabled: bool = Field(..., description="是否启用变更追溯")
     maxlen: int | None = Field(None, description="历史记录最大条数（1-100），不传则不修改")

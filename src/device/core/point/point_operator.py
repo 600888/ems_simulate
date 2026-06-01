@@ -81,10 +81,19 @@ class PointOperator:
     # ===== 测点值读写 =====
 
     def edit_value(
-        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None
+        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None,
+        slave_id: int | None = None,
     ) -> bool:
-        """编辑测点值，失败时抛出异常以便上层返回具体原因"""
-        point = self._pm.get_point_by_code(point_code)
+        """编辑测点值，失败时抛出异常以便上层返回具体原因
+
+        Args:
+            point_code: 测点编码
+            real_value: 真实值
+            source: 变更来源
+            detail: 变更详情
+            slave_id: 从机 ID，不同从站编码相同时用于精确定位测点
+        """
+        point = self._pm.get_point_by_code(point_code, slave_id)
         if not point:
             raise ValueError(f"未找到测点: {point_code}")
 
@@ -114,10 +123,19 @@ class PointOperator:
                 raise SystemError(f"测点 {point_code} 协议处理器未配置，无法写入")
 
     async def edit_value_async(
-        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None
+        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None,
+        slave_id: int | None = None,
     ) -> bool:
-        """异步编辑测点值，失败时抛出异常以便上层返回具体原因"""
-        point = self._pm.get_point_by_code(point_code)
+        """异步编辑测点值，失败时抛出异常以便上层返回具体原因
+
+        Args:
+            point_code: 测点编码
+            real_value: 真实值
+            source: 变更来源
+            detail: 变更详情
+            slave_id: 从机 ID，不同从站编码相同时用于精确定位测点
+        """
+        point = self._pm.get_point_by_code(point_code, slave_id)
         if not point:
             raise ValueError(f"未找到测点: {point_code}")
 
@@ -153,16 +171,17 @@ class PointOperator:
                 self._log.error(f"测点 {point_code} 协议处理器未配置，无法写入")
                 raise ValueError(f"测点 {point_code} 协议处理器未配置，无法写入")
 
-    def read_single_point(self, point_code: str) -> float | None:
+    def read_single_point(self, point_code: str, slave_id: int | None = None) -> float | None:
         """读取单个测点的值
 
         Args:
             point_code: 测点编码
+            slave_id: 从机 ID，不同从站编码相同时用于精确定位测点
 
         Returns:
             Optional[float]: 读取成功返回值，失败返回None
         """
-        point = self._pm.get_point_by_code(point_code)
+        point = self._pm.get_point_by_code(point_code, slave_id)
         if not point:
             self._log.error(f"{self._device.name} 未找到测点: {point_code}")
             return None
@@ -190,16 +209,17 @@ class PointOperator:
             point.is_valid = False
             raise ValueError(f"读取测点 {point_code} 失败: {e}") from e
 
-    async def read_single_point_async(self, point_code: str) -> float | None:
+    async def read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | None:
         """异步读取单个测点的值
 
         Args:
             point_code: 测点编码
+            slave_id: 从机 ID，不同从站编码相同时用于精确定位测点
 
         Returns:
             Optional[float]: 读取成功返回值，失败返回None
         """
-        point = self._pm.get_point_by_code(point_code)
+        point = self._pm.get_point_by_code(point_code, slave_id)
         if not point:
             self._log.error(f"{self._device.name} 未找到测点: {point_code}")
             return None
@@ -296,8 +316,9 @@ class PointOperator:
         # 处理 code 修改
         if "code" in metadata and metadata["code"] and metadata["code"] != point_code:
             new_code = metadata["code"]
-            # 更新 PointManager 的映射
-            self._pm.code_map[new_code] = self._pm.code_map.pop(point_code)
+            slave_id = point.rtu_addr
+            # 更新 PointManager 的索引
+            self._pm.rename_point_in_index(point_code, new_code, slave_id)
             point.code = new_code
 
         # 3. 如果配置发生变更，重新将真实值写入协议处理器
@@ -521,9 +542,8 @@ class PointOperator:
                 elif isinstance(point, Yt) and slave_id in self._pm.yt_dict:
                     self._pm.yt_dict[slave_id] = [p for p in self._pm.yt_dict[slave_id] if p.code != point_code]
 
-                # 从 code_map 移除
-                if point_code in self._pm.code_map:
-                    del self._pm.code_map[point_code]
+                # 从索引中移除
+                self._pm.remove_point_from_index(point_code, slave_id)
 
             # 3. IEC104 协议需要重新初始化（如果需要）
             if self._device.protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
