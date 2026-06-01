@@ -3,8 +3,7 @@ from datetime import UTC
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 
 from src.web.api import (
     channel_router,
@@ -71,7 +70,7 @@ async def health_check():
         "timestamp": None,
     }
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         health_data["timestamp"] = datetime.now(UTC).isoformat()
     except Exception:

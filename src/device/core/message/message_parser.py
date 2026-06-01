@@ -4,9 +4,6 @@
 支持 Modbus、DLT645 和 IEC104 协议。
 """
 
-from typing import Dict, Optional
-
-from dlt645.protocol.frame import Frame
 from dlt645.protocol.protocol import DLT645Protocol
 
 # Modbus 异常码名称映射

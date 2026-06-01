@@ -2,7 +2,7 @@ from collections import deque
 from datetime import datetime
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class MessageRecord:

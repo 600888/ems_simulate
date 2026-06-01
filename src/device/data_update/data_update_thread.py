@@ -1,6 +1,6 @@
+from collections.abc import Callable
 import threading
 import time
-from typing import Callable, Optional
 
 
 class DataUpdateThread:

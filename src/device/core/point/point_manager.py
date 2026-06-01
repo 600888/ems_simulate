@@ -3,8 +3,6 @@
 统一管理四类测点：遥测、遥信、遥调、遥控
 """
 
-from typing import Dict, List, Optional, Union
-
 from src.data.service.yc_service import YcService
 from src.data.service.yx_service import YxService
 from src.enums.modbus_def import ProtocolType

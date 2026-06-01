@@ -6,9 +6,7 @@ from src.config.config import Config
 from src.data.service.channel_service import ChannelService
 from src.enums.modbus_def import ProtocolType
 from src.web.api.channel.helpers import (
-    configure_builder_network,
     get_device_builder,
-    is_client_protocol,
     reload_device_instance,
 )
 from src.web.api.schemas import (

@@ -1,8 +1,5 @@
-from typing import List
 import unittest
 
-from src.data.controller.db import db_controller
-from src.data.dao.channel_dao import ChannelDao
 from src.data.service.channel_service import ChannelService
 
 

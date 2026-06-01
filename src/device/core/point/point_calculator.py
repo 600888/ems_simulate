@@ -4,15 +4,15 @@
 """
 
 import ast
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 import json
 import operator
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any
 
 from src.data.service.point_mapping_service import PointMappingService
-from src.device.core.point.point_manager import PointManager
 from src.enums.points.base_point import BasePoint
-from src.enums.points.change_tracker import ChangeContext, ChangeSource, capture_context, restore_context, track_change
+from src.enums.points.change_tracker import ChangeContext, ChangeSource, capture_context, restore_context
 from src.log import log
 
 

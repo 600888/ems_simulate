@@ -5,7 +5,6 @@
 """
 
 from ..defs.constants import HAS_IEC61850
-from ..log import log
 
 
 def get_list_from_linked_list(linked_list) -> list[str]:

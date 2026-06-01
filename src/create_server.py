@@ -7,7 +7,7 @@ sys.path.append("../")
 from prettytable import PrettyTable
 
 from device_controller import get_device_controller
-from src.enums.point_data import DeviceType, Dlt645
+from src.enums.point_data import Dlt645
 
 
 def get_first_choice():

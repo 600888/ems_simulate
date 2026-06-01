@@ -3,10 +3,8 @@ import json
 import os.path
 import sys
 import time
-from typing import List, Optional, Type, Union
 
 from src.data.service.channel_service import ChannelService
-from src.data.service.yc_service import YcService
 from src.device.data_update.data_update_thread import DataUpdateThread
 from src.device.factory.general_device_builder import GeneralDeviceBuilder
 from src.device.types.circuit_breaker import CircuitBreaker

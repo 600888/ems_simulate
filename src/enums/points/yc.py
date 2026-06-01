@@ -4,10 +4,6 @@
 frame_type = 0
 """
 
-from typing import Dict, Optional, Union
-
-from blinker import Signal
-
 from src.enums.modbus_register import Decode
 from src.enums.points.base_point import BasePoint, decimal_to_hex_formatted
 

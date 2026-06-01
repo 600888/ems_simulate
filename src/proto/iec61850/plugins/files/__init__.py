@@ -10,7 +10,8 @@
 - cache.py      — CacheManager 本地缓存与版本管理
 """
 
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any, Optional
 
 from ...core.connection import Iec61850Connection
 from ...defs.constants import HAS_IEC61850

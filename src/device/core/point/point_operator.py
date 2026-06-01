@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING
 
 from src.data.dao.channel_dao import ChannelDao
 from src.data.dao.point_dao import PointDao

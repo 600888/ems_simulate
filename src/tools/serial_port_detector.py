@@ -3,8 +3,6 @@
 提供系统串口的动态检测功能
 """
 
-from typing import Dict, List
-
 import serial.tools.list_ports
 
 

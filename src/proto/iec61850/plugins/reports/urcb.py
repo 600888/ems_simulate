@@ -7,7 +7,6 @@ URCB 与 BRCB 的区别:
 """
 
 import contextlib
-from typing import Optional
 
 from ...core.mms_value import mms_value_to_python
 from ...defs.constants import HAS_IEC61850

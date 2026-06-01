@@ -3,23 +3,23 @@
 根据配置自动选择 SQLite 或 MySQL
 """
 
-import os
+from pathlib import Path
+
 from sqlalchemy.orm import sessionmaker
 
-from src.config.global_config import ROOT_DIR
 from src.config.config import Config
+from src.config.global_config import ROOT_DIR
 from src.data.controller.db_controller import DbController
-from src.data.model.base import Base
 
 # 导入所有模型，确保它们在 Base.metadata 中注册
 import src.data.model  # noqa: F401
-
+from src.data.model.base import Base
 
 # 加载配置
-config_path = os.path.join(ROOT_DIR, "etc", "config.ini")
-if not os.path.exists(config_path):
-    config_path = os.path.join(ROOT_DIR, "config.ini")
-Config.load_config(config_path)
+config_path = Path(ROOT_DIR) / "etc" / "config.ini"
+if not config_path.exists():
+    config_path = Path(ROOT_DIR) / "config.ini"
+Config.load_config(str(config_path))
 
 # 初始化数据库控制器
 db_controller = DbController()
@@ -27,10 +27,10 @@ db_controller = DbController()
 # 根据配置选择数据库类型
 if Config.is_sqlite():
     # SQLite 模式
-    sqlite_path = os.path.join(ROOT_DIR, Config.sqlite_path)
+    sqlite_path = Path(ROOT_DIR) / Config.sqlite_path
     db_controller.init_db(
         db_type="sqlite",
-        db_path=sqlite_path,
+        db_path=str(sqlite_path),
     )
 else:
     # MySQL 模式

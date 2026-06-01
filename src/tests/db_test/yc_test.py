@@ -1,4 +1,3 @@
-from typing import List
 import unittest
 
 from src.data.service.yc_service import YcService

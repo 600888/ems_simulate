@@ -1,6 +1,5 @@
 import threading
 import time
-from typing import Dict, List, Union
 
 from src.device.simulator.log import log
 from src.device.simulator.point_simulator import PointSimulator

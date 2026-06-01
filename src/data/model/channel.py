@@ -3,54 +3,49 @@
 管理设备通信通道配置，支持 TCP 和串口
 """
 
-from typing import TypedDict, Optional
-from sqlalchemy import Integer, String, Boolean, ForeignKey
-from sqlalchemy.orm import mapped_column, Mapped, relationship
+from typing import TypedDict
+
+from sqlalchemy import Boolean, ForeignKey, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.data.model.base import Base
 
 
 class ChannelDict(TypedDict):
     """通道字典类型"""
+
     id: int
     code: str
     name: str
-    device_id: Optional[int]
+    device_id: int | None
     protocol_type: int
     conn_type: int
     # TCP 配置
-    ip: Optional[str]
-    port: Optional[int]
+    ip: str | None
+    port: int | None
     # 串口配置
-    com_port: Optional[str]
-    baud_rate: Optional[int]
-    data_bits: Optional[int]
-    stop_bits: Optional[int]
-    parity: Optional[str]
+    com_port: str | None
+    baud_rate: int | None
+    data_bits: int | None
+    stop_bits: int | None
+    parity: str | None
     # 通用配置
     rtu_addr: str
     timeout: int
     enable: bool
     # IEC 61850 专用
-    model_name: Optional[str]
+    model_name: str | None
 
 
 class Channel(Base):
     """通道表 - 支持 TCP 和串口通信"""
+
     __tablename__ = "channel"
 
-    id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True, comment="通道ID"
-    )
-    code: Mapped[str] = mapped_column(
-        String(32), unique=True, nullable=False, index=True, comment="通道编码"
-    )
-    name: Mapped[str] = mapped_column(
-        String(64), nullable=False, comment="通道名称"
-    )
-    device_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("device.id"), nullable=True, comment="所属设备ID"
-    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="通道ID")
+    code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True, comment="通道编码")
+    name: Mapped[str] = mapped_column(String(64), nullable=False, comment="通道名称")
+    device_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("device.id"), nullable=True, comment="所属设备ID")
     protocol_type: Mapped[int] = mapped_column(
         Integer,
         server_default="1",
@@ -63,45 +58,23 @@ class Channel(Base):
     )
 
     # TCP 配置
-    ip: Mapped[Optional[str]] = mapped_column(
-        String(32), nullable=True, comment="IP地址(TCP模式)"
-    )
-    port: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True, comment="端口号(TCP模式)"
-    )
+    ip: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="IP地址(TCP模式)")
+    port: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="端口号(TCP模式)")
 
     # 串口配置
-    com_port: Mapped[Optional[str]] = mapped_column(
-        String(16), nullable=True, comment="串口号(如COM1)"
-    )
-    baud_rate: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True, server_default="9600", comment="波特率"
-    )
-    data_bits: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True, server_default="8", comment="数据位"
-    )
-    stop_bits: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True, server_default="1", comment="停止位"
-    )
-    parity: Mapped[Optional[str]] = mapped_column(
-        String(1), nullable=True, server_default="N", comment="校验位: N/E/O"
-    )
+    com_port: Mapped[str | None] = mapped_column(String(16), nullable=True, comment="串口号(如COM1)")
+    baud_rate: Mapped[int | None] = mapped_column(Integer, nullable=True, server_default="9600", comment="波特率")
+    data_bits: Mapped[int | None] = mapped_column(Integer, nullable=True, server_default="8", comment="数据位")
+    stop_bits: Mapped[int | None] = mapped_column(Integer, nullable=True, server_default="1", comment="停止位")
+    parity: Mapped[str | None] = mapped_column(String(1), nullable=True, server_default="N", comment="校验位: N/E/O")
 
     # 通用配置
-    rtu_addr: Mapped[str] = mapped_column(
-        String(16), server_default="1", comment="电表地址(DLT645)"
-    )
-    timeout: Mapped[int] = mapped_column(
-        Integer, server_default="5", comment="超时时间(秒)"
-    )
-    enable: Mapped[bool] = mapped_column(
-        Boolean, server_default="1", comment="是否启用"
-    )
+    rtu_addr: Mapped[str] = mapped_column(String(16), server_default="1", comment="电表地址(DLT645)")
+    timeout: Mapped[int] = mapped_column(Integer, server_default="5", comment="超时时间(秒)")
+    enable: Mapped[bool] = mapped_column(Boolean, server_default="1", comment="是否启用")
 
     # IEC 61850 专用字段
-    model_name: Mapped[Optional[str]] = mapped_column(
-        String(128), nullable=True, comment="IED 模型名称 (IEC61850)"
-    )
+    model_name: Mapped[str | None] = mapped_column(String(128), nullable=True, comment="IED 模型名称 (IEC61850)")
 
     # 关系
     device = relationship("Device", back_populates="channels")

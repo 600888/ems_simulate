@@ -8,7 +8,7 @@
 ICD 文件 GOOSE 配置统一通过 /import-icd 接口导入（含 MMS 测点 + GOOSE）。
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Request
 
@@ -26,7 +26,6 @@ from src.web.api.schemas.goose import (
     GoosePublisherEntryUpdate,
     GoosePublisherIdRequest,
     GoosePublisherUpdate,
-    GoosePublishNow,
     GooseReceiverCreate,
     GooseReceiverIdRequest,
     GooseSubscriptionCreate,

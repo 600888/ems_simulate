@@ -4,10 +4,10 @@
 从 iec61850_server.py 的模型构建逻辑提取。
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...defs.address import is_full_ref, parse_ref, split_ln_name
-from ...defs.constants import FC_CF, FC_CO, FC_MX, FC_ST, HAS_IEC61850
+from ...defs.constants import FC_CO, FC_MX, FC_ST, HAS_IEC61850
 from ...defs.ln_classes import YC_LN_CLASSES, YK_LN_CLASSES, YT_LN_CLASSES, YX_LN_CLASSES
 from ...log import log
 

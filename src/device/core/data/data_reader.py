@@ -7,40 +7,44 @@
 from __future__ import annotations
 
 import asyncio
-import struct
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Union
+import struct
+from typing import TYPE_CHECKING
 
-from src.enums.point_data import Yc, Yx, BasePoint
+from src.device.protocol.base_handler import ClientHandler
 from src.enums.modbus_register import Decode
+from src.enums.point_data import BasePoint, Yc, Yx
+
+if TYPE_CHECKING:
+    from src.device.device_base import Device
 from src.enums.points.change_tracker import ChangeSource, track_change
-from src.device.protocol.base_handler import ServerHandler, ClientHandler
 
 
 @dataclass
 class AddressGroup:
     """地址分组 - 用于批量读取优化
-    
+
     将连续地址的测点分组，以便一次性读取多个数据点。
-    
+
     Attributes:
         start_address: 起始地址
         register_count: 需要读取的数据点数量
         points: 该组包含的测点列表
     """
+
     start_address: int
     register_count: int
-    points: List[BasePoint] = field(default_factory=list)
+    points: list[BasePoint] = field(default_factory=list)
 
 
 class DataReader:
     """数据读取器
-    
+
     负责从协议处理器读取测点数据，将协议层的原始数据转换为应用层的测点值。
     支持同步读取、异步逐点读取、异步批量读取三种模式。
     """
 
-    def __init__(self, device: "Device") -> None:
+    def __init__(self, device: Device) -> None:
         self._device = device
 
     @property
@@ -68,16 +72,14 @@ class DataReader:
     def _get_client_info(self) -> str:
         """获取作为客户端时的真实远程服务地址(IP:Port 或 串口号)"""
         if isinstance(self._handler, ClientHandler):
-            if hasattr(self._device, 'serial_port') and self._device.serial_port:
+            if hasattr(self._device, "serial_port") and self._device.serial_port:
                 return self._device.serial_port
             return f"{self._device.ip}:{self._device.port}"
         return ""
 
-    def get_slave_values(
-        self, yc_list: List[Yc], yx_list: List[Yx]
-    ) -> None:
+    def get_slave_values(self, yc_list: list[Yc], yx_list: list[Yx]) -> None:
         """同步读取从机的测点值
-        
+
         Args:
             yc_list: 遥测列表
             yx_list: 遥信列表
@@ -99,26 +101,24 @@ class DataReader:
                 point.is_valid = False
 
     async def get_slave_values_async(
-        self, yc_list: List[Yc], yx_list: List[Yx], interval_ms: int = 0
-    ) -> Tuple[int, int]:
+        self, yc_list: list[Yc], yx_list: list[Yx], interval_ms: int = 0
+    ) -> tuple[int, int]:
         """异步读取从机的测点值（支持批量读取优化）
-        
+
         Args:
             yc_list: 遥测列表
             yx_list: 遥信列表
             interval_ms: 每次批量读取请求之间的间隔(毫秒)
-            
+
         Returns:
             Tuple[int, int]: (成功点数, 失败点数)
-        
+
         对于 Modbus 客户端，会将连续地址的测点合并为一次批量读取请求。
         对于其他协议或服务端，回退到逐点读取模式。
         """
         if not self._handler:
             if self._device._logger:
-                self._device._logger.warning(
-                    "get_slave_values_async: No protocol handler"
-                )
+                self._device._logger.warning("get_slave_values_async: No protocol handler")
             return 0, 0
 
         all_points = yc_list + yx_list
@@ -126,22 +126,23 @@ class DataReader:
             return 0, 0
 
         # 检查是否支持批量读取优化
-        from src.device.protocol.modbus_handler import ModbusClientHandler
         from src.device.protocol.iec61850_handler import IEC61850ClientHandler
+        from src.device.protocol.modbus_handler import ModbusClientHandler
+
         is_modbus_client = isinstance(self._handler, ModbusClientHandler)
         is_iec61850_client = isinstance(self._handler, IEC61850ClientHandler)
 
-        if is_modbus_client and hasattr(self._handler, 'read_registers_batch_async'):
+        if is_modbus_client and hasattr(self._handler, "read_registers_batch_async"):
             # Modbus 批量读取优化
             return await self._batch_read_async(all_points, interval_ms=interval_ms)
-        elif is_iec61850_client and hasattr(self._handler, 'read_points_batch'):
+        elif is_iec61850_client and hasattr(self._handler, "read_points_batch"):
             # IEC61850 批量读取优化
             return await self._iec61850_batch_read_async(all_points)
         else:
             # 回退到逐点读取
             return await self._single_read_async(all_points)
 
-    async def _iec61850_batch_read_async(self, points: List[BasePoint]) -> Tuple[int, int]:
+    async def _iec61850_batch_read_async(self, points: list[BasePoint]) -> tuple[int, int]:
         """IEC61850 批量读取模式
 
         利用 IEC61850ClientHandler.read_points_batch 按 iec_type 分组读取，
@@ -154,14 +155,13 @@ class DataReader:
             Tuple[int, int]: (成功点数, 失败点数)
         """
         import asyncio
+
         change_source = self._get_change_source()
         client_info = self._get_client_info()
 
         # 在 executor 中执行同步批量读取 (避免阻塞事件循环)
         loop = asyncio.get_running_loop()
-        batch_results = await loop.run_in_executor(
-            None, self._handler.read_points_batch, points
-        )
+        batch_results = await loop.run_in_executor(None, self._handler.read_points_batch, points)
 
         success_count = 0
         fail_count = 0
@@ -179,14 +179,14 @@ class DataReader:
 
         return success_count, fail_count
 
-    async def _single_read_async(self, points: List[BasePoint]) -> Tuple[int, int]:
+    async def _single_read_async(self, points: list[BasePoint]) -> tuple[int, int]:
         """逐点读取模式（回退方案）"""
         success_count = 0
         fail_count = 0
         change_source = self._get_change_source()
         for point in points:
             try:
-                if hasattr(self._handler, 'read_value_async'):
+                if hasattr(self._handler, "read_value_async"):
                     value = await self._handler.read_value_async(point)
                 else:
                     value = self._handler.read_value(point)
@@ -205,17 +205,15 @@ class DataReader:
                 fail_count += 1
         return success_count, fail_count
 
-    async def _batch_read_async(
-        self, points: List[BasePoint], interval_ms: int = 0
-    ) -> Tuple[int, int]:
+    async def _batch_read_async(self, points: list[BasePoint], interval_ms: int = 0) -> tuple[int, int]:
         """批量读取模式（优化方案）
-        
+
         将连续地址的测点分组，一次性读取多个数据点，然后解码映射。
-        
+
         Args:
             points: 测点列表
             interval_ms: 每次请求之间的间隔(毫秒)
-            
+
         Returns:
             Tuple[int, int]: (成功点数, 失败点数)
         """
@@ -241,9 +239,7 @@ class DataReader:
 
                     if registers:
                         # 3. 解码并映射到测点
-                        self._decode_batch_registers(
-                            registers, group.points, group.start_address
-                        )
+                        self._decode_batch_registers(registers, group.points, group.start_address)
                         success_count += len(group.points)
                     else:
                         # 读取失败，标记所有测点无效
@@ -252,9 +248,7 @@ class DataReader:
                         fail_count += len(group.points)
 
                 except Exception as e:
-                    self._log.error(
-                        f"Batch read error for slave={slave_id}, func={func_code}: {e}"
-                    )
+                    self._log.error(f"Batch read error for slave={slave_id}, func={func_code}: {e}")
                     for point in group.points:
                         point.is_valid = False
                     fail_count += len(group.points)
@@ -263,38 +257,38 @@ class DataReader:
 
     def _group_points_by_address(
         self,
-        points: List[BasePoint],
+        points: list[BasePoint],
         max_gap: int = 0,
         max_count: int = 120,
-    ) -> Dict[Tuple[int, int], List[AddressGroup]]:
+    ) -> dict[tuple[int, int], list[AddressGroup]]:
         """将测点按 (slave_id, func_code) 分组，并找出连续的地址段
-        
+
         Args:
             points: 测点列表
             max_gap: 允许的最大地址间隙（默认0，即必须严格连续）
             max_count: 每次批量读取的最大数据点数量（默认120）
-            
+
         Returns:
             字典：{(slave_id, func_code): [AddressGroup, ...]}
         """
         # 按 (slave_id, func_code) 分组
-        grouped: Dict[Tuple[int, int], List[BasePoint]] = {}
+        grouped: dict[tuple[int, int], list[BasePoint]] = {}
         for point in points:
-            if not hasattr(point, 'rtu_addr') or not hasattr(point, 'func_code'):
+            if not hasattr(point, "rtu_addr") or not hasattr(point, "func_code"):
                 continue
             key = (point.rtu_addr, point.func_code)
             if key not in grouped:
                 grouped[key] = []
             grouped[key].append(point)
 
-        result: Dict[Tuple[int, int], List[AddressGroup]] = {}
+        result: dict[tuple[int, int], list[AddressGroup]] = {}
 
         for key, point_list in grouped.items():
             # 按地址排序
             point_list.sort(key=lambda p: p.address)
 
-            address_groups: List[AddressGroup] = []
-            current_group: Optional[AddressGroup] = None
+            address_groups: list[AddressGroup] = []
+            current_group: AddressGroup | None = None
 
             for point in point_list:
                 # 获取该测点占用的寄存器数量
@@ -310,19 +304,14 @@ class DataReader:
                         points=[point],
                     )
                 else:
-                    current_end = (
-                        current_group.start_address + current_group.register_count
-                    )
+                    current_end = current_group.start_address + current_group.register_count
 
                     # 计算合并后的新结束地址和数量
                     new_end = max(current_end, point_end_addr)
                     new_count = new_end - current_group.start_address
 
                     # 检查是否连续或在允许的间隙内，且总数量不超过限制
-                    if (
-                        point.address <= current_end + max_gap
-                        and new_count <= max_count
-                    ):
+                    if point.address <= current_end + max_gap and new_count <= max_count:
                         # 扩展当前分组
                         if point_end_addr > current_end:
                             current_group.register_count = new_count
@@ -355,12 +344,12 @@ class DataReader:
 
     def _decode_batch_registers(
         self,
-        registers: List[int],
-        points: List[BasePoint],
+        registers: list[int],
+        points: list[BasePoint],
         start_address: int,
     ) -> None:
         """将批量读取的数据解码并映射到测点
-        
+
         Args:
             registers: 读取到的原始数据列表
             points: 需要解码的测点列表
@@ -407,15 +396,13 @@ class DataReader:
                 self._log.error(f"Error decoding point {point.code}: {e}")
                 point.is_valid = False
 
-    def _decode_registers(
-        self, registers: List[int], decode_info
-    ) -> Optional[Union[int, float]]:
+    def _decode_registers(self, registers: list[int], decode_info) -> int | float | None:
         """将原始数据解码为实际值
-        
+
         Args:
             registers: 原始数据列表
             decode_info: 解码配置信息
-            
+
         Returns:
             解码后的值
         """
@@ -452,10 +439,10 @@ class DataReader:
 
     def sync_iec104_client_values(self, slave_id: int) -> None:
         """同步 IEC104 客户端从服务端接收的值到内部测点
-        
+
         当服务端主动上报数据时，c104.Point 对象的 .value 会自动更新，
         此方法将这些值同步到应用内部的测点对象。
-        
+
         c104 库对不同 ASDU 类型返回不同的值类型：
         - 归一化 (M_ME_NA_1): 返回 NormalizedFloat，float() 后为 -1~+1 范围的浮点数
         - 标度化 (M_ME_NB_1): 返回 Int16，float() 后为标度值
@@ -478,9 +465,7 @@ class DataReader:
                 return
 
             # 获取该从机下的所有测点 (yc, yx, yt, yk)
-            yc_list, yx_list, yt_list, yk_list = self._device.point_manager.get_points_by_slave(
-                slave_id
-            )
+            yc_list, yx_list, yt_list, yk_list = self._device.point_manager.get_points_by_slave(slave_id)
             all_points = yc_list + yx_list + yt_list + yk_list
 
             for point in all_points:
@@ -493,9 +478,10 @@ class DataReader:
 
                     # 同步品质描述符（c104.Point.quality 在服务端上报时自动更新）
                     # c104 库的品质位编码与应用层不同，需要转换
-                    if hasattr(c104_point, 'quality') and c104_point.quality is not None:
+                    if hasattr(c104_point, "quality") and c104_point.quality is not None:
                         try:
                             from src.enums.points.iec104_quality import decode_quality_from_c104
+
                             qd = decode_quality_from_c104(c104_point, point.frame_type)
                             point.iec_quality = qd
                         except Exception:
@@ -512,23 +498,33 @@ class DataReader:
                         if isinstance(point, Yc):
                             try:
                                 from src.enums.points.iec104_type import decode_iec104_value
+
                                 decoded_val = decode_iec104_value(c104_value, point.iec_type_id)
                                 internal_value = (decoded_val - point.add_coe) / point.mul_coe
                                 # 对于浮点解码模式，保留浮点精度；否则取整
                                 from src.enums.modbus_register import Decode
+
                                 info = Decode.get_info(point.decode)
                                 if info.is_float:
                                     store_value = float(internal_value)
                                 else:
                                     store_value = int(round(internal_value))
-                                with track_change(ChangeSource.CLIENT_READ, f"IEC104客户端同步 {point.code}", self._get_client_info()):
+                                with track_change(
+                                    ChangeSource.CLIENT_READ,
+                                    f"IEC104客户端同步 {point.code}",
+                                    self._get_client_info(),
+                                ):
                                     point.value = store_value
                                 point.is_valid = True
                             except (ZeroDivisionError, TypeError) as e:
                                 self._log.error(f"Error decoding point {point.code}: {e}")
                                 point.is_valid = False
                         else:
-                            with track_change(ChangeSource.CLIENT_READ, f"IEC104客户端同步 {point.code}", self._get_client_info()):
+                            with track_change(
+                                ChangeSource.CLIENT_READ,
+                                f"IEC104客户端同步 {point.code}",
+                                self._get_client_info(),
+                            ):
                                 point.value = c104_value
                             point.is_valid = True
                     else:

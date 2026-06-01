@@ -15,7 +15,6 @@ from ..defs.constants import (
     IEC_TYPE_TIMESTAMP,
     IEC_TYPE_UNKNOWN,
 )
-from ..log import log
 
 
 def mms_value_to_python(mms_value, iec_type: str = IEC_TYPE_UNKNOWN) -> Any:

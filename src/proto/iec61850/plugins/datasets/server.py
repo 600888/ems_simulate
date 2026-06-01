@@ -4,11 +4,9 @@
 """
 
 import contextlib
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from ...defs.address import split_ln_name
 from ...defs.constants import HAS_IEC61850
-from ...defs.ln_classes import YK_LN_CLASSES, YT_LN_CLASSES
 from ...log import log
 
 if HAS_IEC61850:

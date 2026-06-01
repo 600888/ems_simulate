@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 
 from src.data.dao.channel_dao import ChannelDao
 from src.device.core.device import Device
@@ -11,7 +11,6 @@ from src.web.api.schemas import (
     BaseResponse,
     CurrentTableRequest,
     DeviceInfoRequest,
-    DeviceResetRequest,
     DeviceStartRequest,
     DeviceStopRequest,
     DeviceTableRequest,

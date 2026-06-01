@@ -5,11 +5,11 @@ GOOSE Publisher 数据访问层
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from src.data.model.goose_publisher import GoosePublisher, GooseEntry
-from src.data.log import log
 from src.data.controller.db import local_session
+from src.data.log import log
+from src.data.model.goose_publisher import GooseEntry, GoosePublisher
 
 
 class GoosePublisherDao:
@@ -18,7 +18,7 @@ class GoosePublisherDao:
     # ===== Publisher CRUD =====
 
     @classmethod
-    def save_publisher(cls, channel_id: int, pub_data: Dict[str, Any]) -> Optional[int]:
+    def save_publisher(cls, channel_id: int, pub_data: dict[str, Any]) -> int | None:
         """保存 GOOSE Publisher 配置到数据库
 
         Args:
@@ -29,74 +29,74 @@ class GoosePublisherDao:
             数据库记录 ID，失败返回 None
         """
         try:
-            with local_session() as session:
-                with session.begin():
-                    existing = (
-                        session.query(GoosePublisher)
-                        .where(GoosePublisher.go_cb_ref == pub_data.get("go_cb_ref", ""))
-                        .first()
+            with local_session() as session, session.begin():
+                existing = (
+                    session.query(GoosePublisher)
+                    .where(GoosePublisher.go_cb_ref == pub_data.get("go_cb_ref", ""))
+                    .first()
+                )
+
+                dst_mac = pub_data.get("dst_mac")
+                dst_mac_list = None
+                if dst_mac and isinstance(dst_mac, str):
+                    # "01:0C:CD:01:00:01" 或 "01-0C-CD-01-00-01" -> list
+                    import re
+
+                    parts = re.split(r"[-:]", dst_mac.strip())
+                    if len(parts) == 6:
+                        dst_mac_list = json.dumps([int(p, 16) for p in parts])
+                elif isinstance(dst_mac, list):
+                    dst_mac_list = json.dumps(dst_mac)
+
+                if existing:
+                    # 更新已有记录
+                    existing.interface = pub_data.get("interface", "eth0")
+                    existing.go_id = pub_data.get("go_id", "")
+                    existing.data_set_ref = pub_data.get("data_set_ref", "")
+                    existing.app_id = pub_data.get("app_id", 1)
+                    existing.conf_rev = pub_data.get("conf_rev", 1)
+                    existing.time_allowed_to_live = pub_data.get("time_allowed_to_live", 1000)
+                    existing.dst_mac_json = dst_mac_list
+                    existing.vlan_id = pub_data.get("vlan_id", 0)
+                    existing.vlan_prio = pub_data.get("vlan_prio", 4)
+                    existing.simulation = pub_data.get("simulation", True)
+
+                    # 替换条目
+                    entries = pub_data.get("entries", [])
+                    cls._replace_entries(session, existing.id, entries)
+                    session.flush()
+                    return existing.id
+                else:
+                    # 创建新记录
+                    publisher = GoosePublisher(
+                        channel_id=channel_id,
+                        interface=pub_data.get("interface", "eth0"),
+                        go_cb_ref=pub_data.get("go_cb_ref", ""),
+                        go_id=pub_data.get("go_id", ""),
+                        data_set_ref=pub_data.get("data_set_ref", ""),
+                        app_id=pub_data.get("app_id", 1),
+                        conf_rev=pub_data.get("conf_rev", 1),
+                        time_allowed_to_live=pub_data.get("time_allowed_to_live", 1000),
+                        dst_mac_json=dst_mac_list,
+                        vlan_id=pub_data.get("vlan_id", 0),
+                        vlan_prio=pub_data.get("vlan_prio", 4),
+                        simulation=pub_data.get("simulation", True),
                     )
+                    session.add(publisher)
+                    session.flush()
 
-                    dst_mac = pub_data.get("dst_mac")
-                    dst_mac_list = None
-                    if dst_mac and isinstance(dst_mac, str):
-                        # "01:0C:CD:01:00:01" 或 "01-0C-CD-01-00-01" -> list
-                        import re
-                        parts = re.split(r'[-:]', dst_mac.strip())
-                        if len(parts) == 6:
-                            dst_mac_list = json.dumps([int(p, 16) for p in parts])
-                    elif isinstance(dst_mac, list):
-                        dst_mac_list = json.dumps(dst_mac)
-
-                    if existing:
-                        # 更新已有记录
-                        existing.interface = pub_data.get("interface", "eth0")
-                        existing.go_id = pub_data.get("go_id", "")
-                        existing.data_set_ref = pub_data.get("data_set_ref", "")
-                        existing.app_id = pub_data.get("app_id", 1)
-                        existing.conf_rev = pub_data.get("conf_rev", 1)
-                        existing.time_allowed_to_live = pub_data.get("time_allowed_to_live", 1000)
-                        existing.dst_mac_json = dst_mac_list
-                        existing.vlan_id = pub_data.get("vlan_id", 0)
-                        existing.vlan_prio = pub_data.get("vlan_prio", 4)
-                        existing.simulation = pub_data.get("simulation", True)
-
-                        # 替换条目
-                        entries = pub_data.get("entries", [])
-                        cls._replace_entries(session, existing.id, entries)
-                        session.flush()
-                        return existing.id
-                    else:
-                        # 创建新记录
-                        publisher = GoosePublisher(
-                            channel_id=channel_id,
-                            interface=pub_data.get("interface", "eth0"),
-                            go_cb_ref=pub_data.get("go_cb_ref", ""),
-                            go_id=pub_data.get("go_id", ""),
-                            data_set_ref=pub_data.get("data_set_ref", ""),
-                            app_id=pub_data.get("app_id", 1),
-                            conf_rev=pub_data.get("conf_rev", 1),
-                            time_allowed_to_live=pub_data.get("time_allowed_to_live", 1000),
-                            dst_mac_json=dst_mac_list,
-                            vlan_id=pub_data.get("vlan_id", 0),
-                            vlan_prio=pub_data.get("vlan_prio", 4),
-                            simulation=pub_data.get("simulation", True),
+                    entries = pub_data.get("entries", [])
+                    for i, e in enumerate(entries):
+                        entry = GooseEntry(
+                            publisher_id=publisher.id,
+                            name=e.get("name", ""),
+                            value=_serialize_value(e.get("value")),
+                            iec_type=e.get("iec_type", "boolean"),
+                            sort_order=i,
                         )
-                        session.add(publisher)
-                        session.flush()
-
-                        entries = pub_data.get("entries", [])
-                        for i, e in enumerate(entries):
-                            entry = GooseEntry(
-                                publisher_id=publisher.id,
-                                name=e.get("name", ""),
-                                value=_serialize_value(e.get("value")),
-                                iec_type=e.get("iec_type", "boolean"),
-                                sort_order=i,
-                            )
-                            session.add(entry)
-                        session.flush()
-                        return publisher.id
+                        session.add(entry)
+                    session.flush()
+                    return publisher.id
         except Exception as e:
             log.error(f"保存 GOOSE Publisher 失败: {e}")
             return None
@@ -105,14 +105,9 @@ class GoosePublisherDao:
     def delete_publisher_by_go_cb_ref(cls, go_cb_ref: str) -> bool:
         """根据 go_cb_ref 删除 Publisher (级联删除 entries)"""
         try:
-            with local_session() as session:
-                with session.begin():
-                    count = (
-                        session.query(GoosePublisher)
-                        .where(GoosePublisher.go_cb_ref == go_cb_ref)
-                        .delete()
-                    )
-                    return count > 0
+            with local_session() as session, session.begin():
+                count = session.query(GoosePublisher).where(GoosePublisher.go_cb_ref == go_cb_ref).delete()
+                return count > 0
         except Exception as e:
             log.error(f"删除 GOOSE Publisher 失败: {e}")
             return False
@@ -121,14 +116,9 @@ class GoosePublisherDao:
     def delete_publisher_by_id(cls, publisher_id: int) -> bool:
         """根据 ID 删除 Publisher (级联删除 entries)"""
         try:
-            with local_session() as session:
-                with session.begin():
-                    count = (
-                        session.query(GoosePublisher)
-                        .where(GoosePublisher.id == publisher_id)
-                        .delete()
-                    )
-                    return count > 0
+            with local_session() as session, session.begin():
+                count = session.query(GoosePublisher).where(GoosePublisher.id == publisher_id).delete()
+                return count > 0
         except Exception as e:
             log.error(f"删除 GOOSE Publisher 失败: {e}")
             return False
@@ -137,14 +127,9 @@ class GoosePublisherDao:
     def delete_by_channel(cls, channel_id: int) -> int:
         """删除通道下的所有 GOOSE Publisher 配置"""
         try:
-            with local_session() as session:
-                with session.begin():
-                    count = (
-                        session.query(GoosePublisher)
-                        .where(GoosePublisher.channel_id == channel_id)
-                        .delete()
-                    )
-                    return count
+            with local_session() as session, session.begin():
+                count = session.query(GoosePublisher).where(GoosePublisher.channel_id == channel_id).delete()
+                return count
         except Exception as e:
             log.error(f"删除通道 GOOSE Publisher 失败: {e}")
             return 0
@@ -153,9 +138,13 @@ class GoosePublisherDao:
 
     @classmethod
     def save_pure_dataset(
-        cls, channel_id: int, ld_inst: str, ds_name: str, data_set_ref: str,
-        entries: List[Dict[str, Any]],
-    ) -> Optional[int]:
+        cls,
+        channel_id: int,
+        ld_inst: str,
+        _ds_name: str,
+        data_set_ref: str,
+        entries: list[dict[str, Any]],
+    ) -> int | None:
         """保存纯 DataSet 配置到数据库
 
         Args:
@@ -170,109 +159,106 @@ class GoosePublisherDao:
         """
         try:
             pure_go_cb_ref = f"{cls._PURE_DATASET_PREFIX}{data_set_ref}"
-            with local_session() as session:
-                with session.begin():
-                    existing = (
-                        session.query(GoosePublisher)
-                        .where(GoosePublisher.go_cb_ref == pure_go_cb_ref)
-                        .first()
-                    )
-                    if existing:
-                        existing.data_set_ref = data_set_ref
-                        existing.go_id = ld_inst
-                        cls._replace_entries(session, existing.id, entries)
-                        session.flush()
-                        return existing.id
-                    publisher = GoosePublisher(
-                        channel_id=channel_id,
-                        interface="",
-                        go_cb_ref=pure_go_cb_ref,
-                        go_id=ld_inst,
-                        data_set_ref=data_set_ref,
-                        app_id=0,
-                        conf_rev=1,
-                        time_allowed_to_live=1000,
-                        dst_mac_json=None,
-                        vlan_id=0,
-                        vlan_prio=4,
-                        simulation=False,
-                    )
-                    session.add(publisher)
+            with local_session() as session, session.begin():
+                existing = session.query(GoosePublisher).where(GoosePublisher.go_cb_ref == pure_go_cb_ref).first()
+                if existing:
+                    existing.data_set_ref = data_set_ref
+                    existing.go_id = ld_inst
+                    cls._replace_entries(session, existing.id, entries)
                     session.flush()
-                    for i, e in enumerate(entries):
-                        entry = GooseEntry(
-                            publisher_id=publisher.id,
-                            name=e.get("name", ""),
-                            value=_serialize_value(e.get("value")),
-                            iec_type=e.get("iec_type", "boolean"),
-                            sort_order=i,
-                        )
-                        session.add(entry)
-                    session.flush()
-                    return publisher.id
+                    return existing.id
+                publisher = GoosePublisher(
+                    channel_id=channel_id,
+                    interface="",
+                    go_cb_ref=pure_go_cb_ref,
+                    go_id=ld_inst,
+                    data_set_ref=data_set_ref,
+                    app_id=0,
+                    conf_rev=1,
+                    time_allowed_to_live=1000,
+                    dst_mac_json=None,
+                    vlan_id=0,
+                    vlan_prio=4,
+                    simulation=False,
+                )
+                session.add(publisher)
+                session.flush()
+                for i, e in enumerate(entries):
+                    entry = GooseEntry(
+                        publisher_id=publisher.id,
+                        name=e.get("name", ""),
+                        value=_serialize_value(e.get("value")),
+                        iec_type=e.get("iec_type", "boolean"),
+                        sort_order=i,
+                    )
+                    session.add(entry)
+                session.flush()
+                return publisher.id
         except Exception as e:
             log.error(f"保存纯 DataSet 失败: {e}")
             return None
 
     @classmethod
-    def get_pure_datasets_by_channel(cls, channel_id: int) -> List[Dict[str, Any]]:
+    def get_pure_datasets_by_channel(cls, channel_id: int) -> list[dict[str, Any]]:
         """获取通道下所有纯 DataSet 配置"""
         try:
-            with local_session() as session:
-                with session.begin():
-                    publishers = (
-                        session.query(GoosePublisher)
-                        .where(
-                            GoosePublisher.channel_id == channel_id,
-                            GoosePublisher.go_cb_ref.startswith(cls._PURE_DATASET_PREFIX),
-                        )
-                        .all()
+            with local_session() as session, session.begin():
+                publishers = (
+                    session.query(GoosePublisher)
+                    .where(
+                        GoosePublisher.channel_id == channel_id,
+                        GoosePublisher.go_cb_ref.startswith(cls._PURE_DATASET_PREFIX),
                     )
-                    results = []
-                    for p in publishers:
-                        entries = [
-                            {"name": e.name, "value": e._parse_value(), "iec_type": e.iec_type}
-                            for e in sorted(p.entries, key=lambda x: x.sort_order)
-                        ]
-                        results.append({
+                    .all()
+                )
+                results = []
+                for p in publishers:
+                    entries = [
+                        {"name": e.name, "value": e._parse_value(), "iec_type": e.iec_type}
+                        for e in sorted(p.entries, key=lambda x: x.sort_order)
+                    ]
+                    results.append(
+                        {
                             "ld_inst": p.go_id,
                             "ds_name": p.data_set_ref.split("$")[-1] if "$" in p.data_set_ref else p.data_set_ref,
                             "data_set_ref": p.data_set_ref,
                             "entries": entries,
                             "_db_id": p.id,
                             "_channel_id": p.channel_id,
-                        })
-                    return results
+                        }
+                    )
+                return results
         except Exception as e:
             log.error(f"获取纯 DataSet 配置失败: {e}")
             return []
 
     @classmethod
-    def get_all_pure_datasets(cls) -> List[Dict[str, Any]]:
+    def get_all_pure_datasets(cls) -> list[dict[str, Any]]:
         """获取所有纯 DataSet 配置"""
         try:
-            with local_session() as session:
-                with session.begin():
-                    publishers = (
-                        session.query(GoosePublisher)
-                        .where(GoosePublisher.go_cb_ref.startswith(cls._PURE_DATASET_PREFIX))
-                        .all()
-                    )
-                    results = []
-                    for p in publishers:
-                        entries = [
-                            {"name": e.name, "value": e._parse_value(), "iec_type": e.iec_type}
-                            for e in sorted(p.entries, key=lambda x: x.sort_order)
-                        ]
-                        results.append({
+            with local_session() as session, session.begin():
+                publishers = (
+                    session.query(GoosePublisher)
+                    .where(GoosePublisher.go_cb_ref.startswith(cls._PURE_DATASET_PREFIX))
+                    .all()
+                )
+                results = []
+                for p in publishers:
+                    entries = [
+                        {"name": e.name, "value": e._parse_value(), "iec_type": e.iec_type}
+                        for e in sorted(p.entries, key=lambda x: x.sort_order)
+                    ]
+                    results.append(
+                        {
                             "ld_inst": p.go_id,
                             "ds_name": p.data_set_ref.split("$")[-1] if "$" in p.data_set_ref else p.data_set_ref,
                             "data_set_ref": p.data_set_ref,
                             "entries": entries,
                             "_db_id": p.id,
                             "_channel_id": p.channel_id,
-                        })
-                    return results
+                        }
+                    )
+                return results
         except Exception as e:
             log.error(f"获取所有纯 DataSet 配置失败: {e}")
             return []
@@ -283,42 +269,40 @@ class GoosePublisherDao:
         return go_cb_ref.startswith(cls._PURE_DATASET_PREFIX)
 
     @classmethod
-    def get_by_channel(cls, channel_id: int) -> List[Dict[str, Any]]:
+    def get_by_channel(cls, channel_id: int) -> list[dict[str, Any]]:
         """获取通道下的所有 GOOSE Publisher 配置（排除纯 DataSet）"""
         try:
-            with local_session() as session:
-                with session.begin():
-                    publishers = (
-                        session.query(GoosePublisher)
-                        .where(
-                            GoosePublisher.channel_id == channel_id,
-                            ~GoosePublisher.go_cb_ref.startswith(cls._PURE_DATASET_PREFIX),
-                        )
-                        .all()
+            with local_session() as session, session.begin():
+                publishers = (
+                    session.query(GoosePublisher)
+                    .where(
+                        GoosePublisher.channel_id == channel_id,
+                        ~GoosePublisher.go_cb_ref.startswith(cls._PURE_DATASET_PREFIX),
                     )
-                    return [cls._publisher_to_config(p) for p in publishers]
+                    .all()
+                )
+                return [cls._publisher_to_config(p) for p in publishers]
         except Exception as e:
             log.error(f"获取通道 GOOSE Publisher 失败: {e}")
             return []
 
     @classmethod
-    def get_all(cls) -> List[Dict[str, Any]]:
+    def get_all(cls) -> list[dict[str, Any]]:
         """获取所有 GOOSE Publisher 配置（排除纯 DataSet）"""
         try:
-            with local_session() as session:
-                with session.begin():
-                    publishers = (
-                        session.query(GoosePublisher)
-                        .where(~GoosePublisher.go_cb_ref.startswith(cls._PURE_DATASET_PREFIX))
-                        .all()
-                    )
-                    return [cls._publisher_to_config(p) for p in publishers]
+            with local_session() as session, session.begin():
+                publishers = (
+                    session.query(GoosePublisher)
+                    .where(~GoosePublisher.go_cb_ref.startswith(cls._PURE_DATASET_PREFIX))
+                    .all()
+                )
+                return [cls._publisher_to_config(p) for p in publishers]
         except Exception as e:
             log.error(f"获取所有 GOOSE Publisher 失败: {e}")
             return []
 
     @classmethod
-    def _publisher_to_config(cls, publisher: GoosePublisher) -> Dict[str, Any]:
+    def _publisher_to_config(cls, publisher: GoosePublisher) -> dict[str, Any]:
         """将数据库记录转换为 create_publisher 兼容的配置字典"""
         dst_mac = None
         if publisher.dst_mac_json:
@@ -326,11 +310,13 @@ class GoosePublisherDao:
 
         entries = []
         for e in sorted(publisher.entries, key=lambda x: x.sort_order):
-            entries.append({
-                "name": e.name,
-                "value": e._parse_value(),
-                "iec_type": e.iec_type,
-            })
+            entries.append(
+                {
+                    "name": e.name,
+                    "value": e._parse_value(),
+                    "iec_type": e.iec_type,
+                }
+            )
 
         return {
             "interface": publisher.interface,
@@ -350,7 +336,7 @@ class GoosePublisherDao:
         }
 
     @classmethod
-    def _replace_entries(cls, session, publisher_id: int, entries: List[Dict[str, Any]]):
+    def _replace_entries(cls, session, publisher_id: int, entries: list[dict[str, Any]]):
         """替换 Publisher 的所有数据集条目"""
         session.query(GooseEntry).where(GooseEntry.publisher_id == publisher_id).delete()
         for i, e in enumerate(entries):
@@ -364,7 +350,7 @@ class GoosePublisherDao:
             session.add(entry)
 
 
-def _serialize_value(value: Any) -> Optional[str]:
+def _serialize_value(value: Any) -> str | None:
     """将 Python 值序列化为 JSON 字符串"""
     if value is None:
         return None

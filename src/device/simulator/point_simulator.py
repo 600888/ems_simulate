@@ -1,7 +1,6 @@
 import math
 import random
 import time
-from typing import Union
 
 from src.enums.point_data import SimulateMethod, Yc, Yx
 

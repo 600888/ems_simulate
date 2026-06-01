@@ -5,10 +5,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 from src.enums.modbus_def import ProtocolType
-from src.enums.point_data import Yc, Yk, Yt, Yx
 
 if TYPE_CHECKING:
     from src.device.core.device import Device

@@ -1,6 +1,7 @@
 import asyncio
+from collections.abc import Callable
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import c104
 

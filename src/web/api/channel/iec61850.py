@@ -1,12 +1,11 @@
 """通道管理 - IEC 61850 相关路由"""
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from src.data.service.channel_service import ChannelService
-from src.enums.modbus_def import ProtocolType
 from src.enums.points.base_point import BasePoint
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
@@ -202,7 +201,6 @@ def _build_iec61850_tree(
         "total": 5
     }
     """
-    from src.device.core.data.data_exporter import DataExporter
     from src.enums.point_data import Yc, Yk, Yt, Yx
 
     if point_types is None:
@@ -1040,7 +1038,6 @@ def _build_iec61850_dataset_tree(device, dataset_ref: str) -> dict[str, Any]:
 
 def _get_iec61850_filtered_points(device, category: str, item: str) -> list[BasePoint]:
     """根据 IEC61850 树节点的 category 和 item 获取过滤后的测点对象列表"""
-    from src.enums.point_data import Yc, Yk, Yt, Yx
 
     # DataSets 分类: 返回空(数据集不包含内部测点)
     if category and category == "DataSets":

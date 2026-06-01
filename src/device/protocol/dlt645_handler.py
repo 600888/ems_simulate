@@ -4,13 +4,12 @@ DLT645 协议处理器
 """
 
 import contextlib
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from src.config.config import Config
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.enums.point_data import Yc
 from src.enums.points.base_point import BasePoint
-from src.enums.points.change_tracker import ChangeSource, track_change
 
 
 class DLT645ServerHandler(ServerHandler):

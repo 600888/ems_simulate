@@ -5,9 +5,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import threading
 import time
-from typing import Any, Callable
+from typing import Any
 
 from ...defs.constants import HAS_IEC61850
 from ...log import log

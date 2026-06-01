@@ -14,9 +14,8 @@ from ...log import log
 from .capture import GooseCaptureEngine
 from .persistence import PersistenceAdapter
 from .publisher import GoosePublisher
-from .subscriber import GooseReceiver, GooseSubscriptionInfo
+from .subscriber import GooseReceiver
 from .types import (
-    GOOSE_MULTICAST_MAC_PREFIX,
     GooseDataSetEntry,
     IecDataType,
     PublisherConfig,

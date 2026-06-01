@@ -3,10 +3,9 @@
 提供设备组的业务逻辑，支持多层嵌套和批量设备操作
 """
 
-from typing import List, Optional
 from src.data.dao.device_group_dao import DeviceGroupDao
-from src.data.model.device_group import DeviceGroupDict
 from src.data.log import log
+from src.data.model.device_group import DeviceGroupDict
 
 
 class DeviceGroupService:
@@ -16,7 +15,7 @@ class DeviceGroupService:
         pass
 
     @classmethod
-    def get_all_groups(cls) -> List[DeviceGroupDict]:
+    def get_all_groups(cls) -> list[DeviceGroupDict]:
         """获取所有设备组"""
         try:
             return DeviceGroupDao.get_all_groups()
@@ -25,7 +24,7 @@ class DeviceGroupService:
             return []
 
     @classmethod
-    def get_root_groups(cls) -> List[DeviceGroupDict]:
+    def get_root_groups(cls) -> list[DeviceGroupDict]:
         """获取顶级设备组"""
         try:
             return DeviceGroupDao.get_root_groups()
@@ -34,7 +33,7 @@ class DeviceGroupService:
             return []
 
     @classmethod
-    def get_children_groups(cls, parent_id: int) -> List[DeviceGroupDict]:
+    def get_children_groups(cls, parent_id: int) -> list[DeviceGroupDict]:
         """获取子设备组"""
         try:
             return DeviceGroupDao.get_children_groups(parent_id)
@@ -45,7 +44,7 @@ class DeviceGroupService:
     @classmethod
     def get_group_tree(cls) -> dict:
         """获取完整设备组树形结构（包含未分组设备）
-        
+
         Returns:
             {
                 "groups": [...],  # 设备组树
@@ -64,7 +63,7 @@ class DeviceGroupService:
             return {"groups": [], "ungrouped": []}
 
     @classmethod
-    def get_group_by_id(cls, group_id: int) -> Optional[DeviceGroupDict]:
+    def get_group_by_id(cls, group_id: int) -> DeviceGroupDict | None:
         """根据ID获取设备组"""
         try:
             return DeviceGroupDao.get_group_by_id(group_id)
@@ -73,7 +72,7 @@ class DeviceGroupService:
             return None
 
     @classmethod
-    def get_group_by_code(cls, code: str) -> Optional[DeviceGroupDict]:
+    def get_group_by_code(cls, code: str) -> DeviceGroupDict | None:
         """根据编码获取设备组"""
         try:
             return DeviceGroupDao.get_group_by_code(code)
@@ -86,11 +85,11 @@ class DeviceGroupService:
         cls,
         code: str,
         name: str,
-        parent_id: Optional[int] = None,
-        description: Optional[str] = None,
+        parent_id: int | None = None,
+        description: str | None = None,
     ) -> int:
         """创建设备组
-        
+
         Returns:
             新设备组ID，失败返回 -1
         """
@@ -117,7 +116,7 @@ class DeviceGroupService:
     @classmethod
     def delete_group(cls, group_id: int, cascade: bool = False) -> bool:
         """删除设备组
-        
+
         Args:
             group_id: 设备组ID
             cascade: 是否级联删除子组，False时将子组和设备移至未分组
@@ -147,13 +146,13 @@ class DeviceGroupService:
             return False
 
     @classmethod
-    def move_devices_to_group(cls, device_ids: List[int], group_id: Optional[int]) -> int:
+    def move_devices_to_group(cls, device_ids: list[int], group_id: int | None) -> int:
         """批量移动设备到指定设备组
-        
+
         Args:
             device_ids: 设备ID列表
             group_id: 目标设备组ID，None表示移至未分组
-            
+
         Returns:
             成功移动的设备数量
         """
@@ -164,7 +163,7 @@ class DeviceGroupService:
             return 0
 
     @classmethod
-    def get_devices_by_group(cls, group_id: int) -> List[dict]:
+    def get_devices_by_group(cls, group_id: int) -> list[dict]:
         """获取指定设备组内的设备"""
         try:
             return DeviceGroupDao.get_devices_by_group(group_id)
@@ -173,7 +172,7 @@ class DeviceGroupService:
             return []
 
     @classmethod
-    def get_ungrouped_devices(cls) -> List[dict]:
+    def get_ungrouped_devices(cls) -> list[dict]:
         """获取未分组设备"""
         try:
             return DeviceGroupDao.get_ungrouped_devices()

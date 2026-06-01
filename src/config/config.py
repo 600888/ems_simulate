@@ -5,7 +5,6 @@
 
 from configparser import ConfigParser
 import os
-from typing import Optional
 
 from src.enums.data_source import DataSource
 

@@ -10,18 +10,18 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable
 import contextlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 import platform
 import socket
 import struct
 import threading
 import time
-from typing import Any, Callable, Optional, Tuple
+from typing import Any
 
 from ...log import log
-from .types import MmsType
 
 # ===== 常量定义 =====
 
@@ -339,7 +339,7 @@ class _RawSocketProvider:
             sock.bind((host_ip, 0))
 
             try:
-                import win32file
+                import win32file  # noqa: F401
 
                 sock.ioctl(0x98000001, 1)
                 log.info(f"Windows 原始套接字创建成功: IP={host_ip}")

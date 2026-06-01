@@ -5,7 +5,6 @@
 
 import asyncio
 import struct
-from typing import Any, List, Optional, Union
 
 from pymodbus.client import AsyncModbusTcpClient
 from pymodbus.exceptions import ModbusException
@@ -27,7 +26,6 @@ from pymodbus.pdu.register_message import (
 )
 
 from src.device.core.message.message_capture import MessageCapture
-from src.enums.modbus_def import ProtocolType
 from src.enums.modbus_register import Decode
 
 

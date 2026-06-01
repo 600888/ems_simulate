@@ -4,8 +4,6 @@ from pymodbus.client import ModbusSerialClient, ModbusTcpClient
 from pymodbus.framer import FramerType
 from pymodbus.pdu.pdu import ModbusPDU
 
-from src.device.core.message.message_capture import MessageCapture
-
 
 def computeCRC(data):
     """计算CRC16"""

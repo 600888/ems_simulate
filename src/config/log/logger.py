@@ -2,11 +2,8 @@ import inspect
 import json
 import os
 import sys
-from typing import Any, Dict, Optional, Union
 
 from loguru import logger
-
-from src.config.env import log_path
 
 LOG_COLORS = {
     "DEBUG": "\033[1;36m",  # CYAN

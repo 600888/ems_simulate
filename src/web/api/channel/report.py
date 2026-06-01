@@ -3,12 +3,11 @@
 提供 RCB 发现、使能/禁用、GI 触发、数据查询等 RESTful API。
 """
 
-from typing import Any, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Request
 
 from src.data.service.channel_service import ChannelService
-from src.enums.modbus_def import ProtocolType
 from src.web.api.schemas import BaseResponse
 from src.web.api.schemas.report import (
     RcbDetailRequest,

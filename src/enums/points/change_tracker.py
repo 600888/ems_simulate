@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 import time
-from typing import Any, Optional
+from typing import Any
 
 
 class ChangeSource(Enum):

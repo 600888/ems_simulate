@@ -14,7 +14,7 @@ Device 类 - 设备模拟器核心类 (Facade)
 
 import asyncio
 import time
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any
 
 from src.config.log.device_logger import DeviceLoggerManager, get_device_logger
 from src.device.core.data.data_exporter import DataExporter

@@ -6,9 +6,9 @@
 - 目录条目解析 (FileDirectoryEntry → FileEntry)
 """
 
+from collections.abc import Callable
 import contextlib
-from datetime import UTC, datetime, timezone
-from typing import Callable, List, Optional
+from datetime import UTC, datetime
 
 from ...core.connection import Iec61850Connection
 from ...defs.constants import HAS_IEC61850

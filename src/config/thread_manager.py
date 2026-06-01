@@ -1,6 +1,5 @@
 import concurrent.futures
 import threading
-from typing import Optional
 
 
 class ThreadManager:

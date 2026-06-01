@@ -4,10 +4,6 @@
 frame_type = 2
 """
 
-from typing import Dict, Optional
-
-from blinker import Signal
-
 from src.enums.points.base_point import BasePoint, decimal_to_hex_formatted
 
 

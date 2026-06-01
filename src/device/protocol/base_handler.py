@@ -4,9 +4,8 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
-from src.enums.point_data import Yc, Yk, Yt, Yx
 from src.enums.points.base_point import BasePoint
 
 

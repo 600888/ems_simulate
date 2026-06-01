@@ -3,8 +3,8 @@
 为不同协议（Modbus、IEC104、DLT645、IEC61850）提供特定的配置参数
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from dataclasses import dataclass
+from typing import Any
 
 from src.enums.points.iec104_quality import IEC104QualityDescriptor
 

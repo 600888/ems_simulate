@@ -3,9 +3,9 @@
 提供指数退避重连、重试装饰器等鲁棒性增强功能。
 """
 
+from collections.abc import Callable
 import functools
 import time
-from typing import Callable, Optional, Tuple, Type
 
 from ..log import log
 from .exceptions import ConnectionError, ConnectionLostError

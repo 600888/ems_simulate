@@ -4,7 +4,7 @@
 采用现代 Pydantic V2 风格设计，JSON 传参。
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 

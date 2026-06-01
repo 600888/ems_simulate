@@ -5,13 +5,11 @@
 
 import builtins
 from collections import deque
-from typing import Dict, List, Optional, Union
 
 from blinker import Signal
 
 from src.enums.points.change_tracker import (
     ChangeRecord,
-    ChangeSource,
     get_current_client_info,
     get_current_detail,
     get_current_source,

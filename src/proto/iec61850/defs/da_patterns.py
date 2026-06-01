@@ -13,7 +13,6 @@ from .constants import (
     IEC_TYPE_STRING,
     IEC_TYPE_TIMESTAMP,
     IEC_TYPE_UNKNOWN,
-    IecType,
 )
 
 # DA 路径 -> (frame_type, iec_type) 映射 (用于模型发现时推断测点类型)

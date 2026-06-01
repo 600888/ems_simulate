@@ -20,9 +20,9 @@ pyiec61850 Python 绑定签名:
 - libiec61850 在检查远程文件是否存在之前就会创建本地文件，失败下载会留下 0 字节残留。
 """
 
+from collections.abc import Callable
 import contextlib
 import os
-from typing import Callable, Optional
 
 from ...core.connection import Iec61850Connection
 from ...defs.constants import HAS_IEC61850

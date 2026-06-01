@@ -1,13 +1,10 @@
 """测点映射路由"""
 
-from typing import List, Optional
-
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from src.data.service.point_mapping_service import PointMappingService
 from src.web.api.schemas import BaseResponse, SourcePointItem
-from src.web.log import log
 
 point_mapping_router = APIRouter(prefix="/api/point-mappings", tags=["测点映射"])
 

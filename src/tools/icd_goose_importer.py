@@ -35,7 +35,7 @@ ICD 文件中 GOOSE 相关结构:
 import contextlib
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 import xml.etree.ElementTree as ET
 
 from src.data.log import log

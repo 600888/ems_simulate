@@ -3,10 +3,9 @@
 提供设备的业务逻辑
 """
 
-from typing import List, Optional
 from src.data.dao.device_dao import DeviceDao
-from src.data.model.device import DeviceDict
 from src.data.log import log
+from src.data.model.device import DeviceDict
 
 
 class DeviceService:
@@ -16,7 +15,7 @@ class DeviceService:
         pass
 
     @classmethod
-    def get_all_devices(cls) -> List[DeviceDict]:
+    def get_all_devices(cls) -> list[DeviceDict]:
         """获取所有启用的设备"""
         try:
             return DeviceDao.get_all_devices()
@@ -25,7 +24,7 @@ class DeviceService:
             return []
 
     @classmethod
-    def get_device_by_code(cls, code: str) -> Optional[DeviceDict]:
+    def get_device_by_code(cls, code: str) -> DeviceDict | None:
         """根据编码获取设备"""
         try:
             return DeviceDao.get_device_by_code(code)
@@ -34,7 +33,7 @@ class DeviceService:
             return None
 
     @classmethod
-    def get_device_by_id(cls, device_id: int) -> Optional[DeviceDict]:
+    def get_device_by_id(cls, device_id: int) -> DeviceDict | None:
         """根据ID获取设备"""
         try:
             return DeviceDao.get_device_by_id(device_id)
@@ -43,7 +42,7 @@ class DeviceService:
             return None
 
     @classmethod
-    def create_device(cls, code: str, name: str, device_type: int = 0, group_id: Optional[int] = None) -> int:
+    def create_device(cls, code: str, name: str, device_type: int = 0, group_id: int | None = None) -> int:
         """创建设备"""
         try:
             return DeviceDao.create_device(code, name, device_type, group_id)

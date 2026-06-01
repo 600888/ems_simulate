@@ -4,8 +4,9 @@
 回调注册和报告数据缓存等完整生命周期。
 """
 
+from collections.abc import Callable
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Optional
 
 from ...core.linked_list import get_list_from_linked_list
 from ...defs.constants import HAS_IEC61850, AcsiClass

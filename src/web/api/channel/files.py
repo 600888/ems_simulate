@@ -7,7 +7,6 @@ import base64
 import contextlib
 import os
 import tempfile
-from typing import Optional
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field

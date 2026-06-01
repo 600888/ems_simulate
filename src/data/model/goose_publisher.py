@@ -4,28 +4,30 @@ GOOSE Publisher 数据库模型
 存储 GOOSE Publisher 的配置和数据集条目，实现持久化。
 """
 
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, TypedDict
 
-from sqlalchemy import Integer, String, Boolean, Float, ForeignKey, Text, JSON
-from sqlalchemy.orm import mapped_column, Mapped, relationship
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.data.model.base import Base
 
 
 class GooseEntryDict(TypedDict):
     """GOOSE 数据集条目字典类型"""
+
     id: int
     publisher_id: int
     name: str
-    value: Optional[Any]
+    value: Any | None
     iec_type: str
     sort_order: int
 
 
 class GoosePublisherDict(TypedDict):
     """GOOSE Publisher 字典类型"""
+
     id: int
-    channel_id: Optional[int]
+    channel_id: int | None
     interface: str
     go_cb_ref: str
     go_id: str
@@ -33,40 +35,32 @@ class GoosePublisherDict(TypedDict):
     app_id: int
     conf_rev: int
     time_allowed_to_live: int
-    dst_mac_list: Optional[List[int]]
+    dst_mac_list: list[int] | None
     vlan_id: int
     vlan_prio: int
     simulation: bool
-    entries: List[GooseEntryDict]
+    entries: list[GooseEntryDict]
 
 
 class GooseEntry(Base):
     """GOOSE 数据集条目表"""
+
     __tablename__ = "goose_entry"
 
-    id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True, comment="条目ID"
-    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="条目ID")
     publisher_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("goose_publisher.id", ondelete="CASCADE"),
-        nullable=False, index=True, comment="所属 Publisher ID"
+        Integer,
+        ForeignKey("goose_publisher.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="所属 Publisher ID",
     )
-    name: Mapped[str] = mapped_column(
-        String(256), nullable=False, comment="条目名称 (FCDA 引用路径)"
-    )
-    value: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True, comment="默认值 (JSON 序列化)"
-    )
-    iec_type: Mapped[str] = mapped_column(
-        String(32), nullable=False, server_default="boolean", comment="IEC 数据类型"
-    )
-    sort_order: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0", comment="排序序号"
-    )
+    name: Mapped[str] = mapped_column(String(256), nullable=False, comment="条目名称 (FCDA 引用路径)")
+    value: Mapped[str | None] = mapped_column(Text, nullable=True, comment="默认值 (JSON 序列化)")
+    iec_type: Mapped[str] = mapped_column(String(32), nullable=False, server_default="boolean", comment="IEC 数据类型")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", comment="排序序号")
 
-    publisher: Mapped["GoosePublisher"] = relationship(
-        back_populates="entries"
-    )
+    publisher: Mapped["GoosePublisher"] = relationship(back_populates="entries")
 
     def to_dict(self) -> GooseEntryDict:
         return {
@@ -83,6 +77,7 @@ class GooseEntry(Base):
         if self.value is None:
             return None
         import json
+
         try:
             return json.loads(self.value)
         except (json.JSONDecodeError, TypeError):
@@ -91,50 +86,29 @@ class GooseEntry(Base):
 
 class GoosePublisher(Base):
     """GOOSE Publisher 配置表"""
+
     __tablename__ = "goose_publisher"
 
-    id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True, comment="Publisher ID"
-    )
-    channel_id: Mapped[Optional[int]] = mapped_column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="Publisher ID")
+    channel_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("channel.id"), nullable=True, index=True, comment="所属通道ID"
     )
-    interface: Mapped[str] = mapped_column(
-        String(64), nullable=False, server_default="eth0", comment="网络接口"
-    )
-    go_cb_ref: Mapped[str] = mapped_column(
-        String(256), nullable=False, index=True, comment="GOOSE 控制块引用"
-    )
-    go_id: Mapped[str] = mapped_column(
-        String(128), nullable=False, server_default="", comment="GOOSE 标识符"
-    )
-    data_set_ref: Mapped[str] = mapped_column(
-        String(256), nullable=False, server_default="", comment="数据集引用"
-    )
-    app_id: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="1", comment="APPID"
-    )
-    conf_rev: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="1", comment="配置修订号"
-    )
+    interface: Mapped[str] = mapped_column(String(64), nullable=False, server_default="eth0", comment="网络接口")
+    go_cb_ref: Mapped[str] = mapped_column(String(256), nullable=False, index=True, comment="GOOSE 控制块引用")
+    go_id: Mapped[str] = mapped_column(String(128), nullable=False, server_default="", comment="GOOSE 标识符")
+    data_set_ref: Mapped[str] = mapped_column(String(256), nullable=False, server_default="", comment="数据集引用")
+    app_id: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", comment="APPID")
+    conf_rev: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", comment="配置修订号")
     time_allowed_to_live: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="1000", comment="存活时间 (ms)"
     )
-    dst_mac_json: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True, comment="目标 MAC 地址 (JSON 数组)"
-    )
-    vlan_id: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0", comment="VLAN ID"
-    )
-    vlan_prio: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="4", comment="VLAN 优先级"
-    )
-    simulation: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="1", comment="仿真模式"
-    )
+    dst_mac_json: Mapped[str | None] = mapped_column(Text, nullable=True, comment="目标 MAC 地址 (JSON 数组)")
+    vlan_id: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", comment="VLAN ID")
+    vlan_prio: Mapped[int] = mapped_column(Integer, nullable=False, server_default="4", comment="VLAN 优先级")
+    simulation: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1", comment="仿真模式")
 
     # 关系
-    entries: Mapped[List["GooseEntry"]] = relationship(
+    entries: Mapped[list["GooseEntry"]] = relationship(
         back_populates="publisher",
         cascade="all, delete-orphan",
         order_by="GooseEntry.sort_order",
@@ -158,11 +132,12 @@ class GoosePublisher(Base):
             "entries": [e.to_dict() for e in self.entries],
         }
 
-    def _parse_dst_mac(self) -> Optional[List[int]]:
+    def _parse_dst_mac(self) -> list[int] | None:
         """将 JSON 字符串解析为 MAC 地址列表"""
         if not self.dst_mac_json:
             return None
         import json
+
         try:
             return json.loads(self.dst_mac_json)
         except (json.JSONDecodeError, TypeError):

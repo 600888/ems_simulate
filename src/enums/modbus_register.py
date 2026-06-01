@@ -6,7 +6,6 @@ Modbus 解析码模块
 from dataclasses import dataclass
 from enum import Enum
 import struct
-from typing import Dict, Optional
 
 
 @dataclass(frozen=True)

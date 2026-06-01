@@ -8,14 +8,12 @@ _is_full_ref, _parse_ref, _extract_ln_class, _split_ln_name 等函数。
 """
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
-from .constants import IEC_TYPE_BOOLEAN, IEC_TYPE_FLOAT, IEC_TYPE_UNKNOWN, IecType
+from .constants import IEC_TYPE_BOOLEAN, IEC_TYPE_FLOAT, IEC_TYPE_UNKNOWN
 from .da_patterns import (
     BDA_TYPE_MAP,
     DA_PATH_TO_FRAME_TYPE,
     DA_PATTERNS,
-    ENC_DO_DA_TYPE_OVERRIDE,
     EXTRA_DA_INFO,
 )
 from .ln_classes import ALL_LN_CLASSES

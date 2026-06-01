@@ -3,10 +3,8 @@
 处理测点数据的导入导出和表格格式化
 """
 
-from typing import Any, Dict, List, Optional, Tuple
-
 from src.device.core.point.point_manager import PointManager
-from src.enums.point_data import Yc, Yx, Yt, Yk
+from src.enums.point_data import Yc, Yx
 
 
 class DataExporter:
@@ -15,7 +13,7 @@ class DataExporter:
     def __init__(self, point_manager: PointManager):
         self._point_manager = point_manager
 
-    def get_table_head(self) -> List[str]:
+    def get_table_head(self) -> list[str]:
         """获取表格头部列名"""
         return [
             "地址",
@@ -38,16 +36,16 @@ class DataExporter:
     def get_table_data(
         self,
         slave_id: int,
-        name: Optional[str] = None,
-        page_index: Optional[int] = 1,
-        page_size: Optional[int] = 10,
-        point_types: Optional[List[int]] = None,
+        name: str | None = None,
+        page_index: int | None = 1,
+        page_size: int | None = 10,
+        point_types: list[int] | None = None,
         mask_error: bool = True,
-        order_by: Optional[str] = None,
-        order_direction: Optional[str] = None,
-    ) -> Tuple[List[List[str]], int]:
+        order_by: str | None = None,
+        order_direction: str | None = None,
+    ) -> tuple[list[list[str]], int]:
         """获取表格数据
-        
+
         Args:
             slave_id: 从机 ID
             name: 名称筛选
@@ -57,18 +55,16 @@ class DataExporter:
             mask_error: 是否隐藏无效数据(错误/未知)
             order_by: 排序字段 (地址, 功能码, 解析码)
             order_direction: 排序方向 (ascending, descending)
-            
+
         Returns:
             (数据列表, 总数)
         """
         if point_types is None or len(point_types) == 0:
             point_types = [0, 1, 2, 3]
 
-        yc_list, yx_list, yt_list, yk_list = self._point_manager.get_points_by_slave(
-            slave_id
-        )
+        yc_list, yx_list, yt_list, yk_list = self._point_manager.get_points_by_slave(slave_id)
 
-        table_data: List[List[str]] = []
+        table_data: list[list[str]] = []
         frame_type_dict = PointManager.frame_type_dict()
 
         # 处理遥测数据
@@ -124,18 +120,16 @@ class DataExporter:
         end = start + page_size
         return table_data[start:end], total
 
-    def _format_yc_row(
-        self, point: Yc, frame_type_dict: Dict[int, str], mask_error: bool = True
-    ) -> List[str]:
+    def _format_yc_row(self, point: Yc, frame_type_dict: dict[int, str], mask_error: bool = True) -> list[str]:
         """格式化遥测/遥调行"""
         is_valid = point.is_valid if hasattr(point, "is_valid") else None
-        
+
         status = "未知"
         if is_valid is True:
             status = "成功"
         elif is_valid is False:
             status = "失败"
-        
+
         # 仅当 mask_error 为 True 且数据无效时，才隐藏数值
         if mask_error and (is_valid is None or is_valid is False):
             reg_val = ""
@@ -143,12 +137,12 @@ class DataExporter:
         else:
             reg_val = str(point.hex_value)
             # IEC61850: FC=DC 的 DA 为描述/元数据 (如 dU, d, cDCnam), 真实值返回描述文本
-            point_fc = getattr(point, 'fc', '') or ''
-            if point_fc == 'DC':
+            point_fc = getattr(point, "fc", "") or ""
+            if point_fc == "DC":
                 real_val = str(point.name)
             else:
                 real_val = str(point.real_value)
-        
+
         # 获取 IEC104 类型标识（发 type_id，前端用 i18n key 翻译）
         iec_type_label = ""
         if hasattr(point, "iec_type_id") and point.iec_type_id:
@@ -169,16 +163,14 @@ class DataExporter:
             str(frame_type_dict.get(point.frame_type, "")),
             iec_type_label,
             status,
-            str(getattr(point, 'fc', '') or ''),
+            str(getattr(point, "fc", "") or ""),
         ]
 
-    def _format_yx_row(
-        self, point: Yx, frame_type_dict: Dict[int, str], mask_error: bool = True
-    ) -> List[str]:
+    def _format_yx_row(self, point: Yx, frame_type_dict: dict[int, str], mask_error: bool = True) -> list[str]:
         """格式化遥信/遥控行"""
         bit = point.bit if hasattr(point, "bit") else 0
         is_valid = point.is_valid if hasattr(point, "is_valid") else None
-        
+
         status = "未知"
         if is_valid is True:
             status = "成功"
@@ -191,8 +183,8 @@ class DataExporter:
         else:
             reg_val = str(point.hex_value)
             # IEC61850: FC=DC 的 DA 为描述/元数据 (如 dU, d, cDCnam), 真实值返回描述文本
-            point_fc = getattr(point, 'fc', '') or ''
-            if point_fc == 'DC':
+            point_fc = getattr(point, "fc", "") or ""
+            if point_fc == "DC":
                 real_val = str(point.name)
             else:
                 real_val = str(int(point.value))
@@ -217,7 +209,7 @@ class DataExporter:
             str(frame_type_dict.get(point.frame_type, "")),
             iec_type_label,
             status,
-            str(getattr(point, 'fc', '') or ''),
+            str(getattr(point, "fc", "") or ""),
         ]
 
     def export_csv(self, file_path: str) -> None:

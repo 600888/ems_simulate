@@ -4,12 +4,12 @@
 回调在 libIEC61850 的接收线程中执行，使用 queue 异步处理避免阻塞。
 """
 
-from collections import OrderedDict
+from collections.abc import Callable
 import contextlib
 from dataclasses import dataclass, field
 import datetime
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from ...core.mms_value import mms_value_to_python
 from ...defs.constants import HAS_IEC61850

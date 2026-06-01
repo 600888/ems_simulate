@@ -3,7 +3,6 @@
 frame_type = 0
 """
 
-from typing import List
 from src.data.dao.point_dao import PointDao
 from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import Yc
@@ -14,12 +13,13 @@ def _infer_iec61850_fc(address: str, frame_type: int) -> str:
     """从 IEC61850 地址推断 FC, 推断失败则根据帧类型回退"""
     try:
         from src.proto.iec61850.defs import infer_fc_from_address
+
         fc = infer_fc_from_address(address)
         if fc:
             return fc
     except Exception:
         pass
-    return {0: 'MX', 1: 'ST', 2: 'CO', 3: 'CO'}.get(frame_type, '')
+    return {0: "MX", 1: "ST", 2: "CO", 3: "CO"}.get(frame_type, "")
 
 
 class YcService:
@@ -29,7 +29,7 @@ class YcService:
         pass
 
     @classmethod
-    def get_list(cls, channel_id: int, protocol_type: ProtocolType) -> List[Yc]:
+    def get_list(cls, channel_id: int, protocol_type: ProtocolType) -> list[Yc]:
         """获取遥测点列表
 
         Args:
@@ -41,7 +41,7 @@ class YcService:
         """
         try:
             result = PointDao.get_yc_list(channel_id)
-            point_list: List[Yc] = []
+            point_list: list[Yc] = []
 
             for item in result:
                 point = cls._create_point(item, protocol_type)
@@ -54,11 +54,11 @@ class YcService:
             raise e
 
     @classmethod
-    def get_all(cls, protocol_type: ProtocolType) -> List[Yc]:
+    def get_all(cls, protocol_type: ProtocolType) -> list[Yc]:
         """获取所有遥测点"""
         try:
             result = PointDao.get_all_yc()
-            point_list: List[Yc] = []
+            point_list: list[Yc] = []
 
             for item in result:
                 point = cls._create_point(item, protocol_type)

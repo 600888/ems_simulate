@@ -26,7 +26,6 @@ ICD 文件遵循 IEC 61850 SCL (Substation Configuration Language) 的 XML Schem
 """
 
 import os
-from typing import Dict, List, Optional, Tuple
 import xml.etree.ElementTree as ET
 
 from src.data.controller.db import local_session

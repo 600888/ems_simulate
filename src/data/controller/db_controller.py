@@ -3,8 +3,7 @@
 支持 SQLite 和 MySQL 数据库的初始化和管理
 """
 
-import os
-from typing import Optional
+from pathlib import Path
 
 from src.config.db.db_config import DbMysqlConfig, DbSqliteConfig
 from src.data.model.base import Base
@@ -14,7 +13,7 @@ class DbController:
     """数据库控制器，统一管理数据库连接"""
 
     def __init__(self) -> None:
-        self.db_config: Optional[DbMysqlConfig | DbSqliteConfig] = None
+        self.db_config: DbMysqlConfig | DbSqliteConfig | None = None
         self._db_type: str = "sqlite"
 
     @property
@@ -31,20 +30,18 @@ class DbController:
 
     def init_db(self, db_type: str, **kwargs) -> bool:
         """根据类型初始化数据库
-        
+
         Args:
             db_type: 数据库类型 (sqlite/mysql)
             **kwargs: 数据库配置参数
-            
+
         Returns:
             bool: 初始化是否成功
         """
         self._db_type = db_type.lower()
 
         if self._db_type == "sqlite":
-            return self.init_sqlite_db(
-                db_path=kwargs.get("db_path", "data/ems.db")
-            )
+            return self.init_sqlite_db(db_path=kwargs.get("db_path", "data/ems.db"))
         else:
             return self.init_mysql_db(
                 ip=kwargs.get("ip", "127.0.0.1"),
@@ -56,18 +53,18 @@ class DbController:
 
     def init_sqlite_db(self, db_path: str) -> bool:
         """初始化 SQLite 数据库
-        
+
         Args:
             db_path: 数据库文件路径
-            
+
         Returns:
             bool: 初始化是否成功
         """
         try:
             # 确保目录存在
-            db_dir = os.path.dirname(db_path)
-            if db_dir and not os.path.exists(db_dir):
-                os.makedirs(db_dir, exist_ok=True)
+            db_dir = Path(db_path).parent
+            if not db_dir.exists():
+                db_dir.mkdir(parents=True, exist_ok=True)
 
             self.db_config = DbSqliteConfig()
             self.db_config.set_db_path(db_path)
@@ -79,10 +76,9 @@ class DbController:
             # 迁移: 为现有数据库添加 model_name 列 (IEC61850 IED 名称)
             try:
                 from sqlalchemy import text
+
                 with self.db_config.engine.connect() as conn:
-                    conn.execute(text(
-                        "ALTER TABLE channel ADD COLUMN model_name VARCHAR(128)"
-                    ))
+                    conn.execute(text("ALTER TABLE channel ADD COLUMN model_name VARCHAR(128)"))
                     conn.commit()
             except Exception:
                 pass  # 列已存在或数据库不支持
@@ -102,14 +98,14 @@ class DbController:
         database: str = "net",
     ) -> bool:
         """初始化 MySQL 数据库
-        
+
         Args:
             ip: MySQL 主机地址
             port: MySQL 端口
             user_name: 用户名
             pass_word: 密码
             database: 数据库名
-            
+
         Returns:
             bool: 初始化是否成功
         """

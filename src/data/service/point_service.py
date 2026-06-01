@@ -3,16 +3,13 @@
 提供测点的统一业务入口
 """
 
-from typing import List, Optional
-
 from src.data.dao.point_dao import PointDao
-from src.enums.modbus_def import ProtocolType
-from src.enums.point_data import Yc, Yx, Yk, Yt, BasePoint
-
 from src.data.service.yc_service import YcService
-from src.data.service.yx_service import YxService
 from src.data.service.yk_service import YkService
 from src.data.service.yt_service import YtService
+from src.data.service.yx_service import YxService
+from src.enums.modbus_def import ProtocolType
+from src.enums.point_data import BasePoint, Yc, Yk, Yt, Yx
 
 
 class PointService:
@@ -22,11 +19,9 @@ class PointService:
         pass
 
     @classmethod
-    def get_all_points(
-        cls, channel_id: int, protocol_type: ProtocolType
-    ) -> List[BasePoint]:
+    def get_all_points(cls, channel_id: int, protocol_type: ProtocolType) -> list[BasePoint]:
         """获取通道下所有测点"""
-        points: List[BasePoint] = []
+        points: list[BasePoint] = []
         points.extend(YcService.get_list(channel_id, protocol_type))
         points.extend(YxService.get_list(channel_id, protocol_type))
         points.extend(YkService.get_list(channel_id, protocol_type))
@@ -34,45 +29,43 @@ class PointService:
         return points
 
     @classmethod
-    def get_yc_list(cls, channel_id: int, protocol_type: ProtocolType) -> List[Yc]:
+    def get_yc_list(cls, channel_id: int, protocol_type: ProtocolType) -> list[Yc]:
         """获取遥测点列表"""
         return YcService.get_list(channel_id, protocol_type)
 
     @classmethod
-    def get_yx_list(cls, channel_id: int, protocol_type: ProtocolType) -> List[Yx]:
+    def get_yx_list(cls, channel_id: int, protocol_type: ProtocolType) -> list[Yx]:
         """获取遥信点列表"""
         return YxService.get_list(channel_id, protocol_type)
 
     @classmethod
-    def get_yk_list(cls, channel_id: int, protocol_type: ProtocolType) -> List[Yk]:
+    def get_yk_list(cls, channel_id: int, protocol_type: ProtocolType) -> list[Yk]:
         """获取遥控点列表"""
         return YkService.get_list(channel_id, protocol_type)
 
     @classmethod
-    def get_yt_list(cls, channel_id: int, protocol_type: ProtocolType) -> List[Yt]:
+    def get_yt_list(cls, channel_id: int, protocol_type: ProtocolType) -> list[Yt]:
         """获取遥调点列表"""
         return YtService.get_list(channel_id, protocol_type)
 
     @classmethod
-    def get_rtu_addr_list(cls, channel_id: int) -> List[int]:
+    def get_rtu_addr_list(cls, channel_id: int) -> list[int]:
         """获取通道下的从机地址列表"""
         return PointDao.get_rtu_addr_list(channel_id)
 
     @classmethod
-    def get_point_by_code(cls, code: str, channel_id: Optional[int] = None) -> Optional[dict]:
+    def get_point_by_code(cls, code: str, channel_id: int | None = None) -> dict | None:
         """根据编码获取测点"""
         return PointDao.get_point_by_code(code, channel_id)
 
     @classmethod
     def update_point_limit(
-        cls, grp_code: str, code: str, min_limit: float, max_limit: float, channel_id: Optional[int] = None
+        cls, _grp_code: str, code: str, min_limit: float, max_limit: float, channel_id: int | None = None
     ) -> bool:
         """更新测点限值"""
         return PointDao.update_point_metadata(code, {"min_limit": min_limit, "max_limit": max_limit}, channel_id)
 
     @classmethod
-    def update_point_metadata(
-        cls, code: str, metadata: dict, channel_id: Optional[int] = None
-    ) -> bool:
+    def update_point_metadata(cls, code: str, metadata: dict, channel_id: int | None = None) -> bool:
         """更新测点元数据"""
         return PointDao.update_point_metadata(code, metadata, channel_id)

@@ -22,9 +22,8 @@ IEC 104 协议中，不同 ASDU 类型有不同的品质描述符格式：
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import IntFlag
-from typing import Optional
 
 # ===== 品质标志位枚举 =====
 

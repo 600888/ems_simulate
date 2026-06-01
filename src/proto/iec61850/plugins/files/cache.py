@@ -7,13 +7,12 @@
 - 缓存清理
 """
 
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
-from typing import Dict, List, Optional
 
 from ...log import log
 from .types import FileMetadata

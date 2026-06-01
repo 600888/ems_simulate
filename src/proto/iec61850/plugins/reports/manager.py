@@ -8,10 +8,9 @@
 2. 如果 API 未暴露到 Python SWIG，回退到 ICD 模型声明方式
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...defs.constants import HAS_IEC61850
-from ...defs.types import OptFields, TrgOps
 from ...log import log
 
 if HAS_IEC61850:

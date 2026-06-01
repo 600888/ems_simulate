@@ -7,7 +7,7 @@ ICD/SCD/CID 文件统一导入:
 
 import os
 import tempfile
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 

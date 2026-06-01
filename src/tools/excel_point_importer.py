@@ -5,7 +5,6 @@ Excel 需包含 4 个 sheet: 遥测, 遥信, 遥控, 遥调
 """
 
 import os
-from typing import List, Optional, Tuple
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
