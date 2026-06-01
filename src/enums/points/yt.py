@@ -29,9 +29,9 @@ class Yt(BasePoint):
         add_coe: float = 0,
         frame_type: int = 3,  # 遥调帧类型
         decode: str = "0x41",
-        related_yc_address: Optional[int] = None,
-        iec_type_id: Optional[str] = None,
-        iec_quality: Optional[int] = None,
+        related_yc_address: int | None = None,
+        iec_type_id: str | None = None,
+        iec_quality: int | None = None,
         fc: str = "",
     ) -> None:
         super().__init__(
@@ -53,7 +53,7 @@ class Yt(BasePoint):
         self._mul_coe: float = float(mul_coe)
         self._add_coe: float = float(add_coe)
         self._real_value: float = self.value * self.mul_coe + self.add_coe
-        self._related_yc_address: Optional[int] = related_yc_address
+        self._related_yc_address: int | None = related_yc_address
 
         # Modbus 解析相关
         self.register_cnt = Decode.get_decode_register_cnt(self.decode)
@@ -77,7 +77,7 @@ class Yt(BasePoint):
             self.is_plan,
         ]
 
-    def _on_decode_changed(self, old_decode: Optional[str]):
+    def _on_decode_changed(self, old_decode: str | None):
         """当解析码改变时触发此回调"""
         if not hasattr(self, "_mul_coe"):
             return  # 初始化期间不触发
@@ -95,7 +95,7 @@ class Yt(BasePoint):
     # ===== 遥调特有属性 =====
 
     @property
-    def related_yc_address(self) -> Optional[int]:
+    def related_yc_address(self) -> int | None:
         """关联的遥测点地址"""
         return self._related_yc_address
 
@@ -140,7 +140,7 @@ class Yt(BasePoint):
         return self._value
 
     @value.setter
-    def value(self, value: Union[int, float]):
+    def value(self, value: int | float):
         """设置寄存器值，自动计算十六进制和真实值"""
         if not self._is_updating and value != self._value:
             self._is_updating = True

@@ -30,10 +30,10 @@ class FilesPlugin:
     """
 
     def __init__(self):
-        self._connection: Optional[Iec61850Connection] = None
-        self._browser: Optional[DirectoryBrowser] = None
-        self._transfer: Optional[FileTransfer] = None
-        self._cache: Optional[CacheManager] = None
+        self._connection: Iec61850Connection | None = None
+        self._browser: DirectoryBrowser | None = None
+        self._transfer: FileTransfer | None = None
+        self._cache: CacheManager | None = None
         self._initialized = False
 
     # ===== Iec61850Plugin 协议实现 =====
@@ -116,7 +116,7 @@ class FilesPlugin:
         self,
         filename: str,
         local_path: str = "",
-        progress_callback: Optional[ProgressCallback] = None,
+        progress_callback: ProgressCallback | None = None,
         overwrite: bool = False,
     ) -> bytes:
         """从远程 IED 下载文件
@@ -150,7 +150,7 @@ class FilesPlugin:
         self,
         filename: str,
         local_path: str = "",
-        progress_callback: Optional[ProgressCallback] = None,
+        progress_callback: ProgressCallback | None = None,
         overwrite: bool = False,
     ) -> TransferProgress:
         """下载文件并返回传输进度信息
@@ -183,7 +183,7 @@ class FilesPlugin:
         self,
         local_path: str,
         remote_filename: str,
-        progress_callback: Optional[ProgressCallback] = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> bool:
         """上传文件到远程 IED
 
@@ -219,7 +219,7 @@ class FilesPlugin:
 
     # ===== 缓存管理 (委托 CacheManager) =====
 
-    def get_cached_file(self, remote_path: str) -> Optional[str]:
+    def get_cached_file(self, remote_path: str) -> str | None:
         """获取缓存文件路径
 
         Args:
@@ -235,7 +235,7 @@ class FilesPlugin:
     def is_cache_valid(
         self,
         remote_path: str,
-        remote_modified: Optional[Any] = None,
+        remote_modified: Any | None = None,
     ) -> bool:
         """检查缓存是否有效
 

@@ -64,14 +64,14 @@ class DeviceController:
         slave_list.append("返回上级菜单")
         return slave_list
 
-    def get_device_by_id(self, device_id: int) -> Optional[Device]:
+    def get_device_by_id(self, device_id: int) -> Device | None:
         """根据设备 ID 查找设备"""
         for device in self.device_list:
             if getattr(device, "device_id", None) == device_id:
                 return device
         return None
 
-    def get_device_by_channel_id(self, channel_id: int) -> Optional[Device]:
+    def get_device_by_channel_id(self, channel_id: int) -> Device | None:
         """根据通道 ID 查找设备（创建设备时 device_id == channel_id）"""
         for device in self.device_list:
             if getattr(device, "device_id", None) == channel_id:

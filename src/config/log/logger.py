@@ -25,14 +25,14 @@ class Log:
 
     def __init__(
         self,
-        filename: Optional[str] = None,
+        filename: str | None = None,
         cmdlevel: str = "DEBUG",
         filelevel: str = "INFO",
         backup_count: int = 7,  # 默认保留7天/7个文件
-        limit: Union[int, str] = "20 MB",  # 支持字符串格式
-        when: Optional[str] = None,
+        limit: int | str = "20 MB",  # 支持字符串格式
+        when: str | None = None,
         colorful: bool = True,
-        compression: Optional[str] = None,  # 新增压缩功能
+        compression: str | None = None,  # 新增压缩功能
         is_backtrace: bool = True,
         enqueue: bool = True,
     ):
@@ -134,7 +134,7 @@ class Log:
             + f"[{record['level']}] {message}{COLOR_RESET}\n"
         )
 
-    def _get_rotation_config(self, when: Optional[str], limit: Union[int, str]):
+    def _get_rotation_config(self, when: str | None, limit: int | str):
         if when:  # 时间轮转
             return when  # "D"（天）、"H"（小时）、"midnight"等
         else:  # 大小轮转

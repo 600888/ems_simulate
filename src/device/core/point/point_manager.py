@@ -68,7 +68,7 @@ class PointManager:
         if slave_id not in self.slave_id_list:
             self.slave_id_list.append(slave_id)
 
-    def get_point_by_code(self, code: str) -> Optional[BasePoint]:
+    def get_point_by_code(self, code: str) -> BasePoint | None:
         """根据编码获取测点"""
         return self.code_map.get(code)
 
@@ -98,7 +98,7 @@ class PointManager:
                 result.extend(points)
         return result
 
-    def find_point_by_address_and_type(self, address: int, frame_type: int) -> Optional[BasePoint]:
+    def find_point_by_address_and_type(self, address: int, frame_type: int) -> BasePoint | None:
         """根据地址和帧类型查找测点
 
         Args:

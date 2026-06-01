@@ -4,13 +4,13 @@ from typing import Callable, Optional
 
 
 class DataUpdateThread:
-    def __init__(self, task: Optional[Callable] = None, task_args: tuple = ()):
+    def __init__(self, task: Callable | None = None, task_args: tuple = ()):
         """
         :param task: 可调用任务（函数或方法）
         :param task_args: 任务参数元组
         """
         self.stop_event = threading.Event()
-        self.thread: Optional[threading.Thread] = None
+        self.thread: threading.Thread | None = None
         self.task = task
         self.task_args = task_args
 
@@ -41,7 +41,7 @@ class DataUpdateThread:
             return True
         return False
 
-    def stop(self, timeout: Optional[float] = None) -> None:
+    def stop(self, timeout: float | None = None) -> None:
         """停止线程，支持超时控制"""
         if self.is_alive():
             self.stop_event.set()

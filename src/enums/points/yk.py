@@ -18,17 +18,17 @@ class Yk(BasePoint):
         self,
         rtu_addr: str = "1",
         address: str = "0x0000",
-        bit: Optional[str | int] = None,
+        bit: str | int | None = None,
         func_code: int = 5,  # 遥控默认使用写单线圈功能码
         name: str = "",
         code: str = "",
         value: int = 0,
         frame_type: int = 2,  # 遥控帧类型
         decode: str = "0x20",
-        related_yx_address: Optional[int] = None,
+        related_yx_address: int | None = None,
         command_type: int = 0,
-        iec_type_id: Optional[str] = None,
-        iec_quality: Optional[int] = None,
+        iec_type_id: str | None = None,
+        iec_quality: int | None = None,
         fc: str = "",
     ):
         super().__init__(
@@ -45,9 +45,9 @@ class Yk(BasePoint):
             fc=fc,
         )
 
-        self._bit: Optional[int] = int(bit) if bit is not None and str(bit) != "" else None
+        self._bit: int | None = int(bit) if bit is not None and str(bit) != "" else None
         self._hex_value: str = decimal_to_hex_formatted(self._value)
-        self._related_yx_address: Optional[int] = related_yx_address
+        self._related_yx_address: int | None = related_yx_address
         self._command_type: int = command_type  # 命令类型：0-合闸/1-分闸 等
 
     def list(self):
@@ -70,15 +70,15 @@ class Yk(BasePoint):
     # ===== 遥控特有属性 =====
 
     @property
-    def bit(self) -> Optional[int]:
+    def bit(self) -> int | None:
         return self._bit
 
     @bit.setter
-    def bit(self, bit: Optional[int]):
+    def bit(self, bit: int | None):
         self._bit = bit
 
     @property
-    def related_yx_address(self) -> Optional[int]:
+    def related_yx_address(self) -> int | None:
         """关联的遥信点地址"""
         return self._related_yx_address
 

@@ -83,8 +83,8 @@ class ServerDataSetManager:
         ld_inst: str,
         ds_name: str,
         data_set_ref: str,
-        entries: Optional[list[dict[str, Any]]] = None,
-        dataset_catalog: Optional[list[dict[str, Any]]] = None,
+        entries: list[dict[str, Any]] | None = None,
+        dataset_catalog: list[dict[str, Any]] | None = None,
     ) -> bool:
         """注册 DataSet 并在 MMS 模型中创建真实数据集"""
         if not self._builder.model:
@@ -155,8 +155,8 @@ class ServerDataSetManager:
         min_time: int = 10,
         max_time: int = 1000,
         ld_inst: str = None,
-        entries: Optional[list[dict[str, Any]]] = None,
-        dst_mac: Optional[list[int]] = None,
+        entries: list[dict[str, Any]] | None = None,
+        dst_mac: list[int] | None = None,
         vlan_id: int = 0,
         vlan_prio: int = 4,
     ) -> bool:
@@ -250,7 +250,7 @@ class ServerDataSetManager:
     def _add_fcda_entries_to_dataset(
         self,
         data_set,
-        entries: Optional[list[dict[str, Any]]],
+        entries: list[dict[str, Any]] | None,
         default_ld_inst: str,
     ) -> int:
         """向 DataSet 添加 FCDA 条目"""
@@ -327,7 +327,7 @@ class ServerDataSetManager:
             log.info(f"DataSet 已添加 {added_count}/{len(entries)} 个 FCDA 条目")
         return added_count
 
-    def _build_ds_members(self, entries: Optional[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    def _build_ds_members(self, entries: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
         """从 entries 列表构建成员信息"""
         ds_members = []
         if not entries:

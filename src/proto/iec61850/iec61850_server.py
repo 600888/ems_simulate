@@ -193,15 +193,15 @@ class IEC61850Server:
         """获取或创建逻辑节点 (委托给 builder)"""
         return self._builder.get_or_create_ln(ld_inst, ln_name)
 
-    def add_point(self, address, frame_type: int = 0, fc: str = "") -> Optional[str]:
+    def add_point(self, address, frame_type: int = 0, fc: str = "") -> str | None:
         """添加测点到数据模型 (委托给 builder)"""
         return self._builder.add_point(address, frame_type, fc)
 
-    def _add_point_simple(self, address, frame_type: int) -> Optional[str]:
+    def _add_point_simple(self, address, frame_type: int) -> str | None:
         """简单地址模式添加测点 (委托给 builder)"""
         return self._builder._add_point_simple(address, frame_type)
 
-    def _add_point_from_ref(self, address: str, frame_type: int, fc: str = "") -> Optional[str]:
+    def _add_point_from_ref(self, address: str, frame_type: int, fc: str = "") -> str | None:
         """完整引用路径模式添加测点 (委托给 builder)"""
         return self._builder._add_point_from_ref(address, frame_type, fc)
 

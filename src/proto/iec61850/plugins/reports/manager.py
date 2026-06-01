@@ -60,8 +60,8 @@ class ReportManager:
         conf_rev: int = 1,
         buf_time: int = 0,
         intg_period: int = 0,
-        trg_ops: Optional[dict[str, bool]] = None,
-        opt_fields: Optional[dict[str, bool]] = None,
+        trg_ops: dict[str, bool] | None = None,
+        opt_fields: dict[str, bool] | None = None,
     ) -> bool:
         """在 MMS 模型中注册 ReportControlBlock
 
@@ -161,8 +161,8 @@ class ReportManager:
         buffered: bool,
         buf_time: int,
         intg_period: int,
-        trg_ops: Optional[dict[str, bool]] = None,
-        opt_fields: Optional[dict[str, bool]] = None,
+        trg_ops: dict[str, bool] | None = None,
+        opt_fields: dict[str, bool] | None = None,
     ) -> bool:
         """尝试使用 ReportControlBlock_create API 创建 RCB
 

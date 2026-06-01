@@ -7,7 +7,7 @@
 """
 
 import contextlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Callable, List, Optional
 
 from ...core.connection import Iec61850Connection
@@ -52,7 +52,7 @@ class DirectoryBrowser:
         self,
         directory: str = "",
         max_depth: int = 5,
-        on_entry: Optional[Callable[[FileEntry], None]] = None,
+        on_entry: Callable[[FileEntry], None] | None = None,
     ) -> list[FileEntry]:
         """递归获取完整文件目录树
 
@@ -76,7 +76,7 @@ class DirectoryBrowser:
         max_depth: int,
         current_depth: int,
         result: list[FileEntry],
-        on_entry: Optional[Callable[[FileEntry], None]] = None,
+        on_entry: Callable[[FileEntry], None] | None = None,
     ) -> None:
         """递归遍历目录"""
         if current_depth >= max_depth:
@@ -168,7 +168,7 @@ class DirectoryBrowser:
         last_modified = None
         if last_modified_ms and last_modified_ms > 0:
             with contextlib.suppress(OSError, ValueError):
-                last_modified = datetime.fromtimestamp(last_modified_ms / 1000.0, tz=timezone.utc)
+                last_modified = datetime.fromtimestamp(last_modified_ms / 1000.0, tz=UTC)
 
         file_entry = FileEntry(
             name=filename.rstrip("/") if filename else "unknown",

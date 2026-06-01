@@ -39,7 +39,7 @@ def is_full_ref(address) -> bool:
     return isinstance(address, str) and "/" in address
 
 
-def parse_ref(address: str) -> Optional[tuple[str, str, str, str]]:
+def parse_ref(address: str) -> tuple[str, str, str, str] | None:
     """解析完整 IEC 61850 引用路径
 
     格式: {ld_inst}/{ln_name}.{do_name}.{da_path}
@@ -171,7 +171,7 @@ def infer_iec_type_from_address(address: str) -> str:
     return IEC_TYPE_UNKNOWN
 
 
-def extract_ln_class(ln_name: str) -> Optional[str]:
+def extract_ln_class(ln_name: str) -> str | None:
     """从可能带前缀的逻辑节点名中提取 lnClass
 
     原 client.py:1143 的 _extract_ln_class 统一。

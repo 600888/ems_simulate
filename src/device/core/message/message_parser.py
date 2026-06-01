@@ -50,7 +50,7 @@ class ModbusMessageParser:
         return f"0x{start:04X}-0x{end:04X}"
 
     @staticmethod
-    def parse_tcp(raw_hex: str, last_request_info: Optional[dict] = None) -> str:
+    def parse_tcp(raw_hex: str, last_request_info: dict | None = None) -> str:
         """解析 Modbus TCP 报文
 
         Args:
@@ -77,7 +77,7 @@ class ModbusMessageParser:
         return ModbusMessageParser._parse_pdu(pdu, slave_id, last_request_info)
 
     @staticmethod
-    def parse_rtu(raw_hex: str, last_request_info: Optional[dict] = None) -> str:
+    def parse_rtu(raw_hex: str, last_request_info: dict | None = None) -> str:
         """解析 Modbus RTU 报文
 
         Args:
@@ -102,7 +102,7 @@ class ModbusMessageParser:
         return ModbusMessageParser._parse_pdu(pdu, slave_id, last_request_info)
 
     @staticmethod
-    def _parse_pdu(pdu: bytes, slave_id: int, last_request_info: Optional[dict] = None) -> str:
+    def _parse_pdu(pdu: bytes, slave_id: int, last_request_info: dict | None = None) -> str:
         """解析 Modbus PDU（协议数据单元）
 
         Args:
@@ -198,7 +198,7 @@ class ModbusMessageParser:
         return f"{fc_name} (从站 {slave_id})"
 
     @staticmethod
-    def extract_request_info(raw_hex: str, is_tcp: bool = True) -> Optional[dict]:
+    def extract_request_info(raw_hex: str, is_tcp: bool = True) -> dict | None:
         """从请求报文中提取关键信息，用于关联后续响应
 
         Args:

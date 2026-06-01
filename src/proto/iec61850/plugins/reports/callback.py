@@ -33,7 +33,7 @@ class _CallbackInfo:
     rcb_ref: str
     handler: Any = None  # _PyRCBHandler 实例 (保持引用防 GC)
     subscriber: Any = None  # RCBSubscriber 实例 (保持引用防 GC)
-    on_report: Optional[Callable] = None  # Python 回调函数
+    on_report: Callable | None = None  # Python 回调函数
     data_cache: list[ReportDataEntry] = field(default_factory=list)
     max_cache: int = 1000
     enabled_at: str = ""
@@ -67,7 +67,7 @@ class ReportCallbackHandler:
     def install(
         connection,
         rcb_ref: str,
-        on_report: Optional[Callable[[ReportDataEntry], None]] = None,
+        on_report: Callable[[ReportDataEntry], None] | None = None,
         max_cache: int = 1000,
         rpt_id: str = "",
     ) -> bool:
@@ -258,7 +258,7 @@ else:
             self._rcb_ref = rcb_ref
 
 
-def _parse_client_report(report, rcb_ref: str) -> Optional[ReportDataEntry]:
+def _parse_client_report(report, rcb_ref: str) -> ReportDataEntry | None:
     """解析 ClientReport 为 ReportDataEntry
 
     提取报告中的 rptId、dataSet、confRev、entryId、seqNum、

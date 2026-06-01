@@ -184,7 +184,7 @@ class CANMonitor:
                         if frame and frame["dst"] == 0x00:  # 确认是发给动环系统的消息
                             self.handle_alarm_frame(frame)
 
-                    except socket.timeout:
+                    except TimeoutError:
                         break
 
                 # 打印状态摘要

@@ -38,8 +38,8 @@ class BasePoint:
         value: int = 0,
         frame_type: int = 0,
         decode: str = "0x41",
-        iec_type_id: Optional[str] = None,
-        iec_quality: Optional[int] = None,
+        iec_type_id: str | None = None,
+        iec_quality: int | None = None,
         fc: str = "",
     ) -> None:
         self._is_updating = False
@@ -67,16 +67,16 @@ class BasePoint:
         self._is_simulated: bool = False
         self._is_plan: bool = False
         self._decode = decode
-        self._iec_type_id: Optional[str] = iec_type_id
+        self._iec_type_id: str | None = iec_type_id
         self._iec_quality: IEC104QualityDescriptor = IEC104QualityDescriptor.from_int(iec_quality or 0)
         self._fc: str = fc
 
         self.is_send_signal = False
-        self.related_point: Optional[BasePoint] = None
+        self.related_point: BasePoint | None = None
         self.related_value: dict[int, int] | None = None
         self.value_changed = Signal()
         self.is_signed = False
-        self.is_valid: Optional[bool] = None  # 数据是否有效（None:未知, True:成功, False:失败）
+        self.is_valid: bool | None = None  # 数据是否有效（None:未知, True:成功, False:失败）
         self.is_locked_by_mapping = False  # 是否被映射锁定（如果为True，则模拟器不应修改此值）
 
         # 变更追溯（默认开启）
@@ -161,7 +161,7 @@ class BasePoint:
             self._decode = decode
             self._on_decode_changed(old_decode)
 
-    def _on_decode_changed(self, old_decode: Optional[str]):
+    def _on_decode_changed(self, old_decode: str | None):
         """当解析码改变时触发此回调，子类可重写以处理解析码变更后的逻辑"""
         pass
 
@@ -214,12 +214,12 @@ class BasePoint:
         self._fc = fc
 
     @property
-    def iec_type_id(self) -> Optional[str]:
+    def iec_type_id(self) -> str | None:
         """IEC104 ASDU 类型标识（如 M_ME_NC_1）"""
         return self._iec_type_id
 
     @iec_type_id.setter
-    def iec_type_id(self, type_id: Optional[str]):
+    def iec_type_id(self, type_id: str | None):
         self._iec_type_id = type_id
 
     @property
@@ -310,6 +310,6 @@ class BasePoint:
         return list(self._change_history)
 
     @property
-    def last_change(self) -> Optional[ChangeRecord]:
+    def last_change(self) -> ChangeRecord | None:
         """返回最近一条变更记录"""
         return self._change_history[-1] if self._change_history else None

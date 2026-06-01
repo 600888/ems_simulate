@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 import enum
 
 
@@ -110,7 +110,7 @@ class FileMetadata:
     local_path: str  # 本地缓存路径
     file_size: int  # 文件大小
     remote_modified: datetime | None = None  # 远程最后修改时间
-    download_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    download_time: datetime = field(default_factory=lambda: datetime.now(UTC))
     checksum: str | None = None  # 文件校验和 (MD5)
 
     def to_dict(self) -> dict[str, object]:

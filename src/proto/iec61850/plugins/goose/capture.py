@@ -529,7 +529,7 @@ class GooseCaptureEngine:
                         sock.settimeout(1.0)
                     raw_data = sock.recv(65535)
                     self._process_packet(raw_data)
-                except socket.timeout:
+                except TimeoutError:
                     continue
                 except OSError as e:
                     if not self._stop_event.is_set():

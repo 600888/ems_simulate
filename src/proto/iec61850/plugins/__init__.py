@@ -57,7 +57,7 @@ class PluginRegistry:
         self._factories[name] = factory
         log.debug(f"插件工厂已注册: {name}")
 
-    def get(self, name: str) -> Optional[Iec61850Plugin]:
+    def get(self, name: str) -> Iec61850Plugin | None:
         """获取插件实例 (懒创建)
 
         Args:

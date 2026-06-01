@@ -7,7 +7,7 @@
 - 缓存清理
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 import hashlib
 import json
 import os
@@ -55,7 +55,7 @@ class CacheManager:
 
     # ===== 公共 API =====
 
-    def get_cached_path(self, remote_path: str) -> Optional[str]:
+    def get_cached_path(self, remote_path: str) -> str | None:
         """查询文件是否已缓存
 
         Args:
@@ -76,7 +76,7 @@ class CacheManager:
     def is_cache_valid(
         self,
         remote_path: str,
-        remote_modified: Optional[datetime],
+        remote_modified: datetime | None,
     ) -> bool:
         """检查缓存是否有效
 
@@ -101,7 +101,7 @@ class CacheManager:
         self,
         remote_path: str,
         local_source: str,
-        remote_modified: Optional[datetime] = None,
+        remote_modified: datetime | None = None,
     ) -> str:
         """将文件加入缓存
 
@@ -139,7 +139,7 @@ class CacheManager:
             local_path=str(cache_path),
             file_size=os.path.getsize(local_source),
             remote_modified=remote_modified,
-            download_time=datetime.now(timezone.utc),
+            download_time=datetime.now(UTC),
             checksum=checksum,
         )
         self._index[self._normalize_key(remote_path)] = meta
@@ -152,7 +152,7 @@ class CacheManager:
         self,
         remote_path: str,
         data: bytes,
-        remote_modified: Optional[datetime] = None,
+        remote_modified: datetime | None = None,
     ) -> str:
         """将字节数据直接写入缓存
 
@@ -186,7 +186,7 @@ class CacheManager:
             local_path=str(cache_path),
             file_size=len(data),
             remote_modified=remote_modified,
-            download_time=datetime.now(timezone.utc),
+            download_time=datetime.now(UTC),
             checksum=checksum,
         )
         self._index[self._normalize_key(remote_path)] = meta
@@ -261,7 +261,7 @@ class CacheManager:
         # 按下载时间升序排序 (最早的优先淘汰)
         sorted_items = sorted(
             self._index.items(),
-            key=lambda x: x[1].download_time or datetime.min.replace(tzinfo=timezone.utc),
+            key=lambda x: x[1].download_time or datetime.min.replace(tzinfo=UTC),
         )
 
         evicted = 0
@@ -309,7 +309,7 @@ class CacheManager:
                     local_path=item.get("local_path", ""),
                     file_size=item.get("file_size", 0),
                     remote_modified=self._parse_datetime(item.get("remote_modified")),
-                    download_time=self._parse_datetime(item.get("download_time")) or datetime.now(timezone.utc),
+                    download_time=self._parse_datetime(item.get("download_time")) or datetime.now(UTC),
                     checksum=item.get("checksum"),
                 )
             log.debug(f"加载缓存索引: {len(self._index)} 条记录")
@@ -368,7 +368,7 @@ class CacheManager:
         return h.hexdigest()
 
     @staticmethod
-    def _parse_datetime(value) -> Optional[datetime]:
+    def _parse_datetime(value) -> datetime | None:
         """解析 ISO 格式日期时间字符串"""
         if not value:
             return None

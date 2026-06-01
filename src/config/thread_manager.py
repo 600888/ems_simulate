@@ -7,7 +7,7 @@ class ThreadManager:
     def __init__(self) -> None:
         # 创建一个线程池，这里只使用一个线程作为示例，可以根据需要调整
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
-        self.target: Optional[callable] = None
+        self.target: callable | None = None
         # 使用Future对象来跟踪线程池中的任务
         self.future = None
         # 创建一个Event来控制模拟的停止

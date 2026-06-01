@@ -29,8 +29,8 @@ class Yc(BasePoint):
         add_coe: float = 0,
         frame_type: int = 0,
         decode: str = "0x41",
-        iec_type_id: Optional[str] = None,
-        iec_quality: Optional[int] = None,
+        iec_type_id: str | None = None,
+        iec_quality: int | None = None,
         fc: str = "",
     ) -> None:
         super().__init__(
@@ -75,7 +75,7 @@ class Yc(BasePoint):
             self.is_plan,
         ]
 
-    def _on_decode_changed(self, old_decode: Optional[str]):
+    def _on_decode_changed(self, old_decode: str | None):
         """当解析码改变时触发此回调"""
         if not hasattr(self, "_mul_coe"):
             return  # 初始化期间不触发
@@ -129,7 +129,7 @@ class Yc(BasePoint):
         return self._value
 
     @value.setter
-    def value(self, value: Union[int, float]):
+    def value(self, value: int | float):
         """设置寄存器值，自动计算十六进制和真实值"""
         if not self._is_updating and value != self._value:
             self._is_updating = True

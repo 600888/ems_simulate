@@ -15,7 +15,7 @@ class GooseDataSetEntryCreate(BaseModel):
     """创建数据集条目"""
 
     name: str = Field(..., description="数据集条目名称", min_length=1, max_length=128)
-    value: Union[bool, int, float, str] = Field(False, description="初始值")
+    value: bool | int | float | str = Field(False, description="初始值")
     iec_type: str = Field("boolean", description="IEC 数据类型: boolean/integer/float/string/bitstring/timestamp")
 
     @field_validator("iec_type")
@@ -30,7 +30,7 @@ class GooseDataSetEntryCreate(BaseModel):
 class GooseDataSetEntryUpdate(BaseModel):
     """更新数据集条目值"""
 
-    value: Union[bool, int, float, str] = Field(..., description="新值")
+    value: bool | int | float | str = Field(..., description="新值")
 
 
 class GoosePublisherCreate(BaseModel):
@@ -43,16 +43,16 @@ class GoosePublisherCreate(BaseModel):
     app_id: int = Field(0x0001, description="APPID", ge=0, le=0xFFFF)
     conf_rev: int = Field(1, description="配置修订号", ge=1)
     time_allowed_to_live: int = Field(1000, description="报文存活时间(ms)", ge=100, le=60000)
-    dst_mac: Optional[list[int]] = Field(None, description="目标MAC地址 (6字节)", max_length=6)
+    dst_mac: list[int] | None = Field(None, description="目标MAC地址 (6字节)", max_length=6)
     vlan_id: int = Field(0, description="VLAN ID", ge=0, le=4095)
     vlan_prio: int = Field(4, description="VLAN 优先级", ge=0, le=7)
     simulation: bool = Field(True, description="是否为仿真模式")
     entries: list[GooseDataSetEntryCreate] = Field(default_factory=list, description="数据集条目列表")
-    channel_id: Optional[int] = Field(None, description="关联的通道ID (提供后持久化到数据库)", ge=1)
+    channel_id: int | None = Field(None, description="关联的通道ID (提供后持久化到数据库)", ge=1)
 
     @field_validator("dst_mac")
     @classmethod
-    def validate_dst_mac(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+    def validate_dst_mac(cls, v: list[int] | None) -> list[int] | None:
         if v is not None:
             if len(v) != 6:
                 raise ValueError("dst_mac 必须包含 6 个字节")
@@ -85,10 +85,10 @@ class GoosePublisherUpdate(BaseModel):
     """更新 GOOSE Publisher 配置"""
 
     publisher_id: str = Field(..., description="Publisher 标识 (go_cb_ref)")
-    go_id: Optional[str] = Field(None, description="GOOSE 标识符")
-    conf_rev: Optional[int] = Field(None, description="配置修订号", ge=1)
-    time_allowed_to_live: Optional[int] = Field(None, description="报文存活时间(ms)", ge=100, le=60000)
-    simulation: Optional[bool] = Field(None, description="是否为仿真模式")
+    go_id: str | None = Field(None, description="GOOSE 标识符")
+    conf_rev: int | None = Field(None, description="配置修订号", ge=1)
+    time_allowed_to_live: int | None = Field(None, description="报文存活时间(ms)", ge=100, le=60000)
+    simulation: bool | None = Field(None, description="是否为仿真模式")
 
 
 class GoosePublisherEntryAdd(BaseModel):
@@ -103,7 +103,7 @@ class GoosePublisherEntryUpdate(BaseModel):
 
     publisher_id: str = Field(..., description="Publisher 标识 (go_cb_ref)")
     index: int = Field(..., description="条目索引", ge=0)
-    value: Union[bool, int, float, str] = Field(..., description="新值")
+    value: bool | int | float | str = Field(..., description="新值")
 
 
 class GoosePublisherEntryRemove(BaseModel):
@@ -121,13 +121,13 @@ class GooseSubscriptionCreate(BaseModel):
 
     receiver_id: str = Field("", description="Receiver 标识（新建时可选）")
     go_cb_ref: str = Field(..., description="GOOSE 控制块引用 (MMS格式)", min_length=1)
-    app_id: Optional[int] = Field(None, description="APPID 过滤", ge=0, le=0xFFFF)
-    dst_mac: Optional[list[int]] = Field(None, description="目标MAC地址过滤 (6字节)", max_length=6)
+    app_id: int | None = Field(None, description="APPID 过滤", ge=0, le=0xFFFF)
+    dst_mac: list[int] | None = Field(None, description="目标MAC地址过滤 (6字节)", max_length=6)
     description: str = Field("", description="描述")
 
     @field_validator("dst_mac")
     @classmethod
-    def validate_dst_mac(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+    def validate_dst_mac(cls, v: list[int] | None) -> list[int] | None:
         if v is not None:
             if len(v) != 6:
                 raise ValueError("dst_mac 必须包含 6 个字节")
@@ -201,7 +201,7 @@ class GooseSubscriptionStatus(BaseModel):
     """GOOSE 订阅状态"""
 
     go_cb_ref: str
-    app_id: Optional[int] = None
+    app_id: int | None = None
     go_id: str = ""
     data_set_ref: str = ""
     conf_rev: int = 0
@@ -233,7 +233,7 @@ class GooseCaptureStartRequest(BaseModel):
 
     interface: str = Field("", description="网络接口名称 (为空则自动选择)")
     max_packets: int = Field(500, description="最大缓存报文数", ge=50, le=10000)
-    filter_app_id: Optional[int] = Field(None, description="APPID 过滤", ge=0, le=0xFFFF)
+    filter_app_id: int | None = Field(None, description="APPID 过滤", ge=0, le=0xFFFF)
 
 
 class GooseCaptureStopRequest(BaseModel):
@@ -246,7 +246,7 @@ class GooseCaptureListRequest(BaseModel):
     """获取捕获的 GOOSE 报文"""
 
     count: int = Field(0, description="获取最近 N 条 (0=全部)", ge=0)
-    filter_app_id: Optional[int] = Field(None, description="APPID 过滤", ge=0, le=0xFFFF)
+    filter_app_id: int | None = Field(None, description="APPID 过滤", ge=0, le=0xFFFF)
 
 
 class GooseCaptureStatusResponse(BaseModel):
@@ -257,7 +257,7 @@ class GooseCaptureStatusResponse(BaseModel):
     total_captured: int = 0
     buffer_size: int = 0
     max_buffer_size: int = 500
-    filter_app_id: Optional[int] = None
+    filter_app_id: int | None = None
     filter_go_cb_ref: str = ""
 
 

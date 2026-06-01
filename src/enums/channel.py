@@ -25,8 +25,8 @@ class Channel(BaseModel):
     name: str
     connection_type: ConnectionType
     protocol_type: ProtocolType
-    net_config: Optional[NetConfig] = None
-    rtu_config: Optional[RtuConfig] = None
+    net_config: NetConfig | None = None
+    rtu_config: RtuConfig | None = None
 
     def __repr__(self):
         return (

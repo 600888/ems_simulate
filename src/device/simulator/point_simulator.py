@@ -8,7 +8,7 @@ from src.enums.point_data import SimulateMethod, Yc, Yx
 
 class PointSimulator:
     def __init__(self, point, method, step):
-        self.point: Union[Yc, Yx] = point
+        self.point: Yc | Yx = point
         self.simulate_method = method
         self.step = step
         self.is_running = False

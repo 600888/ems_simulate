@@ -161,7 +161,7 @@ class IEC61850Client:
         """读取测点值 (委托给 Iec61850Reader)"""
         return self._reader.read(address, fc)
 
-    def read_points_batch(self, addresses: list[str], fc_map: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def read_points_batch(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[str, Any]:
         """批量读取多个测点值 (委托给 Iec61850Reader)"""
         return self._reader.read_batch(addresses, fc_map)
 
@@ -309,7 +309,7 @@ class IEC61850Client:
 
     # ===== 内部辅助 (向后兼容, 供外部代码引用) =====
 
-    def _extract_ln_class(self, ln_name: str) -> Optional[str]:
+    def _extract_ln_class(self, ln_name: str) -> str | None:
         """从逻辑节点名提取 lnClass (委托给 defs)"""
         return extract_ln_class(ln_name)
 
@@ -317,7 +317,7 @@ class IEC61850Client:
         """推断 model_name (委托给 connection)"""
         self._conn._infer_model_name()
 
-    def _infer_frame_type_from_do(self, ln_name: str, do_name: str) -> Optional[int]:
+    def _infer_frame_type_from_do(self, ln_name: str, do_name: str) -> int | None:
         """推断 frame_type (委托给 DataModels 插件)"""
         dm = self.datamodels
         if dm:

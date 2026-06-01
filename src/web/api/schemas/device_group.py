@@ -8,8 +8,8 @@ class DeviceGroupCreateRequest(BaseModel):
 
     code: str = Field(..., description="设备组编码", max_length=32)
     name: str = Field(..., description="设备组名称", max_length=64)
-    parent_id: Optional[int] = Field(None, description="父设备组ID，NULL表示顶级")
-    description: Optional[str] = Field(None, description="设备组描述", max_length=256)
+    parent_id: int | None = Field(None, description="父设备组ID，NULL表示顶级")
+    description: str | None = Field(None, description="设备组描述", max_length=256)
 
 
 class DeviceGroupIdRequest(BaseModel):
@@ -22,10 +22,10 @@ class DeviceGroupUpdateRequest(BaseModel):
     """更新设备组请求"""
 
     group_id: int = Field(..., description="设备组ID")
-    name: Optional[str] = Field(None, description="设备组名称", max_length=64)
-    parent_id: Optional[int] = Field(None, description="父设备组ID")
-    description: Optional[str] = Field(None, description="设备组描述", max_length=256)
-    status: Optional[int] = Field(None, description="设备组状态")
+    name: str | None = Field(None, description="设备组名称", max_length=64)
+    parent_id: int | None = Field(None, description="父设备组ID")
+    description: str | None = Field(None, description="设备组描述", max_length=256)
+    status: int | None = Field(None, description="设备组状态")
 
 
 class DeviceGroupDeleteRequest(BaseModel):
@@ -52,7 +52,7 @@ class DevicesToGroupRequest(BaseModel):
     """批量移动设备到设备组请求"""
 
     device_ids: list[int] = Field(..., description="设备ID列表")
-    group_id: Optional[int] = Field(None, description="目标设备组ID，NULL表示移至未分组")
+    group_id: int | None = Field(None, description="目标设备组ID，NULL表示移至未分组")
 
 
 class BatchDeviceOperationRequest(BaseModel):

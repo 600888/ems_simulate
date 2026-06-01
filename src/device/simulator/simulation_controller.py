@@ -10,19 +10,19 @@ from src.enums.points.change_tracker import ChangeSource, track_change
 
 class SimulationController:
     def __init__(self, device):
-        self.points: dict[Union[Yc, Yx], PointSimulator] = {}
+        self.points: dict[Yc | Yx, PointSimulator] = {}
         self.device = device
         self._simulation_thread = None  # 单线程控制
         self._stop_event = threading.Event()  # 线程停止信号
 
-    def add_point(self, point: Union[Yc, Yx], simulate_method: SimulateMethod, step: int):
+    def add_point(self, point: Yc | Yx, simulate_method: SimulateMethod, step: int):
         self.points[point] = PointSimulator(point, simulate_method, step)
 
     def set_all_point_simulate_method(self, simulate_method: SimulateMethod):
         for point_simulator in self.points.values():
             point_simulator.simulate_method = simulate_method
 
-    def set_point_status(self, point: Union[Yc, Yx], is_running: bool):
+    def set_point_status(self, point: Yc | Yx, is_running: bool):
         if point in self.points:
             self.points[point].is_running = is_running
 

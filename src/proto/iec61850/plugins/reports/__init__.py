@@ -326,9 +326,9 @@ class ReportsPlugin:
         self,
         rcb_ref: str,
         gi: bool = True,
-        trg_ops: Optional[dict[str, bool]] = None,
-        opt_fields: Optional[dict[str, bool]] = None,
-        on_report: Optional[Callable[[ReportDataEntry], None]] = None,
+        trg_ops: dict[str, bool] | None = None,
+        opt_fields: dict[str, bool] | None = None,
+        on_report: Callable[[ReportDataEntry], None] | None = None,
     ) -> bool:
         """使能报告控制块
 
@@ -492,7 +492,7 @@ class ReportsPlugin:
         """检查指定 RCB 是否处于活跃状态"""
         return ReportCallbackHandler.is_active(rcb_ref)
 
-    def get_rcb_detail(self, rcb_ref: str) -> Optional[dict[str, Any]]:
+    def get_rcb_detail(self, rcb_ref: str) -> dict[str, Any] | None:
         """获取单个 RCB 的详细信息
 
         Args:

@@ -502,7 +502,7 @@ class ModbusClientHandler(ClientHandler):
                 except (ValueError, TypeError):
                     pass
             return val
-        except asyncio.TimeoutError:
+        except TimeoutError:
             if self._log:
                 self._log.debug(f"异步读取超时: {point.code if hasattr(point, 'code') else point}")
             return None
@@ -553,7 +553,7 @@ class ModbusClientHandler(ClientHandler):
                     ),
                     timeout=2.0,
                 )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             if self._log:
                 self._log.warning(f"批量读取超时: slave={slave_id}, addr={start_address}, count={count}")
             return []

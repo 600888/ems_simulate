@@ -229,7 +229,7 @@ async def import_icd(
             try:
                 from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
 
-                old_manager: Optional[GooseResourceManager] = getattr(request.app.state, "goose_manager", None)
+                old_manager: GooseResourceManager | None = getattr(request.app.state, "goose_manager", None)
                 if old_manager:
                     # 仅清除当前通道的 Publisher（通过 _channel_map 过滤）
                     old_go_cb_refs = [
@@ -341,7 +341,7 @@ async def import_icd(
                 if auto_create_goose and goose_result.get("publishers"):
                     from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
 
-                    manager: Optional[GooseResourceManager] = getattr(request.app.state, "goose_manager", None)
+                    manager: GooseResourceManager | None = getattr(request.app.state, "goose_manager", None)
                     if manager:
                         for pub_config in goose_result["publishers"]:
                             try:

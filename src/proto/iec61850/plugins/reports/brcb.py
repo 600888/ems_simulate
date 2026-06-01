@@ -60,7 +60,7 @@ class BrcbHandler:
         return None
 
     @staticmethod
-    def get_rcb_values(connection, rcb_ref: str) -> Optional[RCBInfo]:
+    def get_rcb_values(connection, rcb_ref: str) -> RCBInfo | None:
         """获取 BRCB 所有属性值
 
         Args:
@@ -103,7 +103,7 @@ class BrcbHandler:
 
     @staticmethod
     def set_rpt_ena(
-        connection, rcb_ref: str, enable: bool, trg_ops: Optional[TrgOps] = None, opt_fields: Optional[OptFields] = None
+        connection, rcb_ref: str, enable: bool, trg_ops: TrgOps | None = None, opt_fields: OptFields | None = None
     ) -> bool:
         """设置 BRCB 的 RptEna 及相关属性
 

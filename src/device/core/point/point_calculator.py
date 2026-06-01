@@ -188,7 +188,7 @@ class PointCalculator:
         for mapping_id in set(mapping_ids):  # 去重
             self._executor.submit(self._execute_calculation, mapping_id, context_snapshot)
 
-    def _execute_calculation(self, mapping_id: int, context: Optional[ChangeContext] = None):
+    def _execute_calculation(self, mapping_id: int, context: ChangeContext | None = None):
         """执行计算"""
         # 如果提供了上下文，先还原它
         if context:

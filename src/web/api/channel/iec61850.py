@@ -32,7 +32,7 @@ class Iec61850ReadPointRequest(BaseModel):
 class Iec61850WritePointRequest(BaseModel):
     channel_id: int = Field(..., description="通道ID")
     point_code: str = Field(..., description="测点编码")
-    point_value: Union[float, str] = Field(0, description="写入值")
+    point_value: float | str = Field(0, description="写入值")
 
 
 class Iec61850StructureRequest(BaseModel):
@@ -43,7 +43,7 @@ class Iec61850TreeDataRequest(BaseModel):
     channel_id: int = Field(..., description="通道ID")
     category: str = Field("", description="IED/LD 分类过滤")
     item: str = Field("", description="LN 实例过滤")
-    point_name: Optional[str] = Field(None, description="测点名称过滤")
+    point_name: str | None = Field(None, description="测点名称过滤")
     point_types: str = Field("", description="帧类型过滤")
     page_index: int = Field(1, description="页码")
     page_size: int = Field(10, description="每页条数")
@@ -53,7 +53,7 @@ class Iec61850TableDataRequest(BaseModel):
     channel_id: int = Field(..., description="通道ID")
     category: str = Field("", description="IED/LD 分类过滤")
     item: str = Field("", description="LN 实例过滤")
-    point_name: Optional[str] = Field(None, description="测点名称过滤")
+    point_name: str | None = Field(None, description="测点名称过滤")
     page_index: int = Field(1, description="页码")
     page_size: int = Field(10, description="每页条数")
     point_types: str = Field("", description="帧类型过滤")
@@ -120,7 +120,7 @@ DA_NAME_FC_MAP: dict[str, str] = {
 }
 
 
-def _parse_iec61850_address(address: str) -> Optional[dict[str, str]]:
+def _parse_iec61850_address(address: str) -> dict[str, str] | None:
     """解析 IEC 61850 地址, 提取 LD/LN/DO/DA 层级
 
     示例: "LD0/LLN0.Mod.mag.f" → {ld: "LD0", ln: "LLN0", do_name: "Mod", da_path: "mag.f"}

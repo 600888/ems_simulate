@@ -77,7 +77,7 @@ class FileTransfer:
         self,
         remote_filename: str,
         local_path: str,
-        progress_callback: Optional[ProgressCallback] = None,
+        progress_callback: ProgressCallback | None = None,
         overwrite: bool = False,
     ) -> TransferProgress:
         """从远程 IED 下载文件到本地磁盘
@@ -196,7 +196,7 @@ class FileTransfer:
     def download_file_to_bytes(
         self,
         remote_filename: str,
-        progress_callback: Optional[ProgressCallback] = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> tuple[bytes, TransferProgress]:
         """从远程 IED 下载文件到内存
 
@@ -307,7 +307,7 @@ class FileTransfer:
         self,
         local_path: str,
         remote_filename: str,
-        progress_callback: Optional[ProgressCallback] = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> TransferProgress:
         """上传本地文件到远程 IED
 
@@ -517,7 +517,7 @@ class FileTransfer:
     # ===== 内部方法 =====
 
     @staticmethod
-    def _notify_progress(progress: TransferProgress, callback: Optional[ProgressCallback]) -> None:
+    def _notify_progress(progress: TransferProgress, callback: ProgressCallback | None) -> None:
         """安全调用进度回调"""
         if callback:
             try:

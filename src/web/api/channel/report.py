@@ -23,7 +23,7 @@ from src.web.log import log
 router = APIRouter(tags=["channel"])
 
 
-def _get_reports_plugin(channel_id: int, request: Request) -> Optional[Any]:
+def _get_reports_plugin(channel_id: int, request: Request) -> Any | None:
     """获取设备对应的 Reports 管理对象
 
     客户端模式: 返回 ReportsPlugin (支持 discover_rcbs/enable/disable/GI)
@@ -134,7 +134,7 @@ def _is_server_mode(reports_obj: Any) -> bool:
     return hasattr(reports_obj, "browse_rcbs") and not hasattr(reports_obj, "discover_rcbs")
 
 
-def _get_client_handler(channel_id: int, request: Request) -> Optional[Any]:
+def _get_client_handler(channel_id: int, request: Request) -> Any | None:
     """获取客户端协议处理器 (用于读取连接时缓存的 RCB)"""
     device_controller = request.app.state.device_controller
     device = device_controller.get_device_by_channel_id(channel_id)

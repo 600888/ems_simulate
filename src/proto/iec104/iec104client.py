@@ -28,8 +28,8 @@ class IEC104Client:
         # 添加从站
         self.station: c104.Station = self.connection.add_station(common_address=self.common_address)
         self.points: list[c104.Point] = []
-        self._on_data_received: Optional[Callable] = None
-        self._on_command_response: Optional[Callable] = None
+        self._on_data_received: Callable | None = None
+        self._on_command_response: Callable | None = None
 
         # 报文捕获器
         self.message_capture = MessageCapture()
@@ -112,7 +112,7 @@ class IEC104Client:
             self.points.append(point)
         return point
 
-    def read_point(self, io_address: int, frame_type: int = 0) -> Optional[float]:
+    def read_point(self, io_address: int, frame_type: int = 0) -> float | None:
         """
         读取指定IOA的监控点值
         :param io_address: 信息对象地址(IOA)

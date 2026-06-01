@@ -98,7 +98,7 @@ class DeviceLoggerManager:
         log_level: str = "INFO",
         rotation: str = "1 MB",
         retention: str = "7 days",
-        compression: Optional[str] = None,
+        compression: str | None = None,
     ) -> None:
         """注册设备日志处理器
 

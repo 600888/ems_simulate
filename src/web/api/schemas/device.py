@@ -28,12 +28,12 @@ class SlaveIdListResponse:
 class DeviceTableRequest(BaseModel):
     device_name: str
     slave_id: int
-    point_name: Optional[str] = None
+    point_name: str | None = None
     page_index: int = 1
     page_size: int = 10
     point_types: list[int] = Field(default_factory=list)
-    order_by: Optional[str] = None
-    order_direction: Optional[str] = None
+    order_by: str | None = None
+    order_direction: str | None = None
 
 
 class SimulationStartRequest(BaseModel):
@@ -60,7 +60,7 @@ class DeviceResetRequest(BaseModel):
 class CurrentTableRequest(BaseModel):
     device_name: str
     slave_id: int
-    point_name: Optional[str] = ""
+    point_name: str | None = ""
 
 
 class DeviceGroupStatusRequest(BaseModel):
@@ -72,14 +72,14 @@ class DeviceGroupStatusRequest(BaseModel):
 
 class ManualReadRequest(BaseModel):
     device_name: str
-    interval: Optional[int] = 0
+    interval: int | None = 0
 
 
 class MessageListRequest(BaseModel):
     """获取报文列表请求"""
 
     device_name: str = Field(..., description="设备名称")
-    limit: Optional[int] = Field(100, description="最大返回数量")
+    limit: int | None = Field(100, description="最大返回数量")
 
 
 class SlaveAddRequest(BaseModel):

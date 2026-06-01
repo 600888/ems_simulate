@@ -550,7 +550,7 @@ class DataModelsPlugin:
 
     # ===== 辅助方法 =====
 
-    def _infer_frame_type_from_do(self, ln_name: str, do_name: str) -> Optional[int]:
+    def _infer_frame_type_from_do(self, ln_name: str, do_name: str) -> int | None:
         """根据逻辑节点名和数据对象名推断 frame_type"""
         if do_name.startswith("MV_"):
             return 0

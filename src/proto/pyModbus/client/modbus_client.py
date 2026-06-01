@@ -400,7 +400,7 @@ class ModbusClient:
         slave_id: int,
         address: int,
         decode: str = "0x41",
-    ) -> Optional[Union[int, float]]:
+    ) -> int | float | None:
         """
         根据解析码读取寄存器值并解析为指定数据类型
         使用 DecodeInfo 统一配置处理
@@ -469,7 +469,7 @@ class ModbusClient:
         func_code: int,
         slave_id: int,
         address: int,
-        value: Union[int, float],
+        value: int | float,
         decode: str = "0x41",
     ) -> bool:
         """

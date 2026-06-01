@@ -61,14 +61,14 @@ class IcdPointImporter:
         self.yx_count = 0
         self.yk_count = 0
         self.yt_count = 0
-        self._ied_name: Optional[str] = None  # ICD 文件中的 IED 名称
+        self._ied_name: str | None = None  # ICD 文件中的 IED 名称
 
         # DataTypeTemplates 缓存
         self._ln_types: dict[str, ET.Element] = {}  # id -> LNodeType
         self._do_types: dict[str, ET.Element] = {}  # id -> DOType
         self._da_types: dict[str, ET.Element] = {}  # id -> DAType
 
-    def get_ied_name(self) -> Optional[str]:
+    def get_ied_name(self) -> str | None:
         """获取从 ICD 文件提取的 IED 名称"""
         return self._ied_name
 
@@ -736,7 +736,7 @@ class IcdPointImporter:
 
         return result
 
-    def _get_value_ref(self, do_type: ET.Element, cdc: str, target_fc: str) -> Optional[str]:
+    def _get_value_ref(self, do_type: ET.Element, cdc: str, target_fc: str) -> str | None:
         """获取测量/状态类型 DO 的值引用路径
 
         根据 CDC 类型确定数据属性路径:
@@ -763,7 +763,7 @@ class IcdPointImporter:
             return self._find_composite_ref(do_type, target_fc)
         return None
 
-    def _get_control_ref(self, do_type: ET.Element, cdc: str) -> Optional[str]:
+    def _get_control_ref(self, do_type: ET.Element, cdc: str) -> str | None:
         """获取控制类型 DO 的控制引用路径
 
         - SPC/DPC: Oper.ctlVal 或直接 ctlVal
@@ -787,7 +787,7 @@ class IcdPointImporter:
 
         return "ctlVal"  # 默认
 
-    def _find_da_path(self, do_type: ET.Element, path_parts: list, target_fc: str) -> Optional[str]:
+    def _find_da_path(self, do_type: ET.Element, path_parts: list, target_fc: str) -> str | None:
         """在 DOType 中递归查找 DA 路径"""
         if not path_parts:
             return None
@@ -817,7 +817,7 @@ class IcdPointImporter:
 
         return None
 
-    def _find_bda_path(self, da_type: ET.Element, path_parts: list) -> Optional[str]:
+    def _find_bda_path(self, da_type: ET.Element, path_parts: list) -> str | None:
         """在 DAType 中递归查找 BDA 路径"""
         if not path_parts:
             return None
@@ -834,7 +834,7 @@ class IcdPointImporter:
                         return f"{name}.{sub_result}"
         return None
 
-    def _find_composite_ref(self, do_type: ET.Element, target_fc: str) -> Optional[str]:
+    def _find_composite_ref(self, do_type: ET.Element, target_fc: str) -> str | None:
         """为复合 CDC (WYE/DEL 等) 查找第一个可用的 SDO"""
         for sdo in do_type.findall(self._tag("SDO")):
             sdo_name = sdo.get("name", "")

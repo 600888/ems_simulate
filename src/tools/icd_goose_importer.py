@@ -161,7 +161,7 @@ class GooseGseControlInfo:
         }
 
     @staticmethod
-    def _parse_mac(mac_str: str) -> Optional[list[int]]:
+    def _parse_mac(mac_str: str) -> list[int] | None:
         """解析 MAC 地址字符串为字节数组"""
         # 支持格式: 01-0C-CD-01-00-01, 01:0C:CD:01:00:01
         parts = re.split(r"[-:]", mac_str.strip())
@@ -434,7 +434,7 @@ class IcdGooseImporter:
         ld_inst: str,
         ln0: ET.Element,
         dataset_by_name: dict[str, ET.Element],
-    ) -> Optional[GooseGseControlInfo]:
+    ) -> GooseGseControlInfo | None:
         """解析单个 GSEControl 元素"""
         info = GooseGseControlInfo()
 
@@ -546,8 +546,8 @@ class IcdGooseImporter:
         rc_elem: ET.Element,
         ld_inst: str,
         ln_name: str,
-        dataset_by_name: Optional[dict[str, ET.Element]] = None,
-    ) -> Optional[dict[str, Any]]:
+        dataset_by_name: dict[str, ET.Element] | None = None,
+    ) -> dict[str, Any] | None:
         """解析单个 ReportControl 元素
 
         Args:

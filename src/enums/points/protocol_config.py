@@ -46,7 +46,7 @@ class IEC104Config:
     common_address: int = 1  # 公共地址（站地址）
     cot: int = 3  # 传送原因 (Cause of Transmission)
     quality: int = 0  # 品质描述符（位标志: OV=0x01 BL=0x02 SB=0x04 NT=0x08 IV=0x10）
-    type_id: Optional[str] = None  # 类型标识（如 M_ME_NC_1）
+    type_id: str | None = None  # 类型标识（如 M_ME_NC_1）
 
     # COT 常用值
     COT_PERIODIC = 1  # 周期/循环
@@ -137,7 +137,7 @@ class IEC61850Config:
 
 
 # 协议配置工厂
-def get_default_protocol_config(protocol_type: str) -> Optional[Any]:
+def get_default_protocol_config(protocol_type: str) -> Any | None:
     """根据协议类型获取默认配置"""
     config_map = {
         "ModbusTcp": ModbusConfig(),
@@ -156,7 +156,7 @@ def get_default_protocol_config(protocol_type: str) -> Optional[Any]:
     return config_map.get(protocol_type)
 
 
-def create_protocol_config(protocol_type: str, data: dict[str, Any]) -> Optional[Any]:
+def create_protocol_config(protocol_type: str, data: dict[str, Any]) -> Any | None:
     """根据协议类型和数据创建配置对象"""
     if protocol_type in [
         "ModbusTcp",

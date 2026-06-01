@@ -37,8 +37,8 @@ class GeneralDeviceBuilder:
         self.device_name: str = ""
         self.channel_id: int = channel_id
         self.import_method: DataSource = import_method
-        self.path: Optional[str] = None
-        self.serial_port: Optional[str] = None
+        self.path: str | None = None
+        self.serial_port: str | None = None
         self.is_start: bool = False
         self.protocol_type: ProtocolType = ProtocolType.ModbusTcp
 
@@ -109,7 +109,7 @@ class GeneralDeviceBuilder:
         device_name: str,
         protocol_type: ProtocolType,
         is_start: bool,
-        path: Optional[str] = None,
+        path: str | None = None,
     ) -> Device | None:
         self.device_id = device_id
         self.device_name = device_name

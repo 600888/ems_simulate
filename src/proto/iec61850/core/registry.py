@@ -78,7 +78,7 @@ class PointRegistry:
         self._point_refs[addr_str] = self._build_ref(addr_str)
         return self._point_refs[addr_str]
 
-    def get_ref(self, address) -> Optional[str]:
+    def get_ref(self, address) -> str | None:
         """获取测点的 MMS 引用路径"""
         return self._point_refs.get(str(address))
 

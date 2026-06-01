@@ -86,7 +86,7 @@ class WebSocketSessionManager:
 
         self._connections: set[WebSocket] = set()
         self._lock = threading.Lock()
-        self._capture_instance: Optional[Any] = None
+        self._capture_instance: Any | None = None
         self._capture_callback_registered = False
         self._capture_started = False
 

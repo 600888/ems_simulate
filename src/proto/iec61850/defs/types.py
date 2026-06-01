@@ -114,8 +114,8 @@ class RCBInfo:
     buf_time: int = 0  # 缓冲时间 (ms)
     intg_period: int = 0  # 完整性周期 (ms), 仅 URCB
     purge_buf: bool = False  # 清除缓冲, 仅 BRCB
-    entry_id: Optional[bytes] = None  # 入口 ID, 仅 BRCB
-    time_of_entry: Optional[int] = None  # 入口时间, 仅 BRCB
+    entry_id: bytes | None = None  # 入口 ID, 仅 BRCB
+    time_of_entry: int | None = None  # 入口时间, 仅 BRCB
     sq_num: int = 0  # 顺序号 (Sequence Number)
     owner: str = ""  # 所有者 (Owner), 仅 URCB
     resv: bool = False  # 保留状态 (Resv), 仅 URCB
@@ -134,7 +134,7 @@ class ReportDataEntry:
     time_stamp: str = ""
     reason_codes: dict[str, str] = field(default_factory=dict)
     data_values: dict[str, Any] = field(default_factory=dict)
-    entry_id: Optional[bytes] = None
+    entry_id: bytes | None = None
     conf_rev: int = 1
     data_set: str = ""
     rpt_id: str = ""
@@ -149,7 +149,7 @@ class GoCBInfo:
     ref: str = ""
     go_cb_ref: str = ""
     go_id: str = ""
-    app_id: Optional[int] = None
+    app_id: int | None = None
     data_set_ref: str = ""
     conf_rev: int = 0
 

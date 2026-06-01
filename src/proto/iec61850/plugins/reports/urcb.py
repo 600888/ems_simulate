@@ -59,7 +59,7 @@ class UrcbHandler:
         return None
 
     @staticmethod
-    def get_rcb_values(connection, rcb_ref: str) -> Optional[RCBInfo]:
+    def get_rcb_values(connection, rcb_ref: str) -> RCBInfo | None:
         """获取 URCB 所有属性值
 
         Args:
@@ -104,8 +104,8 @@ class UrcbHandler:
         connection,
         rcb_ref: str,
         enable: bool,
-        trg_ops: Optional[TrgOps] = None,
-        opt_fields: Optional[OptFields] = None,
+        trg_ops: TrgOps | None = None,
+        opt_fields: OptFields | None = None,
         intg_period: int = 0,
     ) -> bool:
         """设置 URCB 的 RptEna 及相关属性

@@ -2,7 +2,7 @@
 name = "ems_simulate"
 version = "0.1.0"
 description = "电力模拟仿真系统，支持 IEC61850 / IEC104 / Modbus / DLT645 协议"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "pymodbus==3.12.0",
     "pyserial==3.5",
@@ -32,7 +32,7 @@ build = [
 
 [tool.ruff]
 # 目标 Python 版本
-target-version = "py39"
+target-version = "py311"
 
 # 排除目录
 exclude = [

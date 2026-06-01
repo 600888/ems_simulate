@@ -56,7 +56,7 @@ class Device:
         self.name: str = ""
         self.ip: str = "0.0.0.0"
         self.port: int = 0
-        self.serial_port: Optional[str] = None  # 串口号（用于RTU模式）
+        self.serial_port: str | None = None  # 串口号（用于RTU模式）
         self.baudrate: int = 9600
         self.databits: int = 8
         self.stopbits: int = 1
@@ -64,11 +64,11 @@ class Device:
         self.meter_address: str = "000000000000"
         self.device_type: DeviceType = DeviceType.Other
         self.protocol_type: ProtocolType = protocol_type
-        self.model_name: Optional[str] = None  # IED 模型名称 (IEC61850)
+        self.model_name: str | None = None  # IED 模型名称 (IEC61850)
 
         # 核心组件
         self.point_manager: PointManager = PointManager()
-        self.protocol_handler: Optional[ProtocolHandler] = None
+        self.protocol_handler: ProtocolHandler | None = None
         self.simulation_controller: SimulationController = SimulationController(self)
         self.data_exporter: DataExporter = DataExporter(self.point_manager)
 
@@ -86,7 +86,7 @@ class Device:
         self._logger_initialized = False
 
         # 其他
-        self.plan: Optional[Any] = None
+        self.plan: Any | None = None
         self.data_update_thread: DataUpdateThread = DataUpdateThread(task=self.update_data)
 
     # ===== 只读属性 =====
@@ -497,22 +497,22 @@ class Device:
 
     # ===== 测点操作（委托给 PointOperator） =====
 
-    def read_single_point(self, point_code: str) -> Optional[float]:
+    def read_single_point(self, point_code: str) -> float | None:
         """读取单个测点的值"""
         return self.point_operator.read_single_point(point_code)
 
-    async def read_single_point_async(self, point_code: str) -> Optional[float]:
+    async def read_single_point_async(self, point_code: str) -> float | None:
         """异步读取单个测点的值"""
         return await self.point_operator.read_single_point_async(point_code)
 
     def editPointData(
-        self, point_code: str, real_value: float, source: Optional[ChangeSource] = None, detail: Optional[str] = None
+        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None
     ) -> bool:
         """编辑测点值"""
         return self.point_operator.edit_value(point_code, real_value, source, detail)
 
     async def edit_point_data_async(
-        self, point_code: str, real_value: float, source: Optional[ChangeSource] = None, detail: Optional[str] = None
+        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None
     ) -> bool:
         """异步编辑测点值"""
         return await self.point_operator.edit_value_async(point_code, real_value, source, detail)
@@ -525,7 +525,7 @@ class Device:
         """编辑测点限值"""
         return self.point_operator.edit_limit(point_code, min_value_limit, max_value_limit)
 
-    def get_point_data(self, point_code_list: list[str]) -> Optional[BasePoint]:
+    def get_point_data(self, point_code_list: list[str]) -> BasePoint | None:
         """获取测点"""
         return self.point_operator.get_point_data(point_code_list)
 
@@ -573,7 +573,7 @@ class Device:
 
     # ===== 模拟控制（委托给 SimulationController） =====
 
-    def setAllPointSimulateMethod(self, simulate_method: Union[str, SimulateMethod]) -> None:
+    def setAllPointSimulateMethod(self, simulate_method: str | SimulateMethod) -> None:
         """设置所有点的模拟方法"""
         try:
             method = SimulateMethod(simulate_method)
@@ -581,7 +581,7 @@ class Device:
         except ValueError:
             self.log.error(f"无效的模拟方法: {simulate_method}")
 
-    def setSinglePointSimulateMethod(self, point_code: str, simulate_method: Union[str, SimulateMethod]) -> bool:
+    def setSinglePointSimulateMethod(self, point_code: str, simulate_method: str | SimulateMethod) -> bool:
         """设置单个点的模拟方法"""
         try:
             method = SimulateMethod(simulate_method)
@@ -645,12 +645,12 @@ class Device:
     def get_table_data(
         self,
         slave_id: int,
-        name: Optional[str] = None,
-        page_index: Optional[int] = 1,
-        page_size: Optional[int] = 10,
-        point_types: Optional[list[int]] = None,
-        order_by: Optional[str] = None,
-        order_direction: Optional[str] = None,
+        name: str | None = None,
+        page_index: int | None = 1,
+        page_size: int | None = 10,
+        point_types: list[int] | None = None,
+        order_by: str | None = None,
+        order_direction: str | None = None,
     ) -> tuple[list[list[str]], int]:
         # 对于 IEC104 客户端，在获取表格数据前同步 c104.Point 的值到内部点
         if self.protocol_type == ProtocolType.Iec104Client and self.protocol_handler:
@@ -683,7 +683,7 @@ class Device:
 
     # ===== 报文捕获（委托给 MessageFormatter） =====
 
-    def get_messages(self, limit: Optional[int] = None) -> list[dict]:
+    def get_messages(self, limit: int | None = None) -> list[dict]:
         """获取报文历史记录"""
         return self.message_formatter.get_messages(limit)
 

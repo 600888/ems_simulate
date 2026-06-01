@@ -94,7 +94,7 @@ class IEC104Strategy(ProtocolStrategy):
         """
         return get_iec104_types_by_frame_type(frame_type)
 
-    def resolve_type(self, type_id: Optional[str], frame_type: int) -> IEC104Type:
+    def resolve_type(self, type_id: str | None, frame_type: int) -> IEC104Type:
         """解析 IEC104 类型标识
 
         Args:

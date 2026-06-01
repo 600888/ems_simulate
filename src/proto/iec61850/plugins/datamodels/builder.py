@@ -141,7 +141,7 @@ class IedModelBuilder:
 
     # ===== 测点添加 =====
 
-    def add_point(self, address, frame_type: int = 0, fc: str = "") -> Optional[str]:
+    def add_point(self, address, frame_type: int = 0, fc: str = "") -> str | None:
         """添加测点到数据模型"""
         addr_str = str(address)
         if addr_str in self._point_refs:
@@ -151,7 +151,7 @@ class IedModelBuilder:
         else:
             return self._add_point_simple(address, frame_type)
 
-    def _add_point_simple(self, address, frame_type: int) -> Optional[str]:
+    def _add_point_simple(self, address, frame_type: int) -> str | None:
         """简单地址模式: 使用固定结构添加测点"""
         self.ensure_base_ld()
         addr_str = str(address)
@@ -241,7 +241,7 @@ class IedModelBuilder:
             log.error(f"IEC61850 添加测点失败: address={address}, frame_type={frame_type}")
         return ref
 
-    def _add_point_from_ref(self, address: str, frame_type: int, fc: str = "") -> Optional[str]:
+    def _add_point_from_ref(self, address: str, frame_type: int, fc: str = "") -> str | None:
         """完整引用路径模式: 按 ICD 结构动态创建 LD/LN/DO/DA"""
         parsed = parse_ref(address)
         if not parsed:
@@ -608,7 +608,7 @@ class IedModelBuilder:
         return sorted(ln_names)
 
     def browse_data_objects(self, ld_inst: str, ln_name: str) -> list[dict]:
-        do_map: dict[str, Optional[int]] = {}
+        do_map: dict[str, int | None] = {}
         for address, _ref in self._point_refs.items():
             if not isinstance(address, str) or "/" not in address:
                 continue

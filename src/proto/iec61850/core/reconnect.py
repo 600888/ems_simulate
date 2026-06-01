@@ -17,7 +17,7 @@ def retry_with_backoff(
     max_delay: float = 60.0,
     exponential_base: float = 2.0,
     exceptions: tuple[type[Exception], ...] = (ConnectionError, ConnectionLostError),
-    on_retry: Optional[Callable] = None,
+    on_retry: Callable | None = None,
 ):
     """指数退避重试装饰器
 

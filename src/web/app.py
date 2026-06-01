@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -72,7 +73,7 @@ async def health_check():
     try:
         from datetime import datetime, timezone
 
-        health_data["timestamp"] = datetime.now(timezone.utc).isoformat()
+        health_data["timestamp"] = datetime.now(UTC).isoformat()
     except Exception:
         pass
 

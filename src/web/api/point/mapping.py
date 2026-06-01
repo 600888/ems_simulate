@@ -22,11 +22,11 @@ class PointMappingCreateRequest(BaseModel):
 
 class PointMappingUpdateRequest(BaseModel):
     id: int
-    device_name: Optional[str] = None
-    target_point_code: Optional[str] = None
-    source_point_codes: Optional[list[SourcePointItem]] = None
-    formula: Optional[str] = None
-    enable: Optional[bool] = None
+    device_name: str | None = None
+    target_point_code: str | None = None
+    source_point_codes: list[SourcePointItem] | None = None
+    formula: str | None = None
+    enable: bool | None = None
 
 
 class PointMappingDeleteRequest(BaseModel):

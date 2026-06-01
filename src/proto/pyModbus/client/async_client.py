@@ -50,7 +50,7 @@ class AsyncModbusClient:
         self.timeout = timeout
         self.retries = retries
         self.log = log
-        self.client: Optional[AsyncModbusTcpClient] = None
+        self.client: AsyncModbusTcpClient | None = None
         self.connected = False
         self.message_capture = MessageCapture()
 
@@ -343,7 +343,7 @@ class AsyncModbusClient:
         slave_id: int,
         address: int,
         decode: str = "0x41",
-    ) -> Optional[Union[int, float]]:
+    ) -> int | float | None:
         """
         根据解析码读取寄存器值并解析为指定数据类型
         """
@@ -402,7 +402,7 @@ class AsyncModbusClient:
         func_code: int,
         slave_id: int,
         address: int,
-        value: Union[int, float],
+        value: int | float,
         decode: str = "0x41",
     ) -> bool:
         """

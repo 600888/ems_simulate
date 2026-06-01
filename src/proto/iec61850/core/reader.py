@@ -278,7 +278,7 @@ class Iec61850Reader:
             log.error(f"IEC61850 读取异常: address={address}, error={e}")
             return None
 
-    def read_batch(self, addresses: list[str], fc_map: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def read_batch(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[str, Any]:
         """批量读取多个测点值
 
         按 iec_type 分组批量读取。
