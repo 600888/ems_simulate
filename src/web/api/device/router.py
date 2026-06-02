@@ -386,9 +386,11 @@ async def export_model(req: ExportModelRequest, request: Request):
     支持: icd (SCL/ICD标准格式), json, xml, csv, tree
     """
     import os
+    import shutil
     import tempfile
 
     from fastapi.responses import FileResponse
+    from starlette.background import BackgroundTask
 
     try:
         device = _get_device(req.device_name, request)
@@ -422,14 +424,18 @@ async def export_model(req: ExportModelRequest, request: Request):
         )
 
     config = type_config[export_type]
+    tmp_dir = tempfile.mkdtemp(prefix="ems_export_")
 
     try:
         # 发现模型
         exporter = client.model_exporter
         model = exporter.discover_server_model()
 
+        if model is None:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return BaseResponse(code=500, message="模型发现失败，未获取到服务器模型!", data=False)
+
         # 导出到临时文件
-        tmp_dir = tempfile.mkdtemp(prefix="ems_export_")
         filename = f"{req.device_name}_model{config['ext']}"
         tmp_path = os.path.join(tmp_dir, filename)
 
@@ -440,12 +446,18 @@ async def export_model(req: ExportModelRequest, request: Request):
         else:
             method(model, tmp_path)
 
-        # 返回文件下载
+        # 返回文件下载，使用 BackgroundTask 在响应完成后清理临时文件
+        def _cleanup():
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
         return FileResponse(
             path=tmp_path,
             filename=filename,
             media_type=config["media"],
+            background=BackgroundTask(_cleanup),
         )
     except Exception as e:
+        # 异常时立即清理临时文件
+        shutil.rmtree(tmp_dir, ignore_errors=True)
         log.error(f"导出模型失败: {e}")
         return BaseResponse(code=500, message=f"导出模型失败: {e}!", data=False)

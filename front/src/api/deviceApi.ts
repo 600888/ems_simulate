@@ -259,38 +259,95 @@ export async function exportModel(deviceName: string, exportType: ExportModelTyp
   };
   const defaultFilename = `${deviceName}_model${extMap[exportType]}`;
 
-  // 弹出文件保存对话框，让用户选择保存位置
-  const fileHandle = await (window as any).showSaveFilePicker({
-    suggestedName: defaultFilename,
-    types: [{
-      description: `${exportType.toUpperCase()} 文件`,
-      accept: { [mimeMap[exportType]]: [extMap[exportType]] },
-    }],
-  });
+  // 1. 先弹出文件保存对话框 — 在网络请求之前完成，避免 blob 被响应式系统处理
+  let fileHandle: FileSystemFileHandle;
+  try {
+    fileHandle = await (window as any).showSaveFilePicker({
+      suggestedName: defaultFilename,
+      types: [{
+        description: `${exportType.toUpperCase()} 文件`,
+        accept: { [mimeMap[exportType]]: [extMap[exportType]] },
+      }],
+    });
+  } catch (err: any) {
+    // 用户取消保存对话框
+    if (err?.name === 'AbortError') {
+      throw err;
+    }
+    throw new Error('无法打开文件保存对话框');
+  }
 
-  // 请求后端获取文件内容
-  const baseURL = import.meta.env.VUE_APP_API_BASE || '/';
-  const response = await fetch(`${baseURL}${DEVICE_API.EXPORT_MODEL}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      device_name: deviceName,
-      export_type: exportType,
-      ied_name: iedName,
-    }),
-  });
+  // 2. 使用独立 fetch 通道下载文件 — 完全绕过 axios 拦截器和响应式系统
+  //    设置较长超时（5分钟），大模型导出可能耗时较久
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+
+  let response: Response;
+  try {
+    const baseURL = import.meta.env.VUE_APP_API_BASE || '/';
+    response = await fetch(`${baseURL}${DEVICE_API.EXPORT_MODEL}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        device_name: deviceName,
+        export_type: exportType,
+        ied_name: iedName,
+      }),
+      signal: controller.signal,
+      // 禁止缓存，避免拿到旧数据
+      cache: 'no-store',
+    });
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err?.name === 'AbortError') {
+      throw new Error('导出超时，模型可能过大，请重试');
+    }
+    throw new Error(`网络请求失败: ${err.message}`);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    const errorMsg = errorData?.message || `导出失败 (HTTP ${response.status})`;
+    // 尝试解析后端返回的错误信息
+    let errorMsg = `导出失败 (HTTP ${response.status})`;
+    try {
+      const errorData = await response.json();
+      if (errorData?.message) {
+        errorMsg = errorData.message;
+      }
+    } catch {
+      // 响应不是 JSON，使用默认错误消息
+    }
     throw new Error(errorMsg);
   }
 
-  // 将响应内容写入用户选择的文件
-  const blob = await response.blob();
-  const writable = await fileHandle.createWritable();
-  await writable.write(blob);
-  await writable.close();
+  // 3. 流式写入文件 — 使用 ReadableStream 避免一次性加载大文件到内存
+  try {
+    const readable = response.body;
+    if (readable) {
+      // 优先使用流式写入，内存占用 O(1)
+      const writable = await fileHandle.createWritable();
+      const reader = readable.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          await writable.write(value);
+        }
+      } finally {
+        await writable.close();
+        reader.releaseLock();
+      }
+    } else {
+      // 回退：部分浏览器不支持 ReadableStream，使用 blob 方式
+      const blob = await response.blob();
+      const writable = await fileHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+    }
+  } catch (err: any) {
+    throw new Error(`写入文件失败: ${err.message}`);
+  }
 }
 
 // ===== 动态测点/从机管理 =====

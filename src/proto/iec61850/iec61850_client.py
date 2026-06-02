@@ -389,11 +389,16 @@ class IEC61850Client:
         """获取模型导出工具实例 (通过插件系统)"""
         return self._plugins.get("model_exporter")
 
-    def discover_server_model(self):
-        """动态发现服务端完整数据模型 (结构化)"""
+    def discover_server_model(self, *, on_error: str = "skip", max_depth: int = 10):
+        """动态发现服务端完整数据模型 (结构化)
+
+        Args:
+            on_error: 错误处理策略 ("skip" 跳过 / "abort" 中断)
+            max_depth: 子 DA 递归最大深度
+        """
         plugin = self.model_exporter
         if plugin:
-            return plugin.discover_server_model()
+            return plugin.discover_server_model(on_error=on_error, max_depth=max_depth)
         return None
 
     def export_model_json(self, model, output_path, indent=2):
