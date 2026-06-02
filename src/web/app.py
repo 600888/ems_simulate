@@ -13,8 +13,8 @@ from src.web.api import (
     point_router,
     point_tree_router,
 )
-from src.web.api.scl.router import router as scl_router
 from src.web.api.schemas import BaseResponse
+from src.web.api.scl.router import router as scl_router
 from src.web.log import log
 
 

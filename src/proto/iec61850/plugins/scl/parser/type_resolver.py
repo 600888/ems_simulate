@@ -7,21 +7,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ..model.enums import CDC_CONTROL_DA_PATH, CDC_VALUE_DA_PATH, STRUCT_DA_TO_FULL_PATH
 from ..model.scl_document import (
-    SclBDA,
     SclDA,
-    SclDAType,
-    SclDO,
     SclDOType,
-    SclEnumType,
-    SclEnumVal,
-    SclLNodeType,
-    SclSDO,
 )
-from ..model.enums import CDC_VALUE_DA_PATH, CDC_CONTROL_DA_PATH, STRUCT_DA_TO_FULL_PATH
 
 if TYPE_CHECKING:
-    from ..model.scl_document import SclDataTypeTemplates, SclDocument
+    from ..model.scl_document import SclDocument
 
 
 class TypeResolver:

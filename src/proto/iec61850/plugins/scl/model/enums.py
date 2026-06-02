@@ -2,7 +2,6 @@
 
 from enum import IntEnum
 
-
 # ===== CDC (Common Data Class) 到测点类型的映射 =====
 
 CDC_YC = frozenset({"MV", "CMV", "SAV", "WYE", "DEL", "SEQ", "HMV"})

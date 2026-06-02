@@ -8,9 +8,9 @@
 """
 from __future__ import annotations
 
+from ..model.scl_document import SclDocument
 from .result import ValidationResult
 from .rules import register_rule
-from ..model.scl_document import SclDocument
 
 
 @register_rule

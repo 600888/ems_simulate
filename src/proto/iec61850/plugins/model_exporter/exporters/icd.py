@@ -15,12 +15,11 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import xmltodict
 
-from ....defs.constants import FRAME_TYPE_DESC
-from ....defs.types import IecType
+from ....defs.constants import FRAME_TYPE_DESC, IecType
 
 if TYPE_CHECKING:
     from ....model import IedModel
@@ -155,6 +154,13 @@ class IcdExporter:
         IecType.UNKNOWN: "INT32",
         IecType.STRING: "VisString255",
         IecType.TIMESTAMP: "Timestamp",
+    }
+
+    # 已知结构体 DA 的默认子属性 — 在线发现未展开 sub_das 时使用
+    _STRUCT_DA_DEFAULT_BDAS: dict[str, list[tuple[str, str]]] = {
+        "mag": [("f", "FLOAT32"), ("i", "INT32")],
+        "setMag": [("f", "FLOAT32"), ("i", "INT32")],
+        "instMag": [("f", "FLOAT32"), ("i", "INT32")],
     }
 
     _DA_NAME_FC_MAP = {
@@ -345,6 +351,16 @@ class IcdExporter:
                             da_type_item = {"@id": da_type_id}
                             da_type_item["BDA"] = bda_refs if len(bda_refs) > 1 else bda_refs[0]
                             da_types.append(da_type_item)
+                        elif da.name in self._STRUCT_DA_DEFAULT_BDAS:
+                            # 在线发现未展开子 DA，使用默认 BDA 定义
+                            da_type_id = f"{ln_type_id}.{do.name}.{da.name}"
+                            bda_refs = []
+                            for bda_name, bda_btype in self._STRUCT_DA_DEFAULT_BDAS[da.name]:
+                                bda_ref = {"@name": bda_name, "@bType": bda_btype}
+                                bda_refs.append(bda_ref)
+                            da_type_item = {"@id": da_type_id}
+                            da_type_item["BDA"] = bda_refs if len(bda_refs) > 1 else bda_refs[0]
+                            da_types.append(da_type_item)
 
                     if da_refs:
                         do_type_item["DA"] = da_refs if len(da_refs) > 1 else da_refs[0]
@@ -384,7 +400,6 @@ class IcdExporter:
         return result
 
     def _build_dois(self, ln) -> list[dict[str, Any]]:
-        from ....model import LNModel
         doi_list = []
         for do in ln.dos:
             doi = {"@name": do.name}
@@ -403,6 +418,8 @@ class IcdExporter:
             dln_class = dln.ln_class or self._extract_ln_class_from_name(dln.name) or ""
             dln_inst = self._extract_ln_inst(dln.name)
             discovered_ln_names.add(f"{dln_class}{dln_inst}")
+            # LN 的 MMS 原始名称也加入匹配（FCDA 从 MMS ref 提取的 lnClass 可能不完整）
+            discovered_ln_names.add(dln.name)
 
         ds_list = []
         for ds in datasets:
@@ -601,6 +618,11 @@ class IcdExporter:
             return ("Enum", "ctlModel")
         if da.sub_das:
             return ("Struct", f"{ln_type_id}.{do_name}.{da.name}")
+        # 根据 CDC 推断已知结构体 DA（即使在线发现未展开 sub_das）
+        if cdc in self._CDC_BTYPE_MAP and da.name in self._CDC_BTYPE_MAP[cdc]:
+            cdc_btype, _ = self._CDC_BTYPE_MAP[cdc][da.name]
+            if cdc_btype == "Struct":
+                return ("Struct", f"{ln_type_id}.{do_name}.{da.name}")
         btype = self._IEC_TYPE_TO_BTYPE.get(da.iec_type, "INT32")
         if do_name in ("Mod", "Beh", "Health") and da.name in ("stVal", "ctlVal"):
             return ("Enum", "Origin")

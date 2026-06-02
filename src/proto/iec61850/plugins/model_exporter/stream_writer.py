@@ -6,8 +6,9 @@ __slots__ 优化内存，链式调用优化可读性。
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
-from typing import Any, Callable
+from typing import Any
 
 
 class JsonStreamWriter:

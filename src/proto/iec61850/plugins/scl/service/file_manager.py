@@ -5,11 +5,11 @@
 """
 from __future__ import annotations
 
-import os
-import shutil
 from dataclasses import dataclass
 from datetime import datetime
+import os
 from pathlib import Path
+import shutil
 from typing import BinaryIO
 
 from ....log import log
@@ -161,7 +161,7 @@ class SclFileManager:
         if not os.path.exists(file_path):
             return None
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 return f.read()
         except Exception as e:
             log.warning(f"读取 SCL 文件失败: {e}")

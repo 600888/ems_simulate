@@ -6,15 +6,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
-from ..model.scl_document import SclDocument, SclDOType, SclDOI, SclLN, SclLDevice, SclIED
 from ..model.enums import (
     CDC_CATEGORY_MAP,
     CDC_DEFAULT_FC,
     PointCategory,
-    STRUCT_DA_TO_FULL_PATH,
 )
+from ..model.scl_document import SclDocument, SclDOI, SclLDevice, SclLN
 from ..parser.type_resolver import TypeResolver
 
 

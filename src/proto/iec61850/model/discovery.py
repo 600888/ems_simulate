@@ -11,9 +11,9 @@ ModelDiscoveryService 是调用 pyiec61850 API 的唯一入口。
 from __future__ import annotations
 
 import contextlib
-import re
 from contextlib import contextmanager
 from ctypes import c_bool
+import re
 import time
 from typing import Any, Protocol
 
@@ -210,6 +210,7 @@ class ModelDiscoveryService:
         conn = self._resolve_connection(connection)
 
         # 获取 LD 列表
+        ld_names: list[str] = []
         with self._error_guard("获取逻辑设备列表", on_error):
             ld_names = self._browse_logical_devices(conn)
 
@@ -263,6 +264,7 @@ class ModelDiscoveryService:
         """发现单个 LD 的完整模型"""
         ld_builder = builder.add_ld(ld_name, ld_name)
 
+        ln_names: list[str] = []
         with self._error_guard(f"LN 列表 {ld_name}", on_error):
             ln_names = self._browse_logical_nodes(conn, ld_name)
 
@@ -291,15 +293,33 @@ class ModelDiscoveryService:
 
     @staticmethod
     def _browse_logical_devices(conn) -> list[str]:
-        result = iec61850.IedConnection_getLogicalDeviceList(conn)
-        ld_list = result[0] if isinstance(result, (list, tuple)) else result
-        return get_list_from_linked_list(ld_list)
+        try:
+            result = iec61850.IedConnection_getLogicalDeviceList(conn)
+            if isinstance(result, (list, tuple)) and len(result) >= 2:
+                ld_list, error = result[0], result[1]
+                if error != iec61850.IED_ERROR_OK:
+                    return []
+            else:
+                ld_list = result
+            return get_list_from_linked_list(ld_list) if ld_list is not None else []
+        except Exception as e:
+            log.warning(f"获取逻辑设备列表异常: {e}")
+            return []
 
     @staticmethod
     def _browse_logical_nodes(conn, ld_name: str) -> list[str]:
-        result = iec61850.IedConnection_getLogicalDeviceDirectory(conn, ld_name)
-        ln_list = result[0] if isinstance(result, (list, tuple)) else result
-        return get_list_from_linked_list(ln_list)
+        try:
+            result = iec61850.IedConnection_getLogicalDeviceDirectory(conn, ld_name)
+            if isinstance(result, (list, tuple)) and len(result) >= 2:
+                ln_list, error = result[0], result[1]
+                if error != iec61850.IED_ERROR_OK:
+                    return []
+            else:
+                ln_list = result
+            return get_list_from_linked_list(ln_list) if ln_list is not None else []
+        except Exception as e:
+            log.warning(f"获取逻辑节点列表异常: {ld_name}, {e}")
+            return []
 
     def _discover_data_objects(
         self, conn, ld_name: str, ln_ref: str, ln_name: str, max_depth: int
@@ -307,11 +327,20 @@ class ModelDiscoveryService:
         """发现 LN 下所有 DO 及其 DA/BDA"""
         do_refs = []
 
-        result = iec61850.IedConnection_getLogicalNodeDirectory(
-            conn, ln_ref, AcsiClass.DATA_OBJECT
-        )
-        do_list = result[0] if isinstance(result, (list, tuple)) else result
-        do_names = get_list_from_linked_list(do_list)
+        try:
+            result = iec61850.IedConnection_getLogicalNodeDirectory(
+                conn, ln_ref, AcsiClass.DATA_OBJECT
+            )
+            if isinstance(result, (list, tuple)) and len(result) >= 2:
+                do_list, error = result[0], result[1]
+                if error != iec61850.IED_ERROR_OK:
+                    return []
+            else:
+                do_list = result
+            do_names = get_list_from_linked_list(do_list) if do_list is not None else []
+        except Exception as e:
+            log.warning(f"获取数据对象列表异常: {ln_ref}, {e}")
+            return []
 
         for do_name in do_names:
             do_ref = f"{ln_ref}.{do_name}"
@@ -346,9 +375,18 @@ class ModelDiscoveryService:
         """发现 DO 下所有 DA"""
         da_refs = []
 
-        result = iec61850.IedConnection_getDataDirectory(conn, do_ref)
-        da_list = result[0] if isinstance(result, (list, tuple)) else result
-        da_names = get_list_from_linked_list(da_list)
+        try:
+            result = iec61850.IedConnection_getDataDirectory(conn, do_ref)
+            if isinstance(result, (list, tuple)) and len(result) >= 2:
+                da_list, error = result[0], result[1]
+                if error != iec61850.IED_ERROR_OK:
+                    return []
+            else:
+                da_list = result
+            da_names = get_list_from_linked_list(da_list) if da_list is not None else []
+        except Exception as e:
+            log.warning(f"获取数据属性列表异常: {do_ref}, {e}")
+            return []
 
         for da_name in da_names:
             da_full_ref = f"{do_ref}.{da_name}"

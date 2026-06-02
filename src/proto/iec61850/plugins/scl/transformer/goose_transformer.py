@@ -6,15 +6,20 @@
 from __future__ import annotations
 
 import contextlib
-import re
 from dataclasses import dataclass, field
+import re
 from typing import Any
 
-from ..model.scl_document import (
-    SclDocument, SclGSE, SclGSEControl, SclLN, SclLDevice, SclIED,
-    SclDataSet,
-)
 from ..model.enums import FC_TO_IEC_TYPE
+from ..model.scl_document import (
+    SclDataSet,
+    SclDocument,
+    SclGSE,
+    SclGSEControl,
+    SclIED,
+    SclLDevice,
+    SclLN,
+)
 
 
 @dataclass

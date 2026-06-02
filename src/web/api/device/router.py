@@ -390,6 +390,7 @@ def _cleanup_temp_dirs() -> None:
 
 
 import atexit
+
 atexit.register(_cleanup_temp_dirs)
 
 

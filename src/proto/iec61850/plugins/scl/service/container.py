@@ -15,10 +15,10 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ..parser.scl_parser import SclParser
-from ..validator.rules import validate_all
-from ..transformer.point_transformer import SclPointTransformer
 from ..transformer.goose_transformer import SclGooseTransformer
+from ..transformer.point_transformer import SclPointTransformer
 from ..transformer.report_transformer import SclReportTransformer
+from ..validator.rules import validate_all
 
 if TYPE_CHECKING:
     from ..model.scl_document import SclDocument

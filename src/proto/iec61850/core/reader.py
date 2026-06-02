@@ -157,7 +157,15 @@ class TimestampReader:
     """时标值读取策略"""
 
     def read(self, conn, ref: str, fc_val) -> Any:
-        # 先尝试整数，再回退浮点
+        # 尝试专用 timestamp 读取函数 (libiec61850 原生支持)
+        if hasattr(iec61850, "IedConnection_readTimestampValue"):
+            try:
+                [value, error] = iec61850.IedConnection_readTimestampValue(conn, ref, fc_val)
+                if error == iec61850.IED_ERROR_OK:
+                    return int(value)  # 毫秒级 Unix 时间戳
+            except Exception:
+                pass
+        # 降级: 尝试整数 (某些设备的 t.Seconds 实现)
         if hasattr(iec61850, "IedConnection_readIntegerValue"):
             try:
                 [value, error] = iec61850.IedConnection_readIntegerValue(conn, ref, fc_val)
@@ -165,6 +173,7 @@ class TimestampReader:
                     return int(value)
             except Exception:
                 pass
+        # 降级: 尝试浮点
         try:
             [value, error] = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
             if error == iec61850.IED_ERROR_OK:

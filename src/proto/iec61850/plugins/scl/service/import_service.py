@@ -17,10 +17,10 @@ from typing import Any
 
 from ....log import log
 from ..model.scl_document import SclDocument
-from ..validator.result import ValidationResult
-from ..transformer.point_transformer import PointTransformResult
 from ..transformer.goose_transformer import GooseTransformResult
+from ..transformer.point_transformer import PointTransformResult
 from ..transformer.report_transformer import ReportTransformResult
+from ..validator.result import ValidationResult
 from .container import SclServiceContainer
 
 

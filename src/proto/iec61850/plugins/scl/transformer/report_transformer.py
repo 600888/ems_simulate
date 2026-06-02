@@ -8,10 +8,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..model.scl_document import (
-    SclDocument, SclLN, SclLDevice, SclIED, SclReportControl, SclDataSet,
-)
 from ..model.enums import FC_TO_IEC_TYPE
+from ..model.scl_document import (
+    SclDataSet,
+    SclDocument,
+    SclLDevice,
+    SclLN,
+    SclReportControl,
+)
 
 
 @dataclass

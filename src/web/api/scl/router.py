@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import os
 import tempfile
-from typing import Any
 
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 
@@ -92,7 +91,6 @@ async def get_scl_detail(request: Request, filename: str = Query(...)):
             return BaseResponse(code=404, message=f"文件不存在: {filename}")
 
         # 解析获取 IED 摘要
-        from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
 
         service = _get_import_service(request)
         result = service.preview_file(file_path)

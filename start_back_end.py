@@ -1,7 +1,6 @@
-# -*- coding: utf-8 -
-import sys
-import os
 import logging
+import os
+import sys
 
 # ⭐ Windows 打包环境下将 stdout/stderr 重定向到日志文件，避免控制台闪现
 if sys.platform.startswith('win') and getattr(sys, 'frozen', False):
@@ -17,11 +16,14 @@ if sys.platform.startswith('win') and getattr(sys, 'frozen', False):
         format='%(asctime)s - %(levelname)s: %(message)s',
     )
 
-import uvicorn
 import asyncio
+
 from fastapi.staticfiles import StaticFiles
-from src.web.app import app
+import uvicorn
+
 from src.config.config import Config
+from src.web.app import app
+
 
 async def main():
     # 获取静态文件目录（兼容开发 / PyInstaller 打包模式）

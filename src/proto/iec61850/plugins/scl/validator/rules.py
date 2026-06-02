@@ -1,7 +1,7 @@
 """校验规则 — Protocol + Registry 模式"""
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from .result import ValidationResult
 

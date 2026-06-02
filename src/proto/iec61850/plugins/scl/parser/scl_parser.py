@@ -11,21 +11,23 @@
 from __future__ import annotations
 
 import os
-import xml.etree.ElementTree as ET
 from typing import Any
+import xml.etree.ElementTree as ET
 
+from ....log import log
+from ..model.enums import STRUCT_DA_TO_FULL_PATH
 from ..model.scl_document import (
     SclAccessPoint,
     SclBDA,
     SclCommunication,
     SclConnectedAP,
     SclDA,
-    SclDAType,
     SclDataSet,
+    SclDAType,
     SclDO,
+    SclDocument,
     SclDOI,
     SclDOType,
-    SclDocument,
     SclEnumType,
     SclEnumVal,
     SclFCDA,
@@ -44,9 +46,7 @@ from ..model.scl_document import (
     SclSubNetwork,
     SclTrgOps,
 )
-from ..model.enums import STRUCT_DA_TO_FULL_PATH
 from .namespace import NamespaceHelper
-from ....log import log
 
 
 class SclParser:

@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-
 from typing import Any
 
 
@@ -369,6 +368,7 @@ class IedModel:
             ref = f"{do.ref}.{da_path}"
             address = f"{ld.name}/{ln.name}.{do.name}.{da_path}"
             code = f"{ln.name}.{do.name}.{da_path}"
+
 
             result[address] = {
                 "ref": ref,

@@ -236,7 +236,41 @@ class IEC61850Client:
         model = self._discovery.discover(self._conn)
 
         # 从 IedModel 派生 PointRegistry
-        return build_registry_from_model(model, self._registry)
+        discovered = build_registry_from_model(model, self._registry)
+
+        # 补充 dU 描述名称 (与 DataModelsPlugin._read_du_description 一致)
+        self._fill_du_names(discovered)
+
+        return discovered
+
+    def _fill_du_names(self, discovered: list[dict[str, Any]]) -> None:
+        """为发现的测点补充 dU 描述名称"""
+        from .defs.address import parse_ref
+
+        seen_dos: set[str] = set()
+        for point in discovered:
+            address = point.get("address", "")
+            parsed = parse_ref(address)
+            if not parsed:
+                continue
+            ld_inst, ln_name, do_name, _ = parsed
+            do_ref = f"{ld_inst}/{ln_name}.{do_name}"
+            if do_ref in seen_dos:
+                continue
+            seen_dos.add(do_ref)
+
+            du_desc = self._read_du_description(do_ref)
+            if not du_desc:
+                continue
+
+            for p in discovered:
+                p_addr = p.get("address", "")
+                p_parsed = parse_ref(p_addr)
+                if p_parsed:
+                    p_ld, p_ln, p_do, _ = p_parsed
+                    if f"{p_ld}/{p_ln}.{p_do}" == do_ref:
+                        p["name"] = du_desc
+                        self._registry.set_name(p_addr, du_desc)
 
     @property
     def model(self) -> IedModel | None:

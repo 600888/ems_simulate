@@ -130,7 +130,7 @@ class Iec61850Connection:
 
     def get_fc_value(self, fc: str):
         """将 FC 字符串转换为 pyiec61850 常量值"""
-        from ..defs.constants import FC_CO, FC_ST
+        from ..defs.constants import FC_CO, FC_DC, FC_ST
 
         if not fc or not HAS_IEC61850:
             return FC_MX
@@ -138,6 +138,7 @@ class Iec61850Connection:
             "MX": FC_MX,
             "ST": FC_ST,
             "CO": FC_CO,
+            "DC": FC_DC if FC_DC is not None else 3,
         }
         return fc_map.get(fc, FC_MX)
 
