@@ -1,7 +1,7 @@
 """IEC 61850 数据模型类型定义
 
 包含所有共享的数据类 (dataclass)，
-供 Client/Server/ModelExporter 共用。
+供 Client/Server/Reports 共用。
 """
 
 from dataclasses import dataclass, field
@@ -19,37 +19,6 @@ class PointRef:
     frame_type: int = 0  # 帧类型
     code: str = ""  # 短编码
     name: str = ""  # 测点名称
-
-
-@dataclass
-class DAInfo:
-    """数据属性 (DA) 信息"""
-
-    name: str = ""
-    path: str = ""
-    fc: str = ""
-    iec_type: str = ""
-    sub_das: list["DAInfo"] = field(default_factory=list)
-
-
-@dataclass
-class DOInfo:
-    """数据对象 (DO) 信息"""
-
-    name: str = ""
-    ref: str = ""
-    frame_type: int = -1
-    das: list[DAInfo] = field(default_factory=list)
-
-
-@dataclass
-class DataSetInfo:
-    """数据集 (DataSet) 信息"""
-
-    name: str = ""
-    ref: str = ""
-    is_deletable: bool = False
-    members: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -137,48 +106,3 @@ class ReportDataEntry:
     data_set: str = ""
     rpt_id: str = ""
     received_at: str = ""
-
-
-@dataclass
-class GoCBInfo:
-    """GOOSE 控制块信息"""
-
-    name: str = ""
-    ref: str = ""
-    go_cb_ref: str = ""
-    go_id: str = ""
-    app_id: int | None = None
-    data_set_ref: str = ""
-    conf_rev: int = 0
-
-
-@dataclass
-class LNInfo:
-    """逻辑节点 (LN) 信息"""
-
-    name: str = ""
-    ln_class: str = ""
-    ref: str = ""
-    dos: list[DOInfo] = field(default_factory=list)
-    datasets: list[DataSetInfo] = field(default_factory=list)
-    rcb_list: list[RCBInfo] = field(default_factory=list)
-    gocb_list: list[GoCBInfo] = field(default_factory=list)
-
-
-@dataclass
-class LDInfo:
-    """逻辑设备 (LD) 信息"""
-
-    name: str = ""
-    inst: str = ""
-    lns: list[LNInfo] = field(default_factory=list)
-
-
-@dataclass
-class ServerModel:
-    """服务端完整模型"""
-
-    host: str = ""
-    port: int = 102
-    discover_time: str = ""
-    lds: list[LDInfo] = field(default_factory=list)

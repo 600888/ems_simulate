@@ -378,12 +378,28 @@ async def edit_slave(req: SlaveEditRequest, request: Request):
 
 # ===== IEC 61850 模型导出 =====
 
+# 临时目录安全网: atexit 时清理泄漏的临时目录
+_temp_dirs: list[str] = []
+
+
+def _cleanup_temp_dirs() -> None:
+    """atexit 清理泄漏的临时目录"""
+    import shutil
+    for d in _temp_dirs:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+import atexit
+atexit.register(_cleanup_temp_dirs)
+
 
 @device_router.post("/export-model")
 async def export_model(req: ExportModelRequest, request: Request):
     """导出 IEC 61850 服务器模型为指定格式文件
 
     支持: icd (SCL/ICD标准格式), json, xml, csv, tree
+    使用缓存的 IedModel + Strategy 导出器。
+    临时文件通过 BackgroundTask + atexit 双重清理。
     """
     import os
     import shutil
@@ -411,11 +427,11 @@ async def export_model(req: ExportModelRequest, request: Request):
     # 导出类型映射
     export_type = req.export_type.lower()
     type_config = {
-        "icd": {"ext": ".icd", "media": "application/xml", "method": "export_icd"},
-        "json": {"ext": ".json", "media": "application/json", "method": "export_json"},
-        "xml": {"ext": ".xml", "media": "application/xml", "method": "export_xml"},
-        "csv": {"ext": ".csv", "media": "text/csv", "method": "export_csv"},
-        "tree": {"ext": ".txt", "media": "text/plain", "method": "export_tree_text"},
+        "icd": {"ext": ".icd", "media": "application/xml"},
+        "json": {"ext": ".json", "media": "application/json"},
+        "xml": {"ext": ".xml", "media": "application/xml"},
+        "csv": {"ext": ".csv", "media": "text/csv"},
+        "tree": {"ext": ".txt", "media": "text/plain"},
     }
 
     if export_type not in type_config:
@@ -425,29 +441,23 @@ async def export_model(req: ExportModelRequest, request: Request):
 
     config = type_config[export_type]
     tmp_dir = tempfile.mkdtemp(prefix="ems_export_")
+    _temp_dirs.append(tmp_dir)  # atexit 安全网
 
     try:
-        # 发现模型
+        # 使用 Strategy 导出器 + 缓存 IedModel
         exporter = client.model_exporter
-        model = exporter.discover_server_model()
-
-        if model is None:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            return BaseResponse(code=500, message="模型发现失败，未获取到服务器模型!", data=False)
-
-        # 导出到临时文件
         filename = f"{req.device_name}_model{config['ext']}"
         tmp_path = os.path.join(tmp_dir, filename)
 
-        # 调用对应的导出方法
-        method = getattr(exporter, config["method"])
         if export_type == "icd":
-            method(model, tmp_path, ied_name=req.ied_name)
+            exporter.export(export_type, output_path=tmp_path, ied_name=req.ied_name)
         else:
-            method(model, tmp_path)
+            exporter.export(export_type, output_path=tmp_path)
 
         # 返回文件下载，使用 BackgroundTask 在响应完成后清理临时文件
         def _cleanup():
+            if tmp_dir in _temp_dirs:
+                _temp_dirs.remove(tmp_dir)
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
         return FileResponse(
@@ -456,8 +466,16 @@ async def export_model(req: ExportModelRequest, request: Request):
             media_type=config["media"],
             background=BackgroundTask(_cleanup),
         )
+    except RuntimeError as e:
+        # IedModel 未缓存
+        if tmp_dir in _temp_dirs:
+            _temp_dirs.remove(tmp_dir)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        return BaseResponse(code=400, message=str(e), data=False)
     except Exception as e:
         # 异常时立即清理临时文件
+        if tmp_dir in _temp_dirs:
+            _temp_dirs.remove(tmp_dir)
         shutil.rmtree(tmp_dir, ignore_errors=True)
         log.error(f"导出模型失败: {e}")
         return BaseResponse(code=500, message=f"导出模型失败: {e}!", data=False)

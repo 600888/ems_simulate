@@ -1,10 +1,14 @@
 # IEC 61850 SCL 文件模块重构实施计划
 
+> ⚠️ **本文档已废弃**，已合并至 [iec61850-unified-model-refactoring.md](./iec61850-unified-model-refactoring.md) v3.0  
+> 合并原因: SCL 重构实施与在线模型统一发现、导出优化存在强关联，统一文档避免信息分裂  
+> 废弃日期: 2026-06-02
+
 > 版本: 2.0  
 > 日期: 2026-05-31  
 > 基于: [iec61850-scl-file-module.md](./iec61850-scl-file-module.md) v1.0  
-> 状态: 实施规划  
-> 目标: 以现代 Python 设计模式重构 SCL 模块，提升可维护性、可测试性和可扩展性
+> 状态: 已废弃  
+> 关联: [iec61850-unified-model-refactoring.md](./iec61850-unified-model-refactoring.md)
 
 ---
 

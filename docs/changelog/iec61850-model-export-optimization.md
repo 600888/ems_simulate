@@ -1,9 +1,13 @@
 # IEC 61850 模型导出优化方案
 
+> ⚠️ **本文档已废弃**，已合并至 [iec61850-unified-model-refactoring.md](./iec61850-unified-model-refactoring.md) v3.0  
+> 合并原因: 模型导出优化与统一模型发现去重、SCL 重构存在强关联，统一文档避免信息分裂  
+> 废弃日期: 2026-06-02
+
 > 版本: 1.0  
 > 日期: 2026-06-02  
-> 状态: 规划中  
-> 关联: [iec61850-refactoring-plan.md](./iec61850-refactoring-plan.md)
+> 状态: 已废弃  
+> 关联: [iec61850-unified-model-refactoring.md](./iec61850-unified-model-refactoring.md)
 
 ---
 

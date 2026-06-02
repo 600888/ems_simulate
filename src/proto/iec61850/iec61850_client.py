@@ -3,6 +3,8 @@ IEC 61850 MMS 客户端封装 (门面模式)
 
 组合 core/ 和 plugins/ 模块，提供统一的客户端 API。
 保持与原有 IEC61850Client 接口完全向后兼容。
+
+v3.0 变更: 集成 ModelDiscoveryService，连接时一次发现 → IedModel 缓存 → 多处消费。
 """
 
 from typing import Any
@@ -20,6 +22,9 @@ from .defs import (
     IecType,
     extract_ln_class,
 )
+from .model import IedModel
+from .model.discovery import ModelDiscoveryService
+from .model.registry_bridge import build_registry_from_model
 from .plugins import PluginRegistry, _register_builtin_plugins
 
 if HAS_IEC61850:
@@ -55,6 +60,9 @@ class IEC61850Client:
         self._registry = PointRegistry(model_name, ld_name)
         self._reader = Iec61850Reader(self._conn, self._registry)
         self._writer = Iec61850Writer(self._conn, self._registry)
+
+        # ===== 统一模型发现服务 =====
+        self._discovery = ModelDiscoveryService()
 
         # ===== 插件系统 =====
         self._plugins = PluginRegistry(auto_register=False)
@@ -118,6 +126,7 @@ class IEC61850Client:
 
     def disconnect(self):
         """断开连接"""
+        self._discovery.invalidate()
         self._conn.disconnect()
 
     @property
@@ -212,14 +221,27 @@ class IEC61850Client:
             return fp.get_file(filename, local_path)
         return b""
 
-    # ===== 模型发现 (委托给 DataModels 插件) =====
+    # ===== 模型发现 (使用统一 ModelDiscoveryService) =====
 
     def discover_model(self) -> list[dict[str, Any]]:
-        """动态发现并映射服务端的数据模型 (委托给 DataModels 插件)"""
-        dm = self.datamodels
-        if dm:
-            return dm.discover_model()
-        return []
+        """动态发现并映射服务端的数据模型
+
+        使用 ModelDiscoveryService 统一发现，一次遍历构建 IedModel，
+        然后从 IedModel 派生 PointRegistry。
+        """
+        if not self._conn.is_connected:
+            return []
+
+        # 统一发现: 一次遍历，构建并缓存 IedModel
+        model = self._discovery.discover(self._conn)
+
+        # 从 IedModel 派生 PointRegistry
+        return build_registry_from_model(model, self._registry)
+
+    @property
+    def model(self) -> IedModel | None:
+        """获取缓存的 IedModel"""
+        return self._discovery.model
 
     def get_discovered_points(self) -> list[dict[str, Any]]:
         """获取当前已映射的测点列表 (委托给 DataModels 插件)"""
@@ -389,56 +411,22 @@ class IEC61850Client:
         """获取模型导出工具实例 (通过插件系统)"""
         return self._plugins.get("model_exporter")
 
-    def discover_server_model(self, *, on_error: str = "skip", max_depth: int = 10):
-        """动态发现服务端完整数据模型 (结构化)
+    def export_model(self, export_type: str, output_path: str = "", **kwargs) -> str:
+        """统一模型导出入口
 
         Args:
-            on_error: 错误处理策略 ("skip" 跳过 / "abort" 中断)
-            max_depth: 子 DA 递归最大深度
+            export_type: 导出类型 (json/csv/icd/xml/tree)
+            output_path: 输出文件路径
+            **kwargs: 导出器额外参数 (如 ied_name)
         """
         plugin = self.model_exporter
         if plugin:
-            return plugin.discover_server_model(on_error=on_error, max_depth=max_depth)
-        return None
+            return plugin.export(export_type, output_path=output_path, **kwargs)
+        return ""
 
-    def export_model_json(self, model, output_path, indent=2):
-        """导出模型为 JSON"""
-        plugin = self.model_exporter
-        if plugin:
-            return plugin.export_json(model, output_path, indent)
-        return None
-
-    def export_model_csv(self, model, output_path):
-        """导出模型为 CSV"""
-        plugin = self.model_exporter
-        if plugin:
-            return plugin.export_csv(model, output_path)
-        return None
-
-    def export_model_tree_text(self, model, output_path):
-        """导出模型为树形文本"""
-        plugin = self.model_exporter
-        if plugin:
-            return plugin.export_tree_text(model, output_path)
-        return None
-
-    def export_model_xml(self, model, output_path, pretty=True):
-        """导出模型为 XML"""
-        plugin = self.model_exporter
-        if plugin:
-            return plugin.export_xml(model, output_path, pretty)
-        return None
-
-    def export_model_icd(self, model, output_path, ied_name="", pretty=True):
-        """导出模型为 ICD"""
-        plugin = self.model_exporter
-        if plugin:
-            return plugin.export_icd(model, output_path, ied_name=ied_name, pretty=pretty)
-        return None
-
-    def export_model_all(self, model, output_dir, ied_name=""):
+    def export_model_all(self, output_dir: str, ied_name: str = "") -> dict[str, str]:
         """导出所有格式"""
         plugin = self.model_exporter
         if plugin:
-            return plugin.export_all(model, output_dir, ied_name=ied_name)
-        return None
+            return plugin.export_all(output_dir, ied_name=ied_name)
+        return {}

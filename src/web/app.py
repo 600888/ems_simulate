@@ -13,6 +13,7 @@ from src.web.api import (
     point_router,
     point_tree_router,
 )
+from src.web.api.scl.router import router as scl_router
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
 
@@ -41,6 +42,7 @@ def create_app():
     app.include_router(point_mapping_router)
     app.include_router(point_tree_router)
     app.include_router(device_group_router)
+    app.include_router(scl_router)
 
     # 初始化就绪状态
     app.state.initialized = False

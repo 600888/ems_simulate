@@ -1,9 +1,13 @@
 # IEC 61850 SCL 文件模块开发计划
 
+> ⚠️ **本文档已废弃**，已合并至 [iec61850-unified-model-refactoring.md](./iec61850-unified-model-refactoring.md) v3.0  
+> 合并原因: SCL 离线解析与在线模型发现、导出优化存在强关联，统一文档避免信息分裂  
+> 废弃日期: 2026-06-02
+
 > 版本: 1.0  
 > 日期: 2026-05-31  
-> 状态: 规划中  
-> 关联文档: [iec61850-refactoring-plan.md](./iec61850-refactoring-plan.md)、[goose-support.md](./goose-support.md)、[iec61850-reports-support.md](./iec61850-reports-support.md)
+> 状态: 已废弃  
+> 关联文档: [iec61850-unified-model-refactoring.md](./iec61850-unified-model-refactoring.md)
 
 ---
 

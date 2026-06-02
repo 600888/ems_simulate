@@ -102,19 +102,77 @@ async def preview_icd(
 
         try:
             # ===== 1. MMS 测点预览（只计数不保存） =====
-            from src.tools.icd_point_importer import IcdPointImporter
+            # 优先使用 SclImportService (统一解析)，失败时回退到旧 Importer
+            use_scl_service = True
+            yc_count, yx_count, yk_count, yt_count = 0, 0, 0, 0
+            result = None  # SclImportResult, 初始化避免 unbound
 
-            importer = IcdPointImporter(channel_id=0)  # preview 不需要 channel_id
-            yc_count, yx_count, yk_count, yt_count = importer.preview_from_icd(tmp_path)
+            try:
+                from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
+
+                service = SclImportService()
+                result = service.preview_file(tmp_path)
+                yc_count = len(result.points.yc_points)
+                yx_count = len(result.points.yx_points)
+                yk_count = len(result.points.yk_points)
+                yt_count = len(result.points.yt_points)
+            except Exception as scl_err:
+                log.warning(f"SclImportService 预览失败，回退到旧 Importer: {scl_err}")
+                use_scl_service = False
+                from src.tools.icd_point_importer import IcdPointImporter
+
+                importer = IcdPointImporter(channel_id=0)  # preview 不需要 channel_id
+                yc_count, yx_count, yk_count, yt_count = importer.preview_from_icd(tmp_path)
 
             # ===== 2. GOOSE 配置预览 =====
             goose_data: dict[str, Any] = {}
             goose_errors: list[str] = []
             try:
-                from src.tools.icd_goose_importer import import_goose_from_icd
+                if use_scl_service and result is not None:
+                    # 复用 SclImportService 的 GOOSE 结果
+                    goose_data = {
+                        "summary": {
+                            "gse_control_count": len(result.goose.gse_controls),
+                            "gse_controls": [
+                                {
+                                    "go_cb_ref": g.go_cb_ref,
+                                    "go_id": g.name,
+                                    "app_id": g.app_id or g.gse_app_id,
+                                    "dat_set": g.dat_set,
+                                    "conf_rev": g.conf_rev,
+                                    "mac_address": g.mac_address,
+                                    "dataset_member_count": len(g.dataset_members),
+                                }
+                                for g in result.goose.gse_controls
+                            ],
+                        },
+                        "publishers": [gse.to_publisher_dict(interface) for gse in result.goose.gse_controls],
+                        "subscriptions": [gse.to_subscription_dict() for gse in result.goose.gse_controls],
+                        "pure_datasets": result.goose.pure_datasets,
+                        "report_controls": [
+                            {
+                                "ld_inst": rc.ld_inst,
+                                "name": rc.name,
+                                "rcb_type": rc.rcb_type,
+                                "rpt_id": rc.rpt_id,
+                                "dat_set": rc.dat_set,
+                                "data_set_ref": rc.data_set_ref,
+                                "conf_rev": rc.conf_rev,
+                                "buf_time": rc.buf_time,
+                                "intg_period": rc.intg_period,
+                                "ln_name": rc.ln_name,
+                                "trg_ops": rc.trg_ops,
+                                "opt_fields": rc.opt_fields,
+                                "entries": rc.entries,
+                            }
+                            for rc in result.reports.report_controls
+                        ],
+                    }
+                else:
+                    from src.tools.icd_goose_importer import import_goose_from_icd
 
-                goose_result = import_goose_from_icd(tmp_path, interface=interface)
-                goose_data = goose_result
+                    goose_result = import_goose_from_icd(tmp_path, interface=interface)
+                    goose_data = goose_result
             except Exception as e:
                 log.warning(f"预览 ICD GOOSE 配置失败 (不影响 MMS 预览): {e}")
                 goose_errors.append(f"GOOSE 解析失败: {e}")
@@ -257,15 +315,28 @@ async def import_icd(
                 log.warning(f"获取 IEC61850Server 失败: {e}")
 
             try:
-                from src.tools.icd_goose_importer import import_goose_from_icd
+                # 优先使用 SclImportService (统一解析)，失败时回退到旧 Importer
+                goose_data: dict[str, Any] = {}
+                try:
+                    from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
 
-                goose_result = import_goose_from_icd(tmp_path, interface=interface)
-                goose_data = goose_result
+                    service = SclImportService()
+                    scl_result = service.import_file(tmp_path)
+                    goose_data = scl_result.to_dict()
+                    # 补充 SclImportService 不提供的字段
+                    goose_data["pure_datasets"] = scl_result.goose.pure_datasets
+                    goose_data["report_controls"] = scl_result.to_dict().get("report_controls", [])
+                except Exception as scl_err:
+                    log.warning(f"SclImportService GOOSE 解析失败，回退到旧 Importer: {scl_err}")
+                    from src.tools.icd_goose_importer import import_goose_from_icd
+
+                    goose_result = import_goose_from_icd(tmp_path, interface=interface)
+                    goose_data = goose_result
 
                 # ===== 2a. 注册纯 DataSet（必须在 GoCB 之前） =====
                 # IEC 61850 标准创建顺序：数据模型 → DataSet → GSEControlBlock
                 # DataSet 必须先于引用它的 GSEControlBlock 存在于 IedModel 中
-                pure_datasets = goose_result.get("pure_datasets", [])
+                pure_datasets = goose_data.get("pure_datasets", [])
                 pure_ds_count = 0
                 log.info(
                     f"纯 DataSet 注册准备: pure_datasets={len(pure_datasets)}个, "
@@ -287,7 +358,7 @@ async def import_icd(
 
                 # ===== 2ab. 注册 ReportControl (RCB) =====
                 # 从 ICD 的 ReportControl 元素创建 RCB 对象到 IedModel
-                report_controls = goose_result.get("report_controls", [])
+                report_controls = goose_data.get("report_controls", [])
                 rc_registered = 0
                 if report_controls and iec61850_server:
                     log.info(f"ReportControl 注册准备: {len(report_controls)}个")
@@ -338,12 +409,12 @@ async def import_icd(
                 # ===== 2b. 创建 GOOSE Publisher（注册 GSEControlBlock） =====
                 # GoCB 引用的 DataSet 会在 add_goose_control_block 内部创建
                 # 但纯 DataSet 已在 2a 步骤中提前注册到 IedModel
-                if auto_create_goose and goose_result.get("publishers"):
+                if auto_create_goose and goose_data.get("publishers"):
                     from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
 
                     manager: GooseResourceManager | None = getattr(request.app.state, "goose_manager", None)
                     if manager:
-                        for pub_config in goose_result["publishers"]:
+                        for pub_config in goose_data["publishers"]:
                             try:
                                 pub_result = manager.create_publisher(
                                     interface=pub_config["interface"],

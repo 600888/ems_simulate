@@ -1,7 +1,9 @@
 """DataModels 插件 - 模型发现与导出
 
 封装 IEC 61850 服务端模型的发现、浏览和导出功能。
-从 IEC61850Client 的 discover_model/browse_* 方法迁移而来。
+
+v3.0 变更: discover_model() 不再独立遍历 IED，
+改为从 IEC61850Client 缓存的 IedModel 派生 PointRegistry。
 """
 
 import contextlib
@@ -46,6 +48,7 @@ from ...defs.ln_classes import (
     YX_LN_CLASSES,
 )
 from ...log import log
+from ...model.registry_bridge import build_registry_from_model
 from ..base import Iec61850Plugin
 
 if HAS_IEC61850:
@@ -90,12 +93,23 @@ class DataModelsPlugin:
     def discover_model(self) -> list[dict[str, Any]]:
         """动态发现并映射服务端的数据模型
 
+        v3.0 变更: 优先从 IEC61850Client 缓存的 IedModel 派生，
+        避免重复遍历 IED。仅当无缓存时回退到独立发现。
+        """
+        # 优先从缓存的 IedModel 派生 (零重复遍历)
+        if self._client and hasattr(self._client, 'model') and self._client.model is not None:
+            log.info("从缓存的 IedModel 派生 PointRegistry...")
+            return build_registry_from_model(self._client.model, self._registry)
+
+        # 回退: 独立发现 (仅当 IedModel 未缓存时)
+        return self._discover_model_fallback()
+
+    def _discover_model_fallback(self) -> list[dict[str, Any]]:
+        """独立发现 (回退路径 — IedModel 未缓存时使用)
+
         支持两种模型结构:
         1. 简单地址模式: 识别 MV_/SPS_/SPC_/APC_ 前缀的 DO
         2. 动态模型模式 (ICD 导入): 识别没有前缀的 DO，根据 LN 推断 frame_type
-
-        Returns:
-            发现的测点列表
         """
         if not self._connection or not self._connection.is_connected:
             return []

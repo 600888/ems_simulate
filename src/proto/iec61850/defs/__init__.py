@@ -1,7 +1,7 @@
 """IEC 61850 公共定义包
 
 统一导出所有共享常量、枚举、数据类和工具函数，
-供 Client/Server/ModelExporter/GOOSE 等模块共用。
+供 Client/Server/Reports/GOOSE 等模块共用。
 """
 
 from .address import (
@@ -57,17 +57,10 @@ from .ln_classes import (
     YX_LN_CLASSES,
 )
 from .types import (
-    DAInfo,
-    DataSetInfo,
-    DOInfo,
-    GoCBInfo,
-    LDInfo,
-    LNInfo,
     OptFields,
     PointRef,
     RCBInfo,
     ReportDataEntry,
-    ServerModel,
     TrgOps,
 )
 
@@ -121,15 +114,8 @@ __all__ = [
     "split_ln_name",
     # types
     "PointRef",
-    "DAInfo",
-    "DOInfo",
-    "DataSetInfo",
-    "GoCBInfo",
     "RCBInfo",
     "TrgOps",
     "OptFields",
     "ReportDataEntry",
-    "LNInfo",
-    "LDInfo",
-    "ServerModel",
 ]
