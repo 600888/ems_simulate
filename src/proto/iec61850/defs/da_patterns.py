@@ -137,11 +137,14 @@ BDA_TYPE_MAP = {
 }
 
 # 需要递归展开子 BDA 的 struct DA 名称
-# q 和 t 是 IEC61850 固有属性, 不作为测点也不展开; origin 展开为测点
-STRUCT_DA_EXPAND_ONLINE = {"origin"}
+# q 和 t 展开为子测点 (如 q.validity, t.seconds 等), origin 展开为测点
+STRUCT_DA_EXPAND_ONLINE = {"origin", "q", "t"}
 
 # 已知 struct DA 的硬编码 BDA 子节点 (当在线发现子 DA 失败时使用)
-# q 和 t 是固有属性, 不需要回退
 KNOWN_BDA_FALLBACK_ONLINE = {
     "origin": ["orCat", "orIdent"],
+    # Quality (q) 的 BDA 子节点
+    "q": ["validity", "detailQuality", "source", "operatorBlocked", "test"],
+    # Timestamp (t) 的 BDA 子节点
+    "t": ["seconds", "fraction", "LeapSecondsKnown", "ClockedFailure", "ClockNotSynchronized", "TimeAccuracy"],
 }

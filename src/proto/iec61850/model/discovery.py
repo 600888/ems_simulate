@@ -26,6 +26,7 @@ from ..defs.da_patterns import (
     ENC_DO_DA_TYPE_OVERRIDE,
     EXTRA_DA_INFO,
     KNOWN_BDA_FALLBACK_ONLINE,
+    SKIP_DA_NAMES,
     STRUCT_DA_EXPAND_ONLINE,
 )
 from ..defs.ln_classes import (
@@ -363,6 +364,14 @@ class ModelDiscoveryService:
 
         return do_refs
 
+    # q/t/dU 是 IEC 61850 固有属性, 不动态发现, 默认硬编码创建
+    # q 和 t 展开为子 DA (如 q.validity, t.seconds), 父结构体不能直接 MMS 读取
+    _DEFAULT_META_DAS: tuple[tuple[str, str, str, str], ...] = (
+        ("q", "q", "MX", "integer"),          # 品质 (Quality struct → 展开子 DA)
+        ("t", "t", "MX", "timestamp"),         # 时标 (Timestamp struct → 展开子 DA)
+        ("dU", "dU", "DC", "string"),          # 描述 (Description)
+    )
+
     def _discover_data_attributes(
         self,
         conn,
@@ -372,7 +381,10 @@ class ModelDiscoveryService:
         do_frame_type: int,
         max_depth: int = 10,
     ) -> list[DARef]:
-        """发现 DO 下所有 DA"""
+        """发现 DO 下所有 DA
+
+        q/t/dU 是 IEC 61850 固有属性，不动态发现，默认硬编码创建。
+        """
         da_refs = []
 
         try:
@@ -389,6 +401,10 @@ class ModelDiscoveryService:
             return []
 
         for da_name in da_names:
+            # 跳过元数据 DA (q/t/dU 等), 稍后硬编码添加
+            if da_name in SKIP_DA_NAMES:
+                continue
+
             da_full_ref = f"{do_ref}.{da_name}"
 
             # 解析 DA 信息 (fc, iec_type, path)
@@ -411,6 +427,33 @@ class ModelDiscoveryService:
                     fc=da_info.fc,
                     iec_type=da_info.iec_type,
                     sub_das=sub_das,
+                )
+            )
+
+        # 默认硬编码创建 q/t/dU (IEC 61850 固有属性)
+        # q 和 t 是结构化类型, 展开子 DA (如 q.validity, t.seconds) 以便 MMS 读取
+        for da_name, da_path, da_fc, da_iec_type in self._DEFAULT_META_DAS:
+            meta_sub_das: tuple[DARef, ...] = ()
+            if da_name in ("q", "t") and da_name in KNOWN_BDA_FALLBACK_ONLINE:
+                bda_refs: list[DARef] = []
+                for bda_name in KNOWN_BDA_FALLBACK_ONLINE[da_name]:
+                    bda_iec_type = BDA_TYPE_MAP.get(bda_name, "unknown")
+                    bda_refs.append(
+                        DARef(
+                            name=bda_name,
+                            path=f"{da_path}.{bda_name}",
+                            fc=da_fc,
+                            iec_type=bda_iec_type,
+                        )
+                    )
+                meta_sub_das = tuple(bda_refs)
+            da_refs.append(
+                DARef(
+                    name=da_name,
+                    path=da_path,
+                    fc=da_fc,
+                    iec_type=da_iec_type,
+                    sub_das=meta_sub_das,
                 )
             )
 

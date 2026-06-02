@@ -246,6 +246,7 @@ class IEC61850Client:
     def _fill_du_names(self, discovered: list[dict[str, Any]]) -> None:
         """为发现的测点补充 dU 描述名称"""
         from .defs.address import parse_ref
+        from .defs.ln_classes import SKIP_SYSTEM_DOS
 
         seen_dos: set[str] = set()
         for point in discovered:
@@ -254,6 +255,9 @@ class IEC61850Client:
             if not parsed:
                 continue
             ld_inst, ln_name, do_name, _ = parsed
+            # 系统 DO (Mod/Beh/Health/NamPlt 等) 无 dU 描述, 跳过
+            if do_name in SKIP_SYSTEM_DOS:
+                continue
             do_ref = f"{ld_inst}/{ln_name}.{do_name}"
             if do_ref in seen_dos:
                 continue

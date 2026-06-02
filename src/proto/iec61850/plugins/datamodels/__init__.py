@@ -2,44 +2,30 @@
 
 封装 IEC 61850 服务端模型的发现、浏览和导出功能。
 
-v3.0 变更: discover_model() 不再独立遍历 IED，
-改为从 IEC61850Client 缓存的 IedModel 派生 PointRegistry。
+v3.0+: discover_model() 统一委托给 Iec61850Client 缓存的 IedModel，
+不再独立遍历 IED。所有模型发现由 ModelDiscoveryService 统一管理。
 """
 
-import contextlib
-import time
-from typing import Any, Optional
+from typing import Any
 
 from ...core.linked_list import get_list_from_linked_list
-from ...core.mms_value import mms_value_to_python
 from ...defs.address import (
     extract_ln_class,
-    infer_fc_from_address,
-    infer_iec_type_from_address,
-    is_full_ref,
     parse_ref,
 )
 from ...defs.constants import (
     HAS_IEC61850,
-    IEC_TYPE_BOOLEAN,
-    IEC_TYPE_FLOAT,
-    IEC_TYPE_INTEGER,
-    IEC_TYPE_STRING,
-    IEC_TYPE_TIMESTAMP,
     IEC_TYPE_UNKNOWN,
 )
 from ...defs.da_patterns import (
     BDA_TYPE_MAP,
-    DA_PATH_TO_FRAME_TYPE,
     DA_PATTERNS,
-    ENC_DO_DA_TYPE_OVERRIDE,
     EXTRA_DA_INFO,
     KNOWN_BDA_FALLBACK_ONLINE,
     SKIP_DA_NAMES,
     STRUCT_DA_EXPAND_ONLINE,
 )
 from ...defs.ln_classes import (
-    ALL_LN_CLASSES,
     SIGNAL_DOS,
     SKIP_SYSTEM_DOS,
     YC_LN_CLASSES,
@@ -49,7 +35,6 @@ from ...defs.ln_classes import (
 )
 from ...log import log
 from ...model.registry_bridge import build_registry_from_model
-from ..base import Iec61850Plugin
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
@@ -91,365 +76,16 @@ class DataModelsPlugin:
     # ===== 模型发现 =====
 
     def discover_model(self) -> list[dict[str, Any]]:
-        """动态发现并映射服务端的数据模型
+        """从缓存的 IedModel 派生 PointRegistry
 
-        v3.0 变更: 优先从 IEC61850Client 缓存的 IedModel 派生，
-        避免重复遍历 IED。仅当无缓存时回退到独立发现。
+        模型发现由 ModelDiscoveryService 统一管理（连接时自动执行），
+        本方法仅从已缓存的 IedModel 派生测点注册表。
         """
-        # 优先从缓存的 IedModel 派生 (零重复遍历)
         if self._client and hasattr(self._client, 'model') and self._client.model is not None:
             log.info("从缓存的 IedModel 派生 PointRegistry...")
             return build_registry_from_model(self._client.model, self._registry)
-
-        # 回退: 独立发现 (仅当 IedModel 未缓存时)
-        return self._discover_model_fallback()
-
-    def _discover_model_fallback(self) -> list[dict[str, Any]]:
-        """独立发现 (回退路径 — IedModel 未缓存时使用)
-
-        支持两种模型结构:
-        1. 简单地址模式: 识别 MV_/SPS_/SPC_/APC_ 前缀的 DO
-        2. 动态模型模式 (ICD 导入): 识别没有前缀的 DO，根据 LN 推断 frame_type
-        """
-        if not self._connection or not self._connection.is_connected:
-            return []
-
-        log.info("开始 IEC 61850 动态模型发现...")
-        start_time = time.time()
-        discovered_points: list[dict[str, Any]] = []
-        self._registry.discovered_goose_items.clear()
-
-        # 1. 获取逻辑设备列表
-        result = iec61850.IedConnection_getLogicalDeviceList(self._connection.connection)
-        ld_list = result[0] if isinstance(result, (list, tuple)) else result
-        error = result[1] if isinstance(result, (list, tuple)) else 0
-
-        if error != iec61850.IED_ERROR_OK:
-            log.error(f"发现模型失败: 无法获取逻辑设备列表 (错误码: {error})")
-            return []
-
-        lds = get_list_from_linked_list(ld_list)
-        log.info(f"发现逻辑设备: {lds}")
-
-        for ld in lds:
-            # 2. 获取逻辑节点列表
-            result = iec61850.IedConnection_getLogicalDeviceDirectory(self._connection.connection, ld)
-            ln_list = result[0] if isinstance(result, (list, tuple)) else result
-            error = result[1] if isinstance(result, (list, tuple)) else 0
-
-            if error != iec61850.IED_ERROR_OK:
-                log.debug(f"跳过逻辑设备 {ld}: 无法获取目录 (错误码: {error})")
-                continue
-
-            lns = get_list_from_linked_list(ln_list)
-            log.info(f"逻辑设备 {ld} 下发现逻辑节点: {lns}")
-
-            for ln in lns:
-                ln_ref = f"{ld}/{ln}"
-
-                # 3. 获取数据对象列表
-                dos = []
-                for acsi_val in [0, 2, 3, 1]:
-                    try:
-                        result = iec61850.IedConnection_getLogicalNodeDirectory(
-                            self._connection.connection, ln_ref, acsi_val
-                        )
-                        do_list = result[0] if isinstance(result, (list, tuple)) else result
-                        error = result[1] if isinstance(result, (list, tuple)) else 0
-                        if error == iec61850.IED_ERROR_OK and do_list is not None:
-                            dos = get_list_from_linked_list(do_list)
-                            if dos:
-                                break
-                    except Exception:
-                        continue
-                log.info(f"逻辑节点 {ln_ref} 下发现数据对象: {dos}")
-                if not dos:
-                    log.warning(f"跳过逻辑节点 {ln_ref}: 无法获取数据对象目录")
-                    continue
-
-                for do in dos:
-                    full_do_ref = f"{ln_ref}.{do}"
-
-                    try:
-                        # 简单地址模式: DO 名带前缀
-                        if do.startswith("MV_"):
-                            addr = do[3:]
-                            da_path = "mag.f"
-                            frame_type = 0
-                            fc = "MX"
-                            iec_type = IEC_TYPE_FLOAT
-                            ref = f"{full_do_ref}.{da_path}"
-                            address = f"{ld}/{ln}.{do}.{da_path}"
-                            self._registry.set_ref(address, ref)
-                            self._registry.set_fc(address, fc)
-                            self._registry.set_iec_type(address, iec_type)
-                            discovered_points.append(
-                                {
-                                    "address": address,
-                                    "frame_type": frame_type,
-                                    "ref": ref,
-                                    "code": addr,
-                                    "fc": fc,
-                                    "iec_type": iec_type,
-                                }
-                            )
-                        elif do.startswith("SPS_"):
-                            addr = do[4:]
-                            da_path = "stVal"
-                            frame_type = 1
-                            fc = "ST"
-                            iec_type = IEC_TYPE_BOOLEAN
-                            ref = f"{full_do_ref}.{da_path}"
-                            address = f"{ld}/{ln}.{do}.{da_path}"
-                            self._registry.set_ref(address, ref)
-                            self._registry.set_fc(address, fc)
-                            self._registry.set_iec_type(address, iec_type)
-                            discovered_points.append(
-                                {
-                                    "address": address,
-                                    "frame_type": frame_type,
-                                    "ref": ref,
-                                    "code": addr,
-                                    "fc": fc,
-                                    "iec_type": iec_type,
-                                }
-                            )
-                        elif do.startswith("SPC_"):
-                            addr = do[4:]
-                            da_path = "ctlVal"
-                            frame_type = 2
-                            fc = "CO"
-                            iec_type = IEC_TYPE_BOOLEAN
-                            ref = f"{full_do_ref}.{da_path}"
-                            address = f"{ld}/{ln}.{do}.{da_path}"
-                            self._registry.set_ref(address, ref)
-                            self._registry.set_fc(address, fc)
-                            self._registry.set_iec_type(address, iec_type)
-                            discovered_points.append(
-                                {
-                                    "address": address,
-                                    "frame_type": frame_type,
-                                    "ref": ref,
-                                    "code": addr,
-                                    "fc": fc,
-                                    "iec_type": iec_type,
-                                }
-                            )
-                        elif do.startswith("APC_"):
-                            addr = do[4:]
-                            da_path = "ctlVal"
-                            frame_type = 3
-                            fc = "CO"
-                            iec_type = IEC_TYPE_FLOAT
-                            ref = f"{full_do_ref}.{da_path}"
-                            address = f"{ld}/{ln}.{do}.{da_path}"
-                            self._registry.set_ref(address, ref)
-                            self._registry.set_fc(address, fc)
-                            self._registry.set_iec_type(address, iec_type)
-                            discovered_points.append(
-                                {
-                                    "address": address,
-                                    "frame_type": frame_type,
-                                    "ref": ref,
-                                    "code": addr,
-                                    "fc": fc,
-                                    "iec_type": iec_type,
-                                }
-                            )
-                        else:
-                            # 动态模型模式 (ICD 导入)
-                            da_paths = self._discover_da_paths(full_do_ref)
-                            du_desc = self._read_du_description(full_do_ref)
-
-                            if da_paths:
-                                for da_path, frame_type, fc, iec_type in da_paths:
-                                    # ENC 类型 DO 的 stVal/ctlVal 是整型而非布尔
-                                    if do in ENC_DO_DA_TYPE_OVERRIDE:
-                                        da_top = da_path.split(".")[0]
-                                        override_type = ENC_DO_DA_TYPE_OVERRIDE[do].get(da_top)
-                                        if override_type:
-                                            iec_type = override_type
-                                    ref = f"{full_do_ref}.{da_path}"
-                                    address = f"{ld}/{ln}.{do}.{da_path}"
-                                    code = f"{ln}.{do}.{da_path}"
-                                    name = du_desc if du_desc else do
-                                    self._registry.set_ref(address, ref)
-                                    self._registry.set_fc(address, fc)
-                                    self._registry.set_iec_type(address, iec_type)
-                                    self._registry.set_name(address, name)
-                                    discovered_points.append(
-                                        {
-                                            "address": address,
-                                            "frame_type": frame_type,
-                                            "ref": ref,
-                                            "code": code,
-                                            "name": name,
-                                            "fc": fc,
-                                            "iec_type": iec_type,
-                                        }
-                                    )
-                            else:
-                                # 回退到推断模式
-                                frame_type = self._infer_frame_type_from_do(ln, do)
-                                if frame_type is None:
-                                    log.debug(f"跳过数据对象 {full_do_ref}: 无法推断测点类型")
-                                    continue
-
-                                da_path = self._infer_da_path(frame_type)
-                                ref = f"{full_do_ref}.{da_path}"
-                                address = f"{ld}/{ln}.{do}.{da_path}"
-                                code = f"{ln}.{do}.{da_path}"
-                                name = du_desc if du_desc else do
-                                fc_map = {0: "MX", 1: "ST", 2: "CO", 3: "CO"}
-                                fc = fc_map.get(frame_type, "")
-                                iec_type = IEC_TYPE_FLOAT if frame_type in (0, 3) else IEC_TYPE_BOOLEAN
-                                if do in ENC_DO_DA_TYPE_OVERRIDE:
-                                    override_type = ENC_DO_DA_TYPE_OVERRIDE[do].get(da_path)
-                                    if override_type:
-                                        iec_type = override_type
-                                self._registry.set_ref(address, ref)
-                                self._registry.set_fc(address, fc)
-                                self._registry.set_iec_type(address, iec_type)
-                                self._registry.set_name(address, name)
-                                discovered_points.append(
-                                    {
-                                        "address": address,
-                                        "frame_type": frame_type,
-                                        "ref": ref,
-                                        "code": code,
-                                        "name": name,
-                                        "fc": fc,
-                                        "iec_type": iec_type,
-                                    }
-                                )
-                    except Exception as e:
-                        log.error(f"解析测点地址失败: {do}, 错误: {e}")
-                        continue
-
-                # 4. 对于 LLN0, 发现 GOOSE 控制块
-                go_cb_names: list[str] = []
-                if ln == "LLN0" and hasattr(iec61850, "ACSI_CLASS_GoCB"):
-                    go_cb_names = self._discover_goose_control_blocks(ld, ln_ref)
-
-                    for cb_name in go_cb_names:
-                        goose_item = self._read_goose_control_block_info(ld, cb_name)
-                        discovered_points.append(goose_item)
-                        self._registry.discovered_goose_items.append(goose_item)
-                        log.info(
-                            f"发现 GOOSE 控制块: {goose_item['go_cb_ref']}, "
-                            f"appID=0x{(goose_item.get('app_id') or 0):04X}, "
-                            f"ds={goose_item.get('data_set_ref', '')}"
-                        )
-
-                if not go_cb_names and ln == "LLN0":
-                    log.warning(f"LLN0({ln_ref}) 下未发现任何 GoCB (可能服务器不支持 GoCB 浏览)")
-
-        # 5. 发现 DataSet
-        try:
-            if self._client:
-                self._registry.discovered_datasets = self._client.discover_datasets()
-            log.info(f"动态发现完成, 发现 {len(self._registry.discovered_datasets)} 个 DataSet")
-        except Exception as e:
-            log.debug(f"自动发现 DataSet 失败: {e}")
-            self._registry.discovered_datasets = []
-
-        log.info(
-            f"IEC 61850 动态发现完成, 耗时: {time.time() - start_time:.2f}s, "
-            f"发现并映射了 {len(discovered_points)} 个测点"
-        )
-        return discovered_points
-
-    def _discover_goose_control_blocks(self, ld: str, ln_ref: str) -> list[str]:
-        """发现 LLN0 下的 GOOSE 控制块名称列表"""
-        go_cb_names = []
-        try:
-            gse_result = iec61850.IedConnection_getLogicalNodeDirectory(
-                self._connection.connection, ln_ref, int(iec61850.ACSI_CLASS_GoCB)
-            )
-            gse_list = gse_result[0] if isinstance(gse_result, (list, tuple)) else gse_result
-            gse_error = gse_result[1] if isinstance(gse_result, (list, tuple)) else 0
-            if gse_error == iec61850.IED_ERROR_OK and gse_list is not None:
-                names = get_list_from_linked_list(gse_list)
-                for name in names or []:
-                    if name and name not in go_cb_names:
-                        try:
-                            goena_ref = f"{ln_ref}.{name}.GoEna"
-                            [_, goena_err] = iec61850.IedConnection_readBooleanValue(
-                                self._connection.connection, goena_ref, iec61850.IEC61850_FC_GO
-                            )
-                            if goena_err == iec61850.IED_ERROR_OK:
-                                go_cb_names.append(name)
-                        except Exception:
-                            pass
-        except Exception:
-            pass
-        return go_cb_names
-
-    def _read_goose_control_block_info(self, ld: str, cb_name: str) -> dict[str, Any]:
-        """读取 GOOSE 控制块详细信息
-
-        优先使用 libiec61850 的 GoCB 专用 API (IedConnection_getGoCBValues)，
-        它能正确读取 appID（位于目标地址子结构）、datSet、confRev、goID；
-        逐属性读取 .appID 叶子节点在多数 IED 上不可用，会导致 APPID/DataSet 为空。
-        """
-        app_id = None
-        dat_set = ""
-        conf_rev = 0
-        go_id = ""
-
-        # libiec61850 的 getGoCBValues/create 要求引用含 FC 段 .GO.，
-        # 形如 LD/LLN0.GO.gcbName；缺少则返回 OBJECT_NOT_FOUND，导致属性全空
-        gocb_ref = f"{ld}/LLN0.GO.{cb_name}"
-        gocb = None
-        try:
-            gocb = iec61850.ClientGooseControlBlock_create(gocb_ref)
-            if gocb is not None:
-                result = iec61850.IedConnection_getGoCBValues(self._connection.connection, gocb_ref, gocb)
-                err = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
-                if err != iec61850.IED_ERROR_OK:
-                    log.warning(f"getGoCBValues 失败: ref={gocb_ref}, err={err}")
-                    with contextlib.suppress(Exception):
-                        iec61850.ClientGooseControlBlock_destroy(gocb)
-                    gocb = None
-            else:
-                log.warning(f"ClientGooseControlBlock_create 失败: ref={gocb_ref}")
-        except Exception as e:
-            log.warning(f"getGoCBValues 异常: ref={gocb_ref}, {type(e).__name__}: {e}")
-            gocb = None
-
-        if gocb is not None:
-            try:
-                appid_val = iec61850.ClientGooseControlBlock_getDstAddress_appid(gocb)
-                if appid_val is not None:
-                    app_id = int(appid_val)
-            except Exception as e:
-                log.debug(f"读取 GoCB appID 失败: {e}")
-            try:
-                dat_set = str(iec61850.ClientGooseControlBlock_getDatSet(gocb) or "")
-            except Exception as e:
-                log.debug(f"读取 GoCB datSet 失败: {e}")
-            try:
-                conf_rev = int(iec61850.ClientGooseControlBlock_getConfRev(gocb) or 0)
-            except Exception as e:
-                log.debug(f"读取 GoCB confRev 失败: {e}")
-            try:
-                go_id = str(iec61850.ClientGooseControlBlock_getGoID(gocb) or "")
-            except Exception as e:
-                log.debug(f"读取 GoCB goID 失败: {e}")
-            with contextlib.suppress(Exception):
-                iec61850.ClientGooseControlBlock_destroy(gocb)
-
-        go_cb_ref = f"{ld}/LLN0$GO${cb_name}"
-        return {
-            "_type": "goose",
-            "go_cb_ref": go_cb_ref,
-            "go_id": go_id,
-            "app_id": app_id,
-            "data_set_ref": dat_set,
-            "conf_rev": conf_rev,
-            "name": cb_name,
-            "ld_inst": ld,
-        }
+        log.warning("IedModel 未缓存，无法派生 PointRegistry")
+        return []
 
     # ===== 浏览方法 =====
 
@@ -512,7 +148,7 @@ class DataModelsPlugin:
             for da_name in das:
                 da_info = {"name": da_name, "path": da_name, "fc": "", "type": ""}
                 if da_name in DA_PATTERNS:
-                    full_path, frame_type = DA_PATTERNS[da_name]
+                    full_path, frame_type, _ = DA_PATTERNS[da_name]
                     da_info["path"] = full_path
                     type_names = {0: "Float32", 1: "Boolean", 2: "Boolean", 3: "Float32"}
                     fc_names = {0: "MX", 1: "ST", 2: "CO", 3: "CO"}
@@ -679,6 +315,7 @@ class DataModelsPlugin:
         """读取 DO 的描述数据属性值
 
         不同 IED 的描述属性名/FC 不一致, 依次尝试: dU(DC)、d(DC)、dU(CF)、d(CF)。
+        被 _fill_du_names() 调用（iec61850_client.py），system DO 已在调用方过滤。
         """
         if not self._connection or not self._connection.is_connected:
             return ""
