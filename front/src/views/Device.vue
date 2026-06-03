@@ -187,6 +187,8 @@ const isSimProcessing = ref<boolean>(false);
 // IEC61850 连接进度
 const iec61850Connecting = ref(false);
 const iec61850ConnectProgress = ref<IEC61850ConnectProgress | null>(null);
+const iec61850Elapsed = ref(0);
+let iec61850ElapsedTimer: number | null = null;
 const iec61850PhaseLabel: Record<string, string> = {
   idle: t('device.preparing'),
   connecting: t('device.connectingServer'),
@@ -206,7 +208,12 @@ const iec61850ProgressPercent = computed(() => {
 
 const iec61850PhaseText = computed(() => {
   if (!iec61850ConnectProgress.value) return '';
-  return iec61850PhaseLabel[iec61850ConnectProgress.value.phase] || '';
+  const label = iec61850PhaseLabel[iec61850ConnectProgress.value.phase] || '';
+  const phase = iec61850ConnectProgress.value.phase;
+  if (phase === 'idle' || phase === 'connecting' || phase === 'discovering') {
+    return `${label} (${iec61850Elapsed.value}s)`;
+  }
+  return label;
 });
 
 let iec61850ProgressTimer: number | null = null;
@@ -215,6 +222,8 @@ const startIec61850ProgressPolling = () => {
   stopIec61850ProgressPolling();
   iec61850Connecting.value = true;
   iec61850ConnectProgress.value = null;
+  iec61850Elapsed.value = 0;
+  iec61850ElapsedTimer = window.setInterval(() => { iec61850Elapsed.value++; }, 1000);
   iec61850ProgressTimer = window.setInterval(async () => {
     const progress = await getIEC61850ConnectProgress(routeName.value);
     if (progress) {
@@ -238,6 +247,10 @@ const stopIec61850ProgressPolling = () => {
   if (iec61850ProgressTimer) {
     clearInterval(iec61850ProgressTimer);
     iec61850ProgressTimer = null;
+  }
+  if (iec61850ElapsedTimer) {
+    clearInterval(iec61850ElapsedTimer);
+    iec61850ElapsedTimer = null;
   }
   iec61850Connecting.value = false;
 };

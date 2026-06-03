@@ -164,6 +164,7 @@ export default {
     portRequired: '请输入端口',
     updateSuccess: '更新成功，配置已重新加载',
     createSuccess: '创建成功',
+    icdImporting: '正在导入 ICD 模型...',
     icdImportSuccess: 'ICD 导入成功: 测点 {total} 个，GOOSE Publisher {goose} 个',
     macAddress: 'MAC地址',
     datasetMembers: '数据集成员',

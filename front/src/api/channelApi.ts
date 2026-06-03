@@ -171,7 +171,7 @@ export async function getSerialPorts(): Promise<Array<{ device: string; descript
 
 export async function createChannel(channel: ChannelCreateRequest): Promise<{ channel_id: number }> {
   try {
-    return await requestApi(CHANNEL_API.CREATE, 'post', channel);
+    return await requestApi(CHANNEL_API.CREATE, 'post', channel, 30000);
   } catch (error) {
     console.error('Error creating channel:', error);
     throw error;
@@ -204,6 +204,7 @@ export async function previewIcd(
     formData.append('interface', interfaceName);
     const response = await instance.post(CHANNEL_API.PREVIEW_ICD, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
     });
     return response.data.data;
   } catch (error) {
@@ -226,6 +227,7 @@ export async function importIcdPoints(
     formData.append('auto_create_goose', autoCreateGoose.toString());
     const response = await instance.post(CHANNEL_API.IMPORT_ICD, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
     });
     return response.data.data;
   } catch (error) {
@@ -272,7 +274,7 @@ export async function getChannel(channelId: number): Promise<ChannelInfo> {
 
 export async function updateChannel(channelId: number, channel: Partial<ChannelCreateRequest>): Promise<boolean> {
   try {
-    return await requestApi(CHANNEL_API.UPDATE, 'post', { channel_id: channelId, ...channel });
+    return await requestApi(CHANNEL_API.UPDATE, 'post', { channel_id: channelId, ...channel }, 30000);
   } catch (error) {
     console.error('Error updating channel:', error);
     throw error;
@@ -290,7 +292,7 @@ export async function restartDevice(channelId: number): Promise<{ device_name: s
 
 export async function reloadDeviceConfig(channelId: number): Promise<{ device_name: string }> {
   try {
-    return await requestApi(CHANNEL_API.RELOAD_CONFIG, 'post', { channel_id: channelId });
+    return await requestApi(CHANNEL_API.RELOAD_CONFIG, 'post', { channel_id: channelId }, 30000);
   } catch (error) {
     console.error('Error reloading device config:', error);
     throw error;

@@ -164,6 +164,7 @@ export default {
     portRequired: 'Please enter port',
     updateSuccess: 'Updated successfully, configuration reloaded',
     createSuccess: 'Created successfully',
+    icdImporting: 'Importing ICD model...',
     icdImportSuccess: 'ICD imported: {total} points, {goose} GOOSE Publishers',
     macAddress: 'MAC Address',
     datasetMembers: 'Dataset Members',

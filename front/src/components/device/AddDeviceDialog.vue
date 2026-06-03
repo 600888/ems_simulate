@@ -31,6 +31,12 @@
         @icd-file-change="(f) => selectedIcdFile = f" 
       />
     </el-form>
+
+    <!-- ICD 导入进度条（indeterminate 动画，不显示百分比数字） -->
+    <div v-if="icdImporting" class="icd-import-progress">
+      <el-progress :percentage="100" :indeterminate="true" :duration="3" :stroke-width="6" :format="() => ''" />
+      <p class="icd-import-hint">{{ $t('addDevice.icdImporting') }} ({{ icdImportElapsed }}s)</p>
+    </div>
     
     <template #footer>
       <div class="dialog-footer">
@@ -104,7 +110,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, reactive, watch, onMounted } from 'vue';
+import { ref, computed, reactive, watch, onMounted, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
@@ -139,6 +145,9 @@ const formRef = ref<FormInstance>();
 const uploadCompRef = ref();
 const loading = ref(false);
 const previewLoading = ref(false);
+const icdImporting = ref(false);
+const icdImportElapsed = ref(0);
+let icdImportTimer: number | null = null;
 const originalName = ref('');
 const mediaType = ref<'serial' | 'network'>('network');
 const selectedFile = ref<File | null>(null);
@@ -188,6 +197,10 @@ onMounted(async () => {
   }
 });
 
+onUnmounted(() => {
+  if (icdImportTimer) { clearInterval(icdImportTimer); icdImportTimer = null; }
+});
+
 watch(() => props.visible, async (val) => {
   if (val) {
     await loadDeviceGroups();
@@ -227,6 +240,8 @@ const resetForm = () => {
   selectedIcdFile.value = null;
   goosePreviewData.value = null;
   previewDone.value = false;
+  icdImporting.value = false;
+  if (icdImportTimer) { clearInterval(icdImportTimer); icdImportTimer = null; }
   uploadCompRef.value?.clearFiles();
 };
 
@@ -280,8 +295,16 @@ const handleSubmit = async () => {
       }
       
       if (selectedIcdFile.value) {
-        const importResult = await importIcdPoints(resultId, selectedIcdFile.value, 'eth0', true);
-        ElMessage.success(t('addDevice.icdImportSuccess', { total: importResult?.total || 0, goose: importResult?.goose?.created_count || 0 }));
+        icdImporting.value = true;
+        icdImportElapsed.value = 0;
+        icdImportTimer = window.setInterval(() => { icdImportElapsed.value++; }, 1000);
+        try {
+          const importResult = await importIcdPoints(resultId, selectedIcdFile.value, 'eth0', true);
+          ElMessage.success(t('addDevice.icdImportSuccess', { total: importResult?.total || 0, goose: importResult?.goose?.created_count || 0 }));
+        } finally {
+          if (icdImportTimer) { clearInterval(icdImportTimer); icdImportTimer = null; }
+          icdImporting.value = false;
+        }
       } else if (selectedFile.value) {
         await importPoints(resultId, selectedFile.value);
       }
@@ -301,6 +324,7 @@ const handleClose = () => {
   goosePreviewVisible.value = false;
   goosePreviewData.value = null;
   previewDone.value = false;
+  icdImporting.value = false;
   emit('close');
 };
 </script>
@@ -322,5 +346,24 @@ const handleClose = () => {
   padding-left: 20px;
   padding-right: 20px;
   font-weight: 600;
+}
+.icd-import-progress {
+  padding: 24px 0 12px;
+  text-align: center;
+  :deep(.el-progress) {
+    padding-right: 0;
+  }
+  :deep(.el-progress-bar) {
+    margin-right: 0;
+    width: 100%;
+  }
+  :deep(.el-progress__text) {
+    display: none;
+  }
+}
+.icd-import-hint {
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--el-text-color-secondary);
 }
 </style>

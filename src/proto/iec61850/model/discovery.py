@@ -384,6 +384,7 @@ class ModelDiscoveryService:
         """发现 DO 下所有 DA
 
         q/t/dU 是 IEC 61850 固有属性，不动态发现，默认硬编码创建。
+        即使 MMS getDataDirectory 调用失败，也会返回 q/t/dU 元数据 DA。
         """
         da_refs = []
 
@@ -392,13 +393,13 @@ class ModelDiscoveryService:
             if isinstance(result, (list, tuple)) and len(result) >= 2:
                 da_list, error = result[0], result[1]
                 if error != iec61850.IED_ERROR_OK:
-                    return []
+                    da_list = None
             else:
                 da_list = result
             da_names = get_list_from_linked_list(da_list) if da_list is not None else []
         except Exception as e:
             log.warning(f"获取数据属性列表异常: {do_ref}, {e}")
-            return []
+            da_names = []
 
         for da_name in da_names:
             # 跳过元数据 DA (q/t/dU 等), 稍后硬编码添加
@@ -431,6 +432,7 @@ class ModelDiscoveryService:
             )
 
         # 默认硬编码创建 q/t/dU (IEC 61850 固有属性)
+        # 即使 MMS 调用失败，也确保每个 DO 都包含这些元数据 DA
         # q 和 t 是结构化类型, 展开子 DA (如 q.validity, t.seconds) 以便 MMS 读取
         for da_name, da_path, da_fc, da_iec_type in self._DEFAULT_META_DAS:
             meta_sub_das: tuple[DARef, ...] = ()

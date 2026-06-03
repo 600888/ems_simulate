@@ -966,7 +966,7 @@ const formatTimestamp = (ms: number | null): string => {
 
 const handleIec61850ReadMetadata = async (pointCode: string) => {
   if (!props.channelId) return;
-  readingMetadata[pointCode] = true;
+  readingMetadata.value[pointCode] = true;
   metadataPointCode.value = pointCode;
   metadataResult.value = null;
   metadataDialogVisible.value = true;
@@ -977,7 +977,7 @@ const handleIec61850ReadMetadata = async (pointCode: string) => {
     ElMessage.error(t('table.metadataFailed', { msg: e?.message || e }));
     metadataDialogVisible.value = false;
   } finally {
-    readingMetadata[pointCode] = false;
+    readingMetadata.value[pointCode] = false;
   }
 };
 
