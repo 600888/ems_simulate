@@ -146,5 +146,5 @@ KNOWN_BDA_FALLBACK_ONLINE = {
     # Quality (q) 的 BDA 子节点
     "q": ["validity", "detailQuality", "source", "operatorBlocked", "test"],
     # Timestamp (t) 的 BDA 子节点
-    "t": ["seconds", "fraction", "LeapSecondsKnown", "ClockedFailure", "ClockNotSynchronized", "TimeAccuracy"],
+    "t": ["seconds", "fraction", "TimeAccuracy"],
 }

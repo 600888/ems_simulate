@@ -277,8 +277,8 @@ class IedModel:
     ) -> None:
         """从 DO 提取测点到 result
 
-        q/t 展开为子测点 (q.validity, t.seconds 等), 父结构不作为独立测点；
-        dU/subQ/subID 等纯元数据 DA 不作为测点创建。
+        仅主值 DA (mag.f/stVal/ctlVal 等) 和 origin 子属性作为测点；
+        q/t/dU/subQ/subID 等元数据 DA 全部跳过，不在 PointRegistry 中创建。
         """
         from ..defs.constants import (
             IEC_TYPE_BOOLEAN,
@@ -336,65 +336,59 @@ class IedModel:
             }
             return
 
-        # q/t 已展开为子 DA (q.validity, t.seconds 等), 父结构不作为独立测点;
-        # 其他元数据 DA (dU/subQ/subID 等) 跳过
+        # q/t/dU/subQ/subID 等元数据 DA 不作为测点 (结构体不能直接 MMS 读取)
         NON_POINT_DA_NAMES = SKIP_DA_NAMES
 
         # 动态模型模式: 遍历所有 DA
         for da in do.das:
-            # 跳过纯元数据 DA (dU/subQ/subID 等) 及 q/t 父结构体
-            skip_parent = da.name in NON_POINT_DA_NAMES
+            # 跳过元数据 DA (q/t/dU/subQ/subID 等), 不展开子 DA
+            if da.name in NON_POINT_DA_NAMES:
+                continue
 
-            if not skip_parent:
-                da_path = da.path
-                frame_type = do.frame_type
-                fc = da.fc
-                iec_type = da.iec_type
+            da_path = da.path
+            frame_type = do.frame_type
+            fc = da.fc
+            iec_type = da.iec_type
 
-                # ENC 类型 DO 的 stVal/ctlVal 是整型而非布尔
-                if do.name in ENC_DO_DA_TYPE_OVERRIDE:
-                    da_top = da_path.split(".")[0]
-                    override_type = ENC_DO_DA_TYPE_OVERRIDE[do.name].get(da_top)
-                    if override_type:
-                        iec_type = override_type
+            # ENC 类型 DO 的 stVal/ctlVal 是整型而非布尔
+            if do.name in ENC_DO_DA_TYPE_OVERRIDE:
+                da_top = da_path.split(".")[0]
+                override_type = ENC_DO_DA_TYPE_OVERRIDE[do.name].get(da_top)
+                if override_type:
+                    iec_type = override_type
 
-                # 从 DA_PATTERNS / EXTRA_DA_INFO 推断 frame_type 和 iec_type
-                if da.name in DA_PATTERNS:
-                    _, ft_from_pattern, iec_type_from_pattern = DA_PATTERNS[da.name]
-                    if frame_type < 0:
-                        frame_type = ft_from_pattern
-                    if not iec_type or iec_type == "unknown":
-                        iec_type = iec_type_from_pattern
-                elif da.name in EXTRA_DA_INFO:
-                    _, fc_from_extra, iec_type_from_extra = EXTRA_DA_INFO[da.name]
-                    if not fc:
-                        fc = fc_from_extra
-                    if not iec_type or iec_type == "unknown":
-                        iec_type = iec_type_from_extra
-                    if frame_type < 0:
-                        frame_type = 1
-
-                if frame_type >= 0:
-                    ref = f"{do.ref}.{da_path}"
-                    address = f"{ld.name}/{ln.name}.{do.name}.{da_path}"
-                    code = f"{ln.name}.{do.name}.{da_path}"
-
-                    result[address] = {
-                        "ref": ref,
-                        "fc": fc,
-                        "iec_type": iec_type,
-                        "frame_type": frame_type,
-                        "code": code,
-                    }
-            else:
-                # q/t 父结构跳过, 但子 DA 仍需要创建测点
-                frame_type = do.frame_type
-                fc = da.fc
-                # q/t 子 DA 默认 YX 类型 (品质/时标属于状态信息)
+            # 从 DA_PATTERNS / EXTRA_DA_INFO 推断 frame_type 和 iec_type
+            if da.name in DA_PATTERNS:
+                _, ft_from_pattern, iec_type_from_pattern = DA_PATTERNS[da.name]
+                if frame_type < 0:
+                    frame_type = ft_from_pattern
+                if not iec_type or iec_type == "unknown":
+                    iec_type = iec_type_from_pattern
+            elif da.name in EXTRA_DA_INFO:
+                _, fc_from_extra, iec_type_from_extra = EXTRA_DA_INFO[da.name]
+                if not fc:
+                    fc = fc_from_extra
+                if not iec_type or iec_type == "unknown":
+                    iec_type = iec_type_from_extra
                 if frame_type < 0:
                     frame_type = 1
 
-            # 展开 BDA (包括 q/t 的子 DA: q.validity, t.seconds 等)
+            if frame_type < 0:
+                continue
+
+            ref = f"{do.ref}.{da_path}"
+            address = f"{ld.name}/{ln.name}.{do.name}.{da_path}"
+            code = f"{ln.name}.{do.name}.{da_path}"
+
+            result[address] = {
+                "ref": ref,
+                "fc": fc,
+                "iec_type": iec_type,
+                "frame_type": frame_type,
+                "code": code,
+            }
+
+            # 展开 BDA (仅 origin.orCat/orIdent 等非元数据子属性)
             for bda in da.sub_das:
                 bda_path = bda.path
                 bda_fc = bda.fc or fc
