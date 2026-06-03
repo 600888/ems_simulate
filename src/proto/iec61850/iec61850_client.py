@@ -22,6 +22,7 @@ from .defs import (
     IecType,
     extract_ln_class,
 )
+from .core.metadata import MetadataReader, MetadataInfo
 from .model import IedModel
 from .model.discovery import ModelDiscoveryService
 from .model.registry_bridge import build_registry_from_model
@@ -148,6 +149,33 @@ class IEC61850Client:
     def read_points_batch(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[str, Any]:
         """批量读取多个测点值 (委托给 Iec61850Reader)"""
         return self._reader.read_batch(addresses, fc_map)
+
+    def read_metadata(self, address: str, *, fc: str = "") -> MetadataInfo:
+        """按需读取测点的品质(q)与时标(t)元数据
+
+        不依赖 PointRegistry，根据 address 解析 DO 引用后直接 MMS 读取。
+
+        Args:
+            address: 测点地址 (如 "KG_BAMSCTMP01/MMCL1.Temp001.mag.f")
+            fc: 功能约束 (默认 MX)
+
+        Returns:
+            MetadataInfo (quality + timestamp)
+
+        Example:
+            >>> meta = client.read_metadata("KG_BAMSCTMP01/MMCL1.Temp001.mag.f")
+            >>> print(meta.quality.is_valid, meta.timestamp.unix_timestamp_ms)
+        """
+        from .defs.address import parse_ref
+
+        parsed = parse_ref(address)
+        if not parsed:
+            return MetadataInfo.empty()
+        ld_inst, ln_name, do_name, _ = parsed
+        do_ref = f"{ld_inst}/{ln_name}.{do_name}"
+
+        reader = MetadataReader()
+        return reader.read_metadata(self._conn, do_ref, fc=fc)
 
     def write_point(self, address, value: Any, fc: str = "") -> bool:
         """写入测点值 (委托给 Iec61850Writer)"""

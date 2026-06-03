@@ -505,6 +505,10 @@ class Device:
         """异步读取单个测点的值"""
         return await self.point_operator.read_single_point_async(point_code, slave_id)
 
+    async def read_point_metadata_async(self, point_code: str, slave_id: int | None = None) -> dict:
+        """异步读取测点的品质(q)与时标(t)元数据"""
+        return await self.point_operator.read_metadata_async(point_code, slave_id)
+
     def editPointData(
         self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None,
         slave_id: int | None = None,

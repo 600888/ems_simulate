@@ -28,6 +28,11 @@ class Iec61850ReadPointRequest(BaseModel):
     point_code: str = Field(..., description="测点编码")
 
 
+class Iec61850ReadMetadataRequest(BaseModel):
+    channel_id: int = Field(..., description="通道ID")
+    point_code: str = Field(..., description="测点编码")
+
+
 class Iec61850WritePointRequest(BaseModel):
     channel_id: int = Field(..., description="通道ID")
     point_code: str = Field(..., description="测点编码")
@@ -1198,6 +1203,53 @@ async def iec61850_read_single_point(
     except Exception as e:
         log.error(f"IEC61850 单点读取失败: {e}")
         return BaseResponse(code=500, message=f"IEC61850 单点读取失败: {e}", data={})
+
+
+@router.post("/iec61850-read-metadata", response_model=BaseResponse)
+async def iec61850_read_metadata(
+    body: Iec61850ReadMetadataRequest,
+    request: Request,
+):
+    """IEC61850 按需读取测点的品质(q)与时标(t)元数据
+
+    不纳入常规轮询，仅当前端请求时调用。返回 quality + timestamp 子属性字典。
+    """
+    try:
+        channel = ChannelService.get_channel_by_id(body.channel_id)
+        if not channel:
+            return BaseResponse(code=404, message="通道不存在", data={})
+
+        protocol_type = channel.get("protocol_type", -1)
+        if protocol_type != 4:
+            return BaseResponse(code=400, message="该通道不是 IEC61850 协议", data={})
+
+        device_controller = request.app.state.device_controller
+        device = device_controller.get_device_by_channel_id(body.channel_id)
+        if not device:
+            return BaseResponse(code=404, message="设备未找到", data={})
+
+        if not body.point_code:
+            return BaseResponse(code=400, message="测点编码不能为空", data={})
+
+        # 直接传 point_code，客户端内部 parse_ref 提取 DO 引用
+        handler = device.point_operator._handler
+        client = getattr(handler, '_client', None) if handler else None
+        if not client or not hasattr(client, 'read_metadata'):
+            return BaseResponse(code=400, message="设备不支持元数据读取", data={})
+
+        meta = client.read_metadata(body.point_code)
+
+        from src.proto.iec61850.defs.address import parse_ref
+        parsed = parse_ref(body.point_code)
+        do_ref = f"{parsed[0]}/{parsed[1]}.{parsed[2]}" if parsed else body.point_code
+
+        return BaseResponse(message="读取元数据成功", data={
+            "point_code": do_ref,
+            **meta.to_dict(),
+        })
+    except Exception as e:
+        log.error(f"IEC61850 元数据读取失败: {e}")
+        return BaseResponse(code=500, message=f"IEC61850 元数据读取失败: {e}", data={})
 
 
 @router.post("/iec61850-write-point", response_model=BaseResponse)

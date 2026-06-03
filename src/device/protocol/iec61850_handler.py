@@ -422,6 +422,26 @@ class IEC61850ClientHandler(ClientHandler):
                 return None
         return real_val
 
+    def read_metadata(self, point: BasePoint) -> dict:
+        """按需读取测点的品质(q)与时标(t)元数据
+
+        Args:
+            point: 测点对象 (需含 address 属性)
+
+        Returns:
+            {"quality": {...}, "timestamp": {...}} 字典，可直接返回前端
+        """
+        if not self._client or not self.is_running:
+            if self._log:
+                self._log.error("IEC 61850 客户端未连接")
+            return {"quality": {}, "timestamp": {}}
+
+        from src.proto.iec61850.core.metadata import MetadataInfo
+
+        fc = getattr(point, "fc", "") or ""
+        meta = self._client.read_metadata(address=point.address, fc=fc)
+        return meta.to_dict()
+
     def write_value(self, point: BasePoint, value: Any) -> bool:
         """写入测点值（发送命令）"""
         if not self._client or not self.is_running:
@@ -502,6 +522,10 @@ class IEC61850ClientHandler(ClientHandler):
     async def read_value_async(self, point: BasePoint) -> Any:
         """异步读取测点值"""
         return self.read_value(point)
+
+    async def read_metadata_async(self, point: BasePoint) -> dict:
+        """异步按需读取测点的品质(q)与时标(t)元数据"""
+        return self.read_metadata(point)
 
     async def write_value_async(self, point: BasePoint, value: Any) -> bool:
         """异步写入测点值"""

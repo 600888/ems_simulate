@@ -248,6 +248,22 @@ class PointOperator:
 
         return None
 
+    async def read_metadata_async(self, point_code: str, slave_id: int | None = None) -> dict:
+        """异步读取测点的品质(q)与时标(t)元数据"""
+        if not self._handler:
+            return {"quality": {}, "timestamp": {}}
+
+        if not hasattr(self._handler, "read_metadata_async"):
+            self._log.debug(f"协议处理器不支持元数据读取: {point_code}")
+            return {"quality": {}, "timestamp": {}}
+
+        # point_code 可能是完整 DA 地址或 DO 引用，直接传给客户端
+        from src.enums.points.base_point import BasePoint
+        temp_point = BasePoint()
+        temp_point.address = point_code
+        temp_point.fc = ""
+        return await self._handler.read_metadata_async(temp_point)
+
     # ===== 测点元数据编辑 =====
 
     def edit_metadata(self, point_code: str, metadata: dict) -> bool:

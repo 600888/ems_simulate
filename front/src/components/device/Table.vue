@@ -264,6 +264,28 @@
         fixed="right"
       >
         <template #default="scope">
+          <!-- DO 行: 读取 + 品质/时标按钮 (系统 DO 不支持，跳过) -->
+          <div v-if="scope.row._isDoRow && !isSystemDo(scope.row._doName)" class="action-buttons">
+            <el-button
+              v-if="isIec61850Client && scope.row['测点编码']"
+              type="primary"
+              size="small"
+              :icon="Download"
+              @click="handleIec61850ReadPoint(scope.row['测点编码'])"
+              :loading="readingPoints[scope.row['测点编码']]"
+            >
+              {{ $t('table.read') }}
+            </el-button>
+            <el-button
+              v-if="isIec61850Client"
+              size="small"
+              :icon="InfoFilled"
+              @click="handleIec61850ReadMetadata(scope.row._doRef)"
+            >
+              {{ $t('table.metadata') }}
+            </el-button>
+          </div>
+          <!-- DA 行: 读取/写入按钮 -->
           <div v-if="!scope.row._isDoRow && !scope.row._isVirtualDa && scope.row['测点编码']" class="action-buttons">
             <!-- IEC61850 客户端: 读取 (所有行可读) -->
             <el-button
@@ -372,18 +394,85 @@
     :pointType="iec61850WritePointData.type"
     @success="handleWriteSuccess"
   />
+  <!-- IEC61850 品质/时标元数据弹窗 -->
+  <el-dialog
+    v-model="metadataDialogVisible"
+    :title="$t('table.metadataTitle', { point: metadataPointCode })"
+    width="620px"
+    destroy-on-close
+  >
+    <template v-if="metadataResult">
+      <el-descriptions :column="2" border size="small" title="品质 (Quality)">
+        <el-descriptions-item :label="$t('table.qValidity')">
+          <el-tag :type="metadataResult.quality.validity === 0 ? 'success' : 'danger'" size="small">
+            {{ metadataResult.quality.validity ?? '-' }}
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item :label="$t('table.qDetailQuality')">
+          {{ metadataResult.quality.detailQuality ?? '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item :label="$t('table.qSource')">
+          {{ metadataResult.quality.source === 0 ? 'process' : metadataResult.quality.source === 1 ? 'substituted' : (metadataResult.quality.source ?? '-') }}
+        </el-descriptions-item>
+        <el-descriptions-item :label="$t('table.qTest')">
+          <el-tag :type="metadataResult.quality.test ? 'warning' : 'success'" size="small">
+            {{ metadataResult.quality.test ?? '-' }}
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item :label="$t('table.qOperatorBlocked')" :span="2">
+          <el-tag :type="metadataResult.quality.operatorBlocked ? 'warning' : 'success'" size="small">
+            {{ metadataResult.quality.operatorBlocked ?? '-' }}
+          </el-tag>
+        </el-descriptions-item>
+      </el-descriptions>
+      <el-descriptions :column="2" border size="small" :title="$t('table.tsTitle')" class="metadata-timestamp">
+        <el-descriptions-item :label="$t('table.tsDatetime')" :span="2">
+          <span style="font-family: monospace; font-size: 14px;">
+            {{ formatTimestamp(metadataResult.timestamp.unixTimestampMs) }}
+          </span>
+        </el-descriptions-item>
+        <el-descriptions-item :label="$t('table.tsSeconds')">
+          {{ metadataResult.timestamp.seconds ?? '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item :label="$t('table.tsUnixMs')">
+          {{ metadataResult.timestamp.unixTimestampMs ?? '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item :label="$t('table.tsAccuracy')">
+          {{ metadataResult.timestamp.timeAccuracy ?? '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item :label="$t('table.tsLeapKnown')">
+          <el-tag :type="metadataResult.timestamp.leapSecondsKnown === false ? 'success' : 'info'" size="small">
+            {{ metadataResult.timestamp.leapSecondsKnown ?? '-' }}
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item :label="$t('table.tsClockFailure')">
+          <el-tag :type="metadataResult.timestamp.clockFailure ? 'danger' : 'success'" size="small">
+            {{ metadataResult.timestamp.clockFailure ?? '-' }}
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item :label="$t('table.tsClockNotSync')">
+          <el-tag :type="metadataResult.timestamp.clockNotSynchronized ? 'warning' : 'success'" size="small">
+            {{ metadataResult.timestamp.clockNotSynchronized ?? '-' }}
+          </el-tag>
+        </el-descriptions-item>
+      </el-descriptions>
+    </template>
+    <template v-else>
+      <el-empty :description="$t('table.metadataEmpty')" />
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, reactive, watch, type PropType } from 'vue'
 import { useRoute } from "vue-router"
 import { useI18n } from 'vue-i18n'
-import { QuestionFilled, Download, Edit, Delete, CircleCheckFilled, CircleCloseFilled, RemoveFilled, ArrowRight } from "@element-plus/icons-vue"
+import { QuestionFilled, Download, Edit, Delete, CircleCheckFilled, CircleCloseFilled, RemoveFilled, ArrowRight, InfoFilled } from "@element-plus/icons-vue"
 import { ElMessage } from 'element-plus'
 import { getPointType, PointType, getIec104TypeLabelKey } from '@/types/point'
 import { readSinglePoint, deletePoint } from '@/api/pointApi'
-import { iec61850ReadPoint } from '@/api/channelApi'
-import type { IEC61850TreeDataResponse } from '@/api/channelApi'
+import { iec61850ReadPoint, iec61850ReadPointMetadata } from '@/api/channelApi'
+import type { IEC61850TreeDataResponse, Iec61850MetadataResponse } from '@/api/channelApi'
 import {
   INT_REGISTER_DECODE_LIST,
   LONG_REGISTER_DECODE_LIST,
@@ -725,6 +814,7 @@ const iec61850FlatRows = computed(() => {
     };
     const doValue = getDoDisplayValue(doNode.children || []) || doNode.value || '';
     // DO 行
+    const primaryDa = { 0: 'mag.f', 1: 'stVal', 2: 'ctlVal', 3: 'ctlVal' }[doNode.frame_type] || '';
     result.push({
       _isDoRow: true,
       _rowKey: `do-${doRef}`,
@@ -735,7 +825,7 @@ const iec61850FlatRows = computed(() => {
       _duName: doNode.du_name,
       '地址': doRef,
       '测点名称': doName,
-      '测点编码': '',
+      '测点编码': primaryDa ? `${doRef}.${primaryDa}` : '',
       '帧类型': FRAME_TYPE_LABELS[doNode.frame_type] || '',
       '真实值': doValue,
       '16进制地址': '',
@@ -856,6 +946,39 @@ const handleWritePoint = (row: any) => {
 
 const handleWriteSuccess = () => {
   emit('refresh');
+};
+
+// ===== IEC61850 品质/时标元数据读取 =====
+const metadataDialogVisible = ref(false);
+const metadataPointCode = ref('');
+const metadataResult = ref<Iec61850MetadataResponse | null>(null);
+const readingMetadata = ref<Record<string, boolean>>({});
+
+const SYSTEM_DOS = new Set(['Mod', 'Beh', 'Health', 'NamPlt', 'PhyHealth', 'Proxy', 'PhyNam']);
+const isSystemDo = (name: string) => SYSTEM_DOS.has(name);
+
+const formatTimestamp = (ms: number | null): string => {
+  if (ms === null || ms === undefined) return '-';
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
+const handleIec61850ReadMetadata = async (pointCode: string) => {
+  if (!props.channelId) return;
+  readingMetadata[pointCode] = true;
+  metadataPointCode.value = pointCode;
+  metadataResult.value = null;
+  metadataDialogVisible.value = true;
+  try {
+    const result = await iec61850ReadPointMetadata(props.channelId, pointCode);
+    metadataResult.value = result;
+  } catch (e: any) {
+    ElMessage.error(t('table.metadataFailed', { msg: e?.message || e }));
+    metadataDialogVisible.value = false;
+  } finally {
+    readingMetadata[pointCode] = false;
+  }
 };
 
 // ===== IEC61850 专用读写操作 =====
@@ -1201,5 +1324,9 @@ body.theme-dark {
   .do-tag { color: #60a5fa; border-color: #1e3a5f; background: #1e293b; }
   .da-tag { color: #34d399; border-color: #064e3b; background: #0d2818; }
   .bda-tag { color: #818cf8; border-color: #312e81; background: #1e1b4b; }
+}
+
+.metadata-timestamp {
+  margin-top: 12px;
 }
 </style>

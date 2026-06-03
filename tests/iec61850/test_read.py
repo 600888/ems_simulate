@@ -320,30 +320,18 @@ class TestTimestampReader:
     """时标值读取测试"""
 
     def test_read_timestamp_t(self, connection, model, registry):
-        """读取 t 子属性 (second, fraction) — 需通过 do_ref 直接读取"""
-        # q/t 子属性不作为 PointRegistry 测点，需通过完整引用直接 MMS 读取
-        # 找一个有 t 子 DA 的 DO
+        """通过 MetadataReader 读取 t (IedConnection_readObject → Timestamp_fromMmsValue)"""
+        from src.proto.iec61850.core.metadata import MetadataReader
+
         for _, _, do in model.iter_dos():
             for da in do.das:
-                if da.name == "t" and da.sub_das:
-                    reader = Iec61850Reader(connection, registry)
-                    success = 0
-                    for bda in da.sub_das:
-                        full_ref = f"{do.ref}.{bda.path}"
-                        # 直接通过 reader 读取（绕过 point_refs）
-                        from pyiec61850 import pyiec61850 as iec61850
-                        conn = connection.connection
-                        fc_val = connection.get_fc_value(da.fc)
-                        strategy = IntegerReader()
-                        value = strategy.read(conn, full_ref, fc_val)
-                        print(f"  [timestamp] {full_ref} ({bda.iec_type}) → {value}")
-                        if value is not None:
-                            assert isinstance(value, (int, float))
-                            success += 1
-                    print(f"  [timestamp] 成功: {success}/{len(da.sub_das)}")
-                    assert success > 0, "t 子属性全部读取失败"
+                if da.name == "t":
+                    reader = MetadataReader()
+                    result = reader.read_timestamp(connection, do.ref, fc="MX")
+                    print(f"  [timestamp] {do.ref}.t → seconds={result.seconds}, ms={result.unix_timestamp_ms}, leap={result.leap_seconds_known}")
+                    # 可能成功也可能设备不支持，不硬断
                     return
-        pytest.skip("未找到包含 t 子 DA 的 DO")
+        pytest.skip("未找到 t DA")
 
     def test_read_timestamp_strategy_direct(self, connection):
         """直接用 TimestampReader 读取完整 EntryTime"""
@@ -387,10 +375,10 @@ class TestAutoDetectReader:
 # ============================================================
 
 class TestQualityReader:
-    """品质 (q) 子属性读取测试 — 通过 DO ref 直接读取"""
+    """品质 (q) 子属性按需读取 — 旧版直接 MMS 路径"""
 
     def test_read_quality_sub_das(self, connection, model, registry):
-        """通过 do_ref 直接读取 q.validity, q.source 等"""
+        """通过 do_ref 直接读取 q.validity, q.source 等（旧方式）"""
         for _, _, do in model.iter_dos():
             for da in do.das:
                 if da.name == "q" and da.sub_das:
@@ -410,6 +398,117 @@ class TestQualityReader:
                     assert success > 0, "q 子属性全部读取失败"
                     return
         pytest.skip("未找到包含 q 子 DA 的 DO")
+
+
+# ============================================================
+# MetadataReader — 新按需读取服务
+# ============================================================
+
+class TestMetadataReader:
+    """MetadataReader 按需读取服务测试"""
+
+    @pytest.fixture
+    def _find_do_ref(self, model):
+        """找到第一个有 q/t 子 DA 的 DO 引用"""
+        for _, _, do in model.iter_dos():
+            for da in do.das:
+                if da.name == "q" and da.sub_das:
+                    return do.ref
+        pytest.skip("未找到包含 q/t 子 DA 的 DO")
+
+    def test_read_quality(self, connection, model, _find_do_ref):
+        """MetadataReader.read_quality() — 返回 QualityInfo"""
+        from src.proto.iec61850.core.metadata import MetadataReader, QualityInfo
+
+        reader = MetadataReader()
+        do_ref = _find_do_ref
+        result = reader.read_quality(connection, do_ref, fc="MX")
+
+        print(f"\n  [metadata] read_quality({do_ref}) →")
+        print(f"    validity={result.validity}")
+        print(f"    detail_quality={result.detail_quality}")
+        print(f"    source={result.source}")
+        print(f"    operator_blocked={result.operator_blocked}")
+        print(f"    test={result.test}")
+        print(f"    is_valid={result.is_valid}")
+
+        assert isinstance(result, QualityInfo)
+        assert result.is_readable, f"品质读取完全失败: {do_ref}"
+
+    def test_read_timestamp(self, connection, model, _find_do_ref):
+        """MetadataReader.read_timestamp() — 返回 TimestampInfo"""
+        from src.proto.iec61850.core.metadata import MetadataReader, TimestampInfo
+
+        reader = MetadataReader()
+        do_ref = _find_do_ref
+        result = reader.read_timestamp(connection, do_ref, fc="MX")
+
+        print(f"\n  [metadata] read_timestamp({do_ref}) →")
+        print(f"    seconds={result.seconds}")
+        print(f"    fraction={result.fraction}")
+        print(f"    time_accuracy={result.time_accuracy}")
+        print(f"    unix_timestamp_ms={result.unix_timestamp_ms}")
+        print(f"    to_dict()={result.to_dict()}")
+
+        assert isinstance(result, TimestampInfo)
+        assert result.is_readable, f"时标读取完全失败: {do_ref}"
+
+    def test_read_metadata(self, connection, model, _find_do_ref):
+        """MetadataReader.read_metadata() — 一次获取品质+时标"""
+        from src.proto.iec61850.core.metadata import MetadataReader, MetadataInfo
+
+        reader = MetadataReader()
+        do_ref = _find_do_ref
+        result = reader.read_metadata(connection, do_ref, fc="MX")
+
+        print(f"\n  [metadata] read_metadata({do_ref}) →")
+        print(f"    quality={result.quality.to_dict()}")
+        print(f"    timestamp={result.timestamp.to_dict()}")
+
+        assert isinstance(result, MetadataInfo)
+        assert result.is_readable, f"元数据读取完全失败: {do_ref}"
+        assert result.quality.is_readable, "品质子属性全部失败"
+        assert result.timestamp.is_readable, "时标子属性全部失败"
+
+    def test_quality_info_is_valid(self, connection, model, _find_do_ref):
+        """QualityInfo.is_valid 派生属性"""
+        from src.proto.iec61850.core.metadata import MetadataReader
+
+        reader = MetadataReader()
+        q = reader.read_quality(connection, _find_do_ref, fc="MX")
+        # is_valid 是布尔值，不抛异常即可
+        is_valid = q.is_valid
+        print(f"  [metadata] is_valid={is_valid}")
+        assert isinstance(is_valid, bool)
+
+    def test_timestamp_unix_ms(self, connection, model, _find_do_ref):
+        """TimestampInfo.unix_timestamp_ms 派生属性"""
+        from src.proto.iec61850.core.metadata import MetadataReader
+
+        reader = MetadataReader()
+        t = reader.read_timestamp(connection, _find_do_ref, fc="MX")
+        ts = t.unix_timestamp_ms
+        print(f"  [metadata] unix_timestamp_ms={ts}")
+        if ts is not None:
+            assert isinstance(ts, int)
+            assert ts > 0, f"unix_timestamp_ms 应 >0, 实际 {ts}"
+
+    def test_empty_on_disconnected(self, model, _find_do_ref):
+        """断开连接时返回空对象, 不抛异常"""
+        from src.proto.iec61850.core.metadata import MetadataReader, QualityInfo, TimestampInfo
+        from src.proto.iec61850.core.connection import Iec61850Connection
+
+        reader = MetadataReader()
+        # 使用未连接的 connection
+        dead_conn = Iec61850Connection("127.0.0.1", 102)
+
+        q = reader.read_quality(dead_conn, _find_do_ref)
+        assert isinstance(q, QualityInfo)
+        assert not q.is_readable
+
+        t = reader.read_timestamp(dead_conn, _find_do_ref)
+        assert isinstance(t, TimestampInfo)
+        assert not t.is_readable
 
 
 # ============================================================

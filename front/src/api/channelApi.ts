@@ -434,6 +434,41 @@ export async function iec61850ReadPoint(
   }
 }
 
+export interface Iec61850MetadataResponse {
+  point_code: string
+  quality: {
+    validity: number | null
+    detailQuality: number | null
+    source: number | null
+    operatorBlocked: boolean | null
+    test: boolean | null
+  }
+  timestamp: {
+    seconds: number | null
+    fraction: number | null
+    timeAccuracy: number | null
+    leapSecondsKnown: boolean | null
+    clockFailure: boolean | null
+    clockNotSynchronized: boolean | null
+    unixTimestampMs: number | null
+  }
+}
+
+export async function iec61850ReadPointMetadata(
+  channelId: number,
+  pointCode: string,
+): Promise<Iec61850MetadataResponse | null> {
+  try {
+    return await requestApi(CHANNEL_API.IEC61850_READ_METADATA, 'post', {
+      channel_id: channelId,
+      point_code: pointCode,
+    });
+  } catch (error) {
+    console.error('Error reading IEC61850 point metadata:', error);
+    throw error;
+  }
+}
+
 export async function iec61850WritePoint(
   channelId: number,
   pointCode: string,

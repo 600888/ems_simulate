@@ -93,34 +93,39 @@ class BooleanReader:
 
 
 class IntegerReader:
-    """整数值读取策略"""
+    """整数值读取策略 (无 readIntegerValue 时回退浮点读取)"""
 
     def read(self, conn, ref: str, fc_val) -> Any:
         if not hasattr(iec61850, "IedConnection_readIntegerValue"):
-            log.debug("pyiec61850 不支持 readIntegerValue")
+            # 降级: 尝试浮点读取 (部分 IED 整数属性以浮点形式返回)
+            try:
+                [value, error] = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
+                if error == iec61850.IED_ERROR_OK:
+                    return int(value)
+            except Exception:
+                pass
             return None
         try:
             [value, error] = iec61850.IedConnection_readIntegerValue(conn, ref, fc_val)
             if error == iec61850.IED_ERROR_OK:
                 return int(value)
+            # 整数读取失败, 尝试浮点回退
+            try:
+                [f_value, f_error] = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
+                if f_error == iec61850.IED_ERROR_OK:
+                    return int(f_value)
+            except Exception:
+                pass
             log.debug(f"读取整数值失败: ref={ref}, error={error}")
         except Exception as e:
             log.debug(f"读取整数值异常: ref={ref}, error={e}")
         return None
 
     def read_batch(self, conn, items: list, results: dict) -> None:
-        if not hasattr(iec61850, "IedConnection_readIntegerValue"):
-            log.debug("pyiec61850 不支持 readIntegerValue, 跳过整批量读取")
-            return
         for addr_str, ref, fc_val, _ in items:
-            try:
-                [value, error] = iec61850.IedConnection_readIntegerValue(conn, ref, fc_val)
-                if error == iec61850.IED_ERROR_OK:
-                    results[addr_str] = int(value)
-                else:
-                    log.debug(f"批量读取整数值失败: ref={ref}, error={error}")
-            except Exception as e:
-                log.debug(f"批量读取整数值异常: ref={ref}, error={e}")
+            value = self.read(conn, ref, fc_val)
+            if value is not None:
+                results[addr_str] = value
 
 
 class StringReader:
