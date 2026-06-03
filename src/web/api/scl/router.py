@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 
@@ -28,6 +29,50 @@ from src.web.api.schemas import BaseResponse
 from src.web.log import log
 
 router = APIRouter(prefix="/api/scl", tags=["SCL 文件管理"])
+
+
+# ===== 解析结果缓存: 避免每次请求都重新解析文件 =====
+# key = (file_path, last_mtime) → SclImportResult
+_parse_cache: dict[tuple[str, float, int], dict] = {}
+_CACHE_TTL = 3600  # 缓存有效期 1 小时
+
+
+def _get_cached_result(request: Request, file_path: str) -> dict | None:
+    """获取缓存中的解析结果，文件未变更时返回缓存"""
+    try:
+        stat = os.stat(file_path)
+        mtime = stat.st_mtime
+        size = stat.st_size
+        key = (file_path, mtime, size)
+        cached = _parse_cache.get(key)
+        if cached:
+            return cached
+    except OSError:
+        return None
+
+
+def _set_cached_result(request: Request, file_path: str, result: dict):
+    """缓存解析结果"""
+    try:
+        stat = os.stat(file_path)
+        key = (file_path, stat.st_mtime, stat.st_size)
+        _parse_cache[key] = result
+        # 清理过期缓存
+        now = time.time()
+        stale_keys = [k for k, v in _parse_cache.items() if hasattr(v, '_cache_time') and now - getattr(v, '_cache_time', 0) > _CACHE_TTL]
+        # 只保留最近 20 个
+        if len(_parse_cache) > 20:
+            for k in list(_parse_cache.keys())[:-20]:
+                _parse_cache.pop(k, None)
+    except OSError:
+        pass
+
+
+def _invalidate_cache_for(file_path: str):
+    """清除指定文件路径的缓存"""
+    keys_to_delete = [k for k in _parse_cache if k[0] == file_path]
+    for k in keys_to_delete:
+        _parse_cache.pop(k, None)
 
 
 def _get_file_manager(request: Request):
@@ -58,6 +103,8 @@ async def upload_scl_file(request: Request, file: UploadFile = File(...)):
         fm = _get_file_manager(request)
         content = await file.read()
         file_path = fm.save_uploaded_file(file.filename, content)
+        # 上传新文件后清除该文件的缓存
+        _invalidate_cache_for(file_path)
         return BaseResponse(
             message="文件上传成功",
             data={"filename": os.path.basename(file_path), "file_path": file_path, "size": len(content)},
@@ -83,40 +130,46 @@ async def list_scl_files(request: Request):
 
 @router.get("/detail", response_model=BaseResponse)
 async def get_scl_detail(request: Request, filename: str = Query(...)):
-    """获取 SCL 文件详情"""
+    """获取 SCL 文件详情 (使用缓存，避免重复解析)"""
     try:
         fm = _get_file_manager(request)
         file_path = fm.get_file_path(filename)
         if not file_path:
             return BaseResponse(code=404, message=f"文件不存在: {filename}")
 
-        # 解析获取 IED 摘要
+        # 尝试从缓存获取
+        cached = _get_cached_result(request, file_path)
+        if cached:
+            return BaseResponse(data=cached)
 
+        # 缓存未命中，解析文件
         service = _get_import_service(request)
         result = service.preview_file(file_path)
 
         stat = os.stat(file_path)
-        return BaseResponse(
-            data={
-                "filename": filename,
-                "file_path": file_path,
-                "file_size": stat.st_size,
-                "ied_name": result.ied_name,
-                "point_counts": {
-                    "yc": len(result.points.yc_points),
-                    "yx": len(result.points.yx_points),
-                    "yk": len(result.points.yk_points),
-                    "yt": len(result.points.yt_points),
-                },
-                "gse_control_count": len(result.goose.gse_controls),
-                "report_control_count": len(result.reports.report_controls),
-                "validation": {
-                    "is_valid": result.validation.is_valid,
-                    "error_count": result.validation.error_count,
-                    "warning_count": result.validation.warning_count,
-                },
-            }
-        )
+        detail = {
+            "filename": filename,
+            "file_path": file_path,
+            "file_size": stat.st_size,
+            "ied_name": result.ied_name,
+            "point_counts": {
+                "yc": len(result.points.yc_points),
+                "yx": len(result.points.yx_points),
+                "yk": len(result.points.yk_points),
+                "yt": len(result.points.yt_points),
+            },
+            "gse_control_count": len(result.goose.gse_controls),
+            "report_control_count": len(result.reports.report_controls),
+            "validation": {
+                "is_valid": result.validation.is_valid,
+                "error_count": result.validation.error_count,
+                "warning_count": result.validation.warning_count,
+            },
+        }
+
+        # 写入缓存
+        _set_cached_result(request, file_path, detail)
+        return BaseResponse(data=detail)
     except Exception as e:
         log.error(f"获取 SCL 文件详情失败: {e}")
         return BaseResponse(code=500, message=f"获取详情失败: {e}")
@@ -127,7 +180,10 @@ async def delete_scl_file(request: Request, filename: str = Query(...)):
     """删除 SCL 文件"""
     try:
         fm = _get_file_manager(request)
+        file_path = fm.get_file_path(filename)
         if fm.delete_file(filename):
+            if file_path:
+                _invalidate_cache_for(file_path)
             return BaseResponse(message="文件删除成功")
         return BaseResponse(code=404, message=f"文件不存在: {filename}")
     except Exception as e:
@@ -161,23 +217,31 @@ async def preview_scl_file(request: Request, file: UploadFile = File(...)):
 
 @router.post("/validate", response_model=BaseResponse)
 async def validate_scl_file(request: Request, filename: str = Form(...)):
-    """校验已上传的 SCL 文件"""
+    """校验已上传的 SCL 文件 (使用缓存)"""
     try:
         fm = _get_file_manager(request)
         file_path = fm.get_file_path(filename)
         if not file_path:
             return BaseResponse(code=404, message=f"文件不存在: {filename}")
 
+        # 尝试从缓存获取
+        cached = _get_cached_result(request, file_path)
+        if cached:
+            validation = cached.get("validation", {})
+            return BaseResponse(data=validation)
+
         service = _get_import_service(request)
         result = service.import_file(file_path, validate=True)
-        return BaseResponse(
-            data={
-                "is_valid": result.validation.is_valid,
-                "error_count": result.validation.error_count,
-                "warning_count": result.validation.warning_count,
-                "issues": [str(i) for i in result.validation.issues],
-            }
-        )
+        data = {
+            "is_valid": result.validation.is_valid,
+            "error_count": result.validation.error_count,
+            "warning_count": result.validation.warning_count,
+            "issues": [str(i) for i in result.validation.issues],
+        }
+
+        # 写入缓存
+        _set_cached_result(request, file_path, {"validation": data})
+        return BaseResponse(data=data)
     except Exception as e:
         log.error(f"校验 SCL 文件失败: {e}")
         return BaseResponse(code=500, message=f"校验失败: {e}")
@@ -436,11 +500,20 @@ async def browse_scl_tree(request: Request, filename: str = Query(...)):
                         ld_node = {"inst": ld.inst, "desc": ld.desc, "logical_nodes": []}
                         all_lns = ([ld.ln0] + ld.lns) if ld.ln0 else ld.lns
                         for ln in all_lns:
+                            # 构造 DO 列表 (带 DA 数量)
+                            do_list = []
+                            for doi in ln.dois:
+                                do_list.append({
+                                    "name": doi.name,
+                                    "desc": doi.desc,
+                                    "dai_count": len(doi.dai_values),
+                                })
                             ln_node = {
                                 "ln_name": ln.ln_name,
                                 "ln_class": ln.ln_class,
                                 "ln_type": ln.ln_type,
                                 "do_count": len(ln.dois),
+                                "dois": do_list,
                                 "dataset_count": len(ln.datasets),
                                 "gse_control_count": len(ln.gse_controls),
                                 "report_control_count": len(ln.report_controls),

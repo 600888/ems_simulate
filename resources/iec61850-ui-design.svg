@@ -1,0 +1,528 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1950" font-family="'Microsoft YaHei', 'PingFang SC', 'Segoe UI', Arial, sans-serif">
+  <defs>
+    <linearGradient id="headerGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+    <linearGradient id="sidebarGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f3460"/>
+      <stop offset="100%" stop-color="#1a1a2e"/>
+    </linearGradient>
+    <linearGradient id="btnBlue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1890ff"/>
+      <stop offset="100%" stop-color="#096dd9"/>
+    </linearGradient>
+    <linearGradient id="btnGreen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#52c41a"/>
+      <stop offset="100%" stop-color="#389e0d"/>
+    </linearGradient>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.12"/>
+    </filter>
+    <filter id="shadowLight" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.08"/>
+    </filter>
+
+    <!-- 新增标识标签 -->
+    <g id="badge-new">
+      <rect x="0" y="0" width="28" height="14" rx="3" fill="#ff4d4f"/>
+      <text x="14" y="10" font-size="8" fill="#fff" text-anchor="middle" font-weight="bold">新增</text>
+    </g>
+    <g id="badge-enhance">
+      <rect x="0" y="0" width="28" height="14" rx="3" fill="#fa8c16"/>
+      <text x="14" y="10" font-size="8" fill="#fff" text-anchor="middle" font-weight="bold">增强</text>
+    </g>
+    <g id="badge-rest">
+      <rect x="0" y="0" width="34" height="14" rx="3" fill="#1890ff"/>
+      <text x="17" y="10" font-size="8" fill="#fff" text-anchor="middle" font-weight="bold">RESTful</text>
+    </g>
+  </defs>
+
+  <!-- ======== 背景 ======== -->
+  <rect width="1400" height="1950" fill="#f0f2f5"/>
+
+  <!-- ======== 标题栏 ======== -->
+  <rect x="30" y="20" width="1340" height="50" rx="8" fill="url(#headerGrad)" filter="url(#shadow)"/>
+  <text x="50" y="52" font-size="20" font-weight="bold" fill="#fff">IEC 61850 前端架构总览 — 基于现有项目</text>
+
+  <!-- ========================================================== -->
+  <!-- 第1部分: 应用外壳 (App.vue) -->
+  <!-- ========================================================== -->
+  <rect x="30" y="88" width="1340" height="260" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="30" y="88" width="1340" height="36" rx="8" fill="#e6f7ff"/>
+  <rect x="30" y="114" width="1340" height="10" fill="#e6f7ff"/>
+  <text x="50" y="112" font-size="15" font-weight="bold" fill="#1890ff">🏗 应用外壳 (App.vue — 现有)</text>
+  <text x="550" y="112" font-size="11" fill="#8c8c8c">Vue 3 + Element Plus + TypeScript + Vite</text>
+
+  <!-- 侧边栏 -->
+  <rect x="55" y="136" width="210" height="192" rx="6" fill="url(#sidebarGrad)" filter="url(#shadowLight)"/>
+  <rect x="65" y="144" width="190" height="24" rx="4" fill="#ffffff15"/>
+  <text x="85" y="160" font-size="11" fill="#fff" font-weight="bold">📡 IEC 61850 仿真</text>
+  <line x1="60" y1="174" x2="260" y2="174" stroke="#ffffff22" stroke-width="1"/>
+
+  <!-- 侧边栏内部结构标识 -->
+  <text x="65" y="190" font-size="9" fill="#8be9fd" font-weight="bold">SideNavHeader</text>
+  <!-- 侧边栏操作按钮 -->
+  <rect x="65" y="198" width="190" height="26" rx="4" fill="#ffffff0d"/>
+  <text x="75" y="215" font-size="10" fill="#d9d9d9">+ 添加设备    + 添加分组</text>
+  <text x="170" y="215" font-size="8" fill="#8be9fd">SideNavActions</text>
+
+  <!-- 设备树区域 -->
+  <rect x="65" y="230" width="190" height="36" rx="4" fill="#ffffff0d"/>
+  <text x="75" y="246" font-size="10" fill="#d9d9d9">📁 变电站 A (展开)</text>
+  <text x="140" y="246" font-size="9" fill="#8be9fd">SideNavTree</text>
+  <text x="85" y="262" font-size="9" fill="#b0b0b0">└ 📡 IED_Protection_01</text>
+
+  <!-- IEC61850 子树 -->
+  <rect x="65" y="270" width="190" height="48" rx="4" fill="#1890ff15"/>
+  <text x="75" y="284" font-size="9" fill="#69c0ff">└ IEC61850 子树 (useIec61850Tree)</text>
+  <text x="85" y="297" font-size="8" fill="#69c0ff">DataModel | GOOSE | Reports | DataSets | Files</text>
+
+  <!-- 未分组设备 -->
+  <rect x="65" y="322" width="190" height="18" rx="4" fill="#ffffff08"/>
+  <text x="75" y="334" font-size="9" fill="#8be9fd">SideNavUngrouped</text>
+
+  <!-- 右侧 Header -->
+  <rect x="280" y="136" width="1065" height="36" rx="6" fill="#fafafa" stroke="#e8e8e8" stroke-width="1"/>
+  <rect x="290" y="142" width="22" height="22" rx="4" fill="#f0f0f0"/>
+  <text x="296" y="157" font-size="11" fill="#595959">☰</text>
+  <text x="320" y="157" font-size="11" fill="#595959">🏠 主页 › 设备名</text>
+  <text x="1000" y="157" font-size="10" fill="#595959">🌐 EN</text>
+  <text x="1060" y="157" font-size="10" fill="#1890ff">🔗 GOOSE</text>
+  <text x="1150" y="157" font-size="10" fill="#595959">⚙ 设置</text>
+  <text x="1280" y="162" font-size="8" fill="#d9d9d9">AppHeader</text>
+
+  <!-- 标签页 -->
+  <rect x="280" y="176" width="1065" height="28" rx="4" fill="#f5f5f5" stroke="#e8e8e8" stroke-width="1"/>
+  <rect x="290" y="180" width="120" height="22" rx="4" fill="#fff" stroke="#1890ff" stroke-width="1"/>
+  <text x="305" y="195" font-size="10" fill="#1890ff"># IED_Protection</text>
+  <rect x="415" y="180" width="80" height="22" rx="4" fill="#fff"/>
+  <text x="428" y="195" font-size="10" fill="#8c8c8c"># GOOSE 管理</text>
+  <rect x="500" y="180" width="110" height="22" rx="4" fill="#fff"/>
+  <text x="513" y="195" font-size="10" fill="#8c8c8c"># Files 浏览</text>
+  <text x="1180" y="195" font-size="8" fill="#d9d9d9">TagsView (localStorage)</text>
+
+  <!-- router-view -->
+  <rect x="280" y="210" width="1065" height="118" rx="6" fill="#fff" stroke="#e8e8e8" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="810" y="260" font-size="14" fill="#bfbfbf" text-anchor="middle">&lt;router-view v-slot&gt;</text>
+  <text x="810" y="280" font-size="11" fill="#d9d9d9" text-anchor="middle">→ /device/:deviceName /goose /reports /files</text>
+  <text x="810" y="296" font-size="11" fill="#d9d9d9" text-anchor="middle">&lt;keep-alive&gt; 缓存 | Hash 模式 (createWebHashHistory)</text>
+
+  <!-- App.vue -->
+  <text x="100" y="360" font-size="10" fill="#8c8c8c">App.vue | SideBar.vue | AppHeader.vue | TagsView.vue | SettingsView.vue | 支持 Tauri 桌面端 | 亮/暗主题切换 | 中英文 i18n</text>
+
+  <!-- ========================================================== -->
+  <!-- 第2部分: 现有路由与视图 -->
+  <!-- ========================================================== -->
+  <rect x="30" y="365" width="1340" height="340" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="30" y="365" width="1340" height="36" rx="8" fill="#f6ffed"/>
+  <rect x="30" y="391" width="1340" height="10" fill="#f6ffed"/>
+  <text x="50" y="393" font-size="15" font-weight="bold" fill="#389e0d">🗺 路由与视图 (现有 router/index.ts)</text>
+
+  <!-- 路由表 -->
+  <rect x="50" y="412" width="1290" height="24" rx="0" fill="#fafafa" stroke="#e8e8e8" stroke-width="1"/>
+  <rect x="50" y="412" width="1290" height="24" rx="4 4 0 0" fill="#fafafa"/>
+  <text x="60" y="429" font-size="11" font-weight="bold" fill="#595959">路径 (Hash)</text>
+  <text x="260" y="429" font-size="11" font-weight="bold" fill="#595959">名称</text>
+  <text x="420" y="429" font-size="11" font-weight="bold" fill="#595959">视图组件</text>
+  <text x="680" y="429" font-size="11" font-weight="bold" fill="#595959">标签页</text>
+  <text x="880" y="429" font-size="11" font-weight="bold" fill="#595959">核心子组件</text>
+
+  <line x1="50" y1="438" x2="1340" y2="438" stroke="#f0f0f0" stroke-width="1"/>
+
+  <!-- 路由1: Device -->
+  <rect x="50" y="440" width="1290" height="50" fill="#fff"/>
+  <text x="60" y="465" font-size="11" fill="#1890ff">#/device/:deviceName</text>
+  <text x="260" y="465" font-size="11" fill="#262626">device-detail</text>
+  <text x="420" y="460" font-size="11" fill="#262626" font-weight="bold">Device.vue</text>
+  <text x="420" y="476" font-size="10" fill="#8c8c8c">views/Device.vue</text>
+  <text x="680" y="465" font-size="11" fill="#52c41a">✓ 自动添加</text>
+  <text x="880" y="460" font-size="10" fill="#595959">Slave.vue | TextNode | MessageViewDialog</text>
+  <text x="880" y="476" font-size="10" fill="#595959">ModelExportDialog | Table.vue</text>
+
+  <line x1="50" y1="492" x2="1340" y2="492" stroke="#f0f0f0" stroke-width="1"/>
+
+  <!-- 路由2: Goose -->
+  <rect x="50" y="494" width="1290" height="34" fill="#fafafa"/>
+  <text x="60" y="517" font-size="11" fill="#1890ff">#/goose</text>
+  <text x="260" y="517" font-size="11" fill="#262626">goose-manager</text>
+  <text x="420" y="512" font-size="11" fill="#262626" font-weight="bold">GooseView.vue</text>
+  <text x="420" y="528" font-size="10" fill="#8c8c8c">views/GooseView.vue</text>
+  <text x="680" y="517" font-size="11" fill="#52c41a">✓ 自动添加</text>
+  <text x="880" y="517" font-size="10" fill="#595959">GooseManager.vue (发布/订阅/抓包)</text>
+
+  <line x1="50" y1="530" x2="1340" y2="530" stroke="#f0f0f0" stroke-width="1"/>
+
+  <!-- 路由3: Reports -->
+  <rect x="50" y="532" width="1290" height="34" fill="#fff"/>
+  <text x="60" y="555" font-size="11" fill="#1890ff">#/reports?channel_id=N</text>
+  <text x="260" y="555" font-size="11" fill="#262626">reports-manager</text>
+  <text x="420" y="550" font-size="11" fill="#262626" font-weight="bold">ReportsView.vue</text>
+  <text x="420" y="566" font-size="10" fill="#8c8c8c">views/ReportsView.vue</text>
+  <text x="680" y="555" font-size="11" fill="#8c8c8c">✗ 无标签</text>
+  <text x="880" y="555" font-size="10" fill="#595959">ReportsManager.vue (RCB管理)</text>
+
+  <line x1="50" y1="568" x2="1340" y2="568" stroke="#f0f0f0" stroke-width="1"/>
+
+  <!-- 路由4: Files -->
+  <rect x="50" y="570" width="1290" height="34" fill="#fafafa"/>
+  <text x="60" y="593" font-size="11" fill="#1890ff">#/files?channel_id=N</text>
+  <text x="260" y="593" font-size="11" fill="#262626">files-explorer</text>
+  <text x="420" y="588" font-size="11" fill="#262626" font-weight="bold">FilesView.vue</text>
+  <text x="420" y="604" font-size="10" fill="#8c8c8c">views/FilesView.vue</text>
+  <text x="680" y="593" font-size="11" fill="#8c8c8c">✗ 无标签</text>
+  <text x="880" y="593" font-size="10" fill="#595959">FileExplorer.vue (远程IED文件浏览)</text>
+
+  <!-- 路由跳转逻辑说明 -->
+  <rect x="50" y="612" width="1290" height="40" rx="6" fill="#f0f5ff" stroke="#d6e4ff" stroke-width="1"/>
+  <text x="65" y="630" font-size="10" fill="#2f54eb">💡 路由守卫: afterEach → 仅 /device 和 /goose 路径自动创建标签页 (addView)；Reports/Files 通过 query 参数 channel_id 传递设备上下文</text>
+  <text x="65" y="646" font-size="10" fill="#2f54eb">💡 侧边栏 IEC61850 子树节点: DataSets/DataModel 点击携带 category + item 参数导航到 Device.vue；GOOSE/Files 携带 channel_id 导航到独立页面</text>
+
+  <!-- 设备组树路由动态注册 -->
+  <rect x="50" y="656" width="1290" height="30" rx="6" fill="#fff7e6" stroke="#ffd591" stroke-width="1"/>
+  <text x="65" y="676" font-size="10" fill="#d46b08">💡 设备添加时动态注册路由: menuRouter.addRoute({ path: /device/:name, component: Device.vue })</text>
+
+  <!-- ========================================================== -->
+  <!-- 第3部分: 组件树 — 现有 + 新增 -->
+  <!-- ========================================================== -->
+  <rect x="30" y="723" width="1340" height="590" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="30" y="723" width="1340" height="36" rx="8" fill="#fff0f6"/>
+  <rect x="30" y="749" width="1340" height="10" fill="#fff0f6"/>
+  <text x="50" y="751" font-size="15" font-weight="bold" fill="#eb2f96">🌳 组件树 (现有 + 新增 SCL 组件)</text>
+  <text x="500" y="751" font-size="11" fill="#ff4d4f">红色标签 = 新增</text>
+  <text x="630" y="751" font-size="11" fill="#fa8c16">橙色标签 = 增强</text>
+
+  <!-- ===== 第3部分 左侧: 现有组件体系 ===== -->
+
+  <!-- Src 目录结构 -->
+  <rect x="50" y="772" width="620" height="530" rx="6" fill="#fafafa" stroke="#e8e8e8" stroke-width="1"/>
+  <text x="65" y="792" font-size="13" font-weight="bold" fill="#262626">📁 现有组件体系 (front/src/)</text>
+
+  <!-- API 层 -->
+  <rect x="65" y="804" width="590" height="26" rx="4" fill="#e6f7ff" stroke="#91d5ff" stroke-width="0.5"/>
+  <text x="75" y="821" font-size="11" font-weight="bold" fill="#1890ff">api/</text>
+  <text x="120" y="821" font-size="10" fill="#595959">http.ts | channelApi.ts | deviceApi.ts | gooseApi.ts | pointApi.ts</text>
+
+  <!-- API 子项 -->
+  <rect x="85" y="836" width="555" height="20" rx="3" fill="#f0f5ff"/>
+  <text x="95" y="850" font-size="9" fill="#2f54eb">channelApi.ts → getIEC61850Structure / getIEC61850TreeData / getIEC61850TableData / getFileDirectory / ...</text>
+
+  <!-- Store -->
+  <rect x="65" y="862" width="590" height="22" rx="4" fill="#f6ffed" stroke="#b7eb8f" stroke-width="0.5"/>
+  <text x="75" y="878" font-size="11" font-weight="bold" fill="#389e0d">store/</text>
+  <text x="130" y="878" font-size="10" fill="#595959">tagsView.ts (模块级 reactive, 非 Pinia, localStorage 持久化)</text>
+
+  <!-- Composables -->
+  <rect x="65" y="890" width="590" height="22" rx="4" fill="#fff7e6" stroke="#ffd591" stroke-width="0.5"/>
+  <text x="75" y="906" font-size="11" font-weight="bold" fill="#d46b08">composables/</text>
+  <text x="165" y="906" font-size="10" fill="#595959">useIec61850Tree.ts | useSidebarRefresh.ts | useAutoRead.ts | useAppSettings.ts</text>
+
+  <!-- Types -->
+  <rect x="65" y="918" width="590" height="22" rx="4" fill="#f9f0ff" stroke="#d3adf7" stroke-width="0.5"/>
+  <text x="75" y="934" font-size="11" font-weight="bold" fill="#722ed1">types/</text>
+  <text x="130" y="934" font-size="10" fill="#595959">channel.ts | point.ts | register.ts | connectionType.ts | textNode.ts</text>
+
+  <!-- Constants -->
+  <rect x="65" y="946" width="590" height="22" rx="4" fill="#e6fffb" stroke="#87e8de" stroke-width="0.5"/>
+  <text x="75" y="962" font-size="11" font-weight="bold" fill="#13c2c2">constants/</text>
+  <text x="150" y="962" font-size="10" fill="#595959">protocol.ts (IEC61850_CATEGORIES, PROTOCOL_TYPE) | api.ts</text>
+
+  <!-- 视图层 -->
+  <rect x="65" y="974" width="590" height="88" rx="4" fill="#fff2f0" stroke="#ffccc7" stroke-width="0.5"/>
+  <text x="75" y="992" font-size="11" font-weight="bold" fill="#ff4d4f">views/</text>
+  <text x="75" y="1010" font-size="10" fill="#595959">SideBar.vue — 侧边栏容器 (设备组树 + IEC61850子树 + 未分组设备)</text>
+  <text x="75" y="1028" font-size="10" fill="#595959">Device.vue — 设备详情页 (TextNode 信息栏 + Slave 组件 + 进度条 + 模型导出)</text>
+  <text x="75" y="1046" font-size="10" fill="#595959">GooseView.vue / ReportsView.vue / FilesView.vue — 独立页 (通过 channel_id 参数传递设备上下文)</text>
+
+  <!-- 组件层 -->
+  <rect x="65" y="1068" width="590" height="130" rx="4" fill="#f5f5f5" stroke="#d9d9d9" stroke-width="0.5"/>
+  <text x="75" y="1086" font-size="11" font-weight="bold" fill="#262626">components/</text>
+
+  <!-- 设备组件 -->
+  <text x="85" y="1104" font-size="10" fill="#262626">device/</text>
+  <text x="145" y="1104" font-size="10" fill="#595959">Slave.vue | Table.vue | AddDeviceDialog.vue | ModelExportDialog.vue</text>
+  <text x="85" y="1120" font-size="10" fill="#262626">goose/</text>
+  <text x="145" y="1120" font-size="10" fill="#595959">GooseManager.vue | GooseCapture.vue | GoosePublisher.vue</text>
+  <text x="85" y="1136" font-size="10" fill="#262626">reports/</text>
+  <text x="145" y="1136" font-size="10" fill="#595959">ReportsManager.vue</text>
+  <text x="85" y="1152" font-size="10" fill="#262626">files/</text>
+  <text x="145" y="1152" font-size="10" fill="#595959">FileExplorer.vue</text>
+  <text x="85" y="1168" font-size="10" fill="#262626">layout/</text>
+  <text x="145" y="1168" font-size="10" fill="#595959">SideNavHeader.vue | SideNavTree.vue | SideNavActions.vue | SideNavUngrouped.vue | TagsView.vue</text>
+  <text x="85" y="1184" font-size="10" fill="#262626">header/</text>
+  <text x="145" y="1184" font-size="10" fill="#595959">AppHeader.vue | isCollapse</text>
+
+  <!-- ===== 第3部分 右侧: 新增 SCL 组件 ===== -->
+
+  <rect x="690" y="772" width="660" height="530" rx="6" fill="#fafafa" stroke="#e8e8e8" stroke-width="1"/>
+  <text x="705" y="792" font-size="13" font-weight="bold" fill="#262626">📁 新增 SCL 组件 (front/src/components/scl/)</text>
+
+  <!-- API 新增 -->
+  <rect x="705" y="804" width="630" height="26" rx="4" fill="#fff2f0" stroke="#ffccc7" stroke-width="1"/>
+  <text x="715" y="816" font-size="11" font-weight="bold" fill="#ff4d4f">sclApi.ts</text>
+  <text x="790" y="816" font-size="10" fill="#ff4d4f">(新增)</text>
+  <text x="845" y="816" font-size="10" fill="#595959">SCL 文件管理 API 封装, 使用 RESTful 风格</text>
+  <use href="#badge-new" x="1190" y="798"/>
+
+  <!-- SCL 文件管理器 -->
+  <rect x="705" y="838" width="305" height="120" rx="6" fill="#fff" stroke="#ff4d4f" stroke-width="1" filter="url(#shadowLight)"/>
+  <text x="715" y="858" font-size="12" font-weight="bold" fill="#262626">SclFileManager.vue</text>
+  <use href="#badge-new" x="850" y="842"/>
+  <text x="715" y="876" font-size="10" fill="#595959">文件列表表格 (工具栏: 上传/刷新/搜索)</text>
+  <text x="715" y="894" font-size="10" fill="#8c8c8c">操作: 预览 | 导入 | XML | 对比 | 下载 | 删除</text>
+  <text x="715" y="912" font-size="10" fill="#8c8c8c">路由: #/scl/manager (嵌套于 #/scl)</text>
+  <rect x="715" y="922" width="130" height="20" rx="4" fill="#fff2f0" stroke="#ffccc7" stroke-width="0.5"/>
+  <text x="720" y="936" font-size="9" fill="#ff4d4f">→ SclUploadDialog</text>
+
+  <!-- SCL 预览 -->
+  <rect x="1025" y="838" width="310" height="120" rx="6" fill="#fff" stroke="#ff4d4f" stroke-width="1" filter="url(#shadowLight)"/>
+  <text x="1035" y="858" font-size="12" font-weight="bold" fill="#262626">SclPreview.vue</text>
+  <use href="#badge-new" x="1170" y="842"/>
+  <text x="1035" y="876" font-size="10" fill="#595959">SCL 结构树 + 节点详情分栏视图</text>
+  <text x="1035" y="894" font-size="10" fill="#8c8c8c">顶部: 文件名/类型/IED/操作按钮</text>
+  <text x="1035" y="912" font-size="10" fill="#8c8c8c">底部状态栏: 节点统计/校验状态</text>
+  <text x="1035" y="930" font-size="10" fill="#8c8c8c">路由: #/scl/preview/:fileName</text>
+
+  <!-- 子组件1 -->
+  <rect x="715" y="968" width="200" height="100" rx="6" fill="#fff" stroke="#ff4d4f" stroke-width="1" stroke-dasharray="4,2"/>
+  <text x="725" y="988" font-size="11" font-weight="bold" fill="#262626">SclTreePanel.vue</text>
+  <use href="#badge-new" x="850" y="972"/>
+  <text x="725" y="1006" font-size="9" fill="#595959">SCL 树形结构</text>
+  <text x="725" y="1022" font-size="9" fill="#8c8c8c">→ DataTypeTemplates</text>
+  <text x="725" y="1038" font-size="9" fill="#8c8c8c">→ Communication</text>
+  <text x="725" y="1054" font-size="9" fill="#8c8c8c">Props: treeData, selectedPath</text>
+
+  <!-- 子组件2 -->
+  <rect x="930" y="968" width="200" height="100" rx="6" fill="#fff" stroke="#ff4d4f" stroke-width="1" stroke-dasharray="4,2"/>
+  <text x="940" y="988" font-size="11" font-weight="bold" fill="#262626">SclDetailPanel.vue</text>
+  <use href="#badge-new" x="1070" y="972"/>
+  <text x="940" y="1006" font-size="9" fill="#595959">节点属性详情表</text>
+  <text x="940" y="1022" font-size="9" fill="#8c8c8c">子节点列表</text>
+  <text x="940" y="1038" font-size="9" fill="#8c8c8c">Props: fileName, nodePath</text>
+
+  <!-- 子组件3 -->
+  <rect x="1145" y="968" width="195" height="100" rx="6" fill="#fff" stroke="#ff4d4f" stroke-width="1" stroke-dasharray="4,2"/>
+  <text x="1155" y="988" font-size="11" font-weight="bold" fill="#262626">SclValidation.vue</text>
+  <use href="#badge-new" x="1275" y="972"/>
+  <text x="1155" y="1006" font-size="9" fill="#595959">校验结果面板</text>
+  <text x="1155" y="1022" font-size="9" fill="#8c8c8c">错误/警告列表</text>
+  <text x="1155" y="1038" font-size="9" fill="#8c8c8c">默认收起</text>
+
+  <!-- SCL XML 查看器 -->
+  <rect x="705" y="1078" width="305" height="96" rx="6" fill="#fff" stroke="#ff4d4f" stroke-width="1" filter="url(#shadowLight)"/>
+  <text x="715" y="1098" font-size="12" font-weight="bold" fill="#262626">SclXmlViewer.vue</text>
+  <use href="#badge-new" x="850" y="1082"/>
+  <text x="715" y="1116" font-size="10" fill="#595959">原始 XML 查看器 (行号 + 语法高亮)</text>
+  <text x="715" y="1134" font-size="10" fill="#8c8c8c">操作: 复制 | 下载</text>
+  <text x="715" y="1152" font-size="10" fill="#8c8c8c">路由: #/scl/viewer/:fileName</text>
+
+  <!-- SCL 导入向导 -->
+  <rect x="1025" y="1078" width="310" height="96" rx="6" fill="#fff" stroke="#ff4d4f" stroke-width="1" filter="url(#shadowLight)"/>
+  <text x="1035" y="1098" font-size="12" font-weight="bold" fill="#262626">SclImportWizard.vue</text>
+  <use href="#badge-new" x="1170" y="1082"/>
+  <text x="1035" y="1116" font-size="10" fill="#595979">四步骤导入向导</text>
+  <text x="1035" y="1134" font-size="10" fill="#8c8c8c">① 选文件 → ② 预览测点 → ③ 配置 → ④ 执行</text>
+  <text x="1035" y="1152" font-size="10" fill="#8c8c8c">路由: #/scl/import</text>
+
+  <!-- SCL 文件对比 -->
+  <rect x="705" y="1182" width="305" height="105" rx="6" fill="#fff" stroke="#ff4d4f" stroke-width="1" filter="url(#shadowLight)"/>
+  <text x="715" y="1202" font-size="12" font-weight="bold" fill="#262626">SclDiffViewer.vue</text>
+  <use href="#badge-new" x="850" y="1186"/>
+  <text x="715" y="1220" font-size="10" fill="#595959">左右分栏文件对比</text>
+  <text x="715" y="1238" font-size="10" fill="#8c8c8c">高亮: 🟢新增 🟡修改 🔴删除</text>
+  <text x="715" y="1256" font-size="10" fill="#8c8c8c">差异统计 + SclDiffResult.vue</text>
+  <text x="715" y="1274" font-size="10" fill="#8c8c8c">路由: #/scl/diff</text>
+
+  <!-- 增强组件 -->
+  <rect x="1025" y="1182" width="310" height="105" rx="6" fill="#fff" stroke="#fa8c16" stroke-width="1" filter="url(#shadowLight)"/>
+  <text x="1035" y="1202" font-size="12" font-weight="bold" fill="#262626">DiscoveryProgress.vue</text>
+  <use href="#badge-enhance" x="1170" y="1186"/>
+  <text x="1035" y="1220" font-size="10" fill="#595959">模型发现进度对话框</text>
+  <text x="1035" y="1238" font-size="10" fill="#8c8c8c">实时进度条 + 已发现节点列表</text>
+  <text x="1035" y="1256" font-size="10" fill="#8c8c8c">SSE 优先 / 降级 2s 轮询</text>
+
+  <!-- SCL 页面说明 -->
+  <rect x="50" y="1318" width="1300" height="30" rx="6" fill="#f0f5ff" stroke="#d6e4ff" stroke-width="1"/>
+  <text x="65" y="1338" font-size="10" fill="#2f54eb">💡 SCL 导航结构: #/scl (首页重定向→manager) → #/scl/manager | #/scl/preview/:fileName | #/scl/import | #/scl/diff | #/scl/viewer/:fileName</text>
+
+  <!-- ========================================================== -->
+  <!-- 第4部分: API 接口 -->
+  <!-- ========================================================== -->
+  <rect x="30" y="1360" width="1340" height="300" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="30" y="1360" width="1340" height="36" rx="8" fill="#f0f5ff"/>
+  <rect x="30" y="1386" width="1340" height="10" fill="#f0f5ff"/>
+  <text x="50" y="1388" font-size="15" font-weight="bold" fill="#2f54eb">🔌 API 接口 (现有 POST + 新增 RESTful)</text>
+  <text x="500" y="1388" font-size="11" fill="#8c8c8c">现有 API 全部使用 POST 方法 | 新增 SCL API 使用 RESTful 风格</text>
+
+  <!-- 表头 -->
+  <rect x="50" y="1407" width="1290" height="24" rx="4 4 0 0" fill="#fafafa" stroke="#e8e8e8" stroke-width="1"/>
+  <text x="60" y="1424" font-size="11" font-weight="bold" fill="#595959">方法</text>
+  <text x="120" y="1424" font-size="11" font-weight="bold" fill="#595959">路径</text>
+  <text x="500" y="1424" font-size="11" font-weight="bold" fill="#595959">说明</text>
+  <text x="750" y="1424" font-size="11" font-weight="bold" fill="#595959">后端处理器</text>
+  <text x="1050" y="1424" font-size="11" font-weight="bold" fill="#595959">状态</text>
+
+  <!-- API 行: 现有 -->
+  <line x1="50" y1="1433" x2="1340" y2="1433" stroke="#f0f0f0" stroke-width="1"/>
+  <rect x="50" y="1433" width="1290" height="24" fill="#e6f7ff"/>
+  <text x="60" y="1449" font-size="10" fill="#bfbfbf">POST</text>
+  <text x="120" y="1449" font-size="10" fill="#8c8c8c">/api/channels/:id/iec61850/structure</text>
+  <text x="500" y="1449" font-size="10" fill="#8c8c8c">获取 IEC61850 设备结构</text>
+  <text x="750" y="1449" font-size="10" fill="#8c8c8c">channelApi.ts (现有)</text>
+  <text x="1050" y="1449" font-size="10" fill="#52c41a">现有</text>
+
+  <rect x="50" y="1457" width="1290" height="24" fill="#e6f7ff"/>
+  <text x="60" y="1473" font-size="10" fill="#bfbfbf">POST</text>
+  <text x="120" y="1473" font-size="10" fill="#8c8c8c">/api/devices/:name/export-model</text>
+  <text x="500" y="1473" font-size="10" fill="#8c8c8c">导出模型</text>
+  <text x="750" y="1473" font-size="10" fill="#8c8c8c">deviceApi.ts (现有)</text>
+  <text x="1050" y="1473" font-size="10" fill="#52c41a">现有</text>
+
+  <!-- 分隔 -->
+  <line x1="50" y1="1483" x2="1340" y2="1483" stroke="#d9d9d9" stroke-width="0.5" stroke-dasharray="3,2"/>
+
+  <!-- SCL 新增 API 行 -->
+  <rect x="50" y="1485" width="1290" height="24" fill="#fff2f0"/>
+  <text x="60" y="1501" font-size="10" fill="#ff4d4f" font-weight="bold">GET</text>
+  <text x="120" y="1501" font-size="10" fill="#262626">/api/scl/files</text>
+  <text x="500" y="1501" font-size="10" fill="#262626">获取 SCL 文件列表</text>
+  <text x="750" y="1501" font-size="10" fill="#595959">scl_router.py (新建)</text>
+  <use href="#badge-new" x="1050" y="1489"/>
+
+  <rect x="50" y="1509" width="1290" height="24" fill="#fff2f0"/>
+  <text x="60" y="1525" font-size="10" fill="#ff4d4f" font-weight="bold">POST</text>
+  <text x="120" y="1525" font-size="10" fill="#262626">/api/scl/upload</text>
+  <text x="500" y="1525" font-size="10" fill="#262626">上传 SCL 文件</text>
+  <text x="750" y="1525" font-size="10" fill="#595959">scl_router.py (新建)</text>
+  <use href="#badge-new" x="1050" y="1513"/>
+
+  <rect x="50" y="1533" width="1290" height="24" fill="#fff2f0"/>
+  <text x="60" y="1549" font-size="10" fill="#ff4d4f" font-weight="bold">GET</text>
+  <text x="120" y="1549" font-size="10" fill="#262626">/api/scl/{fileName}/tree</text>
+  <text x="500" y="1549" font-size="10" fill="#262626">获取 SCL 解析树</text>
+  <text x="750" y="1549" font-size="10" fill="#595959">scl_router.py (新建)</text>
+  <use href="#badge-new" x="1050" y="1537"/>
+
+  <rect x="50" y="1557" width="1290" height="24" fill="#fff2f0"/>
+  <text x="60" y="1573" font-size="10" fill="#ff4d4f" font-weight="bold">GET</text>
+  <text x="120" y="1573" font-size="10" fill="#262626">/api/scl/{fileName}/detail?path=...</text>
+  <text x="500" y="1573" font-size="10" fill="#262626">获取节点详情</text>
+  <text x="750" y="1573" font-size="10" fill="#595959">scl_router.py (新建)</text>
+  <use href="#badge-new" x="1050" y="1561"/>
+
+  <rect x="50" y="1581" width="1290" height="24" fill="#fff2f0"/>
+  <text x="60" y="1597" font-size="10" fill="#ff4d4f" font-weight="bold">GET</text>
+  <text x="120" y="1597" font-size="10" fill="#262626">/api/scl/{fileName}/preview</text>
+  <text x="500" y="1597" font-size="10" fill="#262626">预览导入内容 (测点统计)</text>
+  <text x="750" y="1597" font-size="10" fill="#595959">scl_router.py (新建)</text>
+  <use href="#badge-new" x="1050" y="1585"/>
+
+  <rect x="50" y="1605" width="1290" height="24" fill="#fff2f0"/>
+  <text x="60" y="1621" font-size="10" fill="#ff4d4f" font-weight="bold">POST</text>
+  <text x="120" y="1621" font-size="10" fill="#262626">/api/scl/{fileName}/import</text>
+  <text x="500" y="1621" font-size="10" fill="#262626">导入到通道</text>
+  <text x="750" y="1621" font-size="10" fill="#595959">scl_router.py (新建)</text>
+  <use href="#badge-new" x="1050" y="1609"/>
+
+  <rect x="50" y="1629" width="1290" height="24" fill="#fff2f0"/>
+  <text x="60" y="1645" font-size="10" fill="#ff4d4f" font-weight="bold">POST</text>
+  <text x="120" y="1645" font-size="10" fill="#262626">/api/scl/diff</text>
+  <text x="500" y="1645" font-size="10" fill="#262626">对比两个 SCL 文件</text>
+  <text x="750" y="1645" font-size="10" fill="#595959">scl_router.py (新建)</text>
+  <use href="#badge-new" x="1050" y="1633"/>
+
+  <rect x="50" y="1653" width="1290" height="24" fill="#fff2f0"/>
+  <text x="60" y="1669" font-size="10" fill="#ff4d4f" font-weight="bold">GET</text>
+  <text x="120" y="1669" font-size="10" fill="#262626">/api/scl/{fileName}/content</text>
+  <text x="500" y="1669" font-size="10" fill="#262626">获取原始 XML 内容</text>
+  <text x="750" y="1669" font-size="10" fill="#595959">scl_router.py (新建)</text>
+  <use href="#badge-new" x="1050" y="1657"/>
+
+  <rect x="50" y="1677" width="1290" height="24" fill="#fff2f0"/>
+  <text x="60" y="1693" font-size="10" fill="#ff4d4f" font-weight="bold">GET</text>
+  <text x="120" y="1693" font-size="10" fill="#262626">/api/scl/{fileName}/validation</text>
+  <text x="500" y="1693" font-size="10" fill="#262626">获取校验结果</text>
+  <text x="750" y="1693" font-size="10" fill="#595959">scl_router.py (新建)</text>
+  <use href="#badge-new" x="1050" y="1681"/>
+
+  <rect x="50" y="1701" width="1290" height="24" fill="#fff2f0"/>
+  <text x="60" y="1717" font-size="10" fill="#ff4d4f" font-weight="bold">DELETE</text>
+  <text x="120" y="1717" font-size="10" fill="#262626">/api/scl/{fileName}</text>
+  <text x="500" y="1717" font-size="10" fill="#262626">删除文件</text>
+  <text x="750" y="1717" font-size="10" fill="#595959">scl_router.py (新建)</text>
+  <use href="#badge-new" x="1050" y="1705"/>
+
+  <!-- ========================================================== -->
+  <!-- 第5部分: 数据流与交互 -->
+  <!-- ========================================================== -->
+  <rect x="30" y="1678" width="1340" height="255" rx="8" fill="#fff" filter="url(#shadow)"/>
+  <rect x="30" y="1678" width="1340" height="36" rx="8" fill="#fffbe6"/>
+  <rect x="30" y="1704" width="1340" height="10" fill="#fffbe6"/>
+  <text x="50" y="1706" font-size="15" font-weight="bold" fill="#d48806">🔄 数据流 — SCL 导入流程</text>
+
+  <!-- 数据流图 -->
+  <!-- ICD 文件 -->
+  <rect x="60" y="1730" width="120" height="50" rx="6" fill="#fff7e6" stroke="#ffd591" stroke-width="1.5"/>
+  <text x="120" y="1755" font-size="11" fill="#d46b08" text-anchor="middle" font-weight="bold">ICD 文件</text>
+  <text x="120" y="1770" font-size="9" fill="#8c8c8c" text-anchor="middle">.icd / .scd / .cid</text>
+
+  <!-- 箭头 1 -->
+  <line x1="180" y1="1755" x2="230" y2="1755" stroke="#d9d9d9" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+  <text x="205" y="1745" font-size="9" fill="#8c8c8c" text-anchor="middle">上传</text>
+
+  <!-- 前端 SCL 组件 -->
+  <rect x="235" y="1725" width="140" height="60" rx="6" fill="#fff2f0" stroke="#ff4d4f" stroke-width="1.5"/>
+  <text x="305" y="1748" font-size="11" fill="#ff4d4f" text-anchor="middle" font-weight="bold">SclFileManager</text>
+  <text x="305" y="1765" font-size="9" fill="#8c8c8c" text-anchor="middle">↑ SclUploadDialog</text>
+  <text x="305" y="1780" font-size="9" fill="#8c8c8c" text-anchor="middle">↓ sclApi.ts</text>
+
+  <!-- 箭头 2 -->
+  <line x1="375" y1="1755" x2="425" y2="1755" stroke="#d9d9d9" stroke-width="1.5"/>
+  <text x="400" y="1745" font-size="9" fill="#8c8c8c" text-anchor="middle">API</text>
+
+  <!-- 后端 SCL 路由 -->
+  <rect x="430" y="1725" width="140" height="60" rx="6" fill="#e6f7ff" stroke="#91d5ff" stroke-width="1.5"/>
+  <text x="500" y="1748" font-size="11" fill="#1890ff" text-anchor="middle" font-weight="bold">scl_router.py</text>
+  <text x="500" y="1765" font-size="9" fill="#8c8c8c" text-anchor="middle">(新建)</text>
+
+  <!-- 箭头 3 -->
+  <line x1="570" y1="1755" x2="620" y2="1755" stroke="#d9d9d9" stroke-width="1.5"/>
+
+  <!-- SclParser -->
+  <rect x="625" y="1725" width="140" height="60" rx="6" fill="#f6ffed" stroke="#b7eb8f" stroke-width="1.5"/>
+  <text x="695" y="1748" font-size="11" fill="#389e0d" text-anchor="middle" font-weight="bold">SclParser</text>
+  <text x="695" y="1765" font-size="9" fill="#8c8c8c" text-anchor="middle">src/proto/iec61850/</text>
+  <text x="695" y="1780" font-size="9" fill="#8c8c8c" text-anchor="middle">plugins/scl/</text>
+
+  <!-- 箭头 4 -->
+  <line x1="765" y1="1755" x2="815" y2="1755" stroke="#d9d9d9" stroke-width="1.5"/>
+
+  <!-- 转换 -->
+  <rect x="820" y="1725" width="140" height="60" rx="6" fill="#f9f0ff" stroke="#d3adf7" stroke-width="1.5"/>
+  <text x="890" y="1748" font-size="11" fill="#722ed1" text-anchor="middle" font-weight="bold">SclTransformer</text>
+  <text x="890" y="1765" font-size="9" fill="#8c8c8c" text-anchor="middle">SclPointTransform</text>
+  <text x="890" y="1780" font-size="9" fill="#8c8c8c" text-anchor="middle">→ 测点 / GOOSE</text>
+
+  <!-- 箭头 5 -->
+  <line x1="960" y1="1755" x2="1010" y2="1755" stroke="#d9d9d9" stroke-width="1.5"/>
+
+  <!-- 数据库 -->
+  <rect x="1015" y="1725" width="120" height="60" rx="6" fill="#e6fffb" stroke="#87e8de" stroke-width="1.5"/>
+  <text x="1075" y="1748" font-size="11" fill="#13c2c2" text-anchor="middle" font-weight="bold">SQLite DB</text>
+  <text x="1075" y="1765" font-size="9" fill="#8c8c8c" text-anchor="middle">point_yc / yx / yk</text>
+  <text x="1075" y="1780" font-size="9" fill="#8c8c8c" text-anchor="middle">goose_pub / sub</text>
+
+  <!-- 预览分支 -->
+  <rect x="235" y="1805" width="140" height="80" rx="6" fill="#fff2f0" stroke="#ff4d4f" stroke-width="1" stroke-dasharray="4,2"/>
+  <text x="305" y="1825" font-size="10" fill="#ff4d4f" text-anchor="middle">SclImportWizard</text>
+  <text x="305" y="1842" font-size="9" fill="#8c8c8c" text-anchor="middle">步骤2: 预览测点</text>
+  <text x="305" y="1858" font-size="9" fill="#8c8c8c" text-anchor="middle">步骤3: 配置选项</text>
+  <text x="305" y="1874" font-size="9" fill="#8c8c8c" text-anchor="middle">步骤4: 执行导入</text>
+
+  <line x1="305" y1="1805" x2="305" y2="1790" stroke="#ff4d4f" stroke-width="1" stroke-dasharray="3,2"/>
+
+  <!-- 底部说明 -->
+  <rect x="50" y="1900" width="1310" height="25" rx="6" fill="#f5f5f5" stroke="#e8e8e8" stroke-width="1"/>
+  <text x="65" y="1917" font-size="10" fill="#8c8c8c">📌 实施阶段: 阶段 A (核心) = SclFileManager + SclPreview + SclXmlViewer | 阶段 B (导入) = SclImportWizard | 阶段 C (增强) = SclDiffViewer + DiscoveryProgress</text>
+
+</svg>

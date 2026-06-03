@@ -164,3 +164,21 @@ export const REPORT_API = {
   DETAIL: '/api/channels/iec61850/reports/detail',
   ACTIVE: '/api/channels/iec61850/reports/active',
 } as const;
+
+// ===== SCL 文件管理相关 =====
+// 后端 API 端点 (FastAPI, RESTful 风格)
+export const SCL_API = {
+  FILE_LIST: '/api/scl/list',           // GET
+  FILE_UPLOAD: '/api/scl/upload',       // POST (multipart/form-data)
+  FILE_DETAIL: '/api/scl/detail',       // GET ?filename=
+  FILE_DELETE: '/api/scl/delete',       // DELETE ?filename=
+  FILE_PREVIEW: '/api/scl/preview',     // POST (上传临时文件)
+  FILE_VALIDATE: '/api/scl/validate',   // POST (filename in Form)
+  FILE_PARSE: '/api/scl/parse',         // POST (filename in Form)
+  FILE_IMPORT_POINTS: '/api/scl/import-points',   // POST
+  FILE_IMPORT_GOOSE: '/api/scl/import-goose',     // POST
+  FILE_IMPORT_FULL: '/api/scl/import-full',       // POST
+  FILE_BROWSE_TREE: '/api/scl/browse-tree',       // GET ?filename=
+  FILE_DIFF: '/api/scl/diff',           // POST
+  FILE_IED_LIST: '/api/scl/ied-list',   // GET ?filename=
+} as const;

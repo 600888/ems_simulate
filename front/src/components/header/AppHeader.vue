@@ -23,6 +23,11 @@
         <span class="lang-text">{{ currentLocale === 'zh-CN' ? 'EN' : '中' }}</span>
       </el-icon>
 
+      <!-- SCL Management -->
+      <router-link to="/scl/manager" class="icon-link scl-link" :title="t('scl.title')">
+        <el-icon :size="24" color="var(--text-secondary)"><Files /></el-icon>
+      </router-link>
+
       <!-- GOOSE Management -->
       <router-link to="/goose" class="icon-link goose-link" :title="t('header.gooseManagement')">
         <el-icon :size="24" color="var(--text-secondary)"><Connection /></el-icon>
@@ -44,7 +49,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { Expand, Fold, Connection, Setting } from "@element-plus/icons-vue";
+import { Expand, Fold, Connection, Setting, Files } from "@element-plus/icons-vue";
 import { useRoute } from "vue-router";
 import { isCollapse, sidebarOverlayMode } from "./isCollapse";
 import { currentLocale, setLocale } from "@/composables/useAppSettings";
@@ -94,6 +99,10 @@ const updateBreadcrumb = () => {
   } else if (route.path.startsWith('/files')) {
     breadList.value = [
       { path: '/files', meta: { title: t('header.filesExplorer') } }
+    ];
+  } else if (route.path.startsWith('/scl')) {
+    breadList.value = [
+      { path: '/scl/manager', meta: { title: t('scl.title') } }
     ];
   } else {
     breadList.value = route.matched.filter((item) => item.meta?.title);
@@ -183,7 +192,8 @@ watch(() => route.path, updateBreadcrumb, { immediate: true });
     font-style: normal;
   }
 
-  .goose-link {
+  .goose-link,
+  .scl-link {
     position: relative;
 
     &::after {

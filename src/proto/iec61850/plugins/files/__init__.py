@@ -8,9 +8,12 @@
 - directory.py  — DirectoryBrowser 目录浏览与递归遍历
 - transfer.py   — FileTransfer 文件下载/上传/删除操作
 - cache.py      — CacheManager 本地缓存与版本管理
+
+Phase 8 增强: 添加 search_files / get_file_info / list_directory_paginated 等功能。
 """
 
 from collections.abc import Callable
+import fnmatch
 from typing import Any, Optional
 
 from ...core.connection import Iec61850Connection
@@ -28,6 +31,12 @@ class FilesPlugin:
 
     组合 DirectoryBrowser、FileTransfer、CacheManager 三个子模块，
     通过 Iec61850Plugin 协议接入插件系统。
+
+    Phase 8 增强:
+    - search_files: 按文件名模式搜索
+    - get_file_info: 获取单个文件详情
+    - list_directory_paginated: 分页浏览目录
+    - get_directory_summary: 获取目录统计摘要
     """
 
     def __init__(self):
@@ -58,7 +67,7 @@ class FilesPlugin:
         log.info("Files 插件已初始化 (文件下载服务)")
 
     def shutdown(self) -> None:
-        # 程序关闭时清理下载缓存目录
+        """程序关闭时清理下载缓存目录"""
         if self._cache:
             try:
                 self._cache.clear()
@@ -70,7 +79,7 @@ class FilesPlugin:
         self._connection = None
         self._initialized = False
 
-    # ===== 目录浏览 (委托 DirectoryBrowser) =====
+    # ===== 目录浏览 (委托 DirectoryBrowser) — 增强版 =====
 
     def get_file_list(self, directory: str = "") -> list[dict[str, Any]]:
         """获取远程 IED 的文件/目录列表
@@ -91,6 +100,166 @@ class FilesPlugin:
     def list_directory(self, directory: str = "") -> list[dict[str, Any]]:
         """获取远程 IED 的文件/目录列表 (get_file_list 的别名)"""
         return self.get_file_list(directory)
+
+    def list_directory_paginated(
+        self,
+        directory: str = "",
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """分页获取远程 IED 的文件/目录列表
+
+        Args:
+            directory: 目录路径
+            offset: 起始偏移 (从 0 开始)
+            limit: 最大返回条目数
+
+        Returns:
+            {
+                "total": int,           # 目录下总条目数
+                "offset": int,           # 当前偏移
+                "limit": int,            # 当前限制
+                "files": [...],          # 文件列表 (同 get_file_list 格式)
+                "directories": [...],    # 子目录列表 (同 get_file_list 格式)
+                "has_more": bool,        # 是否还有更多
+            }
+        """
+        all_entries = self.get_file_list(directory)
+        total = len(all_entries)
+
+        # 区分文件和目录
+        files = [e for e in all_entries if e.get("type") == "file"]
+        directories = [e for e in all_entries if e.get("type") == "directory"]
+
+        # 分页
+        sliced = all_entries[offset:offset + limit]
+        has_more = (offset + limit) < total
+
+        return {
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "files": files,
+            "directories": directories,
+            "entries": sliced,
+            "has_more": has_more,
+        }
+
+    def get_file_info(self, full_path: str) -> dict[str, Any] | None:
+        """获取单个文件的详细信息
+
+        Args:
+            full_path: 文件/目录的完整路径
+
+        Returns:
+            FileEntry 的 dict 表示，或 None (文件不存在/查询失败)
+        """
+        if not self._browser:
+            return None
+
+        # 从父目录中查找
+        parent_dir = self._extract_parent_dir(full_path)
+        filename = self._extract_filename(full_path)
+        entries = self._browser.list_directory(parent_dir)
+
+        for entry in entries:
+            if entry.name == filename or entry.full_path == full_path:
+                return entry.to_dict()
+
+        # 尝试递归搜索
+        all_entries = self._browser.list_directory_recursive(parent_dir, max_depth=3)
+        for entry in all_entries:
+            if entry.full_path == full_path:
+                return entry.to_dict()
+
+        return None
+
+    def search_files(
+        self,
+        pattern: str,
+        directory: str = "",
+        max_depth: int = 5,
+        max_results: int = 200,
+    ) -> list[dict[str, Any]]:
+        """按文件名模式搜索远程 IED 上的文件
+
+        支持 fnmatch 模式 (如 "*.comtrade", "fault*", "*.cfg")。
+
+        Args:
+            pattern: 文件名匹配模式 (支持 * 和 ? 通配符)
+            directory: 起始搜索目录
+            max_depth: 最大递归深度
+            max_results: 最大返回结果数 (限制搜索范围)
+
+        Returns:
+            匹配的文件条目列表 (同 get_file_list 格式)
+        """
+        if not self._browser:
+            return []
+
+        all_entries = self._browser.list_directory_recursive(
+            directory, max_depth=max_depth
+        )
+
+        result = []
+        for entry in all_entries:
+            if len(result) >= max_results:
+                break
+            if entry.file_type == FileType.FILE:
+                if fnmatch.fnmatch(entry.name, pattern):
+                    result.append(entry.to_dict())
+
+        log.info(
+            f"文件搜索完成: pattern={pattern!r}, directory={directory!r}, "
+            f"匹配={len(result)}/{len(all_entries)} 条"
+        )
+        return result
+
+    def get_directory_summary(self, directory: str = "") -> dict[str, Any]:
+        """获取目录统计摘要
+
+        Args:
+            directory: 目录路径
+
+        Returns:
+            {
+                "directory": str,
+                "file_count": int,
+                "dir_count": int,
+                "total_size": int,
+                "total_size_human": str,
+                "file_types": {".ext": count, ...},
+            }
+        """
+        entries = []
+        if self._browser:
+            entries = self._browser.list_directory(directory)
+
+        file_count = 0
+        dir_count = 0
+        total_size = 0
+        file_types: dict[str, int] = {}
+
+        for entry in entries:
+            if entry.is_directory:
+                dir_count += 1
+            else:
+                file_count += 1
+                if entry.size > 0:
+                    total_size += entry.size
+                # 统计文件类型
+                ext = self._get_extension(entry.name)
+                if ext:
+                    file_types[ext] = file_types.get(ext, 0) + 1
+
+        return {
+            "directory": directory or "/",
+            "file_count": file_count,
+            "dir_count": dir_count,
+            "total_size": total_size,
+            "total_size_human": self._human_size(total_size),
+            "file_types": file_types,
+        }
 
     def list_directory_recursive(
         self,
@@ -266,3 +435,41 @@ class FilesPlugin:
         if not self._cache:
             return 0
         return self._cache.clear()
+
+    # ===== 内部辅助方法 =====
+
+    @staticmethod
+    def _extract_parent_dir(full_path: str) -> str:
+        """从完整路径中提取父目录路径"""
+        if not full_path or full_path == "/":
+            return ""
+        normalized = full_path.rstrip("/")
+        last_sep = normalized.rfind("/")
+        if last_sep <= 0:
+            return ""
+        return normalized[:last_sep]
+
+    @staticmethod
+    def _extract_filename(full_path: str) -> str:
+        """从完整路径中提取文件名"""
+        if not full_path:
+            return ""
+        return full_path.rstrip("/").split("/")[-1]
+
+    @staticmethod
+    def _get_extension(name: str) -> str:
+        """获取文件扩展名"""
+        if not name or "." not in name:
+            return ""
+        return "." + name.rsplit(".", 1)[-1].lower()
+
+    @staticmethod
+    def _human_size(size: int) -> str:
+        """人类可读的文件大小"""
+        if size < 0:
+            return "未知"
+        for unit in ("B", "KB", "MB", "GB"):
+            if size < 1024:
+                return f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} TB"

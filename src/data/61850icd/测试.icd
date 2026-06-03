@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+	<Header id="" version="1" revision="" toolID="IEC61850ModelExporter"></Header>
+	<Communication>
+		<SubNetwork name="MMS" type="8-MMS">
+			<ConnectedAP iedName="PCS001GC1" apName="S1">
+				<Address>
+					<P type="IP">127.0.0.1</P>
+					<P type="OSI-TSEL">0001</P>
+					<P type="OSI-SSEL">0001</P>
+					<P type="OSI-PSEL">00000001</P>
+				</Address>
+			</ConnectedAP>
+		</SubNetwork>
+	</Communication>
+	<IED name="PCS001GC1">
+		<Services>
+			<DynAssociation></DynAssociation>
+			<GetDirectory></GetDirectory>
+			<GetDataObjectDefinition></GetDataObjectDefinition>
+			<DataObjectDirectory></DataObjectDirectory>
+			<GetDataSetValue></GetDataSetValue>
+			<SetDataSetValue></SetDataSetValue>
+			<DataSetDirectory></DataSetDirectory>
+			<ReadWrite></ReadWrite>
+			<ConfReportControl max="0"></ConfReportControl>
+			<GetCBValues></GetCBValues>
+			<ConfLNs fixPrefix="true" fixLnInst="true"></ConfLNs>
+		</Services>
+		<AccessPoint name="S1">
+			<Server>
+				<Authentication none="true"></Authentication>
+				<LDevice inst="">
+					<LN0 lnType="PCS001GC1.LLN0" lnClass="LLN0" inst=""></LN0>
+					<LN lnType="PCS001GC1.CSWI1" lnClass="CSWI" inst="1">
+						<DOI name="Mod"></DOI>
+						<DOI name="Pos"></DOI>
+						<DOI name="StrVal"></DOI>
+						<DOI name="Beh">
+							<DAI name="dU"></DAI>
+						</DOI>
+						<DOI name="Health">
+							<DAI name="dU"></DAI>
+						</DOI>
+						<DOI name="Loc">
+							<DAI name="dU"></DAI>
+						</DOI>
+					</LN>
+					<LN lnType="PCS001GC1.LPHD1" lnClass="D" inst="1">
+						<DOI name="PhyHealth">
+							<DAI name="dU"></DAI>
+						</DOI>
+						<DOI name="Proxy">
+							<DAI name="dU"></DAI>
+						</DOI>
+					</LN>
+				</LDevice>
+			</Server>
+		</AccessPoint>
+	</IED>
+	<DataTypeTemplates>
+		<LNodeType id="PCS001GC1.CSWI1" lnClass="CSWI">
+			<DO name="Mod" type="PCS001GC1.CSWI1.Mod"></DO>
+			<DO name="Pos" type="PCS001GC1.CSWI1.Pos"></DO>
+			<DO name="StrVal" type="PCS001GC1.CSWI1.StrVal"></DO>
+			<DO name="Beh" type="PCS001GC1.CSWI1.Beh"></DO>
+			<DO name="Health" type="PCS001GC1.CSWI1.Health"></DO>
+			<DO name="Loc" type="PCS001GC1.CSWI1.Loc"></DO>
+			<DO name="Mod" type="_ENC_CSWI_Mod"></DO>
+			<DO name="Beh" type="_ENC_CSWI_Beh"></DO>
+			<DO name="Health" type="_ENC_CSWI_Health"></DO>
+		</LNodeType>
+		<LNodeType id="PCS001GC1.LLN0" lnClass="LLN0">
+			<DO name="Mod" type="PCS001GC1.LLN0.Mod"></DO>
+			<DO name="Beh" type="PCS001GC1.LLN0.Beh"></DO>
+			<DO name="Health" type="PCS001GC1.LLN0.Health"></DO>
+			<DO name="Beh" type="_ENC_LLN0_Beh"></DO>
+			<DO name="Health" type="_ENC_LLN0_Health"></DO>
+			<DO name="NamPlt" type="_LPL_LLN0_NamPlt"></DO>
+		</LNodeType>
+		<LNodeType id="PCS001GC1.LLN0" lnClass="LLN0">
+			<DO name="Mod" type="PCS001GC1.LLN0.Mod"></DO>
+			<DO name="Beh" type="PCS001GC1.LLN0.Beh"></DO>
+			<DO name="Health" type="PCS001GC1.LLN0.Health"></DO>
+			<DO name="Beh" type="_ENC_LLN0_Beh"></DO>
+			<DO name="Health" type="_ENC_LLN0_Health"></DO>
+			<DO name="NamPlt" type="_LPL_LLN0_NamPlt"></DO>
+		</LNodeType>
+		<LNodeType id="PCS001GC1.LPHD1" lnClass="D">
+			<DO name="PhyHealth" type="PCS001GC1.LPHD1.PhyHealth"></DO>
+			<DO name="Proxy" type="PCS001GC1.LPHD1.Proxy"></DO>
+			<DO name="Mod" type="_ENC_D_Mod"></DO>
+			<DO name="Beh" type="_ENC_D_Beh"></DO>
+			<DO name="Health" type="_ENC_D_Health"></DO>
+		</LNodeType>
+		<DOType id="PCS001GC1.CSWI1.Mod" cdc="ENC">
+			<DA name="ctlVal" fc="CO" bType="Enum" type="Origin"></DA>
+			<DA name="Oper" fc="CO" bType="BOOLEAN"></DA>
+			<DA name="SBO" fc="CO" bType="Struct"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="Enum" type="Origin"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.CSWI1.Pos" cdc="SPS">
+			<DA name="Cancel" fc="CO" bType="BOOLEAN"></DA>
+			<DA name="ctlVal" fc="CO" bType="BOOLEAN"></DA>
+			<DA name="Oper" fc="CO" bType="BOOLEAN"></DA>
+			<DA name="SBO" fc="CO" bType="Struct"></DA>
+			<DA name="SBOw" fc="CO" bType="BOOLEAN"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="BOOLEAN"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.CSWI1.StrVal" cdc="SPS">
+			<DA name="ctlVal" fc="CO" bType="BOOLEAN"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.CSWI1.Beh" cdc="ENC">
+			<DA name="dU" fc="DC" bType="VisString255"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="Enum" type="Origin"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.CSWI1.Health" cdc="ENC">
+			<DA name="dU" fc="DC" bType="VisString255"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="Enum" type="Origin"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.CSWI1.Loc" cdc="SPS">
+			<DA name="dU" fc="DC" bType="VisString255"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="BOOLEAN"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.LLN0.Mod" cdc="ENC">
+			<DA name="ctlVal" fc="CO" bType="Enum" type="Origin"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="Enum" type="Origin"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.LLN0.Beh" cdc="ENC">
+			<DA name="dU" fc="DC" bType="VisString255"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="Enum" type="Origin"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.LLN0.Health" cdc="ENC">
+			<DA name="dU" fc="DC" bType="VisString255"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="Enum" type="Origin"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.LLN0.Mod" cdc="ENC">
+			<DA name="ctlVal" fc="CO" bType="Enum" type="Origin"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="Enum" type="Origin"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.LLN0.Beh" cdc="ENC">
+			<DA name="dU" fc="DC" bType="VisString255"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="Enum" type="Origin"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.LLN0.Health" cdc="ENC">
+			<DA name="dU" fc="DC" bType="VisString255"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="Enum" type="Origin"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.LPHD1.PhyHealth" cdc="MV">
+			<DA name="dU" fc="DC" bType="VisString255"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="BOOLEAN"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<DOType id="PCS001GC1.LPHD1.Proxy" cdc="MV">
+			<DA name="dU" fc="DC" bType="VisString255"></DA>
+			<DA name="q" fc="MX" bType="Quality"></DA>
+			<DA name="stVal" fc="ST" bType="BOOLEAN"></DA>
+			<DA name="t" fc="MX" bType="Timestamp"></DA>
+		</DOType>
+		<EnumType id="ctlModel">
+			<EnumVal ord="0">status-only</EnumVal>
+			<EnumVal ord="1">direct-with-normal-security</EnumVal>
+			<EnumVal ord="2">sbo-with-normal-security</EnumVal>
+			<EnumVal ord="3">direct-with-enhanced-security</EnumVal>
+			<EnumVal ord="4">sbo-with-enhanced-security</EnumVal>
+		</EnumType>
+		<EnumType id="orCategory">
+			<EnumVal ord="0">not-supported</EnumVal>
+			<EnumVal ord="1">bay-control</EnumVal>
+			<EnumVal ord="2">station-control</EnumVal>
+			<EnumVal ord="3">remote-control</EnumVal>
+			<EnumVal ord="4">automatic-control</EnumVal>
+			<EnumVal ord="5">maintenance-control</EnumVal>
+		</EnumType>
+		<EnumType id="Origin">
+			<EnumVal ord="0">unknown</EnumVal>
+		</EnumType>
+	</DataTypeTemplates>
+</SCL>
