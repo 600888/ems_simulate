@@ -10,26 +10,24 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # 强制使用 Node.js 24 运行时
     permissions:
       contents: write  # 需要写入内容权限 (用于推送到 gh-pages 分支)
     steps:
       # 步骤 1: 检出代码
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0  # 确保获取完整的提交历史
 
       # 步骤 2: 设置 Node.js 环境
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 18
 
       # 步骤 3: 设置 pnpm
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 8
 
