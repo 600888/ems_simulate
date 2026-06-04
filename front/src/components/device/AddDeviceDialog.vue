@@ -120,6 +120,7 @@ import { Check, View } from "@element-plus/icons-vue";
 import DeviceFormBasic from './DeviceFormBasic.vue';
 import DeviceFormConfig from './DeviceFormConfig.vue';
 import DeviceFormPoints from './DeviceFormPoints.vue';
+import { isAutoRefreshPaused } from '@/composables/useAutoRead';
 
 // API
 import { createChannel, importPoints, importIcdPoints, previewIcd, getChannel, updateChannel, getSerialPorts, reloadDeviceConfig, getProtocolConfig } from '@/api/channelApi';
@@ -298,12 +299,15 @@ const handleSubmit = async () => {
         icdImporting.value = true;
         icdImportElapsed.value = 0;
         icdImportTimer = window.setInterval(() => { icdImportElapsed.value++; }, 1000);
+        // 暂停后台自动轮询，避免干扰导入
+        isAutoRefreshPaused.value = true;
         try {
           const importResult = await importIcdPoints(resultId, selectedIcdFile.value, 'eth0', true);
           ElMessage.success(t('addDevice.icdImportSuccess', { total: importResult?.total || 0, goose: importResult?.goose?.created_count || 0 }));
         } finally {
           if (icdImportTimer) { clearInterval(icdImportTimer); icdImportTimer = null; }
           icdImporting.value = false;
+          isAutoRefreshPaused.value = false;
         }
       } else if (selectedFile.value) {
         await importPoints(resultId, selectedFile.value);

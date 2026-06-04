@@ -84,6 +84,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { getSclFileList, previewSclFile, importSclFile } from '@/api/sclApi'
 import type { SclFileInfo, SclPreviewData, SclImportResult } from '@/api/sclApi'
+import { isAutoRefreshPaused } from '@/composables/useAutoRead'
 import SclImportStepFile from './SclImportStepFile.vue'
 import SclImportStepPreview from './SclImportStepPreview.vue'
 import SclImportStepOptions from './SclImportStepOptions.vue'
@@ -138,21 +139,17 @@ async function startImport() {
   importProgress.value = 0
   importLogs.value = []
   currentStep.value = 3
+  // 暂停后台自动轮询，避免干扰导入
+  isAutoRefreshPaused.value = true
 
   const opts = optionsRef.value
-  if (!opts) return
-
-  // Simulate progress with logs
-  importLogs.value.push(`[${time()}] 解析 ICD 文件成功`)
-  await delay(300)
-  importLogs.value.push(`[${time()}] 校验完成: 0 个警告`)
-  importProgress.value = 20
-
-  if (opts.overwrite) {
-    importLogs.value.push(`[${time()}] 清除通道 ${opts.channelId} 现有数据...`)
-    importProgress.value = 30
-    await delay(300)
+  if (!opts) {
+    await resumeAndExit()
+    return
   }
+
+  importLogs.value.push(`[${time()}] 解析 ICD 文件成功`)
+  importProgress.value = 20
 
   try {
     const result = await importSclFile({
@@ -170,8 +167,13 @@ async function startImport() {
     importResult.value = { success: false, total_points: 0, yc: 0, yx: 0, yk: 0, yt: 0, goose_count: 0, report_count: 0, errors: ['导入失败'], warnings: [] }
     importLogs.value.push(`[${time()}] ✗ 导入失败`)
   } finally {
-    importing.value = false
+    await resumeAndExit()
   }
+}
+
+async function resumeAndExit() {
+  isAutoRefreshPaused.value = false
+  importing.value = false
 }
 
 function handleUploadSuccess() {

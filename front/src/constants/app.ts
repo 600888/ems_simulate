@@ -6,7 +6,9 @@
 export const TABLE_REFRESH_INTERVAL = 1000;
 
 // HTTP 请求超时时间（毫秒）
-export const HTTP_TIMEOUT = 3000;
+export const HTTP_TIMEOUT = 5000;
+// 文件上传/ICD解析等耗时操作单独设置超时
+export const HTTP_TIMEOUT_LONG = 60000;
 
 // 错误消息去重间隔（毫秒）
 export const ERROR_DEBOUNCE_MS = 3000;

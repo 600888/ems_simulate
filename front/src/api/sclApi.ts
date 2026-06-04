@@ -6,6 +6,7 @@
 
 import { instance, requestApi } from './http';
 import { SCL_API } from '@/constants';
+import { HTTP_TIMEOUT_LONG } from '@/constants/app';
 
 // ===== 类型定义 =====
 
@@ -152,13 +153,15 @@ async function deleteApi(url: string, params: Record<string, any> = {}): Promise
  * POST FormData 请求
  * 关键: 必须清除实例默认的 'Content-Type': 'application/json'
  * 让 axios 自动设置为 multipart/form-data + boundary
+ * 文件操作使用长超时 (60s)
  */
-async function postFormApi(url: string, formData: FormData): Promise<any> {
+async function postFormApi(url: string, formData: FormData, timeout?: number): Promise<any> {
   const response = await instance.request({
     url,
     method: 'post',
     data: formData,
     headers: { 'Content-Type': undefined },
+    timeout: timeout ?? HTTP_TIMEOUT_LONG,
   });
   return response.data;
 }

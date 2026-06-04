@@ -1,9 +1,13 @@
 /**
  * 自动刷新与读取控制 composable
  * 从 Slave.vue 中提取的自动刷新、手动读取逻辑
+ * 支持暂停（导入文件时暂停自动轮询）
  */
 
 import { ref, computed, onActivated, onDeactivated, onUnmounted } from 'vue';
+
+// ===== 全局暂停标志：文件导入时暂停自动轮询 =====
+export const isAutoRefreshPaused = ref(false)
 import { ElMessage } from 'element-plus';
 import {
   getAutoReadStatus, startAutoRead, stopAutoRead, manualRead,
@@ -88,6 +92,8 @@ export function useAutoRead(options: AutoReadOptions) {
   const startAutoRefresh = () => {
     if (timer.value) return;
     timer.value = setInterval(() => {
+      // 导入文件时暂停轮询，避免干扰上传和超时
+      if (isAutoRefreshPaused.value) return
       fetchDeviceTable(
         routeName.value, currentSlaveId.value,
         searchQuery.value[currentSlaveId.value] || '',
