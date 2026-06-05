@@ -179,6 +179,7 @@ export const SCL_API = {
   FILE_IMPORT_GOOSE: '/api/scl/import-goose',     // POST
   FILE_IMPORT_FULL: '/api/scl/import-full',       // POST
   FILE_BROWSE_TREE: '/api/scl/browse-tree',       // GET ?filename=
+  FILE_CONTENT: '/api/scl/content',               // GET ?filename=
   FILE_DIFF: '/api/scl/diff',           // POST
   FILE_IED_LIST: '/api/scl/ied-list',   // GET ?filename=
 } as const;

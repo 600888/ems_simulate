@@ -243,9 +243,14 @@
             {{ locale === 'en-US' ? scope.row[header] : t(getIec104TypeLabelKey(scope.row[header])) }}
           </el-tag>
           <div v-else-if="header === '状态'" class="status-cell">
-            <el-icon v-if="scope.row[header] === '成功'" color="#67C23A" size="20"><CircleCheckFilled /></el-icon>
-            <el-icon v-else-if="scope.row[header] === '失败'" color="#F56C6C" size="20"><CircleCloseFilled /></el-icon>
-            <el-icon v-else color="#909399" size="20"><RemoveFilled /></el-icon>
+            <template v-if="scope.row._isVirtualDa">
+              <!-- 虚拟 DA 节点（如 q/t）不显示状态图标 -->
+            </template>
+            <template v-else>
+              <el-icon v-if="scope.row[header] === '成功'" color="#67C23A" size="20"><CircleCheckFilled /></el-icon>
+              <el-icon v-else-if="scope.row[header] === '失败'" color="#F56C6C" size="20"><CircleCloseFilled /></el-icon>
+              <el-icon v-else color="#909399" size="20"><RemoveFilled /></el-icon>
+            </template>
           </div>
           <span v-else class="cell-text" :class="{
             'high-contrast': header === '测点编码',
@@ -884,9 +889,9 @@ const iec61850FlatRows = computed(() => {
   return result;
 });
 
-/** 最终展示数据 (IEC61850 用树形扁平行, 其他用扁平) */
+/** 最终展示数据 (IEC61850 用树形扁平行叠加缓存元数据, 其他用扁平) */
 const displayData = computed(() => {
-  return props.isIec61850 ? iec61850FlatRows.value : filteredData.value;
+  return props.isIec61850 ? iec61850DisplayRows.value : filteredData.value;
 });
 
 const handleSizeChange = (s: number) => { emit("update:pageSize", s); emit("update:pageIndex", 1); };
@@ -954,6 +959,9 @@ const metadataPointCode = ref('');
 const metadataResult = ref<Iec61850MetadataResponse | null>(null);
 const readingMetadata = ref<Record<string, boolean>>({});
 
+/** 品质时标数据本地缓存（key: DO reference），避免被自动轮询刷新覆盖 */
+const metadataCache = ref<Map<string, Iec61850MetadataResponse>>(new Map());
+
 const SYSTEM_DOS = new Set(['Mod', 'Beh', 'Health', 'NamPlt', 'PhyHealth', 'Proxy', 'PhyNam']);
 const isSystemDo = (name: string) => SYSTEM_DOS.has(name);
 
@@ -973,6 +981,13 @@ const handleIec61850ReadMetadata = async (pointCode: string) => {
   try {
     const result = await iec61850ReadPointMetadata(props.channelId, pointCode);
     metadataResult.value = result;
+
+    // 缓存品质时标数据（用于表格 DA 子节点回显，不会被自动轮询刷新覆盖）
+    if (result) {
+      const newCache = new Map(metadataCache.value);
+      newCache.set(pointCode, result);
+      metadataCache.value = newCache;
+    }
   } catch (e: any) {
     ElMessage.error(t('table.metadataFailed', { msg: e?.message || e }));
     metadataDialogVisible.value = false;
@@ -980,6 +995,77 @@ const handleIec61850ReadMetadata = async (pointCode: string) => {
     readingMetadata.value[pointCode] = false;
   }
 };
+
+/** 将缓存的品质时标数据叠加到树形扁平行上，实现表格 DA 子节点回显 */
+const iec61850DisplayRows = computed(() => {
+  const baseRows = iec61850FlatRows.value;
+  const cache = metadataCache.value;
+  if (cache.size === 0) return baseRows;
+
+  // quality 字段名 → BDA 名称映射（全小写）
+  const qBdaMap: Record<string, keyof Iec61850MetadataResponse['quality']> = {
+    'validity': 'validity',
+    'detailquality': 'detailQuality',
+    'source': 'source',
+    'test': 'test',
+    'operatorblocked': 'operatorBlocked',
+  };
+  // timestamp 字段名 → BDA 名称映射
+  const tBdaMap: Record<string, keyof Iec61850MetadataResponse['timestamp']> = {
+    'seconds': 'seconds',
+    'fraction': 'fraction',
+    'timeaccuracy': 'timeAccuracy',
+    'leapsecondsknown': 'leapSecondsKnown',
+    'clockfailure': 'clockFailure',
+    'clocknotsynchronized': 'clockNotSynchronized',
+    'clocknotsync': 'clockNotSynchronized',
+  };
+
+  return baseRows.map((row) => {
+    const doRef: string = row._doRef || '';
+    if (!doRef || !cache.has(doRef)) return row;
+
+    const metadata = cache.get(doRef)!;
+    const bdaName: string = ((row._bdaName || row._daPath || '') as string).toLowerCase().replace(/^q\.|^t\./, '');
+
+    // DA 行: q（品质）
+    if (row._isDaRow && (row._daPath === 'q')) {
+      const v = metadata.quality.validity;
+      const vt = v === 0 ? 'good' : v === 1 ? 'invalid' : v === 2 ? 'questionable' : '';
+      return { ...row, '真实值': `q[${vt}]` };
+    }
+    // DA 行: t（时标）
+    if (row._isDaRow && (row._daPath === 't')) {
+      const ts = metadata.timestamp;
+      let display = '';
+      if (ts?.unixTimestampMs !== null && ts?.unixTimestampMs !== undefined) {
+        display = formatTimestamp(ts.unixTimestampMs);
+      } else if (ts?.seconds !== null && ts?.seconds !== undefined) {
+        display = formatTimestamp(ts.seconds * 1000);
+      } else {
+        display = '-';
+      }
+      return { ...row, '真实值': display };
+    }
+    // BDA 子节点: q.*（t 暂不展开 BDA，保留为后续兼容）
+    if (row._isBdaRow && (row._parentDa === 'q' || (row._daPath || '').startsWith('q.'))) {
+      const key = qBdaMap[bdaName];
+      if (key !== undefined) {
+        return { ...row, '真实值': metadata.quality[key] !== null ? String(metadata.quality[key]!) : '', '状态': '已读取' };
+      }
+      return row;
+    }
+    // BDA 子节点: t.*
+    if (row._isBdaRow && (row._parentDa === 't' || (row._daPath || '').startsWith('t.'))) {
+      const key = tBdaMap[bdaName];
+      if (key !== undefined) {
+        return { ...row, '真实值': metadata.timestamp[key] !== null ? String(metadata.timestamp[key]!) : '', '状态': '已读取' };
+      }
+      return row;
+    }
+    return row;
+  });
+});
 
 // ===== IEC61850 专用读写操作 =====
 

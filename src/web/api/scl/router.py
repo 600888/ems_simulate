@@ -24,6 +24,7 @@ import tempfile
 import time
 
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
+from fastapi.responses import PlainTextResponse
 
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
@@ -189,6 +190,23 @@ async def delete_scl_file(request: Request, filename: str = Query(...)):
     except Exception as e:
         log.error(f"删除 SCL 文件失败: {e}")
         return BaseResponse(code=500, message=f"删除失败: {e}")
+
+
+@router.get("/content")
+async def get_scl_raw_content(request: Request, filename: str = Query(...)):
+    """获取 SCL 文件原始 XML 内容"""
+    try:
+        fm = _get_file_manager(request)
+        file_path = fm.get_file_path(filename)
+        if not file_path:
+            return PlainTextResponse("", status_code=404)
+        content = fm.read_file_content(filename)
+        if content is None:
+            return PlainTextResponse("", status_code=404)
+        return PlainTextResponse(content, media_type="application/xml")
+    except Exception as e:
+        log.error(f"读取 SCL 文件内容失败: {e}")
+        return PlainTextResponse("", status_code=500)
 
 
 # ===== 解析与预览 =====

@@ -38,7 +38,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { getSclTree, getSclFileInfo } from '@/api/sclApi'
+import { getSclTree } from '@/api/sclApi'
 import type { SclTreeNode, SclFileInfo } from '@/api/sclApi'
 import SclTreePanel from './SclTreePanel.vue'
 import SclDetailPanel from './SclDetailPanel.vue'
@@ -66,15 +66,12 @@ async function loadData() {
   if (!fileName.value) return
   loading.value = true
   try {
-    const [info, tree] = await Promise.all([
-      getSclFileInfo(fileName.value).catch(() => null),
-      getSclTree(fileName.value),
-    ])
-    if (info) {
-      fileType.value = info.file_type
-    }
+    const tree = await getSclTree(fileName.value)
     treeData.value = tree
     updateStatus(tree)
+    // 从文件名后缀推断类型
+    const ext = (fileName.value || '').split('.').pop()?.toUpperCase()
+    fileType.value = ext === 'ICD' ? 'ICD' : ext === 'SCD' ? 'SCD' : ext || ''
   } catch {
     treeData.value = []
   } finally {
@@ -114,7 +111,8 @@ function handleReparse() {
 
 <style scoped>
 .scl-preview {
-  height: 100%;
+  height: calc(100vh - var(--header-height) - var(--tags-height) - var(--footer-height));
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   background: #fff;

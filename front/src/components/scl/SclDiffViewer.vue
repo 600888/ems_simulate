@@ -91,7 +91,8 @@ async function startDiff() {
 
 <style scoped>
 .scl-diff-viewer {
-  height: 100%;
+  height: calc(100vh - var(--header-height) - var(--tags-height) - var(--footer-height));
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   background: #fff;

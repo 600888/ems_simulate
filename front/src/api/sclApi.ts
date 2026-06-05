@@ -325,9 +325,8 @@ export async function diffSclFiles(fileA: string, fileB: string): Promise<SclDif
   };
 }
 
-/** 获取 SCL 文件原始内容 — 通过 parse 间接获取 */
+/** 获取 SCL 文件原始 XML 内容 */
 export async function getSclFileContent(fileName: string): Promise<string> {
-  const fd = new FormData(); fd.append('filename', fileName);
-  const res = await postFormApi(SCL_API.FILE_PARSE, fd);
-  return JSON.stringify(res?.data || {}, null, 2);
+  const res = await getApi(SCL_API.FILE_CONTENT, { filename: fileName });
+  return res || '';
 }

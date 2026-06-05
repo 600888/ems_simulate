@@ -59,7 +59,9 @@
         <template #default="{ row }">
           <el-button-group>
             <el-button type="primary" link @click.stop="handlePreview(row)">{{ $t('scl.previewAction') }}</el-button>
+            <!-- 导入功能尚未完成，暂时隐藏
             <el-button type="success" link @click.stop="handleImport(row)">{{ $t('scl.importAction') }}</el-button>
+            -->
             <el-button type="warning" link @click.stop="handleXmlView(row)">{{ $t('scl.xmlView') }}</el-button>
             <el-button type="danger" link @click.stop="handleDelete(row)">{{ $t('scl.deleteAction') }}</el-button>
             <el-button type="info" link @click.stop="handleDiff(row)">{{ $t('scl.diffAction') }}</el-button>

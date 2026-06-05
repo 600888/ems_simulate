@@ -8,7 +8,9 @@ import { sidebarOverlayMode, closeSidebarOverlay } from "@/components/header/isC
 import { isTauri, onCloseRequested } from "@/utils/tauri";
 import { ref, watch, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute, useRouter } from "vue-router";
 import { currentLocale, setLocale } from "@/composables/useAppSettings";
+import { visitedViews } from "@/store/tagsView";
 
 const isClosing = ref(false);
 const settingsVisible = ref(false);
@@ -16,6 +18,9 @@ const settingsVisible = ref(false);
 // 应用持久化的语言设置
 const { locale: i18nLocale, t } = useI18n();
 i18nLocale.value = currentLocale.value;
+
+const route = useRoute();
+const router = useRouter();
 
 // 监听语言切换
 watch(currentLocale, (val) => {
@@ -31,6 +36,14 @@ onMounted(async () => {
     await onCloseRequested(() => {
       isClosing.value = true;
     });
+  }
+
+  // 应用启动时，如果有已保存的标签页且当前路由为根路径，自动跳转到第一个标签页
+  if ((route.path === '/' || route.path === '') && visitedViews.value.length > 0) {
+    const firstView = visitedViews.value[0];
+    if (firstView.path) {
+      router.push(firstView.path);
+    }
   }
 });
 </script>
@@ -133,7 +146,9 @@ onMounted(async () => {
   opacity: 0.6;
   background-color: var(--bg-main);
   flex-shrink: 0;
-  margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
 }
 
 /* small 断点下侧边栏 overlay 遮罩 */

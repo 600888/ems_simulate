@@ -34,7 +34,8 @@ function showErrorOnce(message: string) {
 // 响应拦截器
 instance.interceptors.response.use(
   (response) => {
-    if (response.data && response.data.code !== 200) {
+    // 仅对 JSON 对象响应检查业务状态码（非 JSON 如原始 XML/文本直接放行）
+    if (typeof response.data === 'object' && response.data && response.data.code !== 200) {
       const errorMsg = response.data.message || '请求失败';
       showErrorOnce(errorMsg);
       return Promise.reject(new Error(errorMsg));

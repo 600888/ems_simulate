@@ -193,7 +193,8 @@ function delay(ms: number) {
 
 <style scoped>
 .scl-import-wizard {
-  height: 100%;
+  height: calc(100vh - var(--header-height) - var(--tags-height) - var(--footer-height));
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   padding: 24px;
