@@ -72,7 +72,7 @@ import { ref, computed } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import type { SclPreviewData, SclPointInfo } from '@/api/sclApi'
 
-defineProps<{
+const props = defineProps<{
   previewData: SclPreviewData | null
   loading: boolean
 }>()
@@ -88,7 +88,7 @@ const filteredPoints = computed(() => {
 })
 
 const allPoints = computed<SclPointInfo[]>(() => {
-  const data = (previewData.value as SclPreviewData | null)
+  const data = (props.previewData as SclPreviewData | null)
   if (!data) return []
   return [
     ...(data.points?.yc || []),

@@ -82,8 +82,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { getSclFileList, previewSclFile, importSclFile } from '@/api/sclApi'
 import type { SclFileInfo, SclPreviewData, SclImportResult } from '@/api/sclApi'
+import { getChannelList } from '@/api/channelApi'
 import { isAutoRefreshPaused } from '@/composables/useAutoRead'
 import SclImportStepFile from './SclImportStepFile.vue'
 import SclImportStepPreview from './SclImportStepPreview.vue'
@@ -92,6 +94,7 @@ import SclImportStepExecute from './SclImportStepExecute.vue'
 import SclUploadDialog from './SclUploadDialog.vue'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
+const router = useRouter()
 
 const currentStep = ref(0)
 const fileList = ref<SclFileInfo[]>([])
@@ -163,6 +166,22 @@ async function startImport() {
     importResult.value = result
     importProgress.value = 100
     importLogs.value.push(`[${time()}] ${result.success ? '✓ 导入完成' : '✗ 导入失败'}`)
+
+    // 导入成功后自动跳转到设备页面
+    if (result.success) {
+      try {
+        const channels = await getChannelList()
+        const channel = channels.find(c => c.id === opts.channelId)
+        if (channel) {
+          importLogs.value.push(`[${time()}] 正在跳转到 ${channel.name} 设备页面...`)
+          setTimeout(() => {
+            router.push(`/device/${channel.name}`)
+          }, 2000)
+        }
+      } catch {
+        // 忽略导航失败
+      }
+    }
   } catch {
     importResult.value = { success: false, total_points: 0, yc: 0, yx: 0, yk: 0, yt: 0, goose_count: 0, report_count: 0, errors: ['导入失败'], warnings: [] }
     importLogs.value.push(`[${time()}] ✗ 导入失败`)

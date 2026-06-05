@@ -44,7 +44,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { getChannelList } from '@/api/channelApi'
-import type { ChannelInfo } from '@/api/channelApi'
+import type { ChannelInfo } from '@/types/channel'
 
 const channelList = ref<ChannelInfo[]>([])
 const channelId = ref<number>(0)

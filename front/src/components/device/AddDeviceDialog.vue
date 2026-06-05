@@ -315,6 +315,8 @@ const handleSubmit = async () => {
       
       emit('success', form.name, isEditMode.value, originalName.value);
       dialogVisible.value = false;
+      // 先刷新页面，刷新后自动定位到新设备
+      localStorage.setItem('_pendingDevice', form.name);
       window.location.reload();
     } catch (e: any) {
       console.error(e.message || '操作失败');

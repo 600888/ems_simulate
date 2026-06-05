@@ -26,6 +26,12 @@ export interface SclFileInfo {
   ytCount?: number;
   size_display?: string;
   upload_time?: string;
+  point_summary?: {
+    yc: number;
+    yx: number;
+    yk: number;
+    yt: number;
+  };
 }
 
 export interface SclTreeNode {

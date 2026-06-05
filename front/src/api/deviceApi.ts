@@ -284,8 +284,9 @@ export async function exportModel(deviceName: string, exportType: ExportModelTyp
 
   let response: Response;
   try {
-    const baseURL = import.meta.env.VUE_APP_API_BASE || '/';
-    response = await fetch(`${baseURL}${DEVICE_API.EXPORT_MODEL}`, {
+    const baseURL = (import.meta.env.VUE_APP_API_BASE || '/').replace(/\/+$/, '');
+    const apiPath = DEVICE_API.EXPORT_MODEL.replace(/^\/+/, '');
+    response = await fetch(`${baseURL}/${apiPath}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

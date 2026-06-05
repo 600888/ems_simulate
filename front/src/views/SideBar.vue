@@ -523,8 +523,15 @@ const scrollToCurrentDevice = () => {
 const handleGroupChanged = () => fetchDeviceGroupTree();
 const toggleUngrouped = () => { ungroupedExpanded.value = !ungroupedExpanded.value; };
 
-onMounted(() => {
-  fetchDeviceGroupTree();
+onMounted(async () => {
+  await fetchDeviceGroupTree();
+  // 检查是否有添加设备后的待导航设备
+  const pendingDevice = localStorage.getItem('_pendingDevice');
+  if (pendingDevice) {
+    localStorage.removeItem('_pendingDevice');
+    // 静态 route '/device/:deviceName' 已存在，直接 push 即可
+    router.push(`/device/${pendingDevice}`);
+  }
   const collapsed = localStorage.getItem("isCollapse");
   if (collapsed) isCollapse.value = collapsed === "true";
 });

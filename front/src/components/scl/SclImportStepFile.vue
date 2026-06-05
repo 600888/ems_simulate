@@ -7,14 +7,14 @@
         :key="file.file_name"
         class="file-card"
         :class="{ selected: selectedFile === file.file_name }"
-        @click="selectedFile = file.file_name"
+        @click="selectedFile = file.file_name ?? ''"
       >
         <el-radio v-model="selectedFile" :value="file.file_name" class="file-radio">
           <div class="file-card-content">
             <div class="file-card-name">{{ file.file_name }}</div>
             <div class="file-card-meta">
               IED: {{ file.ied_names?.join(', ') }} |
-              {{ $t('addDevice.mmsPoints', { total: file.point_summary?.yc + file.point_summary?.yx + file.point_summary?.yk + file.point_summary?.yt || 0, yc: file.point_summary?.yc || 0, yx: file.point_summary?.yx || 0, yk: file.point_summary?.yk || 0, yt: file.point_summary?.yt || 0 }) }}
+              {{ $t('addDevice.mmsPoints', { total: (file.point_summary?.yc || 0) + (file.point_summary?.yx || 0) + (file.point_summary?.yk || 0) + (file.point_summary?.yt || 0), yc: file.point_summary?.yc || 0, yx: file.point_summary?.yx || 0, yk: file.point_summary?.yk || 0, yt: file.point_summary?.yt || 0 }) }}
             </div>
           </div>
         </el-radio>
