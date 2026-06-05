@@ -7,6 +7,9 @@
 - IcdGooseImporter 的 XML 解析逻辑
 
 统一一次解析，多处消费。
+
+优化: 使用 iterparse 增量解析 + 逐节清除，替代 ET.parse 全量加载。
+大文件场景峰值内存占用从 100%（全量 DOM）降为 max(DataTypeTemplates, IED) 的 DOM。
 """
 from __future__ import annotations
 
@@ -48,6 +51,16 @@ from ..model.scl_document import (
 )
 from .namespace import NamespaceHelper
 
+# 顶级元素集合，用于 iterparse 过滤
+_TOP_LEVEL_SECTIONS = frozenset({"Header", "Communication", "DataTypeTemplates", "IED"})
+
+
+def _get_local_tag(elem: ET.Element) -> str:
+    """获取去除命名空间的本地标签名"""
+    tag = elem.tag
+    idx = tag.rfind("}")
+    return tag[idx + 1:] if idx >= 0 else tag
+
 
 class SclParser:
     """SCL 统一解析器
@@ -56,13 +69,14 @@ class SclParser:
     支持:
     - 有/无 SCL 命名空间
     - Communication / IED / DataTypeTemplates 三大节
+    - 增量解析（iterparse），大文件内存友好
     """
 
     def __init__(self):
         self._ns = NamespaceHelper()
 
     def parse_file(self, file_path: str) -> SclDocument:
-        """解析 SCL 文件
+        """解析 SCL 文件（iterparse 增量模式）
 
         Args:
             file_path: ICD/SCD/CID 文件路径
@@ -70,13 +84,54 @@ class SclParser:
         Raises:
             FileNotFoundError: 文件不存在
             ValueError: XML 解析失败
+
+        优化:
+        - 使用 iterparse 增量解析，每处理完一个顶级节后清除其 DOM
+        - 峰值内存占用 ≈ max(DataTypeTemplates, IED_size) 而非全文件 DOM
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"文件不存在: {file_path}")
 
-        tree = ET.parse(file_path)
-        root = tree.getroot()
-        return self._parse_root(root)
+        doc = SclDocument()
+
+        # iterparse: 增量解析，处理完一个顶级节就释放其 DOM 子树
+        context = ET.iterparse(file_path, events=("end",))
+
+        for event, elem in context:
+            local_tag = _get_local_tag(elem)
+
+            # 首次遇到元素时检测命名空间
+            if not self._ns.ns_prefix:
+                self._ns = NamespaceHelper(
+                    ns_prefix=elem.tag[: elem.tag.index("}") + 1]
+                    if "}" in elem.tag
+                    else ""
+                )
+                doc.ns_prefix = self._ns.ns_prefix
+
+            if local_tag not in _TOP_LEVEL_SECTIONS:
+                continue
+
+            if local_tag == "Header":
+                doc.header = self._parse_header(elem)
+            elif local_tag == "Communication":
+                doc.communication = self._parse_communication(elem)
+            elif local_tag == "DataTypeTemplates":
+                doc.data_type_templates = self._parse_data_type_templates(elem)
+            elif local_tag == "IED":
+                doc.ieds.append(self._parse_ied(elem))
+
+            # 清除已处理的顶级元素子树，释放内存
+            elem.clear()
+
+        log.info(
+            f"SCL 解析完成: IEDs={len(doc.ieds)}, "
+            f"LNodeType={len(doc.data_type_templates.ln_node_types)}, "
+            f"DOType={len(doc.data_type_templates.do_types)}, "
+            f"DAType={len(doc.data_type_templates.da_types)}, "
+            f"EnumType={len(doc.data_type_templates.enum_types)}"
+        )
+        return doc
 
     def parse_string(self, xml_string: str) -> SclDocument:
         """解析 SCL XML 字符串"""

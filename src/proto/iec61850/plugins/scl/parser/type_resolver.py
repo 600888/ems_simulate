@@ -2,6 +2,10 @@
 
 解析 DataTypeTemplates 中的类型引用链:
   LN.lnType → LNodeType → DO.type → DOType → DA.type → DAType → BDA.type → ...
+
+优化:
+- get_value_da_path / collect_all_das 添加结果缓存，
+  避免同一 DOType 被重复递归解析。
 """
 from __future__ import annotations
 
@@ -22,20 +26,37 @@ class TypeResolver:
 
     从 SclDocument 的 DataTypeTemplates 解析 DO/DA 引用链，
     获取完整的测点路径 (如 "mag.f", "Oper.ctlVal")。
+
+    缓存: get_value_da_path 和 collect_all_das 的结果按 (do_type_id, cdc)
+    缓存，同一 DOType 被多个 DO 引用时避免重复递归。
     """
 
     def __init__(self, doc: SclDocument):
         self._dtt = doc.data_type_templates
         self._doc = doc
+        # 结果缓存: key=(do_type_id, cdc) → result
+        self._da_path_cache: dict[tuple[str, str], str | None] = {}
+        self._all_das_cache: dict[tuple[str, str], list[dict[str, str]]] = {}
+        # get_do_desc 缓存: key=do_name → desc（同一 do_name 在所有 LN 中描述相同）
+        self._do_desc_cache: dict[str, str] = {}
 
     def get_value_da_path(self, do_type_id: str, cdc: str) -> str | None:
-        """获取 DO 的主值 DA 路径
+        """获取 DO 的主值 DA 路径（带缓存）
 
         优先级:
         1. 控制 CDC: 从 DOType 查找 Oper/ctlVal
         2. 测量/状态 CDC: 从 DOType 递归查找
         3. 使用 CDC 默认路径
         """
+        key = (do_type_id, cdc)
+        if key in self._da_path_cache:
+            return self._da_path_cache[key]
+        result = self._get_value_da_path_impl(do_type_id, cdc)
+        self._da_path_cache[key] = result
+        return result
+
+    def _get_value_da_path_impl(self, do_type_id: str, cdc: str) -> str | None:
+        """get_value_da_path 的实现体"""
         do_type = self._dtt.do_types.get(do_type_id)
         if do_type is None:
             return CDC_VALUE_DA_PATH.get(cdc)
@@ -92,15 +113,28 @@ class TypeResolver:
         return None
 
     def collect_all_das(self, do_type_id: str, cdc: str) -> list[dict[str, str]]:
-        """收集 DOType 下所有 DA (包括主值和元数据)
+        """收集 DOType 下所有 DA（带缓存）
 
         Returns:
             DA 信息列表: [{"name": ..., "path": ..., "fc": ..., "bType": ...}]
         """
+        key = (do_type_id, cdc)
+        if key in self._all_das_cache:
+            # 返回副本以防外部修改缓存
+            return list(self._all_das_cache[key])
+
         do_type = self._dtt.do_types.get(do_type_id)
         if do_type is None:
-            return []
+            result: list[dict[str, str]] = []
+            self._all_das_cache[key] = result
+            return result
 
+        result = self._collect_all_das_impl(do_type)
+        self._all_das_cache[key] = result
+        return list(result)
+
+    def _collect_all_das_impl(self, do_type: SclDOType) -> list[dict[str, str]]:
+        """collect_all_das 的实现体"""
         result: list[dict[str, str]] = []
         for da in do_type.das:
             self._collect_da(da, result, da.name)
@@ -110,7 +144,10 @@ class TypeResolver:
             sub_type = self._dtt.do_types.get(sdo.type_id)
             if sub_type:
                 for da in sub_type.das:
-                    self._collect_da(da, result, f"{sdo.name}.{da.name}", fc_override="CO" if sdo.name in ("Oper", "SBOw", "Cancel") else None)
+                    self._collect_da(
+                        da, result, f"{sdo.name}.{da.name}",
+                        fc_override="CO" if sdo.name in ("Oper", "SBOw", "Cancel") else None,
+                    )
 
         return result
 
@@ -152,10 +189,24 @@ class TypeResolver:
         do_type: SclDOType,
         doi: SclDOI | None = None,
     ) -> str:
-        """获取 DO 描述
+        """获取 DO 描述（带缓存）
 
         优先级: DOI/DAI 中 dU 的 Val → DOType desc → du DA 的 Val → DO 名称
+
+        缓存 key 为 do_name，因为同一 do_name 在不同 LN 中的描述一致。
         """
+        if do_name in self._do_desc_cache:
+            return self._do_desc_cache[do_name]
+        result = self._get_do_desc_impl(do_name, do_type, doi)
+        self._do_desc_cache[do_name] = result
+        return result
+
+    def _get_do_desc_impl(
+        self,
+        do_name: str,
+        do_type: SclDOType,
+        doi: SclDOI | None = None,
+    ) -> str:
         # 最高优先级: DOI/DAI 中 dU 的 Val
         if doi:
             du_val = doi.dai_values.get("du") or doi.dai_values.get("dU")

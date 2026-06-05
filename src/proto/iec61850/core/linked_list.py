@@ -2,6 +2,9 @@
 
 从 iec61850_client.py 的 _get_list_from_linked_list 提取，
 供 Client/Server/ModelExporter 共用。
+
+优化: 两阶段处理（先收集指针，再批量转换字符串），
+减少 try/except 进入次数和 C FFI 交错调用开销。
 """
 
 from ..defs.constants import HAS_IEC61850
@@ -26,18 +29,35 @@ def get_list_from_linked_list(linked_list) -> list[str]:
 
     from pyiec61850 import pyiec61850 as iec61850
 
-    items = []
-    # 跳过 dummy head 节点，直接从第一个实际数据节点开始
+    # Phase 1: 遍历收集所有数据指针（仅 getNext + getData，无字符串转换）
+    pointers = []
     item = iec61850.LinkedList_getNext(linked_list)
-    while item:
+    while item is not None:
         try:
             data_ptr = iec61850.LinkedList_getData(item)
             if data_ptr is not None:
-                name = iec61850.toCharP(data_ptr)
-                if name:
-                    items.append(name)
+                pointers.append(data_ptr)
         except Exception:
             pass
-        item = iec61850.LinkedList_getNext(item)
+        try:
+            item = iec61850.LinkedList_getNext(item)
+        except Exception:
+            break
+
+    # Phase 2: 批量转换 C 指针 → Python 字符串（预分配列表避免 append 扩容）
+    items = [None] * len(pointers)
+    valid = 0
+    for i, ptr in enumerate(pointers):
+        try:
+            name = iec61850.toCharP(ptr)
+            if name:
+                items[valid] = name
+                valid += 1
+        except Exception:
+            pass
+
     iec61850.LinkedList_destroy(linked_list)
+    # 截断无效槽位
+    if valid < len(items):
+        del items[valid:]
     return items

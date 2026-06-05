@@ -47,6 +47,7 @@ from .ied_model import (
     LDModel,
     LNModel,
     RCBRef,
+    compute_point_refs,
 )
 
 if HAS_IEC61850:
@@ -136,11 +137,13 @@ class IedModelBuilder:
         return ld
 
     def build(self) -> IedModel:
+        lds = tuple(ld.build() for ld in self._lds)
         return IedModel(
             host=self._host,
             port=self._port,
             discover_time=time.strftime("%Y-%m-%d %H:%M:%S"),
-            lds=tuple(ld.build() for ld in self._lds),
+            lds=lds,
+            _point_refs=compute_point_refs(lds),
         )
 
 
@@ -160,9 +163,10 @@ class ModelDiscoveryService:
     3. 导出操作 → 直接使用缓存的 IedModel
     """
 
-    def __init__(self):
+    def __init__(self, skip_non_lln0: bool = True):
         self._model: IedModel | None = None
         self._model_timestamp: float = 0.0
+        self._skip_non_lln0 = skip_non_lln0
 
     @property
     def model(self) -> IedModel | None:
@@ -280,15 +284,21 @@ class ModelDiscoveryService:
                     conn, ld_name, ln_ref, ln_name, max_depth=max_depth
                 ):
                     ln_builder.add_do(do)
-                # DataSet
-                for ds in self._discover_datasets(conn, ld_name, ln_ref):
-                    ln_builder.add_dataset(ds)
+
+                # DataSet — IEC 61850 实践中 DataSet 定义在 LLN0,
+                # 跳过非 LLN0 的 LN 可节省大量 MMS 调用
+                if ln_name == "LLN0" or not self._skip_non_lln0:
+                    for ds in self._discover_datasets(conn, ld_name, ln_ref):
+                        ln_builder.add_dataset(ds)
+
                 # RCB
                 for rcb in self._discover_rcbs(conn, ln_ref):
                     ln_builder.add_rcb(rcb)
-                # GoCB (含完整信息)
-                for gocb in self._discover_gocbs(conn, ld_name, ln_ref):
-                    ln_builder.add_gocb(gocb)
+
+                # GoCB — GOOSE 控制块仅存在于 LLN0, 跳过其他 LN
+                if ln_name == "LLN0" or not self._skip_non_lln0:
+                    for gocb in self._discover_gocbs(conn, ld_name, ln_ref):
+                        ln_builder.add_gocb(gocb)
 
     # ===== 底层 pyiec61850 调用 (唯一调用点) =====
 
@@ -559,8 +569,9 @@ class ModelDiscoveryService:
     def _discover_dataset_members(conn, ds_ref: str) -> list[dict[str, str]]:
         """发现 DataSet 成员 (FCDA 条目)
 
-        使用 IedConnection_getDataSetDirectory API,
-        替代已废弃的 IedConnection_getDataSetValues 读取方式。
+        优化:
+        - 合并 3 种属性提取方式为单次 getattr 链式兜底，消除内层循环
+        - 减少 C FFI 调用: 一次 getData 后直接提取所有属性
         """
         members = []
         try:
@@ -599,26 +610,29 @@ class ModelDiscoveryService:
                 try:
                     entry_data = iec61850.LinkedList_getData(it)
                     if entry_data is not None:
+                        # 合并属性提取: getattr 链式兜底, 不抛异常
+                        ld_name = (
+                            getattr(entry_data, "logicalDeviceName", None)
+                            or getattr(entry_data, "ldName", None)
+                            or getattr(entry_data, "deviceName", None)
+                            or ""
+                        )
+                        var_name = (
+                            getattr(entry_data, "variableName", None)
+                            or getattr(entry_data, "varName", None)
+                            or ""
+                        )
+                        comp_name = (
+                            getattr(entry_data, "componentName", None)
+                            or ""
+                        )
+
                         ref = ""
-                        fc = ""
-                        # 尝试多种方式提取引用
-                        for ld_attr, var_attr, comp_attr in [
-                            ("logicalDeviceName", "variableName", "componentName"),
-                            ("ldName", "varName", "compName"),
-                            ("deviceName", "variableName", "componentName"),
-                        ]:
-                            try:
-                                ld_name = getattr(entry_data, ld_attr, "") or ""
-                                var_name = getattr(entry_data, var_attr, "") or ""
-                                comp_name = getattr(entry_data, comp_attr, "") or ""
-                            except Exception:
-                                continue
-                            if var_name:
-                                if comp_name:
-                                    ref = f"{ld_name}/{var_name}.{comp_name}" if ld_name else f"{var_name}.{comp_name}"
-                                else:
-                                    ref = f"{ld_name}/{var_name}" if ld_name else var_name
-                                break
+                        if var_name:
+                            if comp_name:
+                                ref = f"{ld_name}/{var_name}.{comp_name}" if ld_name else f"{var_name}.{comp_name}"
+                            else:
+                                ref = f"{ld_name}/{var_name}" if ld_name else var_name
 
                         if not ref:
                             # 回退: 字符串提取

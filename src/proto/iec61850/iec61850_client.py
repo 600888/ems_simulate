@@ -272,9 +272,22 @@ class IEC61850Client:
         return discovered
 
     def _fill_du_names(self, discovered: list[dict[str, Any]]) -> None:
-        """为发现的测点补充 dU 描述名称"""
+        """为发现的测点补充 dU 描述名称
+
+        优化: 先构建 do_ref → [point] 索引, 避免 O(N²) 嵌套遍历。
+        """
         from .defs.address import parse_ref
         from .defs.ln_classes import SKIP_SYSTEM_DOS
+
+        # 构建 do_ref → [point] 索引 — O(N)
+        do_point_index: dict[str, list[dict[str, Any]]] = {}
+        for p in discovered:
+            p_addr = p.get("address", "")
+            p_parsed = parse_ref(p_addr)
+            if p_parsed:
+                p_ld, p_ln, p_do, _ = p_parsed
+                key = f"{p_ld}/{p_ln}.{p_do}"
+                do_point_index.setdefault(key, []).append(p)
 
         seen_dos: set[str] = set()
         for point in discovered:
@@ -295,14 +308,11 @@ class IEC61850Client:
             if not du_desc:
                 continue
 
-            for p in discovered:
+            # O(1) 索引查找取代 O(N) 内层遍历
+            for p in do_point_index.get(do_ref, []):
                 p_addr = p.get("address", "")
-                p_parsed = parse_ref(p_addr)
-                if p_parsed:
-                    p_ld, p_ln, p_do, _ = p_parsed
-                    if f"{p_ld}/{p_ln}.{p_do}" == do_ref:
-                        p["name"] = du_desc
-                        self._registry.set_name(p_addr, du_desc)
+                p["name"] = du_desc
+                self._registry.set_name(p_addr, du_desc)
 
     @property
     def model(self) -> IedModel | None:

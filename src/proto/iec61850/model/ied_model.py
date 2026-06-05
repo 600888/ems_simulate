@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -222,6 +222,9 @@ class IedModel:
     discover_time: str = ""
     lds: tuple[LDModel, ...] = ()
 
+    # 预计算的扁平测点映射 — 由 Builder 或 compute_point_refs() 填充
+    _point_refs: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False, compare=False)
+
     # ===== 序列化 =====
 
     def to_dict(self) -> dict[str, Any]:
@@ -259,17 +262,18 @@ class IedModel:
     def point_refs(self) -> dict[str, dict[str, Any]]:
         """生成 address → {ref, fc, iec_type, frame_type, code, name} 映射
 
-        替代 DataModelsPlugin.discover_model() 的扁平测点列表。
+        优先使用 Builder 在构造时预计算的 _point_refs 缓存，
+        未缓存时懒加载计算（兼容直接构造的场景）。
         """
-        result: dict[str, dict[str, Any]] = {}
-        for ld in self.lds:
-            for ln in ld.lns:
-                for do in ln.dos:
-                    self._extract_do_points(ld, ln, do, result)
+        if self._point_refs:
+            return self._point_refs
+        # 懒加载回退 — 仅用于未通过 Builder 构造的模型
+        result = compute_point_refs(self.lds)
+        object.__setattr__(self, "_point_refs", result)
         return result
 
+    @staticmethod
     def _extract_do_points(
-        self,
         ld: LDModel,
         ln: LNModel,
         do: DORef,
@@ -443,3 +447,19 @@ class IedModel:
                     for da in do.das:
                         for leaf in da.iter_leaves():
                             yield ld, ln, do, leaf
+
+
+# ===== 模块级便捷函数 =====
+
+
+def compute_point_refs(lds: tuple[LDModel, ...]) -> dict[str, dict[str, Any]]:
+    """从 LD 列表预计算扁平测点映射
+
+    供 IedModelBuilder 在构造时一次性计算，避免 @property 重复遍历。
+    """
+    result: dict[str, dict[str, Any]] = {}
+    for ld in lds:
+        for ln in ld.lns:
+            for do in ln.dos:
+                IedModel._extract_do_points(ld, ln, do, result)
+    return result
