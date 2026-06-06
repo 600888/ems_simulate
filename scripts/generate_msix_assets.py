@@ -135,6 +135,10 @@ def generate_assets(source_path: str, output_dir: str):
 
 
 def main():
+    # 确保 stdout 使用 UTF-8 编码（修复 Windows cp1252 下的 UnicodeEncodeError）
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
 
