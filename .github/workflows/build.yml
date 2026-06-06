@@ -34,7 +34,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Install Python build dependencies
-        run: uv sync --group build
+        run: uv sync --extra build
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
@@ -45,6 +45,26 @@ jobs:
         working-directory: front
         run: npm ci
 
-      - name: Build Windows application (Tauri + Sidecar)
+      - name: Install MSIX packaging tool (winapp CLI)
         shell: pwsh
-        run: .\scripts\build_tauri_windows.ps1
+        run: |
+          $w = Get-Command winapp -ErrorAction SilentlyContinue
+          if (-not $w) {
+            winget install Microsoft.WinAppCLI --accept-package-agreements --accept-source-agreements
+          } else {
+            Write-Host "winapp already installed: $($w.Source)"
+          }
+
+      - name: Build Windows application (Tauri + Sidecar) with MSIX
+        shell: pwsh
+        run: .\scripts\build_tauri_windows.ps1 -Msix
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ems-simulate-windows
+          path: |
+            src-tauri/target/release/ems-simulate.exe
+            src-tauri/target/release/bundle/
+            *.msix
+          compression-level: 0
