@@ -3,7 +3,6 @@
 提供四类测点的 CRUD 操作，通过 channel_id 查询
 """
 
-
 from src.data.controller.db import local_session
 from src.data.log import log
 from src.data.model.point_yc import PointYc, PointYcDict
@@ -35,7 +34,7 @@ def _format_reg_addr(addr: str) -> str:
         # 纯数字，转换为十六进制
         try:
             decimal_value = int(addr)
-            return "0x" + format(decimal_value, '04X')
+            return "0x" + format(decimal_value, "04X")
         except ValueError:
             # 无法解析，原样返回（让后续验证处理）
             return addr
@@ -50,11 +49,7 @@ class PointDao:
         """获取遥测点列表"""
         try:
             with local_session() as session, session.begin():
-                result = (
-                    session.query(PointYc)
-                    .where(PointYc.channel_id == channel_id, PointYc.enable)
-                    .all()
-                )
+                result = session.query(PointYc).where(PointYc.channel_id == channel_id, PointYc.enable).all()
                 return [item.to_dict() for item in result]
         except Exception as e:
             log.error(f"获取遥测点列表失败: {str(e)}")
@@ -77,11 +72,7 @@ class PointDao:
         """获取遥信点列表"""
         try:
             with local_session() as session, session.begin():
-                result = (
-                    session.query(PointYx)
-                    .where(PointYx.channel_id == channel_id, PointYx.enable)
-                    .all()
-                )
+                result = session.query(PointYx).where(PointYx.channel_id == channel_id, PointYx.enable).all()
                 return [item.to_dict() for item in result]
         except Exception as e:
             log.error(f"获取遥信点列表失败: {str(e)}")
@@ -104,11 +95,7 @@ class PointDao:
         """获取遥控点列表"""
         try:
             with local_session() as session, session.begin():
-                result = (
-                    session.query(PointYk)
-                    .where(PointYk.channel_id == channel_id, PointYk.enable)
-                    .all()
-                )
+                result = session.query(PointYk).where(PointYk.channel_id == channel_id, PointYk.enable).all()
                 return [item.to_dict() for item in result]
         except Exception as e:
             log.error(f"获取遥控点列表失败: {str(e)}")
@@ -131,11 +118,7 @@ class PointDao:
         """获取遥调点列表"""
         try:
             with local_session() as session, session.begin():
-                result = (
-                    session.query(PointYt)
-                    .where(PointYt.channel_id == channel_id, PointYt.enable)
-                    .all()
-                )
+                result = session.query(PointYt).where(PointYt.channel_id == channel_id, PointYt.enable).all()
                 return [item.to_dict() for item in result]
         except Exception as e:
             log.error(f"获取遥调点列表失败: {str(e)}")
@@ -154,9 +137,7 @@ class PointDao:
 
     # ===== 通用查询 =====
     @classmethod
-    def get_points_by_channel(
-        cls, channel_id: int, frame_type: list[int] | None = None
-    ) -> list[dict]:
+    def get_points_by_channel(cls, channel_id: int, frame_type: list[int] | None = None) -> list[dict]:
         """根据通道ID获取测点列表"""
         result = []
         if frame_type is None:
@@ -188,12 +169,7 @@ class PointDao:
             rtu_addrs = set()
             with local_session() as session, session.begin():
                 for model in [PointYc, PointYx, PointYk, PointYt]:
-                    result = (
-                        session.query(model.rtu_addr)
-                        .where(model.channel_id == channel_id)
-                        .distinct()
-                        .all()
-                    )
+                    result = session.query(model.rtu_addr).where(model.channel_id == channel_id).distinct().all()
                     rtu_addrs.update([r[0] for r in result if r[0] is not None])
             return sorted(list(rtu_addrs))
         except Exception as e:
@@ -226,73 +202,69 @@ class PointDao:
             raise e
 
     @classmethod
-    def update_point_metadata(
-        cls, code: str, metadata: dict, channel_id: int | None = None
-    ) -> bool:
+    def update_point_metadata(cls, code: str, metadata: dict, channel_id: int | None = None) -> bool:
         """更新测点元数据"""
         try:
             with local_session() as session, session.begin():
                 # 依次在四个表中查找
-                    for model in [PointYc, PointYx, PointYk, PointYt]:
-                        query = session.query(model).where(model.code == code)
-                        if channel_id is not None:
-                            query = query.where(model.channel_id == channel_id)
-                        result = query.first()
-                        if result:
-                            # 如果要修改 code
-                            if "code" in metadata and metadata["code"] != code:
-                                new_code = metadata["code"]
-                                # 检查新编码在通道内是否唯一（如果不传 channel_id 则全局检查）
-                                for m in [PointYc, PointYx, PointYk, PointYt]:
-                                    exists_query = session.query(m).where(m.code == new_code)
-                                    if channel_id is not None:
-                                        exists_query = exists_query.where(m.channel_id == channel_id)
-                                    if exists_query.first():
-                                        raise ValueError(f"测点编码 '{new_code}' 已存在")
-                                result.code = new_code
+                for model in [PointYc, PointYx, PointYk, PointYt]:
+                    query = session.query(model).where(model.code == code)
+                    if channel_id is not None:
+                        query = query.where(model.channel_id == channel_id)
+                    result = query.first()
+                    if result:
+                        # 如果要修改 code
+                        if "code" in metadata and metadata["code"] != code:
+                            new_code = metadata["code"]
+                            # 检查新编码在通道内是否唯一（如果不传 channel_id 则全局检查）
+                            for m in [PointYc, PointYx, PointYk, PointYt]:
+                                exists_query = session.query(m).where(m.code == new_code)
+                                if channel_id is not None:
+                                    exists_query = exists_query.where(m.channel_id == channel_id)
+                                if exists_query.first():
+                                    raise ValueError(f"测点编码 '{new_code}' 已存在")
+                            result.code = new_code
 
-                            # 更新允许更新的字段
-                            if "name" in metadata and metadata["name"]:
-                                result.name = metadata["name"]
-                            if "rtu_addr" in metadata and str(metadata["rtu_addr"]) != "":
-                                result.rtu_addr = int(metadata["rtu_addr"])
-                            if "reg_addr" in metadata and metadata["reg_addr"]:
-                                result.reg_addr = metadata["reg_addr"]
-                            if "func_code" in metadata and str(metadata["func_code"]) != "":
-                                result.func_code = int(metadata["func_code"])
-                            if "decode_code" in metadata and metadata["decode_code"]:
-                                result.decode_code = metadata["decode_code"]
+                        # 更新允许更新的字段
+                        if "name" in metadata and metadata["name"]:
+                            result.name = metadata["name"]
+                        if "rtu_addr" in metadata and str(metadata["rtu_addr"]) != "":
+                            result.rtu_addr = int(metadata["rtu_addr"])
+                        if "reg_addr" in metadata and metadata["reg_addr"]:
+                            result.reg_addr = metadata["reg_addr"]
+                        if "func_code" in metadata and str(metadata["func_code"]) != "":
+                            result.func_code = int(metadata["func_code"])
+                        if "decode_code" in metadata and metadata["decode_code"]:
+                            result.decode_code = metadata["decode_code"]
 
-                            # 遥信和遥控特有字段
-                            if model in [PointYx, PointYk] and "bit" in metadata:
-                                val = metadata["bit"]
-                                result.bit = int(val) if val is not None and str(val) != "" else None
+                        # 遥信和遥控特有字段
+                        if model in [PointYx, PointYk] and "bit" in metadata:
+                            val = metadata["bit"]
+                            result.bit = int(val) if val is not None and str(val) != "" else None
 
-                            # 遥测和遥调特有字段
-                            if model in [PointYc, PointYt]:
-                                if "mul_coe" in metadata and str(metadata["mul_coe"]) != "":
-                                    result.mul_coe = float(metadata["mul_coe"])
-                                if "add_coe" in metadata and str(metadata["add_coe"]) != "":
-                                    result.add_coe = float(metadata["add_coe"])
+                        # 遥测和遥调特有字段
+                        if model in [PointYc, PointYt]:
+                            if "mul_coe" in metadata and str(metadata["mul_coe"]) != "":
+                                result.mul_coe = float(metadata["mul_coe"])
+                            if "add_coe" in metadata and str(metadata["add_coe"]) != "":
+                                result.add_coe = float(metadata["add_coe"])
 
-                            # IEC104 类型标识
-                            if "iec_type_id" in metadata:
-                                result.iec_type_id = metadata["iec_type_id"] if metadata["iec_type_id"] else None
+                        # IEC104 类型标识
+                        if "iec_type_id" in metadata:
+                            result.iec_type_id = metadata["iec_type_id"] if metadata["iec_type_id"] else None
 
-                            # IEC104 品质描述符
-                            if "iec_quality" in metadata:
-                                result.iec_quality = (
-                                    int(metadata["iec_quality"])
-                                    if metadata["iec_quality"] is not None
-                                    else 0
-                                )
+                        # IEC104 品质描述符
+                        if "iec_quality" in metadata:
+                            result.iec_quality = (
+                                int(metadata["iec_quality"]) if metadata["iec_quality"] is not None else 0
+                            )
 
-                            # IEC61850 FC
-                            if "fc" in metadata:
-                                result.fc = metadata["fc"] if metadata["fc"] else None
+                        # IEC61850 FC
+                        if "fc" in metadata:
+                            result.fc = metadata["fc"] if metadata["fc"] else None
 
-                            return True
-                    return False
+                        return True
+                return False
         except Exception as e:
             log.error(f"更新测点元数据失败: {str(e)}")
             raise e
@@ -311,9 +283,7 @@ class PointDao:
             total_deleted = 0
             with local_session() as session, session.begin():
                 for model in [PointYc, PointYx, PointYk, PointYt]:
-                    deleted = session.query(model).where(
-                        model.channel_id == channel_id
-                    ).delete()
+                    deleted = session.query(model).where(model.channel_id == channel_id).delete()
                     total_deleted += deleted
             log.info(f"已删除通道 {channel_id} 的 {total_deleted} 个测点")
             return total_deleted
@@ -336,10 +306,9 @@ class PointDao:
             total_deleted = 0
             with local_session() as session, session.begin():
                 for model in [PointYc, PointYx, PointYk, PointYt]:
-                    deleted = session.query(model).where(
-                        model.channel_id == channel_id,
-                        model.rtu_addr == rtu_addr
-                    ).delete()
+                    deleted = (
+                        session.query(model).where(model.channel_id == channel_id, model.rtu_addr == rtu_addr).delete()
+                    )
                     total_deleted += deleted
             log.info(f"已删除通道 {channel_id} 从机 {rtu_addr} 的 {total_deleted} 个测点")
             return total_deleted
@@ -373,7 +342,7 @@ class PointDao:
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
-                    enable=True
+                    enable=True,
                 )
                 session.add(point)
                 session.flush()
@@ -399,7 +368,7 @@ class PointDao:
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
-                    enable=True
+                    enable=True,
                 )
                 session.add(point)
                 session.flush()
@@ -425,7 +394,7 @@ class PointDao:
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
-                    enable=True
+                    enable=True,
                 )
                 session.add(point)
                 session.flush()
@@ -459,7 +428,7 @@ class PointDao:
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
-                    enable=True
+                    enable=True,
                 )
                 session.add(point)
                 session.flush()
@@ -480,12 +449,7 @@ class PointDao:
         Returns:
             创建的测点字典
         """
-        creators = {
-            0: cls.create_yc,
-            1: cls.create_yx,
-            2: cls.create_yk,
-            3: cls.create_yt
-        }
+        creators = {0: cls.create_yc, 1: cls.create_yx, 2: cls.create_yk, 3: cls.create_yt}
         creator = creators.get(frame_type)
         if not creator:
             raise ValueError(f"无效的测点类型: {frame_type}")
@@ -521,7 +485,7 @@ class PointDao:
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
-                            enable=True
+                            enable=True,
                         )
                     elif frame_type == 1:  # 遥信
                         point = PointYx(
@@ -536,7 +500,7 @@ class PointDao:
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
-                            enable=True
+                            enable=True,
                         )
                     elif frame_type == 2:  # 遥控
                         point = PointYk(
@@ -551,7 +515,7 @@ class PointDao:
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
-                            enable=True
+                            enable=True,
                         )
                     elif frame_type == 3:  # 遥调
                         decode_code = point_data.get("decode_code", "0x41")
@@ -574,7 +538,7 @@ class PointDao:
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
-                            enable=True
+                            enable=True,
                         )
                     else:
                         raise ValueError(f"无效的测点类型: {frame_type}")

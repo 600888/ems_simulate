@@ -135,8 +135,8 @@ BDA_TYPE_MAP = {
     "orCat": IEC_TYPE_INTEGER,
     "orIdent": IEC_TYPE_UNKNOWN,  # Octet string
     # AnalogValue (mag/instMag) 的子 DA
-    "f": IEC_TYPE_FLOAT,     # FLOAT32
-    "i": IEC_TYPE_INTEGER,   # INTEGER32
+    "f": IEC_TYPE_FLOAT,  # FLOAT32
+    "i": IEC_TYPE_INTEGER,  # INTEGER32
 }
 
 # 需要递归展开子 BDA 的 struct DA 名称

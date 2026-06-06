@@ -510,14 +510,22 @@ class Device:
         return await self.point_operator.read_metadata_async(point_code, slave_id)
 
     def editPointData(
-        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None,
+        self,
+        point_code: str,
+        real_value: float,
+        source: ChangeSource | None = None,
+        detail: str | None = None,
         slave_id: int | None = None,
     ) -> bool:
         """编辑测点值"""
         return self.point_operator.edit_value(point_code, real_value, source, detail, slave_id)
 
     async def edit_point_data_async(
-        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None,
+        self,
+        point_code: str,
+        real_value: float,
+        source: ChangeSource | None = None,
+        detail: str | None = None,
         slave_id: int | None = None,
     ) -> bool:
         """异步编辑测点值"""

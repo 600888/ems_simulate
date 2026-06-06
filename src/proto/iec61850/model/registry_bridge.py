@@ -70,9 +70,5 @@ def build_registry_from_model(model: IedModel, registry: Any) -> list[dict[str, 
                 datasets.append(ds_dict)
     registry.discovered_datasets = datasets
 
-    log.info(
-        f"从 IedModel 派生完成, "
-        f"填充了 {len(discovered_points)} 个测点, "
-        f"{len(datasets)} 个 DataSet"
-    )
+    log.info(f"从 IedModel 派生完成, 填充了 {len(discovered_points)} 个测点, {len(datasets)} 个 DataSet")
     return discovered_points

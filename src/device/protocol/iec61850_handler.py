@@ -436,8 +436,6 @@ class IEC61850ClientHandler(ClientHandler):
                 self._log.error("IEC 61850 客户端未连接")
             return {"quality": {}, "timestamp": {}}
 
-        from src.proto.iec61850.core.metadata import MetadataInfo
-
         fc = getattr(point, "fc", "") or ""
         meta = self._client.read_metadata(address=point.address, fc=fc)
         return meta.to_dict()

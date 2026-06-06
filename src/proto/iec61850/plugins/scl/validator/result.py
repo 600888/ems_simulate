@@ -2,6 +2,7 @@
 
 替代异常处理校验结果，支持合并多个校验结果。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,6 +11,7 @@ from enum import Enum
 
 class Severity(Enum):
     """校验问题严重级别"""
+
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
@@ -18,6 +20,7 @@ class Severity(Enum):
 @dataclass(slots=True)
 class ValidationIssue:
     """单个校验问题"""
+
     severity: Severity = Severity.ERROR
     rule_id: str = ""
     message: str = ""
@@ -53,19 +56,17 @@ class ValidationResult:
         return sum(1 for i in self.issues if i.severity == Severity.WARNING)
 
     def add_error(self, rule_id: str, message: str, location: str = "") -> None:
-        self.issues.append(ValidationIssue(
-            severity=Severity.ERROR, rule_id=rule_id, message=message, location=location
-        ))
+        self.issues.append(
+            ValidationIssue(severity=Severity.ERROR, rule_id=rule_id, message=message, location=location)
+        )
 
     def add_warning(self, rule_id: str, message: str, location: str = "") -> None:
-        self.issues.append(ValidationIssue(
-            severity=Severity.WARNING, rule_id=rule_id, message=message, location=location
-        ))
+        self.issues.append(
+            ValidationIssue(severity=Severity.WARNING, rule_id=rule_id, message=message, location=location)
+        )
 
     def add_info(self, rule_id: str, message: str, location: str = "") -> None:
-        self.issues.append(ValidationIssue(
-            severity=Severity.INFO, rule_id=rule_id, message=message, location=location
-        ))
+        self.issues.append(ValidationIssue(severity=Severity.INFO, rule_id=rule_id, message=message, location=location))
 
     def merge(self, other: ValidationResult) -> ValidationResult:
         """合并另一个校验结果"""

@@ -97,6 +97,7 @@ class DORef:
         else:
             # 动态模型模式: 根据 CDC 推断
             from ..defs.da_patterns import DA_PATTERNS
+
             if self.cdc in DA_PATTERNS:
                 target_path = DA_PATTERNS[self.cdc].get("da_path", "")
             else:
@@ -244,16 +245,10 @@ class IedModel:
             "totalLDs": len(self.lds),
             "totalLNs": sum(len(ld.lns) for ld in self.lds),
             "totalDOs": sum(len(ln.dos) for ld in self.lds for ln in ld.lns),
-            "totalDAs": sum(
-                len(do.das) for ld in self.lds for ln in ld.lns for do in ln.dos
-            ),
-            "totalDataSets": sum(
-                len(ln.datasets) for ld in self.lds for ln in ld.lns
-            ),
+            "totalDAs": sum(len(do.das) for ld in self.lds for ln in ld.lns for do in ln.dos),
+            "totalDataSets": sum(len(ln.datasets) for ld in self.lds for ln in ld.lns),
             "totalRCBs": sum(len(ln.rcb_list) for ld in self.lds for ln in ld.lns),
-            "totalGoCBs": sum(
-                len(ln.gocb_list) for ld in self.lds for ln in ld.lns
-            ),
+            "totalGoCBs": sum(len(ln.gocb_list) for ld in self.lds for ln in ld.lns),
         }
 
     # ===== 派生: PointRegistry 所需数据 =====
@@ -418,16 +413,18 @@ class IedModel:
         for ld in self.lds:
             for ln in ld.lns:
                 for gocb in ln.gocb_list:
-                    items.append({
-                        "_type": "goose",
-                        "go_cb_ref": gocb.go_cb_ref or gocb.ref,
-                        "go_id": gocb.go_id,
-                        "app_id": gocb.app_id,
-                        "data_set_ref": gocb.data_set_ref,
-                        "conf_rev": gocb.conf_rev,
-                        "name": gocb.name,
-                        "ld_inst": ld.name,
-                    })
+                    items.append(
+                        {
+                            "_type": "goose",
+                            "go_cb_ref": gocb.go_cb_ref or gocb.ref,
+                            "go_id": gocb.go_id,
+                            "app_id": gocb.app_id,
+                            "data_set_ref": gocb.data_set_ref,
+                            "conf_rev": gocb.conf_rev,
+                            "name": gocb.name,
+                            "ld_inst": ld.name,
+                        }
+                    )
         return items
 
     # ===== 遍历工具 =====

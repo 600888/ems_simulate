@@ -81,7 +81,11 @@ class PointOperator:
     # ===== 测点值读写 =====
 
     def edit_value(
-        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None,
+        self,
+        point_code: str,
+        real_value: float,
+        source: ChangeSource | None = None,
+        detail: str | None = None,
         slave_id: int | None = None,
     ) -> bool:
         """编辑测点值，失败时抛出异常以便上层返回具体原因
@@ -123,7 +127,11 @@ class PointOperator:
                 raise SystemError(f"测点 {point_code} 协议处理器未配置，无法写入")
 
     async def edit_value_async(
-        self, point_code: str, real_value: float, source: ChangeSource | None = None, detail: str | None = None,
+        self,
+        point_code: str,
+        real_value: float,
+        source: ChangeSource | None = None,
+        detail: str | None = None,
         slave_id: int | None = None,
     ) -> bool:
         """异步编辑测点值，失败时抛出异常以便上层返回具体原因
@@ -259,6 +267,7 @@ class PointOperator:
 
         # point_code 可能是完整 DA 地址或 DO 引用，直接传给客户端
         from src.enums.points.base_point import BasePoint
+
         temp_point = BasePoint()
         temp_point.address = point_code
         temp_point.fc = ""

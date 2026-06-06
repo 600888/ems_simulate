@@ -17,12 +17,12 @@ from .core import (
     get_list_from_linked_list,
     mms_value_to_python,
 )
+from .core.metadata import MetadataInfo, MetadataReader
 from .defs import (
     HAS_IEC61850,
     IecType,
     extract_ln_class,
 )
-from .core.metadata import MetadataReader, MetadataInfo
 from .model import IedModel
 from .model.discovery import ModelDiscoveryService
 from .model.registry_bridge import build_registry_from_model

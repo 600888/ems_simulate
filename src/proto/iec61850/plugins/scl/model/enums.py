@@ -14,6 +14,7 @@ ALL_CDCS = CDC_YC | CDC_YX | CDC_YK | CDC_YT
 
 class PointCategory(IntEnum):
     """测点分类 (帧类型)"""
+
     YC = 0  # 遥测
     YX = 1  # 遥信
     YK = 2  # 遥控
@@ -68,11 +69,30 @@ CDC_CONTROL_DA_PATH: dict[str, str] = {
 
 # CDC 默认 FC
 CDC_DEFAULT_FC: dict[str, str] = {
-    "MV": "MX", "CMV": "MX", "SAV": "MX", "WYE": "MX", "DEL": "MX", "SEQ": "MX", "HMV": "MX",
-    "SPS": "ST", "DPS": "ST", "INS": "ST", "ENS": "ST", "ENC": "ST",
-    "ACT": "ST", "ACD": "ST", "SEC": "ST", "BCR": "ST",
-    "SPC": "CO", "DPC": "CO",
-    "APC": "CO", "INC": "CO", "ASG": "SP", "ING": "SP", "SPG": "SP", "BAC": "CO",
+    "MV": "MX",
+    "CMV": "MX",
+    "SAV": "MX",
+    "WYE": "MX",
+    "DEL": "MX",
+    "SEQ": "MX",
+    "HMV": "MX",
+    "SPS": "ST",
+    "DPS": "ST",
+    "INS": "ST",
+    "ENS": "ST",
+    "ENC": "ST",
+    "ACT": "ST",
+    "ACD": "ST",
+    "SEC": "ST",
+    "BCR": "ST",
+    "SPC": "CO",
+    "DPC": "CO",
+    "APC": "CO",
+    "INC": "CO",
+    "ASG": "SP",
+    "ING": "SP",
+    "SPG": "SP",
+    "BAC": "CO",
 }
 
 

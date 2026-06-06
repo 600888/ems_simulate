@@ -282,12 +282,14 @@ def _points_to_dicts(points: list, category: str) -> list[dict]:
     """将 SclPointTransformer 的 PointData 转为 IcdPointImporter 兼容的 dict 格式"""
     result = []
     for p in points:
-        result.append({
-            "code": p.code,
-            "name": p.name,
-            "reg_addr": p.reg_addr,
-            "cdc": p.cdc,
-            "da_name": p.da_name,
-            "fc": p.fc,
-        })
+        result.append(
+            {
+                "code": p.code,
+                "name": p.name,
+                "reg_addr": p.reg_addr,
+                "cdc": p.cdc,
+                "da_name": p.da_name,
+                "fc": p.fc,
+            }
+        )
     return result

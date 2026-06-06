@@ -7,6 +7,7 @@
 - get_value_da_path / collect_all_das 添加结果缓存，
   避免同一 DOType 被重复递归解析。
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -18,7 +19,7 @@ from ..model.scl_document import (
 )
 
 if TYPE_CHECKING:
-    from ..model.scl_document import SclDocument
+    from ..model.scl_document import SclDocument, SclDOI
 
 
 class TypeResolver:
@@ -145,7 +146,9 @@ class TypeResolver:
             if sub_type:
                 for da in sub_type.das:
                     self._collect_da(
-                        da, result, f"{sdo.name}.{da.name}",
+                        da,
+                        result,
+                        f"{sdo.name}.{da.name}",
                         fc_override="CO" if sdo.name in ("Oper", "SBOw", "Cancel") else None,
                     )
 
@@ -162,12 +165,14 @@ class TypeResolver:
         da_path = STRUCT_DA_TO_FULL_PATH.get(da.name, da.name)
         fc = fc_override or da.fc
 
-        result.append({
-            "name": da.name,
-            "path": da_path,
-            "fc": fc,
-            "bType": da.b_type,
-        })
+        result.append(
+            {
+                "name": da.name,
+                "path": da_path,
+                "fc": fc,
+                "bType": da.b_type,
+            }
+        )
 
         # 展开 Struct DA
         if da.b_type == "Struct" and da.type_id:
@@ -176,12 +181,14 @@ class TypeResolver:
                 for bda in da_type.bdas:
                     if bda.b_type == "Struct":
                         continue  # 跳过嵌套 Struct
-                    result.append({
-                        "name": bda.name,
-                        "path": f"{da.name}.{bda.name}",
-                        "fc": fc,
-                        "bType": bda.b_type,
-                    })
+                    result.append(
+                        {
+                            "name": bda.name,
+                            "path": f"{da.name}.{bda.name}",
+                            "fc": fc,
+                            "bType": bda.b_type,
+                        }
+                    )
 
     def get_do_desc(
         self,

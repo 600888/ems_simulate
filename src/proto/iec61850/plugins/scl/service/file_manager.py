@@ -3,6 +3,7 @@
 管理 data/61850icd/ 目录下的 ICD/SCD/CID 文件。
 使用 Context Manager 确保临时文件清理。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from ....log import log
 @dataclass
 class SclFileInfo:
     """SCL 文件信息"""
+
     filename: str
     file_path: str
     file_size: int  # bytes
@@ -69,13 +71,15 @@ class SclFileManager:
                 continue
 
             stat = os.stat(file_path)
-            result.append(SclFileInfo(
-                filename=filename,
-                file_path=file_path,
-                file_size=stat.st_size,
-                modified_time=datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
-                extension=os.path.splitext(filename)[1].lower(),
-            ))
+            result.append(
+                SclFileInfo(
+                    filename=filename,
+                    file_path=file_path,
+                    file_size=stat.st_size,
+                    modified_time=datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                    extension=os.path.splitext(filename)[1].lower(),
+                )
+            )
         return result
 
     def get_file_path(self, filename: str) -> str | None:

@@ -81,7 +81,7 @@ class DataModelsPlugin:
         模型发现由 ModelDiscoveryService 统一管理（连接时自动执行），
         本方法仅从已缓存的 IedModel 派生测点注册表。
         """
-        if self._client and hasattr(self._client, 'model') and self._client.model is not None:
+        if self._client and hasattr(self._client, "model") and self._client.model is not None:
             log.info("从缓存的 IedModel 派生 PointRegistry...")
             return build_registry_from_model(self._client.model, self._registry)
         log.warning("IedModel 未缓存，无法派生 PointRegistry")

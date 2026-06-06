@@ -47,7 +47,7 @@ def get_list_from_linked_list(linked_list) -> list[str]:
     # Phase 2: 批量转换 C 指针 → Python 字符串（预分配列表避免 append 扩容）
     items = [None] * len(pointers)
     valid = 0
-    for i, ptr in enumerate(pointers):
+    for _i, ptr in enumerate(pointers):
         try:
             name = iec61850.toCharP(ptr)
             if name:

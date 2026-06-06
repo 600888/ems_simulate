@@ -9,6 +9,7 @@
     # 注入 Mock (测试)
     container = SclServiceContainer(parser=mock_parser)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

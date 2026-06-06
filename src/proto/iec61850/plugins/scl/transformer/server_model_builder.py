@@ -12,9 +12,8 @@
   SclReportControl                → RCBRef
   SclGSEControl                   → GoCBRef
 """
-from __future__ import annotations
 
-from typing import Any
+from __future__ import annotations
 
 from ....model.ied_model import (
     DARef,
@@ -29,14 +28,13 @@ from ....model.ied_model import (
 from ..model.enums import (
     BTYPE_TO_IEC_TYPE,
     CDC_CATEGORY_MAP,
-    PointCategory,
 )
 from ..model.scl_document import (
     SclDA,
     SclDocument,
+    SclDOType,
     SclLDevice,
     SclLN,
-    SclDOType,
 )
 
 
@@ -107,7 +105,6 @@ class SclServerModelBuilder:
         # DO
         dos = []
         if ln_type_ref:
-            doi_map = {doi.name: doi for doi in ln.dois}
             for do_def in ln_type_ref.dos:
                 do_type = self._doc.get_do_type(do_def.type_id)
                 if do_type is None:
@@ -181,13 +178,15 @@ class SclServerModelBuilder:
                     sub_bda = ()
                     # 嵌套 Struct BDA 不展开 (保持叶子路径)
                     bda_fc = bda_def.fc or da_def.fc
-                    sub_das_list.append(DARef(
-                        name=f"{da_def.name}.{bda_def.name}",
-                        path=f"{da_def.name}.{bda_def.name}",
-                        fc=bda_fc,
-                        iec_type=bda_type_name,
-                        sub_das=sub_bda,
-                    ))
+                    sub_das_list.append(
+                        DARef(
+                            name=f"{da_def.name}.{bda_def.name}",
+                            path=f"{da_def.name}.{bda_def.name}",
+                            fc=bda_fc,
+                            iec_type=bda_type_name,
+                            sub_das=sub_bda,
+                        )
+                    )
                 sub_das = tuple(sub_das_list)
 
         return DARef(

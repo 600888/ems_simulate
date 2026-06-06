@@ -1233,20 +1233,24 @@ async def iec61850_read_metadata(
 
         # 直接传 point_code，客户端内部 parse_ref 提取 DO 引用
         handler = device.point_operator._handler
-        client = getattr(handler, '_client', None) if handler else None
-        if not client or not hasattr(client, 'read_metadata'):
+        client = getattr(handler, "_client", None) if handler else None
+        if not client or not hasattr(client, "read_metadata"):
             return BaseResponse(code=400, message="设备不支持元数据读取", data={})
 
         meta = client.read_metadata(body.point_code)
 
         from src.proto.iec61850.defs.address import parse_ref
+
         parsed = parse_ref(body.point_code)
         do_ref = f"{parsed[0]}/{parsed[1]}.{parsed[2]}" if parsed else body.point_code
 
-        return BaseResponse(message="读取元数据成功", data={
-            "point_code": do_ref,
-            **meta.to_dict(),
-        })
+        return BaseResponse(
+            message="读取元数据成功",
+            data={
+                "point_code": do_ref,
+                **meta.to_dict(),
+            },
+        )
     except Exception as e:
         log.error(f"IEC61850 元数据读取失败: {e}")
         return BaseResponse(code=500, message=f"IEC61850 元数据读取失败: {e}", data={})

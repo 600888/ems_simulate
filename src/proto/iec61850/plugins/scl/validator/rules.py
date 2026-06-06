@@ -1,4 +1,5 @@
 """校验规则 — Protocol + Registry 模式"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -12,6 +13,7 @@ if TYPE_CHECKING:
 @runtime_checkable
 class ValidationRule(Protocol):
     """校验规则协议"""
+
     @property
     def rule_id(self) -> str: ...
     @property

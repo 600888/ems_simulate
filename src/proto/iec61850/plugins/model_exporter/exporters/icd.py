@@ -43,6 +43,7 @@ def _next_da_type_id(prefix: str = "STRUCT") -> str:
     _da_type_counter[prefix] = _da_type_counter.get(prefix, 0) + 1
     return f"_T_{prefix}_{_da_type_counter[prefix]}"
 
+
 if TYPE_CHECKING:
     from ....model import IedModel
 
@@ -72,7 +73,7 @@ class IcdExporter:
         self._do_descriptions = do_descriptions or {}
         if not ied_name:
             # 优先使用 IedModel 上保存的 ied_name
-            ied_name = getattr(model, 'ied_name', None) or ''
+            ied_name = getattr(model, "ied_name", None) or ""
         if not ied_name:
             if model.lds:
                 # MMS LD 名称格式: <IEDName_LDInst> 或 <IEDNameLDInst>
@@ -189,15 +190,42 @@ class IcdExporter:
     }
 
     _DA_NAME_FC_MAP = {
-        "mag": "MX", "cVal": "MX", "instMag": "MX", "mxVal": "MX",
-        "fCVal": "MX", "setMag": "SP", "setVal": "SP", "wVal": "SP",
-        "stVal": "ST", "general": "ST", "Cnt": "ST", "frVal": "ST",
-        "frTm": "ST", "actVal": "ST", "subVal": "SV", "subEna": "SV",
-        "ctlVal": "CO", "Oper": "CO", "SBO": "CO", "SBOw": "CO",
-        "Cancel": "CO", "origin": "OR", "ctlNum": "CO", "AddCause": "CO",
-        "valWTr": "CO", "q": "MX", "t": "MX", "blkEna": "BL",
-        "dU": "DC", "du": "DC", "vendor": "DC", "swRev": "DC",
-        "configRev": "DC", "d": "DC", "lnNs": "DC", "ctlModel": "CF",
+        "mag": "MX",
+        "cVal": "MX",
+        "instMag": "MX",
+        "mxVal": "MX",
+        "fCVal": "MX",
+        "setMag": "SP",
+        "setVal": "SP",
+        "wVal": "SP",
+        "stVal": "ST",
+        "general": "ST",
+        "Cnt": "ST",
+        "frVal": "ST",
+        "frTm": "ST",
+        "actVal": "ST",
+        "subVal": "SV",
+        "subEna": "SV",
+        "ctlVal": "CO",
+        "Oper": "CO",
+        "SBO": "CO",
+        "SBOw": "CO",
+        "Cancel": "CO",
+        "origin": "OR",
+        "ctlNum": "CO",
+        "AddCause": "CO",
+        "valWTr": "CO",
+        "q": "MX",
+        "t": "MX",
+        "blkEna": "BL",
+        "dU": "DC",
+        "du": "DC",
+        "vendor": "DC",
+        "swRev": "DC",
+        "configRev": "DC",
+        "d": "DC",
+        "lnNs": "DC",
+        "ctlModel": "CF",
         "dbRef": "CF",
     }
 
@@ -325,8 +353,14 @@ class IcdExporter:
                 for do in ln.dos:
                     cdc = self._infer_cdc_from_do(do.name, ln_class)
                     do_type_id = self._resolve_or_create_do_type(
-                        do, cdc, ln_type_id, do_type_cache, da_type_cache,
-                        do_types, da_types, enum_types,
+                        do,
+                        cdc,
+                        ln_type_id,
+                        do_type_cache,
+                        da_type_cache,
+                        do_types,
+                        da_types,
+                        enum_types,
                     )
                     do_refs.append({"@name": do.name, "@type": do_type_id})
 
@@ -352,18 +386,28 @@ class IcdExporter:
     def _init_enum_types(self, enum_types: dict[str, list[dict[str, str]]]) -> None:
         enum_types["ctlModel"] = [
             {"@ord": str(i), "#text": v}
-            for i, v in enumerate([
-                "status-only", "direct-with-normal-security",
-                "sbo-with-normal-security", "direct-with-enhanced-security",
-                "sbo-with-enhanced-security",
-            ])
+            for i, v in enumerate(
+                [
+                    "status-only",
+                    "direct-with-normal-security",
+                    "sbo-with-normal-security",
+                    "direct-with-enhanced-security",
+                    "sbo-with-enhanced-security",
+                ]
+            )
         ]
         enum_types["orCategory"] = [
             {"@ord": str(i), "#text": v}
-            for i, v in enumerate([
-                "not-supported", "bay-control", "station-control",
-                "remote-control", "automatic-control", "maintenance-control",
-            ])
+            for i, v in enumerate(
+                [
+                    "not-supported",
+                    "bay-control",
+                    "station-control",
+                    "remote-control",
+                    "automatic-control",
+                    "maintenance-control",
+                ]
+            )
         ]
         enum_types["BehKind"] = [
             {"@ord": "1", "#text": "on"},
@@ -395,9 +439,14 @@ class IcdExporter:
         return (cdc, tuple(da_tuples))
 
     def _resolve_or_create_do_type(
-        self, do, cdc: str, ln_type_id: str,
-        do_type_cache: dict, da_type_cache: dict,
-        do_types: list, da_types: list,
+        self,
+        do,
+        cdc: str,
+        ln_type_id: str,
+        do_type_cache: dict,
+        da_type_cache: dict,
+        do_types: list,
+        da_types: list,
         enum_types: dict,
     ) -> str:
         """查找或创建共享 DOType
@@ -451,20 +500,20 @@ class IcdExporter:
         默认定义为兜底方案（在线发现失败时使用）。
         """
         if da.sub_das:
-            bda_tuples = tuple(sorted(
-                (bda.name, self._IEC_TYPE_TO_BTYPE.get(bda.iec_type, "INT32"))
-                for bda in da.sub_das
-            ))
+            bda_tuples = tuple(
+                sorted((bda.name, self._IEC_TYPE_TO_BTYPE.get(bda.iec_type, "INT32")) for bda in da.sub_das)
+            )
             return bda_tuples
         if da.name in self._STRUCT_DA_DEFAULT_BDAS:
-            bda_tuples = tuple(sorted(
-                (name, btype) for name, btype in self._STRUCT_DA_DEFAULT_BDAS[da.name]
-            ))
+            bda_tuples = tuple(sorted((name, btype) for name, btype in self._STRUCT_DA_DEFAULT_BDAS[da.name]))
             return bda_tuples
         return ()
 
     def _resolve_or_create_da_type(
-        self, da, da_type_cache: dict, da_types: list,
+        self,
+        da,
+        da_type_cache: dict,
+        da_types: list,
     ) -> str:
         """查找或创建共享 DAType"""
         fingerprint = self._make_da_type_fingerprint(da)
@@ -489,7 +538,10 @@ class IcdExporter:
         return da_type_id
 
     def _resolve_or_create_default_da_type(
-        self, da, da_type_cache: dict, da_types: list,
+        self,
+        da,
+        da_type_cache: dict,
+        da_types: list,
     ) -> str:
         """查找或创建使用默认 BDA 的 DAType"""
         fingerprint = self._make_da_type_fingerprint(da)
@@ -511,7 +563,9 @@ class IcdExporter:
 
     @staticmethod
     def _assemble_type_templates(
-        lnode_types: list, do_types: list, da_types: list,
+        lnode_types: list,
+        do_types: list,
+        da_types: list,
         enum_types: dict[str, list[dict[str, str]]],
     ) -> dict[str, Any]:
         """组装最终的类型模板字典"""
@@ -634,19 +688,26 @@ class IcdExporter:
         rcb_items = []
         for rcb in rcb_list:
             buffered = "true" if rcb.rcb_type == "BRCB" else "false"
-            rcb_items.append({
-                "@name": rcb.name,
-                "@rptID": rcb.name,
-                "@buffered": buffered,
-                "@bufTime": "0",
-                "@confRev": "1",
-                "TrgOps": {"@dchg": "true", "@qchg": "false", "@dupd": "false", "@period": "false"},
-                "OptFields": {
-                    "@seqNum": "false", "@timeStamp": "false", "@dataSet": "false",
-                    "@reasonCode": "false", "@dataRef": "false", "@entryID": "false", "@configRef": "false",
-                },
-                "RptEnabled": {"@max": "1"},
-            })
+            rcb_items.append(
+                {
+                    "@name": rcb.name,
+                    "@rptID": rcb.name,
+                    "@buffered": buffered,
+                    "@bufTime": "0",
+                    "@confRev": "1",
+                    "TrgOps": {"@dchg": "true", "@qchg": "false", "@dupd": "false", "@period": "false"},
+                    "OptFields": {
+                        "@seqNum": "false",
+                        "@timeStamp": "false",
+                        "@dataSet": "false",
+                        "@reasonCode": "false",
+                        "@dataRef": "false",
+                        "@entryID": "false",
+                        "@configRef": "false",
+                    },
+                    "RptEnabled": {"@max": "1"},
+                }
+            )
         return rcb_items if len(rcb_items) > 1 else (rcb_items[0] if rcb_items else [])
 
     def _model_to_xml_dict(self, model: IedModel) -> dict[str, Any]:
@@ -670,8 +731,13 @@ class IcdExporter:
                             for da in do.das:
                                 da_item = {"@name": da.name, "@path": da.path, "@fc": da.fc, "@iecType": da.iec_type}
                                 if da.sub_das:
-                                    bda_list = [{"@name": bda.name, "@path": bda.path, "@fc": bda.fc, "@iecType": bda.iec_type} for bda in da.sub_das]
-                                    da_item["SubDataAttributes"] = {"SubDataAttribute": bda_list if len(bda_list) > 1 else bda_list[0]}
+                                    bda_list = [
+                                        {"@name": bda.name, "@path": bda.path, "@fc": bda.fc, "@iecType": bda.iec_type}
+                                        for bda in da.sub_das
+                                    ]
+                                    da_item["SubDataAttributes"] = {
+                                        "SubDataAttribute": bda_list if len(bda_list) > 1 else bda_list[0]
+                                    }
                                 da_list.append(da_item)
                             do_item["DataAttributes"] = {"DataAttribute": da_list if len(da_list) > 1 else da_list[0]}
                         do_list.append(do_item)
@@ -692,10 +758,14 @@ class IcdExporter:
                     ln_item["DataSets"] = {"DataSet": ds_list if len(ds_list) > 1 else ds_list[0]}
                 if ln.rcb_list:
                     rcb_list = [{"@name": rcb.name, "@ref": rcb.ref, "@type": rcb.rcb_type} for rcb in ln.rcb_list]
-                    ln_item["ReportControlBlocks"] = {"ReportControlBlock": rcb_list if len(rcb_list) > 1 else rcb_list[0]}
+                    ln_item["ReportControlBlocks"] = {
+                        "ReportControlBlock": rcb_list if len(rcb_list) > 1 else rcb_list[0]
+                    }
                 if ln.gocb_list:
                     gocb_list = [{"@name": gocb.name, "@ref": gocb.ref} for gocb in ln.gocb_list]
-                    ln_item["GooseControlBlocks"] = {"GooseControlBlock": gocb_list if len(gocb_list) > 1 else gocb_list[0]}
+                    ln_item["GooseControlBlocks"] = {
+                        "GooseControlBlock": gocb_list if len(gocb_list) > 1 else gocb_list[0]
+                    }
                 ln_list.append(ln_item)
             ld_item = {"@name": ld.name, "@inst": ld.inst}
             if ln_list:
@@ -725,9 +795,9 @@ class IcdExporter:
 
     def _extract_ld_inst(self, ld_name: str, ied_name: str) -> str:
         if ld_name.startswith(ied_name + "_"):
-            return ld_name[len(ied_name) + 1:]
+            return ld_name[len(ied_name) + 1 :]
         if ld_name.startswith(ied_name):
-            return ld_name[len(ied_name):]
+            return ld_name[len(ied_name) :]
         return ld_name
 
     def _extract_ln_inst(self, ln_name: str) -> str:

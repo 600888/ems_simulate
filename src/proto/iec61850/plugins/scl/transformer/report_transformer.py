@@ -3,6 +3,7 @@
 替代 IcdGooseImporter.get_report_controls() 的逻辑:
   SclDocument → ReportControl 配置列表
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from ..model.scl_document import (
 @dataclass
 class ReportControlInfo:
     """ReportControl 转换结果"""
+
     ld_inst: str = ""
     name: str = ""
     rcb_type: str = ""  # "BRCB" / "URCB"
@@ -39,6 +41,7 @@ class ReportControlInfo:
 @dataclass
 class ReportTransformResult:
     """Report 转换结果"""
+
     report_controls: list[ReportControlInfo] = field(default_factory=list)
 
 
@@ -94,12 +97,14 @@ class SclReportTransformer:
             for fcda in ds.members:
                 iec_type = FC_TO_IEC_TYPE.get(fcda.fc, "boolean")
                 default_val = _default_value_for_type(iec_type)
-                entries.append({
-                    "name": fcda.fcda_ref,
-                    "value": default_val,
-                    "iec_type": iec_type,
-                    "fc": fcda.fc,
-                })
+                entries.append(
+                    {
+                        "name": fcda.fcda_ref,
+                        "value": default_val,
+                        "iec_type": iec_type,
+                        "fc": fcda.fc,
+                    }
+                )
 
         return ReportControlInfo(
             ld_inst=ld.inst,

@@ -3,6 +3,7 @@
 替代 IcdPointImporter 的核心逻辑:
   SclDocument + TypeResolver → 分类测点列表 (YC/YX/YK/YT)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -19,6 +20,7 @@ from ..parser.type_resolver import TypeResolver
 @dataclass
 class PointData:
     """测点数据"""
+
     code: str = ""
     name: str = ""
     reg_addr: str = ""
@@ -31,6 +33,7 @@ class PointData:
 @dataclass
 class PointTransformResult:
     """测点转换结果"""
+
     yc_points: list[PointData] = field(default_factory=list)
     yx_points: list[PointData] = field(default_factory=list)
     yk_points: list[PointData] = field(default_factory=list)
@@ -110,7 +113,6 @@ class SclPointTransformer:
 
             # 额外 DA 测点
             all_das = self._resolver.collect_all_das(do_def.type_id, cdc)
-            main_fc = CDC_DEFAULT_FC.get(cdc, "")
             for da_info in all_das:
                 da_path = da_info["path"]
                 da_fc = da_info["fc"]

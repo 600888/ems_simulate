@@ -58,7 +58,7 @@ class ModelExporterPlugin:
         1. client 缓存的 IedModel
         2. 无缓存 → 返回 None
         """
-        if self._client and hasattr(self._client, 'model') and self._client.model is not None:
+        if self._client and hasattr(self._client, "model") and self._client.model is not None:
             return self._client.model
         return None
 
@@ -75,10 +75,10 @@ class ModelExporterPlugin:
         descriptions: dict[str, str] = {}
         if not self._client:
             return descriptions
-        registry = getattr(self._client, '_registry', None)
+        registry = getattr(self._client, "_registry", None)
         if not registry:
             return descriptions
-        point_name = getattr(registry, '_point_name', None)
+        point_name = getattr(registry, "_point_name", None)
         if not point_name:
             return descriptions
         for addr, name in point_name.items():
@@ -87,7 +87,7 @@ class ModelExporterPlugin:
             # address: "LD/LN.DO.DA"（DA 可能含子点如 mag.f）
             # split('.', 2) → ["LD/LN", "DO", "DA"]
             # DO ref: "LD/LN.DO"
-            parts = addr.split('.', 2)
+            parts = addr.split(".", 2)
             if len(parts) >= 3:
                 do_ref = f"{parts[0]}.{parts[1]}"
                 if do_ref not in descriptions:
@@ -124,7 +124,8 @@ class ModelExporterPlugin:
             # 提取 dU 描述值传入导出器
             do_descriptions = self._get_do_descriptions()
             return exporter.export(
-                ied_model, output_path,
+                ied_model,
+                output_path,
                 ied_name=kwargs.get("ied_name", ""),
                 do_descriptions=do_descriptions,
             )

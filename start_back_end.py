@@ -1,17 +1,18 @@
 import logging
 import os
+from pathlib import Path
 import sys
 
 # ⭐ Windows 打包环境下将 stdout/stderr 重定向到日志文件，避免控制台闪现
 if sys.platform.startswith('win') and getattr(sys, 'frozen', False):
     # MSIX 安装模式下可执行文件目录为只读，需使用 EMS_ROOT_DIR（Tauri 侧设置的可写数据目录）
-    _root = os.environ.get('EMS_ROOT_DIR', os.path.dirname(sys.executable))
-    _log_dir = os.path.join(_root, 'logs')
-    os.makedirs(_log_dir, exist_ok=True)
-    sys.stdout = open(os.path.join(_log_dir, 'backend.log'), 'a', encoding='utf-8')
+    _root = Path(os.environ.get('EMS_ROOT_DIR', sys.executable)).parent
+    _log_dir = _root / 'logs'
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    sys.stdout = (_log_dir / 'backend.log').open('a', encoding='utf-8')  # noqa: SIM115  # 需要持久打开替换 stdout
     sys.stderr = sys.stdout
     logging.basicConfig(
-        filename=os.path.join(_log_dir, 'app_error.log'),
+        filename=_log_dir / 'app_error.log',
         level=logging.ERROR,
         format='%(asctime)s - %(levelname)s: %(message)s',
     )
@@ -28,10 +29,10 @@ from src.web.app import app
 async def main():
     # 获取静态文件目录（兼容开发 / PyInstaller 打包模式）
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-        base_dir = sys._MEIPASS
+        base_dir = Path(sys._MEIPASS)
     else:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-    static_dir = os.path.join(base_dir, "www")
+        base_dir = Path(__file__).resolve().parent
+    static_dir = base_dir / "www"
 
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 

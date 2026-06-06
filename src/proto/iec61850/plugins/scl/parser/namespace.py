@@ -6,6 +6,7 @@ ICD 文件可能带或不带 SCL 命名空间:
 
 本模块自动检测并统一处理。
 """
+
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET

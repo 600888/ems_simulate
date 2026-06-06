@@ -11,6 +11,7 @@
 优化: 使用 iterparse 增量解析 + 逐节清除，替代 ET.parse 全量加载。
 大文件场景峰值内存占用从 100%（全量 DOM）降为 max(DataTypeTemplates, IED) 的 DOM。
 """
+
 from __future__ import annotations
 
 import os
@@ -59,7 +60,7 @@ def _get_local_tag(elem: ET.Element) -> str:
     """获取去除命名空间的本地标签名"""
     tag = elem.tag
     idx = tag.rfind("}")
-    return tag[idx + 1:] if idx >= 0 else tag
+    return tag[idx + 1 :] if idx >= 0 else tag
 
 
 class SclParser:
@@ -97,16 +98,12 @@ class SclParser:
         # iterparse: 增量解析，处理完一个顶级节就释放其 DOM 子树
         context = ET.iterparse(file_path, events=("end",))
 
-        for event, elem in context:
+        for _event, elem in context:
             local_tag = _get_local_tag(elem)
 
             # 首次遇到元素时检测命名空间
             if not self._ns.ns_prefix:
-                self._ns = NamespaceHelper(
-                    ns_prefix=elem.tag[: elem.tag.index("}") + 1]
-                    if "}" in elem.tag
-                    else ""
-                )
+                self._ns = NamespaceHelper(ns_prefix=elem.tag[: elem.tag.index("}") + 1] if "}" in elem.tag else "")
                 doc.ns_prefix = self._ns.ns_prefix
 
             if local_tag not in _TOP_LEVEL_SECTIONS:
@@ -260,10 +257,12 @@ class SclParser:
             return []
         result = []
         for p in self._ns.findall(address_elem, "P"):
-            result.append(SclP(
-                type=p.get("type", ""),
-                value=(p.text or "").strip(),
-            ))
+            result.append(
+                SclP(
+                    type=p.get("type", ""),
+                    value=(p.text or "").strip(),
+                )
+            )
         return result
 
     # ===== DataTypeTemplates =====
@@ -298,12 +297,14 @@ class SclParser:
     def _parse_ln_node_type(self, elem: ET.Element) -> SclLNodeType:
         dos = []
         for do_elem in self._ns.findall(elem, "DO"):
-            dos.append(SclDO(
-                name=do_elem.get("name", ""),
-                type_id=do_elem.get("type", ""),
-                desc=do_elem.get("desc", ""),
-                access_control=do_elem.get("presCond", ""),
-            ))
+            dos.append(
+                SclDO(
+                    name=do_elem.get("name", ""),
+                    type_id=do_elem.get("type", ""),
+                    desc=do_elem.get("desc", ""),
+                    access_control=do_elem.get("presCond", ""),
+                )
+            )
         return SclLNodeType(
             id=elem.get("id", ""),
             ln_class=elem.get("lnClass", ""),
@@ -320,24 +321,28 @@ class SclParser:
             val_elem = self._ns.find(da_elem, "Val")
             if val_elem is not None and val_elem.text:
                 val = val_elem.text.strip()
-            das.append(SclDA(
-                name=da_elem.get("name", ""),
-                fc=da_elem.get("fc", ""),
-                b_type=da_elem.get("bType", ""),
-                type_id=da_elem.get("type", ""),
-                dchg=da_elem.get("dchg", "false").lower() == "true",
-                qchg=da_elem.get("qchg", "false").lower() == "true",
-                dupd=da_elem.get("dupd", "false").lower() == "true",
-                desc=da_elem.get("desc", ""),
-                val=val,
-            ))
+            das.append(
+                SclDA(
+                    name=da_elem.get("name", ""),
+                    fc=da_elem.get("fc", ""),
+                    b_type=da_elem.get("bType", ""),
+                    type_id=da_elem.get("type", ""),
+                    dchg=da_elem.get("dchg", "false").lower() == "true",
+                    qchg=da_elem.get("qchg", "false").lower() == "true",
+                    dupd=da_elem.get("dupd", "false").lower() == "true",
+                    desc=da_elem.get("desc", ""),
+                    val=val,
+                )
+            )
 
         for sdo_elem in self._ns.findall(elem, "SDO"):
-            sdos.append(SclSDO(
-                name=sdo_elem.get("name", ""),
-                type_id=sdo_elem.get("type", ""),
-                desc=sdo_elem.get("desc", ""),
-            ))
+            sdos.append(
+                SclSDO(
+                    name=sdo_elem.get("name", ""),
+                    type_id=sdo_elem.get("type", ""),
+                    desc=sdo_elem.get("desc", ""),
+                )
+            )
 
         return SclDOType(
             id=elem.get("id", ""),
@@ -354,14 +359,16 @@ class SclParser:
             val_elem = self._ns.find(bda_elem, "Val")
             if val_elem is not None and val_elem.text:
                 val = val_elem.text.strip()
-            bdas.append(SclBDA(
-                name=bda_elem.get("name", ""),
-                b_type=bda_elem.get("bType", ""),
-                fc=bda_elem.get("fc", ""),
-                type_id=bda_elem.get("type", ""),
-                desc=bda_elem.get("desc", ""),
-                val=val,
-            ))
+            bdas.append(
+                SclBDA(
+                    name=bda_elem.get("name", ""),
+                    b_type=bda_elem.get("bType", ""),
+                    fc=bda_elem.get("fc", ""),
+                    type_id=bda_elem.get("type", ""),
+                    desc=bda_elem.get("desc", ""),
+                    val=val,
+                )
+            )
         return SclDAType(
             id=elem.get("id", ""),
             desc=elem.get("desc", ""),
@@ -375,11 +382,13 @@ class SclParser:
                 ord_val = int(ev_elem.get("ord", "0"))
             except ValueError:
                 ord_val = 0
-            values.append(SclEnumVal(
-                ord=ord_val,
-                value=(ev_elem.text or "").strip(),
-                desc=ev_elem.get("desc", ""),
-            ))
+            values.append(
+                SclEnumVal(
+                    ord=ord_val,
+                    value=(ev_elem.text or "").strip(),
+                    desc=ev_elem.get("desc", ""),
+                )
+            )
         return SclEnumType(
             id=elem.get("id", ""),
             values=values,
@@ -489,15 +498,17 @@ class SclParser:
             da_name = fcda_elem.get("daName", "")
             # 展开结构体 DA 路径
             da_name = STRUCT_DA_TO_FULL_PATH.get(da_name, da_name)
-            members.append(SclFCDA(
-                ld_inst=fcda_elem.get("ldInst", ""),
-                ln_class=fcda_elem.get("lnClass", ""),
-                ln_inst=fcda_elem.get("lnInst", ""),
-                ln_prefix=fcda_elem.get("prefix", ""),
-                do_name=fcda_elem.get("doName", ""),
-                da_name=da_name,
-                fc=fcda_elem.get("fc", ""),
-            ))
+            members.append(
+                SclFCDA(
+                    ld_inst=fcda_elem.get("ldInst", ""),
+                    ln_class=fcda_elem.get("lnClass", ""),
+                    ln_inst=fcda_elem.get("lnInst", ""),
+                    ln_prefix=fcda_elem.get("prefix", ""),
+                    do_name=fcda_elem.get("doName", ""),
+                    da_name=da_name,
+                    fc=fcda_elem.get("fc", ""),
+                )
+            )
         return SclDataSet(
             name=elem.get("name", ""),
             desc=elem.get("desc", ""),

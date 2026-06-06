@@ -132,7 +132,7 @@ class FilesPlugin:
         directories = [e for e in all_entries if e.get("type") == "directory"]
 
         # 分页
-        sliced = all_entries[offset:offset + limit]
+        sliced = all_entries[offset : offset + limit]
         has_more = (offset + limit) < total
 
         return {
@@ -197,9 +197,7 @@ class FilesPlugin:
         if not self._browser:
             return []
 
-        all_entries = self._browser.list_directory_recursive(
-            directory, max_depth=max_depth
-        )
+        all_entries = self._browser.list_directory_recursive(directory, max_depth=max_depth)
 
         result = []
         for entry in all_entries:
@@ -210,8 +208,7 @@ class FilesPlugin:
                     result.append(entry.to_dict())
 
         log.info(
-            f"文件搜索完成: pattern={pattern!r}, directory={directory!r}, "
-            f"匹配={len(result)}/{len(all_entries)} 条"
+            f"文件搜索完成: pattern={pattern!r}, directory={directory!r}, 匹配={len(result)}/{len(all_entries)} 条"
         )
         return result
 

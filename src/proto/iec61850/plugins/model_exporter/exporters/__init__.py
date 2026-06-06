@@ -44,6 +44,7 @@ _cache: dict[str, type] = {}
 def _load_class(dotted_path: str) -> type:
     """延迟加载导出器类"""
     import importlib
+
     module_path, class_name = dotted_path.rsplit(".", 1)
     module = importlib.import_module(module_path, __package__)
     return getattr(module, class_name)

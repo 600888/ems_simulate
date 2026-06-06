@@ -17,11 +17,11 @@ CRUD + 上传/浏览/导入/校验 端点。
   POST   /scl/diff            — 对比两个 SCL 文件
   GET    /scl/ied-list        — 获取 SCL 文件中的 IED 列表
 """
+
 from __future__ import annotations
 
 import os
 import tempfile
-import time
 
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import PlainTextResponse
@@ -58,9 +58,6 @@ def _set_cached_result(request: Request, file_path: str, result: dict):
         stat = os.stat(file_path)
         key = (file_path, stat.st_mtime, stat.st_size)
         _parse_cache[key] = result
-        # 清理过期缓存
-        now = time.time()
-        stale_keys = [k for k, v in _parse_cache.items() if hasattr(v, '_cache_time') and now - getattr(v, '_cache_time', 0) > _CACHE_TTL]
         # 只保留最近 20 个
         if len(_parse_cache) > 20:
             for k in list(_parse_cache.keys())[:-20]:
@@ -283,12 +280,14 @@ async def parse_scl_file(request: Request, filename: str = Form(...)):
         ied_list = []
         for ied in doc.ieds:
             ld_count = sum(len(ap.server.ldevices) for ap in ied.access_points if ap.server)
-            ied_list.append({
-                "name": ied.name,
-                "desc": ied.desc,
-                "manufacturer": ied.manufacturer,
-                "ld_count": ld_count,
-            })
+            ied_list.append(
+                {
+                    "name": ied.name,
+                    "desc": ied.desc,
+                    "manufacturer": ied.manufacturer,
+                    "ld_count": ld_count,
+                }
+            )
 
         return BaseResponse(
             data={
@@ -350,6 +349,7 @@ async def import_points_from_scl(
         if result.ied_name:
             try:
                 from src.data.service.channel_service import ChannelService
+
                 ChannelService.update_channel(channel_id, model_name=result.ied_name)
             except Exception as e:
                 log.warning(f"更新 IED 名称失败: {e}")
@@ -464,6 +464,7 @@ async def import_full_from_scl(
         if result.ied_name:
             try:
                 from src.data.service.channel_service import ChannelService
+
                 ChannelService.update_channel(channel_id, model_name=result.ied_name)
             except Exception:
                 pass
@@ -521,11 +522,13 @@ async def browse_scl_tree(request: Request, filename: str = Query(...)):
                             # 构造 DO 列表 (带 DA 数量)
                             do_list = []
                             for doi in ln.dois:
-                                do_list.append({
-                                    "name": doi.name,
-                                    "desc": doi.desc,
-                                    "dai_count": len(doi.dai_values),
-                                })
+                                do_list.append(
+                                    {
+                                        "name": doi.name,
+                                        "desc": doi.desc,
+                                        "dai_count": len(doi.dai_values),
+                                    }
+                                )
                             ln_node = {
                                 "ln_name": ln.ln_name,
                                 "ln_class": ln.ln_class,

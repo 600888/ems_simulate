@@ -11,11 +11,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 import sys
 import time
 from typing import Any
-from dataclasses import dataclass
 
 import pytest
 
@@ -36,22 +36,21 @@ from src.proto.iec61850.core.reader import (
     StringReader,
     TimestampReader,
 )
+from src.proto.iec61850.core.registry import PointRegistry
 from src.proto.iec61850.defs.constants import (
     HAS_IEC61850,
-    IecType,
-    IEC_TYPE_FLOAT,
     IEC_TYPE_BOOLEAN,
+    IEC_TYPE_FLOAT,
     IEC_TYPE_INTEGER,
     IEC_TYPE_STRING,
     IEC_TYPE_TIMESTAMP,
     IEC_TYPE_UNKNOWN,
+    IecType,
 )
 from src.proto.iec61850.defs.da_patterns import DA_PATTERNS, EXTRA_DA_INFO
-from src.proto.iec61850.model.discovery import ModelDiscoveryService, IedModel
-from src.proto.iec61850.model.registry_bridge import build_registry_from_model
 from src.proto.iec61850.iec61850_client import IEC61850Client
-from src.proto.iec61850.core.registry import PointRegistry
-
+from src.proto.iec61850.model.discovery import IedModel, ModelDiscoveryService
+from src.proto.iec61850.model.registry_bridge import build_registry_from_model
 
 # ============================================================
 # 配置
@@ -81,6 +80,7 @@ pytestmark = pytest.mark.skipif(not DEVICE_AVAILABLE, reason=f"设备不可达: 
 # ============================================================
 # Fixtures
 # ============================================================
+
 
 @pytest.fixture(scope="module")
 def connection():
@@ -119,14 +119,16 @@ def reader(connection, registry):
 # 辅助函数
 # ============================================================
 
+
 @dataclass
 class TestPoint:
     """测试用测点描述"""
-    address: str      # 完整地址 (如 KG_BAMSCTMP01/MMCL1.Temp001.mag.f)
-    ref: str          # MMS 引用
-    fc: str           # 功能约束
-    iec_type: str     # 数据类型
-    frame_type: int   # 帧类型 (0=YC, 1=YX, 2=YK, 3=YT)
+
+    address: str  # 完整地址 (如 KG_BAMSCTMP01/MMCL1.Temp001.mag.f)
+    ref: str  # MMS 引用
+    fc: str  # 功能约束
+    iec_type: str  # 数据类型
+    frame_type: int  # 帧类型 (0=YC, 1=YX, 2=YK, 3=YT)
     description: str  # 可读描述
 
 
@@ -148,14 +150,16 @@ def _filter_points(
             continue
         if name_contains and name_contains not in address:
             continue
-        points.append(TestPoint(
-            address=address,
-            ref=info.get("ref", ""),
-            fc=info.get("fc", ""),
-            iec_type=info.get("iec_type", ""),
-            frame_type=info.get("frame_type", -1),
-            description=address.split(".")[-1] if "." in address else address,
-        ))
+        points.append(
+            TestPoint(
+                address=address,
+                ref=info.get("ref", ""),
+                fc=info.get("fc", ""),
+                iec_type=info.get("iec_type", ""),
+                frame_type=info.get("frame_type", -1),
+                description=address.split(".")[-1] if "." in address else address,
+            )
+        )
         if len(points) >= max_count:
             break
     return points
@@ -164,6 +168,7 @@ def _filter_points(
 # ============================================================
 # FloatReader — 遥测浮点
 # ============================================================
+
 
 class TestFloatReader:
     """浮点值读取测试"""
@@ -194,6 +199,7 @@ class TestFloatReader:
     def test_read_float_strategy_direct(self, connection):
         """直接用 FloatReader 策略读取 (绕过 Iec61850Reader)"""
         from pyiec61850 import pyiec61850 as iec61850
+
         conn = connection.connection
         strategy = FloatReader()
 
@@ -208,6 +214,7 @@ class TestFloatReader:
 # ============================================================
 # BooleanReader — 遥信布尔
 # ============================================================
+
 
 class TestBooleanReader:
     """布尔值读取测试"""
@@ -234,6 +241,7 @@ class TestBooleanReader:
     def test_read_boolean_fallback_integer(self, connection):
         """布尔失败时回退整数读取"""
         from pyiec61850 import pyiec61850 as iec61850
+
         conn = connection.connection
         strategy = BooleanReader()
         reader_obj = Iec61850Reader(connection)
@@ -250,6 +258,7 @@ class TestBooleanReader:
 # ============================================================
 # IntegerReader — 整数
 # ============================================================
+
 
 class TestIntegerReader:
     """整数值读取测试"""
@@ -268,6 +277,7 @@ class TestIntegerReader:
     def test_read_integer_strategy_direct(self, connection):
         """直接用 IntegerReader 策略读取"""
         from pyiec61850 import pyiec61850 as iec61850
+
         conn = connection.connection
         strategy = IntegerReader()
         if not hasattr(iec61850, "IedConnection_readIntegerValue"):
@@ -284,12 +294,14 @@ class TestIntegerReader:
 # StringReader — 字符串
 # ============================================================
 
+
 class TestStringReader:
     """字符串值读取测试"""
 
     def test_read_string_strategy(self, connection):
         """直接测试 StringReader 策略"""
         from pyiec61850 import pyiec61850 as iec61850
+
         conn = connection.connection
         strategy = StringReader()
         if not hasattr(iec61850, "IedConnection_readStringValue"):
@@ -316,6 +328,7 @@ class TestStringReader:
 # TimestampReader — 时标
 # ============================================================
 
+
 class TestTimestampReader:
     """时标值读取测试"""
 
@@ -328,7 +341,10 @@ class TestTimestampReader:
                 if da.name == "t":
                     reader = MetadataReader()
                     result = reader.read_timestamp(connection, do.ref, fc="MX")
-                    print(f"  [timestamp] {do.ref}.t → seconds={result.seconds}, ms={result.unix_timestamp_ms}, leap={result.leap_seconds_known}")
+                    print(
+                        f"  [timestamp] {do.ref}.t → seconds={result.seconds},"
+                        f" ms={result.unix_timestamp_ms}, leap={result.leap_seconds_known}"
+                    )
                     # 可能成功也可能设备不支持，不硬断
                     return
         pytest.skip("未找到 t DA")
@@ -336,6 +352,7 @@ class TestTimestampReader:
     def test_read_timestamp_strategy_direct(self, connection):
         """直接用 TimestampReader 读取完整 EntryTime"""
         from pyiec61850 import pyiec61850 as iec61850
+
         conn = connection.connection
         strategy = TimestampReader()
 
@@ -353,12 +370,14 @@ class TestTimestampReader:
 # AutoDetectReader — 自动探测
 # ============================================================
 
+
 class TestAutoDetectReader:
     """自动探测读取测试"""
 
     def test_autodetect_unknown_type(self, connection):
         """对未知类型使用 AutoDetectReader"""
         from pyiec61850 import pyiec61850 as iec61850
+
         conn = connection.connection
         strategy = AutoDetectReader()
 
@@ -374,6 +393,7 @@ class TestAutoDetectReader:
 # Quality (q) 子属性 — 品质
 # ============================================================
 
+
 class TestQualityReader:
     """品质 (q) 子属性按需读取 — 旧版直接 MMS 路径"""
 
@@ -383,6 +403,7 @@ class TestQualityReader:
             for da in do.das:
                 if da.name == "q" and da.sub_das:
                     from pyiec61850 import pyiec61850 as iec61850
+
                     conn = connection.connection
                     fc_val = connection.get_fc_value(da.fc)
                     success = 0
@@ -403,6 +424,7 @@ class TestQualityReader:
 # ============================================================
 # MetadataReader — 新按需读取服务
 # ============================================================
+
 
 class TestMetadataReader:
     """MetadataReader 按需读取服务测试"""
@@ -455,7 +477,7 @@ class TestMetadataReader:
 
     def test_read_metadata(self, connection, model, _find_do_ref):
         """MetadataReader.read_metadata() — 一次获取品质+时标"""
-        from src.proto.iec61850.core.metadata import MetadataReader, MetadataInfo
+        from src.proto.iec61850.core.metadata import MetadataInfo, MetadataReader
 
         reader = MetadataReader()
         do_ref = _find_do_ref
@@ -495,8 +517,8 @@ class TestMetadataReader:
 
     def test_empty_on_disconnected(self, model, _find_do_ref):
         """断开连接时返回空对象, 不抛异常"""
-        from src.proto.iec61850.core.metadata import MetadataReader, QualityInfo, TimestampInfo
         from src.proto.iec61850.core.connection import Iec61850Connection
+        from src.proto.iec61850.core.metadata import MetadataReader, QualityInfo, TimestampInfo
 
         reader = MetadataReader()
         # 使用未连接的 connection
@@ -514,6 +536,7 @@ class TestMetadataReader:
 # ============================================================
 # 连接管理测试
 # ============================================================
+
 
 class TestConnectionManagement:
     """连接/断开/重连测试"""
@@ -551,6 +574,7 @@ class TestConnectionManagement:
 # 模型发现测试
 # ============================================================
 
+
 class TestModelDiscovery:
     """模型发现测试"""
 
@@ -576,7 +600,7 @@ class TestModelDiscovery:
 
         # 按类型分类
         type_counts: dict[str, int] = {}
-        for addr, info in refs.items():
+        for _addr, info in refs.items():
             t = info.get("iec_type", "unknown")
             type_counts[t] = type_counts.get(t, 0) + 1
         print(f"  [points] 类型分布: {type_counts}")

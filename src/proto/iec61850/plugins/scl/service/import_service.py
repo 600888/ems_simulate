@@ -10,6 +10,7 @@
   5. SclReportTransformer → Report 配置
   6. 持久化 (调用方负责)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ from .container import SclServiceContainer
 @dataclass
 class SclImportResult:
     """SCL 导入完整结果"""
+
     doc: SclDocument | None = None
     validation: ValidationResult = field(default_factory=ValidationResult)
     points: PointTransformResult = field(default_factory=PointTransformResult)

@@ -244,10 +244,7 @@ class ModelDiscoveryService:
         self._model_timestamp = time.time()
 
         elapsed = time.time() - start_time
-        log.info(
-            f"统一模型发现完成, 耗时 {elapsed:.2f}s, "
-            f"{self._model.summary}"
-        )
+        log.info(f"统一模型发现完成, 耗时 {elapsed:.2f}s, {self._model.summary}")
         return self._model
 
     @staticmethod
@@ -269,9 +266,7 @@ class ModelDiscoveryService:
 
     # ===== LD 发现 =====
 
-    def _discover_ld(
-        self, conn, builder: IedModelBuilder, ld_name: str, *, max_depth: int, on_error: str
-    ) -> None:
+    def _discover_ld(self, conn, builder: IedModelBuilder, ld_name: str, *, max_depth: int, on_error: str) -> None:
         """发现单个 LD 的完整模型"""
         ld_builder = builder.add_ld(ld_name, ld_name)
 
@@ -286,9 +281,7 @@ class ModelDiscoveryService:
 
             with self._error_guard(f"LN {ln_ref}", on_error):
                 # DO + DA
-                for do in self._discover_data_objects(
-                    conn, ld_name, ln_ref, ln_name, max_depth=max_depth
-                ):
+                for do in self._discover_data_objects(conn, ld_name, ln_ref, ln_name, max_depth=max_depth):
                     ln_builder.add_do(do)
 
                 # DataSet — IEC 61850 实践中 DataSet 定义在 LLN0,
@@ -338,16 +331,12 @@ class ModelDiscoveryService:
             log.warning(f"获取逻辑节点列表异常: {ld_name}, {e}")
             return []
 
-    def _discover_data_objects(
-        self, conn, ld_name: str, ln_ref: str, ln_name: str, max_depth: int
-    ) -> list[DORef]:
+    def _discover_data_objects(self, conn, ld_name: str, ln_ref: str, ln_name: str, max_depth: int) -> list[DORef]:
         """发现 LN 下所有 DO 及其 DA/BDA"""
         do_refs = []
 
         try:
-            result = iec61850.IedConnection_getLogicalNodeDirectory(
-                conn, ln_ref, AcsiClass.DATA_OBJECT
-            )
+            result = iec61850.IedConnection_getLogicalNodeDirectory(conn, ln_ref, AcsiClass.DATA_OBJECT)
             if isinstance(result, (list, tuple)) and len(result) >= 2:
                 do_list, error = result[0], result[1]
                 if error != iec61850.IED_ERROR_OK:
@@ -364,9 +353,7 @@ class ModelDiscoveryService:
             cdc, frame_type = self._infer_cdc_and_frame_type(do_name, ln_name)
 
             # 发现 DA
-            das = self._discover_data_attributes(
-                conn, do_ref, do_name, ln_name, frame_type, max_depth=max_depth
-            )
+            das = self._discover_data_attributes(conn, do_ref, do_name, ln_name, frame_type, max_depth=max_depth)
 
             do_refs.append(
                 DORef(
@@ -383,9 +370,9 @@ class ModelDiscoveryService:
     # q/t/dU 是 IEC 61850 固有属性, 不动态发现, 默认硬编码创建
     # q 和 t 展开为子 DA (如 q.validity, t.seconds), 父结构体不能直接 MMS 读取
     _DEFAULT_META_DAS: tuple[tuple[str, str, str, str], ...] = (
-        ("q", "q", "MX", "integer"),          # 品质 (Quality struct → 展开子 DA)
-        ("t", "t", "MX", "timestamp"),         # 时标 (Timestamp struct → 展开子 DA)
-        ("dU", "dU", "DC", "string"),          # 描述 (Description)
+        ("q", "q", "MX", "integer"),  # 品质 (Quality struct → 展开子 DA)
+        ("t", "t", "MX", "timestamp"),  # 时标 (Timestamp struct → 展开子 DA)
+        ("dU", "dU", "DC", "string"),  # 描述 (Description)
     )
 
     def _discover_data_attributes(
@@ -432,17 +419,13 @@ class ModelDiscoveryService:
             if da_name in STRUCT_DA_EXPAND_ONLINE and max_depth > 0:
                 fc = da_info.fc or self._infer_fc_from_da(da_name, do_frame_type)
                 sub_das = tuple(
-                    self._discover_sub_das(
-                        conn, da_full_ref, fc, f"{da_info.path}.", depth=1, max_depth=max_depth
-                    )
+                    self._discover_sub_das(conn, da_full_ref, fc, f"{da_info.path}.", depth=1, max_depth=max_depth)
                 )
             elif "." in da_info.path and da_name not in SKIP_DA_NAMES and max_depth > 0:
                 # DA_PATTERNS 硬编码了子路径（如 mag→mag.f），但实际 IED
                 # 可能用 mag.i（整型）替代 mag.f（浮点）。
                 # 通过缓存 + 按需 MMS 发现来动态确定真实子 DA 结构。
-                actual_sub_das = self._discover_struct_sub_das(
-                    conn, da_full_ref, da_name, da_info, do_frame_type
-                )
+                actual_sub_das = self._discover_struct_sub_das(conn, da_full_ref, da_name, da_info, do_frame_type)
                 if actual_sub_das is not None:
                     sub_das = tuple(actual_sub_das)
 
@@ -596,10 +579,7 @@ class ModelDiscoveryService:
                     )
                 if sub_das:
                     self._struct_sub_da_cache[da_full_ref] = sub_das
-                    log.info(
-                        f"动态发现 struct DA '{da_full_ref}' 子结构: "
-                        f"{[s.path for s in sub_das]}"
-                    )
+                    log.info(f"动态发现 struct DA '{da_full_ref}' 子结构: {[s.path for s in sub_das]}")
                     return sub_das
         except Exception as e:
             log.debug(f"动态发现 struct DA 子属性失败: {da_full_ref}, {e}")
@@ -613,9 +593,7 @@ class ModelDiscoveryService:
         datasets = []
 
         try:
-            result = iec61850.IedConnection_getLogicalNodeDirectory(
-                conn, ln_ref, AcsiClass.DATA_SET
-            )
+            result = iec61850.IedConnection_getLogicalNodeDirectory(conn, ln_ref, AcsiClass.DATA_SET)
             ds_list = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
 
@@ -701,14 +679,9 @@ class ModelDiscoveryService:
                             or ""
                         )
                         var_name = (
-                            getattr(entry_data, "variableName", None)
-                            or getattr(entry_data, "varName", None)
-                            or ""
+                            getattr(entry_data, "variableName", None) or getattr(entry_data, "varName", None) or ""
                         )
-                        comp_name = (
-                            getattr(entry_data, "componentName", None)
-                            or ""
-                        )
+                        comp_name = getattr(entry_data, "componentName", None) or ""
 
                         ref = ""
                         if var_name:
@@ -778,9 +751,7 @@ class ModelDiscoveryService:
         gocbs = []
 
         try:
-            result = iec61850.IedConnection_getLogicalNodeDirectory(
-                conn, ln_ref, AcsiClass.GOOSE
-            )
+            result = iec61850.IedConnection_getLogicalNodeDirectory(conn, ln_ref, AcsiClass.GOOSE)
             gocb_list = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
 
@@ -905,9 +876,7 @@ class ModelDiscoveryService:
         return "", -1
 
     @staticmethod
-    def _resolve_da_info(
-        da_name: str, do_name: str, ln_name: str, do_frame_type: int
-    ) -> DARef:
+    def _resolve_da_info(da_name: str, do_name: str, ln_name: str, do_frame_type: int) -> DARef:
         """根据 DA 名称推断完整路径、FC 和类型"""
         if da_name in DA_PATTERNS:
             full_path, frame_type, iec_type = DA_PATTERNS[da_name]

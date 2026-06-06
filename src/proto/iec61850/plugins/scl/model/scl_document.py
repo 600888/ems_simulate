@@ -3,15 +3,18 @@
 使用 dataclass(slots=True) 优化内存。
 不依赖 pyiec61850、FastAPI、SQLAlchemy，仅依赖标准库。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 # ===== 数据类型模板 =====
 
+
 @dataclass(slots=True)
 class SclEnumVal:
     """枚举值"""
+
     ord: int = 0
     value: str = ""
     desc: str = ""
@@ -20,6 +23,7 @@ class SclEnumVal:
 @dataclass(slots=True)
 class SclEnumType:
     """EnumType — 枚举类型定义"""
+
     id: str = ""
     values: list[SclEnumVal] = field(default_factory=list)
 
@@ -27,6 +31,7 @@ class SclEnumType:
 @dataclass(slots=True)
 class SclBDA:
     """BDA — 数据属性类型成员 (DAType 子元素)"""
+
     name: str = ""
     b_type: str = ""
     fc: str = ""
@@ -38,6 +43,7 @@ class SclBDA:
 @dataclass(slots=True)
 class SclDAType:
     """DAType — 数据属性类型定义"""
+
     id: str = ""
     desc: str = ""
     bdas: list[SclBDA] = field(default_factory=list)
@@ -46,6 +52,7 @@ class SclDAType:
 @dataclass(slots=True)
 class SclDA:
     """DA — 数据属性定义 (DOType 子元素)"""
+
     name: str = ""
     fc: str = ""
     b_type: str = ""
@@ -61,6 +68,7 @@ class SclDA:
 @dataclass(slots=True)
 class SclSDO:
     """SDO — 子数据对象定义 (DOType 子元素)"""
+
     name: str = ""
     type_id: str = ""  # 引用 DOType id
     desc: str = ""
@@ -69,6 +77,7 @@ class SclSDO:
 @dataclass(slots=True)
 class SclDOType:
     """DOType — 数据对象类型定义"""
+
     id: str = ""
     cdc: str = ""  # Common Data Class
     desc: str = ""
@@ -79,6 +88,7 @@ class SclDOType:
 @dataclass(slots=True)
 class SclDO:
     """DO — 逻辑节点类型中的数据对象定义 (LNodeType 子元素)"""
+
     name: str = ""
     type_id: str = ""  # 引用 DOType id
     desc: str = ""
@@ -88,6 +98,7 @@ class SclDO:
 @dataclass(slots=True)
 class SclLNodeType:
     """LNodeType — 逻辑节点类型定义"""
+
     id: str = ""
     ln_class: str = ""
     desc: str = ""
@@ -96,9 +107,11 @@ class SclLNodeType:
 
 # ===== IED 结构 =====
 
+
 @dataclass(slots=True)
 class SclFCDA:
     """FCDA — 功能约束数据属性 (DataSet 成员)"""
+
     ld_inst: str = ""
     ln_class: str = ""
     ln_inst: str = ""
@@ -125,6 +138,7 @@ class SclFCDA:
 @dataclass(slots=True)
 class SclDataSet:
     """DataSet — 数据集定义"""
+
     name: str = ""
     desc: str = ""
     members: list[SclFCDA] = field(default_factory=list)
@@ -133,6 +147,7 @@ class SclDataSet:
 @dataclass(slots=True)
 class SclTrgOps:
     """触发选项"""
+
     dchg: bool = False
     qchg: bool = False
     dupd: bool = False
@@ -143,6 +158,7 @@ class SclTrgOps:
 @dataclass(slots=True)
 class SclOptFields:
     """可选字段"""
+
     seq_num: bool = False
     time_stamp: bool = False
     data_set: bool = False
@@ -156,6 +172,7 @@ class SclOptFields:
 @dataclass(slots=True)
 class SclReportControl:
     """ReportControl — 报告控制块"""
+
     name: str = ""
     rpt_id: str = ""
     buffered: bool = False
@@ -171,6 +188,7 @@ class SclReportControl:
 @dataclass(slots=True)
 class SclGSEControl:
     """GSEControl — GOOSE 控制块"""
+
     name: str = ""
     app_id: str = ""
     dat_set: str = ""
@@ -182,6 +200,7 @@ class SclGSEControl:
 @dataclass(slots=True)
 class SclDOI:
     """DOI — 数据对象实例 (IED 部分)"""
+
     name: str = ""
     desc: str = ""
     dai_values: dict[str, str] = field(default_factory=dict)  # da_name → val
@@ -190,6 +209,7 @@ class SclDOI:
 @dataclass(slots=True)
 class SclLN:
     """LN / LN0 — 逻辑节点实例"""
+
     ln_class: str = ""
     inst: str = ""
     ln_type: str = ""  # 引用 LNodeType id
@@ -211,6 +231,7 @@ class SclLN:
 @dataclass(slots=True)
 class SclLDevice:
     """LDevice — 逻辑设备"""
+
     inst: str = ""
     desc: str = ""
     ln0: SclLN | None = None
@@ -220,12 +241,14 @@ class SclLDevice:
 @dataclass(slots=True)
 class SclServer:
     """Server — 服务端"""
+
     ldevices: list[SclLDevice] = field(default_factory=list)
 
 
 @dataclass(slots=True)
 class SclAccessPoint:
     """AccessPoint — 访问点"""
+
     name: str = ""
     server: SclServer | None = None
 
@@ -233,6 +256,7 @@ class SclAccessPoint:
 @dataclass(slots=True)
 class SclIED:
     """IED — 智能电子设备"""
+
     name: str = ""
     desc: str = ""
     manufacturer: str = ""
@@ -242,9 +266,11 @@ class SclIED:
 
 # ===== 通信配置 =====
 
+
 @dataclass(slots=True)
 class SclP:
     """P — 通信参数"""
+
     type: str = ""
     value: str = ""
 
@@ -252,6 +278,7 @@ class SclP:
 @dataclass(slots=True)
 class SclGSE:
     """GSE — GOOSE 通信地址"""
+
     ld_inst: str = ""
     ln_class: str = "LLN0"
     ln_inst: str = ""
@@ -264,6 +291,7 @@ class SclGSE:
 @dataclass(slots=True)
 class SclConnectedAP:
     """ConnectedAP — 连接访问点"""
+
     ied_name: str = ""
     ap_name: str = ""
     address: list[SclP] = field(default_factory=list)
@@ -273,6 +301,7 @@ class SclConnectedAP:
 @dataclass(slots=True)
 class SclSubNetwork:
     """SubNetwork — 子网"""
+
     name: str = ""
     type: str = ""
     connected_aps: list[SclConnectedAP] = field(default_factory=list)
@@ -281,14 +310,17 @@ class SclSubNetwork:
 @dataclass(slots=True)
 class SclCommunication:
     """Communication — 通信配置"""
+
     sub_networks: list[SclSubNetwork] = field(default_factory=list)
 
 
 # ===== 顶层容器 =====
 
+
 @dataclass(slots=True)
 class SclDataTypeTemplates:
     """DataTypeTemplates — 数据类型模板"""
+
     ln_node_types: dict[str, SclLNodeType] = field(default_factory=dict)
     do_types: dict[str, SclDOType] = field(default_factory=dict)
     da_types: dict[str, SclDAType] = field(default_factory=dict)
@@ -298,6 +330,7 @@ class SclDataTypeTemplates:
 @dataclass(slots=True)
 class SclHeader:
     """Header — SCL 文件头"""
+
     id: str = ""
     version: str = ""
     revision: str = ""
@@ -311,6 +344,7 @@ class SclDocument:
     解析 ICD/SCD/CID 文件的完整结果。
     不依赖任何外部库，纯 Python dataclass。
     """
+
     header: SclHeader = field(default_factory=SclHeader)
     communication: SclCommunication = field(default_factory=SclCommunication)
     ieds: list[SclIED] = field(default_factory=list)

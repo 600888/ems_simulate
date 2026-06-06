@@ -3,6 +3,7 @@
 替代 IcdGooseImporter 的核心逻辑:
   SclDocument → GSEControl + GSE 通信地址 → Publisher/Subscriber 配置
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -25,6 +26,7 @@ from ..model.scl_document import (
 @dataclass
 class GseControlInfo:
     """GSEControl 解析结果 (含通信地址)"""
+
     name: str = ""
     go_cb_ref: str = ""
     app_id: str = ""
@@ -59,12 +61,14 @@ class GseControlInfo:
         entries = []
         for member in self.dataset_members:
             iec_type = _fcda_to_iec_type(member)
-            entries.append({
-                "name": member.get("fcda_ref", ""),
-                "value": _default_value_for_type(iec_type),
-                "iec_type": iec_type,
-                "fc": member.get("fc", ""),
-            })
+            entries.append(
+                {
+                    "name": member.get("fcda_ref", ""),
+                    "value": _default_value_for_type(iec_type),
+                    "iec_type": iec_type,
+                    "fc": member.get("fc", ""),
+                }
+            )
 
         return {
             "interface": interface,
@@ -121,6 +125,7 @@ class GseControlInfo:
 @dataclass
 class GooseTransformResult:
     """GOOSE 转换结果"""
+
     gse_controls: list[GseControlInfo] = field(default_factory=list)
     pure_datasets: list[dict[str, Any]] = field(default_factory=list)
 
@@ -180,20 +185,24 @@ class SclGooseTransformer:
                 entries = []
                 for m in members:
                     iec_type = _fcda_to_iec_type(m)
-                    entries.append({
-                        "name": m.get("fcda_ref", ""),
-                        "value": _default_value_for_type(iec_type),
-                        "iec_type": iec_type,
-                        "fc": m.get("fc", ""),
-                    })
-                result.pure_datasets.append({
-                    "ld_inst": ld.inst,
-                    "ds_name": ds_name,
-                    "ds_ref": ds_ref,
-                    "data_set_ref": ds_ref,
-                    "member_count": len(members),
-                    "entries": entries,
-                })
+                    entries.append(
+                        {
+                            "name": m.get("fcda_ref", ""),
+                            "value": _default_value_for_type(iec_type),
+                            "iec_type": iec_type,
+                            "fc": m.get("fc", ""),
+                        }
+                    )
+                result.pure_datasets.append(
+                    {
+                        "ld_inst": ld.inst,
+                        "ds_name": ds_name,
+                        "ds_ref": ds_ref,
+                        "data_set_ref": ds_ref,
+                        "member_count": len(members),
+                        "entries": entries,
+                    }
+                )
 
     def _build_gse_control_info(
         self,
@@ -228,9 +237,7 @@ class SclGooseTransformer:
 
         # 数据集成员
         if gse_ctrl.dat_set and gse_ctrl.dat_set in ds_map:
-            info.dataset_members = [
-                self._fcda_to_dict(m) for m in ds_map[gse_ctrl.dat_set].members
-            ]
+            info.dataset_members = [self._fcda_to_dict(m) for m in ds_map[gse_ctrl.dat_set].members]
 
         return info
 

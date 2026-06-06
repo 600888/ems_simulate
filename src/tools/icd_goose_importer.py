@@ -162,8 +162,12 @@ class GooseGseControlInfo:
     def _fcda_to_iec_type(fcda: dict[str, str]) -> str:
         fc = fcda.get("fc", "")
         fc_map = {
-            "ST": "boolean", "MX": "float", "CO": "boolean",
-            "SP": "string", "SV": "boolean", "CF": "float",
+            "ST": "boolean",
+            "MX": "float",
+            "CO": "boolean",
+            "SP": "string",
+            "SV": "boolean",
+            "CF": "float",
             "DC": "string",
         }
         return fc_map.get(fc, "boolean")
@@ -171,8 +175,12 @@ class GooseGseControlInfo:
     @staticmethod
     def _default_value_for_type(iec_type: str) -> Any:
         defaults = {
-            "boolean": False, "integer": 0, "float": 0.0,
-            "string": "", "bitstring": 0, "timestamp": 0,
+            "boolean": False,
+            "integer": 0,
+            "float": 0.0,
+            "string": "",
+            "bitstring": 0,
+            "timestamp": 0,
         }
         return defaults.get(iec_type, False)
 

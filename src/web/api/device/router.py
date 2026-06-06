@@ -1,5 +1,6 @@
 """设备管理 - 设备操作路由"""
 
+import atexit
 from copy import deepcopy
 
 from fastapi import APIRouter, Request
@@ -385,11 +386,10 @@ _temp_dirs: list[str] = []
 def _cleanup_temp_dirs() -> None:
     """atexit 清理泄漏的临时目录"""
     import shutil
+
     for d in _temp_dirs:
         shutil.rmtree(d, ignore_errors=True)
 
-
-import atexit
 
 atexit.register(_cleanup_temp_dirs)
 
