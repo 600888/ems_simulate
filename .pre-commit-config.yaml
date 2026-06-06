@@ -1,0 +1,10 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version. 保持与 pyproject.toml 中的版本一致
+    rev: v0.15.15
+    hooks:
+      # 提交前自动修复 lint 问题
+      - id: ruff
+        args: [--fix]
+      # 提交前自动修复 format 问题
+      - id: ruff-format
