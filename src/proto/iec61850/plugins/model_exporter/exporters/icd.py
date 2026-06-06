@@ -21,6 +21,28 @@ import xmltodict
 
 from ....defs.constants import FRAME_TYPE_DESC, IecType
 
+# DOType/DAType 类型模板 ID 计数器
+_do_type_counter: dict[str, int] = {}
+_da_type_counter: dict[str, int] = {}
+
+
+def _reset_type_counters() -> None:
+    """重置类型模板计数器（每次导出前调用）"""
+    _do_type_counter.clear()
+    _da_type_counter.clear()
+
+
+def _next_do_type_id(cdc: str) -> str:
+    """生成全局唯一的 DOType ID"""
+    _do_type_counter[cdc] = _do_type_counter.get(cdc, 0) + 1
+    return f"_T_{cdc}_{_do_type_counter[cdc]}"
+
+
+def _next_da_type_id(prefix: str = "STRUCT") -> str:
+    """生成全局唯一的 DAType ID"""
+    _da_type_counter[prefix] = _da_type_counter.get(prefix, 0) + 1
+    return f"_T_{prefix}_{_da_type_counter[prefix]}"
+
 if TYPE_CHECKING:
     from ....model import IedModel
 
@@ -35,29 +57,32 @@ class IcdExporter:
         *,
         ied_name: str = "",
         pretty: bool = True,
+        do_descriptions: dict[str, str] | None = None,
         **kwargs,
     ) -> str:
         """导出 ICD 文件 (IEC 61850 SCL 标准格式)
 
-        输出结构:
-            SCL
-            ├── Header
-            ├── Communication (含 IP 地址)
-            ├── IED
-            │   └── AccessPoint > Server
-            │       └── LDevice
-            │           ├── LN0 (含 DataSet / ReportControl)
-            │           └── LN (含 DOI / DAI)
-            └── DataTypeTemplates
-                ├── LNodeType
-                ├── DOType
-                ├── DAType
-                └── EnumType
+        Args:
+            model: IedModel 不可变模型
+            output_path: 输出文件路径
+            ied_name: IED 名称（自动推断时可选）
+            pretty: 是否格式化 XML
+            do_descriptions: DO 级别的 dU 描述值映射 {DO_ref → description}
         """
+        self._do_descriptions = do_descriptions or {}
+        if not ied_name:
+            # 优先使用 IedModel 上保存的 ied_name
+            ied_name = getattr(model, 'ied_name', None) or ''
         if not ied_name:
             if model.lds:
-                parts = model.lds[0].name.rsplit("_", 1)
-                ied_name = parts[0] if len(parts) > 1 else model.lds[0].name
+                # MMS LD 名称格式: <IEDName_LDInst> 或 <IEDNameLDInst>
+                # 使用左侧第一次 _ 分割，兼容 IEDName 本身带 _ 的情况
+                parts = model.lds[0].name.split("_", 1)
+                if len(parts) > 1 and parts[0]:
+                    ied_name = parts[0]
+                else:
+                    # 无下划线分隔: 整个 LD name 作为 IED name
+                    ied_name = model.lds[0].name
             else:
                 ied_name = "IED"
 
@@ -277,12 +302,54 @@ class IcdExporter:
         }
 
     def _build_data_type_templates(self, model: IedModel, ied_name: str) -> dict[str, Any]:
+        _reset_type_counters()
         lnode_types = []
         do_types = []
         da_types = []
-        enum_types = {}
+        enum_types: dict[str, list[dict[str, str]]] = {}
 
         # 标准 CTL 枚举
+        self._init_enum_types(enum_types)
+
+        do_type_cache: dict[tuple, str] = {}  # (cdc, da_fingerprint) → do_type_id
+        da_type_cache: dict[tuple, str] = {}  # bda_fingerprint → da_type_id
+        fixed_do_types_created: set[str] = set()
+
+        for ld in model.lds:
+            ld_inst = self._extract_ld_inst(ld.name, ied_name)
+            for ln in ld.lns:
+                ln_type_id = f"{ied_name}{ld_inst}.{ln.name}"
+                ln_class = ln.ln_class or self._extract_ln_class_from_name(ln.name)
+                do_refs = []
+
+                for do in ln.dos:
+                    cdc = self._infer_cdc_from_do(do.name, ln_class)
+                    do_type_id = self._resolve_or_create_do_type(
+                        do, cdc, ln_type_id, do_type_cache, da_type_cache,
+                        do_types, da_types, enum_types,
+                    )
+                    do_refs.append({"@name": do.name, "@type": do_type_id})
+
+                # 固定 DO (Mod/Beh/Health/NamPlt)
+                existing_fixed_do_names = {d.get("@name") for d in do_refs}
+                for fixed_do in self._get_fixed_dos(ln_class):
+                    fixed_do_type_id = fixed_do.get("@type", "")
+                    if fixed_do_type_id and fixed_do_type_id not in fixed_do_types_created:
+                        fixed_do_types_created.add(fixed_do_type_id)
+                        do_type_item = self._build_fixed_do_type(ln_class, fixed_do.get("@name", ""))
+                        if do_type_item:
+                            do_types.append(do_type_item)
+                    if fixed_do.get("@name") not in existing_fixed_do_names:
+                        do_refs.append(fixed_do)
+
+                lnode_type = {"@id": ln_type_id, "@lnClass": ln_class}
+                if do_refs:
+                    lnode_type["DO"] = do_refs if len(do_refs) > 1 else do_refs[0]
+                lnode_types.append(lnode_type)
+
+        return self._assemble_type_templates(lnode_types, do_types, da_types, enum_types)
+
+    def _init_enum_types(self, enum_types: dict[str, list[dict[str, str]]]) -> None:
         enum_types["ctlModel"] = [
             {"@ord": str(i), "#text": v}
             for i, v in enumerate([
@@ -311,78 +378,143 @@ class IcdExporter:
             {"@ord": "3", "#text": "Alarm"},
         ]
 
-        fixed_do_types_created: set[str] = set()
+    def _make_do_type_fingerprint(self, do, cdc: str) -> tuple:
+        """生成 DOType 去重指纹: (cdc, sorted_da_tuples)
 
-        for ld in model.lds:
-            ld_inst = self._extract_ld_inst(ld.name, ied_name)
-            for ln in ld.lns:
-                ln_type_id = f"{ied_name}{ld_inst}.{ln.name}"
-                ln_class = ln.ln_class or self._extract_ln_class_from_name(ln.name)
-                do_refs = []
+        对于 Struct 类型 DA，额外包含 BDA 指纹以区分不同的子结构。
+        例如 mag.f 和 mag.i 应生成不同的 DOType 引用。
+        """
+        da_tuples = []
+        for da in do.das:
+            fc = da.fc or self._DA_NAME_FC_MAP.get(da.name, "")
+            btype, _ = self._resolve_btype(da, do.name, cdc, "")
+            # 对于 Struct 类型，加上 BDA 指纹以区分不同子属性组合
+            bda_fp = self._make_da_type_fingerprint(da) if btype == "Struct" else ()
+            da_tuples.append((da.name, fc, btype, bda_fp))
+        da_tuples.sort(key=lambda x: x[0])
+        return (cdc, tuple(da_tuples))
 
-                for do in ln.dos:
-                    cdc = self._infer_cdc_from_do(do.name, ln_class)
-                    do_type_id = f"{ln_type_id}.{do.name}"
-                    do_refs.append({"@name": do.name, "@type": do_type_id})
+    def _resolve_or_create_do_type(
+        self, do, cdc: str, ln_type_id: str,
+        do_type_cache: dict, da_type_cache: dict,
+        do_types: list, da_types: list,
+        enum_types: dict,
+    ) -> str:
+        """查找或创建共享 DOType
 
-                    do_type_item = {"@id": do_type_id, "@cdc": cdc}
-                    da_refs = []
+        Returns:
+            do_type_id: 共享的 DOType ID
+        """
+        fingerprint = self._make_do_type_fingerprint(do, cdc)
+        if fingerprint in do_type_cache:
+            return do_type_cache[fingerprint]
 
-                    for da in do.das:
-                        fc = da.fc or self._DA_NAME_FC_MAP.get(da.name, "")
-                        btype, da_type_ref = self._resolve_btype(da, do.name, cdc, ln_type_id)
-                        da_ref = {"@name": da.name, "@fc": fc, "@bType": btype}
-                        if da_type_ref:
-                            da_ref["@type"] = da_type_ref
-                        if btype == "Enum" and da_type_ref and da_type_ref not in enum_types:
-                            enum_types[da_type_ref] = [{"@ord": "0", "#text": "unknown"}]
-                        da_refs.append(da_ref)
+        do_type_id = _next_do_type_id(cdc)
+        do_type_cache[fingerprint] = do_type_id
 
-                        if da.sub_das:
-                            da_type_id = f"{ln_type_id}.{do.name}.{da.name}"
-                            bda_refs = []
-                            for bda in da.sub_das:
-                                bda_btype = self._IEC_TYPE_TO_BTYPE.get(bda.iec_type, "INT32")
-                                bda_ref = {"@name": bda.name, "@bType": bda_btype}
-                                if bda.iec_type == IecType.INTEGER and bda.name == "orCat":
-                                    bda_ref["@bType"] = "Enum"
-                                    bda_ref["@type"] = "orCategory"
-                                bda_refs.append(bda_ref)
-                            da_type_item = {"@id": da_type_id}
-                            da_type_item["BDA"] = bda_refs if len(bda_refs) > 1 else bda_refs[0]
-                            da_types.append(da_type_item)
-                        elif da.name in self._STRUCT_DA_DEFAULT_BDAS:
-                            # 在线发现未展开子 DA，使用默认 BDA 定义
-                            da_type_id = f"{ln_type_id}.{do.name}.{da.name}"
-                            bda_refs = []
-                            for bda_name, bda_btype in self._STRUCT_DA_DEFAULT_BDAS[da.name]:
-                                bda_ref = {"@name": bda_name, "@bType": bda_btype}
-                                bda_refs.append(bda_ref)
-                            da_type_item = {"@id": da_type_id}
-                            da_type_item["BDA"] = bda_refs if len(bda_refs) > 1 else bda_refs[0]
-                            da_types.append(da_type_item)
+        do_type_item = {"@id": do_type_id, "@cdc": cdc}
+        da_refs = []
 
-                    if da_refs:
-                        do_type_item["DA"] = da_refs if len(da_refs) > 1 else da_refs[0]
-                    do_types.append(do_type_item)
+        for da in do.das:
+            fc = da.fc or self._DA_NAME_FC_MAP.get(da.name, "")
+            btype, da_type_ref = self._resolve_btype(da, do.name, cdc, ln_type_id)
+            da_ref = {"@name": da.name, "@fc": fc, "@bType": btype}
+            if da_type_ref:
+                da_ref["@type"] = da_type_ref
+            if btype == "Enum" and da_type_ref and da_type_ref not in enum_types:
+                enum_types[da_type_ref] = [{"@ord": "0", "#text": "unknown"}]
+            da_refs.append(da_ref)
 
-                # 固定 DO (Mod/Beh/Health/NamPlt)
-                existing_fixed_do_names = {d.get("@name") for d in do_refs}
-                for fixed_do in self._get_fixed_dos(ln_class):
-                    fixed_do_type_id = fixed_do.get("@type", "")
-                    if fixed_do_type_id and fixed_do_type_id not in fixed_do_types_created:
-                        fixed_do_types_created.add(fixed_do_type_id)
-                        do_type_item = self._build_fixed_do_type(ln_class, fixed_do.get("@name", ""))
-                        if do_type_item:
-                            do_types.append(do_type_item)
-                    if fixed_do.get("@name") not in existing_fixed_do_names:
-                        do_refs.append(fixed_do)
+            # 创建 DAType (struct DA 的子属性)
+            # 优先级: 在线发现的 sub_das > 默认 BDA 定义
+            # 在线发现反映了 IED 实际支持的子属性。
+            # 例如：Temp001.mag.f（浮点测量值）vs SglMaxVolNo.mag.i（整型状态值），
+            # 两者的 mag 应有不同的 DAType 定义。
+            # 默认定义为兜底（在线发现失败时使用）。
+            if da.sub_das:
+                da_type_id = self._resolve_or_create_da_type(da, da_type_cache, da_types)
+                da_ref["@type"] = da_type_id
+            elif da.name in self._STRUCT_DA_DEFAULT_BDAS:
+                da_type_id = self._resolve_or_create_default_da_type(da, da_type_cache, da_types)
+                da_ref["@type"] = da_type_id
 
-                lnode_type = {"@id": ln_type_id, "@lnClass": ln_class}
-                if do_refs:
-                    lnode_type["DO"] = do_refs if len(do_refs) > 1 else do_refs[0]
-                lnode_types.append(lnode_type)
+        if da_refs:
+            do_type_item["DA"] = da_refs if len(da_refs) > 1 else da_refs[0]
+        do_types.append(do_type_item)
+        return do_type_id
 
+    def _make_da_type_fingerprint(self, da) -> tuple:
+        """生成 DAType 去重指纹
+
+        优先级: 在线发现的 sub_das > 默认 BDA 定义
+        在线发现反映了 IED 实际支持的子属性（如 mag.f 或 mag.i），
+        默认定义为兜底方案（在线发现失败时使用）。
+        """
+        if da.sub_das:
+            bda_tuples = tuple(sorted(
+                (bda.name, self._IEC_TYPE_TO_BTYPE.get(bda.iec_type, "INT32"))
+                for bda in da.sub_das
+            ))
+            return bda_tuples
+        if da.name in self._STRUCT_DA_DEFAULT_BDAS:
+            bda_tuples = tuple(sorted(
+                (name, btype) for name, btype in self._STRUCT_DA_DEFAULT_BDAS[da.name]
+            ))
+            return bda_tuples
+        return ()
+
+    def _resolve_or_create_da_type(
+        self, da, da_type_cache: dict, da_types: list,
+    ) -> str:
+        """查找或创建共享 DAType"""
+        fingerprint = self._make_da_type_fingerprint(da)
+        if fingerprint in da_type_cache:
+            return da_type_cache[fingerprint]
+
+        da_type_id = _next_da_type_id(da.name.upper())
+        da_type_cache[fingerprint] = da_type_id
+
+        bda_refs = []
+        for bda in da.sub_das:
+            bda_btype = self._IEC_TYPE_TO_BTYPE.get(bda.iec_type, "INT32")
+            bda_ref = {"@name": bda.name, "@bType": bda_btype}
+            if bda.iec_type == IecType.INTEGER and bda.name == "orCat":
+                bda_ref["@bType"] = "Enum"
+                bda_ref["@type"] = "orCategory"
+            bda_refs.append(bda_ref)
+
+        da_type_item = {"@id": da_type_id}
+        da_type_item["BDA"] = bda_refs if len(bda_refs) > 1 else bda_refs[0]
+        da_types.append(da_type_item)
+        return da_type_id
+
+    def _resolve_or_create_default_da_type(
+        self, da, da_type_cache: dict, da_types: list,
+    ) -> str:
+        """查找或创建使用默认 BDA 的 DAType"""
+        fingerprint = self._make_da_type_fingerprint(da)
+        if fingerprint in da_type_cache:
+            return da_type_cache[fingerprint]
+
+        da_type_id = _next_da_type_id(da.name.upper())
+        da_type_cache[fingerprint] = da_type_id
+
+        bda_refs = []
+        for bda_name, bda_btype in self._STRUCT_DA_DEFAULT_BDAS[da.name]:
+            bda_ref = {"@name": bda_name, "@bType": bda_btype}
+            bda_refs.append(bda_ref)
+
+        da_type_item = {"@id": da_type_id}
+        da_type_item["BDA"] = bda_refs if len(bda_refs) > 1 else bda_refs[0]
+        da_types.append(da_type_item)
+        return da_type_id
+
+    @staticmethod
+    def _assemble_type_templates(
+        lnode_types: list, do_types: list, da_types: list,
+        enum_types: dict[str, list[dict[str, str]]],
+    ) -> dict[str, Any]:
+        """组装最终的类型模板字典"""
         result = {}
         if lnode_types:
             result["LNodeType"] = lnode_types if len(lnode_types) > 1 else lnode_types[0]
@@ -403,23 +535,25 @@ class IcdExporter:
         doi_list = []
         for do in ln.dos:
             doi = {"@name": do.name}
-            dai_list = []
-            for da in do.das:
-                if da.name in ("dU", "du") and da.iec_type == IecType.STRING:
-                    dai_list.append({"@name": da.name})
-            if dai_list:
-                doi["DAI"] = dai_list if len(dai_list) > 1 else dai_list[0]
+            # 从客户端读取的 dU 描述值填充 DAI
+            du_val = self._do_descriptions.get(do.ref, "") if self._do_descriptions else ""
+            if du_val:
+                doi["DAI"] = {"@name": "dU", "Val": du_val}
             doi_list.append(doi)
         return doi_list if len(doi_list) > 1 else (doi_list[0] if doi_list else [])
 
     def _build_datasets(self, datasets, ld_inst: str, ln, discovered_lns) -> Any:
-        discovered_ln_names: set[str] = set()
+        # 构建 LN 索引: (lnClass, lnInst) → discovered LN
+        # 同时构建所有 DO 名称集合用于灵活匹配
+        ln_index: dict[str, Any] = {}
+        all_do_names: set[str] = set()
         for dln in discovered_lns:
             dln_class = dln.ln_class or self._extract_ln_class_from_name(dln.name) or ""
             dln_inst = self._extract_ln_inst(dln.name)
-            discovered_ln_names.add(f"{dln_class}{dln_inst}")
-            # LN 的 MMS 原始名称也加入匹配（FCDA 从 MMS ref 提取的 lnClass 可能不完整）
-            discovered_ln_names.add(dln.name)
+            ln_index[f"{dln_class}{dln_inst}"] = dln
+            ln_index[dln.name] = dln
+            for do in dln.dos:
+                all_do_names.add(do.name)
 
         ds_list = []
         for ds in datasets:
@@ -456,8 +590,29 @@ class IcdExporter:
                         else:
                             fcda["@doName"] = parts[0]
 
+                # FCDA 匹配检查:
+                # 1. 优先通过 LN 名称匹配（类名+实例号 或 原始名）
+                # 2. 如果 LN 名不匹配，通过 DO 名称匹配（MMS DataSet 的 LN 名
+                #    可能是短格式如 "L1" 而非 "MMCL1"，但 DO 名始终准确）
+                fcda_do_name = fcda.get("@doName", "")
                 ln_key = f"{fcda.get('@lnClass', '')}{fcda.get('@lnInst', '')}"
-                if ln_key not in discovered_ln_names:
+
+                if ln_key in ln_index:
+                    # 精确匹配到 LN
+                    pass
+                elif fcda_do_name in all_do_names:
+                    # 通过 DO 名称匹配到模型：查找拥有该 DO 的 LN
+                    matched_ln = self._find_ln_by_do_name(discovered_lns, fcda_do_name)
+                    if matched_ln is not None:
+                        # 更新 FCDA 的 lnClass/lnInst 为正确的 LN 信息
+                        matched_class = matched_ln.ln_class or self._extract_ln_class_from_name(matched_ln.name) or ""
+                        matched_inst = self._extract_ln_inst(matched_ln.name)
+                        fcda["@lnClass"] = matched_class
+                        fcda["@lnInst"] = matched_inst
+                    else:
+                        # DO 名匹配也失败，跳过此 FCDA
+                        continue
+                else:
                     continue
                 fcda_list.append(fcda)
 
@@ -465,6 +620,15 @@ class IcdExporter:
                 ds_item["FCDA"] = fcda_list if len(fcda_list) > 1 else fcda_list[0]
                 ds_list.append(ds_item)
         return ds_list if len(ds_list) > 1 else (ds_list[0] if ds_list else [])
+
+    @staticmethod
+    def _find_ln_by_do_name(discovered_lns, do_name: str):
+        """通过 DO 名称查找所属的逻辑节点"""
+        for dln in discovered_lns:
+            for do in dln.dos:
+                if do.name == do_name:
+                    return dln
+        return None
 
     def _build_report_controls(self, rcb_list) -> Any:
         rcb_items = []
@@ -573,11 +737,20 @@ class IcdExporter:
         return m.group(1) if m else "1"
 
     def _extract_ln_class_from_name(self, ln_name: str) -> str:
+        """从 LN 名称中提取逻辑节点类名
+
+        规则:
+        1. LLN0 → LLN0
+        2. 匹配纯字母前缀作为类名（去除尾部数字）
+        3. 无数字后缀时，返回完整字母部分
+        """
         if ln_name == "LLN0":
             return "LLN0"
-        m = re.match(r"^[A-Z]*(\d+)?([A-Z]+)\d*$", ln_name)
+        # 匹配开头的字母序列 → 类名, 后续数字 → 实例号
+        m = re.match(r"^([A-Za-z]+)(\d*)$", ln_name)
         if m:
-            return m.group(2)
+            return m.group(1)
+        # 回退: 移除尾部数字
         return re.sub(r"\d+$", "", ln_name)
 
     def _infer_cdc_from_do(self, do_name: str, ln_class: str) -> str:
@@ -616,6 +789,9 @@ class IcdExporter:
             return ("Timestamp", None)
         if da.name == "ctlModel":
             return ("Enum", "ctlModel")
+        if da.name == "dU":
+            # IEC 61850-6 SCL: dU (描述) 是 Unicode 字符串
+            return ("Unicode255", None)
         if da.sub_das:
             return ("Struct", f"{ln_type_id}.{do_name}.{da.name}")
         # 根据 CDC 推断已知结构体 DA（即使在线发现未展开 sub_das）

@@ -62,6 +62,38 @@ class ModelExporterPlugin:
             return self._client.model
         return None
 
+    # ===== dU 描述值获取 =====
+
+    def _get_do_descriptions(self) -> dict[str, str]:
+        """从客户端 PointRegistry 提取 DO 级别的 dU 描述值
+
+        dU 值在 _fill_du_names 阶段通过 MMS 实时读取，
+        按 point 地址存入 registry._point_name，格式为:
+          "LD/LN.DO.DA" → "description text"
+        这里按 DO 去重，构建 DO_ref → description 映射。
+        """
+        descriptions: dict[str, str] = {}
+        if not self._client:
+            return descriptions
+        registry = getattr(self._client, '_registry', None)
+        if not registry:
+            return descriptions
+        point_name = getattr(registry, '_point_name', None)
+        if not point_name:
+            return descriptions
+        for addr, name in point_name.items():
+            if not name:
+                continue
+            # address: "LD/LN.DO.DA"（DA 可能含子点如 mag.f）
+            # split('.', 2) → ["LD/LN", "DO", "DA"]
+            # DO ref: "LD/LN.DO"
+            parts = addr.split('.', 2)
+            if len(parts) >= 3:
+                do_ref = f"{parts[0]}.{parts[1]}"
+                if do_ref not in descriptions:
+                    descriptions[do_ref] = name
+        return descriptions
+
     # ===== 导出 =====
 
     def export(self, export_type: str, output_path: str = "", **kwargs) -> str:
@@ -89,7 +121,13 @@ class ModelExporterPlugin:
 
         exporter = get_exporter(export_type)
         if export_type == "icd":
-            return exporter.export(ied_model, output_path, ied_name=kwargs.get("ied_name", ""))
+            # 提取 dU 描述值传入导出器
+            do_descriptions = self._get_do_descriptions()
+            return exporter.export(
+                ied_model, output_path,
+                ied_name=kwargs.get("ied_name", ""),
+                do_descriptions=do_descriptions,
+            )
         return exporter.export(ied_model, output_path, **kwargs)
 
     def export_all(self, output_dir: str, ied_name: str = "") -> dict[str, str]:
@@ -117,13 +155,14 @@ class ModelExporterPlugin:
         # XML + ICD (都由 IcdExporter 提供)
         from .exporters.icd import IcdExporter
 
+        do_descriptions = self._get_do_descriptions()
         icd_exporter = IcdExporter()
         xml_path = os.path.join(output_dir, f"{base_name}.xml")
         icd_exporter.export_xml(ied_model, xml_path)
         results["xml"] = xml_path
 
         icd_path = os.path.join(output_dir, f"{base_name}.icd")
-        icd_exporter.export(ied_model, icd_path, ied_name=ied_name)
+        icd_exporter.export(ied_model, icd_path, ied_name=ied_name, do_descriptions=do_descriptions)
         results["icd"] = icd_path
 
         return results

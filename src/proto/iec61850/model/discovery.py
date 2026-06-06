@@ -167,6 +167,12 @@ class ModelDiscoveryService:
         self._model: IedModel | None = None
         self._model_timestamp: float = 0.0
         self._skip_non_lln0 = skip_non_lln0
+        # 结构体子 DA 发现缓存: da_full_ref → [DARef]
+        # 不同 DO 的同一 DA 名（如 mag）可能有不同的子属性组合：
+        #   Temp001.mag → [f]（浮点测量值）
+        #   SglMaxVolNo.mag → [i]（整型状态值）
+        # 故使用完整引用路径（da_full_ref）而非 DA 名称作为缓存键。
+        self._struct_sub_da_cache: dict[str, list[DARef]] = {}
 
     @property
     def model(self) -> IedModel | None:
@@ -430,13 +436,32 @@ class ModelDiscoveryService:
                         conn, da_full_ref, fc, f"{da_info.path}.", depth=1, max_depth=max_depth
                     )
                 )
+            elif "." in da_info.path and da_name not in SKIP_DA_NAMES and max_depth > 0:
+                # DA_PATTERNS 硬编码了子路径（如 mag→mag.f），但实际 IED
+                # 可能用 mag.i（整型）替代 mag.f（浮点）。
+                # 通过缓存 + 按需 MMS 发现来动态确定真实子 DA 结构。
+                actual_sub_das = self._discover_struct_sub_das(
+                    conn, da_full_ref, da_name, da_info, do_frame_type
+                )
+                if actual_sub_das is not None:
+                    sub_das = tuple(actual_sub_das)
+
+            # 当动态发现了实际子 DA（如 mag 下有 i 而非 f），
+            # 使用真实子 DA 的路径和类型覆盖硬编码的默认值
+            if sub_das:
+                # 取第一个非元数据子 DA 作为主值路径
+                effective_da_path = f"{da_name}.{sub_das[0].name}"
+                effective_iec_type = sub_das[0].iec_type
+            else:
+                effective_da_path = da_info.path
+                effective_iec_type = da_info.iec_type
 
             da_refs.append(
                 DARef(
                     name=da_name,
-                    path=da_info.path,
+                    path=effective_da_path,
                     fc=da_info.fc,
-                    iec_type=da_info.iec_type,
+                    iec_type=effective_iec_type,
                     sub_das=sub_das,
                 )
             )
@@ -524,6 +549,64 @@ class ModelDiscoveryService:
             log.debug(f"发现子数据属性异常: {parent_ref}, {e}")
 
         return sub_das
+
+    def _discover_struct_sub_das(
+        self,
+        conn,
+        da_full_ref: str,
+        da_name: str,
+        da_info: DARef,
+        do_frame_type: int,
+    ) -> list[DARef] | None:
+        """按需发现 struct DA 的实际子 DA，带完整引用缓存
+
+        DA_PATTERNS 对 mag 等 struct DA 硬编码了子路径（mag→mag.f），
+        但实际 IED 可能用 mag.i（整型）替代 mag.f（浮点）。
+
+        使用 da_full_ref（如 "LD1/MMCL1.Temp001.mag"）作为缓存键，
+        而非 da_name（如 "mag"），因为不同 DO 的同一 DA 名可能有
+        不同的子属性（Temp001.mag→[f], SglMaxVolNo.mag→[i]）。
+
+        Returns:
+            list[DARef] — 发现成功时返回子 DA 列表
+            None — 发现失败时返回 None，调用方沿用硬编码默认值
+        """
+        if da_full_ref in self._struct_sub_da_cache:
+            cached = self._struct_sub_da_cache[da_full_ref]
+            return list(cached) if cached else None
+
+        fc = da_info.fc or self._infer_fc_from_da(da_name, do_frame_type)
+        try:
+            result = iec61850.IedConnection_getDataDirectory(conn, da_full_ref)
+            sub_list = result[0] if isinstance(result, (list, tuple)) else result
+            error = result[1] if isinstance(result, (list, tuple)) else 0
+
+            if error == iec61850.IED_ERROR_OK and sub_list is not None:
+                sub_names = get_list_from_linked_list(sub_list)
+                sub_das: list[DARef] = []
+                base_path = da_info.path.split(".")[0]
+                for sub_name in sub_names:
+                    sub_das.append(
+                        DARef(
+                            name=sub_name,
+                            path=f"{base_path}.{sub_name}",
+                            fc=fc,
+                            iec_type=BDA_TYPE_MAP.get(sub_name, "unknown"),
+                        )
+                    )
+                if sub_das:
+                    self._struct_sub_da_cache[da_full_ref] = sub_das
+                    log.info(
+                        f"动态发现 struct DA '{da_full_ref}' 子结构: "
+                        f"{[s.path for s in sub_das]}"
+                    )
+                    return sub_das
+        except Exception as e:
+            log.debug(f"动态发现 struct DA 子属性失败: {da_full_ref}, {e}")
+
+        # 发现失败: 标记缓存为 None 避免重复尝试
+        self._struct_sub_da_cache[da_full_ref] = []
+        return None
 
     def _discover_datasets(self, conn, ld_name: str, ln_ref: str) -> list[DataSetRef]:
         """发现 LN 下所有 DataSet"""
