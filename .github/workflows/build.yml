@@ -57,7 +57,9 @@ jobs:
 
       - name: Build Windows application (Tauri + Sidecar) with MSIX
         shell: pwsh
-        run: .\scripts\build_tauri_windows.ps1 -Msix
+        run: |
+          .venv\Scripts\Activate.ps1
+          .\scripts\build_tauri_windows.ps1 -Msix
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
