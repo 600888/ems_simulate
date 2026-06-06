@@ -38,11 +38,14 @@ onMounted(async () => {
     });
   }
 
-  // 应用启动时，如果有已保存的标签页且当前路由为根路径，自动跳转到第一个标签页
-  if ((route.path === '/' || route.path === '') && visitedViews.value.length > 0) {
-    const firstView = visitedViews.value[0];
-    if (firstView.path) {
-      router.push(firstView.path);
+  // 应用启动时，如果当前路由为根路径且有已保存的标签页，自动跳转到最后访问的标签页
+  // 注意：需要等待 router.isReady() 确保路由已解析，避免 hash 路由下 path 暂时为 '/'
+  await router.isReady();
+  const currentPath = router.currentRoute.value.path;
+  if ((currentPath === '/' || currentPath === '') && visitedViews.value.length > 0) {
+    const lastView = visitedViews.value[visitedViews.value.length - 1];
+    if (lastView.path) {
+      router.push(lastView.path);
     }
   }
 });

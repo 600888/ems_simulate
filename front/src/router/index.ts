@@ -1,6 +1,6 @@
 // src/router/index.js
 import { createRouter, createWebHashHistory } from 'vue-router';
-import { addView, visitedViews } from '@/store/tagsView';
+import { addView } from '@/store/tagsView';
 
 // 创建路由器实例
 const menuRouter = createRouter({
@@ -65,10 +65,11 @@ const menuRouter = createRouter({
 // 全局后置钩子，用于收集访问过的页面作为标签页
 menuRouter.afterEach((to) => {
   // 只有设备、GOOSE 和 SCL 管理页面有独立标签页
-  if (to.path.startsWith('/device') || to.path.startsWith('/goose') || to.path.startsWith('/scl')) {
-    // addView 内部已按 path 去重：已存在则跳过，不存在才新建
-    addView(to);
-  }
+  if (!to.path.startsWith('/device') && !to.path.startsWith('/goose') && !to.path.startsWith('/scl')) return;
+
+  // addView 内部已按 path 去重：存在则更新，不存在则新增
+  // 页面刷新时 visitedViews 从 localStorage 恢复，addView 会找到已有标签并更新，不会重复创建
+  addView(to);
 });
 
 export async function setUpRoutes() {

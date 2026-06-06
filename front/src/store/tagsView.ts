@@ -11,19 +11,27 @@ function loadViews(): TagView[] {
     try {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
-            return JSON.parse(saved);
+            const parsed = JSON.parse(saved);
+            return Array.isArray(parsed) ? parsed : [];
         }
     } catch {
-        // ignore
+        // JSON 损坏，清除数据避免持续出错
+        localStorage.removeItem(STORAGE_KEY);
     }
     return [];
 }
 
-// 去重：以 path 为唯一键（不含 query），保留每个 key 的最后一次出现
+// 规范化路径：统一解码，防止 URI 编码差异导致去重失败
+export function normalizePath(p: string | undefined): string {
+    if (!p) return '';
+    try { return decodeURIComponent(p); } catch { return p; }
+}
+
+// 去重：以规范化 path 为唯一键，保留每个 key 的最后一次出现
 function dedupByPath(views: TagView[]): TagView[] {
     const map = new Map<string, TagView>();
     for (const v of views) {
-        const key = v.path;
+        const key = normalizePath(v.path);
         if (key) {
             map.set(key, v);
         }
@@ -39,19 +47,27 @@ watch(visitedViews, (val) => {
 }, { deep: true });
 
 export const addView = (view: RouteLocationNormalized) => {
-    // 以 path 作为唯一键去重，避免因 query 参数差异导致同一设备打开多个标签
-    const key = view.path;
-    if (visitedViews.value.some(v => v.path === key)) return;
-    visitedViews.value.push(
-        Object.assign({}, view, {
-            title: (view.meta.title as string) || (view.params.deviceName as string) || (view.name as string) || '标签页'
-        })
-    );
+    const path = view.path;
+    const title = (view.meta.title as string) || (view.params.deviceName as string) || (view.name as string) || '标签页';
+    const tab: TagView = { path, query: view.query, params: view.params, fullPath: view.fullPath, name: view.name, meta: view.meta, title };
+
+    const normalizedPath = normalizePath(path);
+    const idx = visitedViews.value.findIndex(v => normalizePath(v.path) === normalizedPath);
+    if (idx > -1) {
+        // 已存在：原地更新，保持标签位置。用新数组引用确保 Vue 响应式可靠触发
+        const newViews = [...visitedViews.value];
+        newViews[idx] = tab;
+        visitedViews.value = newViews;
+        return;
+    }
+    // 未找到：新增
+    visitedViews.value = [...visitedViews.value, tab];
 };
 
 export const delView = (view: TagView): Promise<TagView[]> => {
     return new Promise(resolve => {
-        const index = visitedViews.value.findIndex(v => v.path === view.path);
+        const normalizedPath = normalizePath(view.path);
+        const index = visitedViews.value.findIndex(v => normalizePath(v.path) === normalizedPath);
         if (index > -1) {
             visitedViews.value.splice(index, 1);
         }
@@ -61,7 +77,8 @@ export const delView = (view: TagView): Promise<TagView[]> => {
 
 export const delOthersViews = (view: TagView): Promise<TagView[]> => {
     return new Promise(resolve => {
-        visitedViews.value = visitedViews.value.filter(v => v.path === view.path);
+        const normalizedPath = normalizePath(view.path);
+        visitedViews.value = visitedViews.value.filter(v => normalizePath(v.path) === normalizedPath);
         resolve([...visitedViews.value]);
     });
 };

@@ -1,6 +1,6 @@
 <template>
   <div class="tags-view-container">
-    <el-scrollbar wrap-class="tags-view-wrapper">
+    <el-scrollbar ref="scrollbarRef" wrap-class="tags-view-wrapper">
       <router-link
         v-for="tag in visitedViews"
         :key="tag.path"
@@ -11,7 +11,6 @@
       >
         {{ tag.title }}
         <el-icon
-          v-if="visitedViews.length > 1"
           class="el-icon-close"
           @click.prevent.stop="closeSelectedTag(tag)"
         >
@@ -27,22 +26,31 @@
       :style="{ left: contextMenuX + 'px', top: contextMenuY + 'px' }"
       @click.stop
     >
+      <div class="context-menu-item" @click="closeCurrent">
+        <span>关闭该标签页</span>
+      </div>
       <div class="context-menu-item" @click="closeOthers">
         <span>关闭其他标签页</span>
+      </div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item" @click="closeAll">
+        <span>关闭所有标签页</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { nextTick, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Close } from '@element-plus/icons-vue';
-import { visitedViews, delView, delOthersViews, getDeviceNameByChannelId, type TagView } from '@/store/tagsView';
+import type { ElScrollbar } from 'element-plus';
+import { visitedViews, delView, delOthersViews, delAllViews, getDeviceNameByChannelId, normalizePath, type TagView } from '@/store/tagsView';
 import Sortable from 'sortablejs';
 
 const route = useRoute();
 const router = useRouter();
+const scrollbarRef = ref<InstanceType<typeof ElScrollbar>>();
 
 // 右键菜单状态
 const contextMenuVisible = ref(false);
@@ -58,7 +66,36 @@ const closeContextMenu = () => {
 onMounted(() => {
   initSortable();
   document.addEventListener('click', closeContextMenu);
+  // F5 刷新时标签从 localStorage 恢复，DOM 可能需要更多时间渲染
+  setTimeout(scrollToActiveTag, 100);
 });
+
+// 路由切换时自动滚动到激活标签
+watch(() => route.path, () => {
+  scrollToActiveTag();
+});
+
+// 将当前激活的标签滚动到可视区域
+const scrollToActiveTag = () => {
+  nextTick(() => {
+    const activeTag = document.querySelector('.tags-view-item.active') as HTMLElement;
+    if (!activeTag) return;
+    // 优先使用 el-scrollbar 的 setScrollLeft，避免 scrollIntoView 影响外层滚动
+    if (scrollbarRef.value) {
+      const wrapEl = scrollbarRef.value.wrapRef;
+      if (wrapEl) {
+        const tagLeft = activeTag.offsetLeft;
+        const tagWidth = activeTag.offsetWidth;
+        const wrapWidth = wrapEl.clientWidth;
+        const scrollLeft = tagLeft - wrapWidth / 2 + tagWidth / 2;
+        scrollbarRef.value.setScrollLeft(Math.max(0, scrollLeft));
+        return;
+      }
+    }
+    // 降级方案
+    activeTag.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+  });
+};
 
 const initSortable = () => {
   // `el-scrollbar` renders an inner wrapper `el-scrollbar__view` which contains the actual tag items.
@@ -79,12 +116,12 @@ const initSortable = () => {
 };
 
 const isActive = (tag: TagView) => {
-  // 正常路径匹配
-  if (tag.path === route.path) return true;
+  // 规范化路径比较，防止 URI 编码差异
+  if (normalizePath(tag.path) === normalizePath(route.path)) return true;
   // 报告/文件是设备的子页面，高亮对应的设备标签
   if ((route.path === '/reports' || route.path === '/files') && route.query.channel_id) {
     const deviceName = getDeviceNameByChannelId(Number(route.query.channel_id));
-    if (deviceName) return tag.path === `/device/${deviceName}`;
+    if (deviceName) return normalizePath(tag.path) === normalizePath(`/device/${deviceName}`);
   }
   return false;
 };
@@ -128,6 +165,19 @@ const closeOthers = async () => {
       router.push('/');
     }
   }
+};
+
+const closeCurrent = async () => {
+  if (!contextMenuTag.value) return;
+  const tag = contextMenuTag.value;
+  contextMenuVisible.value = false;
+  await closeSelectedTag(tag);
+};
+
+const closeAll = async () => {
+  contextMenuVisible.value = false;
+  await delAllViews();
+  router.push('/');
 };
 </script>
 
@@ -241,6 +291,12 @@ const closeOthers = async () => {
       background-color: var(--color-primary-light-9, #ecf5ff);
       color: var(--color-primary, #409eff);
     }
+  }
+
+  .context-menu-divider {
+    height: 1px;
+    margin: 4px 0;
+    background-color: var(--sidebar-border, #e4e7ed);
   }
 }
 </style>

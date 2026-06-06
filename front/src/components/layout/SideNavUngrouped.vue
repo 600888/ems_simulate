@@ -27,7 +27,7 @@
       >
         <div
           class="ungrouped-item"
-          :class="{ 'is-active': selectedNodeKey === `device-${device.name}` }"
+          :class="{ 'is-active': currentDeviceName === device.name || selectedNodeKey === `device-${device.name}` }"
           @click="handleDeviceClick(device)"
         >
           <!-- IEC61850 展开箭头 -->
@@ -259,6 +259,13 @@ const handleDsChildClick = (dsChild: TreeNode) => {
 watch(() => props.iec61850Map, () => {
   // 数据刷新时重置展开状态
 }, { deep: true });
+
+// 路由刷新时，同步 selectedNodeKey 以正确高亮当前设备
+watch(() => props.currentDeviceName, (name) => {
+  if (name) {
+    selectedNodeKey.value = `device-${name}`;
+  }
+}, { immediate: true });
 </script>
 
 <style lang="scss" scoped>

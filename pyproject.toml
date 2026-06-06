@@ -28,6 +28,7 @@ dev = [
 ]
 build = [
     "pyinstaller==6.18.0",
+    "Pillow>=10.0.0",
 ]
 
 [tool.ruff]
