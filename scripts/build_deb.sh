@@ -3,7 +3,9 @@ set -e
 
 # 配置
 APP_NAME="ems-simulate"
-VERSION="1.0.0"
+# 从 pyproject.toml 读取版本号（单一真相源）
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' "$SCRIPT_DIR/../pyproject.toml")
 BUILD_DIR="build/build_deb"
 OUTPUT_DIR="dist"
 DEB_DIR="${BUILD_DIR}/${APP_NAME}_${VERSION}_amd64"
@@ -11,8 +13,11 @@ DEB_DIR="${BUILD_DIR}/${APP_NAME}_${VERSION}_amd64"
 INSTALL_DIR="${DEB_DIR}/usr/share/${APP_NAME}"
 
 # 切换到项目根目录
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR/.."
+
+# 同步版本号到 tauri.conf.json 和 package.json
+echo ">>> 同步版本号到配置文件..."
+python3 "$SCRIPT_DIR/sync_version.py"
 
 echo ">>> 开始构建 ${APP_NAME} v${VERSION}..."
 

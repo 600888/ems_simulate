@@ -140,30 +140,36 @@ def infer_iec_type_from_address(address: str) -> str:
 
     parts = da_path.split(".")
     top_da = parts[0]
+    leaf = parts[-1]
+
+    # stVal/ctlVal 可能为布尔或整型，取决于 CDC 类型 (SPS/ACT→BOOLEAN, INS/ENC/DPC→INTEGER)
+    # 无法从地址字符串推断，返回 UNKNOWN 让 AutoDetectReader 运行时自动探测类型
+    if leaf in ("stVal", "ctlVal"):
+        return IEC_TYPE_UNKNOWN
 
     # 查完整 DA 路径表
     if da_path in DA_PATH_TO_FRAME_TYPE:
         return DA_PATH_TO_FRAME_TYPE[da_path][1]
 
-    # 查主值 DA 表
-    if top_da in DA_PATTERNS:
-        return DA_PATTERNS[top_da][2]
-
-    # 查附加 DA 表
+    # 查附加 DA 表 (优先于 DA_PATTERNS, 如 origin, t)
     if top_da in EXTRA_DA_INFO:
         return EXTRA_DA_INFO[top_da][2]
 
-    # BDA 子节点推断：如 "t.fraction", "q.validity", "origin.orCat"
+    # BDA 子节点推断：如 "mag.i", "t.fraction", "q.validity", "origin.orCat"
+    # 必须在 DA_PATTERNS 之前检查，否则 "mag" 的粗粒度映射会覆盖 "mag.i" 的正确类型
     if len(parts) >= 2:
-        bda_name = parts[-1]  # 取最后一段作为 BDA 名
+        bda_name = parts[-1]
         if bda_name in BDA_TYPE_MAP:
             return BDA_TYPE_MAP[bda_name]
 
+    # 查主值 DA 表 (粗粒度匹配, 如 "mag"→"mag.f", "stVal"→"stVal")
+    if top_da in DA_PATTERNS:
+        return DA_PATTERNS[top_da][2]
+
     # DA 叶子节点特征推断
-    leaf = parts[-1]
     if leaf in ("f", "db", "sg", "stepSize"):
         return IEC_TYPE_FLOAT
-    if leaf in ("stVal", "ctlVal", "subEna", "blkEna"):
+    if leaf in ("subEna", "blkEna"):
         return IEC_TYPE_BOOLEAN
 
     return IEC_TYPE_UNKNOWN

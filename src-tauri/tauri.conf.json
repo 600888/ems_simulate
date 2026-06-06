@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nickolay/tauri-v2-schemas/main/tauri.conf.schema.json",
   "productName": "EMS Simulate",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "identifier": "com.emssimulate.desktop",
   "build": {
     "frontendDist": "./loading",
@@ -18,7 +18,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["msi"],
+    "targets": [
+      "msi"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/64x64.png",

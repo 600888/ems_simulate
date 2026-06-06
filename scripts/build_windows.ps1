@@ -12,9 +12,11 @@ $ErrorActionPreference = "Stop"
 
 # Configuration
 $APP_NAME = "ems-simulate"
-$VERSION = "1.0.0"
 $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PROJECT_ROOT = Split-Path -Parent $SCRIPT_DIR
+# 从 pyproject.toml 读取版本号（单一真相源）
+$PYPROJECT_PATH = Join-Path $PROJECT_ROOT "pyproject.toml"
+$VERSION = (Get-Content $PYPROJECT_PATH | Select-String 'version\s*=\s*"([^"]+)"').Matches.Groups[1].Value
 $BUILD_DIR = Join-Path $PROJECT_ROOT "build"
 $OUTPUT_DIR = Join-Path $BUILD_DIR "windows"
 $PYINSTALLER_DIR = Join-Path $BUILD_DIR "dist"
@@ -67,6 +69,15 @@ Write-Host "========================================" -ForegroundColor Magenta
 Write-Host "  EMS Simulate Windows Packaging" -ForegroundColor Magenta
 Write-Host "========================================" -ForegroundColor Magenta
 Write-Host ""
+
+# Sync version to tauri.conf.json and package.json
+Write-Step "Syncing version to config files..."
+python "$SCRIPT_DIR\sync_version.py"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Version sync failed"
+    exit 1
+}
+Write-Success "Version synced: $VERSION"
 
 # Change to project root
 Set-Location $PROJECT_ROOT

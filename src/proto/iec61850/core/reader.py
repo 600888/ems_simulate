@@ -58,14 +58,19 @@ class BooleanReader:
             [value, error] = iec61850.IedConnection_readBooleanValue(conn, ref, fc_val)
             if error == iec61850.IED_ERROR_OK:
                 return bool(value)
-            # 布尔读取失败, 尝试整数读取
-            if hasattr(iec61850, "IedConnection_readIntegerValue"):
-                try:
-                    [int_value, int_error] = iec61850.IedConnection_readIntegerValue(conn, ref, fc_val)
-                    if int_error == iec61850.IED_ERROR_OK:
-                        return int(int_value)
-                except Exception:
-                    pass
+            # 布尔读取失败, 尝试通用对象读取提取整数值
+            try:
+                [obj_value, obj_error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
+                if obj_error == iec61850.IED_ERROR_OK:
+                    vtype = iec61850.MmsValue_getType(obj_value)
+                    if vtype in (iec61850.MMS_INTEGER, iec61850.MMS_UNSIGNED):
+                        return int(iec61850.MmsValue_toInt32(obj_value))
+                    elif vtype == iec61850.MMS_FLOAT:
+                        return int(iec61850.MmsValue_toFloat(obj_value))
+                    elif vtype == iec61850.MMS_BOOLEAN:
+                        return bool(iec61850.MmsValue_getBoolean(obj_value))
+            except Exception:
+                pass
             log.debug(f"读取布尔值失败: ref={ref}, error={error}")
         except Exception as e:
             log.debug(f"读取布尔值异常: ref={ref}, error={e}")
@@ -78,37 +83,51 @@ class BooleanReader:
                 if error == iec61850.IED_ERROR_OK:
                     results[addr_str] = bool(value)
                     continue
-                # 布尔读取失败, 尝试整数读取
-                if hasattr(iec61850, "IedConnection_readIntegerValue"):
-                    try:
-                        [int_value, int_error] = iec61850.IedConnection_readIntegerValue(conn, ref, fc_val)
-                        if int_error == iec61850.IED_ERROR_OK:
-                            results[addr_str] = int(int_value)
+                # 布尔读取失败, 尝试通用对象读取提取整数值
+                try:
+                    [obj_value, obj_error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
+                    if obj_error == iec61850.IED_ERROR_OK:
+                        vtype = iec61850.MmsValue_getType(obj_value)
+                        if vtype in (iec61850.MMS_INTEGER, iec61850.MMS_UNSIGNED):
+                            results[addr_str] = int(iec61850.MmsValue_toInt32(obj_value))
                             continue
-                    except Exception:
-                        pass
+                        elif vtype == iec61850.MMS_FLOAT:
+                            results[addr_str] = int(iec61850.MmsValue_toFloat(obj_value))
+                            continue
+                        elif vtype == iec61850.MMS_BOOLEAN:
+                            results[addr_str] = bool(iec61850.MmsValue_getBoolean(obj_value))
+                            continue
+                except Exception:
+                    pass
                 log.debug(f"批量读取布尔值失败: ref={ref}, error={error}")
             except Exception as e:
                 log.debug(f"批量读取布尔值异常: ref={ref}, error={e}")
 
 
 class IntegerReader:
-    """整数值读取策略 (无 readIntegerValue 时回退浮点读取)"""
+    """整数值读取策略 (使用 readObject + MmsValue_toInt32 通用方案)"""
 
     def read(self, conn, ref: str, fc_val) -> Any:
-        if not hasattr(iec61850, "IedConnection_readIntegerValue"):
-            # 降级: 尝试浮点读取 (部分 IED 整数属性以浮点形式返回)
-            try:
-                [value, error] = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
-                if error == iec61850.IED_ERROR_OK:
-                    return int(value)
-            except Exception:
-                pass
-            return None
         try:
-            [value, error] = iec61850.IedConnection_readIntegerValue(conn, ref, fc_val)
+            # pyiec61850-ng 没有 IedConnection_readIntegerValue，
+            # 使用通用 readObject + MmsValue_toInt32 替代
+            [value, error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
             if error == iec61850.IED_ERROR_OK:
-                return int(value)
+                value_type = iec61850.MmsValue_getType(value)
+                if value_type == iec61850.MMS_INTEGER:
+                    return int(iec61850.MmsValue_toInt32(value))
+                elif value_type == iec61850.MMS_UNSIGNED:
+                    return int(iec61850.MmsValue_toUint32(value))
+                elif value_type == iec61850.MMS_FLOAT:
+                    return int(iec61850.MmsValue_toFloat(value))
+                elif value_type == iec61850.MMS_BOOLEAN:
+                    return int(iec61850.MmsValue_getBoolean(value))
+                else:
+                    # 其他类型尝试通用 int() 转换
+                    try:
+                        return int(iec61850.MmsValue_toInt32(value))
+                    except Exception:
+                        return int(iec61850.MmsValue_toFloat(value))
             # 整数读取失败, 尝试浮点回退
             try:
                 [f_value, f_error] = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
@@ -170,14 +189,15 @@ class TimestampReader:
                     return int(value)  # 毫秒级 Unix 时间戳
             except Exception:
                 pass
-        # 降级: 尝试整数 (某些设备的 t.Seconds 实现)
-        if hasattr(iec61850, "IedConnection_readIntegerValue"):
-            try:
-                [value, error] = iec61850.IedConnection_readIntegerValue(conn, ref, fc_val)
-                if error == iec61850.IED_ERROR_OK:
-                    return int(value)
-            except Exception:
-                pass
+        # 降级: 尝试整数 (使用通用 readObject 替代不存在的 readIntegerValue)
+        try:
+            [obj_value, obj_error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
+            if obj_error == iec61850.IED_ERROR_OK:
+                vtype = iec61850.MmsValue_getType(obj_value)
+                if vtype in (iec61850.MMS_INTEGER, iec61850.MMS_UNSIGNED):
+                    return int(iec61850.MmsValue_toInt32(obj_value))
+        except Exception:
+            pass
         # 降级: 尝试浮点
         try:
             [value, error] = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
@@ -215,14 +235,17 @@ class AutoDetectReader:
         except Exception:
             pass
 
-        # 尝试整数
-        if hasattr(iec61850, "IedConnection_readIntegerValue"):
-            try:
-                [value, error] = iec61850.IedConnection_readIntegerValue(conn, ref, fc_val)
-                if error == iec61850.IED_ERROR_OK:
-                    return int(value)
-            except Exception:
-                pass
+        # 尝试整数 (使用通用 readObject 替代不存在的 readIntegerValue)
+        try:
+            [obj_value, obj_error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
+            if obj_error == iec61850.IED_ERROR_OK:
+                vtype = iec61850.MmsValue_getType(obj_value)
+                if vtype in (iec61850.MMS_INTEGER, iec61850.MMS_UNSIGNED):
+                    return int(iec61850.MmsValue_toInt32(obj_value))
+                elif vtype == iec61850.MMS_FLOAT:
+                    return int(iec61850.MmsValue_toFloat(obj_value))
+        except Exception:
+            pass
 
         # 尝试字符串
         if hasattr(iec61850, "IedConnection_readStringValue"):

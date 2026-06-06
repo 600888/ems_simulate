@@ -13,8 +13,9 @@
 set -e
 
 APP_NAME="ems-simulate"
-VERSION="1.0.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 从 pyproject.toml 读取版本号（单一真相源）
+VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' "$SCRIPT_DIR/../pyproject.toml")
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 TAURI_DIR="${PROJECT_ROOT}/src-tauri"
 BUILD_DIR="${PROJECT_ROOT}/build"
@@ -31,6 +32,11 @@ echo -e "${CYAN}========================================${NC}"
 echo ""
 
 cd "$PROJECT_ROOT"
+
+# Sync version to tauri.conf.json and package.json
+echo -e "${CYAN}[STEP] 同步版本号到配置文件...${NC}"
+python3 "$SCRIPT_DIR/sync_version.py"
+echo -e "${GREEN}[SUCCESS] 版本号已同步${NC}"
 
 # Check prerequisites
 echo -e "${CYAN}[STEP] 检查构建环境...${NC}"

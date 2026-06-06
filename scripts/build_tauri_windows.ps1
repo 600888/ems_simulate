@@ -52,6 +52,12 @@ Write-Host ""
 
 Set-Location $PROJECT_ROOT
 
+# Sync version to tauri.conf.json and package.json
+WriteStep "Syncing version to config files..."
+python "$SCRIPT_DIR\sync_version.py"
+if ($LASTEXITCODE -ne 0) { WriteErr "Version sync failed" }
+WriteOk "Version synced from pyproject.toml"
+
 # Kill any running backend process that may lock www/ files
 $beProc = Get-Process -Name "ems_simulate_backend" -ErrorAction SilentlyContinue
 if ($beProc) {

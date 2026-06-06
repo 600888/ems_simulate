@@ -2,10 +2,10 @@
 set -e
 
 APP_NAME="ems-simulate"
-VERSION="1.0.0"
-
 # 切换到脚本所在目录
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# 从 pyproject.toml 读取版本号（单一真相源）
+VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' "$SCRIPT_DIR/../pyproject.toml")
 # 构件输出目录在项目根目录下的 build/dist_deb
 DIST_DEB_DIR="$SCRIPT_DIR/../build/dist_deb"
 
