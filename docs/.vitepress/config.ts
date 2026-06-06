@@ -22,6 +22,7 @@ export default defineConfig({
             { text: '首页', link: '/' },
             { text: '快速开始', link: '/guide/install/getting-started' },
             { text: 'API 参考', link: '/api/overview' },
+            { text: '更新日志', link: '/changelog/' },
             { text: 'GitHub', link: 'https://github.com/600888/ems_simulate' }
         ],
 
@@ -84,6 +85,41 @@ export default defineConfig({
                         { text: '概述', link: '/api/overview' },
                         { text: '设备管理', link: '/api/device' },
                         { text: '测点操作', link: '/api/points' }
+                    ]
+                }
+            ],
+            '/changelog/': [
+                {
+                    text: '更新日志',
+                    collapsed: false,
+                    items: [
+                        { text: '总览', link: '/changelog/' }
+                    ]
+                },
+                {
+                    text: '功能模块变更',
+                    collapsed: false,
+                    items: [
+                        { text: 'Web API 层重构', link: '/changelog/api-refactoring' },
+                        { text: 'GOOSE 功能支持', link: '/changelog/goose-support' },
+                        { text: 'GOOSE 模块插件化重构', link: '/changelog/goose-plugin-refactoring' },
+                        { text: 'IEC104 全 ASDU 类型支持', link: '/changelog/iec104-asdu-type-support' },
+                        { text: 'Ruff 代码质量工具引入', link: '/changelog/ruff-introduction-plan' }
+                    ]
+                },
+                {
+                    text: 'IEC 61850',
+                    collapsed: true,
+                    items: [
+                        { text: '模块化重构计划', link: '/changelog/iec61850/iec61850-refactoring-plan' },
+                        { text: '统一模型架构重构', link: '/changelog/iec61850/iec61850-unified-model-refactoring' },
+                        { text: 'ICD 导出器修复', link: '/changelog/iec61850/iec61850-icd-exporter-fix' },
+                        { text: '模型发现性能优化', link: '/changelog/iec61850/iec61850-discovery-performance-optimization' },
+                        { text: '元数据按需读取', link: '/changelog/iec61850/iec61850-metadata-reader' },
+                        { text: '前端 UI 设计', link: '/changelog/iec61850/iec61850-frontend-ui-design' },
+                        { text: '文件下载服务模块', link: '/changelog/iec61850/iec61850-file-download-module' },
+                        { text: '测点注册表精简优化', link: '/changelog/iec61850/iec61850-point-registry-optimization' },
+                        { text: 'Reports 报告功能', link: '/changelog/iec61850/iec61850-reports-support' }
                     ]
                 }
             ]
