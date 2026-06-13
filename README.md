@@ -1,17 +1,31 @@
 # EMS Simulate - 能源管理系统模拟器
 
-一个用于模拟能源管理系统（EMS）中关键设备行为的软件系统，主要用于测试和开发场景。系统支持多种工业通信协议（Modbus TCP/RTU、IEC 60870-5-104、DL/T 645-2007），可模拟真实工业设备（如PCS储能变流器、BMS电池管理系统、电表等）的数据交互。
+一个用于模拟能源管理系统（EMS）中关键设备行为的软件系统，主要用于测试和开发场景。系统支持多种工业通信协议（Modbus TCP/RTU、IEC 60870-5-104、DL/T 645-2007、IEC 61850），可模拟真实工业设备（如PCS储能变流器、BMS电池管理系统、电表、断路器等）的数据交互。
 
 > 📖 **[查看在线文档 / Online Documentation](https://600888.github.io/ems_simulate/)**
 
+---
+
+## 🏪 Microsoft Store
+
+EMS Simulate 已上架微软应用商店，可直接在 Windows 10/11 上安装使用。
+
+https://apps.microsoft.com/detail/9N3MMM0CH93F?hl=zh-cn&gl=CN&ocid=pdpshare
+![Microsoft Store](resources/img/microsoft.png)
+
+> 点击上方图片链接跳转至 Microsoft Store 下载页面，或 [直接访问商店页面](#)
+
+---
+
 ## 功能特性
 
-- 🔌 **多协议支持**：Modbus TCP/RTU、IEC 60870-5-104、DL/T 645-2007
-- � **设备模拟**：PCS储能变流器、BMS电池管理系统、电表、断路器等
+- 🔌 **多协议支持**：Modbus TCP/RTU、IEC 60870-5-104、DL/T 645-2007、IEC 61850 (MMS/GOOSE/Reports)
+- ⚡ **设备模拟**：PCS储能变流器、BMS电池管理系统、电表、断路器等
 - 🎯 **数据模拟**：支持随机模拟、步进模拟等多种方式
 - ⚙️ **灵活配置**：支持数据库配置和CSV文件导入
 - 📊 **Web界面**：Vue3 + TypeScript 构建的现代化前端界面
-- � **热重载**：支持运行时修改测点属性
+- 🔄 **热重载**：支持运行时修改测点属性
+- 🖥️ **桌面应用**：基于 Tauri 打包为原生 Windows 桌面客户端
 
 ## 技术架构
 
@@ -23,42 +37,140 @@
 |------|------|
 | **前端** | Vue 3, TypeScript, Vite, Element Plus |
 | **后端** | Python 3.11+, FastAPI, SQLAlchemy |
-| **协议** | pymodbus 3.12, c104, dlt645 |
+| **协议** | pymodbus 3.12, c104, dlt645, pyiec61850 |
 | **数据库** | SQLite (默认) / MySQL |
+| **桌面壳** | Tauri v2 + Rust |
+
+---
 
 ## 界面展示
 
-1. 主界面
+### 通用功能
+
+1. **主界面** — 设备分组树 + 设备详情面板
 
    ![](resources/img/1.png)
 
-2. 添加设备分组
+2. **添加设备分组**
 
    ![](resources/img/2.png)
 
-3. 添加子设备组
+3. **添加子设备组**
 
    ![](resources/img/3.png)
 
-4. 新增设备
+4. **新增设备** — 选择设备类型与协议
 
    ![](resources/img/4.png)
 
-5. 展开列表行可以编辑测点值
+5. **展开列表行编辑测点值**
 
    ![](resources/img/5.png)
 
-6. 设置数据模拟方式
+6. **设置数据模拟方式** — 随机 / 步进 / 固定值
 
    ![](resources/img/6.png)
 
-7. 编辑测点信息
+7. **编辑测点信息** — 地址、系数、解析码等
 
    ![](resources/img/7.png)
 
-8. 以DL/T645-2007协议为例，测试读取值是否正确，需要结合乘法系数和加法系数，可以看到数据读取正确
+---
 
-   ![](resources/img/8.png)
+### 协议模块
+
+EMS Simulate 支持 5 种工业通信协议，每种协议均可配置为**服务端**（模拟设备）或**客户端**（读取真实设备），并提供专属的操作界面。
+
+#### Modbus TCP / RTU
+
+工业自动化领域应用最广泛的通信协议，支持 TCP 网络连接和 RTU 串口连接两种模式。
+
+| 属性 | TCP | RTU |
+|------|-----|-----|
+| 默认端口 | 502 | —（串口） |
+| 功能码 | 01~04, 15~16 | 01~04, 15~16 |
+| 解析码 | 28 种（8/16/32/64位、大小端、字交换） | 同 TCP |
+
+
+![Modbus 协议操作](resources/img/modbus-operation.png)
+
+> 支持线圈、离散输入、保持寄存器、输入寄存器四类数据区，内置完整解析码系统适配不同厂商设备。
+
+#### 报文查看
+
+![Modbus 报文查看](resources/img/modbus-message.png)
+
+---
+
+#### IEC 60870-5-104
+
+电力系统远动通信标准协议，广泛用于变电站与调度中心之间的数据传输。
+
+| 属性 | 说明 |
+|------|------|
+| 默认端口 | 2404 |
+| 帧类型 | YC(遥测)、YX(遥信)、YK(遥控)、YT(遥调) |
+| 品质描述 | IV/NT/SB/BL/OV 等标准品质位 |
+| 传输原因 | 周期、自发、总召等 |
+
+![IEC104 协议操作](resources/img/iec104-operation.png)
+
+> 完整实现四遥（YC/YX/YK/YT）体系，支持总召、时钟同步、品质描述符等高级特性。
+
+#### 报文查看
+
+![IEC104 协议报文](resources/img/iec104-message.png)
+
+---
+
+#### DL/T 645-2007
+
+中国电力行业多功能电能表通信协议标准，用于电表数据采集。
+
+| 属性 | 说明 |
+|------|------|
+| 默认端口 | 8899 |
+| 数据标识 | D13~D133 等多个数据项 |
+| 系数转换 | 乘法系数 + 加法系数 → 真实值 |
+
+![DLT645 操作](resources/img/dlt645-operation.png)
+
+**DL/T645 协议测试** — 验证读取值与系数转换的正确性
+
+![](resources/img/8.png)
+
+> 支持电表数据项标识解析，自动应用乘法/加法系数转换真实值，提供客户端读取验证。
+
+#### 报文查看
+
+![DLT645 报文查看](resources/img/dlt645-message.png)
+
+---
+
+#### IEC 61850 (MMS / GOOSE / Reports / Files)
+
+新一代智能变电站通信标准，提供完整的 MMS 服务端/客户端、GOOSE 发布/订阅、报告控制和文件浏览功能。
+
+| 子模块 | 服务端 | 客户端 | 说明 |
+|--------|:------:|:------:|------|
+| **MMS** | ✅ | ✅ | 制造报文规范，数据读写与浏览 |
+| **GOOSE** | ✅ | ✅ | 通用面向对象变电站事件，发布/订阅/抓包 |
+| **Reports** | ✅ | ✅ | BRCB/URCB 报告控制块 |
+| **Files** | — | ✅ | 文件目录浏览与传输 |
+| **SCL** | ✅ | — | ICD/CID/SCD 文件解析与导入 |
+| **SV** | — | — | 采样值发布 |
+
+#### MMS
+![IEC61850 MMS 操作](resources/img/datamodel.png)
+
+#### Reports
+
+![IEC61850 MMS 操作](resources/img/reports.png)
+
+#### Files
+![IEC61850 SCL 导入](resources/img/files.png)
+
+> 支持 SCL 文件导入自动建模、GOOSE 报文实时抓包与解析、报告控制块配置等完整 IEC 61850 功能链。
 
 ---
 
@@ -85,6 +197,21 @@ npm run dev
 python start_back_end.py
 ```
 
+### Tauri 桌面应用构建
+
+```bash
+# 安装 Tauri CLI
+npm install -g @tauri-apps/cli
+
+# 构建 Windows 安装包
+cd src-tauri
+cargo tauri build
+```
+
+构建产物：
+- `.msi` — Windows 安装包（用于微软商店分发）
+- `.exe` — 独立可执行文件
+- `.appx` / `.msix` — 微软商店打包格式
 
 ---
 
@@ -116,6 +243,10 @@ python start_back_end.py
 | Modbus RTU | ✅ | ✅ | 串口 |
 | IEC 60870-5-104 | ✅ | ✅ | 2404 |
 | DLT/T 645-2007 | ✅ | ✅ | 8899 |
+| IEC 61850 MMS | ✅ | ✅ | 102 |
+| IEC 61850 GOOSE | ✅ | ✅ | — (VLAN) |
+| IEC 61850 Reports | ✅ | ✅ | — |
+| IEC 61850 Files | — | ✅ | — |
 
 ---
 
@@ -239,10 +370,11 @@ ems_simulate/
 │   │   │   ├── point_manager.py # 测点管理
 │   │   │   └── data_exporter.py # 数据导出
 │   │   ├── protocol/          # 协议处理器
-│   │   │   ├── base_handler.py    # 基类
-│   │   │   ├── modbus_handler.py  # Modbus
-│   │   │   ├── iec104_handler.py  # IEC104
-│   │   │   └── dlt645_handler.py  # DLT645
+│   │   │   ├── base_handler.py      # 基类
+│   │   │   ├── modbus_handler.py    # Modbus
+│   │   │   ├── iec104_handler.py    # IEC104
+│   │   │   ├── dlt645_handler.py    # DLT645
+│   │   │   └── iec61850_handler.py  # IEC61850
 │   │   ├── simulator/         # 模拟控制
 │   │   ├── factory/           # 设备工厂
 │   │   └── types/             # 设备类型
@@ -252,16 +384,24 @@ ems_simulate/
 │   ├── proto/                  # 底层协议实现
 │   │   ├── pyModbus/          # Modbus 服务端/客户端
 │   │   ├── iec104/            # IEC104 服务端/客户端
-│   │   └── dlt645/            # DLT645 协议库
+│   │   ├── dlt645/            # DLT645 协议库
+│   │   └── iec61850/          # IEC61850 MMS/GOOSE/Reports/Files/SV
 │   └── web/                    # Web API
 │       ├── device/            # 设备控制接口
-│       └── data/              # 数据管理接口
+│       ├── channel/           # 通道与协议管理 (含 IEC61850/GOOSE/Reports/Files)
+│       ├── point/             # 测点与映射接口
+│       └── scl/               # SCL/ICD 文件管理
 ├── front/                      # 前端源码 (Vue3)
 │   ├── src/
 │   │   ├── components/        # 组件
 │   │   ├── views/             # 页面
 │   │   └── api/               # API封装
 │   └── package.json
+├── src-tauri/                  # Tauri 桌面壳 (Rust)
+│   ├── src/
+│   │   ├── lib.rs             # Tauri Builder
+│   │   └── backend.rs         # 后端进程管理
+│   └── tauri.conf.json
 ├── data/                       # SQLite 数据库
 ├── start_back_end.py          # 后端入口
 └── requirements.txt           # Python依赖

@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 780">
+  <defs>
+    <filter id="sh" x="-2%" y="-4%" width="104%" height="112%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <filter id="sh-sm" x="-2%" y="-4%" width="104%" height="112%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.06"/>
+    </filter>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#2563eb"/></linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient>
+    <linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#0891b2"/></linearGradient>
+    <linearGradient id="g4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f97316"/><stop offset="100%" stop-color="#ea580c"/></linearGradient>
+    <linearGradient id="g5" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#7c3aed"/></linearGradient>
+    <linearGradient id="g6" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#64748b"/><stop offset="100%" stop-color="#475569"/></linearGradient>
+  </defs>
+
+  <rect width="1000" height="780" fill="#f8fafc"/>
+
+  <!-- Title -->
+  <text x="500" y="38" text-anchor="middle" font-family="system-ui,sans-serif" font-size="22" font-weight="700" fill="#1e293b">EMS Simulate — System Architecture</text>
+
+  <!-- ==================== L1: Tauri ==================== -->
+  <rect x="160" y="68" width="680" height="62" rx="10" fill="url(#g1)" filter="url(#sh)"/>
+  <text x="500" y="93" text-anchor="middle" font-family="system-ui,sans-serif" font-size="16" font-weight="700" fill="#fff">Tauri Desktop App</text>
+  <text x="500" y="114" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#bfdbfe">Cross-platform Desktop Client · Windows / Mac / Linux</text>
+
+  <!-- arrow 1→2: line + inline triangle -->
+  <line x1="500" y1="136" x2="500" y2="150" stroke="#94a3b8" stroke-width="1.5"/>
+  <polygon points="494,150 506,150 500,158" fill="#94a3b8"/>
+
+  <!-- ==================== L2: Frontend ==================== -->
+  <rect x="210" y="160" width="580" height="58" rx="10" fill="url(#g2)" filter="url(#sh)"/>
+  <text x="500" y="184" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="700" fill="#fff">Web Frontend</text>
+  <text x="500" y="203" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#c7d2fe">Vue3 · Element Plus · Vite · Tauri WebView</text>
+
+  <line x1="500" y1="224" x2="500" y2="238" stroke="#94a3b8" stroke-width="1.5"/>
+  <polygon points="494,238 506,238 500,246" fill="#94a3b8"/>
+
+  <!-- ==================== L3: Backend ==================== -->
+  <rect x="120" y="248" width="760" height="92" rx="10" fill="url(#g3)" filter="url(#sh)"/>
+  <text x="500" y="274" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="700" fill="#fff">FastAPI Backend</text>
+  <text x="500" y="294" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#a5f3fc">Python 3.11 · Uvicorn ASGI · REST + WebSocket</text>
+
+  <rect x="140" y="306" width="233" height="24" rx="5" fill="#fff" fill-opacity="0.13" filter="url(#sh-sm)"/>
+  <text x="256" y="323" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#ecfeff">DeviceController</text>
+  <rect x="383" y="306" width="233" height="24" rx="5" fill="#fff" fill-opacity="0.13" filter="url(#sh-sm)"/>
+  <text x="500" y="323" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#ecfeff">ChannelService</text>
+  <rect x="627" y="306" width="233" height="24" rx="5" fill="#fff" fill-opacity="0.13" filter="url(#sh-sm)"/>
+  <text x="743" y="323" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#ecfeff">PointService (YC/YX/YK/YT)</text>
+
+  <line x1="500" y1="346" x2="500" y2="360" stroke="#94a3b8" stroke-width="1.5"/>
+  <polygon points="494,360 506,360 500,368" fill="#94a3b8"/>
+
+  <!-- ==================== L4: Device ==================== -->
+  <rect x="120" y="370" width="760" height="82" rx="10" fill="url(#g4)" filter="url(#sh)"/>
+  <text x="500" y="395" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="700" fill="#fff">Device Core Layer</text>
+  <text x="500" y="413" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#fed7aa">Plugin Architecture · Abstract Base Class</text>
+
+  <rect x="140" y="422" width="233" height="22" rx="5" fill="#fff" fill-opacity="0.10" filter="url(#sh-sm)"/>
+  <text x="256" y="438" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#fff7ed">PointManager</text>
+  <rect x="383" y="422" width="233" height="22" rx="5" fill="#fff" fill-opacity="0.10" filter="url(#sh-sm)"/>
+  <text x="500" y="438" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#fff7ed">ProtocolHandler</text>
+  <rect x="627" y="422" width="233" height="22" rx="5" fill="#fff" fill-opacity="0.10" filter="url(#sh-sm)"/>
+  <text x="743" y="438" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#fff7ed">SimulationController</text>
+
+  <line x1="500" y1="458" x2="500" y2="472" stroke="#94a3b8" stroke-width="1.5"/>
+  <polygon points="494,472 506,472 500,480" fill="#94a3b8"/>
+
+  <!-- ==================== L5: Protocol ==================== -->
+  <rect x="30" y="482" width="940" height="100" rx="10" fill="url(#g5)" filter="url(#sh)"/>
+  <text x="500" y="508" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="700" fill="#fff">Protocol Layer</text>
+  <text x="500" y="527" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#ddd6fe">Multi-protocol Support · Modbus · IEC104 · IEC61850 · DLT645</text>
+
+  <rect x="46" y="538" width="218" height="34" rx="5" fill="#fff" fill-opacity="0.10" filter="url(#sh-sm)"/>
+  <text x="155" y="559" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#ede9fe">Modbus</text>
+  <text x="155" y="568" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" fill="#c4b5fd">Server / Client</text>
+
+  <rect x="274" y="538" width="218" height="34" rx="5" fill="#fff" fill-opacity="0.10" filter="url(#sh-sm)"/>
+  <text x="383" y="559" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#ede9fe">IEC104</text>
+  <text x="383" y="568" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" fill="#c4b5fd">Server / Client</text>
+
+  <rect x="502" y="538" width="218" height="34" rx="5" fill="#fff" fill-opacity="0.10" filter="url(#sh-sm)"/>
+  <text x="611" y="559" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#ede9fe">IEC61850</text>
+  <text x="611" y="568" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" fill="#c4b5fd">Server / Client + GOOSE</text>
+
+  <rect x="730" y="538" width="218" height="34" rx="5" fill="#fff" fill-opacity="0.10" filter="url(#sh-sm)"/>
+  <text x="839" y="559" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#ede9fe">DLT645</text>
+  <text x="839" y="568" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" fill="#c4b5fd">Server / Client</text>
+
+  <line x1="500" y1="588" x2="500" y2="602" stroke="#94a3b8" stroke-width="1.5"/>
+  <polygon points="494,602 506,602 500,610" fill="#94a3b8"/>
+
+  <!-- ==================== L6: Storage ==================== -->
+  <rect x="250" y="612" width="500" height="52" rx="10" fill="url(#g6)" filter="url(#sh)"/>
+  <text x="500" y="636" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="700" fill="#fff">Data Storage (SQLite)</text>
+  <text x="500" y="654" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#cbd5e1">Device Config · Point Mapping · Log Data</text>
+
+  <!-- Legend -->
+  <rect x="40" y="690" width="920" height="48" rx="8" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="80" y="712" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#64748b">Legend</text>
+
+  <rect x="170" y="702" width="14" height="14" rx="3" fill="url(#g1)"/><text x="190" y="714" font-family="system-ui,sans-serif" font-size="12" fill="#475569">Tauri</text>
+  <rect x="270" y="702" width="14" height="14" rx="3" fill="url(#g2)"/><text x="290" y="714" font-family="system-ui,sans-serif" font-size="12" fill="#475569">Frontend</text>
+  <rect x="380" y="702" width="14" height="14" rx="3" fill="url(#g3)"/><text x="400" y="714" font-family="system-ui,sans-serif" font-size="12" fill="#475569">Backend</text>
+  <rect x="490" y="702" width="14" height="14" rx="3" fill="url(#g4)"/><text x="510" y="714" font-family="system-ui,sans-serif" font-size="12" fill="#475569">Device Layer</text>
+  <rect x="630" y="702" width="14" height="14" rx="3" fill="url(#g5)"/><text x="650" y="714" font-family="system-ui,sans-serif" font-size="12" fill="#475569">Protocol Layer</text>
+  <rect x="770" y="702" width="14" height="14" rx="3" fill="url(#g6)"/><text x="790" y="714" font-family="system-ui,sans-serif" font-size="12" fill="#475569">Storage</text>
+</svg>
