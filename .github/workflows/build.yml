@@ -47,21 +47,11 @@ jobs:
         working-directory: front
         run: npm ci
 
-      - name: Install MSIX packaging tool (winapp CLI)
-        shell: pwsh
-        run: |
-          $w = Get-Command winapp -ErrorAction SilentlyContinue
-          if (-not $w) {
-            winget install Microsoft.WinAppCLI --accept-package-agreements --accept-source-agreements
-          } else {
-            Write-Host "winapp already installed: $($w.Source)"
-          }
-
-      - name: Build Windows application (Tauri + Sidecar) with MSIX
+      - name: Build Windows application (Tauri + Sidecar)
         shell: pwsh
         run: |
           .venv\Scripts\Activate.ps1
-          .\scripts\build_tauri_windows.ps1 -Msix
+          .\scripts\build_tauri_windows.ps1
 
       - name: Upload build artifacts (workflow artifact)
         uses: actions/upload-artifact@v4
@@ -70,7 +60,6 @@ jobs:
           path: |
             src-tauri/target/release/ems-simulate.exe
             src-tauri/target/release/bundle/
-            *.msix
           compression-level: 0
 
       - name: Upload to GitHub Release
@@ -83,6 +72,5 @@ jobs:
           files: |
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
-            *.msix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

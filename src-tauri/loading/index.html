@@ -45,25 +45,97 @@
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="container" id="main-container">
     <div class="logo">⚡</div>
     <div class="title">EMS Simulate</div>
     <div class="subtitle">工业协议仿真平台</div>
-    <div class="spinner"></div>
-    <div class="status">EMS模拟设备启动中<span class="dots"></span></div>
+    <div class="spinner" id="spinner"></div>
+    <div class="status" id="status-text">EMS模拟设备启动中<span class="dots"></span></div>
   </div>
   <script>
-    // 监听 Tauri 关闭请求事件（loading 阶段也需要关闭动画）
-    if (window.__TAURI_INTERNALS__) {
-      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-        const appWindow = getCurrentWindow();
-        appWindow.listen('close-requested', () => {
-          const overlay = document.createElement('div');
+    var BACKEND_URL = 'http://127.0.0.1:8991';
+    var POLL_INTERVAL = 500;
+    var STARTUP_TIMEOUT = 10 * 1000; // 10 秒超时
+
+    function showError(msg) {
+      var statusEl = document.getElementById('status-text');
+      if (statusEl) {
+        statusEl.innerHTML = '<span style="color:#e57373">' + msg + '</span>';
+      }
+      var spinner = document.getElementById('spinner');
+      if (spinner) { spinner.style.display = 'none'; }
+    }
+
+    function showStatus(msg) {
+      var statusEl = document.getElementById('status-text');
+      if (statusEl) { statusEl.textContent = msg; }
+    }
+
+    // 非 Tauri 环境（浏览器直接打开），直接跳转
+    if (!window.__TAURI_INTERNALS__) {
+      window.location.href = BACKEND_URL;
+    } else {
+      // ── Tauri 环境 ──
+
+      // 使用 window.__TAURI__ 全局 API（withGlobalTauri: true），
+      // 避免动态 import('@tauri-apps/api/...') 在裸 HTML 中加载失败导致无限转圈
+      var isPolling = false;
+      var pollStart = Date.now();
+      var pollCount = 0;
+
+      // 关闭事件监听
+      try {
+        var appWindow = window.__TAURI__.window.getCurrentWindow();
+        appWindow.listen('close-requested', function () {
+          var overlay = document.createElement('div');
           overlay.className = 'closing-overlay';
           overlay.innerHTML = '<div style="text-align:center"><div class="closing-spinner"></div><div class="closing-text">正在关闭...</div></div>';
           document.body.appendChild(overlay);
         });
-      }).catch(() => {});
+      } catch (e) {
+        console.warn('[loading] close listener failed:', e);
+      }
+
+      // 轮询后端就绪状态
+      function poll() {
+        if (isPolling) return;
+        isPolling = true;
+
+        pollCount++;
+        var elapsed = Date.now() - pollStart;
+
+        // 超时处理：给用户明确提示
+        if (elapsed > STARTUP_TIMEOUT) {
+          showError('启动超时，请重启应用或检查后台服务');
+          isPolling = false;
+          return;
+        }
+
+        try {
+          window.__TAURI__.core.invoke('is_backend_ready').then(function (ready) {
+            isPolling = false;
+            if (ready) {
+              window.location.href = BACKEND_URL;
+            } else {
+              if (pollCount === 1) {
+                showStatus('EMS模拟设备启动中...');
+              }
+              setTimeout(poll, POLL_INTERVAL);
+            }
+          }).catch(function (err) {
+            isPolling = false;
+            console.warn('[loading] invoke is_backend_ready failed:', err);
+            showStatus('正在连接服务 (' + Math.floor(elapsed / 1000) + 's)...');
+            setTimeout(poll, POLL_INTERVAL);
+          });
+        } catch (e) {
+          isPolling = false;
+          console.warn('[loading] invoke call failed:', e);
+          setTimeout(poll, POLL_INTERVAL);
+        }
+      }
+
+      poll();
     }
   </script>
 </body>
