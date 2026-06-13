@@ -3,7 +3,7 @@
 > 版本: 1.0  
 > 日期: 2026-05-31  
 > 状态: 规划中  
-> 关联: [iec61850-refactoring-plan.md](./iec61850/iec61850-refactoring-plan.md) Phase 3.3
+> 关联: [iec61850-refactoring-plan.md](./02-iec61850-refactoring-plan.md) Phase 3.3
 
 ---
 

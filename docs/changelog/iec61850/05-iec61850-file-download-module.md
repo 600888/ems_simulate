@@ -3,13 +3,13 @@
 > 版本: 1.0  
 > 日期: 2026-05-31  
 > 状态: 规划中  
-> 关联文档: [iec61850-scl-file-module.md](./iec61850-scl-file-module.md)、[iec61850-refactoring-plan.md](./iec61850-refactoring-plan.md)
+> 关联文档: [iec61850-scl-file-module.md](./04-iec61850-scl-file-module.md)、[iec61850-refactoring-plan.md](./02-iec61850-refactoring-plan.md)
 
 ---
 
 ## 1. 概述
 
-**重要说明**：本文档描述的"文件下载服务"与 [SCL 文件模块](./iec61850-scl-file-module.md) 是**完全不同**的功能：
+**重要说明**：本文档描述的"文件下载服务"与 [SCL 文件模块](./04-iec61850-scl-file-module.md) 是**完全不同**的功能：
 
 | 维度 | 文件下载服务 (本文档) | SCL 文件模块 |
 |------|----------------------|-------------|
@@ -1131,5 +1131,5 @@ if file_list:
 | IEC 61850-8-1 §11 | MMS 映射 — 文件服务映射到 MMS |
 | [libiec61850 File Service API](https://support.mz-automation.de/doc/libiec61850/c/latest/group__IEC61850__CLIENT__FILE__SERVICE.html) | C 层文件服务函数参考 |
 | [MMS Server and File Services](https://deepwiki.com/mz-automation/libiec61850/2.2-mms-server-and-file-services) | 文件服务架构详解 |
-| [iec61850-scl-file-module.md](./iec61850-scl-file-module.md) | SCL 文件模块计划 (注意区分) |
-| [iec61850-refactoring-plan.md](./iec61850-refactoring-plan.md) | IEC 61850 模块化重构计划 |
+| [iec61850-scl-file-module.md](./04-iec61850-scl-file-module.md) | SCL 文件模块计划 (注意区分) |
+| [iec61850-refactoring-plan.md](./02-iec61850-refactoring-plan.md) | IEC 61850 模块化重构计划 |

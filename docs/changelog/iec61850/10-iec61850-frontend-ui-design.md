@@ -2,7 +2,7 @@
 
 > 版本: 1.0  
 > 日期: 2026-06-02  
-> 关联: [iec61850-unified-model-refactoring.md](./iec61850-unified-model-refactoring.md)  
+> 关联: [iec61850-unified-model-refactoring.md](./09-iec61850-unified-model-refactoring.md)  
 > 状态: 初稿
 
 ---

@@ -3,7 +3,7 @@ name: Deploy VitePress Documentation
 on:
   # 当主分支有推送时触发
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   # 允许手动触发
   workflow_dispatch:
 
@@ -11,13 +11,13 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 需要写入内容权限 (用于推送到 gh-pages 分支)
+      contents: write # 需要写入内容权限 (用于推送到 gh-pages 分支)
     steps:
       # 步骤 1: 检出代码
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # 确保获取完整的提交历史
+          fetch-depth: 0 # 确保获取完整的提交历史
 
       # 步骤 2: 设置 Node.js 环境
       - name: Setup Node.js
