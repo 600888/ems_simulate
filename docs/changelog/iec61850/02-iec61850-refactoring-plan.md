@@ -4,7 +4,6 @@
 > 日期: 2026-05-30  
 > 状态: 规划中
 
----
 
 ## 1. 现状分析
 
@@ -48,7 +47,6 @@ src/proto/iec61850/
 | `_infer_frame_type_from_do()` 逻辑 | client.py | 在 server 的 add_point 中也有类似推断 |
 | IEC_TYPE_* 常量 | client.py:70-75 | 应在 defs 中定义 |
 
----
 
 ## 2. 重构目标
 
@@ -59,7 +57,6 @@ src/proto/iec61850/
 5. **增强鲁棒性**: 统一错误处理、连接重试、类型安全
 6. **可测试性**: 每个模块可独立单元测试
 
----
 
 ## 3. 目标架构
 
@@ -164,7 +161,6 @@ src/proto/iec61850/
                     └───────────┘
 ```
 
----
 
 ## 4. 详细设计
 
@@ -579,7 +575,6 @@ class IEC61850Client:
         ...
 ```
 
----
 
 ## 5. 分阶段实施计划
 
@@ -673,7 +668,6 @@ class IEC61850Client:
 | 6.4 集成测试 | P1 | Client/Server 端到端测试 |
 | 6.5 更新 API 文档 | P2 | 模块接口文档 |
 
----
 
 ## 6. 设计模式清单
 
@@ -689,7 +683,6 @@ class IEC61850Client:
 | **Lazy Initialization** | plugins, model_exporter | 按需创建，减少启动开销 |
 | **Context Manager** | core/connection.py | `with` 语句管理连接生命周期 |
 
----
 
 ## 7. 向后兼容策略
 
@@ -711,7 +704,6 @@ IEC_TYPE_TIMESTAMP = IecType.TIMESTAMP
 IEC_TYPE_UNKNOWN = IecType.UNKNOWN
 ```
 
----
 
 ## 8. 风险与缓解
 
@@ -723,7 +715,6 @@ IEC_TYPE_UNKNOWN = IecType.UNKNOWN
 | 迁移周期过长 | 中 | 中 | 分阶段增量交付，每阶段独立可用 |
 | 循环导入 | 中 | 低 | 严格依赖方向: defs ← core ← plugins ← facade |
 
----
 
 ## 9. 验收标准
 

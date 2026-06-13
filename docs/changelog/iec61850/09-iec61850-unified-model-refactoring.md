@@ -8,7 +8,6 @@
 > - ~~iec61850-model-export-optimization.md (v1.0)~~  
 > 状态: 规划中
 
----
 
 ## 1. 核心问题：模型发现三重分裂
 
@@ -70,7 +69,6 @@ ICD 导入需要的: 测点/GOOSE 配置   ──┘
 
 **核心解法**: 引入 `IedModel` 作为统一的在线模型表示，一次发现、多处消费。
 
----
 
 ## 2. 目标架构
 
@@ -106,7 +104,6 @@ ICD 导入需要的: 测点/GOOSE 配置   ──┘
 - **最低版本**: Python 3.10+（`match` 语句、`TypeAlias`、`ParamSpec`）
 - **推荐版本**: Python 3.11+（`ExceptionGroup`、`TaskGroup`、性能优化）
 
----
 
 ## 3. 统一在线模型设计
 
@@ -977,7 +974,6 @@ EXPORTERS: dict[str, type[ModelExporter]] = {
 }
 ```
 
----
 
 ## 4. SCL 离线解析模块设计
 
@@ -1047,7 +1043,6 @@ EXPORTERS: dict[str, type[ModelExporter]] = {
 | `service/import_service.py` | `SclImportService` | Facade (解析→校验→转换→持久化) |
 | `service/diff_service.py` | `SclDiffService` | 文件对比 |
 
----
 
 ## 5. 集成方案：统一模型发现 + SCL 离线解析
 
@@ -1137,7 +1132,6 @@ class ModelExporterPlugin:
         return self._client.model
 ```
 
----
 
 ## 6. 导出优化设计
 
@@ -1276,7 +1270,6 @@ export async function exportModel(deviceName: string, exportType: string): Promi
 }
 ```
 
----
 
 ## 7. 完整模块依赖关系
 
@@ -1350,7 +1343,6 @@ src/proto/iec61850/
 - `plugins/scl/` → 不依赖 `pyiec61850`、FastAPI、SQLAlchemy
 - `iec61850_client.py` → 依赖所有子模块
 
----
 
 ## 8. 分阶段实施计划
 
@@ -1459,7 +1451,6 @@ src/proto/iec61850/
 | 8.3 | 实现 `SclServerModelBuilder` | SclDocument → IedModel |
 | 8.4 | 增强 `FilesPlugin` | 文件列表可用 |
 
----
 
 ## 9. 迁移兼容性
 
@@ -1497,7 +1488,6 @@ src/proto/iec61850/
   └─────────────────────┘    └─────────────────────────┘
 ```
 
----
 
 ## 10. 设计模式总览
 
@@ -1517,7 +1507,6 @@ src/proto/iec61850/
 | **Background Task** | 临时文件清理 | 资源延迟释放 |
 | **Bridge** | `build_registry_from_model()` | IedModel → PointRegistry 桥接 |
 
----
 
 ## 11. 风险与缓解
 
@@ -1530,7 +1519,6 @@ src/proto/iec61850/
 | 大型 SCL 文件性能 | 中 | 中 | `slots=True` 减少内存；后续引入 `iterparse` 流式解析 |
 | 前端异步轮询开销 | 低 | 低 | WebSocket 推送或 SSE 替代 |
 
----
 
 ## 12. 验收标准
 

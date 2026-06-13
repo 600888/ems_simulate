@@ -9,7 +9,6 @@
 > 状态: 已废弃  
 > 关联文档: [iec61850-unified-model-refactoring.md](./09-iec61850-unified-model-refactoring.md)
 
----
 
 ## 1. 概述
 
@@ -59,7 +58,6 @@ IEC 61850 SCL (Substation Configuration Language) 文件是变电站自动化系
 5. **智能导入** — 从 SCL 模型一键生成测点、GOOSE 配置、Report 配置、服务端模型
 6. **前端 UI** — SCL 文件浏览器，支持树形结构可视化、原始 XML 查看、导入向导
 
----
 
 ## 2. 总体架构
 
@@ -178,7 +176,6 @@ IEC 61850 SCL (Substation Configuration Language) 文件是变电站自动化系
 └──────────────────┘
 ```
 
----
 
 ## 3. 详细设计
 
@@ -1456,7 +1453,6 @@ export async function getSclReportConfig(fileName: string): Promise<ReportConfig
 export async function diffSclFiles(fileA: string, fileB: string): Promise<SclDiffResult>
 ```
 
----
 
 ## 4. 分阶段实施计划
 
@@ -1578,7 +1574,6 @@ export async function diffSclFiles(fileA: string, fileB: string): Promise<SclDif
 - [ ] server_model_builder 可从 SclDocument 构建 IedModel 实例
 - [ ] 大型 SCL 文件（5MB+）解析时间 < 3s
 
----
 
 ## 5. 与现有模块的关系
 
@@ -1665,7 +1660,6 @@ export async function diffSclFiles(fileA: string, fileB: string): Promise<SclDif
 | `front/src/i18n/locales/zh-CN.ts` | Phase 5: SCL 相关中文翻译 |
 | `front/src/i18n/locales/en-US.ts` | Phase 5: SCL 相关英文翻译 |
 
----
 
 ## 6. 设计模式
 
@@ -1679,7 +1673,6 @@ export async function diffSclFiles(fileA: string, fileB: string): Promise<SclDif
 | **Null Object** | 校验结果 | ValidationResult 无错误时仍返回有效对象 |
 | **Template Method** | `SclTransformer` 基类 | 定义转换流程骨架，子类实现具体转换 |
 
----
 
 ## 7. 向后兼容策略
 
@@ -1689,7 +1682,6 @@ export async function diffSclFiles(fileA: string, fileB: string): Promise<SclDif
 4. **`data/61850icd/` 目录结构不变** — 文件管理器复用现有存储路径
 5. **新增 API 独立前缀** — 所有新 API 在 `/api/scl/` 前缀下，不影响现有端点
 
----
 
 ## 8. 风险与缓解
 
@@ -1702,7 +1694,6 @@ export async function diffSclFiles(fileA: string, fileB: string): Promise<SclDif
 | **前端 XML 查看器性能** | 低 | 中 | 使用虚拟滚动，限制 10000 行以上文件的高亮渲染 |
 | **SCD 合并复杂度** | 高 | 中 | Phase 6 仅实现基础合并，复杂场景后续迭代 |
 
----
 
 ## 9. 验收标准
 
@@ -1738,7 +1729,6 @@ export async function diffSclFiles(fileA: string, fileB: string): Promise<SclDif
 - [ ] 新增模块与现有插件架构 (defs/core/plugins) 无冲突
 - [ ] 大型 SCL 文件 (5MB+) 解析时间 < 3s
 
----
 
 ## 10. 参考文档
 

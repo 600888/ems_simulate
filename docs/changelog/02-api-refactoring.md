@@ -6,7 +6,6 @@
 
 本次修改对后端 Web API 层进行了全面重构，将原来分散的控制器文件重新组织为统一的 `src/web/api/` 模块化结构，同时将所有 API 路径从扁平的 `/xxx` 风格迁移到 RESTful 的 `/api/xxx` 风格，子路径命名从 `snake_case` 改为 `kebab-case`。前端所有 API 调用路径同步更新。
 
----
 
 ## 变更动机
 
@@ -15,7 +14,6 @@
 3. **命名一致性**：将 `snake_case` 路径（如 `import_points`）改为 `kebab-case`（如 `import-points`）
 4. **Schema 分离**：将 Pydantic 模型按业务域拆分到独立文件
 
----
 
 ## 目录结构变更
 
@@ -79,7 +77,6 @@ src/web/
         └── tree.py                     (树结构模型)
 ```
 
----
 
 ## API 路径映射
 
@@ -169,7 +166,6 @@ src/web/
 
 > 设备组路由为本次重构中新增的模块，旧版为 `/device_group` 前缀，现已迁移至 `/api/device-groups`。
 
----
 
 ## 修改文件清单
 
@@ -237,7 +233,6 @@ src/web/
 | `front/src/api/pointMappingApi.ts` | `BASE_URL` 从 `/point_mapping` 改为 `/api/point-mappings` |
 | `front/src/api/pointTreeApi.ts` | `BASE_URL` 从 `/point_tree` 改为 `/api/point-tree` |
 
----
 
 ## 破坏性变更
 

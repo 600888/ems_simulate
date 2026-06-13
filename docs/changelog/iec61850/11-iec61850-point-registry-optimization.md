@@ -4,7 +4,6 @@
 > 日期: 2026-06-03  
 > 状态: 规划中
 
----
 
 ## 1. 问题
 
@@ -50,7 +49,6 @@
 | `_fill_du_names` | 对每个主值 DO 的额外遍历（影响较小） |
 | 实际使用 | 99% 的 q/t 子测点永远不会被前端读取 |
 
----
 
 ## 2. 优化方案
 
@@ -118,7 +116,6 @@ for da in do.das:
 | `registry_bridge.py:build_registry_from_model` | 只遍历 `model.point_refs`，点数减少后自然变快 |
 | `iec61850_client.py:_fill_du_names` | 仅遍历主值测点 DO，q/t 跳过不影响 |
 
----
 
 ## 3. 效果预估
 
@@ -133,7 +130,6 @@ for da in do.das:
 | 主值读取 | 正常 ✅ | 正常 ✅ | 不变 |
 | q/t 读取 | 部分可用 ⚠️ | 需走独立路径 | 降级为按需 |
 
----
 
 ## 4. q/t 独立读取方案（可选后续）
 
@@ -156,7 +152,6 @@ def read_metadata(connection, do_ref: str) -> dict:
 
 仅当用户点击「查看品质/时标」按钮时才调用 `read_metadata`，不纳入常规轮询或批量读取。
 
----
 
 ## 5. 实施步骤
 

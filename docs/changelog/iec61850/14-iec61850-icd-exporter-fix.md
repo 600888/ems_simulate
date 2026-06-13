@@ -4,7 +4,6 @@
 > 日期: 2026-06-06  
 > 状态: 已实施
 
----
 
 ## 1. 问题背景
 
@@ -27,7 +26,6 @@
 2. **点位数据丢失** — 400+ 个 FCDA 点位在导出中被过滤
 3. **元数据错误** — IED name、LD inst、lnClass 等关键属性值错误
 
----
 
 ## 2. 根因分析
 
@@ -95,7 +93,6 @@ parts = model.lds[0].name.rsplit("_", 1)
 
 `rsplit` 从右分割，将 IED name 中最后一个下划线后的部分错误当作 LD inst。
 
----
 
 ## 3. 修复方案
 
@@ -329,7 +326,6 @@ IcdExporter._build_dois()
   → 无值: <DOI name="Temp001" />  (不含 DAI)
 ```
 
----
 
 ## 4. 性能对比
 
@@ -357,7 +353,6 @@ IcdExporter._build_dois()
 | mag BDA 严格匹配 IED | 硬加 `mag.i` | 仅在线发现的子属性（`f` 或 `i`） |
 | Simulator 加载 | ❌ FCDA `mag.i` not found | ✅ 正常加载 |
 
----
 
 ## 5. 修改文件清单
 
@@ -368,7 +363,6 @@ IcdExporter._build_dois()
 | `src/proto/iec61850/model/discovery.py` | 小 (~5行) | `_struct_sub_da_cache` 缓存键从 `da_name` 改为 `da_full_ref`，修复不同 DO 的 mag 子属性混用 |
 | `tests/iec61850/test_icd_exporter.py` | 新增 (220行) | 42 个测试用例覆盖 lnClass/lnInst/ldInst 提取、DOType 指纹去重、CDC 推断、FCDA 匹配、mag BDA 回归测试、差异化 DOType 指纹 |
 
----
 
 ## 6. 关键技术决策
 
@@ -387,7 +381,6 @@ MMS 协议中，DataSet 成员的 `variableName` 可能返回短格式 LN 名（
 
 MMS 返回的 LD 名可能是 `IEDName_LDInst` 也可能只是 `LDInst`，当 IEDName 本身包含下划线（如 `KG_BAMS`）时，无法从单条 LD 名自动推断正确的 IED name。解决方案：优先使用调用方传入的 `ied_name` 参数，或在 `IedModel` 上增加 `ied_name` 字段由上层设置。
 
----
 
 ## 7. 后续建议
 

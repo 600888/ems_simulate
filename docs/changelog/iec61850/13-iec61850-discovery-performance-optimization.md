@@ -4,7 +4,6 @@
 > 日期: 2026-06-05  
 > 状态: 已实施  
 
----
 
 ## 1. 优化背景
 
@@ -15,7 +14,6 @@
 3. **离线类型解析** — `TypeResolver` 对每个 DO 重复递归计算，无结果缓存
 4. **后处理遍历** — `_fill_du_names` 嵌套 O(N²) 遍历，N 为测点数量
 
----
 
 ## 2. 优化项总览
 
@@ -30,7 +28,6 @@
 | P2 | LinkedList 批量转换 | `linked_list.py` | C FFI | — | — | try/except↓40% |
 | P2 | SCL `iterparse` | `scl_parser.py` | 内存 | — | 44-50%↓ | — |
 
----
 
 ## 3. P0 — 在线 MMS 发现优化
 
@@ -110,7 +107,6 @@ def build(self) -> IedModel:
 
 **收益**: `point_refs` 访问从 O(N) 遍历降为 O(1) 字典返回。
 
----
 
 ## 4. P1 — 离线 SCL 解析 + DA 提取优化
 
@@ -167,7 +163,6 @@ var_name = (getattr(entry, "variableName", None)
 
 **收益**: C FFI 调用从 9 次/条目降为 3 次/条目，减少 ~66%。
 
----
 
 ## 5. P2 — 基础设施优化
 
@@ -247,7 +242,6 @@ def _get_local_tag(elem: ET.Element) -> str:
 | 10MB    | ~80MB          | ~45MB           | 44%  |
 | 50MB    | ~400MB         | ~200MB          | 50%  |
 
----
 
 ## 6. 修改文件清单
 
@@ -260,7 +254,6 @@ def _get_local_tag(elem: ET.Element) -> str:
 | `src/proto/iec61850/core/linked_list.py` | 小 (~20行) | 两阶段批量转换 |
 | `src/proto/iec61850/plugins/scl/parser/scl_parser.py` | 中 (~40行) | iterparse 增量解析 |
 
----
 
 ## 7. 预期收益汇总
 

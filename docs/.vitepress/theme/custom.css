@@ -4,6 +4,9 @@
 
     /* 让布局占满全屏，消除左侧留白 */
     --vp-layout-max-width: 100%;
+
+    /* 文档内容区宽度动态适配：大屏用足空间，小屏避免溢出 */
+    --vp-content-max-width: min(1920px, calc(100vw - var(--vp-sidebar-width) - 5rem));
 }
 
 /* 适配移动端或窄屏 */
@@ -195,4 +198,19 @@ section.VPSidebarItem.level-0,
 
 *::-webkit-scrollbar-thumb:hover {
     background: rgba(144, 147, 153, 0.5) !important;
+}
+
+/* =========================================
+   调整标题分割线与间距（保留分割线，收紧留白）
+   默认 h2: margin-top 48px, padding-top 24px → 太松散
+   ========================================= */
+.vp-doc h2 {
+    margin-top: 24px !important;
+    margin-bottom: 8px !important;
+    padding-top: 12px !important;
+}
+
+.vp-doc h3 {
+    margin-top: 16px !important;
+    margin-bottom: 4px !important;
 }

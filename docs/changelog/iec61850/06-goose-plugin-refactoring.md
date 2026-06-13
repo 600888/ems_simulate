@@ -5,7 +5,6 @@
 > 状态: 规划中  
 > 关联: [iec61850-refactoring-plan.md](./02-iec61850-refactoring-plan.md) Phase 3.3
 
----
 
 ## 1. 概述
 
@@ -37,7 +36,6 @@ GOOSE 模块目前以 4 个独立文件存在于 `src/proto/iec61850/` 顶层目
 | **持久化耦合** | 🟡 中 | `GooseManager` 直接依赖 `goose_publisher_dao`，DAO 操作与业务逻辑混合 |
 | **缺少类型注解** | 🟢 低 | 部分公开方法缺少返回类型注解 |
 
----
 
 ## 2. 重构目标
 
@@ -49,7 +47,6 @@ GOOSE 模块目前以 4 个独立文件存在于 `src/proto/iec61850/` 顶层目
 6. **类型安全**: 完整类型注解，`dataclass(frozen=True)` 不可变值对象，`StrEnum` 状态枚举
 7. **可测试性**: 每个子模块可独立 mock 和单元测试
 
----
 
 ## 3. 目标架构
 
@@ -102,7 +99,6 @@ defs/ ← core/ ← plugins/goose/ ← client.py (门面)
 
 严格禁止: `defs/` → `plugins/`、`plugins/goose/` → `client.py`
 
----
 
 ## 4. 详细设计
 
@@ -695,7 +691,6 @@ class GoosePlugin:
     # ... 其他便捷方法按需暴露
 ```
 
----
 
 ## 5. 设计模式清单
 
@@ -711,7 +706,6 @@ class GoosePlugin:
 | **Composition** | `GoosePlugin` → `GooseResourceManager` → 各子模块 | 组合优于继承 |
 | **Context Manager** | `GoosePublisher` / `GooseReceiver` (可选增强) | `with` 语句管理底层 C 资源 |
 
----
 
 ## 6. 分阶段实施计划
 
@@ -791,7 +785,6 @@ class GoosePlugin:
 | 7.4 添加 persistence.py 单元测试 | P1 | mock DAO 测试持久化 |
 | 7.5 确认无残留旧导入 | P0 | 全局搜索确认无任何文件引用旧路径 |
 
----
 
 ## 7. 文件变更清单
 
@@ -832,7 +825,6 @@ class GoosePlugin:
 | `front/src/api/gooseApi.ts` | 前端 API 层不变 |
 | `front/src/components/goose/` | 前端组件不变 |
 
----
 
 ## 8. 风险与缓解
 
@@ -844,7 +836,6 @@ class GoosePlugin:
 | 持久化 DAO 切换影响启动流程 | 低 | 高 | `PersistenceAdapter` 支持 mock，启动流程端到端测试 |
 | Capture 模块跨平台兼容 | 低 | 中 | 原始套接字逻辑不改动，仅迁移位置 |
 
----
 
 ## 9. 验收标准
 

@@ -5,7 +5,6 @@
 > 关联: [iec61850-unified-model-refactoring.md](./09-iec61850-unified-model-refactoring.md)  
 > 状态: 初稿
 
----
 
 ## 1. 导航结构
 
@@ -52,7 +51,6 @@ graph TB
 | `/scl/diff` | `SclDiffViewer.vue` | SCL 文件对比 |
 | `/scl/viewer/:fileName` | `SclXmlViewer.vue` | SCL 原始 XML 查看 |
 
----
 
 ## 2. 页面布局
 
@@ -133,7 +131,6 @@ graph TB
     end
 ```
 
----
 
 ## 3. 组件树
 
@@ -190,7 +187,6 @@ graph TB
     DevicePage --> DiscoveryProgress
 ```
 
----
 
 ## 4. 交互流程
 
@@ -336,7 +332,6 @@ sequenceDiagram
     DiffVue-->>User: 高亮差异 (绿=新增 红=删除 黄=修改)
 ```
 
----
 
 ## 5. 页面原型图
 
@@ -625,7 +620,6 @@ sequenceDiagram
 └─────────────────────────────────────────────────────────────┘
 ```
 
----
 
 ## 6. API 接口清单
 
@@ -654,7 +648,6 @@ sequenceDiagram
 | `POST` | `/api/devices/{name}/export-model` | 导出模型(流式大文件) | `ModelExportDialog` |
 | `POST` | `/api/devices/{name}/export-model-progress` | 异步导出进度查询 | `ModelExportDialog` |
 
----
 
 ## 7. 数据流
 
@@ -704,7 +697,6 @@ sequenceDiagram
     Note over DB: PointYc / PointYx / PointYk / PointYt
 ```
 
----
 
 ## 8. 组件属性与事件
 
@@ -784,7 +776,6 @@ interface DiscoveryProgressData {
 }
 ```
 
----
 
 ## 9. 主题与样式
 
@@ -814,7 +805,6 @@ interface DiscoveryProgressData {
 | `🔍` | 搜索 | 搜索框 |
 | `✅` `⚠️` `❌` | 校验状态 | 校验结果面板 |
 
----
 
 ## 10. 实施要点
 

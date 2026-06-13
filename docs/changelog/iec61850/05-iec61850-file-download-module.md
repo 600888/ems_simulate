@@ -5,7 +5,6 @@
 > 状态: 规划中  
 > 关联文档: [iec61850-scl-file-module.md](./04-iec61850-scl-file-module.md)、[iec61850-refactoring-plan.md](./02-iec61850-refactoring-plan.md)
 
----
 
 ## 1. 概述
 
@@ -77,7 +76,6 @@ IEC 61850 定义了以下 5 个文件服务 ACSI：
 6. **前端文件浏览器** — 树形目录浏览、文件下载、拖拽上传
 7. **与 SCL 模块协作** — 下载 ICD/SCD 文件后自动交给 SCL 模块解析
 
----
 
 ## 2. 总体架构
 
@@ -157,7 +155,6 @@ src/proto/iec61850/plugins/files/
 | **容错优先** | pyiec61850 函数调用统一异常包装，连接断开时自动清理资源 |
 | **与 SCL 解耦** | FilesPlugin 不关心文件内容，仅负责传输；下载 ICD 文件后由上层交给 SCL 模块解析 |
 
----
 
 ## 3. 详细设计
 
@@ -884,7 +881,6 @@ async def download_and_import_scl(filename: str):
     return {"download": "ok", "import": result}
 ```
 
----
 
 ## 4. 分阶段实施计划
 
@@ -1018,7 +1014,6 @@ async def download_and_import_scl(filename: str):
 - [ ] 下载 ICD 文件后可一键导入测点 (SCL 协作)
 - [ ] 中文文件名正确显示和下载
 
----
 
 ## 5. 关键技术要点
 
@@ -1107,7 +1102,6 @@ if file_list:
     iec61850.LinkedList_destroyDeep(file_list, iec61850.FileDirectoryEntry_destroy)
 ```
 
----
 
 ## 6. 风险与缓解
 
@@ -1121,7 +1115,6 @@ if file_list:
 | **文件名编码问题** | 🟢 低 | 🟢 低 | 统一使用 UTF-8 编码，对异常编码做容错处理 |
 | **MMS 连接数限制** | 🟢 低 | 🟡 中 | 文件传输与数据读取共享连接，大文件传输时可能阻塞其他操作 |
 
----
 
 ## 7. 参考文档
 

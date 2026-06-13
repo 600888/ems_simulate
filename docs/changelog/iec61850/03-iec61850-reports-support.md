@@ -4,7 +4,6 @@
 > 日期：2026-05-30
 > 状态：规划中
 
----
 
 ## 1. 概述
 
@@ -40,7 +39,6 @@ IEC 61850 标准定义了两种报告控制块（RCB）：
 - ❌ 前端 Reports 管理 UI 组件
 - ❌ 前端 i18n 国际化
 
----
 
 ## 2. 总体架构
 
@@ -136,7 +134,6 @@ IEC 61850 标准定义了两种报告控制块（RCB）：
 └──────────────┘                    └──────────────┘
 ```
 
----
 
 ## 3. 详细设计
 
@@ -219,7 +216,6 @@ class ReportsPlugin:
 ]
 ```
 
----
 
 ##### `enable_report(rcb_ref: str, gi: bool = True) -> bool`
 
@@ -245,7 +241,6 @@ class ReportsPlugin:
 // 5. IedConnection_setRCBValues(conn, rcb, &changes, &error)
 ```
 
----
 
 ##### `disable_report(rcb_ref: str) -> bool`
 
@@ -258,7 +253,6 @@ class ReportsPlugin:
 4. 从 `_active_reports` 移除
 5. 可选：保留 `_data_cache` 中的历史数据供后续查询
 
----
 
 ##### `trigger_gi(rcb_ref: str) -> bool`
 
@@ -270,7 +264,6 @@ class ReportsPlugin:
 3. 调用 `setRCBValues` 写回服务器
 4. GI 为自复位（self-clearing），服务器收到后立即生成一次包含所有数据值的报告
 
----
 
 ##### `get_report_data(rcb_ref: str) -> List[Dict]`
 
@@ -295,7 +288,6 @@ class ReportsPlugin:
 ]
 ```
 
----
 
 ##### `list_active_reports() -> List[Dict]`
 
@@ -310,7 +302,6 @@ class ReportsPlugin:
 ]
 ```
 
----
 
 ### 3.2 BRCB 与 URCB 子模块
 
@@ -447,7 +438,6 @@ class ReportManager:
 | SCL ICD 注入 | 先导出 ICD，在 ICD 中声明 `<ReportControl>`，然后重新加载 | 备选 |
 | MMS 写操作 | 客户端通过 MMS 写操作动态创建 RCB（取决于设备支持） | 备选 |
 
----
 
 ### 3.5 后端 Web API
 
@@ -534,7 +524,6 @@ structure = {
 
 **推荐阶段：** MVP 阶段使用轮询（前端每 1-2 秒拉取），后续升级为 WebSocket。
 
----
 
 ### 3.6 前端 UI
 
@@ -633,7 +622,6 @@ export async function triggerGi(channelId: number, rcbRef: string): Promise<bool
 export async function getReportData(channelId: number, rcbRef: string, limit?: number): Promise<ReportDataEntry[]>
 ```
 
----
 
 ### 3.7 数据模型扩展
 
@@ -695,7 +683,6 @@ class ReportDataEntry:
     conf_rev: int = 1
 ```
 
----
 
 ### 3.8 国际化支持
 
@@ -748,7 +735,6 @@ report: {
 }
 ```
 
----
 
 ## 4. 分阶段实施计划
 
@@ -832,7 +818,6 @@ report: {
 | **5.5 ICD 导入自动创建 RCB** | 从 ICD/SCD 文件导入时自动创建 RCB 配置 | `ICD importer` |
 | **5.6 性能优化** | 高频率报告场景下的内存管理和回调优化 | 性能测试 |
 
----
 
 ## 5. libIEC61850 API 参考
 
@@ -894,7 +879,6 @@ RCB_INTG_PD    = 0x1000  // URCB only
 RCB_PURGE_BUF  = 0x2000  // BRCB only
 ```
 
----
 
 ## 6. 错误处理策略
 
@@ -909,7 +893,6 @@ RCB_PURGE_BUF  = 0x2000  // BRCB only
 | 高频率报告 | 缓存去重（同 seqNum 不重复存储），回调中异步处理 |
 | C 回调异常 | try/except 捕获异常，记录日志，防止回调链中断 |
 
----
 
 ## 7. 文件清单
 
@@ -954,7 +937,6 @@ RCB_PURGE_BUF  = 0x2000  // BRCB only
 | `front/src/i18n/locales/zh-CN.ts` | 报告相关中文翻译 |
 | `front/src/i18n/locales/en-US.ts` | 报告相关英文翻译 |
 
----
 
 ## 8. 风险与缓解
 
@@ -966,7 +948,6 @@ RCB_PURGE_BUF  = 0x2000  // BRCB only
 | **报告数据量大时内存溢出** | 低 | 中 | 限制缓存上限（1000 条），FIFO 淘汰策略 |
 | **回调线程与主线程冲突** | 中 | 中 | 回调中使用 queue.Queue 异步处理，避免阻塞 C 回调 |
 
----
 
 ## 9. 验收标准
 
@@ -997,7 +978,6 @@ RCB_PURGE_BUF  = 0x2000  // BRCB only
 - [ ] 前后端通信正常（无 500 错误）
 - [ ] 用户手册已更新（可选）
 
----
 
 ## 10. 参考文档
 

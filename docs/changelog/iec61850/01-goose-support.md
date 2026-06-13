@@ -8,7 +8,6 @@
 
 GOOSE 是 IEC 61850 标准中用于快速可靠地传输变电站事件的二层组播协议，主要用于跳闸/告警等实时信号传输，传输延迟要求在 4ms 以内。本次实现覆盖完整的 GOOSE 生命周期管理，包括创建、配置、启停控制、数据集管理、订阅管理、状态监控等。
 
----
 
 ## 功能特性
 
@@ -34,7 +33,6 @@ GOOSE 是 IEC 61850 标准中用于快速可靠地传输变电站事件的二层
 - 超时检测：当超过 `timeAllowedToLive` 未收到报文时标记为 `lost`
 - 数据集值解析：自动解析 MMS 数据类型（Boolean、Integer、Float、String、BitString、Timestamp）
 
----
 
 ## 架构设计
 
@@ -88,7 +86,6 @@ GOOSE 是 IEC 61850 标准中用于快速可靠地传输变电站事件的二层
 2. **自动刷新**：GOOSE 管理页面每 5 秒自动轮询更新状态
 3. **响应式状态**：订阅状态通过颜色编码实时展示
 
----
 
 ## 核心类设计
 
@@ -241,7 +238,6 @@ class GooseManager:
 
 **Receiver ID 策略**：使用网络接口名作为 Receiver ID。同一接口只允许一个 Receiver。
 
----
 
 ## API 设计
 
@@ -358,7 +354,6 @@ POST /api/channels/goose/receivers
 }
 ```
 
----
 
 ## 文件清单
 
@@ -400,7 +395,6 @@ POST /api/channels/goose/receivers
 | `front/src/views/SideBar.vue` | 处理 GOOSE 节点 `linkTo` 导航到 `/goose` 页面 |
 | `front/src/components/header/AppHeader.vue` | 新增 GOOSE 管理导航按钮 + Connection 图标；面包屑支持 GOOSE 路由 |
 
----
 
 ## 线程模型
 
@@ -438,7 +432,6 @@ POST /api/channels/goose/receivers
 - `GooseManager`：所有操作委托给 Publisher/Receiver，不维护独立可变状态
 - 重发线程和监控线程均为 daemon 线程，随主进程退出
 
----
 
 ## IEC 61850 侧边栏集成
 
@@ -456,7 +449,6 @@ GOOSE 功能集成到现有 IEC61850 设备的侧边栏树结构中：
 | 侧边栏 | IEC61850 设备 → GOOSE 节点 | 设备级 GOOSE 入口 |
 | URL | `/goose` | 直接访问 |
 
----
 
 ## 依赖要求
 
@@ -474,7 +466,6 @@ GOOSE 功能集成到现有 IEC61850 设备的侧边栏树结构中：
 
 无新增依赖，使用项目已有的 Vue 3 + Element Plus + TypeScript。
 
----
 
 ## 配置参数说明
 
@@ -502,7 +493,6 @@ GOOSE 功能集成到现有 IEC61850 设备的侧边栏树结构中：
 | app_id | null | APPID 过滤，null 表示不过滤 |
 | dst_mac | null | 目标 MAC 过滤，null 表示不过滤 |
 
----
 
 ## 操作约束
 
@@ -515,7 +505,6 @@ GOOSE 功能集成到现有 IEC61850 设备的侧边栏树结构中：
 | 启动 Publisher | pyiec61850 已安装 | 依赖底层 C 库 |
 | 启动 Receiver | pyiec61850 已安装 | 依赖底层 C 库 |
 
----
 
 ## 未来扩展
 

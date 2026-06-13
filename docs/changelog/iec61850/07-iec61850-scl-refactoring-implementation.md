@@ -10,7 +10,6 @@
 > 状态: 已废弃  
 > 关联: [iec61850-unified-model-refactoring.md](./09-iec61850-unified-model-refactoring.md)
 
----
 
 ## 1. 设计原则与模式总览
 
@@ -44,7 +43,6 @@
 - **最低版本**: Python 3.10+（支持 `match` 语句、`TypeAlias`、`ParamSpec`）
 - **推荐版本**: Python 3.11+（`ExceptionGroup`、`TaskGroup`、性能优化）
 
----
 
 ## 2. SCL 对象模型设计
 
@@ -286,7 +284,6 @@ CDC_CATEGORY_MAP: dict[str, PointCategory] = {
 }
 ```
 
----
 
 ## 3. 解析引擎设计
 
@@ -506,7 +503,6 @@ class TypeResolver:
         return STRUCT_DA_PATHS.get(da_name, da_name)
 ```
 
----
 
 ## 4. 校验引擎设计
 
@@ -731,7 +727,6 @@ def create_default_rule_registry() -> ValidationRuleRegistry:
     return registry
 ```
 
----
 
 ## 5. 转换器设计
 
@@ -1029,7 +1024,6 @@ class SclGooseTransformer(SclTransformerBase[GooseTransformResult]):
     # ... _transform_gse_control / _build_pure_dataset_dict 实现
 ```
 
----
 
 ## 6. 服务层设计
 
@@ -1349,7 +1343,6 @@ class SclFileManager:
             )
 ```
 
----
 
 ## 7. 与现有代码的集成策略
 
@@ -1450,7 +1443,6 @@ async def import_icd(request: Request, ...):
     # ... 后续处理不变
 ```
 
----
 
 ## 8. 分阶段实施计划
 
@@ -1527,7 +1519,6 @@ async def import_icd(request: Request, ...):
 | 6.4 | 实现 `server_model_builder` | `transformer/server_model_builder.py` | SclDocument → IedModel |
 | 6.5 | SCD 合并基础支持 | `service/merge_service.py` | 多 ICD 合并为 SCD |
 
----
 
 ## 9. 测试策略
 
@@ -1615,7 +1606,6 @@ class TestPointTransformer:
         assert CDC_CATEGORY_MAP["APC"] == PointCategory.YT
 ```
 
----
 
 ## 10. 性能考量
 
@@ -1652,7 +1642,6 @@ def build_type_index(self) -> None:
     # ... 其他类型索引
 ```
 
----
 
 ## 11. 模块依赖关系图
 
@@ -1704,7 +1693,6 @@ src/proto/iec61850/plugins/scl/
 - `transformer/` 依赖 `model/` + `parser/` (TypeResolver)
 - `service/` 依赖所有子模块，但 DB 操作通过延迟导入
 
----
 
 ## 12. 风险缓解补充
 

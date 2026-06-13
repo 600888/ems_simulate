@@ -9,7 +9,6 @@
 > 状态: 已废弃  
 > 关联: [iec61850-unified-model-refactoring.md](./09-iec61850-unified-model-refactoring.md)
 
----
 
 ## 1. 问题描述
 
@@ -46,7 +45,6 @@ Vue 响应式系统的 `reactive()` / `deep` 拷贝工具在处理大型嵌套�
 | 数据完整性 | 🟡 中等 | 部分 JSON 导出截断，SCL/ICD 格式不规范 |
 | 系统稳定性 | 🟡 中等 | 导出期间其他请求阻塞（同步阻塞） |
 
----
 
 ## 2. 根因分析
 
@@ -120,7 +118,6 @@ def _model_to_dict(self, model) -> dict:
 | 递归深度风险 | `_discover_sub_das()` | 无递归深度限制 |
 | 错误恢复缺失 | `discover()` | 任一节点失败丢弃整个 LD |
 
----
 
 ## 3. 优化目标
 
@@ -133,7 +130,6 @@ def _model_to_dict(self, model) -> dict:
 | 进度反馈 | 无 | 实时百分比 | 新增 |
 | 失败恢复 | 全量重试 | 增量重试 | 新增 |
 
----
 
 ## 4. 详细设计
 
@@ -914,7 +910,6 @@ def _cleanup_single(tmp_dir: str, keep_file: str) -> None:
         pass
 ```
 
----
 
 ## 5. 实施计划
 
@@ -992,7 +987,6 @@ def _cleanup_single(tmp_dir: str, keep_file: str) -> None:
 
 **验证**: 二次导出同一设备，发现阶段耗时 < 1s
 
----
 
 ## 6. 设计模式应用
 
@@ -1007,7 +1001,6 @@ def _cleanup_single(tmp_dir: str, keep_file: str) -> None:
 | **Background Task** | `_cleanup_single()` | 资源延迟清理 |
 | **Two-Phase** | 小模型同步/大模型异步 | 按规模选择策略 |
 
----
 
 ## 7. 风险与缓解
 
@@ -1020,7 +1013,6 @@ def _cleanup_single(tmp_dir: str, keep_file: str) -> None:
 | 缓存一致性问题 | 低 | IED 模型变更后缓存过期 | TTL + 手动失效 API |
 | 前端异步轮询开销 | 低 | 频繁请求后端 | WebSocket 推送或 SSE 替代 |
 
----
 
 ## 8. 验收标准
 

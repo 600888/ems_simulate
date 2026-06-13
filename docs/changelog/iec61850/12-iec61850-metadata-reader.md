@@ -5,7 +5,6 @@
 > 状态: 已实现  
 > 关联: `iec61850-point-registry-optimization.md`
 
----
 
 ## 1. 背景
 
@@ -25,7 +24,6 @@
 | 不阻塞主流程 | 独立于批量读取/定时轮询 |
 | 优雅降级 | 部分子属性不可读时（如 BAMS error=22），不抛异常 |
 
----
 
 ## 2. 设计
 
@@ -119,7 +117,6 @@ q.test           → BooleanReader.read() → True
 
 `log.debug` 级别记录失败原因，不污染 INFO/ERROR 日志。
 
----
 
 ## 3. 文件结构
 
@@ -128,7 +125,6 @@ q.test           → BooleanReader.read() → True
 | `src/proto/iec61850/core/metadata.py` | MetadataReader + QualityInfo / TimestampInfo |
 | `tests/iec61850/test_read.py` | `TestMetadataReader` 类 (3 个测试) |
 
----
 
 ## 4. 用法示例
 
@@ -164,7 +160,6 @@ t = read_timestamp(conn, "KG_BAMSCTMP01/MMCL1.Temp001")
 print(f"时标: {t.unix_timestamp_ms}ms")
 ```
 
----
 
 ## 5. 与 PointRegistry 的关系
 
@@ -186,7 +181,6 @@ print(f"时标: {t.unix_timestamp_ms}ms")
 └─────────────────────────────────────────┘
 ```
 
----
 
 ## 6. 后续扩展
 
