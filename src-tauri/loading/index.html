@@ -53,9 +53,9 @@
     <div class="status" id="status-text">EMS模拟设备启动中<span class="dots"></span></div>
   </div>
   <script>
-    var BACKEND_URL = 'http://127.0.0.1:8991';
     var POLL_INTERVAL = 500;
     var STARTUP_TIMEOUT = 10 * 1000; // 10 秒超时
+    var BACKEND_URL = 'http://127.0.0.1:8991'; // 默认，Tauri 环境下动态获取
 
     function showError(msg) {
       var statusEl = document.getElementById('status-text');
@@ -82,6 +82,13 @@
       var isPolling = false;
       var pollStart = Date.now();
       var pollCount = 0;
+
+      // 动态获取后端 URL（支持动态端口分配）
+      try {
+        window.__TAURI__.core.invoke('get_backend_url').then(function (url) {
+          if (url) { BACKEND_URL = url; }
+        }).catch(function () {});
+      } catch (e) {}
 
       // 关闭事件监听
       try {

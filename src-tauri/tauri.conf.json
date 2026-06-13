@@ -5,13 +5,27 @@
   "identifier": "com.emssimulate.desktop",
   "build": {
     "frontendDist": "./loading",
-    "devUrl": "http://localhost:8991",
     "beforeDevCommand": "",
     "beforeBuildCommand": ""
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [],
+    "windows": [
+      {
+        "label": "main",
+        "title": "EMS Simulate",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "decorations": true,
+        "visible": false,
+        "backgroundColor": "#0f0c29",
+        "url": "index.html"
+      }
+    ],
     "security": {
       "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:8991 http://127.0.0.1:8991; connect-src http://localhost:8991 http://127.0.0.1:8991 ws://localhost:8991 ws://127.0.0.1:8991; img-src 'self' data: http://localhost:8991 http://127.0.0.1:8991; style-src 'self' 'unsafe-inline' http://localhost:8991 http://127.0.0.1:8991;"
     }

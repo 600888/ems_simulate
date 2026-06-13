@@ -1,5 +1,7 @@
 mod backend;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -10,39 +12,26 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // 同步启动后端进程（立即注册到静态变量，窗口关闭时可立刻清理）
-            backend::spawn_backend(&handle);
+            // 同步启动后端进程，返回健康检查 URL（生产=sidecar，开发=直连 Python）
+            let health_url = backend::spawn_backend(&handle);
 
-            // 异步等待后端就绪（loading 页面 JavaScript 通过 invoke 轮询 is_backend_ready）
+            // 异步等待后端就绪（loading 页面 JS 同时通过 invoke 轮询 is_backend_ready）
             tauri::async_runtime::spawn(async move {
-                backend::wait_backend_ready().await;
+                backend::wait_backend_ready(&health_url).await;
             });
 
-            // 创建主窗口
-            // 生产模式：先显示 loading 动画页面（由页面 JS 轮询后端就绪后自动跳转）
-            // 开发模式：直接加载后端地址
-            let url = if cfg!(debug_assertions) {
-                tauri::WebviewUrl::External(
-                    url::Url::parse("http://localhost:8991").unwrap(),
-                )
-            } else {
-                tauri::WebviewUrl::App("index.html".into())
-            };
-            let window = tauri::WebviewWindowBuilder::new(
-                app.handle(),
-                "main",
-                url,
-            )
-            .title("EMS Simulate")
-            .inner_size(1280.0, 800.0)
-            .min_inner_size(960.0, 600.0)
-            .center()
-            .resizable(true)
-            .decorations(true)
-            .build()
-            .expect("创建主窗口失败");
+            // 窗口由 tauri.conf.json 自动创建（visible=false + backgroundColor 消除白屏），
+            // 延迟 show() 等 CSS 渲染完成后再显示，消除纯色→渐变的视觉跳跃
+            let window = app
+                .get_webview_window("main")
+                .expect("main 窗口未找到，请检查 tauri.conf.json 的 windows 配置");
 
-            // 窗口关闭时：轻量清理
+            let w = window.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                let _ = w.show();
+            });
+
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
                     eprintln!("[EMS] window close requested, fast cleanup");

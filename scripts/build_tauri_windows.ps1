@@ -146,15 +146,13 @@ if (-not $SkipBackend) {
         $pyDist = Join-Path $BUILD_DIR "dist"
         $pyWork = Join-Path $BUILD_DIR "build_pyinstaller_tauri"
 
-        $rthookSuppress = Join-Path $SCRIPT_DIR "rthook_suppress_console.py"
         $rthookNumpy = Join-Path $SCRIPT_DIR "rthook_numpy_compat.py"
         $pyArgs = @(
-            "--noconfirm", "--onefile", "--noconsole",
+            "--noconfirm", "--onefile",
             "--name", "ems_simulate_backend", "--clean",
             "--distpath", $pyDist,
             "--workpath", $pyWork,
             "--specpath", $BUILD_DIR,
-            "--runtime-hook", $rthookSuppress,
             "--runtime-hook", $rthookNumpy,
             "--add-data", "$ABS\config.ini;.",
             "--add-data", "$ABS\www;www",
