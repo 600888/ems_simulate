@@ -176,6 +176,7 @@ class Device:
             "protocol_type": self.protocol_type,
             "meter_address": self.meter_address,
             "model_name": self.model_name,
+            "ied_name": self.model_name,  # IEC61850 IED 名称 (与 model_name 相同，对应 ICD 文件的 IED name)
         }
 
     def initProtocol(self) -> None:

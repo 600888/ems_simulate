@@ -41,6 +41,12 @@ def configure_builder_network(builder, conn_type, protocol_type, ip, port, chann
     else:
         builder.setDeviceNetConfig(port=port, ip=Config.DEFAULT_IP)
 
+    # IEC 61850: 传递 IED 模型名称 (从通道配置的 model_name 字段获取，对应 ICD 文件中的 IED name)
+    if protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client):
+        model_name = channel_data.get("model_name")
+        if model_name:
+            builder.setDeviceModelName(model_name)
+
 
 def is_client_protocol(protocol_type) -> bool:
     """判断是否为客户端协议"""
