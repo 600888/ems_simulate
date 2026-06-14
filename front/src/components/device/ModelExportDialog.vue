@@ -95,17 +95,43 @@ const handleClose = () => {
 };
 
 const handleExport = async () => {
+  const type = exportType.value;
+  const extMap: Record<string, string> = { icd: '.icd', json: '.json', xml: '.xml', csv: '.csv', tree: '.txt' };
+  const mimeMap: Record<string, string> = { icd: 'application/xml', json: 'application/json', xml: 'application/xml', csv: 'text/csv', tree: 'text/plain' };
+  const defaultFilename = `${props.deviceName}_model${extMap[type] || '.icd'}`;
+
+  let fileHandle: FileSystemFileHandle | null = null;
+
+  // ✅ 关键：showSaveFilePicker 必须是用户点击后的第一个异步操作
+  if (typeof (window as any).showSaveFilePicker === 'function') {
+    try {
+      // ✅ 对非标准扩展名做兼容处理
+      const accept = type === 'icd'
+        ? { 'application/xml': ['.icd', '.xml'] }
+        : { [mimeMap[type]]: [extMap[type]] };
+
+      fileHandle = await (window as any).showSaveFilePicker({
+        suggestedName: defaultFilename,
+        types: [{ description: `${type.toUpperCase()} File`, accept }],
+      });
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      console.error('showSaveFilePicker error:', err);
+      ElMessage.error(err.message || 'Failed to open save dialog');
+      return; // ✅ 阻止后续导出逻辑
+    }
+  }
+
+  // ✅ 在对话框成功打开/关闭后才设置 loading
   exporting.value = true;
   try {
-    await exportModel(props.deviceName, exportType.value);
+    await exportModel(props.deviceName, type, fileHandle, defaultFilename);
     ElMessage.success(t('modelExport.exportSuccess'));
     handleClose();
   } catch (error: any) {
-    // 用户取消文件保存对话框
-    if (error?.name === 'AbortError') {
-      return;
+    if (error?.name !== 'AbortError') {
+      ElMessage.error(error.message || t('modelExport.exportFailed'));
     }
-    ElMessage.error(error.message || t('modelExport.exportFailed'));
   } finally {
     exporting.value = false;
   }

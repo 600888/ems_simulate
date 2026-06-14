@@ -61,10 +61,11 @@ class ReportManager:
         intg_period: int = 0,
         trg_ops: dict[str, bool] | None = None,
         opt_fields: dict[str, bool] | None = None,
+        ln_name: str = "LLN0",
     ) -> bool:
         """在 MMS 模型中注册 ReportControlBlock
 
-        在指定 LD 的 LLN0 逻辑节点下创建报告控制块。
+        在指定 LD 的指定 LN（通常为 LLN0）下创建报告控制块。
 
         Args:
             ld_inst: 逻辑设备实例名
@@ -77,6 +78,7 @@ class ReportManager:
             intg_period: 完整性周期 (ms), 仅 URCB
             trg_ops: 触发选项
             opt_fields: 可选字段
+            ln_name: RCB 所属逻辑节点名 (默认 "LLN0")，取自 ICD 文件的 LN 名称
 
         Returns:
             bool 是否成功
@@ -88,37 +90,40 @@ class ReportManager:
         if not rpt_id:
             rpt_id = name
 
-        lln0_key = f"{ld_inst}/LLN0"
-        lln0 = self._builder.ln_map.get(lln0_key)
+        ln_key = f"{ld_inst}/{ln_name}"
+        ln_node = self._builder.ln_map.get(ln_key)
 
-        if lln0 is None:
+        if ln_node is None:
             if ld_inst == self._builder.ld_name:
                 self._builder.ensure_base_ld()
-                lln0 = self._builder.ln_map.get(lln0_key)
-            else:
+                ln_node = self._builder.ln_map.get(ln_key)
+            if ln_node is None:
                 self._builder.get_or_create_ld(ld_inst)
-                lln0 = self._builder.ln_map.get(lln0_key)
-                log.info(f"为 register_rcb 自动创建 LD/LLN0: {ld_inst}")
+                ln_node = self._builder.ln_map.get(ln_key)
+                log.info(f"为 register_rcb 自动创建 LD/LN: {ld_inst}/{ln_name}")
 
-        if not lln0:
-            log.warning(f"无法注册 RCB: LLN0 未找到 (ld_inst={ld_inst})")
+        if not ln_node:
+            log.warning(f"无法注册 RCB: LN 未找到 (ld_inst={ld_inst}, ln_name={ln_name})")
             return False
 
         buffered = rcb_type == "BRCB"
 
         # 尝试使用 ReportControlBlock_create API
-        success = self._try_api_create(
-            name, lln0, rpt_id, data_set_ref, conf_rev, buffered, buf_time, intg_period, trg_ops, opt_fields
+        api_success, api_reason = self._try_api_create(
+            name, ln_node, rpt_id, data_set_ref, conf_rev, buffered, buf_time, intg_period, trg_ops, opt_fields
         )
-        if success:
-            log.info(f"RCB 通过 API 创建成功: {name}, ld={ld_inst}, type={rcb_type}")
+        if api_success:
+            log.info(f"RCB 通过 API 创建成功: {name}, ld={ld_inst}, ln={ln_name}, type={rcb_type}")
         else:
-            # 如果 API 不可用, 记录到模型目录 (由 ICD 导出时生成)
-            log.info(f"RCB 记录到目录 (API 不可用): {name}, ld={ld_inst}, type={rcb_type}")
+            # API 不可用或失败，RCB 仅记录到 Python 目录未写入 MMS 模型
+            log.warning(
+                f"RCB 未能创建到 MMS 模型: {name}, ld={ld_inst}, ln={ln_name}, type={rcb_type}, 原因: {api_reason}"
+            )
 
         # 记录 RCB 信息
         rcb_info = {
             "ld_inst": ld_inst,
+            "ln_name": ln_name,
             "name": name,
             "rcb_type": rcb_type,
             "rpt_id": rpt_id,
@@ -148,7 +153,7 @@ class ReportManager:
         }
         self._rcb_list.append(rcb_info)
         self._model_changed = True
-        return True
+        return api_success
 
     def _try_api_create(
         self,
@@ -162,7 +167,7 @@ class ReportManager:
         intg_period: int,
         trg_ops: dict[str, bool] | None = None,
         opt_fields: dict[str, bool] | None = None,
-    ) -> bool:
+    ) -> tuple[bool, str]:
         """尝试使用 ReportControlBlock_create API 创建 RCB
 
         libIEC61850 的部分版本在 Python SWIG 绑定中可能未暴露此 API。
@@ -170,15 +175,17 @@ class ReportManager:
         注意: ReportControlBlock_create 的真实签名为
         (name, parent, rptId, isBuffered, dataSetName, confRef, trgOps, options, bufTm, intgPd)。
         dataSetName 期望 "LNName$dataSetName" 形式 (parent 已是 LN, 不含 LD 前缀)。
+
+        Returns:
+            (success: bool, reason: str) - 成功/失败标志及原因描述
         """
         if not HAS_IEC61850:
-            return False
+            return False, "pyiec61850 未安装"
 
         try:
             # 检查 API 是否可用
             if not hasattr(iec61850, "ReportControlBlock_create"):
-                log.debug("ReportControlBlock_create API 不可用")
-                return False
+                return False, "ReportControlBlock_create API 未暴露到 Python SWIG (libIEC61850 版本不支持)"
 
             # data_set_ref: "LD/LN$ds" -> dataSetName: "LN$ds"
             ds_name = data_set_ref.split("/", 1)[-1] if "/" in data_set_ref else data_set_ref
@@ -219,13 +226,15 @@ class ReportManager:
                 if hasattr(self._builder, "keep_alive"):
                     self._builder.keep_alive.append(rcb)
                 log.info(f"ReportControlBlock_create 成功: {name}, dataSet={ds_name}")
-                return True
+                return True, ""
             else:
-                log.warning(f"ReportControlBlock_create 返回 None: {name}, dataSet={ds_name}")
-                return False
+                reason = f"ReportControlBlock_create 返回 None (name={name}, dataSet={ds_name})"
+                log.warning(reason)
+                return False, reason
         except Exception as e:
-            log.debug(f"ReportControlBlock_create 不可用 (非致命): {e}")
-            return False
+            reason = f"ReportControlBlock_create 异常: {type(e).__name__}: {e}"
+            log.warning(reason)
+            return False, reason
 
     def browse_rcbs(self) -> list[dict[str, Any]]:
         """返回服务器上所有已注册的 RCB 目录"""
@@ -265,6 +274,9 @@ class ReportManager:
                     conf_rev=rcb.get("conf_rev", 1),
                     buf_time=rcb.get("buf_time", 0),
                     intg_period=rcb.get("intg_period", 0),
+                    ln_name=rcb.get("ln_name", "LLN0"),
+                    trg_ops=rcb.get("trg_ops"),
+                    opt_fields=rcb.get("opt_fields"),
                 )
                 if success:
                     rcb["_applied"] = True

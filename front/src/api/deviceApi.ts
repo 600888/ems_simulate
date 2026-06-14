@@ -242,43 +242,19 @@ export async function getIEC61850ConnectProgress(deviceName: string): Promise<IE
 
 export type ExportModelType = 'icd' | 'json' | 'xml' | 'csv' | 'tree';
 
-export async function exportModel(deviceName: string, exportType: ExportModelType, iedName: string = ''): Promise<void> {
-  const extMap: Record<ExportModelType, string> = {
-    icd: '.icd',
-    json: '.json',
-    xml: '.xml',
-    csv: '.csv',
-    tree: '.txt',
-  };
-  const mimeMap: Record<ExportModelType, string> = {
-    icd: 'application/xml',
-    json: 'application/json',
-    xml: 'application/xml',
-    csv: 'text/csv',
-    tree: 'text/plain',
-  };
-  const defaultFilename = `${deviceName}_model${extMap[exportType]}`;
-
-  // 1. 先弹出文件保存对话框 — 在网络请求之前完成，避免 blob 被响应式系统处理
-  let fileHandle: FileSystemFileHandle;
-  try {
-    fileHandle = await (window as any).showSaveFilePicker({
-      suggestedName: defaultFilename,
-      types: [{
-        description: `${exportType.toUpperCase()} 文件`,
-        accept: { [mimeMap[exportType]]: [extMap[exportType]] },
-      }],
-    });
-  } catch (err: any) {
-    // 用户取消保存对话框
-    if (err?.name === 'AbortError') {
-      throw err;
-    }
-    throw new Error('无法打开文件保存对话框');
+export async function exportModel(
+  deviceName: string,
+  exportType: ExportModelType,
+  fileHandle: FileSystemFileHandle | null = null,
+  defaultFilename: string = '',
+  iedName: string = '',
+): Promise<void> {
+  if (!defaultFilename) {
+    const extMap: Record<ExportModelType, string> = { icd: '.icd', json: '.json', xml: '.xml', csv: '.csv', tree: '.txt' };
+    defaultFilename = `${deviceName}_model${extMap[exportType]}`;
   }
 
   // 2. 使用独立 fetch 通道下载文件 — 完全绕过 axios 拦截器和响应式系统
-  //    设置较长超时（5分钟），大模型导出可能耗时较久
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
 
@@ -295,7 +271,6 @@ export async function exportModel(deviceName: string, exportType: ExportModelTyp
         ied_name: iedName,
       }),
       signal: controller.signal,
-      // 禁止缓存，避免拿到旧数据
       cache: 'no-store',
     });
   } catch (err: any) {
@@ -309,7 +284,6 @@ export async function exportModel(deviceName: string, exportType: ExportModelTyp
   }
 
   if (!response.ok) {
-    // 尝试解析后端返回的错误信息
     let errorMsg = `导出失败 (HTTP ${response.status})`;
     try {
       const errorData = await response.json();
@@ -317,34 +291,48 @@ export async function exportModel(deviceName: string, exportType: ExportModelTyp
         errorMsg = errorData.message;
       }
     } catch {
-      // 响应不是 JSON，使用默认错误消息
+      // 非 JSON 响应
     }
     throw new Error(errorMsg);
   }
 
-  // 3. 流式写入文件 — 使用 ReadableStream 避免一次性加载大文件到内存
+  // 3. 写入文件 — showSaveFilePicker 可用时流式写入，否则 blob + <a> 下载
   try {
-    const readable = response.body;
-    if (readable) {
-      // 优先使用流式写入，内存占用 O(1)
-      const writable = await fileHandle.createWritable();
-      const reader = readable.getReader();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          await writable.write(value);
+    if (fileHandle) {
+      // File System Access API: 流式写入，内存友好
+      const readable = response.body;
+      if (readable) {
+        const writable = await fileHandle.createWritable();
+        const reader = readable.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            await writable.write(value);
+          }
+        } finally {
+          await writable.close();
+          reader.releaseLock();
         }
-      } finally {
-        await writable.close();
-        reader.releaseLock();
+      } else {
+        const blob = await response.blob();
+        const w = await fileHandle.createWritable();
+        await w.write(blob);
+        await w.close();
       }
     } else {
-      // 回退：部分浏览器不支持 ReadableStream，使用 blob 方式
+      // 回退：没有 showSaveFilePicker（Tauri / Firefox 等），使用 blob 下载
       const blob = await response.blob();
-      const writable = await fileHandle.createWritable();
-      await writable.write(blob);
-      await writable.close();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = defaultFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      // 延迟一小段时间确保下载触发（不 await）
+      await new Promise(r => setTimeout(r, 100));
     }
   } catch (err: any) {
     throw new Error(`写入文件失败: ${err.message}`);

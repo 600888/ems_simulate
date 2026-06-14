@@ -445,6 +445,37 @@ class IedModelBuilder:
             return "string"
         return "unknown"
 
+    # libIEC61850 各版本暴露的类型常量可能不同，使用 hasattr 做安全访问
+    _IEC_TYPE_CONST_MAP: dict[str, int | None] = {}
+    _IEC_TYPE_FALLBACK = None  # int，由 _iec_fallback() 延迟求值
+
+    @classmethod
+    def _iec_fallback(cls) -> int:
+        """返回 iec_type 回退常量（延迟初始化，避免 import 时 HAS_IEC61850=False）"""
+        if cls._IEC_TYPE_FALLBACK is None and HAS_IEC61850:
+            cls._IEC_TYPE_FALLBACK = iec61850.IEC61850_INT32
+        return cls._IEC_TYPE_FALLBACK or 0
+
+    @classmethod
+    def _get_iec_type_const(cls, iec_type: str) -> int:
+        """安全获取 IEC61850 类型常量，部分版本未暴露 BITSTRING 等"""
+        if not HAS_IEC61850:
+            return 0
+        const_name = {
+            "boolean": "IEC61850_BOOLEAN",
+            "float": "IEC61850_FLOAT32",
+            "integer": "IEC61850_INT32",
+            "string": "IEC61850_VISIBLE_STRING_255",
+            "bitstring": "IEC61850_BITSTRING",
+            "timestamp": "IEC61850_TIMESTAMP",
+        }.get(iec_type, "")
+        if const_name:
+            const_val = getattr(iec61850, const_name, None)
+            if const_val is not None:
+                return const_val
+            log.debug(f"IEC61850 类型常量 {const_name} 在当前 libIEC61850 中不可用，iec_type={iec_type}")
+        return cls._iec_fallback()
+
     @staticmethod
     def _infer_iec_type_from_str(iec_type: str, da_parts: list) -> int:
         if not HAS_IEC61850:
@@ -464,15 +495,7 @@ class IedModelBuilder:
             return iec61850.IEC61850_QUALITY
         if leaf == "t":
             return iec61850.IEC61850_TIMESTAMP
-        type_map = {
-            "boolean": iec61850.IEC61850_BOOLEAN,
-            "float": iec61850.IEC61850_FLOAT32,
-            "integer": iec61850.IEC61850_INT32,
-            "string": iec61850.IEC61850_VISIBLE_STRING_255,
-            "bitstring": iec61850.IEC61850_BITSTRING,
-            "timestamp": iec61850.IEC61850_TIMESTAMP,
-        }
-        return type_map.get(iec_type, iec61850.IEC61850_FLOAT32)
+        return IedModelBuilder._get_iec_type_const(iec_type)
 
     # ===== 标准 DA =====
 
@@ -605,7 +628,7 @@ class IedModelBuilder:
         for key in self._ln_map:
             if key.startswith(prefix):
                 ln_names.append(key[len(prefix) :])
-        return sorted(ln_names)
+        return ln_names
 
     def browse_data_objects(self, ld_inst: str, ln_name: str) -> list[dict]:
         do_map: dict[str, int | None] = {}

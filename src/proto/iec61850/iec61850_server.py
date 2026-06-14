@@ -268,6 +268,14 @@ class IEC61850Server:
             import time as _time
 
             _time.sleep(0.5)
+
+            # 重建前重新应用待注册的 RCB (重建 IedServer 后模型会丢失上次创建的 RCB)
+            rc_reapplied = 0
+            if self._report_manager.model_changed:
+                rc_reapplied = self._report_manager.apply_pending_rcbs()
+                if rc_reapplied > 0:
+                    log.info(f"IedServer 重建前重新创建了 {rc_reapplied} 个 RCB")
+
             self._server = iec61850.IedServer_create(self._builder.model)
             if not self._server:
                 self._is_running = False
@@ -295,14 +303,22 @@ class IEC61850Server:
             self._is_running = False
             return False
 
-    def start(self):
-        """启动 IEC 61850 MMS 服务器"""
+    def start(self, register_default_rcbs: bool = True):
+        """启动 IEC 61850 MMS 服务器
+
+        Args:
+            register_default_rcbs: 是否注册默认 BRCB (brcb01/brcb02)。
+                ICD 导入时应设为 False，避免在默认 LD 上创建多余 RCB。
+        """
         if self._is_running:
             if self._model_changed:
                 self.apply_model_changes()
             return
 
-        self._register_default_rcbs()
+        if register_default_rcbs:
+            self._register_default_rcbs()
+        else:
+            log.info("跳过默认 RCB 注册 (register_default_rcbs=False，ICD 已提供 RCB 配置)")
         self._apply_pending_registrations()
 
         log.info(
@@ -547,6 +563,9 @@ class IEC61850Server:
 
         为服务端默认逻辑设备创建 RCB，绑定到对应的 DataSet。
         每个 IED 都应该至少有一个 BRCB 用于支持报告功能。
+
+        注意: 依赖 libIEC61850 的 ReportControlBlock_create API，
+        部分版本可能未暴露此 API 到 Python SWIG。
         """
         if not self._builder.model:
             log.debug("_register_default_rcbs: 模型未初始化，跳过")
@@ -557,6 +576,7 @@ class IEC61850Server:
         default_rcbs = [
             {
                 "ld_inst": default_ld,
+                "ln_name": "LLN0",
                 "name": "brcb01",
                 "rcb_type": "BRCB",
                 "rpt_id": "brcb01",
@@ -577,6 +597,7 @@ class IEC61850Server:
             },
             {
                 "ld_inst": default_ld,
+                "ln_name": "LLN0",
                 "name": "brcb02",
                 "rcb_type": "BRCB",
                 "rpt_id": "brcb02",
@@ -597,6 +618,8 @@ class IEC61850Server:
             },
         ]
 
+        registered_count = 0
+        failed_count = 0
         for rcb_cfg in default_rcbs:
             # 先注册 DataSet（如果还不存在）
             ds_name = rcb_cfg["data_set_ref"].split("$")[-1]
@@ -607,7 +630,7 @@ class IEC61850Server:
                     data_set_ref=rcb_cfg["data_set_ref"],
                     entries=None,
                 )
-                log.info(f"为 RCB 自动创建 DataSet: {rcb_cfg['data_set_ref']}")
+                log.info(f"为默认 RCB 自动创建 DataSet: {rcb_cfg['data_set_ref']}")
 
             # 注册 RCB
             success = self._report_manager.register_rcb(
@@ -620,11 +643,21 @@ class IEC61850Server:
                 buf_time=rcb_cfg["buf_time"],
                 trg_ops=rcb_cfg.get("trg_ops"),
                 opt_fields=rcb_cfg.get("opt_fields"),
+                ln_name=rcb_cfg.get("ln_name", "LLN0"),
             )
             if success:
-                log.info(f"默认 RCB 已注册: {rcb_cfg['name']} ({rcb_cfg['rcb_type']})")
+                registered_count += 1
+                log.info(f"默认 RCB 已注册到 MMS 模型: {rcb_cfg['name']} ({rcb_cfg['rcb_type']})")
             else:
-                log.warning(f"默认 RCB 注册失败: {rcb_cfg['name']}")
+                failed_count += 1
+                log.warning(f"默认 RCB 注册失败: {rcb_cfg['name']} ({rcb_cfg['rcb_type']})")
+
+        if failed_count > 0:
+            log.warning(
+                f"默认 RCB 注册结果: 成功={registered_count}/{len(default_rcbs)}, 失败={failed_count}。"
+                f"原因: libIEC61850 的 ReportControlBlock_create API 可能未暴露到 Python SWIG，"
+                f"MMS 服务器中将没有报告控制块"
+            )
 
     # ===== 浏览方法 (委托给 builder) =====
 

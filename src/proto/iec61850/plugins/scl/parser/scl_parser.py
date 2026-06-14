@@ -522,6 +522,15 @@ class SclParser:
 
         buffered = elem.get("buffered", "false").lower() == "true"
 
+        # RptEnabled — 多实例 URCB 的实例数 (IEC 61850-6)
+        rpt_enabled_max = 1
+        rpt_enabled_elem = self._ns.find(elem, "RptEnabled")
+        if rpt_enabled_elem is not None:
+            try:
+                rpt_enabled_max = int(rpt_enabled_elem.get("max", "1"))
+            except ValueError:
+                rpt_enabled_max = 1
+
         # TrgOps
         trg_ops = SclTrgOps()
         trg_elem = self._ns.find(elem, "TrgOps")
@@ -567,6 +576,7 @@ class SclParser:
             buf_time=buf_time,
             intg_period=intg_period,
             desc=elem.get("desc", ""),
+            rpt_enabled_max=rpt_enabled_max,
             trg_ops=trg_ops,
             opt_fields=opt_fields,
         )

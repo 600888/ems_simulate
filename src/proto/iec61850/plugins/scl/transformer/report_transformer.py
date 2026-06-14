@@ -72,12 +72,15 @@ class SclReportTransformer:
         ld: SclLDevice,
         result: ReportTransformResult,
     ) -> None:
-        """转换单个 LN 的 ReportControl"""
+        """转换单个 LN 的 ReportControl，含 RptEnabled max 多实例展开"""
         ds_map: dict[str, SclDataSet] = {ds.name: ds for ds in ln.datasets}
 
         for rc in ln.report_controls:
-            info = self._build_report_info(rc, ln, ld, ds_map)
-            result.report_controls.append(info)
+            # RptEnabled max: 多实例 URCB 展开为 baseName01, baseName02, ...
+            instance_count = max(rc.rpt_enabled_max, 1)
+            for idx in range(1, instance_count + 1):
+                info = self._build_report_info(rc, ln, ld, ds_map, idx, instance_count)
+                result.report_controls.append(info)
 
     def _build_report_info(
         self,
@@ -85,9 +88,23 @@ class SclReportTransformer:
         ln: SclLN,
         ld: SclLDevice,
         ds_map: dict[str, SclDataSet],
+        instance_idx: int = 1,
+        instance_count: int = 1,
     ) -> ReportControlInfo:
-        """构建 ReportControlInfo"""
+        """构建 ReportControlInfo
+
+        Args:
+            instance_idx: 多实例序号 (1-based)，用于生成 baseName01, baseName02, ...
+            instance_count: 总实例数
+        """
         rcb_type = "BRCB" if rc.buffered else "URCB"
+        # 多实例时名称加两位序号后缀，如 rpRack1CellTemp01 / rpRack1CellTemp02
+        if instance_count > 1:
+            rcb_name = f"{rc.name}{instance_idx:02d}"
+            rpt_id = f"{rc.rpt_id}{instance_idx:02d}"
+        else:
+            rcb_name = rc.name
+            rpt_id = rc.rpt_id
         data_set_ref = f"{ld.inst}/{ln.ln_name}${rc.dat_set}" if rc.dat_set else ""
 
         # 解析 DataSet 条目
@@ -108,9 +125,9 @@ class SclReportTransformer:
 
         return ReportControlInfo(
             ld_inst=ld.inst,
-            name=rc.name,
+            name=rcb_name,
             rcb_type=rcb_type,
-            rpt_id=rc.rpt_id,
+            rpt_id=rpt_id,
             dat_set=rc.dat_set,
             data_set_ref=data_set_ref,
             conf_rev=rc.conf_rev,

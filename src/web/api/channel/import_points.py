@@ -360,6 +360,7 @@ async def import_icd(
                 # 从 ICD 的 ReportControl 元素创建 RCB 对象到 IedModel
                 report_controls = goose_data.get("report_controls", [])
                 rc_registered = 0
+                rc_failed = 0
                 if report_controls and iec61850_server:
                     log.info(f"ReportControl 注册准备: {len(report_controls)}个")
                     for rc_info in report_controls:
@@ -372,16 +373,18 @@ async def import_icd(
                                 if ds_name and not any(
                                     d.get("ref") == ds_ref for d in iec61850_server.browse_datasets()
                                 ):
-                                    iec61850_server.register_dataset(
+                                    ds_ok = iec61850_server.register_dataset(
                                         ld_inst=rc_info["ld_inst"],
                                         ds_name=ds_name,
                                         data_set_ref=ds_ref,
                                         entries=rc_entries if rc_entries else None,
                                     )
+                                    if not ds_ok:
+                                        log.warning(f"RCB DataSet 注册失败: {ds_ref}，RCB 可能无法正常工作")
                             # 注册 RCB 到 MMS 模型
                             trg_ops = rc_info.get("trg_ops", {})
                             opt_fields = rc_info.get("opt_fields", {})
-                            # 如果 register_rcb 不可用，至少存到目录
+                            ln_name = rc_info.get("ln_name", "LLN0")
                             if hasattr(iec61850_server, "reports") and iec61850_server.reports:
                                 success = iec61850_server.reports.register_rcb(
                                     ld_inst=rc_info["ld_inst"],
@@ -394,17 +397,31 @@ async def import_icd(
                                     intg_period=rc_info.get("intg_period", 0),
                                     trg_ops=trg_ops if any(trg_ops.values()) else None,
                                     opt_fields=opt_fields if any(opt_fields.values()) else None,
+                                    ln_name=ln_name,
                                 )
                                 if success:
                                     rc_registered += 1
-                                    log.info(f"RCB 已注册: {rc_info['ld_inst']}/{rc_info['name']}")
+                                    log.info(f"RCB 已注册到 MMS 模型: {rc_info['ld_inst']}/{rc_info['name']}")
                                 else:
-                                    log.warning(f"RCB 注册失败: {rc_info['ld_inst']}/{rc_info['name']}")
+                                    rc_failed += 1
+                                    log.warning(
+                                        f"RCB 注册失败 (libIEC61850 版本可能不支持 ReportControlBlock_create): "
+                                        f"{rc_info['ld_inst']}/{rc_info['name']}，此 RCB 不会出现在 MMS 模型中"
+                                    )
                             else:
+                                rc_failed += 1
                                 log.warning(f"reports 管理器不可用，跳过 RCB 注册: {rc_info['name']}")
                         except Exception as rc_err:
+                            rc_failed += 1
                             log.warning(f"注册 RCB 异常 ({rc_info.get('name', '')}): {rc_err}")
-                    log.info(f"ReportControl 注册完成: {rc_registered}/{len(report_controls)}")
+                    if rc_failed > 0:
+                        log.warning(
+                            f"ReportControl 注册完成: 成功={rc_registered}/{len(report_controls)}, "
+                            f"失败={rc_failed}。"
+                            f"失败原因: libIEC61850 的 ReportControlBlock_create API 可能未暴露到 Python SWIG"
+                        )
+                    else:
+                        log.info(f"ReportControl 注册完成: 全部 {rc_registered}/{len(report_controls)} 成功")
 
                 # ===== 2b. 创建 GOOSE Publisher（注册 GSEControlBlock） =====
                 # GoCB 引用的 DataSet 会在 add_goose_control_block 内部创建
@@ -447,6 +464,7 @@ async def import_icd(
                 # ===== 2c. 统一启动 MMS 服务器 =====
                 # 所有 DataSet 和 GoCB 已注册到 IedModel，现在启动 IedServer
                 # IedServer_create 一次性构建包含所有节点的 MMS 命名空间
+                # register_default_rcbs=False: ICD 已提供 RCB 配置，不应再创建默认 brcb01/brcb02
                 need_start = created_goose_count > 0 or pure_ds_count > 0 or rc_registered > 0 or was_running
                 if need_start and iec61850_server:
                     # 启动前诊断：确认 GoCB/DataSet 已注册到 IedModel
@@ -461,9 +479,13 @@ async def import_icd(
                     try:
                         log.info(
                             f"启动 MMS 服务器 (DataSet={pure_ds_count}, "
-                            f"GoCB={created_goose_count}, was_running={was_running})..."
+                            f"GoCB={created_goose_count}, "
+                            f"RCB={rc_registered}, "
+                            f"was_running={was_running})..."
                         )
-                        iec61850_server.start()
+                        # register_default_rcbs=False: 跳过 brcb01/brcb02 默认 RCB，
+                        # ICD 文件中的 ReportControl 已在 2ab 步骤注册
+                        iec61850_server.start(register_default_rcbs=False)
                         if iec61850_server.is_running:
                             log.info("MMS 服务器启动完成，DataSet 和 GoCB 已生效")
                         else:

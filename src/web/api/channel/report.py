@@ -72,6 +72,7 @@ def _server_rcbs_to_discovery_format(report_manager: Any) -> list:
         ld_inst = rcb.get("ld_inst", "")
         rcb_name = rcb.get("name", "")
         rcb_type = rcb.get("rcb_type", "BRCB")
+        ln_name = rcb.get("ln_name", "LLN0")  # 取实际 LN 名，非硬编码
 
         # entry_id: 支持 bytes 和 hex 字符串两种格式
         entry_id_val = rcb.get("entry_id", None)
@@ -89,10 +90,10 @@ def _server_rcbs_to_discovery_format(report_manager: Any) -> list:
         rcbs.append(
             {
                 "name": rcb_name,
-                "ref": f"{ld_inst}/{ld_inst}.{rcb_name}" if ld_inst else rcb_name,
+                "ref": f"{ld_inst}/{ln_name}.{rcb_name}" if ld_inst else rcb_name,
                 "rcb_type": rcb_type,
                 "ld": ld_inst,
-                "ln": "LLN0",
+                "ln": ln_name,
                 "rpt_id": rcb.get("rpt_id", ""),
                 "rpt_ena": rcb.get("rpt_ena", False),
                 "data_set_ref": rcb.get("data_set_ref", ""),
@@ -263,7 +264,9 @@ async def get_report_data(body: ReportDataRequest, request: Request):
             return BaseResponse(code=400, message="Reports 插件不可用", data={"data": [], "total": 0})
 
         if _is_server_mode(reports):
-            return BaseResponse(code=400, message="服务端模式不支持报告数据查询", data={"data": [], "total": 0})
+            return BaseResponse(
+                code=400, message="服务端模式不支持报告数据查询，正在开发中", data={"data": [], "total": 0}
+            )
 
         data = reports.get_report_data(rcb_ref=body.rcb_ref, limit=body.limit)
         return BaseResponse(

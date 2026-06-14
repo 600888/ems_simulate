@@ -14,9 +14,10 @@ const route = useRoute()
 const channelId = ref<number>(0)
 
 watch(
-  () => route.query.channel_id,
-  (newVal) => {
-    channelId.value = Number(newVal) || 0
+  () => [route.path, route.query.channel_id] as const,
+  ([path, newVal]) => {
+    if (path !== '/files') return;
+    channelId.value = Number(newVal) || 0;
   },
   { immediate: true },
 )

@@ -317,12 +317,16 @@ class ServerDataSetManager:
                         self._builder.keep_alive.append(ds_entry)
                         added_count += 1
                 except Exception as create_err:
-                    log.debug(f"DataSetEntry_create 失败: {variable_ref}, error={create_err}")
+                    log.warning(f"DataSetEntry_create 失败: {variable_ref}, error={create_err}")
             except Exception as e:
-                log.debug(f"添加 FCDA 条目异常: {e}")
+                log.warning(f"添加 FCDA 条目异常 (fcda_ref={entry.get('name', '')}): {e}")
 
         if added_count > 0:
             log.info(f"DataSet 已添加 {added_count}/{len(entries)} 个 FCDA 条目")
+        elif entries:
+            log.warning(
+                f"DataSet 未添加任何 FCDA 条目 (共 {len(entries)} 个)，DataSet 将为空，关联的 GoCB/RCB 无数据可发布"
+            )
         return added_count
 
     def _build_ds_members(self, entries: list[dict[str, Any]] | None) -> list[dict[str, Any]]:

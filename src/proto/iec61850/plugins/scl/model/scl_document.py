@@ -181,6 +181,7 @@ class SclReportControl:
     buf_time: int = 0
     intg_period: int = 0
     desc: str = ""
+    rpt_enabled_max: int = 1  # <RptEnabled max="N">，多实例 URCB 的实例数，默认 1
     trg_ops: SclTrgOps = field(default_factory=SclTrgOps)
     opt_fields: SclOptFields = field(default_factory=SclOptFields)
 

@@ -430,7 +430,7 @@ function formatTimeOfEntry(timeOfEntry: number | null | undefined): string {
   }
 }
 
-// RCB 树形数据
+// RCB 树形数据: LD → LN (LLN0) → RCB 三层结构
 interface RcbTreeNode {
   ref: string;
   label: string;
@@ -441,18 +441,22 @@ interface RcbTreeNode {
 }
 
 const rcbTreeData = computed<RcbTreeNode[]>(() => {
-  const ldMap = new Map<string, { children: RcbTreeNode[] }>();
+  // ldMap: ldName -> { lnMap: lnName -> { rcbs: RcbTreeNode[] } }
+  const ldMap = new Map<string, Map<string, RcbTreeNode[]>>();
 
   for (const rcb of rcbs.value) {
     const ldName = rcb.ld || 'Unknown';
-    const lnName = rcb.ln || 'Unknown';
-    const parentKey = ldName;
+    const lnName = rcb.ln || 'LLN0';
 
-    if (!ldMap.has(parentKey)) {
-      ldMap.set(parentKey, { children: [] });
+    if (!ldMap.has(ldName)) {
+      ldMap.set(ldName, new Map());
     }
+    const lnMap = ldMap.get(ldName)!;
 
-    ldMap.get(parentKey)!.children.push({
+    if (!lnMap.has(lnName)) {
+      lnMap.set(lnName, []);
+    }
+    lnMap.get(lnName)!.push({
       ref: rcb.ref,
       label: rcb.name,
       isRcb: true,
@@ -461,10 +465,15 @@ const rcbTreeData = computed<RcbTreeNode[]>(() => {
     });
   }
 
-  return Array.from(ldMap.entries()).map(([ldName, ldData]) => ({
+  // 构建三层树: LD → LN → RCB
+  return Array.from(ldMap.entries()).map(([ldName, lnMap]) => ({
     ref: `ld-${ldName}`,
     label: ldName,
-    children: ldData.children,
+    children: Array.from(lnMap.entries()).map(([lnName, rcbs]) => ({
+      ref: `ln-${ldName}/${lnName}`,
+      label: lnName,
+      children: rcbs,
+    })),
   }));
 });
 

@@ -138,33 +138,35 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
           };
         });
       } else if (cat.key === 'GOOSE') {
-        // GOOSE 分类: 整个分类和条目点击都导航到 GOOSE 管理页面
-        categoryChildren = items.map((item: string, itemIndex: number) => ({
-          nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${itemIndex}`,
-          label: item,
+        // GOOSE 分类: 不展开子项，整个节点点击导航到 /goose 管理页面
+        children.push({
+          nodeKey: `${keyPrefix}-${deviceName}-${cat.key}`,
+          label: cat.label,
           isGroup: false,
           id: 0,
           isIec61850Child: true,
-          iec61850Level: 'ld' as const,
-          name: item,
+          iec61850Level: 'category' as const,
+          name: cat.label,
           deviceName: deviceName,
           type: cat.label,
           linkTo: makeLinkTo('/goose'),
-        }));
+        });
+        return;
       } else if (cat.key === 'Reports') {
-        // Reports 分类: 导航到 Reports 管理页面
-        categoryChildren = items.map((item: string, itemIndex: number) => ({
-          nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${itemIndex}`,
-          label: item,
+        // Reports 分类: 不展开子项，整个节点点击导航到 /reports 管理页面
+        children.push({
+          nodeKey: `${keyPrefix}-${deviceName}-${cat.key}`,
+          label: cat.label,
           isGroup: false,
           id: 0,
           isIec61850Child: true,
-          iec61850Level: 'ld' as const,
-          name: item,
+          iec61850Level: 'category' as const,
+          name: cat.label,
           deviceName: deviceName,
           type: cat.label,
           linkTo: makeLinkTo('/reports'),
-        }));
+        });
+        return;
       } else {
         // 其他分类: 仍然为扁平列表
         categoryChildren = items.map((item: string, itemIndex: number) => ({
