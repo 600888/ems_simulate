@@ -276,6 +276,9 @@ class IcdExporter:
                 ln_inst = self._extract_ln_inst(ln.name)
                 ln_class = ln.ln_class or self._extract_ln_class_from_name(ln.name)
                 if ln_class == "LLN0":
+                    # 跳过无实际数据的 LLN0 系统节点 (无 DO/DataSet/RCB)
+                    if not ln.dos and not ln.datasets and not ln.rcb_list:
+                        continue
                     ln0_item = {
                         "@lnType": ln_type_id,
                         "@lnClass": "LLN0",
@@ -341,7 +344,6 @@ class IcdExporter:
 
         do_type_cache: dict[tuple, str] = {}  # (cdc, da_fingerprint) → do_type_id
         da_type_cache: dict[tuple, str] = {}  # bda_fingerprint → da_type_id
-        fixed_do_types_created: set[str] = set()
 
         for ld in model.lds:
             ld_inst = self._extract_ld_inst(ld.name, ied_name)
@@ -364,17 +366,9 @@ class IcdExporter:
                     )
                     do_refs.append({"@name": do.name, "@type": do_type_id})
 
-                # 固定 DO (Mod/Beh/Health/NamPlt)
-                existing_fixed_do_names = {d.get("@name") for d in do_refs}
-                for fixed_do in self._get_fixed_dos(ln_class):
-                    fixed_do_type_id = fixed_do.get("@type", "")
-                    if fixed_do_type_id and fixed_do_type_id not in fixed_do_types_created:
-                        fixed_do_types_created.add(fixed_do_type_id)
-                        do_type_item = self._build_fixed_do_type(ln_class, fixed_do.get("@name", ""))
-                        if do_type_item:
-                            do_types.append(do_type_item)
-                    if fixed_do.get("@name") not in existing_fixed_do_names:
-                        do_refs.append(fixed_do)
+                # 跳过无实际 DO 的系统节点 (如 LLN0)
+                if not do_refs and ln_class == "LLN0":
+                    continue
 
                 lnode_type = {"@id": ln_type_id, "@lnClass": ln_class}
                 if do_refs:
