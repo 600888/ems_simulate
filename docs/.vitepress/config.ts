@@ -129,6 +129,7 @@ export default defineConfig({
                     text: '软件优化',
                     collapsed: false,
                     items: [
+                        { text: 'MSIX 后端启动修复', link: '/changelog/optimization/msix-backend-startup-fix' },
                         { text: '消除应用启动黑框', link: '/changelog/optimization/startup-black-screen-elimination' }
                     ]
                 }

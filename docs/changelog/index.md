@@ -34,4 +34,5 @@
 
 | 文档 | 说明 |
 |------|------|
+| [MSIX 打包后端进程启动修复](./optimization/msix-backend-startup-fix) | MSIX 后端启动修复 + 代码拆分重构 — 日期：2026-06-17 |
 | [消除应用启动黑框闪现](./optimization/startup-black-screen-elimination) | Tauri + PyInstaller 启动控制台黑框彻底消除 — 日期：2026-06-13 |
