@@ -554,6 +554,13 @@ class IEC61850ClientHandler(ClientHandler):
         """更新 RCB 缓存 (供首次现场发现成功后回写)"""
         self._discovered_rcbs = list(rcbs)
 
+    def update_discovered_rcb(self, rcb_ref: str, updated: dict[str, Any]) -> None:
+        """更新缓存中单个 RCB 记录 (使能/禁用/GI 等操作后局部刷新)"""
+        for i, rcb in enumerate(self._discovered_rcbs):
+            if rcb.get("ref") == rcb_ref:
+                self._discovered_rcbs[i] = updated
+                return
+
     def read_dataset_values(self, dataset_ref: str) -> dict[str, Any]:
         """通过 DataSet 批量读取所有成员值
 

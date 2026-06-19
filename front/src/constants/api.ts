@@ -157,12 +157,12 @@ export const GOOSE_API = {
 // ===== Reports 相关 =====
 export const REPORT_API = {
   LIST: '/api/channels/iec61850/reports/list',
-  ENABLE: '/api/channels/iec61850/reports/enable',
-  DISABLE: '/api/channels/iec61850/reports/disable',
+  APPLY: '/api/channels/iec61850/reports/apply',
   GI: '/api/channels/iec61850/reports/gi',
   DATA: '/api/channels/iec61850/reports/data',
   DETAIL: '/api/channels/iec61850/reports/detail',
   ACTIVE: '/api/channels/iec61850/reports/active',
+  REFRESH: '/api/channels/iec61850/reports/refresh',
 } as const;
 
 // ===== SCL 文件管理相关 =====

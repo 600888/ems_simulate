@@ -6,6 +6,7 @@
 
 from collections.abc import Callable
 import re
+import time
 from typing import Any, Optional
 
 from ...core.linked_list import get_list_from_linked_list
@@ -308,6 +309,13 @@ class ReportsPlugin:
             "owner": info.owner,
             "resv": info.resv,
             "trg_ops": {
+                "dchg": info.trg_ops.dchg,
+                "qchg": info.trg_ops.qchg,
+                "dupd": info.trg_ops.dupd,
+                "period": info.trg_ops.period,
+                "gi": info.trg_ops.gi,
+            },
+            "opt_fields": {
                 "seq_num": info.opt_fields.seq_num,
                 "time_stamp": info.opt_fields.time_stamp,
                 "data_set": info.opt_fields.data_set,
@@ -321,34 +329,72 @@ class ReportsPlugin:
         }
         return result
 
-    # ==================== 报告使能/禁用 ====================
+    # ==================== 报告配置应用 ====================
 
-    def enable_report(
+    def apply_config(
         self,
         rcb_ref: str,
-        gi: bool = True,
+        rpt_ena: bool,
         trg_ops: dict[str, bool] | None = None,
         opt_fields: dict[str, bool] | None = None,
         on_report: Callable[[ReportDataEntry], None] | None = None,
     ) -> bool:
-        """使能报告控制块
+        """应用报告配置
 
-        设置 RptEna=True，配置 TrgOps/OptFields，安装报告回调。
+        报告使能时跳过 TrgOps/OptFields 写入 (使能状态下无法修改属性)。
+        用户需先禁用报告，修改配置，再使能。
+
+        根据参数决定行为:
+        - rpt_ena 变化: 仅设置 RptEna 开关 (使能/禁用)
+        - rpt_ena 不变且当前禁用: 仅写入 TrgOps/OptFields
+        - rpt_ena 不变且当前使能: 跳过 (使能时无法修改属性)
 
         Args:
             rcb_ref: RCB 引用路径
-            gi: 是否同时触发 GI
-            trg_ops: 触发选项字典 (可选，使用默认)
-            opt_fields: 可选字段字典 (可选，使用默认)
+            rpt_ena: 报告使能目标状态
+            trg_ops: 触发选项字典
+            opt_fields: 可选字段字典
             on_report: 报告接收回调 (可选)
 
         Returns:
             bool 是否成功
         """
         if not self._connection or not self._connection.is_connected:
-            log.warning(f"使能报告失败: 连接不可用, ref={rcb_ref}")
+            log.warning(f"应用报告配置失败: 连接不可用, ref={rcb_ref}")
             return False
 
+        # 读取当前 RptEna 状态
+        current_rpt_ena = False
+        detail = self.get_rcb_detail(rcb_ref)
+        if detail:
+            current_rpt_ena = bool(detail.get("rpt_ena", False))
+
+        if rpt_ena != current_rpt_ena:
+            # RptEna 状态变化: 仅设置开关，不碰 TrgOps/OptFields
+            if rpt_ena:
+                return self._enable_report(rcb_ref, on_report=on_report)
+            else:
+                return self._disable_report(rcb_ref)
+
+        # RptEna 状态不变: 仅写入 TrgOps/OptFields
+        if current_rpt_ena:
+            # 报告使能时无法修改属性，跳过
+            log.info(f"报告已使能，跳过配置写入: {rcb_ref}")
+            return True
+
+        # 报告禁用时写入 TrgOps/OptFields
+        if trg_ops is not None or opt_fields is not None:
+            return self._set_config(rcb_ref, trg_ops, opt_fields)
+
+        return True
+
+    def _set_config(
+        self,
+        rcb_ref: str,
+        trg_ops: dict[str, bool] | None = None,
+        opt_fields: dict[str, bool] | None = None,
+    ) -> bool:
+        """设置报告触发选项和可选字段 (内部方法，需在 RptEna=False 时调用)"""
         # 构建 TrgOps
         trg = TrgOps()
         if trg_ops:
@@ -356,7 +402,7 @@ class ReportsPlugin:
             trg.qchg = trg_ops.get("qchg", False)
             trg.dupd = trg_ops.get("dupd", False)
             trg.period = trg_ops.get("period", False)
-            trg.gi = trg_ops.get("gi", gi)
+            trg.gi = trg_ops.get("gi", False)
 
         # 构建 OptFields
         opt = OptFields()
@@ -373,11 +419,36 @@ class ReportsPlugin:
         # 判断 RCB 类型
         rcb_type = self._infer_rcb_type(rcb_ref)
 
-        # 设置 RptEna
+        # 写入 TrgOps + OptFields (RptEna=False 状态)
         if rcb_type == "BRCB":
-            success = BrcbHandler.set_rpt_ena(self._connection, rcb_ref, True, trg, opt)
+            success = BrcbHandler.set_rpt_ena(self._connection, rcb_ref, False, trg, opt)
         else:
-            success = UrcbHandler.set_rpt_ena(self._connection, rcb_ref, True, trg, opt)
+            success = UrcbHandler.set_rpt_ena(self._connection, rcb_ref, False, trg, opt)
+
+        if success:
+            log.info(f"报告配置已更新: {rcb_ref}")
+        else:
+            log.warning(f"设置报告配置失败: {rcb_ref}")
+
+        return success
+
+    def _enable_report(
+        self,
+        rcb_ref: str,
+        on_report: Callable[[ReportDataEntry], None] | None = None,
+    ) -> bool:
+        """使能报告: 设置 RptEna=True，安装回调
+
+        TrgOps/OptFields 需在报告禁用时通过 set_config() 单独设置。
+        """
+        # 判断 RCB 类型
+        rcb_type = self._infer_rcb_type(rcb_ref)
+
+        # 设置 RptEna=True
+        if rcb_type == "BRCB":
+            success = BrcbHandler.set_rpt_ena(self._connection, rcb_ref, True)
+        else:
+            success = UrcbHandler.set_rpt_ena(self._connection, rcb_ref, True)
 
         if not success:
             log.warning(f"设置 RptEna 失败: {rcb_ref}")
@@ -395,40 +466,43 @@ class ReportsPlugin:
             self._set_rpt_ena_raw(rcb_ref, False)
             return False
 
-        # 可选: 触发 GI
-        if gi:
-            self.trigger_gi(rcb_ref)
-
         log.info(f"报告已使能: {rcb_ref}")
         return True
 
-    def disable_report(self, rcb_ref: str) -> bool:
-        """禁用报告控制块
+    def _disable_report(self, rcb_ref: str) -> bool:
+        """禁用报告: 先设置 RptEna=False，再注销回调
 
-        注销回调并设置 RptEna=False。
-
-        Args:
-            rcb_ref: RCB 引用路径
-
-        Returns:
-            bool 是否成功
+        关键改进: 先禁用报告源，再清理回调，避免过渡状态
         """
-        if not self._connection or not self._connection.is_connected:
-            log.warning(f"禁用报告失败: 连接不可用, ref={rcb_ref}")
+        # 1. 先设置 RptEna=False（停止报告源）
+        rcb_type = self._infer_rcb_type(rcb_ref)
+        try:
+            if rcb_type == "BRCB":
+                success = BrcbHandler.disable_direct(self._connection, rcb_ref)
+            else:
+                success = UrcbHandler.set_rpt_ena(self._connection, rcb_ref, False)
+
+            if not success:
+                log.warning(f"设置 RptEna=False 失败: {rcb_ref}")
+                return False
+        except Exception as e:
+            log.error(f"禁用报告异常: {rcb_ref}, {e}")
             return False
 
-        # 先注销回调
-        ReportCallbackHandler.uninstall(self._connection, rcb_ref)
+        log.info(f"报告已禁用: {rcb_ref}")
+        # 2. 短暂等待，确保报告源完全停止
+        time.sleep(0.1)
 
-        # 设置 RptEna=False
-        success = self._set_rpt_ena_raw(rcb_ref, False)
+        # 3. 再注销回调（此时已无新报告产生，更安全）
+        try:
+            ReportCallbackHandler.uninstall(self._connection, rcb_ref)
+        except Exception as e:
+            log.error(f"注销回调失败: {rcb_ref}, {e}")
+            # 即使注销失败，报告已禁用，手动清理可能导致资源泄漏
+            # 但系统功能正常（不会收到意外回调）
 
-        if success:
-            log.info(f"报告已禁用: {rcb_ref}")
-        else:
-            log.warning(f"设置 RptEna=False 失败: {rcb_ref} (回调已注销)")
-
-        return success
+        log.info(f"报告已禁用: {rcb_ref}")
+        return True
 
     def _set_rpt_ena_raw(self, rcb_ref: str, enable: bool) -> bool:
         """仅设置 RptEna，不操作回调"""

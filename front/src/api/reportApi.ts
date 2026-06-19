@@ -90,38 +90,25 @@ export async function listRcbs(channelId: number): Promise<RcbInfo[]> {
   }
 }
 
-export async function enableReport(
+export async function applyConfig(
   channelId: number,
   rcbRef: string,
-  gi: boolean = true,
+  rptEna: boolean,
   trgOps?: Partial<TrgOps>,
   optFields?: Partial<OptFields>,
-): Promise<boolean> {
+): Promise<{ success: boolean; rcb?: RcbInfo }> {
   try {
-    const result = await requestApi(REPORT_API.ENABLE, 'post', {
+    const result = await requestApi(REPORT_API.APPLY, 'post', {
       channel_id: channelId,
       rcb_ref: rcbRef,
-      gi,
+      rpt_ena: rptEna,
       trg_ops: trgOps,
       opt_fields: optFields,
     });
-    return result?.success === true;
+    return { success: result?.success === true, rcb: result?.rcb };
   } catch (error) {
-    console.error('Error enabling report:', error);
-    return false;
-  }
-}
-
-export async function disableReport(channelId: number, rcbRef: string): Promise<boolean> {
-  try {
-    const result = await requestApi(REPORT_API.DISABLE, 'post', {
-      channel_id: channelId,
-      rcb_ref: rcbRef,
-    });
-    return result?.success === true;
-  } catch (error) {
-    console.error('Error disabling report:', error);
-    return false;
+    console.error('Error applying report config:', error);
+    return { success: false };
   }
 }
 
@@ -164,6 +151,18 @@ export async function getRcbDetail(channelId: number, rcbRef: string): Promise<R
     });
   } catch (error) {
     console.error('Error fetching RCB detail:', error);
+    return null;
+  }
+}
+
+export async function refreshRcb(channelId: number, rcbRef: string): Promise<RcbInfo | null> {
+  try {
+    return await requestApi(REPORT_API.REFRESH, 'post', {
+      channel_id: channelId,
+      rcb_ref: rcbRef,
+    });
+  } catch (error) {
+    console.error('Error refreshing RCB:', error);
     return null;
   }
 }

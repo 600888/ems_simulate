@@ -10,9 +10,8 @@ from fastapi import APIRouter, Request
 from src.data.service.channel_service import ChannelService
 from src.web.api.schemas import BaseResponse
 from src.web.api.schemas.report import (
+    RcbApplyConfigRequest,
     RcbDetailRequest,
-    RcbDisableRequest,
-    RcbEnableRequest,
     RcbGiRequest,
     RcbListRequest,
     ReportDataRequest,
@@ -168,6 +167,60 @@ def _discover_rcbs(reports: Any, channel_id: int = 0, handler: Any = None) -> li
     return rcbs
 
 
+def _refresh_single_rcb(reports: Any, rcb_ref: str, channel_id: int, request: Request) -> dict[str, Any] | None:
+    """读取单个 RCB 最新状态并更新缓存中对应记录
+
+    用于使能/GI 等操作后局部刷新，避免全部重新发现。
+
+    Returns:
+        更新后的 RCB 字典，失败返回 None
+    """
+    try:
+        if _is_server_mode(reports):
+            # 服务端模式: 从本地 ReportManager 重新获取
+            rcbs = _server_rcbs_to_discovery_format(reports)
+            for rcb in rcbs:
+                if rcb.get("ref") == rcb_ref or rcb.get("name") == rcb_ref.split(".")[-1]:
+                    return rcb
+            return None
+
+        # 客户端模式: 重新读取单个 RCB 详情
+        detail = reports.get_rcb_detail(rcb_ref=rcb_ref)
+        if not detail:
+            return None
+
+        # 更新缓存中对应的那条记录
+        handler = _get_client_handler(channel_id, request)
+        if handler and hasattr(handler, "update_discovered_rcb"):
+            handler.update_discovered_rcb(rcb_ref, detail)
+        return detail
+    except Exception as e:
+        log.warning(f"刷新单个 RCB 状态失败: ref={rcb_ref}, {e}")
+        return None
+
+
+def _mark_rcb_disabled(channel_id: int, rcb_ref: str, request: Request) -> dict[str, Any] | None:
+    """禁用报告后直接从缓存更新 rpt_ena=False
+
+    不调用 get_rcb_detail 读取服务器状态，避免注销回调后紧接着读 RCB
+    触发 C 层竞争崩溃。
+
+    Returns:
+        更新后的 RCB 字典，失败返回 None
+    """
+    handler = _get_client_handler(channel_id, request)
+    if not handler or not hasattr(handler, "get_discovered_rcbs"):
+        return None
+
+    for rcb in handler.get_discovered_rcbs():
+        if rcb.get("ref") == rcb_ref:
+            rcb["rpt_ena"] = False
+            if hasattr(handler, "update_discovered_rcb"):
+                handler.update_discovered_rcb(rcb_ref, rcb)
+            return rcb
+    return None
+
+
 @router.post("/iec61850/reports/list", response_model=BaseResponse)
 async def list_rcbs(body: RcbListRequest, request: Request):
     """列出 IEC61850 设备的报告控制块 (RCB)"""
@@ -183,12 +236,16 @@ async def list_rcbs(body: RcbListRequest, request: Request):
         return BaseResponse(code=500, message=f"获取 RCB 列表失败: {e}", data={"rcbs": []})
 
 
-@router.post("/iec61850/reports/enable", response_model=BaseResponse)
-async def enable_report(body: RcbEnableRequest, request: Request):
-    """使能报告控制块
+@router.post("/iec61850/reports/apply", response_model=BaseResponse)
+async def apply_report_config(body: RcbApplyConfigRequest, request: Request):
+    """应用报告配置 (一次性写入 RptEna + TrgOps + OptFields)
 
-    注意: 服务端模式 (ReportManager) 不支持 enable/disable/GI 操作，
-    这些操作仅对客户端模式 (ReportsPlugin) 有效。
+    根据 rpt_ena 决定使能或禁用:
+    - rpt_ena=True: 设置 RptEna=True + TrgOps + OptFields，安装报告回调
+    - rpt_ena=False: 设置 RptEna=False，注销报告回调
+
+    注意: 服务端模式 (ReportManager) 不支持此操作，
+    仅对客户端模式 (ReportsPlugin) 有效。
     """
     try:
         reports = _get_reports_plugin(body.channel_id, request)
@@ -196,42 +253,29 @@ async def enable_report(body: RcbEnableRequest, request: Request):
             return BaseResponse(code=400, message="Reports 插件不可用", data={"success": False})
 
         if _is_server_mode(reports):
-            return BaseResponse(code=400, message="服务端模式不支持远程使能操作", data={"success": False})
+            return BaseResponse(code=400, message="服务端模式不支持远程配置操作", data={"success": False})
 
-        success = reports.enable_report(
+        success = reports.apply_config(
             rcb_ref=body.rcb_ref,
-            gi=body.gi,
+            rpt_ena=body.rpt_ena,
             trg_ops=body.trg_ops,
             opt_fields=body.opt_fields,
         )
         if success:
-            return BaseResponse(message="报告使能成功", data={"success": True})
+            if body.rpt_ena:
+                # 使能成功: 读取单个 RCB 最新状态并更新缓存
+                updated = _refresh_single_rcb(reports, body.rcb_ref, body.channel_id, request)
+            else:
+                # 禁用成功: 不立即调用 get_rcb_detail (可能触发 C 层竞争崩溃)
+                # 直接从缓存更新 rpt_ena=False
+                updated = _mark_rcb_disabled(body.channel_id, body.rcb_ref, request)
+            return BaseResponse(message="报告配置应用成功", data={"success": True, "rcb": updated})
         else:
-            return BaseResponse(code=500, message="报告使能失败", data={"success": False})
+            action = "使能" if body.rpt_ena else "禁用"
+            return BaseResponse(code=500, message=f"报告{action}失败", data={"success": False})
     except Exception as e:
-        log.error(f"使能报告失败: {e}")
-        return BaseResponse(code=500, message=f"使能报告失败: {e}", data={"success": False})
-
-
-@router.post("/iec61850/reports/disable", response_model=BaseResponse)
-async def disable_report(body: RcbDisableRequest, request: Request):
-    """禁用报告控制块"""
-    try:
-        reports = _get_reports_plugin(body.channel_id, request)
-        if not reports:
-            return BaseResponse(code=400, message="Reports 插件不可用", data={"success": False})
-
-        if _is_server_mode(reports):
-            return BaseResponse(code=400, message="服务端模式不支持远程禁用操作", data={"success": False})
-
-        success = reports.disable_report(rcb_ref=body.rcb_ref)
-        if success:
-            return BaseResponse(message="报告禁用成功", data={"success": True})
-        else:
-            return BaseResponse(code=500, message="报告禁用失败", data={"success": False})
-    except Exception as e:
-        log.error(f"禁用报告失败: {e}")
-        return BaseResponse(code=500, message=f"禁用报告失败: {e}", data={"success": False})
+        log.error(f"应用报告配置失败: {e}")
+        return BaseResponse(code=500, message=f"应用报告配置失败: {e}", data={"success": False})
 
 
 @router.post("/iec61850/reports/gi", response_model=BaseResponse)
@@ -253,6 +297,24 @@ async def trigger_gi(body: RcbGiRequest, request: Request):
     except Exception as e:
         log.error(f"触发 GI 失败: {e}")
         return BaseResponse(code=500, message=f"触发 GI 失败: {e}", data={"success": False})
+
+
+@router.post("/iec61850/reports/refresh", response_model=BaseResponse)
+async def refresh_rcb(body: RcbDetailRequest, request: Request):
+    """刷新单个 RCB 状态 (从服务器重新读取并更新缓存)"""
+    try:
+        reports = _get_reports_plugin(body.channel_id, request)
+        if not reports:
+            return BaseResponse(code=400, message="Reports 插件不可用", data={})
+
+        updated = _refresh_single_rcb(reports, body.rcb_ref, body.channel_id, request)
+        if updated:
+            return BaseResponse(message="刷新 RCB 成功", data=updated)
+        else:
+            return BaseResponse(code=404, message="RCB 未找到或刷新失败", data={})
+    except Exception as e:
+        log.error(f"刷新 RCB 失败: {e}")
+        return BaseResponse(code=500, message=f"刷新 RCB 失败: {e}", data={})
 
 
 @router.post("/iec61850/reports/data", response_model=BaseResponse)

@@ -76,9 +76,8 @@ from .point import (
 )
 from .point_mapping import SourcePointItem
 from .report import (
+    RcbApplyConfigRequest,
     RcbDetailRequest,
-    RcbDisableRequest,
-    RcbEnableRequest,
     RcbGiRequest,
     RcbListRequest,
     ReportDataRequest,
@@ -156,8 +155,7 @@ __all__ = [
     "GooseCaptureStatusResponse",
     # report
     "RcbListRequest",
-    "RcbEnableRequest",
-    "RcbDisableRequest",
+    "RcbApplyConfigRequest",
     "RcbGiRequest",
     "ReportDataRequest",
     "RcbDetailRequest",

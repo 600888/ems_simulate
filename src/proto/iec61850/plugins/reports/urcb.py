@@ -23,6 +23,7 @@ class UrcbHandler:
     # RCB changes 位掩码常量 (与 libiec61850 RCB_ELEMENT_* 一致)
     RCB_RPT_ID = 1
     RCB_RPT_ENA = 2
+    RCB_RESV = 4
     RCB_DAT_SET_REF = 8
     RCB_CONF_REV = 16
     RCB_OPT_FLDS = 32
@@ -109,6 +110,8 @@ class UrcbHandler:
     ) -> bool:
         """设置 URCB 的 RptEna 及相关属性
 
+        URCB 不需要 Resv 预约机制 (BRCB 才需要)，直接读写 RptEna 即可。
+
         Args:
             connection: Iec61850Connection 实例
             rcb_ref: RCB 引用路径
@@ -141,13 +144,26 @@ class UrcbHandler:
                     log.warning(f"设置 URCB RptEna 前读取失败: ref={rcb_ref}, error={error}")
                     return False
 
-                changes = 0
+                # 读取当前 RptEna 状态
+                current_rpt_ena = False
+                with contextlib.suppress(Exception):
+                    current_rpt_ena = bool(iec61850.ClientReportControlBlock_getRptEna(rcb))
 
-                # 设置 RptEna
+                # 幂等保护: 已处于目标状态且无属性需要修改则直接返回成功
+                has_config = (trg_ops is not None) or (opt_fields is not None) or intg_period > 0
+                if enable and current_rpt_ena and not has_config:
+                    log.info(f"URCB 已处于使能状态，跳过: {rcb_ref}")
+                    return True
+                if (not enable) and (not current_rpt_ena) and not has_config:
+                    log.info(f"URCB 已处于禁用状态，跳过: {rcb_ref}")
+                    return True
+
+                # 设置 RptEna + TrgOps + OptFields (URCB 无需 Resv 预约)
+                changes = 0
                 iec61850.ClientReportControlBlock_setRptEna(rcb, enable)
                 changes |= UrcbHandler.RCB_RPT_ENA
 
-                if enable and trg_ops:
+                if trg_ops:
                     trg_opts_val = 0
                     if trg_ops.dchg:
                         trg_opts_val |= 0x01
@@ -162,7 +178,7 @@ class UrcbHandler:
                     iec61850.ClientReportControlBlock_setTrgOps(rcb, trg_opts_val)
                     changes |= UrcbHandler.RCB_TRG_OPS
 
-                if enable and opt_fields:
+                if opt_fields:
                     opt_flds_val = 0
                     if opt_fields.seq_num:
                         opt_flds_val |= 0x01
@@ -177,11 +193,10 @@ class UrcbHandler:
                     iec61850.ClientReportControlBlock_setOptFlds(rcb, opt_flds_val)
                     changes |= UrcbHandler.RCB_OPT_FLDS
 
-                if enable and intg_period > 0:
+                if intg_period > 0:
                     iec61850.ClientReportControlBlock_setIntgPd(rcb, intg_period)
                     changes |= UrcbHandler.RCB_INTG_PD
 
-                # 写回服务器
                 result = iec61850.IedConnection_setRCBValues(conn, rcb, changes, True)
                 set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 

@@ -137,28 +137,79 @@
                   </el-descriptions-item>
                 </el-descriptions>
 
-                <!-- TrgOps -->
-                <h4 class="section-title">{{ t('report.trgOps') }}</h4>
-                <el-checkbox-group v-model="trgOpsModel" class="trg-ops-group">
-                  <el-checkbox label="dchg" :disabled="!canEdit">{{ t('report.dchg') }}</el-checkbox>
-                  <el-checkbox label="qchg" :disabled="!canEdit">{{ t('report.qchg') }}</el-checkbox>
-                  <el-checkbox label="dupd" :disabled="!canEdit">{{ t('report.dupd') }}</el-checkbox>
-                  <el-checkbox label="period" :disabled="!canEdit">{{ t('report.period') }}</el-checkbox>
-                  <el-checkbox label="gi" :disabled="!canEdit">{{ t('report.giLabel') }}</el-checkbox>
-                </el-checkbox-group>
+                <!-- 报告使能 (独立勾选) -->
+                <h4 class="section-title">{{ t('report.reportConfig') }}</h4>
+                <div class="rpt-ena-row">
+                  <el-checkbox v-model="rptEnaModel" size="default">
+                    {{ t('report.rptEnaToggle') }}
+                  </el-checkbox>
+                  <el-tag
+                    v-if="selectedRcb.rpt_ena"
+                    type="success"
+                    size="small"
+                    class="ena-tag"
+                  >
+                    {{ t('report.enabled') }}
+                  </el-tag>
+                  <el-tag v-else type="danger" size="small" class="ena-tag">
+                    {{ t('report.disabled') }}
+                  </el-tag>
+                </div>
 
-                <!-- OptFields -->
-                <h4 class="section-title">{{ t('report.optFields') }}</h4>
-                <el-checkbox-group v-model="optFieldsModel" class="opt-fields-group">
-                  <el-checkbox label="seq_num" :disabled="!canEdit">{{ t('report.seqNum') }}</el-checkbox>
-                  <el-checkbox label="time_stamp" :disabled="!canEdit">{{ t('report.timeStamp') }}</el-checkbox>
-                  <el-checkbox label="data_set" :disabled="!canEdit">{{ t('report.dataSetField') }}</el-checkbox>
-                  <el-checkbox label="reason_code" :disabled="!canEdit">{{ t('report.reasonCode') }}</el-checkbox>
-                  <el-checkbox label="data_ref" :disabled="!canEdit">{{ t('report.dataRef') }}</el-checkbox>
-                  <el-checkbox label="entry_id" :disabled="!canEdit">{{ t('report.entryId') }}</el-checkbox>
-                  <el-checkbox label="config_ref" :disabled="!canEdit">{{ t('report.configRef') }}</el-checkbox>
-                  <el-checkbox label="buf_ovfl" :disabled="!canEdit">{{ t('report.bufOvfl') }}</el-checkbox>
-                </el-checkbox-group>
+                <!-- TrgOps + OptFields (报告使能时整体禁用) -->
+                <div class="config-fields-section" :class="{ 'is-disabled': selectedRcb.rpt_ena }">
+                  <div class="config-fields-header">
+                    <h4 class="section-title" style="margin:0">{{ t('report.configFields') }}</h4>
+                    <el-alert
+                      v-if="selectedRcb.rpt_ena"
+                      :title="t('report.configFieldsDisabledHint')"
+                      type="warning"
+                      :closable="false"
+                      show-icon
+                      size="small"
+                    />
+                  </div>
+
+                  <h5 class="subsection-title">{{ t('report.trgOps') }}</h5>
+                  <el-checkbox-group v-model="trgOpsModel" class="config-checkbox-group">
+                    <el-checkbox label="dchg" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.dchg') }}</el-checkbox>
+                    <el-checkbox label="qchg" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.qchg') }}</el-checkbox>
+                    <el-checkbox label="dupd" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.dupd') }}</el-checkbox>
+                    <el-checkbox label="period" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.period') }}</el-checkbox>
+                    <el-checkbox label="gi" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.giLabel') }}</el-checkbox>
+                  </el-checkbox-group>
+
+                  <h5 class="subsection-title">{{ t('report.optFields') }}</h5>
+                  <el-checkbox-group v-model="optFieldsModel" class="config-checkbox-group">
+                    <el-checkbox label="seq_num" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.seqNum') }}</el-checkbox>
+                    <el-checkbox label="time_stamp" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.timeStamp') }}</el-checkbox>
+                    <el-checkbox label="data_set" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.dataSetField') }}</el-checkbox>
+                    <el-checkbox label="reason_code" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.reasonCode') }}</el-checkbox>
+                    <el-checkbox label="data_ref" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.dataRef') }}</el-checkbox>
+                    <el-checkbox label="entry_id" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.entryId') }}</el-checkbox>
+                    <el-checkbox label="config_ref" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.configRef') }}</el-checkbox>
+                    <el-checkbox label="buf_ovfl" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.bufOvfl') }}</el-checkbox>
+                  </el-checkbox-group>
+                </div>
+
+                <!-- 操作按钮: 应用配置 + 总召唤 -->
+                <div class="action-buttons">
+                  <el-button
+                    type="primary"
+                    :loading="actionLoading"
+                    @click="handleApplyConfig"
+                  >
+                    {{ t('report.applyConfig') }}
+                  </el-button>
+                  <el-button
+                    type="warning"
+                    :disabled="!selectedRcb.rpt_ena"
+                    :loading="giLoading"
+                    @click="handleGi"
+                  >
+                    {{ t('report.gi') }}
+                  </el-button>
+                </div>
 
                 <!-- Information received in last Report -->
                 <h4 class="section-title">{{ t('report.lastReportInfo') }}</h4>
@@ -218,33 +269,6 @@
                     </el-table-column>
                   </el-table>
                 </template>
-
-                <!-- 操作按钮 -->
-                <div class="action-buttons">
-                  <el-button
-                    v-if="!selectedRcb.rpt_ena"
-                    type="success"
-                    :loading="actionLoading"
-                    @click="handleEnable"
-                  >
-                    {{ t('report.enable') }}
-                  </el-button>
-                  <el-button
-                    v-if="selectedRcb.rpt_ena"
-                    type="danger"
-                    :loading="actionLoading"
-                    @click="handleDisable"
-                  >
-                    {{ t('report.disable') }}
-                  </el-button>
-                  <el-button
-                    :disabled="!selectedRcb.rpt_ena"
-                    :loading="giLoading"
-                    @click="handleGi"
-                  >
-                    {{ t('report.gi') }}
-                  </el-button>
-                </div>
               </div>
             </el-tab-pane>
 
@@ -318,13 +342,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onActivated, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, ElTree } from 'element-plus';
 import {
   listRcbs,
-  enableReport,
-  disableReport,
+  applyConfig,
   triggerGi,
   getReportData,
   type RcbInfo,
@@ -346,12 +369,11 @@ const rcbTreeRef = ref<InstanceType<typeof ElTree> | null>(null);
 const detailTab = ref('attributes');
 const trgOpsModel = ref<string[]>([]);
 const optFieldsModel = ref<string[]>([]);
+const rptEnaModel = ref(false);          // 报告使能配置项 (待应用)
 
 // 报告数据
 const reportData = ref<any[]>([]);
 const reportDataTotal = ref(0);
-
-const canEdit = computed(() => !selectedRcb.value?.rpt_ena);
 
 // 全称映射
 const TRGOPS_NAME_MAP: Record<string, string> = {
@@ -383,10 +405,8 @@ const optFieldsSummary = computed(() => {
   return optFieldsModel.value.map(k => OPTFLDS_NAME_MAP[k] || k).join(', ') || '';
 });
 
-// GI 使能状态
-const giEnabled = computed(() => {
-  return trgOpsModel.value.includes('gi');
-});
+// GI 使能状态 (用于属性展示)
+const giEnabled = computed(() => trgOpsModel.value.includes('gi'));
 
 // 最近一次报告信息 (来自报告数据列表的第一条/最新一条)
 const lastReport = computed(() => {
@@ -514,18 +534,24 @@ function syncCheckboxes() {
   trgOpsModel.value = trg ? Object.keys(trg).filter((k) => (trg as any)[k]) : [];
   const opt = selectedRcb.value.opt_fields;
   optFieldsModel.value = opt ? Object.keys(opt).filter((k) => (opt as any)[k]) : [];
+  // 同步报告使能勾选框与后端状态
+  rptEnaModel.value = !!selectedRcb.value.rpt_ena;
 }
 
 async function loadRcbs() {
   if (!props.channelId) return;
+  // 记住当前选中的 RCB ref，刷新后保持选中
+  const prevRef = selectedRcb.value?.ref;
   loading.value = true;
   try {
     rcbs.value = await listRcbs(props.channelId);
     if (rcbs.value.length > 0) {
-      // 自动选中第一个 RCB
       await nextTick();
-      const firstRcb = rcbs.value[0];
-      selectedRcb.value = firstRcb;
+      // 优先保持之前选中的 RCB，否则选中第一个
+      const target = prevRef
+        ? rcbs.value.find((r) => r.ref === prevRef)
+        : null;
+      selectedRcb.value = target || rcbs.value[0];
       syncCheckboxes();
       loadReportData();
     }
@@ -572,43 +598,53 @@ function buildOptFieldsFromModel(): Record<string, boolean> {
   };
 }
 
-async function handleEnable() {
+/**
+ * 应用配置: 一次性写入所有配置项 (报告使能 + 总召唤使能 + 触发选项 + 可选字段)
+ * - rptEnaModel=true: 调用 enableReport 写入 RptEna=True + TrgOps + OptFields
+ * - rptEnaModel=false: 调用 disableReport 设置 RptEna=False
+ *
+ * 总召唤(GI)的"使能"体现为 TrgOps.gi 位，随配置一起写入；
+ * 总召唤的"触发"是独立的手动动作，由"总召唤"按钮单独调用。
+ */
+async function handleApplyConfig() {
   if (!selectedRcb.value) return;
   actionLoading.value = true;
   try {
-    const ok = await enableReport(
+    // 统一调用 applyConfig 接口，根据 rptEnaModel 决定使能/禁用
+    // 一次性写入 RptEna + TrgOps + OptFields
+    const result = await applyConfig(
       props.channelId,
       selectedRcb.value.ref,
-      true,
+      rptEnaModel.value,
       buildTrgOpsFromModel(),
       buildOptFieldsFromModel(),
     );
-    if (ok) {
-      ElMessage.success(t('report.enableSuccess'));
-      await loadRcbs();
+    if (result.success) {
+      ElMessage.success(t('report.applyConfigSuccess'));
+      // 直接用后端返回的 rcb 数据更新本地状态
+      if (result.rcb) {
+        updateRcbInList(result.rcb);
+      }
     } else {
-      ElMessage.error(t('report.enableFailed'));
+      ElMessage.error(t('report.applyConfigFailed'));
+      // 失败回滚勾选框到后端实际状态
+      rptEnaModel.value = !!selectedRcb.value.rpt_ena;
     }
   } finally {
     actionLoading.value = false;
   }
 }
 
-async function handleDisable() {
-  if (!selectedRcb.value) return;
-  actionLoading.value = true;
-  try {
-    const ok = await disableReport(props.channelId, selectedRcb.value.ref);
-    if (ok) {
-      ElMessage.success(t('report.disableSuccess'));
-      await loadRcbs();
-    } else {
-      ElMessage.error(t('report.disableFailed'));
-    }
-  } finally {
-    actionLoading.value = false;
+/** 用后端返回的 rcb 数据更新本地列表和选中状态，并同步勾选框 */
+function updateRcbInList(rcb: RcbInfo) {
+  const idx = rcbs.value.findIndex((r) => r.ref === rcb.ref);
+  if (idx >= 0) {
+    rcbs.value[idx] = rcb;
   }
+  selectedRcb.value = rcb;
+  syncCheckboxes();
 }
+
 
 async function handleGi() {
   if (!selectedRcb.value) return;
@@ -634,6 +670,13 @@ function handleClearData() {
 
 onMounted(() => {
   loadRcbs();
+});
+
+// keep-alive 组件从其他路由切回来时重新加载，确保获取最新 RCB 列表
+onActivated(() => {
+  if (props.channelId) {
+    loadRcbs();
+  }
 });
 </script>
 
@@ -782,11 +825,81 @@ onMounted(() => {
   color: #303133;
 }
 
-.trg-ops-group,
-.opt-fields-group {
+.subsection-title {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+}
+
+.config-fields-section {
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  padding: 12px 16px;
+  margin-top: 8px;
+  transition: opacity 0.2s;
+
+  &.is-disabled {
+    opacity: 0.6;
+    background: #fafafa;
+    cursor: not-allowed;
+  }
+}
+
+.config-fields-header {
   display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
   flex-wrap: wrap;
+}
+
+.trg-ops-group,
+.opt-fields-group,
+.config-checkbox-group {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px 12px;
+  align-items: center;
+
+  // 每个 checkbox 项占一格，保证上下对齐；放大勾选框为中号
+  .el-checkbox {
+    margin-right: 0;
+    height: 32px;
+    line-height: 32px;
+    font-size: 15px;
+
+    // 放大复选框图标
+    --el-checkbox-input-height: 18px;
+    --el-checkbox-input-width: 18px;
+
+    .el-checkbox__label {
+      font-size: 15px;
+    }
+  }
+
+  @include bp.respond-to('small') {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.rpt-ena-row {
+  display: flex;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+
+  .el-checkbox {
+    height: 32px;
+    line-height: 32px;
+    font-size: 15px;
+    --el-checkbox-input-height: 18px;
+    --el-checkbox-input-width: 18px;
+
+    .el-checkbox__label {
+      font-size: 15px;
+    }
+  }
 }
 
 .action-buttons {

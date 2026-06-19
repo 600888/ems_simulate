@@ -143,7 +143,7 @@ class BrcbHandler:
                 iec61850.ClientReportControlBlock_setRptEna(rcb, enable)
                 changes |= BrcbHandler.RCB_RPT_ENA
 
-                if enable and trg_ops:
+                if trg_ops:
                     # 设置 TrgOps
                     trg_opts_val = 0
                     if trg_ops.dchg:
@@ -159,7 +159,7 @@ class BrcbHandler:
                     iec61850.ClientReportControlBlock_setTrgOps(rcb, trg_opts_val)
                     changes |= BrcbHandler.RCB_TRG_OPS
 
-                if enable and opt_fields:
+                if opt_fields:
                     # 设置 OptFields
                     opt_flds_val = 0
                     if opt_fields.seq_num:
@@ -240,6 +240,39 @@ class BrcbHandler:
                     iec61850.ClientReportControlBlock_destroy(rcb)
         except Exception as e:
             log.error(f"BRCB GI 触发异常: {rcb_ref}, {e}")
+            return False
+
+    @staticmethod
+    def disable_direct(connection, rcb_ref: str) -> bool:
+        """直接禁用 BRCB: 仅写 RptEna=False，不读不预约"""
+        if not HAS_IEC61850:
+            return False
+        conn = connection.connection
+        if not conn:
+            return False
+
+        try:
+            nref = BrcbHandler._normalize_ref(rcb_ref)
+            rcb = BrcbHandler._create_rcb_block(nref)
+            if not rcb:
+                return False
+
+            try:
+                iec61850.ClientReportControlBlock_setRptEna(rcb, False)
+                result = iec61850.IedConnection_setRCBValues(conn, rcb, BrcbHandler.RCB_RPT_ENA, True)
+                set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
+
+                if set_error != iec61850.IED_ERROR_OK:
+                    log.warning(f"BRCB 直接禁用失败: ref={rcb_ref}, error={set_error}")
+                    return False
+
+                log.info(f"BRCB RptEna 已禁用 (直接): {rcb_ref}")
+                return True
+            finally:
+                with contextlib.suppress(Exception):
+                    iec61850.ClientReportControlBlock_destroy(rcb)
+        except Exception as e:
+            log.error(f"BRCB 直接禁用异常: {rcb_ref}, {e}")
             return False
 
     @staticmethod

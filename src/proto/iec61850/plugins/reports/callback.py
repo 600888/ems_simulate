@@ -90,11 +90,14 @@ class ReportCallbackHandler:
             log.warning(f"安装报告回调失败: 连接不可用, ref={rcb_ref}")
             return False
 
+        # 如果已注册，先注销 (不能在锁内调用 uninstall，因为 uninstall 需要在锁外
+        # 调用 C 层注销以避免死锁)
         with _CALLBACK_LOCK:
-            # 如果已注册，先注销
-            if rcb_ref in _CALLBACK_REGISTRY:
-                ReportCallbackHandler.uninstall(connection, rcb_ref)
+            already_registered = rcb_ref in _CALLBACK_REGISTRY
+        if already_registered:
+            ReportCallbackHandler.uninstall(connection, rcb_ref)
 
+        with _CALLBACK_LOCK:
             if not (hasattr(iec61850, "RCBHandler") and hasattr(iec61850, "RCBSubscriber")):
                 log.warning("pyiec61850 不支持 RCBHandler/RCBSubscriber, 无法安装报告回调")
                 return False
@@ -127,28 +130,36 @@ class ReportCallbackHandler:
 
     @staticmethod
     def uninstall(connection, rcb_ref: str) -> bool:
-        """注销报告回调"""
+        """注销报告回调
+
+        注意: IedConnection_uninstallReportHandler 是同步调用，会等待接收线程
+        完成当前回调。不能在持有 _CALLBACK_LOCK 时调用，否则与 _dispatch_report
+        中的锁形成死锁导致程序崩溃。
+        """
         if not HAS_IEC61850:
             return False
         conn = connection.connection
         if not conn:
             return False
 
+        # 1. 先在锁内从注册表移除，并取出 subscriber/handler 引用
+        #    这样 _dispatch_report 不再分发该 RCB 的报告
         with _CALLBACK_LOCK:
             if rcb_ref not in _CALLBACK_REGISTRY:
                 return True
+            info = _CALLBACK_REGISTRY.pop(rcb_ref)
 
-            try:
-                iec61850.IedConnection_uninstallReportHandler(conn, _normalize_ref(rcb_ref))
-            except Exception as e:
-                log.debug(f"注销报告回调异常 (非致命): {rcb_ref}, {e}")
+        # 2. 在锁外调用 C 层注销 (同步等待接收线程完成当前回调)
+        try:
+            iec61850.IedConnection_uninstallReportHandler(conn, _normalize_ref(rcb_ref))
+        except Exception as e:
+            log.debug(f"注销报告回调异常 (非致命): {rcb_ref}, {e}")
 
-            # 释放 subscriber/handler 引用
-            _CALLBACK_REGISTRY[rcb_ref].subscriber = None
-            _CALLBACK_REGISTRY[rcb_ref].handler = None
-            del _CALLBACK_REGISTRY[rcb_ref]
-            log.info(f"报告回调已注销: {rcb_ref}")
-            return True
+        # 3. 释放 subscriber/handler 引用 (C 层注销完成后才安全释放)
+        info.subscriber = None
+        info.handler = None
+        log.info(f"报告回调已注销: {rcb_ref}")
+        return True
 
     @staticmethod
     def get_cache(rcb_ref: str) -> list[dict[str, Any]]:
@@ -188,16 +199,28 @@ class ReportCallbackHandler:
 
     @staticmethod
     def shutdown_all(connection) -> None:
-        """关闭所有回调（插件关闭时调用）"""
+        """关闭所有回调（插件关闭时调用）
+
+        同样不能在持有 _CALLBACK_LOCK 时调用 C 层注销，避免死锁。
+        """
+        # 1. 锁内取出所有 rcb_ref 并清空注册表
         with _CALLBACK_LOCK:
-            for rcb_ref in list(_CALLBACK_REGISTRY.keys()):
-                try:
-                    if connection and connection.connection:
-                        iec61850.IedConnection_uninstallReportHandler(connection.connection, _normalize_ref(rcb_ref))
-                except Exception:
-                    pass
-            _CALLBACK_REGISTRY.clear()
-            log.info("所有报告回调已关闭")
+            refs = list(_CALLBACK_REGISTRY.keys())
+            infos = [_CALLBACK_REGISTRY.pop(ref) for ref in refs]
+
+        # 2. 锁外逐个调用 C 层注销
+        for ref in refs:
+            try:
+                if connection and connection.connection:
+                    iec61850.IedConnection_uninstallReportHandler(connection.connection, _normalize_ref(ref))
+            except Exception:
+                pass
+
+        # 3. 释放引用
+        for info in infos:
+            info.subscriber = None
+            info.handler = None
+        log.info("所有报告回调已关闭")
 
     @staticmethod
     def _entry_to_dict(entry: ReportDataEntry) -> dict[str, Any]:
@@ -216,25 +239,40 @@ class ReportCallbackHandler:
 
 
 def _dispatch_report(rcb_ref: str, report) -> None:
-    """解析并分发一条报告 (由 _PyRCBHandler.trigger 调用)"""
+    """解析并分发一条报告 (由 _PyRCBHandler.trigger 调用)
+
+    注意: 不能在持有 _CALLBACK_LOCK 时做耗时的 C 层解析，
+    否则 uninstall 中的 IedConnection_uninstallReportHandler 会等待
+    接收线程完成，而接收线程持锁解析报告时 C 层对象可能已被销毁，
+    导致段错误崩溃。
+    """
+    # 1. 锁内快速检查是否已注册，取出 on_report 回调
     with _CALLBACK_LOCK:
         info = _CALLBACK_REGISTRY.get(rcb_ref)
         if not info:
             return
+        on_report = info.on_report
+
+    # 2. 锁外解析报告 (耗时 C 层操作，不持锁)
+    entry = _parse_client_report(report, rcb_ref)
+    if entry is None:
+        return
+
+    # 3. 锁内写入缓存
+    with _CALLBACK_LOCK:
+        info = _CALLBACK_REGISTRY.get(rcb_ref)
+        if not info:
+            return
+        info.data_cache.append(entry)
+        if len(info.data_cache) > info.max_cache:
+            info.data_cache.pop(0)
+
+    # 4. 锁外调用用户回调
+    if on_report:
         try:
-            entry = _parse_client_report(report, rcb_ref)
-            if entry is None:
-                return
-            info.data_cache.append(entry)
-            if len(info.data_cache) > info.max_cache:
-                info.data_cache.pop(0)
-            if info.on_report:
-                try:
-                    info.on_report(entry)
-                except Exception as cb_err:
-                    log.error(f"报告回调函数异常: {rcb_ref}, {cb_err}")
-        except Exception as e:
-            log.error(f"报告回调处理异常: {rcb_ref}, {e}")
+            on_report(entry)
+        except Exception as cb_err:
+            log.error(f"报告回调函数异常: {rcb_ref}, {cb_err}")
 
 
 if HAS_IEC61850 and hasattr(iec61850, "RCBHandler"):
