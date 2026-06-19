@@ -480,7 +480,7 @@ class ReportsPlugin:
             if rcb_type == "BRCB":
                 success = BrcbHandler.disable_direct(self._connection, rcb_ref)
             else:
-                success = UrcbHandler.set_rpt_ena(self._connection, rcb_ref, False)
+                success = UrcbHandler.disable_direct(self._connection, rcb_ref)
 
             if not success:
                 log.warning(f"设置 RptEna=False 失败: {rcb_ref}")
@@ -493,24 +493,23 @@ class ReportsPlugin:
         # 2. 短暂等待，确保报告源完全停止
         time.sleep(0.1)
 
-        # 3. 再注销回调（此时已无新报告产生，更安全）
-        try:
-            ReportCallbackHandler.uninstall(self._connection, rcb_ref)
-        except Exception as e:
-            log.error(f"注销回调失败: {rcb_ref}, {e}")
-            # 即使注销失败，报告已禁用，手动清理可能导致资源泄漏
-            # 但系统功能正常（不会收到意外回调）
-
         log.info(f"报告已禁用: {rcb_ref}")
         return True
 
     def _set_rpt_ena_raw(self, rcb_ref: str, enable: bool) -> bool:
         """仅设置 RptEna，不操作回调"""
         rcb_type = self._infer_rcb_type(rcb_ref)
+        if not enable:
+            # 禁用走 disable_direct，简单直接
+            if rcb_type == "BRCB":
+                return BrcbHandler.disable_direct(self._connection, rcb_ref)
+            else:
+                return UrcbHandler.disable_direct(self._connection, rcb_ref)
+        # 使能
         if rcb_type == "BRCB":
-            return BrcbHandler.set_rpt_ena(self._connection, rcb_ref, enable)
+            return BrcbHandler.set_rpt_ena(self._connection, rcb_ref, True)
         else:
-            return UrcbHandler.set_rpt_ena(self._connection, rcb_ref, enable)
+            return UrcbHandler.set_rpt_ena(self._connection, rcb_ref, True)
 
     # ==================== GI 触发 ====================
 

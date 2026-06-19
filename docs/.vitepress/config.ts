@@ -109,20 +109,45 @@ export default defineConfig({
                     text: 'IEC 61850',
                     collapsed: true,
                     items: [
-                        { text: 'GOOSE 功能支持', link: '/changelog/iec61850/01-goose-support' },
-                        { text: '模块化重构计划', link: '/changelog/iec61850/02-iec61850-refactoring-plan' },
-                        { text: 'Reports 报告功能', link: '/changelog/iec61850/03-iec61850-reports-support' },
-                        { text: 'SCL 文件模块', link: '/changelog/iec61850/04-iec61850-scl-file-module' },
-                        { text: '文件下载服务模块', link: '/changelog/iec61850/05-iec61850-file-download-module' },
-                        { text: 'GOOSE 模块插件化重构', link: '/changelog/iec61850/06-goose-plugin-refactoring' },
-                        { text: 'SCL 模块重构实施', link: '/changelog/iec61850/07-iec61850-scl-refactoring-implementation' },
-                        { text: '模型导出优化方案', link: '/changelog/iec61850/08-iec61850-model-export-optimization' },
-                        { text: '统一模型架构重构', link: '/changelog/iec61850/09-iec61850-unified-model-refactoring' },
-                        { text: '前端 UI 设计', link: '/changelog/iec61850/10-iec61850-frontend-ui-design' },
-                        { text: '测点注册表精简优化', link: '/changelog/iec61850/11-iec61850-point-registry-optimization' },
-                        { text: '元数据按需读取', link: '/changelog/iec61850/12-iec61850-metadata-reader' },
-                        { text: '模型发现性能优化', link: '/changelog/iec61850/13-iec61850-discovery-performance-optimization' },
-                        { text: 'ICD 导出器修复', link: '/changelog/iec61850/14-iec61850-icd-exporter-fix' }
+                        {
+                            text: '架构重构',
+                            collapsed: false,
+                            items: [
+                                { text: '模块化重构计划', link: '/changelog/iec61850/02-iec61850-refactoring-plan' },
+                                { text: 'GOOSE 模块插件化重构', link: '/changelog/iec61850/06-goose-plugin-refactoring' },
+                                { text: '统一模型架构重构', link: '/changelog/iec61850/09-iec61850-unified-model-refactoring' }
+                            ]
+                        },
+                        {
+                            text: '功能开发',
+                            collapsed: false,
+                            items: [
+                                { text: 'GOOSE 功能支持', link: '/changelog/iec61850/01-goose-support' },
+                                { text: 'Reports 报告功能', link: '/changelog/iec61850/03-iec61850-reports-support' },
+                                { text: '文件下载服务模块', link: '/changelog/iec61850/05-iec61850-file-download-module' },
+                                { text: '前端 UI 设计', link: '/changelog/iec61850/10-iec61850-frontend-ui-design' }
+                            ]
+                        },
+                        {
+                            text: '模型与发现',
+                            collapsed: false,
+                            items: [
+                                { text: 'SCL 文件模块 (已废弃)', link: '/changelog/iec61850/04-iec61850-scl-file-module' },
+                                { text: 'SCL 模块重构实施 (已废弃)', link: '/changelog/iec61850/07-iec61850-scl-refactoring-implementation' },
+                                { text: '模型导出优化方案 (已废弃)', link: '/changelog/iec61850/08-iec61850-model-export-optimization' },
+                                { text: '测点注册表精简优化', link: '/changelog/iec61850/11-iec61850-point-registry-optimization' },
+                                { text: '元数据按需读取', link: '/changelog/iec61850/12-iec61850-metadata-reader' },
+                                { text: '模型发现性能优化', link: '/changelog/iec61850/13-iec61850-discovery-performance-optimization' }
+                            ]
+                        },
+                        {
+                            text: 'Bug 修复',
+                            collapsed: false,
+                            items: [
+                                { text: 'ICD 导出器修复', link: '/changelog/iec61850/14-iec61850-icd-exporter-fix' },
+                                { text: '报告回调崩溃与禁用逻辑修复', link: '/changelog/iec61850/15-iec61850-report-callback-crash-fix' }
+                            ]
+                        }
                     ]
                 },
                 {

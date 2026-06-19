@@ -76,21 +76,61 @@
     color: var(--vp-c-text-1);
 }
 
+/* 二级分类标题 (如"架构重构""功能开发") 样式 */
+.VPSidebarItem.level-1 .text {
+    font-size: 13px !important;
+    font-weight: 600;
+    color: var(--vp-c-text-2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* 二级分类标题不可点击时降低交互样式 */
+.VPSidebarItem.level-1:not(.has-link) > .item {
+    cursor: default;
+}
+
+.VPSidebarItem.level-1:not(.has-link) > .item:hover {
+    background-color: transparent !important;
+}
+
+/* 二级分类标题整体缩进，与一级标题区分层级 */
+.VPSidebarItem.level-1 > .item {
+    padding-left: 28px !important;
+}
+
 /* 子菜单选项额外缩进（层级递进） */
 .VPSidebarItem.level-1 .item .link {
-    padding-left: 16px !important;
+    padding-left: 0 !important;
+}
+
+.VPSidebarItem.level-2 > .item {
+    padding-left: 44px !important;
 }
 
 .VPSidebarItem.level-2 .item .link {
-    padding-left: 32px !important;
+    padding-left: 0 !important;
+}
+
+.VPSidebarItem.level-2 .text {
+    font-size: 14px !important;
+    font-weight: 400;
+}
+
+.VPSidebarItem.level-3 > .item {
+    padding-left: 60px !important;
 }
 
 .VPSidebarItem.level-3 .item .link {
-    padding-left: 48px !important;
+    padding-left: 0 !important;
+}
+
+.VPSidebarItem.level-4 > .item {
+    padding-left: 76px !important;
 }
 
 .VPSidebarItem.level-4 .item .link {
-    padding-left: 64px !important;
+    padding-left: 0 !important;
 }
 
 /* 去除侧边栏与主体之间的垂直分割线，解锁右侧留白限制 */

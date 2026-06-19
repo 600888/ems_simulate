@@ -214,6 +214,51 @@ class UrcbHandler:
             return False
 
     @staticmethod
+    def disable_direct(connection, rcb_ref: str) -> bool:
+        """直接禁用 URCB，仅设置 RptEna=False，不涉及其他属性
+
+        URCB 禁用逻辑非常简单，不需要 Resv、不需要读取当前值、
+        不需要处理 TrgOps/OptFields，直接写 RptEna=False 即可。
+
+        Args:
+            connection: Iec61850Connection 实例
+            rcb_ref: RCB 引用路径
+
+        Returns:
+            bool 是否成功
+        """
+        if not HAS_IEC61850:
+            return False
+        conn = connection.connection
+        if not conn:
+            log.warning(f"URCB 禁用失败: 连接不可用, ref={rcb_ref}")
+            return False
+
+        try:
+            nref = UrcbHandler._normalize_ref(rcb_ref)
+            rcb = UrcbHandler._create_rcb_block(nref)
+            if not rcb:
+                return False
+
+            try:
+                iec61850.ClientReportControlBlock_setRptEna(rcb, False)
+                result = iec61850.IedConnection_setRCBValues(conn, rcb, UrcbHandler.RCB_RPT_ENA, True)
+                set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
+
+                if set_error != iec61850.IED_ERROR_OK:
+                    log.warning(f"URCB 禁用失败: ref={rcb_ref}, error={set_error}")
+                    return False
+
+                log.info(f"URCB 已禁用: {rcb_ref}")
+                return True
+            finally:
+                with contextlib.suppress(Exception):
+                    iec61850.ClientReportControlBlock_destroy(rcb)
+        except Exception as e:
+            log.error(f"URCB 禁用异常: {rcb_ref}, {e}")
+            return False
+
+    @staticmethod
     def trigger_gi(connection, rcb_ref: str) -> bool:
         """触发 URCB 的通用查询 (GI)"""
         if not HAS_IEC61850:
