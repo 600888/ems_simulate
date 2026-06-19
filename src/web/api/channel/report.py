@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from src.data.service.channel_service import ChannelService
+from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.api.schemas.report import (
     RcbApplyConfigRequest,
@@ -21,28 +22,32 @@ from src.web.log import log
 router = APIRouter(tags=["channel"])
 
 
-def _get_reports_plugin(channel_id: int, request: Request) -> Any | None:
+def _get_reports_plugin(channel_id: int, request: Request) -> Any:
     """获取设备对应的 Reports 管理对象
 
     客户端模式: 返回 ReportsPlugin (支持 discover_rcbs/enable/disable/GI)
     服务端模式: 返回 ReportManager (支持 browse_rcbs, RCB 在本地注册)
+
+    Raises:
+        NotFoundError: 通道或设备不存在
+        ValidationError: 协议不匹配或插件不可用
     """
     channel = ChannelService.get_channel_by_id(channel_id)
     if not channel:
-        return None
+        raise NotFoundError("通道不存在")
 
     protocol_type = channel.get("protocol_type", -1)
     if protocol_type != 4:
-        return None
+        raise ValidationError("该通道不是 IEC61850 协议")
 
     device_controller = request.app.state.device_controller
     device = device_controller.get_device_by_channel_id(channel_id)
     if not device:
-        return None
+        raise NotFoundError("设备未找到")
 
     protocol_handler = getattr(device, "protocol_handler", None)
     if not protocol_handler:
-        return None
+        raise ValidationError("协议处理器未初始化")
 
     from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
 
@@ -55,7 +60,7 @@ def _get_reports_plugin(channel_id: int, request: Request) -> Any | None:
         if server and hasattr(server, "reports"):
             return server.reports
 
-    return None
+    raise ValidationError("Reports 插件不可用")
 
 
 def _server_rcbs_to_discovery_format(report_manager: Any) -> list:
@@ -224,16 +229,9 @@ def _mark_rcb_disabled(channel_id: int, rcb_ref: str, request: Request) -> dict[
 @router.post("/iec61850/reports/list", response_model=BaseResponse)
 async def list_rcbs(body: RcbListRequest, request: Request):
     """列出 IEC61850 设备的报告控制块 (RCB)"""
-    try:
-        reports = _get_reports_plugin(body.channel_id, request)
-        if not reports:
-            return BaseResponse(code=400, message="设备未就绪或 Reports 插件不可用", data={"rcbs": []})
-
-        rcbs = _discover_rcbs(reports, body.channel_id, _get_client_handler(body.channel_id, request))
-        return BaseResponse(message="获取 RCB 列表成功", data={"rcbs": rcbs})
-    except Exception as e:
-        log.error(f"获取 RCB 列表失败: {e}")
-        return BaseResponse(code=500, message=f"获取 RCB 列表失败: {e}", data={"rcbs": []})
+    reports = _get_reports_plugin(body.channel_id, request)
+    rcbs = _discover_rcbs(reports, body.channel_id, _get_client_handler(body.channel_id, request))
+    return BaseResponse(message="获取 RCB 列表成功", data={"rcbs": rcbs})
 
 
 @router.post("/iec61850/reports/apply", response_model=BaseResponse)
@@ -247,140 +245,98 @@ async def apply_report_config(body: RcbApplyConfigRequest, request: Request):
     注意: 服务端模式 (ReportManager) 不支持此操作，
     仅对客户端模式 (ReportsPlugin) 有效。
     """
-    try:
-        reports = _get_reports_plugin(body.channel_id, request)
-        if not reports:
-            return BaseResponse(code=400, message="Reports 插件不可用", data={"success": False})
+    reports = _get_reports_plugin(body.channel_id, request)
 
-        if _is_server_mode(reports):
-            return BaseResponse(code=400, message="服务端模式不支持远程配置操作", data={"success": False})
+    if _is_server_mode(reports):
+        raise ValidationError("服务端模式不支持远程配置操作", data={"success": False})
 
-        success = reports.apply_config(
-            rcb_ref=body.rcb_ref,
-            rpt_ena=body.rpt_ena,
-            trg_ops=body.trg_ops,
-            opt_fields=body.opt_fields,
-        )
-        if success:
-            if body.rpt_ena:
-                # 使能成功: 读取单个 RCB 最新状态并更新缓存
-                updated = _refresh_single_rcb(reports, body.rcb_ref, body.channel_id, request)
-            else:
-                # 禁用成功: 不立即调用 get_rcb_detail (可能触发 C 层竞争崩溃)
-                # 直接从缓存更新 rpt_ena=False
-                updated = _mark_rcb_disabled(body.channel_id, body.rcb_ref, request)
-            return BaseResponse(message="报告配置应用成功", data={"success": True, "rcb": updated})
-        else:
-            action = "使能" if body.rpt_ena else "禁用"
-            return BaseResponse(code=500, message=f"报告{action}失败", data={"success": False})
-    except Exception as e:
-        log.error(f"应用报告配置失败: {e}")
-        return BaseResponse(code=500, message=f"应用报告配置失败: {e}", data={"success": False})
+    success = reports.apply_config(
+        rcb_ref=body.rcb_ref,
+        rpt_ena=body.rpt_ena,
+        trg_ops=body.trg_ops,
+        opt_fields=body.opt_fields,
+    )
+    if not success:
+        action = "使能" if body.rpt_ena else "禁用"
+        raise OperationError(f"报告{action}失败", data={"success": False})
+
+    if body.rpt_ena:
+        # 使能成功: 读取单个 RCB 最新状态并更新缓存
+        updated = _refresh_single_rcb(reports, body.rcb_ref, body.channel_id, request)
+    else:
+        # 禁用成功: 不立即调用 get_rcb_detail (可能触发 C 层竞争崩溃)
+        # 直接从缓存更新 rpt_ena=False
+        updated = _mark_rcb_disabled(body.channel_id, body.rcb_ref, request)
+    return BaseResponse(message="报告配置应用成功", data={"success": True, "rcb": updated})
 
 
 @router.post("/iec61850/reports/gi", response_model=BaseResponse)
 async def trigger_gi(body: RcbGiRequest, request: Request):
     """触发报告通用查询 (GI)"""
-    try:
-        reports = _get_reports_plugin(body.channel_id, request)
-        if not reports:
-            return BaseResponse(code=400, message="Reports 插件不可用", data={"success": False})
+    reports = _get_reports_plugin(body.channel_id, request)
 
-        if _is_server_mode(reports):
-            return BaseResponse(code=400, message="服务端模式不支持远程 GI 操作", data={"success": False})
+    if _is_server_mode(reports):
+        raise ValidationError("服务端模式不支持远程 GI 操作", data={"success": False})
 
-        success = reports.trigger_gi(rcb_ref=body.rcb_ref)
-        if success:
-            return BaseResponse(message="GI 触发成功", data={"success": True})
-        else:
-            return BaseResponse(code=500, message="GI 触发失败", data={"success": False})
-    except Exception as e:
-        log.error(f"触发 GI 失败: {e}")
-        return BaseResponse(code=500, message=f"触发 GI 失败: {e}", data={"success": False})
+    success = reports.trigger_gi(rcb_ref=body.rcb_ref)
+    if not success:
+        raise OperationError("GI 触发失败", data={"success": False})
+    return BaseResponse(message="GI 触发成功", data={"success": True})
 
 
 @router.post("/iec61850/reports/refresh", response_model=BaseResponse)
 async def refresh_rcb(body: RcbDetailRequest, request: Request):
     """刷新单个 RCB 状态 (从服务器重新读取并更新缓存)"""
-    try:
-        reports = _get_reports_plugin(body.channel_id, request)
-        if not reports:
-            return BaseResponse(code=400, message="Reports 插件不可用", data={})
-
-        updated = _refresh_single_rcb(reports, body.rcb_ref, body.channel_id, request)
-        if updated:
-            return BaseResponse(message="刷新 RCB 成功", data=updated)
-        else:
-            return BaseResponse(code=404, message="RCB 未找到或刷新失败", data={})
-    except Exception as e:
-        log.error(f"刷新 RCB 失败: {e}")
-        return BaseResponse(code=500, message=f"刷新 RCB 失败: {e}", data={})
+    reports = _get_reports_plugin(body.channel_id, request)
+    updated = _refresh_single_rcb(reports, body.rcb_ref, body.channel_id, request)
+    if not updated:
+        raise NotFoundError("RCB 未找到或刷新失败")
+    return BaseResponse(message="刷新 RCB 成功", data=updated)
 
 
 @router.post("/iec61850/reports/data", response_model=BaseResponse)
 async def get_report_data(body: ReportDataRequest, request: Request):
     """获取报告数据 (仅客户端模式支持)"""
-    try:
-        reports = _get_reports_plugin(body.channel_id, request)
-        if not reports:
-            return BaseResponse(code=400, message="Reports 插件不可用", data={"data": [], "total": 0})
+    reports = _get_reports_plugin(body.channel_id, request)
 
-        if _is_server_mode(reports):
-            return BaseResponse(
-                code=400, message="服务端模式不支持报告数据查询，正在开发中", data={"data": [], "total": 0}
-            )
+    if _is_server_mode(reports):
+        raise ValidationError("服务端模式不支持报告数据查询，正在开发中", data={"data": [], "total": 0})
 
-        data = reports.get_report_data(rcb_ref=body.rcb_ref, limit=body.limit)
-        return BaseResponse(
-            message="获取报告数据成功",
-            data={
-                "data": data,
-                "total": len(data),
-            },
-        )
-    except Exception as e:
-        log.error(f"获取报告数据失败: {e}")
-        return BaseResponse(code=500, message=f"获取报告数据失败: {e}", data={"data": [], "total": 0})
+    data = reports.get_report_data(rcb_ref=body.rcb_ref, limit=body.limit)
+    return BaseResponse(
+        message="获取报告数据成功",
+        data={
+            "data": data,
+            "total": len(data),
+        },
+    )
 
 
 @router.post("/iec61850/reports/detail", response_model=BaseResponse)
 async def get_rcb_detail(body: RcbDetailRequest, request: Request):
     """获取单个 RCB 详细信息"""
-    try:
-        reports = _get_reports_plugin(body.channel_id, request)
-        if not reports:
-            return BaseResponse(code=400, message="Reports 插件不可用", data={})
+    reports = _get_reports_plugin(body.channel_id, request)
 
-        if _is_server_mode(reports):
-            rcbs = _server_rcbs_to_discovery_format(reports)
-            for rcb in rcbs:
-                if rcb.get("ref") == body.rcb_ref or rcb.get("name") == body.rcb_ref.split(".")[-1]:
-                    return BaseResponse(message="获取 RCB 详情成功", data=rcb)
-            return BaseResponse(code=404, message="RCB 未找到", data={})
-        else:
-            detail = reports.get_rcb_detail(rcb_ref=body.rcb_ref)
-            if detail:
-                return BaseResponse(message="获取 RCB 详情成功", data=detail)
-            else:
-                return BaseResponse(code=404, message="RCB 未找到", data={})
-    except Exception as e:
-        log.error(f"获取 RCB 详情失败: {e}")
-        return BaseResponse(code=500, message=f"获取 RCB 详情失败: {e}", data={})
+    if _is_server_mode(reports):
+        rcbs = _server_rcbs_to_discovery_format(reports)
+        for rcb in rcbs:
+            if rcb.get("ref") == body.rcb_ref or rcb.get("name") == body.rcb_ref.split(".")[-1]:
+                return BaseResponse(message="获取 RCB 详情成功", data=rcb)
+        raise NotFoundError("RCB 未找到")
+    else:
+        detail = reports.get_rcb_detail(rcb_ref=body.rcb_ref)
+        if not detail:
+            raise NotFoundError("RCB 未找到")
+        return BaseResponse(message="获取 RCB 详情成功", data=detail)
 
 
 @router.post("/iec61850/reports/active", response_model=BaseResponse)
 async def list_active_reports(body: RcbListRequest, request: Request):
     """列出当前活跃的报告订阅"""
-    try:
-        reports = _get_reports_plugin(body.channel_id, request)
-        if not reports:
-            return BaseResponse(code=400, message="Reports 插件不可用", data={"active_reports": []})
+    reports = _get_reports_plugin(body.channel_id, request)
 
-        if _is_server_mode(reports):
-            return BaseResponse(message="服务端模式无活跃报告信息", data={"active_reports": []})
+    if _is_server_mode(reports):
+        return BaseResponse(message="服务端模式无活跃报告信息", data={"active_reports": []})
 
-        active = reports.list_active_reports()
-        return BaseResponse(message="获取活跃报告列表成功", data={"active_reports": active})
-    except Exception as e:
-        log.error(f"获取活跃报告列表失败: {e}")
-        return BaseResponse(code=500, message=f"获取活跃报告列表失败: {e}", data={"active_reports": []})
+    active = reports.list_active_reports()
+    return BaseResponse(message="获取活跃报告列表成功", data={"active_reports": active})

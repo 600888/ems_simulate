@@ -40,19 +40,39 @@ class _CallbackInfo:
 
 
 def _normalize_ref(rcb_ref: str) -> str:
-    """规范化 RCB 引用, 按名称前缀插入 FC 段 (.RP./.BR.)
+    """规范化 RCB 引用为 MMS 引用格式 (LD/LN$FC$rcbName)
 
-    rp*/urcb* -> .RP. (非缓冲); 其余 -> .BR. (缓冲)。
-    已含 FC 段则原样返回。
+    RCBSubscriber.setRcbReference / IedConnection_uninstallReportHandler
+    要求使用 MMS 层引用格式, FC 段以 '$' 分隔 (如 LD/LLN0$BR$brcb01),
+    而非 IEC 61850 约束引用格式 (LD/LLN0.BR.brcb01)。
+
+    rp*/urcb* -> $RP$ (非缓冲); 其余 -> $BR$ (缓冲)。
+    已含 '$' FC 段则原样返回; 已含 '.' FC 段则转换为 '$'。
     """
-    if not rcb_ref or "." not in rcb_ref or "/" not in rcb_ref:
+    if not rcb_ref or "/" not in rcb_ref:
         return rcb_ref
-    ln_part, name = rcb_ref.rsplit(".", 1)
-    if name in ("BR", "RP"):
+
+    # 已是 MMS 格式 LD/LN$FC$name
+    if "$" in rcb_ref:
         return rcb_ref
-    low = name.lower()
-    fc = "RP" if (low.startswith("rp") or low.startswith("urcb")) else "BR"
-    return f"{ln_part}.{fc}.{name}"
+
+    # IEC 61850 约束引用格式 LD/LN.FC.name -> MMS 格式 LD/LN$FC$name
+    if "." in rcb_ref:
+        ln_part, name = rcb_ref.rsplit(".", 1)
+        # 检查是否已含 FC 段 (LD/LN.FC.name)
+        parts = ln_part.split(".")
+        if len(parts) >= 2 and parts[-1] in ("BR", "RP"):
+            # 已含 FC: LD/LN.FC.name -> LD/LN$FC$name
+            fc = parts[-1]
+            ln_only = ".".join(parts[:-1])
+            return f"{ln_only}${fc}${name}"
+        # 不含 FC, 按名称前缀推断
+        low = name.lower()
+        fc = "RP" if (low.startswith("rp") or low.startswith("urcb")) else "BR"
+        return f"{ln_part}${fc}${name}"
+
+    # 无 '.' 也无 '$', 仅 LD/LN, 无法推断 FC, 原样返回
+    return rcb_ref
 
 
 class ReportCallbackHandler:
@@ -122,7 +142,7 @@ class ReportCallbackHandler:
                     max_cache=max_cache,
                     enabled_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 )
-                log.info(f"报告回调已安装: {rcb_ref}")
+                log.info(f"报告回调已安装: {rcb_ref} (mms_ref={nref})")
                 return True
             except Exception as e:
                 log.error(f"安装报告回调异常: {rcb_ref}, {e}")
@@ -290,26 +310,40 @@ def _dispatch_report(rcb_ref: str, report) -> None:
     接收线程完成，而接收线程持锁解析报告时 C 层对象可能已被销毁，
     导致段错误崩溃。
     """
+    log.info(f"_dispatch_report 进入: rcb_ref={rcb_ref}, report={report}")
+
     # 1. 锁内快速检查是否已注册，取出 on_report 回调
     with _CALLBACK_LOCK:
         info = _CALLBACK_REGISTRY.get(rcb_ref)
         if not info:
+            log.warning(
+                f"_dispatch_report: rcb_ref={rcb_ref} 未在注册表中找到, "
+                f"当前注册表 keys={list(_CALLBACK_REGISTRY.keys())}"
+            )
             return
         on_report = info.on_report
 
     # 2. 锁外解析报告 (耗时 C 层操作，不持锁)
     entry = _parse_client_report(report, rcb_ref)
     if entry is None:
+        log.warning(f"_dispatch_report: 解析报告失败返回 None, rcb_ref={rcb_ref}")
         return
+
+    log.info(
+        f"_dispatch_report: 解析成功, rcb_ref={rcb_ref}, "
+        f"seq_num={entry.seq_num}, data_values_count={len(entry.data_values)}"
+    )
 
     # 3. 锁内写入缓存
     with _CALLBACK_LOCK:
         info = _CALLBACK_REGISTRY.get(rcb_ref)
         if not info:
+            log.warning(f"_dispatch_report: 写缓存时 rcb_ref={rcb_ref} 已被注销")
             return
         info.data_cache.append(entry)
         if len(info.data_cache) > info.max_cache:
             info.data_cache.pop(0)
+        log.info(f"_dispatch_report: 已写入缓存, rcb_ref={rcb_ref}, cache_size={len(info.data_cache)}")
 
     # 4. 锁外调用用户回调
     if on_report:
@@ -329,10 +363,13 @@ if HAS_IEC61850 and hasattr(iec61850, "RCBHandler"):
             self._rcb_ref = rcb_ref
 
         def trigger(self):
+            log.info(f"RCBHandler.trigger 被调用: rcb_ref={self._rcb_ref}")
             try:
-                _dispatch_report(self._rcb_ref, self._client_report)
+                cr = self._client_report
+                log.info(f"RCBHandler.trigger: _client_report={cr}, rcb_ref={self._rcb_ref}")
+                _dispatch_report(self._rcb_ref, cr)
             except Exception as e:
-                log.error(f"RCBHandler.trigger 异常: {self._rcb_ref}, {e}")
+                log.error(f"RCBHandler.trigger 异常: {self._rcb_ref}, {e}", exc_info=True)
 else:
 
     class _PyRCBHandler:  # 占位, 不会被使用

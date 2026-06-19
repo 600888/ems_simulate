@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from src.data.service.channel_service import ChannelService
+from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
 
@@ -65,25 +66,28 @@ class FileCacheClearRequest(BaseModel):
 def _get_iec61850_client(request: Request, channel_id: int):
     """获取 IEC61850 客户端实例
 
+    Raises:
+        NotFoundError: 通道或设备不存在
+        ValidationError: 协议不匹配或插件不可用
     Returns:
-        (client, error_response) 元组，client 为 None 时检查 error_response
+        client 实例
     """
     channel = ChannelService.get_channel_by_id(channel_id)
     if not channel:
-        return None, BaseResponse(code=404, message="通道不存在", data={})
+        raise NotFoundError("通道不存在")
 
     protocol_type = channel.get("protocol_type", -1)
     if protocol_type != 4:
-        return None, BaseResponse(code=400, message="该通道不是 IEC61850 协议", data={})
+        raise ValidationError("该通道不是 IEC61850 协议")
 
     device_controller = request.app.state.device_controller
     device = device_controller.get_device_by_channel_id(channel_id)
     if not device:
-        return None, BaseResponse(code=404, message="设备未找到", data={})
+        raise NotFoundError("设备未找到")
 
     protocol_handler = getattr(device, "protocol_handler", None)
     if not protocol_handler:
-        return None, BaseResponse(code=400, message="协议处理器未初始化", data={})
+        raise ValidationError("协议处理器未初始化")
 
     # 获取客户端或服务端的 files 插件
     client = None
@@ -93,13 +97,13 @@ def _get_iec61850_client(request: Request, channel_id: int):
         client = protocol_handler._server
 
     if not client:
-        return None, BaseResponse(code=400, message="IEC61850 客户端/服务端未初始化", data={})
+        raise ValidationError("IEC61850 客户端/服务端未初始化")
 
     files_plugin = getattr(client, "files", None)
     if not files_plugin:
-        return None, BaseResponse(code=400, message="文件服务插件不可用", data={})
+        raise ValidationError("文件服务插件不可用")
 
-    return client, None
+    return client
 
 
 # ===== 路由端点 =====
@@ -108,41 +112,25 @@ def _get_iec61850_client(request: Request, channel_id: int):
 @router.post("/iec61850-file-directory", response_model=BaseResponse)
 async def get_file_directory(body: FileDirectoryRequest, request: Request):
     """获取远程 IED 的文件/目录列表"""
-    try:
-        client, err = _get_iec61850_client(request, body.channel_id)
-        if err:
-            return err
-
-        files = client.files
-        entries = files.list_directory(body.directory)
-
-        return BaseResponse(
-            message="获取文件目录成功",
-            data={"directory": body.directory, "entries": entries, "total": len(entries)},
-        )
-    except Exception as e:
-        log.error(f"获取文件目录失败: {e}")
-        return BaseResponse(code=500, message=f"获取文件目录失败: {e}", data={})
+    client = _get_iec61850_client(request, body.channel_id)
+    files = client.files
+    entries = files.list_directory(body.directory)
+    return BaseResponse(
+        message="获取文件目录成功",
+        data={"directory": body.directory, "entries": entries, "total": len(entries)},
+    )
 
 
 @router.post("/iec61850-file-directory-tree", response_model=BaseResponse)
 async def get_file_directory_tree(body: FileDirectoryTreeRequest, request: Request):
     """递归获取远程 IED 的完整文件目录树"""
-    try:
-        client, err = _get_iec61850_client(request, body.channel_id)
-        if err:
-            return err
-
-        files = client.files
-        entries = files.list_directory_recursive(body.directory, body.max_depth)
-
-        return BaseResponse(
-            message="获取文件目录树成功",
-            data={"directory": body.directory, "entries": entries, "total": len(entries)},
-        )
-    except Exception as e:
-        log.error(f"获取文件目录树失败: {e}")
-        return BaseResponse(code=500, message=f"获取文件目录树失败: {e}", data={})
+    client = _get_iec61850_client(request, body.channel_id)
+    files = client.files
+    entries = files.list_directory_recursive(body.directory, body.max_depth)
+    return BaseResponse(
+        message="获取文件目录树成功",
+        data={"directory": body.directory, "entries": entries, "total": len(entries)},
+    )
 
 
 @router.post("/iec61850-file-download", response_model=BaseResponse)
@@ -153,48 +141,40 @@ async def download_file(body: FileDownloadRequest, request: Request):
     - file: 返回文件流的 Base64 编码 (默认)
     - json: 返回文件元数据 + Base64 数据
     """
-    try:
-        client, err = _get_iec61850_client(request, body.channel_id)
-        if err:
-            return err
+    client = _get_iec61850_client(request, body.channel_id)
+    files = client.files
 
-        files = client.files
+    # 检查缓存
+    if body.use_cache:
+        cached = files.get_cached_file(body.filename)
+        if cached and os.path.isfile(cached):
+            log.info(f"命中文件缓存: {body.filename} → {cached}")
+            with open(cached, "rb") as f:
+                data = f.read()
+            return BaseResponse(
+                message="文件下载成功 (缓存)",
+                data={
+                    "filename": body.filename,
+                    "data": base64.b64encode(data).decode("ascii"),
+                    "size": len(data),
+                    "cached": True,
+                },
+            )
 
-        # 检查缓存
-        if body.use_cache:
-            cached = files.get_cached_file(body.filename)
-            if cached and os.path.isfile(cached):
-                log.info(f"命中文件缓存: {body.filename} → {cached}")
-                with open(cached, "rb") as f:
-                    data = f.read()
-                return BaseResponse(
-                    message="文件下载成功 (缓存)",
-                    data={
-                        "filename": body.filename,
-                        "data": base64.b64encode(data).decode("ascii"),
-                        "size": len(data),
-                        "cached": True,
-                    },
-                )
+    # 下载文件到内存
+    file_bytes = files.get_file(body.filename)
+    if not file_bytes:
+        raise NotFoundError(f"远程文件不存在或下载失败: {body.filename}")
 
-        # 下载文件到内存
-        file_bytes = files.get_file(body.filename)
-
-        if not file_bytes:
-            return BaseResponse(code=404, message=f"远程文件不存在或下载失败: {body.filename}", data={})
-
-        return BaseResponse(
-            message="文件下载成功",
-            data={
-                "filename": body.filename,
-                "data": base64.b64encode(file_bytes).decode("ascii"),
-                "size": len(file_bytes),
-                "cached": False,
-            },
-        )
-    except Exception as e:
-        log.error(f"文件下载失败: {e}")
-        return BaseResponse(code=500, message=f"文件下载失败: {e}", data={})
+    return BaseResponse(
+        message="文件下载成功",
+        data={
+            "filename": body.filename,
+            "data": base64.b64encode(file_bytes).decode("ascii"),
+            "size": len(file_bytes),
+            "cached": False,
+        },
+    )
 
 
 @router.post("/iec61850-file-upload", response_model=BaseResponse)
@@ -203,105 +183,72 @@ async def upload_file(body: FileUploadRequest, request: Request):
 
     请求体中的 file_data 为文件内容的 Base64 编码。
     """
+    client = _get_iec61850_client(request, body.channel_id)
+
+    # 解码 Base64 数据
     try:
-        client, err = _get_iec61850_client(request, body.channel_id)
-        if err:
-            return err
+        file_data = base64.b64decode(body.file_data)
+    except Exception as exc:
+        raise ValidationError("file_data 不是有效的 Base64 编码") from exc
 
-        # 解码 Base64 数据
-        try:
-            file_data = base64.b64decode(body.file_data)
-        except Exception:
-            return BaseResponse(code=400, message="file_data 不是有效的 Base64 编码", data={})
+    if not file_data:
+        raise ValidationError("文件数据为空")
 
-        if not file_data:
-            return BaseResponse(code=400, message="文件数据为空", data={})
+    # 写入临时文件
+    with tempfile.NamedTemporaryFile(delete=False, suffix="_upload") as tmp:
+        tmp.write(file_data)
+        tmp_path = tmp.name
 
-        # 写入临时文件
-        with tempfile.NamedTemporaryFile(delete=False, suffix="_upload") as tmp:
-            tmp.write(file_data)
-            tmp_path = tmp.name
-
-        try:
-            files = client.files
-            success = files.upload_file(tmp_path, body.remote_filename)
-
-            if success:
-                return BaseResponse(
-                    message="文件上传成功",
-                    data={"remote_filename": body.remote_filename, "size": len(file_data)},
-                )
-            else:
-                return BaseResponse(code=500, message="文件上传失败", data={})
-        finally:
-            # 清理临时文件
-            with contextlib.suppress(OSError):
-                os.unlink(tmp_path)
-
-    except Exception as e:
-        log.error(f"文件上传失败: {e}")
-        return BaseResponse(code=500, message=f"文件上传失败: {e}", data={})
+    try:
+        files = client.files
+        success = files.upload_file(tmp_path, body.remote_filename)
+        if not success:
+            raise OperationError("文件上传失败")
+        return BaseResponse(
+            message="文件上传成功",
+            data={"remote_filename": body.remote_filename, "size": len(file_data)},
+        )
+    finally:
+        # 清理临时文件
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
 
 
 @router.post("/iec61850-file-delete", response_model=BaseResponse)
 async def delete_remote_file(body: FileDeleteRequest, request: Request):
     """删除远程 IED 上的文件"""
-    try:
-        client, err = _get_iec61850_client(request, body.channel_id)
-        if err:
-            return err
-
-        files = client.files
-        success = files.delete_file(body.filename)
-
-        if success:
-            return BaseResponse(message="远程文件已删除", data={"filename": body.filename})
-        else:
-            return BaseResponse(code=500, message="删除远程文件失败", data={"filename": body.filename})
-    except Exception as e:
-        log.error(f"删除远程文件失败: {e}")
-        return BaseResponse(code=500, message=f"删除远程文件失败: {e}", data={})
+    client = _get_iec61850_client(request, body.channel_id)
+    files = client.files
+    success = files.delete_file(body.filename)
+    if not success:
+        raise OperationError("删除远程文件失败", data={"filename": body.filename})
+    return BaseResponse(message="远程文件已删除", data={"filename": body.filename})
 
 
 @router.post("/iec61850-file-cache-list", response_model=BaseResponse)
 async def list_cached_files(body: FileCacheListRequest, request: Request):
     """获取本地缓存的文件列表"""
-    try:
-        client, err = _get_iec61850_client(request, body.channel_id)
-        if err:
-            return err
-
-        files = client.files
-        cached = files.list_cached_files()
-
-        return BaseResponse(
-            message="获取缓存列表成功",
-            data={"files": cached, "total": len(cached)},
-        )
-    except Exception as e:
-        log.error(f"获取缓存列表失败: {e}")
-        return BaseResponse(code=500, message=f"获取缓存列表失败: {e}", data={})
+    client = _get_iec61850_client(request, body.channel_id)
+    files = client.files
+    cached = files.list_cached_files()
+    return BaseResponse(
+        message="获取缓存列表成功",
+        data={"files": cached, "total": len(cached)},
+    )
 
 
 @router.post("/iec61850-file-cache-clear", response_model=BaseResponse)
 async def clear_file_cache(body: FileCacheClearRequest, request: Request):
     """清理本地文件缓存"""
-    try:
-        client, err = _get_iec61850_client(request, body.channel_id)
-        if err:
-            return err
+    client = _get_iec61850_client(request, body.channel_id)
+    files = client.files
 
-        files = client.files
+    if body.remote_path:
+        # 删除指定文件缓存
+        removed = files._cache.remove(body.remote_path) if files._cache else False
+        count = 1 if removed else 0
+    else:
+        # 清空全部缓存
+        count = files.clear_cache()
 
-        if body.remote_path:
-            # 删除指定文件缓存
-            removed = files._cache.remove(body.remote_path) if files._cache else False
-            count = 1 if removed else 0
-        else:
-            # 清空全部缓存
-            count = files.clear_cache()
-
-        return BaseResponse(message="缓存清理完成", data={"cleared": count})
-    except Exception as e:
-        log.error(f"缓存清理失败: {e}")
-        return BaseResponse(code=500, message=f"缓存清理失败: {e}", data={})
+    return BaseResponse(message="缓存清理完成", data={"cleared": count})

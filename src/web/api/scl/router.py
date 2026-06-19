@@ -26,6 +26,7 @@ import tempfile
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import PlainTextResponse
 
+from src.web.api.exceptions import NotFoundError, ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
 
@@ -91,119 +92,106 @@ def _get_import_service(request: Request):
     return request.app.state.scl_import_service
 
 
+def _get_scl_file_path(request: Request, filename: str) -> str:
+    """获取 SCL 文件路径，不存在时抛出 NotFoundError"""
+    fm = _get_file_manager(request)
+    file_path = fm.get_file_path(filename)
+    if not file_path:
+        raise NotFoundError(f"文件不存在: {filename}")
+    return file_path
+
+
 # ===== 文件管理 =====
 
 
 @router.post("/upload", response_model=BaseResponse)
 async def upload_scl_file(request: Request, file: UploadFile = File(...)):
     """上传 SCL 文件到服务器"""
+    fm = _get_file_manager(request)
+    content = await file.read()
     try:
-        fm = _get_file_manager(request)
-        content = await file.read()
         file_path = fm.save_uploaded_file(file.filename, content)
-        # 上传新文件后清除该文件的缓存
-        _invalidate_cache_for(file_path)
-        return BaseResponse(
-            message="文件上传成功",
-            data={"filename": os.path.basename(file_path), "file_path": file_path, "size": len(content)},
-        )
     except ValueError as e:
-        return BaseResponse(code=400, message=str(e))
-    except Exception as e:
-        log.error(f"上传 SCL 文件失败: {e}")
-        return BaseResponse(code=500, message=f"上传失败: {e}")
+        raise ValidationError(str(e)) from e
+    # 上传新文件后清除该文件的缓存
+    _invalidate_cache_for(file_path)
+    return BaseResponse(
+        message="文件上传成功",
+        data={"filename": os.path.basename(file_path), "file_path": file_path, "size": len(content)},
+    )
 
 
 @router.get("/list", response_model=BaseResponse)
 async def list_scl_files(request: Request):
     """列出所有 SCL 文件"""
-    try:
-        fm = _get_file_manager(request)
-        files = [f.to_dict() for f in fm.list_files()]
-        return BaseResponse(data=files)
-    except Exception as e:
-        log.error(f"列出 SCL 文件失败: {e}")
-        return BaseResponse(code=500, message=f"获取文件列表失败: {e}")
+    fm = _get_file_manager(request)
+    files = [f.to_dict() for f in fm.list_files()]
+    return BaseResponse(data=files)
 
 
 @router.get("/detail", response_model=BaseResponse)
 async def get_scl_detail(request: Request, filename: str = Query(...)):
     """获取 SCL 文件详情 (使用缓存，避免重复解析)"""
-    try:
-        fm = _get_file_manager(request)
-        file_path = fm.get_file_path(filename)
-        if not file_path:
-            return BaseResponse(code=404, message=f"文件不存在: {filename}")
+    file_path = _get_scl_file_path(request, filename)
 
-        # 尝试从缓存获取
-        cached = _get_cached_result(request, file_path)
-        if cached:
-            return BaseResponse(data=cached)
+    # 尝试从缓存获取
+    cached = _get_cached_result(request, file_path)
+    if cached:
+        return BaseResponse(data=cached)
 
-        # 缓存未命中，解析文件
-        service = _get_import_service(request)
-        result = service.preview_file(file_path)
+    # 缓存未命中，解析文件
+    service = _get_import_service(request)
+    result = service.preview_file(file_path)
 
-        stat = os.stat(file_path)
-        detail = {
-            "filename": filename,
-            "file_path": file_path,
-            "file_size": stat.st_size,
-            "ied_name": result.ied_name,
-            "point_counts": {
-                "yc": len(result.points.yc_points),
-                "yx": len(result.points.yx_points),
-                "yk": len(result.points.yk_points),
-                "yt": len(result.points.yt_points),
-            },
-            "gse_control_count": len(result.goose.gse_controls),
-            "report_control_count": len(result.reports.report_controls),
-            "validation": {
-                "is_valid": result.validation.is_valid,
-                "error_count": result.validation.error_count,
-                "warning_count": result.validation.warning_count,
-            },
-        }
+    stat = os.stat(file_path)
+    detail = {
+        "filename": filename,
+        "file_path": file_path,
+        "file_size": stat.st_size,
+        "ied_name": result.ied_name,
+        "point_counts": {
+            "yc": len(result.points.yc_points),
+            "yx": len(result.points.yx_points),
+            "yk": len(result.points.yk_points),
+            "yt": len(result.points.yt_points),
+        },
+        "gse_control_count": len(result.goose.gse_controls),
+        "report_control_count": len(result.reports.report_controls),
+        "validation": {
+            "is_valid": result.validation.is_valid,
+            "error_count": result.validation.error_count,
+            "warning_count": result.validation.warning_count,
+        },
+    }
 
-        # 写入缓存
-        _set_cached_result(request, file_path, detail)
-        return BaseResponse(data=detail)
-    except Exception as e:
-        log.error(f"获取 SCL 文件详情失败: {e}")
-        return BaseResponse(code=500, message=f"获取详情失败: {e}")
+    # 写入缓存
+    _set_cached_result(request, file_path, detail)
+    return BaseResponse(data=detail)
 
 
 @router.delete("/delete", response_model=BaseResponse)
 async def delete_scl_file(request: Request, filename: str = Query(...)):
     """删除 SCL 文件"""
-    try:
-        fm = _get_file_manager(request)
-        file_path = fm.get_file_path(filename)
-        if fm.delete_file(filename):
-            if file_path:
-                _invalidate_cache_for(file_path)
-            return BaseResponse(message="文件删除成功")
-        return BaseResponse(code=404, message=f"文件不存在: {filename}")
-    except Exception as e:
-        log.error(f"删除 SCL 文件失败: {e}")
-        return BaseResponse(code=500, message=f"删除失败: {e}")
+    fm = _get_file_manager(request)
+    file_path = fm.get_file_path(filename)
+    if not fm.delete_file(filename):
+        raise NotFoundError(f"文件不存在: {filename}")
+    if file_path:
+        _invalidate_cache_for(file_path)
+    return BaseResponse(message="文件删除成功")
 
 
 @router.get("/content")
 async def get_scl_raw_content(request: Request, filename: str = Query(...)):
     """获取 SCL 文件原始 XML 内容"""
-    try:
-        fm = _get_file_manager(request)
-        file_path = fm.get_file_path(filename)
-        if not file_path:
-            return PlainTextResponse("", status_code=404)
-        content = fm.read_file_content(filename)
-        if content is None:
-            return PlainTextResponse("", status_code=404)
-        return PlainTextResponse(content, media_type="application/xml")
-    except Exception as e:
-        log.error(f"读取 SCL 文件内容失败: {e}")
-        return PlainTextResponse("", status_code=500)
+    fm = _get_file_manager(request)
+    file_path = fm.get_file_path(filename)
+    if not file_path:
+        return PlainTextResponse("", status_code=404)
+    content = fm.read_file_content(filename)
+    if content is None:
+        return PlainTextResponse("", status_code=404)
+    return PlainTextResponse(content, media_type="application/xml")
 
 
 # ===== 解析与预览 =====
@@ -222,9 +210,6 @@ async def preview_scl_file(request: Request, file: UploadFile = File(...)):
         service = _get_import_service(request)
         result = service.preview_file(tmp_path)
         return BaseResponse(message="预览成功", data=result.to_dict())
-    except Exception as e:
-        log.error(f"预览 SCL 文件失败: {e}")
-        return BaseResponse(code=500, message=f"预览失败: {e}")
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
@@ -233,82 +218,68 @@ async def preview_scl_file(request: Request, file: UploadFile = File(...)):
 @router.post("/validate", response_model=BaseResponse)
 async def validate_scl_file(request: Request, filename: str = Form(...)):
     """校验已上传的 SCL 文件 (使用缓存)"""
-    try:
-        fm = _get_file_manager(request)
-        file_path = fm.get_file_path(filename)
-        if not file_path:
-            return BaseResponse(code=404, message=f"文件不存在: {filename}")
+    file_path = _get_scl_file_path(request, filename)
 
-        # 尝试从缓存获取
-        cached = _get_cached_result(request, file_path)
-        if cached:
-            validation = cached.get("validation", {})
-            return BaseResponse(data=validation)
+    # 尝试从缓存获取
+    cached = _get_cached_result(request, file_path)
+    if cached:
+        validation = cached.get("validation", {})
+        return BaseResponse(data=validation)
 
-        service = _get_import_service(request)
-        result = service.import_file(file_path, validate=True)
-        data = {
-            "is_valid": result.validation.is_valid,
-            "error_count": result.validation.error_count,
-            "warning_count": result.validation.warning_count,
-            "issues": [str(i) for i in result.validation.issues],
-        }
+    service = _get_import_service(request)
+    result = service.import_file(file_path, validate=True)
+    data = {
+        "is_valid": result.validation.is_valid,
+        "error_count": result.validation.error_count,
+        "warning_count": result.validation.warning_count,
+        "issues": [str(i) for i in result.validation.issues],
+    }
 
-        # 写入缓存
-        _set_cached_result(request, file_path, {"validation": data})
-        return BaseResponse(data=data)
-    except Exception as e:
-        log.error(f"校验 SCL 文件失败: {e}")
-        return BaseResponse(code=500, message=f"校验失败: {e}")
+    # 写入缓存
+    _set_cached_result(request, file_path, {"validation": data})
+    return BaseResponse(data=data)
 
 
 @router.post("/parse", response_model=BaseResponse)
 async def parse_scl_file(request: Request, filename: str = Form(...)):
     """解析 SCL 文件 (返回结构化模型摘要)"""
-    try:
-        fm = _get_file_manager(request)
-        file_path = fm.get_file_path(filename)
-        if not file_path:
-            return BaseResponse(code=404, message=f"文件不存在: {filename}")
+    file_path = _get_scl_file_path(request, filename)
 
-        from src.proto.iec61850.plugins.scl.parser.scl_parser import SclParser
+    from src.proto.iec61850.plugins.scl.parser.scl_parser import SclParser
 
-        parser = SclParser()
-        doc = parser.parse_file(file_path)
+    parser = SclParser()
+    doc = parser.parse_file(file_path)
 
-        # 返回结构化摘要 (不包含完整树，太大会截断)
-        ied_list = []
-        for ied in doc.ieds:
-            ld_count = sum(len(ap.server.ldevices) for ap in ied.access_points if ap.server)
-            ied_list.append(
-                {
-                    "name": ied.name,
-                    "desc": ied.desc,
-                    "manufacturer": ied.manufacturer,
-                    "ld_count": ld_count,
-                }
-            )
-
-        return BaseResponse(
-            data={
-                "header": {
-                    "id": doc.header.id,
-                    "version": doc.header.version,
-                    "revision": doc.header.revision,
-                    "tool_id": doc.header.tool_id,
-                },
-                "ieds": ied_list,
-                "type_counts": {
-                    "l_node_types": len(doc.data_type_templates.ln_node_types),
-                    "do_types": len(doc.data_type_templates.do_types),
-                    "da_types": len(doc.data_type_templates.da_types),
-                    "enum_types": len(doc.data_type_templates.enum_types),
-                },
+    # 返回结构化摘要 (不包含完整树，太大会截断)
+    ied_list = []
+    for ied in doc.ieds:
+        ld_count = sum(len(ap.server.ldevices) for ap in ied.access_points if ap.server)
+        ied_list.append(
+            {
+                "name": ied.name,
+                "desc": ied.desc,
+                "manufacturer": ied.manufacturer,
+                "ld_count": ld_count,
             }
         )
-    except Exception as e:
-        log.error(f"解析 SCL 文件失败: {e}")
-        return BaseResponse(code=500, message=f"解析失败: {e}")
+
+    return BaseResponse(
+        data={
+            "header": {
+                "id": doc.header.id,
+                "version": doc.header.version,
+                "revision": doc.header.revision,
+                "tool_id": doc.header.tool_id,
+            },
+            "ieds": ied_list,
+            "type_counts": {
+                "l_node_types": len(doc.data_type_templates.ln_node_types),
+                "do_types": len(doc.data_type_templates.do_types),
+                "da_types": len(doc.data_type_templates.da_types),
+                "enum_types": len(doc.data_type_templates.enum_types),
+            },
+        }
+    )
 
 
 # ===== 导入 =====
@@ -321,53 +292,45 @@ async def import_points_from_scl(
     filename: str = Form(...),
 ):
     """从已上传的 SCL 文件导入测点到数据库"""
-    try:
-        fm = _get_file_manager(request)
-        file_path = fm.get_file_path(filename)
-        if not file_path:
-            return BaseResponse(code=404, message=f"文件不存在: {filename}")
+    file_path = _get_scl_file_path(request, filename)
 
-        # 使用 SclImportService 解析
-        service = _get_import_service(request)
-        result = service.import_file(file_path)
+    # 使用 SclImportService 解析
+    service = _get_import_service(request)
+    result = service.import_file(file_path)
 
-        if not result.is_valid:
-            return BaseResponse(
-                code=400,
-                message=f"校验失败: {result.validation.error_count} 个错误",
-                data=result.to_dict()["validation"],
-            )
-
-        # 持久化到数据库 (复用 IcdPointImporter 的存储逻辑)
-        from src.tools.icd_point_importer import IcdPointImporter
-
-        importer = IcdPointImporter(channel_id=channel_id)
-        # 使用 SclImportService 解析的结果，委托 IcdPointImporter 存储
-        yc_count, yx_count, yk_count, yt_count = importer.import_from_icd(file_path)
-
-        # 更新 IED 名称
-        if result.ied_name:
-            try:
-                from src.data.service.channel_service import ChannelService
-
-                ChannelService.update_channel(channel_id, model_name=result.ied_name)
-            except Exception as e:
-                log.warning(f"更新 IED 名称失败: {e}")
-
-        return BaseResponse(
-            message="测点导入成功",
-            data={
-                "yc_count": yc_count,
-                "yx_count": yx_count,
-                "yk_count": yk_count,
-                "yt_count": yt_count,
-                "total": yc_count + yx_count + yk_count + yt_count,
-                "ied_name": result.ied_name,
-            },
+    if not result.is_valid:
+        raise ValidationError(
+            f"校验失败: {result.validation.error_count} 个错误",
+            data=result.to_dict()["validation"],
         )
-    except Exception as e:
-        log.error(f"从 SCL 导入测点失败: {e}")
-        return BaseResponse(code=500, message=f"导入失败: {e}")
+
+    # 持久化到数据库 (复用 IcdPointImporter 的存储逻辑)
+    from src.tools.icd_point_importer import IcdPointImporter
+
+    importer = IcdPointImporter(channel_id=channel_id)
+    # 使用 SclImportService 解析的结果，委托 IcdPointImporter 存储
+    yc_count, yx_count, yk_count, yt_count = importer.import_from_icd(file_path)
+
+    # 更新 IED 名称
+    if result.ied_name:
+        try:
+            from src.data.service.channel_service import ChannelService
+
+            ChannelService.update_channel(channel_id, model_name=result.ied_name)
+        except Exception as e:
+            log.warning(f"更新 IED 名称失败: {e}")
+
+    return BaseResponse(
+        message="测点导入成功",
+        data={
+            "yc_count": yc_count,
+            "yx_count": yx_count,
+            "yk_count": yk_count,
+            "yt_count": yt_count,
+            "total": yc_count + yx_count + yk_count + yt_count,
+            "ied_name": result.ied_name,
+        },
+    )
 
 
 @router.post("/import-goose", response_model=BaseResponse)
@@ -378,63 +341,56 @@ async def import_goose_from_scl(
     interface: str = Form("eth0"),
 ):
     """从已上传的 SCL 文件导入 GOOSE 配置"""
-    try:
-        fm = _get_file_manager(request)
-        file_path = fm.get_file_path(filename)
-        if not file_path:
-            return BaseResponse(code=404, message=f"文件不存在: {filename}")
+    file_path = _get_scl_file_path(request, filename)
 
-        service = _get_import_service(request)
-        result = service.import_file(file_path)
+    service = _get_import_service(request)
+    result = service.import_file(file_path)
 
-        # 构建 GOOSE 响应 (兼容 import_goose_from_icd 格式)
-        publishers = [gse.to_publisher_dict(interface) for gse in result.goose.gse_controls]
-        subscriptions = [gse.to_subscription_dict() for gse in result.goose.gse_controls]
+    # 构建 GOOSE 响应 (兼容 import_goose_from_icd 格式)
+    publishers = [gse.to_publisher_dict(interface) for gse in result.goose.gse_controls]
+    subscriptions = [gse.to_subscription_dict() for gse in result.goose.gse_controls]
 
-        return BaseResponse(
-            message="GOOSE 配置解析成功",
-            data={
-                "publishers": publishers,
-                "subscriptions": subscriptions,
-                "pure_datasets": result.goose.pure_datasets,
-                "report_controls": [
+    return BaseResponse(
+        message="GOOSE 配置解析成功",
+        data={
+            "publishers": publishers,
+            "subscriptions": subscriptions,
+            "pure_datasets": result.goose.pure_datasets,
+            "report_controls": [
+                {
+                    "ld_inst": rc.ld_inst,
+                    "name": rc.name,
+                    "rcb_type": rc.rcb_type,
+                    "rpt_id": rc.rpt_id,
+                    "dat_set": rc.dat_set,
+                    "data_set_ref": rc.data_set_ref,
+                    "conf_rev": rc.conf_rev,
+                    "buf_time": rc.buf_time,
+                    "intg_period": rc.intg_period,
+                    "ln_name": rc.ln_name,
+                    "trg_ops": rc.trg_ops,
+                    "opt_fields": rc.opt_fields,
+                    "entries": rc.entries,
+                }
+                for rc in result.reports.report_controls
+            ],
+            "summary": {
+                "gse_control_count": len(result.goose.gse_controls),
+                "gse_controls": [
                     {
-                        "ld_inst": rc.ld_inst,
-                        "name": rc.name,
-                        "rcb_type": rc.rcb_type,
-                        "rpt_id": rc.rpt_id,
-                        "dat_set": rc.dat_set,
-                        "data_set_ref": rc.data_set_ref,
-                        "conf_rev": rc.conf_rev,
-                        "buf_time": rc.buf_time,
-                        "intg_period": rc.intg_period,
-                        "ln_name": rc.ln_name,
-                        "trg_ops": rc.trg_ops,
-                        "opt_fields": rc.opt_fields,
-                        "entries": rc.entries,
+                        "go_cb_ref": g.go_cb_ref,
+                        "go_id": g.name,
+                        "app_id": g.app_id or g.gse_app_id,
+                        "dat_set": g.dat_set,
+                        "conf_rev": g.conf_rev,
+                        "mac_address": g.mac_address,
+                        "dataset_member_count": len(g.dataset_members),
                     }
-                    for rc in result.reports.report_controls
+                    for g in result.goose.gse_controls
                 ],
-                "summary": {
-                    "gse_control_count": len(result.goose.gse_controls),
-                    "gse_controls": [
-                        {
-                            "go_cb_ref": g.go_cb_ref,
-                            "go_id": g.name,
-                            "app_id": g.app_id or g.gse_app_id,
-                            "dat_set": g.dat_set,
-                            "conf_rev": g.conf_rev,
-                            "mac_address": g.mac_address,
-                            "dataset_member_count": len(g.dataset_members),
-                        }
-                        for g in result.goose.gse_controls
-                    ],
-                },
             },
-        )
-    except Exception as e:
-        log.error(f"从 SCL 导入 GOOSE 失败: {e}")
-        return BaseResponse(code=500, message=f"导入失败: {e}")
+        },
+    )
 
 
 @router.post("/import-full", response_model=BaseResponse)
@@ -445,49 +401,42 @@ async def import_full_from_scl(
     interface: str = Form("eth0"),
 ):
     """完整导入 SCL 文件 (测点 + GOOSE + Report)"""
-    try:
-        fm = _get_file_manager(request)
-        file_path = fm.get_file_path(filename)
-        if not file_path:
-            return BaseResponse(code=404, message=f"文件不存在: {filename}")
+    file_path = _get_scl_file_path(request, filename)
 
-        service = _get_import_service(request)
-        result = service.import_file(file_path)
+    service = _get_import_service(request)
+    result = service.import_file(file_path)
 
-        # 使用 IcdPointImporter 存储测点
-        from src.tools.icd_point_importer import IcdPointImporter
+    # 使用 IcdPointImporter 存储测点
+    from src.tools.icd_point_importer import IcdPointImporter
 
-        importer = IcdPointImporter(channel_id=channel_id)
-        yc_count, yx_count, yk_count, yt_count = importer.import_from_icd(file_path)
+    importer = IcdPointImporter(channel_id=channel_id)
+    yc_count, yx_count, yk_count, yt_count = importer.import_from_icd(file_path)
 
-        # 更新 IED 名称
-        if result.ied_name:
-            try:
-                from src.data.service.channel_service import ChannelService
+    # 更新 IED 名称
+    if result.ied_name:
+        try:
+            from src.data.service.channel_service import ChannelService
 
-                ChannelService.update_channel(channel_id, model_name=result.ied_name)
-            except Exception:
-                pass
+            ChannelService.update_channel(channel_id, model_name=result.ied_name)
+        except Exception:
+            pass
 
-        # 构建 GOOSE 响应
-        goose_data = result.to_dict()
+    # 构建 GOOSE 响应
+    goose_data = result.to_dict()
 
-        return BaseResponse(
-            message="完整导入成功",
-            data={
-                "yc_count": yc_count,
-                "yx_count": yx_count,
-                "yk_count": yk_count,
-                "yt_count": yt_count,
-                "total": yc_count + yx_count + yk_count + yt_count,
-                "goose": goose_data.get("goose"),
-                "report_controls": goose_data.get("report_controls", []),
-                "ied_name": result.ied_name,
-            },
-        )
-    except Exception as e:
-        log.error(f"完整导入 SCL 文件失败: {e}")
-        return BaseResponse(code=500, message=f"导入失败: {e}")
+    return BaseResponse(
+        message="完整导入成功",
+        data={
+            "yc_count": yc_count,
+            "yx_count": yx_count,
+            "yk_count": yk_count,
+            "yt_count": yt_count,
+            "total": yc_count + yx_count + yk_count + yt_count,
+            "goose": goose_data.get("goose"),
+            "report_controls": goose_data.get("report_controls", []),
+            "ied_name": result.ied_name,
+        },
+    )
 
 
 # ===== 浏览 =====
@@ -496,58 +445,51 @@ async def import_full_from_scl(
 @router.get("/browse-tree", response_model=BaseResponse)
 async def browse_scl_tree(request: Request, filename: str = Query(...)):
     """浏览 SCL 文件结构树"""
-    try:
-        fm = _get_file_manager(request)
-        file_path = fm.get_file_path(filename)
-        if not file_path:
-            return BaseResponse(code=404, message=f"文件不存在: {filename}")
+    file_path = _get_scl_file_path(request, filename)
 
-        from src.proto.iec61850.plugins.scl.parser.scl_parser import SclParser
+    from src.proto.iec61850.plugins.scl.parser.scl_parser import SclParser
 
-        parser = SclParser()
-        doc = parser.parse_file(file_path)
+    parser = SclParser()
+    doc = parser.parse_file(file_path)
 
-        # 构建树形结构
-        tree = {"header": {"id": doc.header.id, "version": doc.header.version}, "ieds": []}
+    # 构建树形结构
+    tree = {"header": {"id": doc.header.id, "version": doc.header.version}, "ieds": []}
 
-        for ied in doc.ieds:
-            ied_node = {"name": ied.name, "desc": ied.desc, "access_points": []}
-            for ap in ied.access_points:
-                ap_node = {"name": ap.name, "ldevices": []}
-                if ap.server:
-                    for ld in ap.server.ldevices:
-                        ld_node = {"inst": ld.inst, "desc": ld.desc, "logical_nodes": []}
-                        all_lns = ([ld.ln0] + ld.lns) if ld.ln0 else ld.lns
-                        for ln in all_lns:
-                            # 构造 DO 列表 (带 DA 数量)
-                            do_list = []
-                            for doi in ln.dois:
-                                do_list.append(
-                                    {
-                                        "name": doi.name,
-                                        "desc": doi.desc,
-                                        "dai_count": len(doi.dai_values),
-                                    }
-                                )
-                            ln_node = {
-                                "ln_name": ln.ln_name,
-                                "ln_class": ln.ln_class,
-                                "ln_type": ln.ln_type,
-                                "do_count": len(ln.dois),
-                                "dois": do_list,
-                                "dataset_count": len(ln.datasets),
-                                "gse_control_count": len(ln.gse_controls),
-                                "report_control_count": len(ln.report_controls),
-                            }
-                            ld_node["logical_nodes"].append(ln_node)
-                        ap_node["ldevices"].append(ld_node)
-                ied_node["access_points"].append(ap_node)
-            tree["ieds"].append(ied_node)
+    for ied in doc.ieds:
+        ied_node = {"name": ied.name, "desc": ied.desc, "access_points": []}
+        for ap in ied.access_points:
+            ap_node = {"name": ap.name, "ldevices": []}
+            if ap.server:
+                for ld in ap.server.ldevices:
+                    ld_node = {"inst": ld.inst, "desc": ld.desc, "logical_nodes": []}
+                    all_lns = ([ld.ln0] + ld.lns) if ld.ln0 else ld.lns
+                    for ln in all_lns:
+                        # 构造 DO 列表 (带 DA 数量)
+                        do_list = []
+                        for doi in ln.dois:
+                            do_list.append(
+                                {
+                                    "name": doi.name,
+                                    "desc": doi.desc,
+                                    "dai_count": len(doi.dai_values),
+                                }
+                            )
+                        ln_node = {
+                            "ln_name": ln.ln_name,
+                            "ln_class": ln.ln_class,
+                            "ln_type": ln.ln_type,
+                            "do_count": len(ln.dois),
+                            "dois": do_list,
+                            "dataset_count": len(ln.datasets),
+                            "gse_control_count": len(ln.gse_controls),
+                            "report_control_count": len(ln.report_controls),
+                        }
+                        ld_node["logical_nodes"].append(ln_node)
+                    ap_node["ldevices"].append(ld_node)
+            ied_node["access_points"].append(ap_node)
+        tree["ieds"].append(ied_node)
 
-        return BaseResponse(data=tree)
-    except Exception as e:
-        log.error(f"浏览 SCL 文件树失败: {e}")
-        return BaseResponse(code=500, message=f"浏览失败: {e}")
+    return BaseResponse(data=tree)
 
 
 # ===== 对比 =====
@@ -560,62 +502,58 @@ async def diff_scl_files(
     filename_b: str = Form(...),
 ):
     """对比两个 SCL 文件"""
-    try:
-        fm = _get_file_manager(request)
+    fm = _get_file_manager(request)
 
-        path_a = fm.get_file_path(filename_a)
-        path_b = fm.get_file_path(filename_b)
-        if not path_a:
-            return BaseResponse(code=404, message=f"文件不存在: {filename_a}")
-        if not path_b:
-            return BaseResponse(code=404, message=f"文件不存在: {filename_b}")
+    path_a = fm.get_file_path(filename_a)
+    path_b = fm.get_file_path(filename_b)
+    if not path_a:
+        raise NotFoundError(f"文件不存在: {filename_a}")
+    if not path_b:
+        raise NotFoundError(f"文件不存在: {filename_b}")
 
-        from src.proto.iec61850.plugins.scl.parser.scl_parser import SclParser
+    from src.proto.iec61850.plugins.scl.parser.scl_parser import SclParser
 
-        parser = SclParser()
-        doc_a = parser.parse_file(path_a)
-        doc_b = parser.parse_file(path_b)
+    parser = SclParser()
+    doc_a = parser.parse_file(path_a)
+    doc_b = parser.parse_file(path_b)
 
-        # 简单对比: IED 名称、类型数量、测点数量
-        diff = {
-            "file_a": filename_a,
-            "file_b": filename_b,
-            "ied_names": {
-                "a": [ied.name for ied in doc_a.ieds],
-                "b": [ied.name for ied in doc_b.ieds],
-                "added": [ied.name for ied in doc_b.ieds if ied.name not in {i.name for i in doc_a.ieds}],
-                "removed": [ied.name for ied in doc_a.ieds if ied.name not in {i.name for i in doc_b.ieds}],
+    # 简单对比: IED 名称、类型数量、测点数量
+    diff = {
+        "file_a": filename_a,
+        "file_b": filename_b,
+        "ied_names": {
+            "a": [ied.name for ied in doc_a.ieds],
+            "b": [ied.name for ied in doc_b.ieds],
+            "added": [ied.name for ied in doc_b.ieds if ied.name not in {i.name for i in doc_a.ieds}],
+            "removed": [ied.name for ied in doc_a.ieds if ied.name not in {i.name for i in doc_b.ieds}],
+        },
+        "type_counts": {
+            "a": {
+                "l_node_types": len(doc_a.data_type_templates.ln_node_types),
+                "do_types": len(doc_a.data_type_templates.do_types),
+                "da_types": len(doc_a.data_type_templates.da_types),
+                "enum_types": len(doc_a.data_type_templates.enum_types),
             },
-            "type_counts": {
-                "a": {
-                    "l_node_types": len(doc_a.data_type_templates.ln_node_types),
-                    "do_types": len(doc_a.data_type_templates.do_types),
-                    "da_types": len(doc_a.data_type_templates.da_types),
-                    "enum_types": len(doc_a.data_type_templates.enum_types),
-                },
-                "b": {
-                    "l_node_types": len(doc_b.data_type_templates.ln_node_types),
-                    "do_types": len(doc_b.data_type_templates.do_types),
-                    "da_types": len(doc_b.data_type_templates.da_types),
-                    "enum_types": len(doc_b.data_type_templates.enum_types),
-                },
+            "b": {
+                "l_node_types": len(doc_b.data_type_templates.ln_node_types),
+                "do_types": len(doc_b.data_type_templates.do_types),
+                "da_types": len(doc_b.data_type_templates.da_types),
+                "enum_types": len(doc_b.data_type_templates.enum_types),
             },
-        }
+        },
+    }
 
-        # 测点数量对比
-        from src.proto.iec61850.plugins.scl.transformer.point_transformer import SclPointTransformer
+    # 测点数量对比
+    from src.proto.iec61850.plugins.scl.transformer.point_transformer import SclPointTransformer
 
-        pts_a = SclPointTransformer(doc_a).transform()
-        pts_b = SclPointTransformer(doc_b).transform()
-        diff["point_counts"] = {
-            "a": pts_a.to_count_tuple(),
-            "b": pts_b.to_count_tuple(),
-        }
+    pts_a = SclPointTransformer(doc_a).transform()
+    pts_b = SclPointTransformer(doc_b).transform()
+    diff["point_counts"] = {
+        "a": pts_a.to_count_tuple(),
+        "b": pts_b.to_count_tuple(),
+    }
 
-        return BaseResponse(data=diff)
-    except Exception as e:
-        log.error(f"对比 SCL 文件失败: {e}")
-        return BaseResponse(code=500, message=f"对比失败: {e}")
+    return BaseResponse(data=diff)
 
 
 # ===== IED 列表 =====
@@ -624,29 +562,22 @@ async def diff_scl_files(
 @router.get("/ied-list", response_model=BaseResponse)
 async def get_scl_ied_list(request: Request, filename: str = Query(...)):
     """获取 SCL 文件中的 IED 列表"""
-    try:
-        fm = _get_file_manager(request)
-        file_path = fm.get_file_path(filename)
-        if not file_path:
-            return BaseResponse(code=404, message=f"文件不存在: {filename}")
+    file_path = _get_scl_file_path(request, filename)
 
-        from src.proto.iec61850.plugins.scl.parser.scl_parser import SclParser
+    from src.proto.iec61850.plugins.scl.parser.scl_parser import SclParser
 
-        parser = SclParser()
-        doc = parser.parse_file(file_path)
+    parser = SclParser()
+    doc = parser.parse_file(file_path)
 
-        ieds = [
-            {
-                "name": ied.name,
-                "desc": ied.desc,
-                "manufacturer": ied.manufacturer,
-                "config_revision": ied.config_revision,
-                "access_point_count": len(ied.access_points),
-            }
-            for ied in doc.ieds
-        ]
+    ieds = [
+        {
+            "name": ied.name,
+            "desc": ied.desc,
+            "manufacturer": ied.manufacturer,
+            "config_revision": ied.config_revision,
+            "access_point_count": len(ied.access_points),
+        }
+        for ied in doc.ieds
+    ]
 
-        return BaseResponse(data=ieds)
-    except Exception as e:
-        log.error(f"获取 IED 列表失败: {e}")
-        return BaseResponse(code=500, message=f"获取失败: {e}")
+    return BaseResponse(data=ieds)

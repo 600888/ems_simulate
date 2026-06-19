@@ -7,6 +7,7 @@ from src.device.types.circuit_breaker import CircuitBreaker
 from src.device.types.general_device import GeneralDevice
 from src.device.types.pcs import Pcs
 from src.enums.modbus_def import ProtocolType
+from src.web.api.exceptions import NotFoundError
 from src.web.log import log
 
 
@@ -64,7 +65,7 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
 
     channel = ChannelService.get_channel_by_id(channel_id)
     if not channel:
-        raise ValueError(f"通道 {channel_id} 不存在")
+        raise NotFoundError(f"通道 {channel_id} 不存在")
 
     device_name = channel["name"]
     channel_code = channel["code"]

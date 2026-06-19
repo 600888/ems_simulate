@@ -7,10 +7,36 @@ from pydantic import BaseModel, Field
 
 from src.data.service.channel_service import ChannelService
 from src.enums.points.base_point import BasePoint
+from src.web.api.exceptions import NotFoundError, ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
 
 router = APIRouter(tags=["channel"])
+
+
+def _get_iec61850_device(request: Request, channel_id: int):
+    """获取 IEC61850 设备，校验通道存在且协议为 IEC61850
+
+    Raises:
+        NotFoundError: 通道或设备不存在
+        ValidationError: 协议不是 IEC61850
+    Returns:
+        device 实例
+    """
+    channel = ChannelService.get_channel_by_id(channel_id)
+    if not channel:
+        raise NotFoundError("通道不存在")
+
+    protocol_type = channel.get("protocol_type", -1)
+    if protocol_type != 4:
+        raise ValidationError("该通道不是 IEC61850 协议")
+
+    device_controller = request.app.state.device_controller
+    device = device_controller.get_device_by_channel_id(channel_id)
+    if not device:
+        raise NotFoundError("设备未找到")
+
+    return device
 
 
 # ===== IEC61850 POST 请求模型 =====
@@ -487,243 +513,211 @@ async def get_iec61850_tree_data(
     request: Request,
 ):
     """获取 IEC61850 树形表格数据 (按 DO→DA→BDA 层级返回，支持 DO 级分页)"""
-    try:
-        channel = ChannelService.get_channel_by_id(body.channel_id)
-        if not channel:
-            return BaseResponse(code=404, message="通道不存在", data={})
+    device = _get_iec61850_device(request, body.channel_id)
 
-        protocol_type = channel.get("protocol_type", -1)
-        if protocol_type != 4:
-            return BaseResponse(code=400, message="该通道不是 IEC61850 协议", data={})
+    pt_filter = []
+    if body.point_types:
+        try:
+            pt_filter = [int(t.strip()) for t in body.point_types.split(",") if t.strip().isdigit()]
+        except Exception:
+            pt_filter = []
+    if not pt_filter:
+        pt_filter = [0, 1, 2, 3]
 
-        device_controller = request.app.state.device_controller
-        device = device_controller.get_device_by_channel_id(body.channel_id)
-        if not device:
-            return BaseResponse(code=404, message="设备未找到", data={})
+    # 获取所有测点对象
+    all_points = _get_iec61850_filtered_points(device, "", "")
 
-        pt_filter = []
-        if body.point_types:
-            try:
-                pt_filter = [int(t.strip()) for t in body.point_types.split(",") if t.strip().isdigit()]
-            except Exception:
-                pt_filter = []
-        if not pt_filter:
-            pt_filter = [0, 1, 2, 3]
+    # 构建树形结构
+    tree_data = _build_iec61850_tree(
+        all_points,
+        category=body.category,
+        item=body.item,
+        point_name=body.point_name,
+        point_types=pt_filter,
+        device=device,
+    )
 
-        # 获取所有测点对象
-        all_points = _get_iec61850_filtered_points(device, "", "")
+    # DO 级分页
+    all_items = tree_data["items"]
+    total = tree_data["total"]
+    start = (body.page_index - 1) * body.page_size
+    end = start + body.page_size
+    paged_items = all_items[start:end]
 
-        # 构建树形结构
-        tree_data = _build_iec61850_tree(
-            all_points,
-            category=body.category,
-            item=body.item,
-            point_name=body.point_name,
-            point_types=pt_filter,
-            device=device,
-        )
-
-        # DO 级分页
-        all_items = tree_data["items"]
-        total = tree_data["total"]
-        start = (body.page_index - 1) * body.page_size
-        end = start + body.page_size
-        paged_items = all_items[start:end]
-
-        return BaseResponse(
-            message="获取 IEC61850 树形数据成功",
-            data={
-                "items": paged_items,
-                "total": total,
-            },
-        )
-    except Exception as e:
-        log.error(f"获取 IEC61850 树形数据失败: {e}")
-        return BaseResponse(code=500, message=f"获取 IEC61850 树形数据失败: {e}", data={})
+    return BaseResponse(
+        message="获取 IEC61850 树形数据成功",
+        data={
+            "items": paged_items,
+            "total": total,
+        },
+    )
 
 
 @router.post("/iec61850-structure", response_model=BaseResponse)
 async def get_iec61850_structure(body: Iec61850StructureRequest, request: Request):
     """获取 IEC61850 设备的子节点结构树"""
     log.info(f"get_iec61850_structure 请求, channel_id={body.channel_id}")
-    try:
-        channel = ChannelService.get_channel_by_id(body.channel_id)
-        if not channel:
-            return BaseResponse(code=404, message="通道不存在", data={})
+    device = _get_iec61850_device(request, body.channel_id)
 
-        protocol_type = channel.get("protocol_type", -1)
-        if protocol_type != 4:
-            return BaseResponse(code=400, message="该通道不是 IEC61850 协议", data={})
+    logical_devices = []
+    protocol_handler = getattr(device, "protocol_handler", None)
+    if protocol_handler:
+        if hasattr(protocol_handler, "_client") and protocol_handler._client:
+            client = protocol_handler._client
+            if hasattr(client, "browse_logical_devices"):
+                logical_devices = client.browse_logical_devices()
+            # 获取每个 LD 下的 LN 列表
+            data_model = []
+            for ld in logical_devices:
+                lns = client.browse_logical_nodes(ld) if hasattr(client, "browse_logical_nodes") else []
+                data_model.append({"name": ld, "children": lns})
+        elif hasattr(protocol_handler, "_server") and protocol_handler._server:
+            server = protocol_handler._server
+            if hasattr(server, "browse_logical_devices"):
+                logical_devices = server.browse_logical_devices()
+            # 获取每个 LD 下的 LN 列表
+            data_model = []
+            for ld in logical_devices:
+                lns = server.browse_logical_nodes(ld) if hasattr(server, "browse_logical_nodes") else []
+                data_model.append({"name": ld, "children": lns})
 
-        device_controller = request.app.state.device_controller
-        device = device_controller.get_device_by_channel_id(body.channel_id)
-        if not device:
-            return BaseResponse(code=404, message="设备未找到，请确认设备已创建", data={})
-
-        logical_devices = []
-        protocol_handler = getattr(device, "protocol_handler", None)
-        if protocol_handler:
-            if hasattr(protocol_handler, "_client") and protocol_handler._client:
-                client = protocol_handler._client
-                if hasattr(client, "browse_logical_devices"):
-                    logical_devices = client.browse_logical_devices()
-                # 获取每个 LD 下的 LN 列表
-                data_model = []
-                for ld in logical_devices:
-                    lns = client.browse_logical_nodes(ld) if hasattr(client, "browse_logical_nodes") else []
-                    data_model.append({"name": ld, "children": lns})
-            elif hasattr(protocol_handler, "_server") and protocol_handler._server:
-                server = protocol_handler._server
-                if hasattr(server, "browse_logical_devices"):
-                    logical_devices = server.browse_logical_devices()
-                # 获取每个 LD 下的 LN 列表
-                data_model = []
-                for ld in logical_devices:
-                    lns = server.browse_logical_nodes(ld) if hasattr(server, "browse_logical_nodes") else []
-                    data_model.append({"name": ld, "children": lns})
-
-        # 获取 GOOSE 信息（本机发布者）
-        goose_items = []
-        goose_manager = getattr(request.app.state, "goose_manager", None)
-        if goose_manager:
-            try:
-                goose_status = goose_manager.get_all_status()
-                for pub in goose_status.get("publishers", []):
-                    goose_items.append(
-                        f"Pub: {pub.get('go_cb_ref', '')} ({'运行' if pub.get('is_running') else '停止'})"
-                    )
-                for recv in goose_status.get("receivers", []):
-                    goose_items.append(
-                        f"Recv: {recv.get('interface', '')} ({'运行' if recv.get('is_running') else '停止'})"
-                    )
-            except Exception as e:
-                log.warning(f"获取本机 GOOSE 状态失败: {e}")
-
-        # 如果是客户端设备，补充远端发现的 GOOSE 控制块和 DataSet
-        dataset_items = []
-        if device and hasattr(device, "protocol_handler") and device.protocol_handler:
-            protocol_handler = device.protocol_handler
-            discovered_goose = getattr(protocol_handler, "_discovered_goose_items", None)
-            if discovered_goose:
-                for g in discovered_goose:
-                    cb_ref = g.get("go_cb_ref", "")
-                    app_id = g.get("app_id")
-                    app_id_str = f"0x{app_id:04X}" if app_id is not None else ""
-                    status = "已发现"
-                    goose_items.append(f"远端GoCB: {cb_ref} ({status}, APPID={app_id_str})")
-
-            # 获取 DataSet 列表（含成员信息），按 LD > LN 组织层级
-            if hasattr(protocol_handler, "get_discovered_datasets"):
-                discovered_datasets = protocol_handler.get_discovered_datasets()
-                log.info(
-                    f"get_discovered_datasets() 返回 {len(discovered_datasets)} 个 DataSet: "
-                    + ", ".join(f"{d.get('ld', '')}/{d.get('ln', '')}.{d.get('name', '')}" for d in discovered_datasets)
+    # 获取 GOOSE 信息（本机发布者）
+    goose_items = []
+    goose_manager = getattr(request.app.state, "goose_manager", None)
+    if goose_manager:
+        try:
+            goose_status = goose_manager.get_all_status()
+            for pub in goose_status.get("publishers", []):
+                goose_items.append(f"Pub: {pub.get('go_cb_ref', '')} ({'运行' if pub.get('is_running') else '停止'})")
+            for recv in goose_status.get("receivers", []):
+                goose_items.append(
+                    f"Recv: {recv.get('interface', '')} ({'运行' if recv.get('is_running') else '停止'})"
                 )
-                # 构建 LD -> {LN -> [datasets]} 层级映射
-                ld_map: dict[str, dict[str, list]] = {}
-                for ds in discovered_datasets:
-                    ds_ld = ds.get("ld", "")
-                    ds_ln = ds.get("ln", "")
-                    if not ds_ld:
-                        continue
-                    if ds_ld not in ld_map:
-                        ld_map[ds_ld] = {}
-                    if ds_ln not in ld_map[ds_ld]:
-                        ld_map[ds_ld][ds_ln] = []
-                    ld_map[ds_ld][ds_ln].append(
-                        {
-                            "ref": ds.get("ref", ""),
-                            "name": ds.get("name", ""),
-                            "ld": ds_ld,
-                            "ln": ds_ln,
-                            "member_count": ds.get("member_count", 0),
-                        }
-                    )
-                # 转换为层级树: [{name: "LD0", children: [{name: "LLN0", datasets: [...]}]}]
-                for ld_name, ln_dict in sorted(ld_map.items()):
-                    ln_items = []
-                    for ln_name, ds_list in sorted(ln_dict.items()):
-                        ln_node = {
-                            "name": ln_name,
-                            "datasets": ds_list,
-                        }
-                        ln_items.append(ln_node)
-                    dataset_items.append(
-                        {
-                            "name": ld_name,
-                            "children": ln_items,
-                        }
-                    )
+        except Exception as e:
+            log.warning(f"获取本机 GOOSE 状态失败: {e}")
 
-        # 获取 Reports 信息（通过 ReportsPlugin 发现远端 RCB）
-        report_items = []
-        if protocol_handler:
-            try:
-                from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+    # 如果是客户端设备，补充远端发现的 GOOSE 控制块和 DataSet
+    dataset_items = []
+    if device and hasattr(device, "protocol_handler") and device.protocol_handler:
+        protocol_handler = device.protocol_handler
+        discovered_goose = getattr(protocol_handler, "_discovered_goose_items", None)
+        if discovered_goose:
+            for g in discovered_goose:
+                cb_ref = g.get("go_cb_ref", "")
+                app_id = g.get("app_id")
+                app_id_str = f"0x{app_id:04X}" if app_id is not None else ""
+                status = "已发现"
+                goose_items.append(f"远端GoCB: {cb_ref} ({status}, APPID={app_id_str})")
 
-                if isinstance(protocol_handler, IEC61850ClientHandler):
-                    # 优先用连接时缓存的 RCB，避免首屏现场探测导致空白
-                    rcbs = []
-                    if hasattr(protocol_handler, "get_discovered_rcbs"):
-                        rcbs = protocol_handler.get_discovered_rcbs()
-                    client = getattr(protocol_handler, "_client", None)
-                    if not rcbs and client and hasattr(client, "reports") and client.reports:
-                        rcbs = client.reports.discover_rcbs()
-                        # 现场发现成功则回写缓存，供 /reports 页面复用
-                        if rcbs and hasattr(protocol_handler, "set_discovered_rcbs"):
-                            protocol_handler.set_discovered_rcbs(rcbs)
+        # 获取 DataSet 列表（含成员信息），按 LD > LN 组织层级
+        if hasattr(protocol_handler, "get_discovered_datasets"):
+            discovered_datasets = protocol_handler.get_discovered_datasets()
+            log.info(
+                f"get_discovered_datasets() 返回 {len(discovered_datasets)} 个 DataSet: "
+                + ", ".join(f"{d.get('ld', '')}/{d.get('ln', '')}.{d.get('name', '')}" for d in discovered_datasets)
+            )
+            # 构建 LD -> {LN -> [datasets]} 层级映射
+            ld_map: dict[str, dict[str, list]] = {}
+            for ds in discovered_datasets:
+                ds_ld = ds.get("ld", "")
+                ds_ln = ds.get("ln", "")
+                if not ds_ld:
+                    continue
+                if ds_ld not in ld_map:
+                    ld_map[ds_ld] = {}
+                if ds_ln not in ld_map[ds_ld]:
+                    ld_map[ds_ld][ds_ln] = []
+                ld_map[ds_ld][ds_ln].append(
+                    {
+                        "ref": ds.get("ref", ""),
+                        "name": ds.get("name", ""),
+                        "ld": ds_ld,
+                        "ln": ds_ln,
+                        "member_count": ds.get("member_count", 0),
+                    }
+                )
+            # 转换为层级树: [{name: "LD0", children: [{name: "LLN0", datasets: [...]}]}]
+            for ld_name, ln_dict in sorted(ld_map.items()):
+                ln_items = []
+                for ln_name, ds_list in sorted(ln_dict.items()):
+                    ln_node = {
+                        "name": ln_name,
+                        "datasets": ds_list,
+                    }
+                    ln_items.append(ln_node)
+                dataset_items.append(
+                    {
+                        "name": ld_name,
+                        "children": ln_items,
+                    }
+                )
+
+    # 获取 Reports 信息（通过 ReportsPlugin 发现远端 RCB）
+    report_items = []
+    if protocol_handler:
+        try:
+            from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+
+            if isinstance(protocol_handler, IEC61850ClientHandler):
+                # 优先用连接时缓存的 RCB，避免首屏现场探测导致空白
+                rcbs = []
+                if hasattr(protocol_handler, "get_discovered_rcbs"):
+                    rcbs = protocol_handler.get_discovered_rcbs()
+                client = getattr(protocol_handler, "_client", None)
+                if not rcbs and client and hasattr(client, "reports") and client.reports:
+                    rcbs = client.reports.discover_rcbs()
+                    # 现场发现成功则回写缓存，供 /reports 页面复用
+                    if rcbs and hasattr(protocol_handler, "set_discovered_rcbs"):
+                        protocol_handler.set_discovered_rcbs(rcbs)
+                for rcb in rcbs:
+                    active_mark = " 🟢" if rcb.get("rpt_ena") else ""
+                    report_items.append(f"{rcb['ref']} ({rcb['rcb_type']}){active_mark}")
+                log.info(f"Reports: 返回 {len(rcbs)} 个 RCB")
+                if not rcbs:
+                    log.info("远端 IED 未配置报告控制块 (BRCB/URCB)，需在 ICD 中声明 ReportControl")
+            elif isinstance(protocol_handler, IEC61850ServerHandler):
+                # 服务端模式：从 ReportManager 获取已注册的 RCB
+                server = getattr(protocol_handler, "_server", None)
+                if server and hasattr(server, "reports") and server.reports:
+                    rcbs = server.reports.browse_rcbs()
                     for rcb in rcbs:
-                        active_mark = " 🟢" if rcb.get("rpt_ena") else ""
-                        report_items.append(f"{rcb['ref']} ({rcb['rcb_type']}){active_mark}")
-                    log.info(f"Reports: 返回 {len(rcbs)} 个 RCB")
-                    if not rcbs:
-                        log.info("远端 IED 未配置报告控制块 (BRCB/URCB)，需在 ICD 中声明 ReportControl")
-                elif isinstance(protocol_handler, IEC61850ServerHandler):
-                    # 服务端模式：从 ReportManager 获取已注册的 RCB
-                    server = getattr(protocol_handler, "_server", None)
-                    if server and hasattr(server, "reports") and server.reports:
-                        rcbs = server.reports.browse_rcbs()
-                        for rcb in rcbs:
-                            report_items.append(f"{rcb.get('ld_inst', '')}/LLN0.{rcb['name']} ({rcb['rcb_type']})")
-                        log.info(f"通过 ReportManager 发现 {len(rcbs)} 个服务端 RCB")
-            except Exception as e:
-                log.warning(f"获取 Reports 信息失败: {e}")
+                        report_items.append(f"{rcb.get('ld_inst', '')}/LLN0.{rcb['name']} ({rcb['rcb_type']})")
+                    log.info(f"通过 ReportManager 发现 {len(rcbs)} 个服务端 RCB")
+        except Exception as e:
+            log.warning(f"获取 Reports 信息失败: {e}")
 
-        # 获取 Files 信息（通过 FilesPlugin 浏览远程文件目录）
-        file_items = []
-        if protocol_handler:
-            try:
-                from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+    # 获取 Files 信息（通过 FilesPlugin 浏览远程文件目录）
+    file_items = []
+    if protocol_handler:
+        try:
+            from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
 
-                iec61850_client = None
-                if isinstance(protocol_handler, IEC61850ClientHandler):
-                    iec61850_client = getattr(protocol_handler, "_client", None)
-                elif isinstance(protocol_handler, IEC61850ServerHandler):
-                    iec61850_client = getattr(protocol_handler, "_server", None)
+            iec61850_client = None
+            if isinstance(protocol_handler, IEC61850ClientHandler):
+                iec61850_client = getattr(protocol_handler, "_client", None)
+            elif isinstance(protocol_handler, IEC61850ServerHandler):
+                iec61850_client = getattr(protocol_handler, "_server", None)
 
-                if iec61850_client and hasattr(iec61850_client, "files") and iec61850_client.files:
-                    files_plugin = iec61850_client.files
-                    root_entries = files_plugin.list_directory("")
-                    for entry in root_entries:
-                        entry_type = "📁" if entry.get("type") == "directory" else "📄"
-                        size_str = entry.get("size_human", "")
-                        file_items.append(f"{entry_type} {entry.get('name', '')} ({size_str})")
-                    log.info(f"Files: 返回 {len(file_items)} 个根目录条目")
-            except Exception as e:
-                log.warning(f"获取 Files 信息失败: {e}")
+            if iec61850_client and hasattr(iec61850_client, "files") and iec61850_client.files:
+                files_plugin = iec61850_client.files
+                root_entries = files_plugin.list_directory("")
+                for entry in root_entries:
+                    entry_type = "📁" if entry.get("type") == "directory" else "📄"
+                    size_str = entry.get("size_human", "")
+                    file_items.append(f"{entry_type} {entry.get('name', '')} ({size_str})")
+                log.info(f"Files: 返回 {len(file_items)} 个根目录条目")
+        except Exception as e:
+            log.warning(f"获取 Files 信息失败: {e}")
 
-        structure = {
-            "GOOSE": goose_items,
-            "Reports": report_items,
-            "SettingGroups": [],
-            "Files": file_items,
-            "DataSets": dataset_items,
-            "DataModel": data_model,
-        }
-        return BaseResponse(message="获取 IEC61850 结构成功", data=structure)
-    except Exception as e:
-        log.error(f"获取 IEC61850 结构失败: {e}")
-        return BaseResponse(code=500, message=f"获取 IEC61850 结构失败: {e}", data={})
+    structure = {
+        "GOOSE": goose_items,
+        "Reports": report_items,
+        "SettingGroups": [],
+        "Files": file_items,
+        "DataSets": dataset_items,
+        "DataModel": data_model,
+    }
+    return BaseResponse(message="获取 IEC61850 结构成功", data=structure)
 
 
 @router.post("/iec61850-table-data", response_model=BaseResponse)
@@ -732,60 +726,45 @@ async def get_iec61850_table_data(
     request: Request,
 ):
     """根据 IEC61850 左侧树形节点获取当前表格数据"""
-    try:
-        channel = ChannelService.get_channel_by_id(body.channel_id)
-        if not channel:
-            return BaseResponse(code=404, message="通道不存在", data={})
+    device = _get_iec61850_device(request, body.channel_id)
 
-        protocol_type = channel.get("protocol_type", -1)
-        if protocol_type != 4:
-            return BaseResponse(code=400, message="该通道不是 IEC61850 协议", data={})
+    pt_filter = []
+    if body.point_types:
+        try:
+            pt_filter = [int(t.strip()) for t in body.point_types.split(",") if t.strip().isdigit()]
+        except Exception:
+            pt_filter = []
+    if not pt_filter:
+        pt_filter = [0, 1, 2, 3]
 
-        device_controller = request.app.state.device_controller
-        device = device_controller.get_device_by_channel_id(body.channel_id)
-        if not device:
-            return BaseResponse(code=404, message="设备未找到", data={})
+    head_data = device.get_table_head()
+    all_table_rows = []
 
-        pt_filter = []
-        if body.point_types:
-            try:
-                pt_filter = [int(t.strip()) for t in body.point_types.split(",") if t.strip().isdigit()]
-            except Exception:
-                pt_filter = []
-        if not pt_filter:
-            pt_filter = [0, 1, 2, 3]
+    for slave_id in device.slave_id_list:
+        table_data, _ = device.get_table_data(
+            slave_id=slave_id,
+            name=body.point_name,
+            page_index=None,
+            page_size=None,
+            point_types=pt_filter,
+        )
+        all_table_rows.extend(table_data)
 
-        head_data = device.get_table_head()
-        all_table_rows = []
+    filtered_rows = _filter_iec61850_rows(all_table_rows, body.category, body.item)
+    total_count = len(filtered_rows)
 
-        for slave_id in device.slave_id_list:
-            table_data, _ = device.get_table_data(
-                slave_id=slave_id,
-                name=body.point_name,
-                page_index=None,
-                page_size=None,
-                point_types=pt_filter,
-            )
-            all_table_rows.extend(table_data)
+    start = (body.page_index - 1) * body.page_size
+    end = start + body.page_size
+    paged_rows = filtered_rows[start:end]
 
-        filtered_rows = _filter_iec61850_rows(all_table_rows, body.category, body.item)
-        total_count = len(filtered_rows)
-
-        start = (body.page_index - 1) * body.page_size
-        end = start + body.page_size
-        paged_rows = filtered_rows[start:end]
-
-        data_dict = {
-            "total": total_count,
-            "head_data": head_data,
-            "table_data": paged_rows,
-            "category": body.category,
-            "item": body.item,
-        }
-        return BaseResponse(message="获取 IEC61850 表格数据成功", data=data_dict)
-    except Exception as e:
-        log.error(f"获取 IEC61850 表格数据失败: {e}")
-        return BaseResponse(code=500, message=f"获取 IEC61850 表格数据失败: {e}", data={})
+    data_dict = {
+        "total": total_count,
+        "head_data": head_data,
+        "table_data": paged_rows,
+        "category": body.category,
+        "item": body.item,
+    }
+    return BaseResponse(message="获取 IEC61850 表格数据成功", data=data_dict)
 
 
 @router.post("/iec61850-read-points", response_model=BaseResponse)
@@ -794,49 +773,60 @@ async def iec61850_read_points(
     request: Request,
 ):
     """根据 IEC61850 左侧树形节点过滤，批量读取对应测点的值"""
-    try:
-        channel = ChannelService.get_channel_by_id(body.channel_id)
-        if not channel:
-            return BaseResponse(code=404, message="通道不存在", data={})
+    device = _get_iec61850_device(request, body.channel_id)
 
-        protocol_type = channel.get("protocol_type", -1)
-        if protocol_type != 4:
-            return BaseResponse(code=400, message="该通道不是 IEC61850 协议", data={})
+    filtered_points = _get_iec61850_filtered_points(device, body.category, body.item)
+    if not filtered_points:
+        return BaseResponse(message="无匹配测点", data={"success": 0, "fail": 0})
 
-        device_controller = request.app.state.device_controller
-        device = device_controller.get_device_by_channel_id(body.channel_id)
-        if not device:
-            return BaseResponse(code=404, message="设备未找到", data={})
+    from src.device.protocol.iec61850_handler import IEC61850ClientHandler
+    from src.enums.point_data import Yc, Yx
+    from src.enums.points.change_tracker import ChangeSource, track_change
 
-        filtered_points = _get_iec61850_filtered_points(device, body.category, body.item)
-        if not filtered_points:
-            return BaseResponse(message="无匹配测点", data={"success": 0, "fail": 0})
+    yc_list = [p for p in filtered_points if isinstance(p, Yc)]
+    yx_list = [p for p in filtered_points if isinstance(p, Yx)]
 
-        from src.device.protocol.iec61850_handler import IEC61850ClientHandler
-        from src.enums.point_data import Yc, Yx
-        from src.enums.points.change_tracker import ChangeSource, track_change
+    # 判断是否为 IEC61850 客户端且支持批量读取
+    protocol_handler = device.protocol_handler
+    is_iec61850_client = isinstance(protocol_handler, IEC61850ClientHandler)
+    has_batch = is_iec61850_client and hasattr(protocol_handler, "read_points_batch")
 
-        yc_list = [p for p in filtered_points if isinstance(p, Yc)]
-        yx_list = [p for p in filtered_points if isinstance(p, Yx)]
+    all_points = yc_list + yx_list
+    success_count = 0
+    fail_count = 0
 
-        # 判断是否为 IEC61850 客户端且支持批量读取
-        protocol_handler = device.protocol_handler
-        is_iec61850_client = isinstance(protocol_handler, IEC61850ClientHandler)
-        has_batch = is_iec61850_client and hasattr(protocol_handler, "read_points_batch")
+    source = ChangeSource.CLIENT_READ if has_batch else ChangeSource.INTERNAL
 
-        all_points = yc_list + yx_list
-        success_count = 0
-        fail_count = 0
+    if has_batch:
+        # 批量读取模式: 一次性读取所有测点
+        batch_results = protocol_handler.read_points_batch(all_points)
 
-        source = ChangeSource.CLIENT_READ if has_batch else ChangeSource.INTERNAL
+        for point in all_points:
+            value = batch_results.get(point.code)
+            if value is not None:
+                with track_change(source, f"IEC61850批量读取 {point.code}"):
+                    point.value = value
+                point.is_valid = True
+                success_count += 1
+            else:
+                point.is_valid = False
+                fail_count += 1
+    else:
+        # 回退模式: 逐点读取 (服务端或旧版客户端)
+        for point in all_points:
+            try:
+                import asyncio
 
-        if has_batch:
-            # 批量读取模式: 一次性读取所有测点
-            batch_results = protocol_handler.read_points_batch(all_points)
+                if body.interval_ms > 0:
+                    await asyncio.sleep(body.interval_ms / 1000.0)
 
-            for point in all_points:
-                value = batch_results.get(point.code)
+                if hasattr(protocol_handler, "read_value_async"):
+                    value = await protocol_handler.read_value_async(point)
+                else:
+                    value = protocol_handler.read_value(point)
+
                 if value is not None:
+                    source = ChangeSource.CLIENT_READ if hasattr(protocol_handler, "_client") else ChangeSource.INTERNAL
                     with track_change(source, f"IEC61850批量读取 {point.code}"):
                         point.value = value
                     point.is_valid = True
@@ -844,40 +834,12 @@ async def iec61850_read_points(
                 else:
                     point.is_valid = False
                     fail_count += 1
-        else:
-            # 回退模式: 逐点读取 (服务端或旧版客户端)
-            for point in all_points:
-                try:
-                    import asyncio
+            except Exception as e:
+                device.log.error(f"读取测点 {point.code} 失败: {e}")
+                point.is_valid = False
+                fail_count += 1
 
-                    if body.interval_ms > 0:
-                        await asyncio.sleep(body.interval_ms / 1000.0)
-
-                    if hasattr(protocol_handler, "read_value_async"):
-                        value = await protocol_handler.read_value_async(point)
-                    else:
-                        value = protocol_handler.read_value(point)
-
-                    if value is not None:
-                        source = (
-                            ChangeSource.CLIENT_READ if hasattr(protocol_handler, "_client") else ChangeSource.INTERNAL
-                        )
-                        with track_change(source, f"IEC61850批量读取 {point.code}"):
-                            point.value = value
-                        point.is_valid = True
-                        success_count += 1
-                    else:
-                        point.is_valid = False
-                        fail_count += 1
-                except Exception as e:
-                    device.log.error(f"读取测点 {point.code} 失败: {e}")
-                    point.is_valid = False
-                    fail_count += 1
-
-        return BaseResponse(message="IEC61850 读取完成", data={"success": success_count, "fail": fail_count})
-    except Exception as e:
-        log.error(f"IEC61850 读取测点失败: {e}")
-        return BaseResponse(code=500, message=f"IEC61850 读取测点失败: {e}", data={})
+    return BaseResponse(message="IEC61850 读取完成", data={"success": success_count, "fail": fail_count})
 
 
 def _build_iec61850_dataset_tree(device, dataset_ref: str) -> dict[str, Any]:
@@ -1081,36 +1043,21 @@ async def get_iec61850_do_children(
     request: Request,
 ):
     """获取 IEC61850 指定 LN 下的数据对象 (DO) 列表"""
-    try:
-        channel = ChannelService.get_channel_by_id(body.channel_id)
-        if not channel:
-            return BaseResponse(code=404, message="通道不存在", data={})
+    device = _get_iec61850_device(request, body.channel_id)
 
-        protocol_type = channel.get("protocol_type", -1)
-        if protocol_type != 4:
-            return BaseResponse(code=400, message="该通道不是 IEC61850 协议", data={})
+    do_items = []
+    protocol_handler = getattr(device, "protocol_handler", None)
+    if protocol_handler:
+        if hasattr(protocol_handler, "_client") and protocol_handler._client:
+            client = protocol_handler._client
+            if hasattr(client, "browse_data_objects"):
+                do_items = client.browse_data_objects(body.ld, body.ln)
+        elif hasattr(protocol_handler, "_server") and protocol_handler._server:
+            server = protocol_handler._server
+            if hasattr(server, "browse_data_objects"):
+                do_items = server.browse_data_objects(body.ld, body.ln)
 
-        device_controller = request.app.state.device_controller
-        device = device_controller.get_device_by_channel_id(body.channel_id)
-        if not device:
-            return BaseResponse(code=404, message="设备未找到", data={})
-
-        do_items = []
-        protocol_handler = getattr(device, "protocol_handler", None)
-        if protocol_handler:
-            if hasattr(protocol_handler, "_client") and protocol_handler._client:
-                client = protocol_handler._client
-                if hasattr(client, "browse_data_objects"):
-                    do_items = client.browse_data_objects(body.ld, body.ln)
-            elif hasattr(protocol_handler, "_server") and protocol_handler._server:
-                server = protocol_handler._server
-                if hasattr(server, "browse_data_objects"):
-                    do_items = server.browse_data_objects(body.ld, body.ln)
-
-        return BaseResponse(message="获取 DO 列表成功", data={"items": do_items})
-    except Exception as e:
-        log.error(f"获取 IEC61850 DO 列表失败: {e}")
-        return BaseResponse(code=500, message=f"获取 DO 列表失败: {e}", data={})
+    return BaseResponse(message="获取 DO 列表成功", data={"items": do_items})
 
 
 @router.post("/iec61850-da-children", response_model=BaseResponse)
@@ -1119,36 +1066,21 @@ async def get_iec61850_da_children(
     request: Request,
 ):
     """获取 IEC61850 指定 DO 下的数据属性 (DA) 列表"""
-    try:
-        channel = ChannelService.get_channel_by_id(body.channel_id)
-        if not channel:
-            return BaseResponse(code=404, message="通道不存在", data={})
+    device = _get_iec61850_device(request, body.channel_id)
 
-        protocol_type = channel.get("protocol_type", -1)
-        if protocol_type != 4:
-            return BaseResponse(code=400, message="该通道不是 IEC61850 协议", data={})
+    da_items = []
+    protocol_handler = getattr(device, "protocol_handler", None)
+    if protocol_handler:
+        if hasattr(protocol_handler, "_client") and protocol_handler._client:
+            client = protocol_handler._client
+            if hasattr(client, "browse_data_attributes"):
+                da_items = client.browse_data_attributes(body.ld, body.ln, body.do_name)
+        elif hasattr(protocol_handler, "_server") and protocol_handler._server:
+            server = protocol_handler._server
+            if hasattr(server, "browse_data_attributes"):
+                da_items = server.browse_data_attributes(body.ld, body.ln, body.do_name)
 
-        device_controller = request.app.state.device_controller
-        device = device_controller.get_device_by_channel_id(body.channel_id)
-        if not device:
-            return BaseResponse(code=404, message="设备未找到", data={})
-
-        da_items = []
-        protocol_handler = getattr(device, "protocol_handler", None)
-        if protocol_handler:
-            if hasattr(protocol_handler, "_client") and protocol_handler._client:
-                client = protocol_handler._client
-                if hasattr(client, "browse_data_attributes"):
-                    da_items = client.browse_data_attributes(body.ld, body.ln, body.do_name)
-            elif hasattr(protocol_handler, "_server") and protocol_handler._server:
-                server = protocol_handler._server
-                if hasattr(server, "browse_data_attributes"):
-                    da_items = server.browse_data_attributes(body.ld, body.ln, body.do_name)
-
-        return BaseResponse(message="获取 DA 列表成功", data={"items": da_items})
-    except Exception as e:
-        log.error(f"获取 IEC61850 DA 列表失败: {e}")
-        return BaseResponse(code=500, message=f"获取 DA 列表失败: {e}", data={})
+    return BaseResponse(message="获取 DA 列表成功", data={"items": da_items})
 
 
 def _filter_iec61850_rows(rows: list[str], category: str, item: str) -> list[str]:
@@ -1176,33 +1108,15 @@ async def iec61850_read_single_point(
     request: Request,
 ):
     """IEC61850 单点读取 - 通过 channel_id 定位设备，读取指定测点的值"""
-    try:
-        channel = ChannelService.get_channel_by_id(body.channel_id)
-        if not channel:
-            return BaseResponse(code=404, message="通道不存在", data={})
+    device = _get_iec61850_device(request, body.channel_id)
 
-        protocol_type = channel.get("protocol_type", -1)
-        if protocol_type != 4:
-            return BaseResponse(code=400, message="该通道不是 IEC61850 协议", data={})
+    if not body.point_code:
+        raise ValidationError("测点编码不能为空")
 
-        device_controller = request.app.state.device_controller
-        device = device_controller.get_device_by_channel_id(body.channel_id)
-        if not device:
-            return BaseResponse(code=404, message="设备未找到", data={})
-
-        if not body.point_code:
-            return BaseResponse(code=400, message="测点编码不能为空", data={})
-
-        value = await device.read_single_point_async(body.point_code)
-        if value is not None:
-            return BaseResponse(message="读取成功", data={"value": value, "point_code": body.point_code})
-        else:
-            return BaseResponse(
-                code=400, message="读取失败，请检查连接状态", data={"value": None, "point_code": body.point_code}
-            )
-    except Exception as e:
-        log.error(f"IEC61850 单点读取失败: {e}")
-        return BaseResponse(code=500, message=f"IEC61850 单点读取失败: {e}", data={})
+    value = await device.read_single_point_async(body.point_code)
+    if value is None:
+        raise ValidationError("读取失败，请检查连接状态", data={"value": None, "point_code": body.point_code})
+    return BaseResponse(message="读取成功", data={"value": value, "point_code": body.point_code})
 
 
 @router.post("/iec61850-read-metadata", response_model=BaseResponse)
@@ -1214,46 +1128,31 @@ async def iec61850_read_metadata(
 
     不纳入常规轮询，仅当前端请求时调用。返回 quality + timestamp 子属性字典。
     """
-    try:
-        channel = ChannelService.get_channel_by_id(body.channel_id)
-        if not channel:
-            return BaseResponse(code=404, message="通道不存在", data={})
+    device = _get_iec61850_device(request, body.channel_id)
 
-        protocol_type = channel.get("protocol_type", -1)
-        if protocol_type != 4:
-            return BaseResponse(code=400, message="该通道不是 IEC61850 协议", data={})
+    if not body.point_code:
+        raise ValidationError("测点编码不能为空")
 
-        device_controller = request.app.state.device_controller
-        device = device_controller.get_device_by_channel_id(body.channel_id)
-        if not device:
-            return BaseResponse(code=404, message="设备未找到", data={})
+    # 直接传 point_code，客户端内部 parse_ref 提取 DO 引用
+    handler = device.point_operator._handler
+    client = getattr(handler, "_client", None) if handler else None
+    if not client or not hasattr(client, "read_metadata"):
+        raise ValidationError("设备不支持元数据读取")
 
-        if not body.point_code:
-            return BaseResponse(code=400, message="测点编码不能为空", data={})
+    meta = client.read_metadata(body.point_code)
 
-        # 直接传 point_code，客户端内部 parse_ref 提取 DO 引用
-        handler = device.point_operator._handler
-        client = getattr(handler, "_client", None) if handler else None
-        if not client or not hasattr(client, "read_metadata"):
-            return BaseResponse(code=400, message="设备不支持元数据读取", data={})
+    from src.proto.iec61850.defs.address import parse_ref
 
-        meta = client.read_metadata(body.point_code)
+    parsed = parse_ref(body.point_code)
+    do_ref = f"{parsed[0]}/{parsed[1]}.{parsed[2]}" if parsed else body.point_code
 
-        from src.proto.iec61850.defs.address import parse_ref
-
-        parsed = parse_ref(body.point_code)
-        do_ref = f"{parsed[0]}/{parsed[1]}.{parsed[2]}" if parsed else body.point_code
-
-        return BaseResponse(
-            message="读取元数据成功",
-            data={
-                "point_code": do_ref,
-                **meta.to_dict(),
-            },
-        )
-    except Exception as e:
-        log.error(f"IEC61850 元数据读取失败: {e}")
-        return BaseResponse(code=500, message=f"IEC61850 元数据读取失败: {e}", data={})
+    return BaseResponse(
+        message="读取元数据成功",
+        data={
+            "point_code": do_ref,
+            **meta.to_dict(),
+        },
+    )
 
 
 @router.post("/iec61850-write-point", response_model=BaseResponse)
@@ -1262,33 +1161,15 @@ async def iec61850_write_single_point(
     request: Request,
 ):
     """IEC61850 单点写入 - 通过 channel_id 定位设备，写入指定测点的值"""
-    try:
-        channel = ChannelService.get_channel_by_id(body.channel_id)
-        if not channel:
-            return BaseResponse(code=404, message="通道不存在", data={})
+    device = _get_iec61850_device(request, body.channel_id)
 
-        protocol_type = channel.get("protocol_type", -1)
-        if protocol_type != 4:
-            return BaseResponse(code=400, message="该通道不是 IEC61850 协议", data={})
+    if not body.point_code:
+        raise ValidationError("测点编码不能为空")
 
-        device_controller = request.app.state.device_controller
-        device = device_controller.get_device_by_channel_id(body.channel_id)
-        if not device:
-            return BaseResponse(code=404, message="设备未找到", data={})
-
-        if not body.point_code:
-            return BaseResponse(code=400, message="测点编码不能为空", data={})
-
-        success = await device.edit_point_data_async(body.point_code, body.point_value)
-        if success:
-            return BaseResponse(message="写入成功", data={"point_code": body.point_code, "value": body.point_value})
-        else:
-            return BaseResponse(code=400, message="写入失败", data={"point_code": body.point_code})
-    except ValueError as e:
-        return BaseResponse(code=400, message=str(e), data={"point_code": body.point_code})
-    except Exception as e:
-        log.error(f"IEC61850 单点写入失败: {e}")
-        return BaseResponse(code=500, message=f"IEC61850 单点写入失败: {e}", data={})
+    success = await device.edit_point_data_async(body.point_code, body.point_value)
+    if not success:
+        raise ValidationError("写入失败", data={"point_code": body.point_code})
+    return BaseResponse(message="写入成功", data={"point_code": body.point_code, "value": body.point_value})
 
 
 @router.post("/iec61850-dataset-detail", response_model=BaseResponse)
@@ -1297,73 +1178,58 @@ async def get_iec61850_dataset_detail(
     request: Request,
 ):
     """获取 IEC61850 DataSet 的详细信息（成员列表及当前值）"""
-    try:
-        channel = ChannelService.get_channel_by_id(body.channel_id)
-        if not channel:
-            return BaseResponse(code=404, message="通道不存在", data={})
+    device = _get_iec61850_device(request, body.channel_id)
 
-        protocol_type = channel.get("protocol_type", -1)
-        if protocol_type != 4:
-            return BaseResponse(code=400, message="该通道不是 IEC61850 协议", data={})
+    from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
 
-        device_controller = request.app.state.device_controller
-        device = device_controller.get_device_by_channel_id(body.channel_id)
-        if not device:
-            return BaseResponse(code=404, message="设备未找到", data={})
+    protocol_handler = getattr(device, "protocol_handler", None)
+    is_iec61850 = isinstance(protocol_handler, (IEC61850ClientHandler, IEC61850ServerHandler))
+    if not is_iec61850:
+        raise ValidationError("仅 IEC61850 协议支持 DataSet 操作")
 
-        from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+    # 优先实时浏览 DataSet 目录（获取最新成员信息）
+    matched_ds = None
+    if isinstance(protocol_handler, IEC61850ClientHandler) and hasattr(
+        protocol_handler.client, "browse_dataset_directory"
+    ):
+        members = protocol_handler.client.browse_dataset_directory(body.dataset_ref)
+        matched_ds = {
+            "ref": body.dataset_ref,
+            "name": body.dataset_ref.split("$")[-1] if "$" in body.dataset_ref else body.dataset_ref,
+            "member_count": len(members),
+            "members": members,
+        }
 
-        protocol_handler = getattr(device, "protocol_handler", None)
-        is_iec61850 = isinstance(protocol_handler, (IEC61850ClientHandler, IEC61850ServerHandler))
-        if not is_iec61850:
-            return BaseResponse(code=400, message="仅 IEC61850 协议支持 DataSet 操作", data={})
+    # 如果实时浏览失败，从缓存查找
+    if (not matched_ds or matched_ds.get("member_count", 0) == 0) and hasattr(
+        protocol_handler, "get_discovered_datasets"
+    ):
+        for ds in protocol_handler.get_discovered_datasets():
+            if ds.get("ref") == body.dataset_ref:
+                matched_ds = ds
+                break
 
-        # 优先实时浏览 DataSet 目录（获取最新成员信息）
-        matched_ds = None
-        if isinstance(protocol_handler, IEC61850ClientHandler) and hasattr(
-            protocol_handler.client, "browse_dataset_directory"
-        ):
-            members = protocol_handler.client.browse_dataset_directory(body.dataset_ref)
-            matched_ds = {
-                "ref": body.dataset_ref,
-                "name": body.dataset_ref.split("$")[-1] if "$" in body.dataset_ref else body.dataset_ref,
-                "member_count": len(members),
-                "members": members,
-            }
+    if not matched_ds:
+        raise NotFoundError("DataSet 未找到，请先连接设备获取结构")
 
-        # 如果实时浏览失败，从缓存查找
-        if (not matched_ds or matched_ds.get("member_count", 0) == 0) and hasattr(
-            protocol_handler, "get_discovered_datasets"
-        ):
-            for ds in protocol_handler.get_discovered_datasets():
-                if ds.get("ref") == body.dataset_ref:
-                    matched_ds = ds
-                    break
+    # 读取 DataSet 所有成员的值
+    values = {}
+    if hasattr(protocol_handler, "read_dataset_values"):
+        values = protocol_handler.read_dataset_values(body.dataset_ref)
 
-        if not matched_ds:
-            return BaseResponse(code=404, message="DataSet 未找到，请先连接设备获取结构", data={})
+    # 将值合并到成员列表
+    members = matched_ds.get("members", [])
+    for member in members:
+        ref = member.get("ref", "")
+        member["value"] = values.get(ref, None)
 
-        # 读取 DataSet 所有成员的值
-        values = {}
-        if hasattr(protocol_handler, "read_dataset_values"):
-            values = protocol_handler.read_dataset_values(body.dataset_ref)
-
-        # 将值合并到成员列表
-        members = matched_ds.get("members", [])
-        for member in members:
-            ref = member.get("ref", "")
-            member["value"] = values.get(ref, None)
-
-        return BaseResponse(
-            message="获取 DataSet 详情成功",
-            data={
-                "ref": matched_ds.get("ref", ""),
-                "name": matched_ds.get("name", ""),
-                "ld": matched_ds.get("ld", ""),
-                "member_count": len(members),
-                "members": members,
-            },
-        )
-    except Exception as e:
-        log.error(f"获取 DataSet 详情失败: {e}")
-        return BaseResponse(code=500, message=f"获取 DataSet 详情失败: {e}", data={})
+    return BaseResponse(
+        message="获取 DataSet 详情成功",
+        data={
+            "ref": matched_ds.get("ref", ""),
+            "name": matched_ds.get("name", ""),
+            "ld": matched_ds.get("ld", ""),
+            "member_count": len(members),
+            "members": members,
+        },
+    )
