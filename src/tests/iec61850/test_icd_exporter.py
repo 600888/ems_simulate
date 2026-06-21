@@ -4,6 +4,7 @@ import os
 import sys
 
 import pytest
+import xmltodict
 
 # 添加 src 目录到 sys.path
 _src_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -81,6 +82,100 @@ class TestIcdExporter:
     )
     def test_extract_ld_inst(self, ld_name, ied_name, expected):
         assert self.exporter._extract_ld_inst(ld_name, ied_name) == expected
+
+    def test_export_infers_ied_name_and_ld_inst_from_online_ld_names(self, tmp_path):
+        """MMS returns full LD names like PCS001LD0; SCL must restore IED=PCS001 and LD inst=LD0."""
+        model = IedModel(
+            host="192.168.1.10",
+            port=102,
+            discover_time="2026-06-22 00:00:00",
+            lds=(
+                LDModel(
+                    name="PCS001LD0",
+                    inst="PCS001LD0",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="PCS001LD0/LLN0",
+                            datasets=(
+                                DataSetRef(
+                                    name="dsDin",
+                                    ref="PCS001LD0/LLN0.dsDin",
+                                    members=({"ref": "PCS001LD0/GGIO1.Ind1", "fc": "ST"},),
+                                ),
+                            ),
+                        ),
+                        LNModel(
+                            name="GGIO1",
+                            ln_class="GGIO",
+                            ref="PCS001LD0/GGIO1",
+                            dos=(
+                                DORef(
+                                    name="Ind1",
+                                    ref="PCS001LD0/GGIO1.Ind1",
+                                    cdc="SPS",
+                                    frame_type=1,
+                                    das=(DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.BOOLEAN),),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                LDModel(
+                    name="PCS001CTRL",
+                    inst="PCS001CTRL",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="PCS001CTRL/LLN0",
+                            datasets=(
+                                DataSetRef(
+                                    name="dsAlm",
+                                    ref="PCS001CTRL/LLN0.dsAlm",
+                                    members=({"ref": "PCS001CTRL/krGGIO1.Alm1", "fc": "ST"},),
+                                ),
+                            ),
+                        ),
+                        LNModel(
+                            name="krGGIO1",
+                            ln_class="GGIO",
+                            ref="PCS001CTRL/krGGIO1",
+                            dos=(
+                                DORef(
+                                    name="Alm1",
+                                    ref="PCS001CTRL/krGGIO1.Alm1",
+                                    cdc="SPS",
+                                    frame_type=1,
+                                    das=(DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.BOOLEAN),),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        output_path = tmp_path / "pcs001.icd"
+        self.exporter.export(model, str(output_path))
+        doc = xmltodict.parse(output_path.read_text(encoding="utf-8"))
+        ied = doc["SCL"]["IED"]
+        ldevices = ied["AccessPoint"]["Server"]["LDevice"]
+        if isinstance(ldevices, dict):
+            ldevices = [ldevices]
+
+        assert ied["@name"] == "PCS001"
+        assert [ld["@inst"] for ld in ldevices] == ["LD0", "CTRL"]
+
+        first_fcda = ldevices[0]["LN0"]["DataSet"]["FCDA"]
+        assert first_fcda["@ldInst"] == "LD0"
+        assert first_fcda["@lnClass"] == "GGIO"
+
+        second_fcda = ldevices[1]["LN0"]["DataSet"]["FCDA"]
+        assert second_fcda["@ldInst"] == "CTRL"
+        assert second_fcda["@prefix"] == "kr"
+        assert second_fcda["@lnClass"] == "GGIO"
 
     # ===== DOType ID 生成 =====
     def test_do_type_id_generation(self):
@@ -224,7 +319,7 @@ class TestIcdExporter:
         if not isinstance(do_types, list):
             do_types = [do_types]
 
-        assert len(lnode_types) == 2  # LLN0 + CSWI1
+        assert len(lnode_types) == 1  # empty LLN0 is skipped; CSWI1 remains
         # 验证 DOType 数量: CSWI1.Pos(1个DPC) + Mod(1个ENC) + Beh(1个ENC) + Health(1个ENC)
         # + LLN0的: Beh(1个ENC) + Health(1个ENC) + NamPlt(1个LPL)
         # 但 Mod/Beh/Health/NamPlt 中的每个 lnClass 只有一个 DOType 实例

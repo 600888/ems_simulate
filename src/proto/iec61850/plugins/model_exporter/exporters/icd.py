@@ -75,17 +75,7 @@ class IcdExporter:
             # 优先使用 IedModel 上保存的 ied_name
             ied_name = getattr(model, "ied_name", None) or ""
         if not ied_name:
-            if model.lds:
-                # MMS LD 名称格式: <IEDName_LDInst> 或 <IEDNameLDInst>
-                # 使用左侧第一次 _ 分割，兼容 IEDName 本身带 _ 的情况
-                parts = model.lds[0].name.split("_", 1)
-                if len(parts) > 1 and parts[0]:
-                    ied_name = parts[0]
-                else:
-                    # 无下划线分隔: 整个 LD name 作为 IED name
-                    ied_name = model.lds[0].name
-            else:
-                ied_name = "IED"
+            ied_name = self._infer_ied_name(model)
 
         scl_dict = self._model_to_scl_dict(model, ied_name)
         xml_str = xmltodict.unparse(scl_dict, pretty=pretty, indent="\t")
@@ -268,13 +258,14 @@ class IcdExporter:
     def _build_ied_section(self, model: IedModel, ied_name: str, type_templates: dict[str, Any]) -> dict[str, Any]:
         ldevice_list = []
         for ld in model.lds:
-            ld_inst = self._extract_ld_inst(ld.name, ied_name)
+            ld_inst = self._get_ld_inst(ld, ied_name)
             ln0_item = None
             ln_list = []
             for ln in ld.lns:
                 ln_type_id = f"{ied_name}{ld_inst}.{ln.name}"
                 ln_inst = self._extract_ln_inst(ln.name)
                 ln_class = ln.ln_class or self._extract_ln_class_from_name(ln.name)
+                ln_prefix = self._extract_ln_prefix(ln.name, ln_class)
                 if ln_class == "LLN0":
                     # 跳过无实际数据的 LLN0 系统节点 (无 DO/DataSet/RCB)
                     if not ln.dos and not ln.datasets and not ln.rcb_list:
@@ -294,6 +285,8 @@ class IcdExporter:
                         "@lnClass": ln_class,
                         "@inst": ln_inst,
                     }
+                    if ln_prefix:
+                        ln_item["@prefix"] = ln_prefix
                     doi_list = self._build_dois(ln)
                     if doi_list:
                         ln_item["DOI"] = doi_list
@@ -346,7 +339,7 @@ class IcdExporter:
         da_type_cache: dict[tuple, str] = {}  # bda_fingerprint → da_type_id
 
         for ld in model.lds:
-            ld_inst = self._extract_ld_inst(ld.name, ied_name)
+            ld_inst = self._get_ld_inst(ld, ied_name)
             for ln in ld.lns:
                 ln_type_id = f"{ied_name}{ld_inst}.{ln.name}"
                 ln_class = ln.ln_class or self._extract_ln_class_from_name(ln.name)
@@ -622,6 +615,9 @@ class IcdExporter:
                         fcda["@doName"] = dot_parts[1]
                         fcda["@lnClass"] = self._extract_ln_class_from_name(ref_ln) or ""
                         fcda["@lnInst"] = self._extract_ln_inst(ref_ln)
+                        prefix = self._extract_ln_prefix(ref_ln, fcda["@lnClass"])
+                        if prefix:
+                            fcda["@prefix"] = prefix
                         if len(dot_parts) > 2:
                             fcda["@daName"] = ".".join(dot_parts[2:])
                 else:
@@ -646,17 +642,14 @@ class IcdExporter:
                 ln_key = f"{fcda.get('@lnClass', '')}{fcda.get('@lnInst', '')}"
 
                 if ln_key in ln_index:
-                    # 精确匹配到 LN
-                    pass
+                    # Normalize with discovered LN metadata after an exact match.
+                    self._normalize_fcda_ln(fcda, ln_index[ln_key])
                 elif fcda_do_name in all_do_names:
                     # 通过 DO 名称匹配到模型：查找拥有该 DO 的 LN
                     matched_ln = self._find_ln_by_do_name(discovered_lns, fcda_do_name)
                     if matched_ln is not None:
-                        # 更新 FCDA 的 lnClass/lnInst 为正确的 LN 信息
-                        matched_class = matched_ln.ln_class or self._extract_ln_class_from_name(matched_ln.name) or ""
-                        matched_inst = self._extract_ln_inst(matched_ln.name)
-                        fcda["@lnClass"] = matched_class
-                        fcda["@lnInst"] = matched_inst
+                        # Update FCDA lnClass/lnInst from the discovered LN.
+                        self._normalize_fcda_ln(fcda, matched_ln)
                     else:
                         # DO 名匹配也失败，跳过此 FCDA
                         continue
@@ -786,6 +779,65 @@ class IcdExporter:
         }
 
     # ========== 辅助方法 ==========
+
+    def _infer_ied_name(self, model: IedModel) -> str:
+        ld_names = [ld.name for ld in model.lds if getattr(ld, "name", "")]
+        if not ld_names:
+            return "IED"
+
+        if len(ld_names) > 1:
+            prefix = os.path.commonprefix(ld_names).rstrip("_-. ")
+            if prefix and all(self._looks_like_ld_inst(name[len(prefix) :]) for name in ld_names):
+                return prefix
+
+        suffix_split = self._split_known_ld_suffix(ld_names[0])
+        if suffix_split is not None:
+            return suffix_split[0]
+
+        parts = ld_names[0].split("_", 1)
+        if len(parts) > 1 and parts[0]:
+            return parts[0]
+        return ld_names[0]
+
+    def _get_ld_inst(self, ld, ied_name: str) -> str:
+        ld_name = getattr(ld, "name", "") or ""
+        ld_inst = getattr(ld, "inst", "") or ""
+        if ld_inst and ld_inst != ld_name:
+            return self._extract_ld_inst(ld_inst, ied_name)
+        return self._extract_ld_inst(ld_name, ied_name)
+
+    @staticmethod
+    def _looks_like_ld_inst(value: str) -> bool:
+        if not value:
+            return False
+        return bool(re.match(r"^(LD\d+|CTRL\d*|MEAS\d*|PROT\d*|CTMP\d*|BAY\d*|GOOSE\d*|MMS\d*)$", value))
+
+    @staticmethod
+    def _split_known_ld_suffix(ld_name: str) -> tuple[str, str] | None:
+        match = re.match(r"^(.+?)(LD\d+|CTRL\d*|MEAS\d*|PROT\d*|CTMP\d*|BAY\d*|GOOSE\d*|MMS\d*)$", ld_name)
+        if not match:
+            return None
+        ied_name, ld_inst = match.groups()
+        if not ied_name or not ld_inst:
+            return None
+        return (ied_name, ld_inst)
+
+    @staticmethod
+    def _extract_ln_prefix(ln_name: str, ln_class: str) -> str:
+        if not ln_name or not ln_class or ln_class == "LLN0":
+            return ""
+        idx = ln_name.find(ln_class)
+        return ln_name[:idx] if idx > 0 else ""
+
+    def _normalize_fcda_ln(self, fcda: dict[str, Any], ln) -> None:
+        ln_class = ln.ln_class or self._extract_ln_class_from_name(ln.name) or ""
+        fcda["@lnClass"] = ln_class
+        fcda["@lnInst"] = self._extract_ln_inst(ln.name)
+        prefix = self._extract_ln_prefix(ln.name, ln_class)
+        if prefix:
+            fcda["@prefix"] = prefix
+        else:
+            fcda.pop("@prefix", None)
 
     def _extract_ld_inst(self, ld_name: str, ied_name: str) -> str:
         if ld_name.startswith(ied_name + "_"):
