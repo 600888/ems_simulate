@@ -3,6 +3,7 @@
 提供 RCB 发现、使能/禁用、GI 触发、数据查询等 RESTful API。
 """
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -250,11 +251,15 @@ async def apply_report_config(body: RcbApplyConfigRequest, request: Request):
     if _is_server_mode(reports):
         raise ValidationError("服务端模式不支持远程配置操作", data={"success": False})
 
-    success = reports.apply_config(
-        rcb_ref=body.rcb_ref,
-        rpt_ena=body.rpt_ena,
-        trg_ops=body.trg_ops,
-        opt_fields=body.opt_fields,
+    loop = asyncio.get_event_loop()
+    success = await loop.run_in_executor(
+        None,
+        lambda: reports.apply_config(
+            rcb_ref=body.rcb_ref,
+            rpt_ena=body.rpt_ena,
+            trg_ops=body.trg_ops,
+            opt_fields=body.opt_fields,
+        ),
     )
     if not success:
         action = "使能" if body.rpt_ena else "禁用"
@@ -278,7 +283,11 @@ async def trigger_gi(body: RcbGiRequest, request: Request):
     if _is_server_mode(reports):
         raise ValidationError("服务端模式不支持远程 GI 操作", data={"success": False})
 
-    success = reports.trigger_gi(rcb_ref=body.rcb_ref)
+    loop = asyncio.get_event_loop()
+    success = await loop.run_in_executor(
+        None,
+        lambda: reports.trigger_gi(rcb_ref=body.rcb_ref),
+    )
     if not success:
         raise OperationError("GI 触发失败", data={"success": False})
     return BaseResponse(message="GI 触发成功", data={"success": True})

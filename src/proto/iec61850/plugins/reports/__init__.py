@@ -437,44 +437,34 @@ class ReportsPlugin:
         rcb_ref: str,
         on_report: Callable[[ReportDataEntry], None] | None = None,
     ) -> bool:
-        """使能报告: 设置 RptEna=True，安装回调
-
-        TrgOps/OptFields 需在报告禁用时通过 set_config() 单独设置。
-        """
-        # 判断 RCB 类型
+        """Enable a report and install its callback before RptEna=True."""
         rcb_type = self._infer_rcb_type(rcb_ref)
 
-        # 设置 RptEna=True
+        callback_ok = ReportCallbackHandler.install(
+            self._connection,
+            rcb_ref,
+            on_report=on_report,
+            rcb_type=rcb_type,
+        )
+        if not callback_ok:
+            log.warning(f"install report callback failed: {rcb_ref}")
+            return False
+
         if rcb_type == "BRCB":
             success = BrcbHandler.set_rpt_ena(self._connection, rcb_ref, True)
         else:
             success = UrcbHandler.set_rpt_ena(self._connection, rcb_ref, True)
 
         if not success:
-            log.warning(f"设置 RptEna 失败: {rcb_ref}")
+            log.warning(f"set RptEna=True failed: {rcb_ref}")
+            ReportCallbackHandler.uninstall(self._connection, rcb_ref)
             return False
 
-        # 安装报告回调
-        callback_ok = ReportCallbackHandler.install(
-            self._connection,
-            rcb_ref,
-            on_report=on_report,
-        )
-        if not callback_ok:
-            log.warning(f"安装报告回调失败: {rcb_ref} (RptEna 已设置)")
-            # RptEna 已设置但回调安装失败，尝试回滚
-            self._set_rpt_ena_raw(rcb_ref, False)
-            return False
-
-        log.info(f"报告已使能: {rcb_ref}")
+        log.info(f"report enabled: {rcb_ref}")
         return True
 
     def _disable_report(self, rcb_ref: str) -> bool:
-        """禁用报告: 先设置 RptEna=False，再注销回调
-
-        关键改进: 先禁用报告源，再清理回调，避免过渡状态
-        """
-        # 1. 先设置 RptEna=False（停止报告源）
+        """Disable a report and remove its callback subscription."""
         rcb_type = self._infer_rcb_type(rcb_ref)
         try:
             if rcb_type == "BRCB":
@@ -483,17 +473,20 @@ class ReportsPlugin:
                 success = UrcbHandler.disable_direct(self._connection, rcb_ref)
 
             if not success:
-                log.warning(f"设置 RptEna=False 失败: {rcb_ref}")
+                log.warning(f"set RptEna=False failed: {rcb_ref}")
                 return False
         except Exception as e:
-            log.error(f"禁用报告异常: {rcb_ref}, {e}")
+            log.error(f"disable report failed: {rcb_ref}, {e}")
             return False
 
-        log.info(f"报告已禁用: {rcb_ref}")
-        # 2. 短暂等待，确保报告源完全停止
         time.sleep(0.1)
 
-        log.info(f"报告已禁用: {rcb_ref}")
+        try:
+            ReportCallbackHandler.uninstall(self._connection, rcb_ref)
+        except Exception as e:
+            log.error(f"uninstall report callback failed: {rcb_ref}, {e}")
+
+        log.info(f"report disabled: {rcb_ref}")
         return True
 
     def _set_rpt_ena_raw(self, rcb_ref: str, enable: bool) -> bool:

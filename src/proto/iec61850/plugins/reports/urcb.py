@@ -46,6 +46,47 @@ class UrcbHandler:
         return f"{ln_part}.RP.{rcb_name}"
 
     @staticmethod
+    def _normalize_mms_ref(rcb_ref: str) -> str:
+        """Convert RCB ref to MMS report-handler format: LD/LN$RP$name."""
+        if not rcb_ref or "/" not in rcb_ref:
+            return rcb_ref
+        if "$" in rcb_ref:
+            return rcb_ref
+        if "." not in rcb_ref:
+            return rcb_ref
+        ln_part, rcb_name = rcb_ref.rsplit(".", 1)
+        if rcb_name in ("BR", "RP"):
+            return rcb_ref.replace(".", "$")
+        return f"{ln_part}$RP${rcb_name}"
+
+    @staticmethod
+    def _extract_error(result) -> int:
+        return (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
+
+    @staticmethod
+    def _trigger_gi_direct(conn, rcb_ref: str) -> bool:
+        """Use libiec61850's dedicated GI API when available."""
+        if not hasattr(iec61850, "IedConnection_triggerGIReport"):
+            return False
+
+        refs = []
+        for ref in (UrcbHandler._normalize_mms_ref(rcb_ref), UrcbHandler._normalize_ref(rcb_ref), rcb_ref):
+            if ref and ref not in refs:
+                refs.append(ref)
+
+        for ref in refs:
+            try:
+                result = iec61850.IedConnection_triggerGIReport(conn, ref)
+                error = UrcbHandler._extract_error(result)
+                if error == iec61850.IED_ERROR_OK:
+                    log.info(f"URCB GI direct trigger ok: {rcb_ref} (ref={ref})")
+                    return True
+                log.debug(f"URCB GI direct trigger failed: ref={ref}, error={error}")
+            except Exception as e:
+                log.debug(f"URCB GI direct trigger exception: ref={ref}, {e}")
+        return False
+
+    @staticmethod
     def _create_rcb_block(rcb_ref: str = ""):
         """创建 ClientReportControlBlock"""
         if not HAS_IEC61850 or not rcb_ref:
@@ -268,6 +309,9 @@ class UrcbHandler:
             return False
 
         try:
+            if UrcbHandler._trigger_gi_direct(conn, rcb_ref):
+                return True
+
             nref = UrcbHandler._normalize_ref(rcb_ref)
             rcb = UrcbHandler._create_rcb_block(nref)
             if not rcb:

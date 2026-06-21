@@ -24,6 +24,7 @@ if HAS_IEC61850:
 # C 回调无法绑定到实例方法，需通过静态函数 + 全局字典分发
 _CALLBACK_REGISTRY: dict[str, "_CallbackInfo"] = {}
 _CALLBACK_LOCK = threading.Lock()
+MAX_REPORT_VALUES_PER_ENTRY = 512
 
 
 @dataclass
@@ -37,42 +38,48 @@ class _CallbackInfo:
     data_cache: list[ReportDataEntry] = field(default_factory=list)
     max_cache: int = 1000
     enabled_at: str = ""
+    mms_ref: str = ""
 
 
-def _normalize_ref(rcb_ref: str) -> str:
-    """规范化 RCB 引用为 MMS 引用格式 (LD/LN$FC$rcbName)
+def _normalize_ref(rcb_ref: str, rcb_type: str = "") -> str:
+    """Normalize an RCB ref for report handler registration.
 
-    RCBSubscriber.setRcbReference / IedConnection_uninstallReportHandler
-    要求使用 MMS 层引用格式, FC 段以 '$' 分隔 (如 LD/LLN0$BR$brcb01),
-    而非 IEC 61850 约束引用格式 (LD/LLN0.BR.brcb01)。
-
-    rp*/urcb* -> $RP$ (非缓冲); 其余 -> $BR$ (缓冲)。
-    已含 '$' FC 段则原样返回; 已含 '.' FC 段则转换为 '$'。
+    libIEC61850 uses dot FC form for IedConnection_installReportHandler,
+    e.g. LD/LLN0.RP.EventsRCB. For indexed URCB instances, RCB services use
+    EventsRCB01, while the report handler is registered on the base EventsRCB.
     """
     if not rcb_ref or "/" not in rcb_ref:
         return rcb_ref
 
-    # 已是 MMS 格式 LD/LN$FC$name
-    if "$" in rcb_ref:
-        return rcb_ref
+    ref = rcb_ref.replace("$", ".")
+    if "." not in ref:
+        return ref
 
-    # IEC 61850 约束引用格式 LD/LN.FC.name -> MMS 格式 LD/LN$FC$name
-    if "." in rcb_ref:
-        ln_part, name = rcb_ref.rsplit(".", 1)
-        # 检查是否已含 FC 段 (LD/LN.FC.name)
-        parts = ln_part.split(".")
-        if len(parts) >= 2 and parts[-1] in ("BR", "RP"):
-            # 已含 FC: LD/LN.FC.name -> LD/LN$FC$name
-            fc = parts[-1]
-            ln_only = ".".join(parts[:-1])
-            return f"{ln_only}${fc}${name}"
-        # 不含 FC, 按名称前缀推断
-        low = name.lower()
-        fc = "RP" if (low.startswith("rp") or low.startswith("urcb")) else "BR"
-        return f"{ln_part}${fc}${name}"
+    ln_part, name = ref.rsplit(".", 1)
+    parts = ln_part.split(".")
+    if len(parts) >= 2 and parts[-1] in ("BR", "RP"):
+        fc = parts[-1]
+        ln_only = ".".join(parts[:-1])
+    else:
+        ln_only = ln_part
+        normalized_type = (rcb_type or "").upper()
+        if normalized_type == "BRCB":
+            fc = "BR"
+        elif normalized_type == "URCB":
+            fc = "RP"
+        else:
+            low = name.lower()
+            fc = "RP" if (low.startswith("rp") or low.startswith("urcb")) else "BR"
 
-    # 无 '.' 也无 '$', 仅 LD/LN, 无法推断 FC, 原样返回
-    return rcb_ref
+    base_name = _strip_report_instance_suffix(name)
+    return f"{ln_only}.{fc}.{base_name}"
+
+
+def _strip_report_instance_suffix(name: str) -> str:
+    """Strip RptEnabled instance suffix like 01 from report handler refs."""
+    if len(name) > 2 and name[-2:].isdigit():
+        return name[:-2]
+    return name
 
 
 class ReportCallbackHandler:
@@ -90,6 +97,7 @@ class ReportCallbackHandler:
         on_report: Callable[[ReportDataEntry], None] | None = None,
         max_cache: int = 1000,
         rpt_id: str = "",
+        rcb_type: str = "",
     ) -> bool:
         """安装报告回调
 
@@ -123,7 +131,7 @@ class ReportCallbackHandler:
                 return False
 
             try:
-                nref = _normalize_ref(rcb_ref)
+                nref = _normalize_ref(rcb_ref, rcb_type)
                 handler = _PyRCBHandler(rcb_ref)
                 subscriber = iec61850.RCBSubscriber()
                 subscriber.setIedConnection(conn)
@@ -141,6 +149,7 @@ class ReportCallbackHandler:
                     on_report=on_report,
                     max_cache=max_cache,
                     enabled_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    mms_ref=nref,
                 )
                 log.info(f"报告回调已安装: {rcb_ref} (mms_ref={nref})")
                 return True
@@ -178,7 +187,7 @@ class ReportCallbackHandler:
 
         subscriber = info.subscriber
         handler = info.handler
-        nref = _normalize_ref(rcb_ref)
+        nref = info.mms_ref or _normalize_ref(rcb_ref)
 
         # 2. 锁外断开 SWIG director 链接 (C++ 不再回调 Python)
         if subscriber is not None:
@@ -270,7 +279,7 @@ class ReportCallbackHandler:
                     pass
             if conn is not None:
                 try:
-                    iec61850.IedConnection_uninstallReportHandler(conn, _normalize_ref(ref))
+                    iec61850.IedConnection_uninstallReportHandler(conn, info.mms_ref or _normalize_ref(ref))
                 except Exception:
                     pass
             # 防止 SWIG 重复析构
@@ -310,7 +319,7 @@ def _dispatch_report(rcb_ref: str, report) -> None:
     接收线程完成，而接收线程持锁解析报告时 C 层对象可能已被销毁，
     导致段错误崩溃。
     """
-    log.info(f"_dispatch_report 进入: rcb_ref={rcb_ref}, report={report}")
+    log.debug(f"_dispatch_report 进入: rcb_ref={rcb_ref}, report={report}")
 
     # 1. 锁内快速检查是否已注册，取出 on_report 回调
     with _CALLBACK_LOCK:
@@ -329,7 +338,7 @@ def _dispatch_report(rcb_ref: str, report) -> None:
         log.warning(f"_dispatch_report: 解析报告失败返回 None, rcb_ref={rcb_ref}")
         return
 
-    log.info(
+    log.debug(
         f"_dispatch_report: 解析成功, rcb_ref={rcb_ref}, "
         f"seq_num={entry.seq_num}, data_values_count={len(entry.data_values)}"
     )
@@ -343,7 +352,7 @@ def _dispatch_report(rcb_ref: str, report) -> None:
         info.data_cache.append(entry)
         if len(info.data_cache) > info.max_cache:
             info.data_cache.pop(0)
-        log.info(f"_dispatch_report: 已写入缓存, rcb_ref={rcb_ref}, cache_size={len(info.data_cache)}")
+        log.debug(f"_dispatch_report: 已写入缓存, rcb_ref={rcb_ref}, cache_size={len(info.data_cache)}")
 
     # 4. 锁外调用用户回调
     if on_report:
@@ -363,10 +372,10 @@ if HAS_IEC61850 and hasattr(iec61850, "RCBHandler"):
             self._rcb_ref = rcb_ref
 
         def trigger(self):
-            log.info(f"RCBHandler.trigger 被调用: rcb_ref={self._rcb_ref}")
+            log.debug(f"RCBHandler.trigger 被调用: rcb_ref={self._rcb_ref}")
             try:
                 cr = self._client_report
-                log.info(f"RCBHandler.trigger: _client_report={cr}, rcb_ref={self._rcb_ref}")
+                log.debug(f"RCBHandler.trigger report: rcb_ref={self._rcb_ref}, report={cr}")
                 _dispatch_report(self._rcb_ref, cr)
             except Exception as e:
                 log.error(f"RCBHandler.trigger 异常: {self._rcb_ref}, {e}", exc_info=True)
@@ -378,22 +387,15 @@ else:
 
 
 def _parse_client_report(report, rcb_ref: str) -> ReportDataEntry | None:
-    """解析 ClientReport 为 ReportDataEntry
+    """Parse ClientReport into a cacheable ReportDataEntry.
 
-    提取报告中的 rptId、dataSet、confRev、entryId、seqNum、
-    timeOfEntry、dataValues、reasonCodes 等信息。
-
-    Args:
-        report: libIEC61850 ClientReport 对象
-        rcb_ref: RCB 引用路径
-
-    Returns:
-        ReportDataEntry 或 None (解析失败)
+    pyiec61850-ng 1.6.1.3 exposes ClientReport_getDataSetValues,
+    ClientReport_getDataSetName, and ClientReport_getReasonForInclusion.
+    Older wrapper names are tried as fallbacks for compatibility.
     """
     try:
         entry = ReportDataEntry()
 
-        # rptId
         try:
             rpt_id = iec61850.ClientReport_getRptId(report)
             if rpt_id:
@@ -401,90 +403,125 @@ def _parse_client_report(report, rcb_ref: str) -> ReportDataEntry | None:
         except Exception:
             pass
 
-        # dataSet
-        try:
-            ds = iec61850.ClientReport_getDataSet(report)
-            if ds:
-                entry.data_set = str(ds)
-        except Exception:
-            pass
+        for func_name in ("ClientReport_getDataSetName", "ClientReport_getDataSet"):
+            func = getattr(iec61850, func_name, None)
+            if not func:
+                continue
+            try:
+                ds = func(report)
+                if ds:
+                    entry.data_set = str(ds)
+                    break
+            except Exception:
+                pass
 
-        # confRev
         with contextlib.suppress(Exception):
             entry.conf_rev = int(iec61850.ClientReport_getConfRev(report))
 
-        # entryId (BRCB)
-        try:
-            eid = iec61850.ClientReport_getEntryID(report)
-            if eid:
-                entry.entry_id = bytes(eid)
-        except Exception:
-            pass
+        for func_name in ("ClientReport_getEntryId", "ClientReport_getEntryID"):
+            func = getattr(iec61850, func_name, None)
+            if not func:
+                continue
+            try:
+                eid = func(report)
+                if eid:
+                    entry.entry_id = bytes(eid)
+                    break
+            except Exception:
+                pass
 
-        # seqNum
         with contextlib.suppress(Exception):
             entry.seq_num = int(iec61850.ClientReport_getSeqNum(report))
 
-        # timeOfEntry
-        try:
-            time_ms = iec61850.ClientReport_getTimeOfEntry(report)
-            if time_ms and int(time_ms) > 0:
-                entry.time_stamp = datetime.datetime.fromtimestamp(int(time_ms) / 1000.0).strftime(
-                    "%Y-%m-%d %H:%M:%S.%f"
-                )[:-3]
-        except Exception:
-            pass
+        for func_name in ("ClientReport_getTimestamp", "ClientReport_getTimeOfEntry"):
+            func = getattr(iec61850, func_name, None)
+            if not func:
+                continue
+            try:
+                time_ms = func(report)
+                if time_ms and int(time_ms) > 0:
+                    entry.time_stamp = datetime.datetime.fromtimestamp(int(time_ms) / 1000.0).strftime(
+                        "%Y-%m-%d %H:%M:%S.%f"
+                    )[:-3]
+                    break
+            except Exception:
+                pass
 
-        # receivedAt
         entry.received_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
-        # dataValues (MmsValue 数组) 和 reasonCodes
-        try:
-            values = iec61850.ClientReport_getValues(report)
-            reason_codes = iec61850.ClientReport_getReasonCodes(report)
+        values = None
+        for func_name in ("ClientReport_getDataSetValues", "ClientReport_getValues"):
+            func = getattr(iec61850, func_name, None)
+            if not func:
+                continue
+            try:
+                values = func(report)
+                if values:
+                    break
+            except Exception:
+                values = None
 
-            if values:
-                array_size = 0
-                with contextlib.suppress(Exception):
-                    array_size = iec61850.MmsValue_getArraySize(values)
+        if values:
+            array_size = 0
+            with contextlib.suppress(Exception):
+                array_size = int(iec61850.MmsValue_getArraySize(values))
 
-                if array_size > 0:
-                    for i in range(array_size):
-                        try:
-                            element = iec61850.MmsValue_getElement(values, i)
-                        except Exception:
-                            element = None
+            if array_size > MAX_REPORT_VALUES_PER_ENTRY:
+                log.warning(f"Report has {array_size} values, parsing first {MAX_REPORT_VALUES_PER_ENTRY}: {rcb_ref}")
+            parse_count = min(array_size, MAX_REPORT_VALUES_PER_ENTRY)
 
-                        # 尝试获取 reason code
-                        reason_str = "unknown"
-                        if reason_codes:
-                            try:
-                                rc = iec61850.ReasonCode_get(reason_codes, i)
-                                rc_map = {
-                                    0: "data-change",
-                                    1: "quality-change",
-                                    2: "data-update",
-                                    3: "integrity",
-                                    4: "gi",
-                                }
-                                reason_str = rc_map.get(int(rc), f"code={rc}")
-                            except Exception:
-                                pass
+            for i in range(parse_count):
+                try:
+                    element = iec61850.MmsValue_getElement(values, i)
+                except Exception:
+                    element = None
+                if element is None:
+                    continue
 
-                        if element is not None:
-                            val = mms_value_to_python(element)
-                            ref_key = f"index[{i}]"
+                reason_str = _get_reason_for_inclusion(report, i)
+                ref_key = _get_data_reference(report, i) or f"data[{i}]"
 
-                            # 尝试从 dataSet 成员引用获取 FCDA 路径
-                            # (如果 dataSet 信息可用)
-                            ref_key = f"data[{i}]"
+                entry.data_values[ref_key] = mms_value_to_python(element)
+                entry.reason_codes[ref_key] = reason_str
 
-                            entry.data_values[ref_key] = val
-                            entry.reason_codes[ref_key] = reason_str
-        except Exception:
-            pass
+            if array_size > parse_count:
+                entry.data_values["__truncated__"] = f"{array_size - parse_count} values omitted"
+                entry.reason_codes["__truncated__"] = "local-limit"
 
         return entry
     except Exception as e:
-        log.error(f"解析 ClientReport 失败: {rcb_ref}, {e}")
+        log.error(f"parse ClientReport failed: {rcb_ref}, {e}")
         return None
+
+
+def _get_reason_for_inclusion(report, index: int) -> str:
+    try:
+        if hasattr(iec61850, "ClientReport_getReasonForInclusion"):
+            reason = iec61850.ClientReport_getReasonForInclusion(report, index)
+            if hasattr(iec61850, "ReasonForInclusion_getValueAsString"):
+                reason_text = iec61850.ReasonForInclusion_getValueAsString(reason)
+                if reason_text:
+                    return str(reason_text)
+            reason_value = int(reason)
+            reason_map = {
+                1: "data-change",
+                2: "quality-change",
+                4: "data-update",
+                8: "integrity",
+                16: "gi",
+            }
+            return reason_map.get(reason_value, f"code={reason_value}")
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _get_data_reference(report, index: int) -> str:
+    try:
+        if hasattr(iec61850, "ClientReport_getDataReference"):
+            ref = iec61850.ClientReport_getDataReference(report, index)
+            if ref:
+                return str(ref)
+    except Exception:
+        pass
+    return ""
