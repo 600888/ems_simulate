@@ -101,10 +101,9 @@ class SclReportTransformer:
         # 多实例时名称加两位序号后缀，如 rpRack1CellTemp01 / rpRack1CellTemp02
         if instance_count > 1:
             rcb_name = f"{rc.name}{instance_idx:02d}"
-            rpt_id = f"{rc.rpt_id}{instance_idx:02d}"
         else:
             rcb_name = rc.name
-            rpt_id = rc.rpt_id
+        rpt_id = rc.rpt_id
         data_set_ref = f"{ld.inst}/{ln.ln_name}${rc.dat_set}" if rc.dat_set else ""
 
         # 解析 DataSet 条目
