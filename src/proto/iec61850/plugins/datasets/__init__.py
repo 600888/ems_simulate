@@ -7,14 +7,13 @@
 import contextlib
 from ctypes import c_bool
 import re
-from typing import Any, Optional
+from typing import Any
 
 from ...core.linked_list import get_list_from_linked_list
 from ...core.mms_value import mms_value_to_python
 from ...defs.address import infer_fc_from_address, infer_iec_type_from_address
 from ...defs.constants import HAS_IEC61850, IEC_TYPE_UNKNOWN
 from ...log import log
-from ..base import Iec61850Plugin
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
@@ -30,6 +29,7 @@ class DataSetsPlugin:
         self._connection = None
         self._registry = None
         self._initialized = False
+        self._dataset_members_cache: dict[str, list[dict[str, Any]]] = {}
 
     @property
     def name(self) -> str:
@@ -49,6 +49,7 @@ class DataSetsPlugin:
         self._connection = None
         self._registry = None
         self._initialized = False
+        self._dataset_members_cache.clear()
 
     def discover_datasets(self) -> list[dict[str, Any]]:
         """发现所有逻辑设备下的 DataSet (数据集) 引用
@@ -353,7 +354,10 @@ class DataSetsPlugin:
 
             members = []
             node_count = 0
-            it = fcdas
+            # LinkedList 头节点是 dummy 节点（无数据），
+            # 必须从 LinkedList_getNext 开始遍历实际数据节点。
+            # 参考 core/linked_list.py:get_list_from_linked_list 和 plugins/files/directory.py
+            it = iec61850.LinkedList_getNext(fcdas)
             while it:
                 node_count += 1
                 # 先尝试 DataSetEntry 提取（通用路径）
@@ -398,6 +402,161 @@ class DataSetsPlugin:
             log.error(f"浏览 DataSet 目录异常: {dataset_ref}, 错误: {e}")
             return []
 
+    def _get_dataset_members_cached(self, dataset_ref: str) -> list[dict[str, Any]]:
+        cache_key = self._connection.build_dataset_ref(dataset_ref) if self._connection else dataset_ref
+        if cache_key in self._dataset_members_cache:
+            return self._dataset_members_cache[cache_key]
+        members = self.browse_dataset_directory(dataset_ref)
+        if members:
+            self._dataset_members_cache[cache_key] = members
+        return members
+
+    def _read_dataset_values_by_mms(self, dataset_ref: str) -> dict[str, Any]:
+        """Read a DataSet in one MMS request via NamedVariableList values."""
+        required = (
+            "IedConnection_getMmsConnection",
+            "MmsConnection_readNamedVariableListValues",
+            "MmsError_create",
+            "MmsError_getValue",
+            "MmsValue_getArraySize",
+            "MmsValue_getElement",
+        )
+        if not all(hasattr(iec61850, name) for name in required):
+            log.debug(f"MMS DataSet read unavailable: missing API, ref={dataset_ref}")
+            return {}
+
+        mms_ref = self._connection.build_dataset_ref(dataset_ref)
+        slash = mms_ref.find("/")
+        if slash <= 0 or slash == len(mms_ref) - 1:
+            log.warning(f"MMS DataSet read failed: invalid ref={dataset_ref}, mms_ref={mms_ref}")
+            return {}
+        domain_id = mms_ref[:slash]
+        item_id = mms_ref[slash + 1 :].replace(".", "$")
+
+        # 诊断: 检查 domain_id 是否在已发现的 LD 列表中
+        discovered_lds = getattr(self._connection, "_discovered_lds", []) or []
+        if discovered_lds and domain_id not in discovered_lds:
+            log.warning(
+                f"MMS DataSet read: domain_id='{domain_id}' 不在已发现 LD 列表中, "
+                f"dataset_ref={dataset_ref}, mms_ref={mms_ref}, discovered_lds={discovered_lds[:5]}"
+            )
+
+        try:
+            mms_conn = iec61850.IedConnection_getMmsConnection(self._connection.connection)
+        except Exception as e:
+            log.warning(f"MMS DataSet read failed: get MmsConnection exception, ref={dataset_ref}, error={e}")
+            return {}
+        if not mms_conn:
+            log.warning(f"MMS DataSet read failed: no MmsConnection, ref={dataset_ref}")
+            return {}
+
+        mms_error = None
+        values_array = None
+        try:
+            mms_error = iec61850.MmsError_create()
+            values_array = iec61850.MmsConnection_readNamedVariableListValues(
+                mms_conn, mms_error, domain_id, item_id, False
+            )
+            error_code = iec61850.MmsError_getValue(mms_error)
+            if error_code != 0:
+                error_text = ""
+                with contextlib.suppress(Exception):
+                    error_text = iec61850.MmsError_toString(mms_error)
+                log.warning(
+                    f"MMS DataSet read failed: ref={dataset_ref}, domain={domain_id}, "
+                    f"item={item_id}, error={error_code}, text={error_text}"
+                )
+                return {}
+            if not values_array:
+                log.warning(f"MMS DataSet read returned no data: ref={dataset_ref}, domain={domain_id}, item={item_id}")
+                return {}
+
+            members = self._get_dataset_members_cached(dataset_ref)
+            array_size = iec61850.MmsValue_getArraySize(values_array)
+            out: dict[str, Any] = {}
+            for i in range(array_size):
+                element = iec61850.MmsValue_getElement(values_array, i)
+                if element is None:
+                    continue
+                member = members[i] if i < len(members) else {}
+                ref = member.get("ref") or f"data[{i}]"
+                iec_type = member.get("iec_type", IEC_TYPE_UNKNOWN)
+                value = mms_value_to_python(element, iec_type)
+                if value is not None:
+                    out[ref] = value
+
+            if out:
+                log.info(f"MMS DataSet read succeeded: ref={dataset_ref}, values={len(out)}")
+            else:
+                log.warning(
+                    f"MMS DataSet read decoded no values: ref={dataset_ref}, size={array_size}, members={len(members)}"
+                )
+            return out
+        except Exception as e:
+            log.warning(f"MMS DataSet read exception: ref={dataset_ref}, domain={domain_id}, item={item_id}, error={e}")
+            return {}
+        finally:
+            if values_array:
+                with contextlib.suppress(Exception):
+                    iec61850.MmsValue_delete(values_array)
+            if mms_error is not None:
+                # 注意: SWIG 导出的析构函数名是 MmsErrror_destroy (三个 r 的拼写错误, 见 patches/iec61850.i)
+                destroy = getattr(iec61850, "MmsErrror_destroy", None) or getattr(iec61850, "MmsError_destroy", None)
+                if destroy is not None:
+                    with contextlib.suppress(Exception):
+                        destroy(mms_error)
+
+    def _read_dataset_values_by_members(self, dataset_ref: str, reason: str = "") -> dict[str, Any]:
+        """Fallback DataSet read: browse members and read each FCDA with readObject."""
+        members = self._get_dataset_members_cached(dataset_ref)
+        if not members:
+            log.warning(f"Read DataSet values fallback failed: no members, ref={dataset_ref}, reason={reason}")
+            return {}
+        if not hasattr(iec61850, "IedConnection_readObject"):
+            log.warning(
+                f"Read DataSet values fallback failed: readObject unavailable, ref={dataset_ref}, reason={reason}"
+            )
+            return {}
+
+        values: dict[str, Any] = {}
+        for member in members:
+            ref = member.get("ref") or ""
+            if not ref:
+                continue
+            mms_ref = self._connection.build_dataset_ref(ref)
+            fc = member.get("fc") or infer_fc_from_address(ref) or "MX"
+            iec_type = member.get("iec_type") or infer_iec_type_from_address(ref) or IEC_TYPE_UNKNOWN
+            try:
+                fc_val = self._connection.get_fc_value(fc)
+                result = iec61850.IedConnection_readObject(self._connection.connection, mms_ref, fc_val)
+                if isinstance(result, (list, tuple)):
+                    mms_value = result[0] if len(result) > 0 else None
+                    error = result[1] if len(result) > 1 else 0
+                else:
+                    mms_value = result
+                    error = 0
+                if error != iec61850.IED_ERROR_OK or mms_value is None:
+                    log.debug(f"Read DataSet member failed: ref={ref}, mms_ref={mms_ref}, fc={fc}, error={error}")
+                    continue
+                value = mms_value_to_python(mms_value, iec_type)
+                if value is not None:
+                    values[ref] = value
+                with contextlib.suppress(Exception):
+                    iec61850.MmsValue_delete(mms_value)
+            except Exception as e:
+                log.debug(f"Read DataSet member exception: ref={ref}, mms_ref={mms_ref}, fc={fc}, error={e}")
+
+        if values:
+            log.warning(
+                f"Read DataSet values fallback succeeded: ref={dataset_ref}, values={len(values)}, reason={reason}"
+            )
+        else:
+            log.warning(
+                "Read DataSet values fallback got no values: "
+                f"ref={dataset_ref}, members={len(members)}, reason={reason}"
+            )
+        return values
+
     def read_dataset_values(self, dataset_ref: str) -> dict[str, Any]:
         """通过 DataSet 一次 MMS 调用读取所有成员的值
 
@@ -408,84 +567,18 @@ class DataSetsPlugin:
             {fcda_ref: value} 字典
         """
         if not self._connection or not self._connection.is_connected:
-            return {}
-        if not hasattr(iec61850, "IedConnection_readDataSetValues"):
-            log.warning("pyiec61850 不支持 IedConnection_readDataSetValues")
-            return []
-
-        mms_ref = self._connection.build_dataset_ref(dataset_ref)
-
-        client_data_set = None
-        read_error = -1
-        created_ds = None
-        if hasattr(iec61850, "ClientDataSet_create"):
-            try:
-                created_ds = iec61850.ClientDataSet_create()
-            except Exception:
-                created_ds = None
-
-        try:
-            if created_ds is not None:
-                result = iec61850.IedConnection_readDataSetValues(self._connection.connection, mms_ref, created_ds)
-            else:
-                result = iec61850.IedConnection_readDataSetValues(self._connection.connection, mms_ref)
-            if isinstance(result, (list, tuple)):
-                client_data_set = result[0] if len(result) > 0 else None
-                read_error = result[1] if len(result) > 1 else 0
-            else:
-                client_data_set = result
-                read_error = 0
-        except TypeError:
-            tried = False
-            if created_ds is not None:
-                try:
-                    result = iec61850.IedConnection_readDataSetValues(self._connection.connection, mms_ref)
-                    if isinstance(result, (list, tuple)):
-                        client_data_set = result[0] if len(result) > 0 else None
-                        read_error = result[1] if len(result) > 1 else 0
-                    else:
-                        client_data_set = result
-                        read_error = 0
-                    tried = True
-                except Exception:
-                    pass
-            if not tried:
-                return {}
-        except Exception:
+            log.warning(f"Read DataSet values skipped: connection is not active, ref={dataset_ref}")
             return {}
 
-        if read_error != 0 or client_data_set is None:
-            return {}
+        # 直接走 MMS 层原语: MmsConnection_readNamedVariableListValues
+        # 不使用 IedConnection_readDataSetValues, 因为 pyiec61850 的 SWIG wrapper
+        # 对 ClientDataSet 参数应用了 NULL-safety typemap, 拒绝 None 作为
+        # "allocate a new one" 哨兵, 在 Python 中不可用。
+        mms_values = self._read_dataset_values_by_mms(dataset_ref)
+        if mms_values:
+            return mms_values
 
-        members = self.browse_dataset_directory(dataset_ref)
-
-        if not hasattr(iec61850, "ClientDataSet_getValues"):
-            return {}
-
-        mms_array = iec61850.ClientDataSet_getValues(client_data_set)
-        if mms_array is None:
-            return {}
-
-        values = {}
-        array_size = iec61850.MmsValue_getArraySize(mms_array) if hasattr(iec61850, "MmsValue_getArraySize") else 0
-
-        for i in range(min(array_size, len(members))):
-            element = iec61850.MmsValue_getElement(mms_array, i) if hasattr(iec61850, "MmsValue_getElement") else None
-            if element is None:
-                continue
-            member = members[i] if i < len(members) else {}
-            ref = member.get("ref", str(i))
-            iec_type = member.get("iec_type", IEC_TYPE_UNKNOWN)
-            try:
-                val = mms_value_to_python(element, iec_type)
-                if val is not None:
-                    values[ref] = val
-            except Exception:
-                pass
-
-        with contextlib.suppress(Exception):
-            iec61850.MmsValue_delete(mms_array)
-        with contextlib.suppress(Exception):
-            iec61850.ClientDataSet_destroy(client_data_set)
-
-        return values
+        # Fallback: 逐成员读取 (慢路径)
+        return self._read_dataset_values_by_members(
+            dataset_ref, reason="MMS readNamedVariableListValues returned no values"
+        )

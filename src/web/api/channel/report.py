@@ -86,8 +86,8 @@ def _server_rcbs_to_discovery_format(report_manager: Any) -> list:
         elif entry_id_val and not isinstance(entry_id_val, str):
             entry_id_val = str(entry_id_val) if entry_id_val else None
 
-        # time_of_entry: 支持 int (ms) 或 datetime 字符串
-        time_of_entry_val = rcb.get("time_of_entry", None)
+        # time_of_entry: 后端已格式化为 "YYYY-MM-DD HH:mm:ss" 字符串
+        time_of_entry_val = rcb.get("time_of_entry", "")
 
         # purge_buf: 仅 BRCB 有意义
         purge_buf_val = rcb.get("purge_buf", False) if rcb_type == "BRCB" else False

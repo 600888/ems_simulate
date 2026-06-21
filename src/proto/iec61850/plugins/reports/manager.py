@@ -135,7 +135,7 @@ class ReportManager:
             "sq_num": 0,
             "purge_buf": False,
             "entry_id": None,
-            "time_of_entry": None,
+            "time_of_entry": "",
             "owner": "",
             "resv": False,
             "trg_ops": trg_ops or {"dchg": True, "qchg": False, "dupd": False, "period": False, "gi": True},

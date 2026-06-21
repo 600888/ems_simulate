@@ -280,7 +280,7 @@ class ReportsPlugin:
                 if rcb_type == "BRCB":
                     if detail.entry_id:
                         info.entry_id = detail.entry_id
-                    if detail.time_of_entry is not None and detail.time_of_entry > 0:
+                    if detail.time_of_entry:
                         info.time_of_entry = detail.time_of_entry
                     if detail.purge_buf:
                         info.purge_buf = detail.purge_buf

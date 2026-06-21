@@ -437,17 +437,10 @@ const lastReportDataItems = computed<LastReportItem[]>(() => {
   return items;
 });
 
-// 格式化 TimeOfEntry (毫秒级 Unix 时间戳 → 可读时间字符串)
-function formatTimeOfEntry(timeOfEntry: number | null | undefined): string {
-  if (timeOfEntry == null || timeOfEntry <= 0) return '-';
-  try {
-    const t = Number(timeOfEntry);
-    // 支持毫秒级时间戳
-    const ms = t > 1e12 ? t : t * 1000;
-    return new Date(ms).toLocaleString();
-  } catch {
-    return String(timeOfEntry);
-  }
+// 格式化 TimeOfEntry (后端已格式化为 "YYYY-MM-DD HH:mm:ss" 字符串)
+function formatTimeOfEntry(timeOfEntry: string | null | undefined): string {
+  if (timeOfEntry == null || timeOfEntry === '') return '-';
+  return String(timeOfEntry);
 }
 
 // RCB 树形数据: LD → LN (LLN0) → RCB 三层结构

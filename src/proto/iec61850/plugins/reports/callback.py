@@ -570,8 +570,8 @@ def _parse_client_report(report, rcb_ref: str) -> ReportDataEntry | None:
                 time_ms = func(report)
                 if time_ms and int(time_ms) > 0:
                     entry.time_stamp = datetime.datetime.fromtimestamp(int(time_ms) / 1000.0).strftime(
-                        "%Y-%m-%d %H:%M:%S.%f"
-                    )[:-3]
+                        "%Y-%m-%d %H:%M:%S"
+                    )
                     break
             except Exception:
                 pass

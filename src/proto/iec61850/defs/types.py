@@ -82,7 +82,7 @@ class RCBInfo:
     intg_period: int = 0  # 完整性周期 (ms), 仅 URCB
     purge_buf: bool = False  # 清除缓冲, 仅 BRCB
     entry_id: bytes | None = None  # 入口 ID, 仅 BRCB
-    time_of_entry: int | None = None  # 入口时间, 仅 BRCB
+    time_of_entry: str = ""  # 入口时间 (格式化字符串), 仅 BRCB
     sq_num: int = 0  # 顺序号 (Sequence Number)
     owner: str = ""  # 所有者 (Owner), 仅 URCB
     resv: bool = False  # 保留状态 (Resv), 仅 URCB

@@ -6,6 +6,7 @@ BRCB 与 URCB 的主要区别:
 """
 
 import contextlib
+import datetime
 
 from ...defs.constants import HAS_IEC61850
 from ...defs.types import OptFields, RCBInfo, TrgOps
@@ -404,7 +405,9 @@ class BrcbHandler:
             pass
 
         with contextlib.suppress(Exception):
-            info.time_of_entry = int(iec61850.ClientReportControlBlock_getEntryTime(rcb))
+            time_ms = int(iec61850.ClientReportControlBlock_getEntryTime(rcb))
+            if time_ms > 0:
+                info.time_of_entry = datetime.datetime.fromtimestamp(time_ms / 1000.0).strftime("%Y-%m-%d %H:%M:%S")
 
         # 解析 TrgOps
         try:
