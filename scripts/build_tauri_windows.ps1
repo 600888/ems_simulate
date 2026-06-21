@@ -150,6 +150,7 @@ if (-not $SkipBackend) {
         $pyArgs = @(
             "--noconfirm", "--onefile",
             "--name", "ems_simulate_backend", "--clean",
+            "--exclude-module", "numpy",
             "--distpath", $pyDist,
             "--workpath", $pyWork,
             "--specpath", $BUILD_DIR,

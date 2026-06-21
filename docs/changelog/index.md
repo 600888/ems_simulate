@@ -47,6 +47,7 @@
 |------|------|
 | [ICD 导出器修复](./iec61850/14-iec61850-icd-exporter-fix) | 导出模型类型模板膨胀与数据失真修复 — 日期：2026-06-06 |
 | [报告回调崩溃与禁用逻辑修复](./iec61850/15-iec61850-report-callback-crash-fix) | RCB 回调注销崩溃 + URCB 禁用逻辑修复 — 日期：2026-06-19 |
+| [报告 GI 与 DataSet 读取修复](./iec61850/16-iec61850-report-gi-dataset-read-fix) | 多报告 GI 路由修复 + URCB 软件 GI + MMS DataSet 批量读取 — 日期：2026-06-22 |
 
 ## Optimization
 

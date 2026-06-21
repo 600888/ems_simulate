@@ -145,7 +145,8 @@ export default defineConfig({
                             collapsed: false,
                             items: [
                                 { text: 'ICD 导出器修复', link: '/changelog/iec61850/14-iec61850-icd-exporter-fix' },
-                                { text: '报告回调崩溃与禁用逻辑修复', link: '/changelog/iec61850/15-iec61850-report-callback-crash-fix' }
+                                { text: '报告回调崩溃与禁用逻辑修复', link: '/changelog/iec61850/15-iec61850-report-callback-crash-fix' },
+                                { text: '报告 GI 与 DataSet 读取修复', link: '/changelog/iec61850/16-iec61850-report-gi-dataset-read-fix' }
                             ]
                         }
                     ]
