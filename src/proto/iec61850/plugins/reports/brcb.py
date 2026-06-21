@@ -258,8 +258,12 @@ class BrcbHandler:
 
         from .callback import ReportCallbackHandler
 
+        ReportCallbackHandler.mark_pending_gi(rcb_ref)
         active = ReportCallbackHandler.is_active(rcb_ref)
         log.info(f"BRCB trigger_gi 开始: rcb_ref={rcb_ref}, subscriber_active={active}")
+
+        if BrcbHandler._trigger_gi_direct(conn, rcb_ref):
+            return True
 
         try:
             nref = BrcbHandler._normalize_ref(rcb_ref)
@@ -271,7 +275,7 @@ class BrcbHandler:
             try:
                 iec61850.ClientReportControlBlock_setGI(rcb, True)
                 log.info(f"BRCB GI 写入开始: ref={rcb_ref}, nref={nref}")
-                result = iec61850.IedConnection_setRCBValues(conn, rcb, BrcbHandler.RCB_GI, False)
+                result = iec61850.IedConnection_setRCBValues(conn, rcb, BrcbHandler.RCB_GI, True)
                 set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:

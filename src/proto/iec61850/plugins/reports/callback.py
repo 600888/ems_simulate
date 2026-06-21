@@ -9,6 +9,7 @@ import contextlib
 from dataclasses import dataclass, field
 import datetime
 import threading
+import time
 from typing import Any
 
 from ...core.mms_value import mms_value_to_python
@@ -24,6 +25,7 @@ if HAS_IEC61850:
 # C 回调无法绑定到实例方法，需通过静态函数 + 全局字典分发
 _CALLBACK_REGISTRY: dict[str, "_CallbackInfo"] = {}
 _CALLBACK_LOCK = threading.Lock()
+_PENDING_GI_ROUTES: dict[str, tuple[str, float]] = {}
 MAX_REPORT_VALUES_PER_ENTRY = 512
 
 
@@ -39,14 +41,16 @@ class _CallbackInfo:
     max_cache: int = 1000
     enabled_at: str = ""
     mms_ref: str = ""
+    rpt_id: str = ""
 
 
 def _normalize_ref(rcb_ref: str, rcb_type: str = "") -> str:
     """Normalize an RCB ref for report handler registration.
 
     libIEC61850 uses dot FC form for IedConnection_installReportHandler,
-    e.g. LD/LLN0.RP.EventsRCB. For indexed URCB instances, RCB services use
-    EventsRCB01, while the report handler is registered on the base EventsRCB.
+    e.g. LD/LLN0.RP.EventsRCB. BRCB instances keep their 01/02 suffix so
+    multiple buffered reports can subscribe independently. Indexed URCB
+    instances still use the base report-handler reference when required.
     """
     if not rcb_ref or "/" not in rcb_ref:
         return rcb_ref
@@ -71,8 +75,9 @@ def _normalize_ref(rcb_ref: str, rcb_type: str = "") -> str:
             low = name.lower()
             fc = "RP" if (low.startswith("rp") or low.startswith("urcb")) else "BR"
 
-    base_name = _strip_report_instance_suffix(name)
-    return f"{ln_only}.{fc}.{base_name}"
+    normalized_type = (rcb_type or "").upper()
+    callback_name = _strip_report_instance_suffix(name) if normalized_type == "URCB" else name
+    return f"{ln_only}.{fc}.{callback_name}"
 
 
 def _strip_report_instance_suffix(name: str) -> str:
@@ -80,6 +85,101 @@ def _strip_report_instance_suffix(name: str) -> str:
     if len(name) > 2 and name[-2:].isdigit():
         return name[:-2]
     return name
+
+
+def _ref_aliases(rcb_ref: str, rcb_type: str = "") -> set[str]:
+    """Build equivalent cache lookup keys for one RCB reference."""
+    aliases = set()
+    if not rcb_ref:
+        return aliases
+
+    raw = rcb_ref.strip()
+    aliases.add(raw)
+    aliases.add(raw.replace("$", "."))
+
+    dotted = raw.replace("$", ".")
+    if "/" not in dotted or "." not in dotted:
+        return {a for a in aliases if a}
+
+    ln_part, name = dotted.rsplit(".", 1)
+    if name in ("BR", "RP"):
+        return {a for a in aliases if a}
+
+    fc = ""
+    ln_only = ln_part
+    if "." in ln_part:
+        maybe_ln, maybe_fc = ln_part.rsplit(".", 1)
+        if maybe_fc in ("BR", "RP"):
+            ln_only = maybe_ln
+            fc = maybe_fc
+
+    normalized_type = (rcb_type or "").upper()
+    if not fc:
+        if normalized_type == "BRCB":
+            fc = "BR"
+        elif normalized_type == "URCB":
+            fc = "RP"
+        else:
+            low = name.lower()
+            fc = "RP" if (low.startswith("rp") or low.startswith("urcb")) else "BR"
+
+    aliases.add(f"{ln_only}.{name}")
+    aliases.add(f"{ln_only}.{fc}.{name}")
+    aliases.add(f"{ln_only}${fc}${name}")
+    return {a for a in aliases if a}
+
+
+def _find_registered_info(rcb_ref: str) -> tuple[str, "_CallbackInfo"] | tuple[None, None]:
+    """Find callback info by exact key first, then by normalized reference aliases."""
+    info = _CALLBACK_REGISTRY.get(rcb_ref)
+    if info:
+        return rcb_ref, info
+
+    query_aliases = _ref_aliases(rcb_ref)
+    for key, candidate in _CALLBACK_REGISTRY.items():
+        candidate_aliases = _ref_aliases(key) | _ref_aliases(candidate.mms_ref)
+        if query_aliases & candidate_aliases:
+            return key, candidate
+    return None, None
+
+
+def _route_keys_for_info(rcb_ref: str, info: "_CallbackInfo") -> set[str]:
+    keys = set()
+    if info.rpt_id:
+        keys.add(info.rpt_id)
+    keys.update(_ref_aliases(rcb_ref))
+    keys.update(_ref_aliases(info.mms_ref))
+    return {key for key in keys if key}
+
+
+def _expire_pending_gi_routes(now: float | None = None) -> None:
+    now = time.monotonic() if now is None else now
+    expired = [key for key, (_, deadline) in _PENDING_GI_ROUTES.items() if deadline <= now]
+    for key in expired:
+        _PENDING_GI_ROUTES.pop(key, None)
+
+
+def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry) -> str:
+    """Route same-RptId GI reports back to the RCB that triggered GI."""
+    now = time.monotonic()
+    _expire_pending_gi_routes(now)
+
+    _, current_info = _find_registered_info(rcb_ref)
+    route_keys = {entry.rpt_id} if entry.rpt_id else set()
+    if current_info:
+        route_keys.update(_route_keys_for_info(rcb_ref, current_info))
+
+    for key in route_keys:
+        pending = _PENDING_GI_ROUTES.get(key)
+        if not pending:
+            continue
+        target_ref, _ = pending
+        matched_key, target_info = _find_registered_info(target_ref)
+        if target_info:
+            if matched_key != rcb_ref:
+                log.info(f"GI 报告按触发目标重路由: from={rcb_ref}, to={matched_key}, rpt_id={entry.rpt_id!r}")
+            return matched_key or target_ref
+    return rcb_ref
 
 
 class ReportCallbackHandler:
@@ -140,6 +240,11 @@ class ReportCallbackHandler:
                 subscriber.setEventHandler(handler)
                 if not subscriber.subscribe():
                     log.warning(f"订阅报告失败: ref={nref}")
+                    with contextlib.suppress(Exception):
+                        subscriber.deleteEventHandler()
+                    if hasattr(handler, "thisown"):
+                        with contextlib.suppress(Exception):
+                            handler.thisown = 0
                     return False
 
                 _CALLBACK_REGISTRY[rcb_ref] = _CallbackInfo(
@@ -150,6 +255,7 @@ class ReportCallbackHandler:
                     max_cache=max_cache,
                     enabled_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     mms_ref=nref,
+                    rpt_id=rpt_id or "",
                 )
                 log.info(f"报告回调已安装: {rcb_ref} (mms_ref={nref})")
                 return True
@@ -220,16 +326,19 @@ class ReportCallbackHandler:
     def get_cache(rcb_ref: str) -> list[dict[str, Any]]:
         """获取指定 RCB 的缓存报告数据"""
         with _CALLBACK_LOCK:
-            info = _CALLBACK_REGISTRY.get(rcb_ref)
+            matched_key, info = _find_registered_info(rcb_ref)
             if not info:
+                log.debug(f"报告缓存未命中: query={rcb_ref}, registered={list(_CALLBACK_REGISTRY.keys())}")
                 return []
+            if matched_key != rcb_ref:
+                log.debug(f"报告缓存通过别名命中: query={rcb_ref}, matched={matched_key}")
             return [ReportCallbackHandler._entry_to_dict(entry) for entry in info.data_cache]
 
     @staticmethod
     def clear_cache(rcb_ref: str) -> None:
         """清除指定 RCB 的缓存"""
         with _CALLBACK_LOCK:
-            info = _CALLBACK_REGISTRY.get(rcb_ref)
+            _, info = _find_registered_info(rcb_ref)
             if info:
                 info.data_cache.clear()
 
@@ -237,7 +346,23 @@ class ReportCallbackHandler:
     def is_active(rcb_ref: str) -> bool:
         """检查指定 RCB 是否有活跃回调"""
         with _CALLBACK_LOCK:
-            return rcb_ref in _CALLBACK_REGISTRY
+            _, info = _find_registered_info(rcb_ref)
+            return info is not None
+
+    @staticmethod
+    def mark_pending_gi(rcb_ref: str, ttl: float = 3.0) -> None:
+        """Remember the RCB that explicitly triggered GI for same-RptId routing."""
+        with _CALLBACK_LOCK:
+            matched_key, info = _find_registered_info(rcb_ref)
+            if not info:
+                log.debug(f"GI 待路由未记录: RCB 未注册, ref={rcb_ref}")
+                return
+            target_ref = matched_key or rcb_ref
+            deadline = time.monotonic() + ttl
+            _expire_pending_gi_routes()
+            for key in _route_keys_for_info(target_ref, info):
+                _PENDING_GI_ROUTES[key] = (target_ref, deadline)
+            log.debug(f"GI 待路由已记录: target={target_ref}, rpt_id={info.rpt_id!r}")
 
     @staticmethod
     def get_active_rcbs() -> list[dict[str, Any]]:
@@ -345,14 +470,16 @@ def _dispatch_report(rcb_ref: str, report) -> None:
 
     # 3. 锁内写入缓存
     with _CALLBACK_LOCK:
-        info = _CALLBACK_REGISTRY.get(rcb_ref)
+        target_ref = _resolve_pending_gi_route(rcb_ref, entry)
+        info = _CALLBACK_REGISTRY.get(target_ref)
         if not info:
-            log.warning(f"_dispatch_report: 写缓存时 rcb_ref={rcb_ref} 已被注销")
+            log.warning(f"_dispatch_report: 写缓存时 rcb_ref={target_ref} 已被注销")
             return
+        on_report = info.on_report
         info.data_cache.append(entry)
         if len(info.data_cache) > info.max_cache:
             info.data_cache.pop(0)
-        log.info(f"_dispatch_report: 已写入缓存, rcb_ref={rcb_ref}, cache_size={len(info.data_cache)}")
+        log.info(f"_dispatch_report: 已写入缓存, rcb_ref={target_ref}, cache_size={len(info.data_cache)}")
 
     # 4. 锁外调用用户回调
     if on_report:

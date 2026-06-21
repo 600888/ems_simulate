@@ -330,8 +330,12 @@ class UrcbHandler:
 
         from .callback import ReportCallbackHandler
 
+        ReportCallbackHandler.mark_pending_gi(rcb_ref)
         active = ReportCallbackHandler.is_active(rcb_ref)
         log.info(f"URCB trigger_gi 开始: rcb_ref={rcb_ref}, subscriber_active={active}")
+
+        if UrcbHandler._trigger_gi_direct(conn, rcb_ref):
+            return True
 
         last_error = None
         try:
@@ -344,7 +348,7 @@ class UrcbHandler:
                 try:
                     iec61850.ClientReportControlBlock_setGI(rcb, True)
                     log.info(f"URCB GI 写入开始: ref={rcb_ref}, nref={nref}")
-                    result = iec61850.IedConnection_setRCBValues(conn, rcb, UrcbHandler.RCB_GI, False)
+                    result = iec61850.IedConnection_setRCBValues(conn, rcb, UrcbHandler.RCB_GI, True)
                     set_error = UrcbHandler._extract_error(result)
                     if set_error != iec61850.IED_ERROR_OK:
                         last_error = set_error
