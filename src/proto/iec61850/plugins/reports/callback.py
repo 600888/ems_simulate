@@ -372,10 +372,12 @@ if HAS_IEC61850 and hasattr(iec61850, "RCBHandler"):
             self._rcb_ref = rcb_ref
 
         def trigger(self):
+            """C 接收线程回调: 在线程内完成解析"""
             log.info(f"RCBHandler.trigger 被调用: rcb_ref={self._rcb_ref}")
             try:
                 cr = self._client_report
                 log.info(f"RCBHandler.trigger report: rcb_ref={self._rcb_ref}, report={cr}")
+                # 在 trigger 返回前完成解析 (C 层在 trigger 返回后可能释放 report)
                 _dispatch_report(self._rcb_ref, cr)
             except Exception as e:
                 log.error(f"RCBHandler.trigger 异常: {self._rcb_ref}, {e}", exc_info=True)
@@ -387,12 +389,7 @@ else:
 
 
 def _parse_client_report(report, rcb_ref: str) -> ReportDataEntry | None:
-    """Parse ClientReport into a cacheable ReportDataEntry.
-
-    pyiec61850-ng 1.6.1.3 exposes ClientReport_getDataSetValues,
-    ClientReport_getDataSetName, and ClientReport_getReasonForInclusion.
-    Older wrapper names are tried as fallbacks for compatibility.
-    """
+    """Parse ClientReport into a cacheable ReportDataEntry."""
     try:
         entry = ReportDataEntry()
 
@@ -417,18 +414,6 @@ def _parse_client_report(report, rcb_ref: str) -> ReportDataEntry | None:
 
         with contextlib.suppress(Exception):
             entry.conf_rev = int(iec61850.ClientReport_getConfRev(report))
-
-        for func_name in ("ClientReport_getEntryId", "ClientReport_getEntryID"):
-            func = getattr(iec61850, func_name, None)
-            if not func:
-                continue
-            try:
-                eid = func(report)
-                if eid:
-                    entry.entry_id = bytes(eid)
-                    break
-            except Exception:
-                pass
 
         with contextlib.suppress(Exception):
             entry.seq_num = int(iec61850.ClientReport_getSeqNum(report))
@@ -471,6 +456,7 @@ def _parse_client_report(report, rcb_ref: str) -> ReportDataEntry | None:
             parse_count = min(array_size, MAX_REPORT_VALUES_PER_ENTRY)
 
             for i in range(parse_count):
+                element = None
                 try:
                     element = iec61850.MmsValue_getElement(values, i)
                 except Exception:
@@ -478,11 +464,9 @@ def _parse_client_report(report, rcb_ref: str) -> ReportDataEntry | None:
                 if element is None:
                     continue
 
-                reason_str = _get_reason_for_inclusion(report, i)
-                ref_key = _get_data_reference(report, i) or f"data[{i}]"
-
+                ref_key = f"data[{i}]"
                 entry.data_values[ref_key] = mms_value_to_python(element)
-                entry.reason_codes[ref_key] = reason_str
+                entry.reason_codes[ref_key] = "gi"
 
             if array_size > parse_count:
                 entry.data_values["__truncated__"] = f"{array_size - parse_count} values omitted"
