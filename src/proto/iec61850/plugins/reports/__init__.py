@@ -5,6 +5,7 @@
 """
 
 from collections.abc import Callable
+import datetime
 import re
 import time
 from typing import Any, Optional
@@ -39,7 +40,9 @@ class ReportsPlugin:
     def __init__(self):
         self._connection = None
         self._registry = None
+        self._client = None
         self._initialized = False
+        self._rcb_detail_cache: dict[str, dict[str, Any]] = {}
         self._rcb_type_map: dict[str, str] = {}  # ref -> "BRCB"/"URCB", 发现时填充
 
     @property
@@ -59,6 +62,7 @@ class ReportsPlugin:
         """
         self._connection = connection
         self._registry = kwargs.get("registry")
+        self._client = kwargs.get("client")
         self._initialized = True
         log.info("Reports 插件已初始化")
 
@@ -68,6 +72,8 @@ class ReportsPlugin:
             ReportCallbackHandler.shutdown_all(self._connection)
         self._connection = None
         self._registry = None
+        self._client = None
+        self._rcb_detail_cache.clear()
         self._initialized = False
         log.info("Reports 插件已关闭")
 
@@ -286,7 +292,9 @@ class ReportsPlugin:
         except Exception as e:
             log.debug(f"读取 RCB 属性失败: {rcb_ref}, {e}")
 
-        return self._rcb_info_to_dict(info)
+        result = self._rcb_info_to_dict(info)
+        self._rcb_detail_cache[rcb_ref] = result
+        return result
 
     def _rcb_info_to_dict(self, info: RCBInfo) -> dict[str, Any]:
         """将 RCBInfo 对象转为字典"""
@@ -524,22 +532,64 @@ class ReportsPlugin:
     # ==================== GI 触发 ====================
 
     def trigger_gi(self, rcb_ref: str) -> bool:
-        """触发通用查询 (GI)，立即生成一次完整报告
-
-        Args:
-            rcb_ref: RCB 引用路径
-
-        Returns:
-            bool 是否成功
-        """
+        """触发通用查询 (GI)，立即生成一次完整报告"""
         if not self._connection or not self._connection.is_connected:
             return False
 
         rcb_type = self._infer_rcb_type(rcb_ref)
         if rcb_type == "BRCB":
             return BrcbHandler.trigger_gi(self._connection, rcb_ref)
-        else:
-            return UrcbHandler.trigger_gi(self._connection, rcb_ref)
+        return self._trigger_urcb_software_gi(rcb_ref)
+
+    def _trigger_urcb_software_gi(self, rcb_ref: str) -> bool:
+        """Synthesize a URCB GI report by reading its DataSet into the report cache."""
+        ReportCallbackHandler.mark_pending_gi(rcb_ref)
+        detail = self._rcb_detail_cache.get(rcb_ref) or {}
+        data_set_ref = str(detail.get("data_set_ref") or "")
+        rpt_id = str(detail.get("rpt_id") or "")
+        conf_rev = int(detail.get("conf_rev") or 1)
+
+        if not data_set_ref:
+            fresh = self.get_rcb_detail(rcb_ref) or {}
+            self._rcb_detail_cache[rcb_ref] = fresh
+            data_set_ref = str(fresh.get("data_set_ref") or "")
+            rpt_id = rpt_id or str(fresh.get("rpt_id") or "")
+            conf_rev = int(fresh.get("conf_rev") or conf_rev or 1)
+
+        if not data_set_ref:
+            log.warning(f"URCB 软件 GI 失败: RCB 未绑定 DataSet, ref={rcb_ref}")
+            return False
+
+        datasets = getattr(self._client, "datasets", None) if self._client else None
+        if not datasets:
+            log.warning(f"URCB 软件 GI 失败: DataSets 插件不可用, ref={rcb_ref}")
+            return False
+
+        try:
+            values = datasets.read_dataset_values(data_set_ref)
+        except Exception as e:
+            log.warning(f"URCB 软件 GI 读取 DataSet 异常: ref={rcb_ref}, ds={data_set_ref}, {e}")
+            return False
+
+        if not values:
+            log.warning(f"URCB 软件 GI 读取 DataSet 为空: ref={rcb_ref}, ds={data_set_ref}")
+            return False
+
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        entry = ReportDataEntry(
+            seq_num=0,
+            time_stamp=now,
+            reason_codes={key: "gi" for key in values.keys()},
+            data_values=values,
+            conf_rev=conf_rev,
+            data_set=data_set_ref,
+            rpt_id=rpt_id,
+            received_at=now,
+        )
+        ok = ReportCallbackHandler.append_cache_entry(rcb_ref, entry)
+        if ok:
+            log.info(f"URCB 软件 GI 已写入缓存: ref={rcb_ref}, ds={data_set_ref}, values={len(values)}")
+        return ok
 
     # ==================== 报告数据查询 ====================
 

@@ -259,8 +259,7 @@ class BrcbHandler:
         from .callback import ReportCallbackHandler
 
         ReportCallbackHandler.mark_pending_gi(rcb_ref)
-        active = ReportCallbackHandler.is_active(rcb_ref)
-        log.info(f"BRCB trigger_gi 开始: rcb_ref={rcb_ref}, subscriber_active={active}")
+        log.info(f"BRCB trigger_gi 开始: rcb_ref={rcb_ref}")
 
         if BrcbHandler._trigger_gi_direct(conn, rcb_ref):
             return True

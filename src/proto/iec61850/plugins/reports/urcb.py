@@ -99,6 +99,59 @@ class UrcbHandler:
         return (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
     @staticmethod
+    def _gi_attribute_refs(rcb_ref: str) -> list[str]:
+        refs = []
+        candidates = (UrcbHandler._without_instance_suffix(rcb_ref), rcb_ref)
+        for candidate in candidates:
+            parts = UrcbHandler._split_ref(candidate)
+            if not parts:
+                continue
+            ln_part, rcb_name = parts
+            for attr_ref in (f"{ln_part}.{rcb_name}.GI", f"{ln_part}.RP.{rcb_name}.GI"):
+                if attr_ref not in refs:
+                    refs.append(attr_ref)
+        return refs
+
+    @staticmethod
+    def _error_text(error) -> str:
+        if isinstance(error, int) and hasattr(iec61850, "IedClientError_toString"):
+            with contextlib.suppress(Exception):
+                return f"{error}({iec61850.IedClientError_toString(error)})"
+        return str(error)
+
+    @staticmethod
+    def _trigger_gi_write_object(conn, rcb_ref: str) -> bool:
+        """Trigger URCB GI by writing the RP/GI attribute directly."""
+        fc_rp = getattr(iec61850, "IEC61850_FC_RP", None)
+        if fc_rp is None or not hasattr(iec61850, "IedConnection_writeObject"):
+            return False
+
+        failures = []
+        for attr_ref in UrcbHandler._gi_attribute_refs(rcb_ref):
+            value = None
+            try:
+                value = iec61850.MmsValue_newBoolean(True)
+                if not value:
+                    failures.append(f"{attr_ref}: create-boolean-failed")
+                    continue
+                result = iec61850.IedConnection_writeObject(conn, attr_ref, fc_rp, value)
+                error = UrcbHandler._extract_error(result)
+                if error == iec61850.IED_ERROR_OK:
+                    log.info(f"URCB GI 直接写属性成功: ref={rcb_ref}, attr={attr_ref}")
+                    return True
+
+                failures.append(f"{attr_ref}: {UrcbHandler._error_text(error)}")
+            except Exception as e:
+                failures.append(f"{attr_ref}: {e}")
+            finally:
+                if value is not None:
+                    with contextlib.suppress(Exception):
+                        iec61850.MmsValue_delete(value)
+
+        log.warning(f"URCB GI 直接写属性失败: ref={rcb_ref}, attempts={failures}")
+        return False
+
+    @staticmethod
     def _trigger_gi_direct(conn, rcb_ref: str) -> bool:
         """Use libiec61850's dedicated GI API when available."""
         if not hasattr(iec61850, "IedConnection_triggerGIReport"):
@@ -331,43 +384,13 @@ class UrcbHandler:
         from .callback import ReportCallbackHandler
 
         ReportCallbackHandler.mark_pending_gi(rcb_ref)
-        active = ReportCallbackHandler.is_active(rcb_ref)
-        log.info(f"URCB trigger_gi 开始: rcb_ref={rcb_ref}, subscriber_active={active}")
+        log.info(f"URCB trigger_gi 开始: rcb_ref={rcb_ref}")
 
-        if UrcbHandler._trigger_gi_direct(conn, rcb_ref):
+        if UrcbHandler._trigger_gi_write_object(conn, rcb_ref):
             return True
 
-        last_error = None
-        try:
-            for nref in UrcbHandler._candidate_refs(rcb_ref):
-                rcb = UrcbHandler._create_rcb_block(nref)
-                if not rcb:
-                    log.debug(f"URCB GI 创建 rcb 失败: {rcb_ref}, nref={nref}")
-                    continue
-
-                try:
-                    iec61850.ClientReportControlBlock_setGI(rcb, True)
-                    log.info(f"URCB GI 写入开始: ref={rcb_ref}, nref={nref}")
-                    result = iec61850.IedConnection_setRCBValues(conn, rcb, UrcbHandler.RCB_GI, True)
-                    set_error = UrcbHandler._extract_error(result)
-                    if set_error != iec61850.IED_ERROR_OK:
-                        last_error = set_error
-                        log.debug(f"URCB GI 触发失败，尝试下一个引用: ref={rcb_ref}, nref={nref}, error={set_error}")
-                        continue
-
-                    if nref != UrcbHandler._normalize_ref(rcb_ref):
-                        log.info(f"URCB 使用基础引用触发 GI 成功: ref={rcb_ref}, nref={nref}")
-                    log.info(f"URCB GI 已触发: {rcb_ref}")
-                    return True
-                finally:
-                    with contextlib.suppress(Exception):
-                        iec61850.ClientReportControlBlock_destroy(rcb)
-
-            log.warning(f"URCB GI 触发失败: ref={rcb_ref}, error={last_error}")
-            return False
-        except Exception as e:
-            log.error(f"URCB GI 触发异常: {rcb_ref}, {e}")
-            return False
+        log.warning(f"URCB GI 直接写属性失败，已跳过 setRCBValues 同步写入以避免进程卡死: {rcb_ref}")
+        return False
 
     @staticmethod
     def _parse_rcb(rcb, rcb_ref: str, rcb_type: str) -> RCBInfo:

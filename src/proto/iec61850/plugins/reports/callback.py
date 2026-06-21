@@ -343,6 +343,20 @@ class ReportCallbackHandler:
                 info.data_cache.clear()
 
     @staticmethod
+    def append_cache_entry(rcb_ref: str, entry: ReportDataEntry) -> bool:
+        """Append one report entry to the matching RCB cache."""
+        with _CALLBACK_LOCK:
+            matched_key, info = _find_registered_info(rcb_ref)
+            if not info:
+                log.warning(f"报告缓存写入失败: RCB 未注册, ref={rcb_ref}")
+                return False
+            info.data_cache.append(entry)
+            if len(info.data_cache) > info.max_cache:
+                info.data_cache.pop(0)
+            log.info(f"报告缓存已写入: rcb_ref={matched_key}, cache_size={len(info.data_cache)}")
+            return True
+
+    @staticmethod
     def is_active(rcb_ref: str) -> bool:
         """检查指定 RCB 是否有活跃回调"""
         with _CALLBACK_LOCK:
@@ -352,17 +366,20 @@ class ReportCallbackHandler:
     @staticmethod
     def mark_pending_gi(rcb_ref: str, ttl: float = 3.0) -> None:
         """Remember the RCB that explicitly triggered GI for same-RptId routing."""
+        log_message = ""
         with _CALLBACK_LOCK:
             matched_key, info = _find_registered_info(rcb_ref)
             if not info:
-                log.debug(f"GI 待路由未记录: RCB 未注册, ref={rcb_ref}")
-                return
-            target_ref = matched_key or rcb_ref
-            deadline = time.monotonic() + ttl
-            _expire_pending_gi_routes()
-            for key in _route_keys_for_info(target_ref, info):
-                _PENDING_GI_ROUTES[key] = (target_ref, deadline)
-            log.debug(f"GI 待路由已记录: target={target_ref}, rpt_id={info.rpt_id!r}")
+                log_message = f"GI 待路由未记录: RCB 未注册, ref={rcb_ref}"
+            else:
+                target_ref = matched_key or rcb_ref
+                deadline = time.monotonic() + ttl
+                _expire_pending_gi_routes()
+                for key in _route_keys_for_info(target_ref, info):
+                    _PENDING_GI_ROUTES[key] = (target_ref, deadline)
+                log_message = f"GI 待路由已记录: target={target_ref}, rpt_id={info.rpt_id!r}"
+        if log_message:
+            log.debug(log_message)
 
     @staticmethod
     def get_active_rcbs() -> list[dict[str, Any]]:

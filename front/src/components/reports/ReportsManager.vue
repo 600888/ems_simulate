@@ -728,16 +728,16 @@ onActivated(() => {
 }
 
 .rcb-tree-panel {
-  width: 280px;
-  min-width: 280px;
+  width: 340px;
+  min-width: 340px;
   min-height: 0; // 防止 flex 子元素撑开
   border-right: 1px solid #ebeef5;
   padding: 8px;
   overflow-y: auto;
 
   @include bp.respond-to('medium-down') {
-    width: 220px;
-    min-width: 220px;
+    width: 260px;
+    min-width: 260px;
   }
 
   @include bp.respond-to('small') {
