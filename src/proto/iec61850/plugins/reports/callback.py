@@ -319,7 +319,7 @@ def _dispatch_report(rcb_ref: str, report) -> None:
     接收线程完成，而接收线程持锁解析报告时 C 层对象可能已被销毁，
     导致段错误崩溃。
     """
-    log.debug(f"_dispatch_report 进入: rcb_ref={rcb_ref}, report={report}")
+    log.info(f"_dispatch_report 进入: rcb_ref={rcb_ref}, report={report}")
 
     # 1. 锁内快速检查是否已注册，取出 on_report 回调
     with _CALLBACK_LOCK:
@@ -338,7 +338,7 @@ def _dispatch_report(rcb_ref: str, report) -> None:
         log.warning(f"_dispatch_report: 解析报告失败返回 None, rcb_ref={rcb_ref}")
         return
 
-    log.debug(
+    log.info(
         f"_dispatch_report: 解析成功, rcb_ref={rcb_ref}, "
         f"seq_num={entry.seq_num}, data_values_count={len(entry.data_values)}"
     )
@@ -352,7 +352,7 @@ def _dispatch_report(rcb_ref: str, report) -> None:
         info.data_cache.append(entry)
         if len(info.data_cache) > info.max_cache:
             info.data_cache.pop(0)
-        log.debug(f"_dispatch_report: 已写入缓存, rcb_ref={rcb_ref}, cache_size={len(info.data_cache)}")
+        log.info(f"_dispatch_report: 已写入缓存, rcb_ref={rcb_ref}, cache_size={len(info.data_cache)}")
 
     # 4. 锁外调用用户回调
     if on_report:
@@ -372,10 +372,10 @@ if HAS_IEC61850 and hasattr(iec61850, "RCBHandler"):
             self._rcb_ref = rcb_ref
 
         def trigger(self):
-            log.debug(f"RCBHandler.trigger 被调用: rcb_ref={self._rcb_ref}")
+            log.info(f"RCBHandler.trigger 被调用: rcb_ref={self._rcb_ref}")
             try:
                 cr = self._client_report
-                log.debug(f"RCBHandler.trigger report: rcb_ref={self._rcb_ref}, report={cr}")
+                log.info(f"RCBHandler.trigger report: rcb_ref={self._rcb_ref}, report={cr}")
                 _dispatch_report(self._rcb_ref, cr)
             except Exception as e:
                 log.error(f"RCBHandler.trigger 异常: {self._rcb_ref}, {e}", exc_info=True)

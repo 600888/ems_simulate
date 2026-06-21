@@ -253,9 +253,18 @@ class BrcbHandler:
             return False
 
         try:
-            if BrcbHandler._trigger_gi_direct(conn, rcb_ref):
-                return True
+            # 调试: 检查 RCBSubscriber 是否已订阅 (报告回调链是否就绪)
+            from .callback import ReportCallbackHandler
 
+            active = ReportCallbackHandler.is_active(rcb_ref)
+            log.info(f"BRCB trigger_gi 开始: rcb_ref={rcb_ref}, subscriber_active={active}")
+
+            # 不使用 _trigger_gi_direct (IedConnection_triggerGIReport) 快捷路径:
+            # 该 API 内部使用 IedConnection_installReportHandler 旧式回调链,
+            # 与本项目的 RCBSubscriber.subscribe() + RCBHandler 新式回调不兼容,
+            # 即使 GI 触发成功, 报告也无法到达 _dispatch_report, 导致报告数据
+            # 缓存为空。强制走 setRCBValues(performCheck=False) 路径, 确保报告
+            # 通过 RCBSubscriber 回调链正常到达 Python。
             nref = BrcbHandler._normalize_ref(rcb_ref)
             rcb = BrcbHandler._create_rcb_block(nref)
             if not rcb:
@@ -269,8 +278,16 @@ class BrcbHandler:
                     return False
 
                 # 设置 GI
+                # 注意: performCheck 必须为 False (异步发送, 不等待响应)。
+                # GI 是自复位 (self-clearing) 的写操作, 服务器收到后立即在同一条
+                # MMS 连接上生成 InformationReport 报告。若 performCheck=True,
+                # libIEC61850 会同步等待 SetRCBValuesResponse, 而接收线程在此期间
+                # 处理报告回调进入 Python (SWIG director), 与主线程的同步等待 +
+                # GIL 形成阻塞链, 导致进程卡死。
+                # 使用 performCheck=False 后, 写请求异步发出立即返回, 报告回调
+                # 可在接收线程上正常处理, 是否触达由报告回调本身判断。
                 iec61850.ClientReportControlBlock_setGI(rcb, True)
-                result = iec61850.IedConnection_setRCBValues(conn, rcb, BrcbHandler.RCB_GI, True)
+                result = iec61850.IedConnection_setRCBValues(conn, rcb, BrcbHandler.RCB_GI, False)
                 set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:

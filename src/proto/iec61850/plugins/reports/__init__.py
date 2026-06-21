@@ -440,11 +440,28 @@ class ReportsPlugin:
         """Enable a report and install its callback before RptEna=True."""
         rcb_type = self._infer_rcb_type(rcb_ref)
 
+        # 读取 RCB 的 RptId, 用于报告回调匹配。
+        # 参考 libiec61850 C 例子 client_example_reporting.c:
+        #   IedConnection_installReportHandler(con, "...EventsRCB",
+        #       ClientReportControlBlock_getRptId(rcb), ...);
+        # RCBSubscriber 需要正确的 RptId 才能将服务器推送的报告路由到
+        # 对应的 RCBHandler.trigger 回调。若传空字符串, 报告无法匹配,
+        # 回调不会被触发, 导致报告数据缓存为空。
+        rpt_id = ""
+        try:
+            detail = self.get_rcb_detail(rcb_ref)
+            if detail:
+                rpt_id = str(detail.get("rpt_id", "") or "")
+                log.info(f"_enable_report: 读取 RptId: {rcb_ref}, rpt_id={rpt_id!r}")
+        except Exception as e:
+            log.warning(f"_enable_report: 读取 RptId 失败: {rcb_ref}, {e}")
+
         callback_ok = ReportCallbackHandler.install(
             self._connection,
             rcb_ref,
             on_report=on_report,
             rcb_type=rcb_type,
+            rpt_id=rpt_id,
         )
         if not callback_ok:
             log.warning(f"install report callback failed: {rcb_ref}")
