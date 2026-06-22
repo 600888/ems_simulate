@@ -54,8 +54,9 @@
   </div>
   <script>
     var POLL_INTERVAL = 500;
-    var STARTUP_TIMEOUT = 10 * 1000; // 10 秒超时
+    var STARTUP_TIMEOUT = 30 * 1000; // 30 秒超时
     var BACKEND_URL = 'http://127.0.0.1:8991'; // 默认，Tauri 环境下动态获取
+    var backendUrlReady = Promise.resolve(BACKEND_URL);
 
     function showError(msg) {
       var statusEl = document.getElementById('status-text');
@@ -71,6 +72,30 @@
       if (statusEl) { statusEl.textContent = msg; }
     }
 
+    function backendHealthUrl() {
+      return BACKEND_URL.replace(/\/+$/, '') + '/api/health';
+    }
+
+    function redirectToBackend() {
+      window.location.href = BACKEND_URL;
+    }
+
+    function browserHealthReady() {
+      return fetch(backendHealthUrl(), { cache: 'no-store' })
+        .then(function (resp) {
+          if (!resp.ok) { return false; }
+
+          return resp.json().then(function (body) {
+            return !!(body && (body.code === 200 || (body.data && body.data.status === 'ok')));
+          }).catch(function () {
+            return resp.ok;
+          });
+        })
+        .catch(function (err) {
+          console.warn('[loading] browser health check failed:', err);
+          return false;
+        });
+    }
     // 非 Tauri 环境（浏览器直接打开），直接跳转
     if (!window.__TAURI_INTERNALS__) {
       window.location.href = BACKEND_URL;
@@ -85,10 +110,16 @@
 
       // 动态获取后端 URL（支持动态端口分配）
       try {
-        window.__TAURI__.core.invoke('get_backend_url').then(function (url) {
+        backendUrlReady = window.__TAURI__.core.invoke('get_backend_url').then(function (url) {
           if (url) { BACKEND_URL = url; }
-        }).catch(function () {});
-      } catch (e) {}
+          return BACKEND_URL;
+        }).catch(function (err) {
+          console.warn('[loading] invoke get_backend_url failed:', err);
+          return BACKEND_URL;
+        });
+      } catch (e) {
+        backendUrlReady = Promise.resolve(BACKEND_URL);
+      }
 
       // 关闭事件监听
       try {
@@ -111,38 +142,50 @@
         pollCount++;
         var elapsed = Date.now() - pollStart;
 
-        // 超时处理：给用户明确提示
-        if (elapsed > STARTUP_TIMEOUT) {
-          showError('启动超时，请重启应用或检查后台服务');
-          isPolling = false;
-          return;
-        }
+        var timedOut = elapsed > STARTUP_TIMEOUT;
 
-        try {
-          window.__TAURI__.core.invoke('is_backend_ready').then(function (ready) {
-            isPolling = false;
-            if (ready) {
-              window.location.href = BACKEND_URL;
-            } else {
-              if (pollCount === 1) {
-                showStatus('EMS模拟设备启动中...');
-              }
-              setTimeout(poll, POLL_INTERVAL);
-            }
-          }).catch(function (err) {
-            isPolling = false;
-            console.warn('[loading] invoke is_backend_ready failed:', err);
-            showStatus('正在连接服务 (' + Math.floor(elapsed / 1000) + 's)...');
-            setTimeout(poll, POLL_INTERVAL);
-          });
-        } catch (e) {
+        function finishCheck(ready) {
           isPolling = false;
-          console.warn('[loading] invoke call failed:', e);
+          if (ready) {
+            redirectToBackend();
+            return;
+          }
+
+          if (timedOut) {
+            showError('启动超时，请检查后台服务：' + backendHealthUrl());
+            return;
+          }
+
+          if (pollCount === 1) {
+            showStatus('EMS模拟设备启动中...');
+          } else {
+            showStatus('正在连接服务 (' + Math.floor(elapsed / 1000) + 's)...');
+          }
           setTimeout(poll, POLL_INTERVAL);
         }
-      }
 
-      poll();
+        browserHealthReady().then(function (healthReady) {
+          if (healthReady) {
+            finishCheck(true);
+            return;
+          }
+
+          try {
+            window.__TAURI__.core.invoke('is_backend_ready').then(function (ready) {
+              finishCheck(ready);
+            }).catch(function (err) {
+              console.warn('[loading] invoke is_backend_ready failed:', err);
+              finishCheck(false);
+            });
+          } catch (e) {
+            console.warn('[loading] invoke call failed:', e);
+            finishCheck(false);
+          }
+        });
+      }
+      backendUrlReady.then(function () {
+        poll();
+      });
     }
   </script>
 </body>

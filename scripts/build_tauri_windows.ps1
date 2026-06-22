@@ -186,13 +186,13 @@ if (-not $SkipBackend) {
 }
 
 # Build Tauri
-# 确保 binaries/ 目录中只有 triple 命名的 sidecar 文件，清理可能残留的旧文件
-WriteStep "清理 binaries/ 目录中非 triple 命名的文件..."
-Get-ChildItem -Path $BINARIES_DIR -Filter "*.exe" | Where-Object {
+# Keep only the target-triple sidecar required by Tauri externalBin.
+# Do not let runtime data/log leftovers enter the installer.
+WriteStep "Cleaning binaries directory, keeping only sidecar exe..."
+Get-ChildItem -Path $BINARIES_DIR -Force | Where-Object {
     $_.Name -ne "ems_simulate_backend-$SIDECAR_TARGET.exe"
-} | Remove-Item -Force -ErrorAction SilentlyContinue
-WriteOk "binaries/ 目录已清理"
-
+} | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+WriteOk "binaries directory cleaned"
 $tauriExe = Join-Path $TAURI_DIR "target\release\ems-simulate.exe"
 $tauriSrc = Join-Path $TAURI_DIR "src"
 $tauriCargo = Join-Path $TAURI_DIR "Cargo.toml"

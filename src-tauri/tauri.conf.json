@@ -27,7 +27,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:8991 http://127.0.0.1:8991; connect-src http://localhost:8991 http://127.0.0.1:8991 ws://localhost:8991 ws://127.0.0.1:8991; img-src 'self' data: http://localhost:8991 http://127.0.0.1:8991; style-src 'self' 'unsafe-inline' http://localhost:8991 http://127.0.0.1:8991;"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:* http://127.0.0.1:*; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; img-src 'self' data: http://localhost:* http://127.0.0.1:*; style-src 'self' 'unsafe-inline' http://localhost:* http://127.0.0.1:*;"
     }
   },
   "bundle": {
@@ -42,9 +42,6 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "resources": [
-      "binaries/*"
     ],
     "externalBin": [
       "binaries/ems_simulate_backend"
