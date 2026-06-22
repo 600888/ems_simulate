@@ -1,6 +1,9 @@
-# PyInstaller runtime hook: patch numpy 2.x compatibility for openpyxl
-# openpyxl 3.1.x references numpy.short/ushort/etc. which were removed in numpy 2.0
-import numpy
+# PyInstaller runtime hook: patch numpy 2.x compatibility for openpyxl.
+# numpy is optional in this project and may be excluded from the packaged app.
+try:
+    import numpy
+except ModuleNotFoundError:
+    numpy = None
 
 _ALIASES = {
     "short": "int16",
@@ -22,6 +25,7 @@ _ALIASES = {
     "integer": "integer",
 }
 
-for alias, target in _ALIASES.items():
-    if not hasattr(numpy, alias) and hasattr(numpy, target):
-        setattr(numpy, alias, getattr(numpy, target))
+if numpy is not None:
+    for alias, target in _ALIASES.items():
+        if not hasattr(numpy, alias) and hasattr(numpy, target):
+            setattr(numpy, alias, getattr(numpy, target))

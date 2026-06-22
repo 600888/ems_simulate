@@ -129,7 +129,8 @@ if (-not $SkipBackend) {
         (Join-Path $PROJECT_ROOT "start_back_end.py"),
         (Join-Path $PROJECT_ROOT "src"),
         (Join-Path $PROJECT_ROOT "config.ini"),
-        (Join-Path $PROJECT_ROOT "pyproject.toml")
+        (Join-Path $PROJECT_ROOT "pyproject.toml"),
+        (Join-Path $SCRIPT_DIR "rthook_numpy_compat.py")
     )
     if ((Test-Path $BE_SIDECAR_EXE) -and (IsUpToDate $BE_SIDECAR_EXE $beSources)) {
         WriteSkip "Python backend (sidecar) is up-to-date"
