@@ -548,9 +548,9 @@ async function loadRcbs() {
       syncCheckboxes();
       loadReportData();
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error('Load RCBs error:', err);
-    ElMessage.error(t('common.failed'));
+    // 错误提示已由 http.ts 拦截器统一弹出，此处不再重复
   } finally {
     loading.value = false;
   }
@@ -623,6 +623,9 @@ async function handleApplyConfig() {
       // 失败回滚勾选框到后端实际状态
       rptEnaModel.value = !!selectedRcb.value.rpt_ena;
     }
+  } catch {
+    // 错误提示由 http.ts 统一弹出，这里只回滚界面状态。
+    rptEnaModel.value = !!selectedRcb.value.rpt_ena;
   } finally {
     actionLoading.value = false;
   }
@@ -651,6 +654,8 @@ async function handleGi() {
     } else {
       ElMessage.error(t('report.giFailed'));
     }
+  } catch {
+    // 错误提示由 http.ts 统一弹出。
   } finally {
     giLoading.value = false;
   }

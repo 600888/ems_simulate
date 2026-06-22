@@ -97,32 +97,22 @@ export async function applyConfig(
   trgOps?: Partial<TrgOps>,
   optFields?: Partial<OptFields>,
 ): Promise<{ success: boolean; rcb?: RcbInfo }> {
-  try {
-    const result = await requestApi(REPORT_API.APPLY, 'post', {
-      channel_id: channelId,
-      rcb_ref: rcbRef,
-      rpt_ena: rptEna,
-      trg_ops: trgOps,
-      opt_fields: optFields,
-    });
-    return { success: result?.success === true, rcb: result?.rcb };
-  } catch (error) {
-    console.error('Error applying report config:', error);
-    return { success: false };
-  }
+  const result = await requestApi(REPORT_API.APPLY, 'post', {
+    channel_id: channelId,
+    rcb_ref: rcbRef,
+    rpt_ena: rptEna,
+    trg_ops: trgOps,
+    opt_fields: optFields,
+  });
+  return { success: result?.success === true, rcb: result?.rcb };
 }
 
 export async function triggerGi(channelId: number, rcbRef: string): Promise<boolean> {
-  try {
-    const result = await requestApi(REPORT_API.GI, 'post', {
-      channel_id: channelId,
-      rcb_ref: rcbRef,
-    });
-    return result?.success === true;
-  } catch (error) {
-    console.error('Error triggering GI:', error);
-    return false;
-  }
+  const result = await requestApi(REPORT_API.GI, 'post', {
+    channel_id: channelId,
+    rcb_ref: rcbRef,
+  });
+  return result?.success === true;
 }
 
 export async function getReportData(

@@ -92,7 +92,7 @@ def mms_value_to_python(mms_value, iec_type: str = IEC_TYPE_UNKNOWN) -> Any:
                 return str(mms_value)
 
         # BITSTRING 类型 (状态/控制值)
-        elif mms_type in (iec61850.MMS_BITSTRING,):
+        elif mms_type in (iec61850.MMS_BIT_STRING,):
             try:
                 return iec61850.MmsValue_getBitStringAsInteger(mms_value)
             except Exception:
@@ -112,9 +112,29 @@ def mms_value_to_python(mms_value, iec_type: str = IEC_TYPE_UNKNOWN) -> Any:
             except Exception:
                 return str(mms_value)
 
-        # ARRAY / STRUCTURE 类型 (递归解析)
-        elif mms_type in (iec61850.MMS_ARRAY, iec61850.MMS_STRUCTURE):
+        # ARRAY 类型 (递归解析为列表)
+        elif mms_type in (iec61850.MMS_ARRAY,):
             try:
+                size = iec61850.MmsValue_getArraySize(mms_value)
+                result = []
+                for i in range(size):
+                    el = iec61850.MmsValue_getElement(mms_value, i)
+                    if el:
+                        result.append(mms_value_to_python(el, IEC_TYPE_UNKNOWN))
+                return result
+            except Exception:
+                return str(mms_value)
+
+        # STRUCTURE 类型: 尝试用 toString 获取可读字符串表示
+        # libIEC61850 的 MmsValue_toString 对 STRUCTURE 可以输出结构化的字符串，
+        # 比递归展开为列表更有可读性（保留子元素语义信息）
+        elif mms_type in (iec61850.MMS_STRUCTURE,):
+            try:
+                # 优先使用 toString 获取结构化的字符串表示
+                raw_str = iec61850.MmsValue_toString(mms_value)
+                if raw_str:
+                    return str(raw_str)
+                # 回退：递归解析为列表
                 size = iec61850.MmsValue_getArraySize(mms_value)
                 result = []
                 for i in range(size):

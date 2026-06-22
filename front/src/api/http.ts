@@ -5,6 +5,7 @@
 
 import axios from 'axios';
 import { ElMessage } from 'element-plus';
+import 'element-plus/es/components/message/style/css';
 import { HTTP_TIMEOUT, ERROR_DEBOUNCE_MS } from '@/constants';
 
 const API_BASE_URL = import.meta.env.VUE_APP_API_BASE || '/';
@@ -31,6 +32,48 @@ function showErrorOnce(message: string) {
   ElMessage.error(message);
 }
 
+export function getApiErrorMessage(error: unknown, fallback = '请求失败'): string {
+  if (axios.isAxiosError(error)) {
+    const respData = error.response?.data;
+
+    if (respData) {
+      if (typeof respData === 'object') {
+        const responseMessage = (respData as { message?: unknown; detail?: unknown }).message
+          ?? (respData as { message?: unknown; detail?: unknown }).detail;
+        if (typeof responseMessage === 'string' && responseMessage.trim()) {
+          return responseMessage;
+        }
+      }
+
+      if (typeof respData === 'string' && respData.trim()) {
+        try {
+          const parsed = JSON.parse(respData);
+          if (typeof parsed?.message === 'string' && parsed.message.trim()) {
+            return parsed.message;
+          }
+          if (typeof parsed?.detail === 'string' && parsed.detail.trim()) {
+            return parsed.detail;
+          }
+        } catch {
+          return respData;
+        }
+      }
+    }
+
+    if (error.response?.status) {
+      return `${fallback} (${error.response.status})`;
+    }
+    if (error.message) {
+      return `网络请求失败: ${error.message}`;
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+}
 // 响应拦截器
 instance.interceptors.response.use(
   (response) => {
@@ -43,14 +86,9 @@ instance.interceptors.response.use(
     return response;
   },
   (error) => {
-    let message = '网络请求失败';
-    if (axios.isAxiosError(error)) {
-      message = error.response?.data?.message || error.message;
-    } else if (error instanceof Error) {
-      message = error.message;
-    }
+    const message = getApiErrorMessage(error, '网络请求失败');
     showErrorOnce(message);
-    return Promise.reject(error);
+    return Promise.reject(new Error(message));
   },
 );
 
