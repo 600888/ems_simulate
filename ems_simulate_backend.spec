@@ -5,7 +5,7 @@ a = Analysis(
     ['start_back_end.py'],
     pathex=[],
     binaries=[],
-    datas=[('config.ini', '.'), ('www', 'www'), ('data', 'data')],
+    datas=[('config.ini', '.'), ('www', 'www')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

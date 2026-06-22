@@ -103,7 +103,7 @@ fn try_spawn(data_dir: &str) -> Option<Child> {
     let binary_path = find_sidecar()?;
     let port = MSIX_PORT.to_string();
 
-    let log_dir = std::path::Path::new(data_dir).join("logs");
+    let log_dir = std::path::Path::new(data_dir).join("log");
     let _ = std::fs::create_dir_all(&log_dir);
 
     let stdout_file = File::create(log_dir.join("backend_stdout.log")).ok();
@@ -144,7 +144,7 @@ pub fn spawn_backend(app: &AppHandle) -> String {
     *MSIX_READY.lock().unwrap() = false;
 
     let data_dir = if let Ok(dir) = app.path().app_local_data_dir() {
-        for sub in &["", "data", "config", "upload", "plan", "logs"] {
+        for sub in &["", "data", "config", "upload", "plan", "log"] {
             let _ = std::fs::create_dir_all(dir.join(sub));
         }
         dir.to_string_lossy().to_string()

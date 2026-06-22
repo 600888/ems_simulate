@@ -25,7 +25,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _get_root_dir(cli_root: str | None) -> Path:
-    """确定数据根目录：环境变量 > CLI 参数 > 脚本所在目录"""
+    """Resolve the runtime data root before importing the FastAPI app."""
     if env_root := os.environ.get("EMS_ROOT_DIR"):
         return Path(env_root)
     if cli_root:
@@ -33,15 +33,29 @@ def _get_root_dir(cli_root: str | None) -> Path:
     return Path(__file__).resolve().parent
 
 
+def _bundled_path(name: str) -> Path:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / name
+    return Path(__file__).resolve().parent / name
+
+
+def _prepare_runtime_root(root_dir: Path) -> None:
+    root_dir.mkdir(parents=True, exist_ok=True)
+    for sub in ("data", "log", "config", "upload", "plan"):
+        (root_dir / sub).mkdir(parents=True, exist_ok=True)
+
+    config_target = root_dir / "config.ini"
+    config_source = _bundled_path("config.ini")
+    if not config_target.exists() and config_source.exists():
+        config_target.write_bytes(config_source.read_bytes())
+
+
 if __name__ == "__main__":
     args = _parse_args()
     root_dir = _get_root_dir(args.root_dir)
+    _prepare_runtime_root(root_dir)
 
-    # 创建数据子目录
-    for sub in ("data", "logs", "config", "upload", "plan"):
-        (root_dir / sub).mkdir(parents=True, exist_ok=True)
-
-    # 延迟导入，避免 CLI 解析前加载 FastAPI
+    # Late imports keep CLI parsing and runtime root setup deterministic.
     from fastapi.staticfiles import StaticFiles
     import uvicorn
 

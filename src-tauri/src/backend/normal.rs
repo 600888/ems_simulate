@@ -6,7 +6,6 @@ use std::time::Duration;
 use std::os::windows::process::CommandExt;
 
 use tauri::AppHandle;
-use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
 
@@ -88,19 +87,18 @@ fn backend_base_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
 }
 
-fn ensure_data_dir(app: &AppHandle) -> String {
-    if let Ok(dir) = app.path().app_local_data_dir() {
-        for sub in &["", "data", "config", "upload", "plan", "logs"] {
-            let _ = std::fs::create_dir_all(dir.join(sub));
-        }
-        return dir.to_string_lossy().to_string();
+fn ensure_data_dir(_app: &AppHandle) -> String {
+    let dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|parent| parent.to_path_buf()))
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    for sub in &["", "data", "config", "upload", "plan", "log"] {
+        let _ = std::fs::create_dir_all(dir.join(sub));
     }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            return parent.to_string_lossy().to_string();
-        }
-    }
-    ".".to_string()
+
+    dir.to_string_lossy().to_string()
 }
 
 fn find_project_root() -> Option<std::path::PathBuf> {
@@ -146,7 +144,7 @@ fn try_spawn_python_direct(port: u16) -> Option<Child> {
     let project_root = find_project_root()?;
     let data_dir = project_root.to_string_lossy().to_string();
 
-    for sub in &["data", "logs", "config", "upload", "plan"] {
+    for sub in &["data", "log", "config", "upload", "plan"] {
         let _ = std::fs::create_dir_all(format!("{data_dir}/{sub}"));
     }
 

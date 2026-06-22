@@ -157,8 +157,7 @@ if (-not $SkipBackend) {
             "--specpath", $BUILD_DIR,
             "--runtime-hook", $rthookNumpy,
             "--add-data", "$ABS\config.ini;.",
-            "--add-data", "$ABS\www;www",
-            "--add-data", "$ABS\data;data"
+            "--add-data", "$ABS\www;www"
         )
         $hidden = @(
             "uvicorn.logging", "uvicorn.loops", "openpyxl", "uvicorn.loops.auto",
