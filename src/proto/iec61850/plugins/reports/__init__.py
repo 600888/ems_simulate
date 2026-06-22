@@ -456,13 +456,34 @@ class ReportsPlugin:
         # 对应的 RCBHandler.trigger 回调。若传空字符串, 报告无法匹配,
         # 回调不会被触发, 导致报告数据缓存为空。
         rpt_id = ""
+        data_set_ref = ""
         try:
             detail = self.get_rcb_detail(rcb_ref)
             if detail:
                 rpt_id = str(detail.get("rpt_id", "") or "")
+                data_set_ref = str(detail.get("data_set_ref", "") or "")
                 log.info(f"_enable_report: 读取 RptId: {rcb_ref}, rpt_id={rpt_id!r}")
         except Exception as e:
             log.warning(f"_enable_report: 读取 RptId 失败: {rcb_ref}, {e}")
+
+        # 查询数据集成员引用列表，用于报告数据解析时将 data[i] 映射为具体引用
+        dataset_members: list[str] = []
+        if data_set_ref:
+            try:
+                datasets = getattr(self._client, "datasets", None) if self._client else None
+                if datasets:
+                    members = datasets.browse_dataset_directory(data_set_ref)
+                    if members:
+                        dataset_members = [
+                            str(m.get("ref", m.get("fcda_ref", "")))
+                            for m in members
+                            if m.get("ref") or m.get("fcda_ref")
+                        ]
+                        log.info(
+                            f"_enable_report: 获取数据集成员引用成功: ds={data_set_ref}, count={len(dataset_members)}"
+                        )
+            except Exception as e:
+                log.warning(f"_enable_report: 获取数据集成员失败: {data_set_ref}, {e}")
 
         callback_ok = ReportCallbackHandler.install(
             self._connection,
@@ -470,6 +491,7 @@ class ReportsPlugin:
             on_report=on_report,
             rcb_type=rcb_type,
             rpt_id=rpt_id,
+            dataset_members=dataset_members,
         )
         if not callback_ok:
             log.warning(f"install report callback failed: {rcb_ref}")

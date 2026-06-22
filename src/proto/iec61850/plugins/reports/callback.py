@@ -42,6 +42,7 @@ class _CallbackInfo:
     enabled_at: str = ""
     mms_ref: str = ""
     rpt_id: str = ""
+    dataset_members: list[str] = field(default_factory=list)  # 数据集成员引用列表，用于索引到引用的映射
 
 
 def _normalize_ref(rcb_ref: str, rcb_type: str = "") -> str:
@@ -198,6 +199,7 @@ class ReportCallbackHandler:
         max_cache: int = 1000,
         rpt_id: str = "",
         rcb_type: str = "",
+        dataset_members: list[str] | None = None,
     ) -> bool:
         """安装报告回调
 
@@ -207,6 +209,7 @@ class ReportCallbackHandler:
             on_report: 可选 Python 回调，收到报告时调用
             max_cache: 最大缓存条数
             rpt_id: 报告 ID (可空, 空表示接受任意)
+            dataset_members: 数据集成员引用列表，用于报告数据引用映射
 
         Returns:
             bool 是否成功
@@ -256,6 +259,7 @@ class ReportCallbackHandler:
                     enabled_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     mms_ref=nref,
                     rpt_id=rpt_id or "",
+                    dataset_members=dataset_members or [],
                 )
                 log.info(f"报告回调已安装: {rcb_ref} (mms_ref={nref})")
                 return True
@@ -463,7 +467,7 @@ def _dispatch_report(rcb_ref: str, report) -> None:
     """
     log.info(f"_dispatch_report 进入: rcb_ref={rcb_ref}, report={report}")
 
-    # 1. 锁内快速检查是否已注册，取出 on_report 回调
+    # 1. 锁内快速检查是否已注册，取出 dataset_members 和 on_report 回调
     with _CALLBACK_LOCK:
         info = _CALLBACK_REGISTRY.get(rcb_ref)
         if not info:
@@ -473,9 +477,10 @@ def _dispatch_report(rcb_ref: str, report) -> None:
             )
             return
         on_report = info.on_report
+        dataset_members = info.dataset_members
 
     # 2. 锁外解析报告 (耗时 C 层操作，不持锁)
-    entry = _parse_client_report(report, rcb_ref)
+    entry = _parse_client_report(report, rcb_ref, dataset_members)
     if entry is None:
         log.warning(f"_dispatch_report: 解析报告失败返回 None, rcb_ref={rcb_ref}")
         return
@@ -532,8 +537,14 @@ else:
             self._rcb_ref = rcb_ref
 
 
-def _parse_client_report(report, rcb_ref: str) -> ReportDataEntry | None:
-    """Parse ClientReport into a cacheable ReportDataEntry."""
+def _parse_client_report(report, rcb_ref: str, dataset_members: list[str] | None = None) -> ReportDataEntry | None:
+    """Parse ClientReport into a cacheable ReportDataEntry.
+
+    Args:
+        report: ClientReport 对象
+        rcb_ref: RCB 引用路径
+        dataset_members: 数据集成员引用列表，用于将 data[i] 映射为具体引用路径
+    """
     try:
         entry = ReportDataEntry()
 
@@ -608,9 +619,22 @@ def _parse_client_report(report, rcb_ref: str) -> ReportDataEntry | None:
                 if element is None:
                     continue
 
-                ref_key = f"data[{i}]"
+                # 优先使用数据引用 (DataReference) 作为键名
+                data_ref = _get_data_reference(report, i)
+                if data_ref:
+                    ref_key = data_ref
+                elif dataset_members and i < len(dataset_members):
+                    # 其次使用数据集成员引用
+                    ref_key = dataset_members[i]
+                else:
+                    # 最后回退到 data[i] 格式
+                    ref_key = f"data[{i}]"
+
                 entry.data_values[ref_key] = mms_value_to_python(element)
-                entry.reason_codes[ref_key] = "gi"
+
+                # 获取正确的 reason code
+                reason = _get_reason_for_inclusion(report, i)
+                entry.reason_codes[ref_key] = reason
 
             if array_size > parse_count:
                 entry.data_values["__truncated__"] = f"{array_size - parse_count} values omitted"
@@ -640,7 +664,7 @@ def _get_reason_for_inclusion(report, index: int) -> str:
             }
             return reason_map.get(reason_value, f"code={reason_value}")
     except Exception:
-        pass
+        log.error(f"get_reason_for_inclusion failed: {report}, {index}")
     return "unknown"
 
 
@@ -651,5 +675,5 @@ def _get_data_reference(report, index: int) -> str:
             if ref:
                 return str(ref)
     except Exception:
-        pass
+        log.error(f"get_data_reference failed: {report}, {index}")
     return ""
