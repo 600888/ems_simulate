@@ -42,7 +42,7 @@ class BrcbHandler:
         if not rcb_ref or "." not in rcb_ref or "/" not in rcb_ref:
             return rcb_ref
         ln_part, rcb_name = rcb_ref.rsplit(".", 1)
-        if rcb_name in ("BR", "RP"):  # 已含 FC 段
+        if ln_part.endswith(".BR") or ln_part.endswith(".RP"):
             return rcb_ref
         return f"{ln_part}.BR.{rcb_name}"
 
@@ -56,7 +56,7 @@ class BrcbHandler:
         if "." not in rcb_ref:
             return rcb_ref
         ln_part, rcb_name = rcb_ref.rsplit(".", 1)
-        if rcb_name in ("BR", "RP"):
+        if ln_part.endswith(".BR") or ln_part.endswith(".RP"):
             return rcb_ref.replace(".", "$")
         return f"{ln_part}$BR${rcb_name}"
 

@@ -7,6 +7,7 @@
 from collections.abc import Callable
 import datetime
 import re
+import threading
 import time
 from typing import Any, Optional
 
@@ -44,6 +45,7 @@ class ReportsPlugin:
         self._initialized = False
         self._rcb_detail_cache: dict[str, dict[str, Any]] = {}
         self._rcb_type_map: dict[str, str] = {}  # ref -> "BRCB"/"URCB", 发现时填充
+        self._operation_lock = threading.RLock()
 
     @property
     def name(self) -> str:
@@ -357,44 +359,79 @@ class ReportsPlugin:
         - rpt_ena 不变且当前禁用: 仅写入 TrgOps/OptFields
         - rpt_ena 不变且当前使能: 跳过 (使能时无法修改属性)
 
-        Args:
-            rcb_ref: RCB 引用路径
-            rpt_ena: 报告使能目标状态
-            trg_ops: 触发选项字典
-            opt_fields: 可选字段字典
-            on_report: 报告接收回调 (可选)
-
-        Returns:
-            bool 是否成功
+        如果底层 MMS 会话已经半失效，第一次 RCB 读写可能返回 error=3。
+        这种情况下清理旧报告回调并重建连接后重试一次，等价于用户手动重启客户端。
         """
+        with self._operation_lock:
+            if self._apply_config_once(rcb_ref, rpt_ena, trg_ops, opt_fields, on_report):
+                return True
+
+            if not self._recover_connection_for_report_operation(rcb_ref):
+                return False
+
+            return self._apply_config_once(rcb_ref, rpt_ena, trg_ops, opt_fields, on_report)
+
+    def _apply_config_once(
+        self,
+        rcb_ref: str,
+        rpt_ena: bool,
+        trg_ops: dict[str, bool] | None = None,
+        opt_fields: dict[str, bool] | None = None,
+        on_report: Callable[[ReportDataEntry], None] | None = None,
+    ) -> bool:
         if not self._connection or not self._connection.is_connected:
             log.warning(f"应用报告配置失败: 连接不可用, ref={rcb_ref}")
             return False
 
-        # 读取当前 RptEna 状态
         current_rpt_ena = False
         detail = self.get_rcb_detail(rcb_ref)
         if detail:
             current_rpt_ena = bool(detail.get("rpt_ena", False))
 
         if rpt_ena != current_rpt_ena:
-            # RptEna 状态变化: 仅设置开关，不碰 TrgOps/OptFields
             if rpt_ena:
                 return self._enable_report(rcb_ref, on_report=on_report)
-            else:
-                return self._disable_report(rcb_ref)
+            return self._disable_report(rcb_ref)
 
-        # RptEna 状态不变: 仅写入 TrgOps/OptFields
         if current_rpt_ena:
-            # 报告使能时无法修改属性，跳过
             log.info(f"报告已使能，跳过配置写入: {rcb_ref}")
             return True
 
-        # 报告禁用时写入 TrgOps/OptFields
         if trg_ops is not None or opt_fields is not None:
             return self._set_config(rcb_ref, trg_ops, opt_fields)
 
         return True
+
+    def _recover_connection_for_report_operation(self, rcb_ref: str) -> bool:
+        """报告 RCB 操作失败后重建 MMS 连接并清理旧回调。"""
+        if not self._connection:
+            return False
+
+        log.warning(f"报告配置失败，尝试重建 IEC61850 客户端连接后重试: {rcb_ref}")
+        try:
+            ReportCallbackHandler.shutdown_all(self._connection)
+        except Exception as e:
+            log.debug(f"报告重连前清理回调失败 (非致命): {rcb_ref}, {e}")
+
+        try:
+            reconnect = getattr(self._connection, "try_reconnect", None)
+            if callable(reconnect):
+                ok = reconnect(max_retries=1, interval=0.2)
+            else:
+                with contextlib.suppress(Exception):
+                    self._connection.disconnect()
+                ok = self._connection.connect(auto_discover=False)
+        except Exception as e:
+            log.warning(f"报告配置重连异常: {rcb_ref}, {e}")
+            return False
+
+        if ok:
+            self._rcb_detail_cache.clear()
+            log.info(f"报告配置重连成功，准备重试: {rcb_ref}")
+            return True
+
+        log.warning(f"报告配置重连失败: {rcb_ref}")
+        return False
 
     def _set_config(
         self,

@@ -5,6 +5,8 @@
 """
 
 import contextlib
+import threading
+import time
 
 from ..defs.constants import FC_MX, HAS_IEC61850
 from ..log import log
@@ -32,6 +34,10 @@ class Iec61850Connection:
         self._connection = None
         self._is_connected = False
         self._discovered_lds: list[str] = []
+        self._lock = threading.RLock()
+        self._discover_callback = None
+        self._last_alive_check = 0.0
+        self._alive_check_interval = 5.0
 
     @property
     def connection(self):
@@ -51,48 +57,106 @@ class Iec61850Connection:
         """
         from pyiec61850 import pyiec61850 as iec61850
 
-        try:
-            self._connection = iec61850.IedConnection_create()
-            result = iec61850.IedConnection_connect(self._connection, self.ip, self.port)
+        with self._lock:
+            if discover_callback is not None:
+                self._discover_callback = discover_callback
 
-            error = result
-            if isinstance(result, (list, tuple)):
-                error = result[1]
+            try:
+                self._connection = iec61850.IedConnection_create()
+                result = iec61850.IedConnection_connect(self._connection, self.ip, self.port)
 
-            if error == iec61850.IED_ERROR_OK:
-                self._is_connected = True
-                log.info(f"IEC 61850 连接已建立: {self.ip}:{self.port}")
+                error = result
+                if isinstance(result, (list, tuple)):
+                    error = result[1]
 
-                if not self.model_name:
-                    self._infer_model_name()
+                if error == iec61850.IED_ERROR_OK:
+                    self._is_connected = True
+                    self._last_alive_check = time.monotonic()
+                    log.info(f"IEC 61850 连接已建立: {self.ip}:{self.port}")
 
-                if auto_discover and discover_callback:
-                    discover_callback()
+                    if not self.model_name:
+                        self._infer_model_name()
 
-                return True
-            else:
-                log.error(f"IEC 61850 连接失败, 错误码: {error}")
+                    callback = discover_callback or self._discover_callback
+                    if auto_discover and callback:
+                        callback()
+
+                    return True
+                else:
+                    log.error(f"IEC 61850 连接失败, 错误码: {error}")
+                    self._is_connected = False
+                    self._cleanup_connection()
+                    return False
+            except Exception as e:
+                log.error(f"IEC 61850 连接异常: {e}")
                 self._is_connected = False
                 self._cleanup_connection()
                 return False
-        except Exception as e:
-            log.error(f"IEC 61850 连接异常: {e}")
-            self._is_connected = False
-            self._cleanup_connection()
-            return False
 
     def disconnect(self):
         """断开连接"""
-        if self._connection:
-            from pyiec61850 import pyiec61850 as iec61850
+        with self._lock:
+            if self._connection:
+                from pyiec61850 import pyiec61850 as iec61850
 
-            with contextlib.suppress(Exception):
-                iec61850.IedConnection_close(self._connection)
-            with contextlib.suppress(Exception):
-                iec61850.IedConnection_destroy(self._connection)
-            self._connection = None
+                with contextlib.suppress(Exception):
+                    iec61850.IedConnection_close(self._connection)
+                with contextlib.suppress(Exception):
+                    iec61850.IedConnection_destroy(self._connection)
+                self._connection = None
+                self._is_connected = False
+                self._last_alive_check = 0.0
+                log.info("IEC 61850 连接已断开")
+
+    def check_alive(self, force: bool = False) -> bool:
+        """探测底层 MMS Association 是否仍可用。
+
+        `_is_connected` 只表示曾经连接成功，不能发现长时间运行后的半断开。
+        这里用轻量的 LD 列表读取作为心跳，失败时标记连接失效。
+        """
+        if not self._connection or not self._is_connected:
+            return False
+
+        now = time.monotonic()
+        if not force and now - self._last_alive_check < self._alive_check_interval:
+            return True
+
+        from pyiec61850 import pyiec61850 as iec61850
+
+        with self._lock:
+            if not self._connection or not self._is_connected:
+                return False
+            try:
+                result = iec61850.IedConnection_getLogicalDeviceList(self._connection)
+                if isinstance(result, (list, tuple)):
+                    error = result[1] if len(result) > 1 else iec61850.IED_ERROR_OK
+                else:
+                    error = iec61850.IED_ERROR_OK if result is not None else -1
+
+                if error == iec61850.IED_ERROR_OK:
+                    self._last_alive_check = now
+                    return True
+
+                log.warning(f"IEC 61850 MMS 心跳失败，标记连接失效: error={error}")
+            except Exception as e:
+                log.warning(f"IEC 61850 MMS 心跳异常，标记连接失效: {e}")
+
             self._is_connected = False
-            log.info("IEC 61850 连接已断开")
+            return False
+
+    def ensure_connected(self) -> bool:
+        """确保连接可用；必要时自动重连。"""
+        if self.check_alive(force=False):
+            return True
+        return self.try_reconnect(max_retries=1, interval=0.2, discover_callback=self._discover_callback)
+
+    def reconnect_if_unhealthy(self, reason: str = "") -> bool:
+        """一次 MMS 操作失败后，强制探活；若不健康则重连。"""
+        if self.check_alive(force=True):
+            return False
+        if reason:
+            log.warning(f"IEC 61850 MMS 操作失败且心跳不可用，尝试重连: {reason}")
+        return self.try_reconnect(max_retries=1, interval=0.2, discover_callback=self._discover_callback)
 
     def try_reconnect(self, max_retries: int = 3, interval: float = 5.0, discover_callback=None) -> bool:
         """自动重连 (指数退避)
@@ -108,6 +172,12 @@ class Iec61850Connection:
             wait = interval * (2**attempt)
             log.info(f"重连尝试 {attempt + 1}/{max_retries}, 等待 {wait:.1f}s...")
             time.sleep(wait)
+
+            # 重建底层连接前先清理报告回调，避免旧 C 回调继续持有失效连接。
+            with contextlib.suppress(Exception):
+                from ..plugins.reports.callback import ReportCallbackHandler
+
+                ReportCallbackHandler.shutdown_all(self)
 
             self.disconnect()
             if self.connect(auto_discover=True, discover_callback=discover_callback):

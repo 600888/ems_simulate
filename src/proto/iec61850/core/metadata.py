@@ -232,6 +232,24 @@ class MetadataReader:
         fc: str = "",
     ) -> MetadataInfo:
         """读取 DO 的完整元数据 (品质 + 时标)"""
+        if not connection or not connection.ensure_connected():
+            return MetadataInfo()
+
+        info = self._read_metadata_once(connection, do_ref, fc=fc)
+        if info.is_readable:
+            return info
+
+        if connection.reconnect_if_unhealthy(f"read metadata {do_ref}"):
+            return self._read_metadata_once(connection, do_ref, fc=fc)
+        return info
+
+    def _read_metadata_once(
+        self,
+        connection: Iec61850Connection,
+        do_ref: str,
+        *,
+        fc: str = "",
+    ) -> MetadataInfo:
         q_info = self.read_quality(connection, do_ref, fc=fc)
         t_info = self.read_timestamp(connection, do_ref, fc=fc)
         return MetadataInfo(quality=q_info, timestamp=t_info)

@@ -566,10 +566,19 @@ class DataSetsPlugin:
         Returns:
             {fcda_ref: value} 字典
         """
-        if not self._connection or not self._connection.is_connected:
+        if not self._connection or not self._connection.ensure_connected():
             log.warning(f"Read DataSet values skipped: connection is not active, ref={dataset_ref}")
             return {}
 
+        values = self._read_dataset_values_once(dataset_ref)
+        if values:
+            return values
+
+        if self._connection.reconnect_if_unhealthy(f"read dataset {dataset_ref}"):
+            return self._read_dataset_values_once(dataset_ref)
+        return values
+
+    def _read_dataset_values_once(self, dataset_ref: str) -> dict[str, Any]:
         # 直接走 MMS 层原语: MmsConnection_readNamedVariableListValues
         # 不使用 IedConnection_readDataSetValues, 因为 pyiec61850 的 SWIG wrapper
         # 对 ClientDataSet 参数应用了 NULL-safety typemap, 拒绝 None 作为

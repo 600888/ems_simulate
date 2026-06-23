@@ -299,8 +299,7 @@ class Iec61850Reader:
             address: 测点地址
             fc: 功能约束 (为空时自动推断)
         """
-        conn = self._connection.connection
-        if not conn or not self._connection.is_connected:
+        if not self._connection.ensure_connected():
             return None
 
         addr_str = str(address)
@@ -308,11 +307,24 @@ class Iec61850Reader:
         fc_val = self._resolve_fc(addr_str, fc)
         iec_type = self._resolve_iec_type(addr_str)
 
+        value = self._read_once(addr_str, ref, fc_val, iec_type)
+        if value is not None:
+            return value
+
+        if self._connection.reconnect_if_unhealthy(f"read {ref}"):
+            value = self._read_once(addr_str, ref, fc_val, iec_type)
+        return value
+
+    def _read_once(self, address: str, ref: str, fc_val, iec_type: str) -> Any:
+        conn = self._connection.connection
+        if not conn or not self._connection.is_connected:
+            return None
+
         strategy = READ_STRATEGIES.get(iec_type, READ_STRATEGIES[IEC_TYPE_UNKNOWN])
         try:
             return strategy.read(conn, ref, fc_val)
         except Exception as e:
-            log.error(f"IEC61850 读取异常: address={address}, error={e}")
+            log.error(f"IEC61850 读取异常: address={address}, ref={ref}, error={e}")
             return None
 
     def read_batch(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[str, Any]:
@@ -324,11 +336,21 @@ class Iec61850Reader:
             addresses: 测点地址列表
             fc_map: 地址 -> FC 的映射 (可选)
         """
-        conn = self._connection.connection
-        if not conn or not self._connection.is_connected:
+        if not addresses or not self._connection.ensure_connected():
             return {}
 
-        # 按 iec_type 分组
+        groups = self._build_read_groups(addresses, fc_map)
+        results = self._read_groups_once(groups)
+        if len(results) == len(addresses):
+            return results
+
+        if self._connection.reconnect_if_unhealthy(f"batch read {len(addresses)} points, got {len(results)} values"):
+            retry_results = self._read_groups_once(groups)
+            if retry_results:
+                return retry_results
+        return results
+
+    def _build_read_groups(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[str, list]:
         groups: dict[str, list] = {}
         for addr in addresses:
             addr_str = str(addr)
@@ -342,12 +364,17 @@ class Iec61850Reader:
             if iec_type not in groups:
                 groups[iec_type] = []
             groups[iec_type].append((addr_str, ref, fc_val, iec_type))
+        return groups
+
+    def _read_groups_once(self, groups: dict[str, list]) -> dict[str, Any]:
+        conn = self._connection.connection
+        if not conn or not self._connection.is_connected:
+            return {}
 
         results: dict[str, Any] = {}
         for iec_type, items in groups.items():
             strategy = READ_STRATEGIES.get(iec_type, READ_STRATEGIES[IEC_TYPE_UNKNOWN])
             strategy.read_batch(conn, items, results)
-
         return results
 
     def _build_ref(self, address: str) -> str:
