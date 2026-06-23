@@ -1,4 +1,4 @@
-/**
+﻿/**
  * API 路径常量
  * 集中管理所有后端 API 路径，避免在各处硬编码
  * 所有接口均使用 POST 方法
@@ -160,6 +160,7 @@ export const REPORT_API = {
   APPLY: '/api/channels/iec61850/reports/apply',
   GI: '/api/channels/iec61850/reports/gi',
   DATA: '/api/channels/iec61850/reports/data',
+  DATA_TREE: '/api/channels/iec61850/reports/data-tree',
   DETAIL: '/api/channels/iec61850/reports/detail',
   ACTIVE: '/api/channels/iec61850/reports/active',
   REFRESH: '/api/channels/iec61850/reports/refresh',
@@ -183,3 +184,4 @@ export const SCL_API = {
   FILE_DIFF: '/api/scl/diff',           // POST
   FILE_IED_LIST: '/api/scl/ied-list',   // GET ?filename=
 } as const;
+

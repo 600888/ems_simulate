@@ -1,4 +1,4 @@
-export default {
+﻿export default {
   common: {
     cancel: 'Cancel',
     confirm: 'Confirm',
@@ -847,3 +847,5 @@ export default {
     autoRefresh: 'Auto Refresh',
   },
 }
+
+

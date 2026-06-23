@@ -1,4 +1,4 @@
-/**
+﻿/**
  * IEC 61850 Reports API 调用层
  */
 
@@ -29,7 +29,7 @@ export interface OptFields {
 export interface RcbInfo {
   name: string;
   ref: string;
-  rcb_type: string;        // "BRCB" | "URCB"
+  rcb_type: string;
   ld: string;
   ln: string;
   rpt_id: string;
@@ -41,7 +41,7 @@ export interface RcbInfo {
   sq_num: number;
   purge_buf: boolean;
   entry_id: string | null;
-  time_of_entry: number | null;
+  time_of_entry: string | number | null;
   owner: string;
   resv: boolean;
   trg_ops: TrgOps;
@@ -66,6 +66,36 @@ export interface ReportDataResponse {
   total: number;
 }
 
+export interface ReportEntrySummary {
+  entry_key: string;
+  index: number;
+  seq_num: number | null;
+  time_stamp: string;
+  received_at: string;
+  data_set: string;
+  rpt_id: string;
+  conf_rev: number | null;
+  entry_id: string | null;
+  value_count: number;
+}
+
+export interface ReportTreeNode {
+  id: string;
+  label: string;
+  node_type: 'ld' | 'ln' | 'do' | 'da' | 'bda' | 'group' | 'value' | string;
+  fc?: string | null;
+  reason?: string | null;
+  value?: any;
+  raw_ref?: string | null;
+  children?: ReportTreeNode[];
+}
+
+export interface ReportDataTreeResponse {
+  rcb_ref: string;
+  entry: ReportEntrySummary | null;
+  tree_items: ReportTreeNode[];
+}
+
 export interface ActiveReport {
   rcb_ref: string;
   enabled_since: string;
@@ -74,6 +104,11 @@ export interface ActiveReport {
 
 export interface RcbListResponse {
   rcbs: RcbInfo[];
+}
+
+export interface ReportDataTreeOptions {
+  entryKey?: string | null;
+  latest?: boolean;
 }
 
 // ===== API 函数 =====
@@ -130,6 +165,25 @@ export async function getReportData(
   } catch (error) {
     console.error('Error fetching report data:', error);
     return { data: [], total: 0 };
+  }
+}
+
+export async function getReportDataTree(
+  channelId: number,
+  rcbRef: string,
+  options: ReportDataTreeOptions = {},
+): Promise<ReportDataTreeResponse> {
+  try {
+    const result = await requestApi(REPORT_API.DATA_TREE, 'post', {
+      channel_id: channelId,
+      rcb_ref: rcbRef,
+      entry_key: options.entryKey || null,
+      latest: options.latest ?? true,
+    });
+    return result || { rcb_ref: rcbRef, entry: null, tree_items: [] };
+  } catch (error) {
+    console.error('Error fetching report data tree:', error);
+    return { rcb_ref: rcbRef, entry: null, tree_items: [] };
   }
 }
 

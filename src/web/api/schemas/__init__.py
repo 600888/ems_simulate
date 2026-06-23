@@ -81,6 +81,9 @@ from .report import (
     RcbGiRequest,
     RcbListRequest,
     ReportDataRequest,
+    ReportTreeDataRequest,
+    ReportTreeDataResponse,
+    ReportTreeNode,
 )
 from .response_codes import DEFAULT_MESSAGES, Code
 from .tree import TreeResponse
@@ -161,5 +164,8 @@ __all__ = [
     "RcbApplyConfigRequest",
     "RcbGiRequest",
     "ReportDataRequest",
+    "ReportTreeDataRequest",
+    "ReportTreeNode",
+    "ReportTreeDataResponse",
     "RcbDetailRequest",
 ]

@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from src.data.service.channel_service import ChannelService
+from src.proto.iec61850.plugins.reports.report_tree import ReportTreeBuilder, make_entry_summary
 from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.api.schemas.report import (
@@ -17,6 +18,7 @@ from src.web.api.schemas.report import (
     RcbGiRequest,
     RcbListRequest,
     ReportDataRequest,
+    ReportTreeDataRequest,
 )
 from src.web.log import log
 
@@ -227,6 +229,24 @@ def _mark_rcb_disabled(channel_id: int, rcb_ref: str, request: Request) -> dict[
     return None
 
 
+def _select_report_entry(
+    data: list[dict[str, Any]], entry_key: str | None, latest: bool
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Select one report entry and return (entry, summary)."""
+    if not data:
+        return None, None
+
+    summaries = [make_entry_summary(entry, index) for index, entry in enumerate(data)]
+    if entry_key:
+        for entry, summary in zip(data, summaries, strict=True):
+            if summary.get("entry_key") == entry_key:
+                return entry, summary
+        raise NotFoundError("报告条目不存在或已被缓存淘汰")
+
+    index = len(data) - 1 if latest else 0
+    return data[index], summaries[index]
+
+
 @router.post("/iec61850/reports/list", response_model=BaseResponse)
 async def list_rcbs(body: RcbListRequest, request: Request):
     """列出 IEC61850 设备的报告控制块 (RCB)"""
@@ -318,6 +338,29 @@ async def get_report_data(body: ReportDataRequest, request: Request):
             "data": data,
             "total": len(data),
         },
+    )
+
+
+@router.post("/iec61850/reports/data-tree", response_model=BaseResponse)
+async def get_report_data_tree(body: ReportTreeDataRequest, request: Request):
+    """获取单条报告数据的 IEDScout 风格树形结构。"""
+    reports = _get_reports_plugin(body.channel_id, request)
+
+    if _is_server_mode(reports):
+        raise ValidationError("服务端模式不支持报告数据查询", data={"entry": None, "tree_items": []})
+
+    data = reports.get_report_data(rcb_ref=body.rcb_ref, limit=1000)
+    entry, summary = _select_report_entry(data, body.entry_key, body.latest)
+    if entry is None:
+        return BaseResponse(
+            message="暂无报告数据",
+            data={"rcb_ref": body.rcb_ref, "entry": None, "tree_items": []},
+        )
+
+    tree_items = ReportTreeBuilder().build(entry)
+    return BaseResponse(
+        message="获取报告树形数据成功",
+        data={"rcb_ref": body.rcb_ref, "entry": summary, "tree_items": tree_items},
     )
 
 

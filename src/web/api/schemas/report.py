@@ -28,6 +28,13 @@ class ReportDataRequest(BaseModel):
     limit: int = Field(100, description="最多返回条数", ge=1, le=10000)
 
 
+class ReportTreeDataRequest(BaseModel):
+    channel_id: int = Field(..., description="通道ID")
+    rcb_ref: str = Field(..., description="RCB 引用路径")
+    entry_key: str | None = Field(None, description="报告条目 key，不传则按 latest 选择")
+    latest: bool = Field(True, description="是否返回最新一条报告")
+
+
 class RcbListResponse(BaseModel):
     channel_id: int = Field(..., description="通道ID")
     rcbs: list[dict[str, Any]] = Field(default_factory=list, description="RCB 列表")
@@ -38,6 +45,23 @@ class ReportDataResponse(BaseModel):
     rcb_ref: str = Field(..., description="RCB 引用路径")
     data: list[dict[str, Any]] = Field(default_factory=list, description="报告数据列表")
     total: int = Field(0, description="总条数")
+
+
+class ReportTreeNode(BaseModel):
+    id: str = Field(..., description="节点唯一 ID")
+    label: str = Field(..., description="显示名称")
+    node_type: str = Field(..., description="节点类型: ld/ln/do/da/bda/group/value")
+    fc: str | None = Field(None, description="功能约束")
+    reason: str | None = Field(None, description="报告包含原因")
+    value: Any = Field(None, description="显示值")
+    raw_ref: str | None = Field(None, description="原始数据引用")
+    children: list["ReportTreeNode"] = Field(default_factory=list, description="子节点")
+
+
+class ReportTreeDataResponse(BaseModel):
+    rcb_ref: str = Field(..., description="RCB 引用路径")
+    entry: dict[str, Any] | None = Field(None, description="报告条目摘要")
+    tree_items: list[ReportTreeNode] = Field(default_factory=list, description="树形报告数据")
 
 
 class ActiveReportsResponse(BaseModel):
