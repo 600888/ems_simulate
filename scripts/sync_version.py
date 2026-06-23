@@ -45,14 +45,14 @@ def sync_json_file(filepath: Path, version: str, dry_run: bool = False) -> bool:
         return False
 
     if dry_run:
-        print(f"  [DRY-RUN] {filepath.relative_to(PROJECT_ROOT)}: {old_version} → {version}")
+        print(f"  [DRY-RUN] {filepath.relative_to(PROJECT_ROOT)}: {old_version} -> {version}")
         return True
 
     data["version"] = version
     with filepath.open("w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
         f.write("\n")
-    print(f"  [SYNCED] {filepath.relative_to(PROJECT_ROOT)}: {old_version} → {version}")
+    print(f"  [SYNCED] {filepath.relative_to(PROJECT_ROOT)}: {old_version} -> {version}")
     return True
 
 
@@ -78,13 +78,13 @@ def sync_msix_manifest(filepath: Path, version: str, dry_run: bool = False) -> b
         return False
 
     if dry_run:
-        print(f"  [DRY-RUN] {filepath.relative_to(PROJECT_ROOT)}: {old_version} → {msix_version}")
+        print(f"  [DRY-RUN] {filepath.relative_to(PROJECT_ROOT)}: {old_version} -> {msix_version}")
         return True
 
     new_content = content.replace(f'Version="{old_version}"', f'Version="{msix_version}"')
     with filepath.open("w", encoding="utf-8") as f:
         f.write(new_content)
-    print(f"  [SYNCED] {filepath.relative_to(PROJECT_ROOT)}: {old_version} → {msix_version}")
+    print(f"  [SYNCED] {filepath.relative_to(PROJECT_ROOT)}: {old_version} -> {msix_version}")
     return True
 
 
@@ -107,13 +107,13 @@ def sync_cargo_toml(filepath: Path, version: str, dry_run: bool = False) -> bool
         return False
 
     if dry_run:
-        print(f"  [DRY-RUN] {filepath.relative_to(PROJECT_ROOT)}: {old_version} → {version}")
+        print(f"  [DRY-RUN] {filepath.relative_to(PROJECT_ROOT)}: {old_version} -> {version}")
         return True
 
     new_content = content.replace(f'version = "{old_version}"', f'version = "{version}"', 1)
     with filepath.open("w", encoding="utf-8") as f:
         f.write(new_content)
-    print(f"  [SYNCED] {filepath.relative_to(PROJECT_ROOT)}: {old_version} → {version}")
+    print(f"  [SYNCED] {filepath.relative_to(PROJECT_ROOT)}: {old_version} -> {version}")
     return True
 
 
