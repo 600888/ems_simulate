@@ -146,8 +146,8 @@ jobs:
             : > "$workdir/$section.md"
           done
 
-          cc_header_re='^[A-Za-z]+(\([^)]+\))?(!)?:[[:space:]]*.+$'
-          cc_full_re='^([A-Za-z]+)(\(([^)]+)\))?(!)?:[[:space:]]*(.+)$'
+          cc_header_re='^[A-Za-z]+(\([^)]+\))?(!)?[:：][[:space:]]*.+$'
+          cc_full_re='^([A-Za-z]+)(\(([^)]+)\))?(!)?[:：][[:space:]]*(.+)$'
 
           trim() {
             sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' <<< "$1"
@@ -284,17 +284,17 @@ jobs:
             fi
           }
 
-          add_section "$workdir/breaking.md" "Breaking Changes"
-          add_section "$workdir/feat.md" "Features"
-          add_section "$workdir/fix.md" "Bug Fixes"
-          add_section "$workdir/perf.md" "Performance"
-          add_section "$workdir/refactor.md" "Refactoring"
-          add_section "$workdir/docs.md" "Documentation"
-          add_section "$workdir/build.md" "Build System"
-          add_section "$workdir/ci.md" "CI"
-          add_section "$workdir/test.md" "Tests"
-          add_section "$workdir/chore.md" "Maintenance"
-          add_section "$workdir/other.md" "Other Changes"
+          add_section "$workdir/breaking.md" "💥 Breaking Changes"
+          add_section "$workdir/feat.md" "✨ 新功能"
+          add_section "$workdir/fix.md" "🐛 Bug 修复"
+          add_section "$workdir/perf.md" "⚡ 性能优化"
+          add_section "$workdir/refactor.md" "♻️ 代码重构"
+          add_section "$workdir/docs.md" "📝 文档更新"
+          add_section "$workdir/build.md" "📦 构建相关"
+          add_section "$workdir/ci.md" "👷 CI 配置"
+          add_section "$workdir/test.md" "✅ 测试"
+          add_section "$workdir/chore.md" "🔧 杂项"
+          add_section "$workdir/other.md" "其他变更"
 
           if ! grep -q '^### ' "$notes_file"; then
             printf 'No commit changes found for this release.\n' >> "$notes_file"
@@ -305,7 +305,46 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: ems-simulate-windows-*
           path: release-assets
+          merge-multiple: true
+
+      - name: Delete existing release (if any) to avoid stale assets
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = '${{ needs.build.outputs.release_tag }}';
+            try {
+              const { data: release } = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tag,
+              });
+              if (release) {
+                // Delete all existing assets first
+                for (const asset of release.assets) {
+                  await github.rest.repos.deleteReleaseAsset({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    asset_id: asset.id,
+                  });
+                  console.log(`Deleted asset: ${asset.name}`);
+                }
+                // Delete the release itself
+                await github.rest.repos.deleteRelease({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  release_id: release.id,
+                });
+                console.log(`Deleted existing release: ${tag}`);
+              }
+            } catch (err) {
+              if (err.status === 404) {
+                console.log(`No existing release found for tag: ${tag}`);
+              } else {
+                throw err;
+              }
+            }
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -317,8 +356,8 @@ jobs:
           prerelease: false
           make_latest: true
           body_path: ${{ steps.changelog.outputs.notes_file }}
-          files: |
-            release-assets/**/*.msi
-            release-assets/**/*.exe
+          files: release-assets/*.msi
+          fail_on_unmatched_files: true
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
