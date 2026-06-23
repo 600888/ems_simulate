@@ -1,10 +1,29 @@
 <template>
   <div class="reports-manager">
     <div class="reports-header">
-      <h3>{{ t('report.title') }}</h3>
-      <el-button type="primary" :loading="loading" @click="loadRcbs">
-        {{ t('common.refresh') }}
-      </el-button>
+      <h3>{{ t("report.title") }}</h3>
+      <div class="reports-header-right">
+        <div class="auto-refresh-group">
+          <el-switch v-model="autoRefresh" />
+          <span class="auto-refresh-label">{{ t("report.autoRefresh") }}</span>
+          <el-select
+            v-model="pollInterval"
+            size="default"
+            :disabled="!autoRefresh"
+            style="width: 90px"
+          >
+            <el-option
+              v-for="opt in REFRESH_INTERVAL_OPTIONS"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+        </div>
+        <el-button type="primary" :loading="loading" @click="loadRcbs">
+          {{ t("common.refresh") }}
+        </el-button>
+      </div>
     </div>
 
     <div class="reports-body" v-loading="loading">
@@ -40,7 +59,7 @@
                 </span>
                 <span :class="{ 'rcb-active': data.rpt_ena }">{{ node.label }}</span>
                 <el-tag v-if="data.rpt_ena" type="success" size="small" class="ena-tag">
-                  {{ t('report.enabled') }}
+                  {{ t("report.enabled") }}
                 </el-tag>
               </span>
             </template>
@@ -58,38 +77,49 @@
                     {{ selectedRcb.name }}
                   </el-descriptions-item>
                   <el-descriptions-item :label="`${t('report.rcbType')} (Type)`">
-                    <el-tag :type="selectedRcb.rcb_type === 'BRCB' ? 'primary' : 'warning'" size="small">
+                    <el-tag
+                      :type="selectedRcb.rcb_type === 'BRCB' ? 'primary' : 'warning'"
+                      size="small"
+                    >
                       {{ selectedRcb.rcb_type }}
                     </el-tag>
                   </el-descriptions-item>
                   <el-descriptions-item :label="t('report.ref')" :span="2">
-                    <span class="ref-text" :title="selectedRcb.ref">{{ selectedRcb.ref || '-' }}</span>
+                    <span class="ref-text" :title="selectedRcb.ref">{{
+                      selectedRcb.ref || "-"
+                    }}</span>
                   </el-descriptions-item>
                   <el-descriptions-item :label="`${t('report.rptId')} (RptID)`">
-                    {{ selectedRcb.rpt_id || '-' }}
+                    {{ selectedRcb.rpt_id || "-" }}
                   </el-descriptions-item>
                   <el-descriptions-item :label="`${t('report.dataSet')} (DatSet)`">
-                    {{ selectedRcb.data_set_ref || '-' }}
+                    {{ selectedRcb.data_set_ref || "-" }}
                   </el-descriptions-item>
                   <el-descriptions-item :label="`${t('report.confRev')} (ConfRev)`">
                     {{ selectedRcb.conf_rev }}
                   </el-descriptions-item>
                   <el-descriptions-item :label="`${t('report.sqNum')} (SqNum)`">
-                    {{ selectedRcb.sq_num != null ? selectedRcb.sq_num : '-' }}
+                    {{ selectedRcb.sq_num != null ? selectedRcb.sq_num : "-" }}
                   </el-descriptions-item>
                   <el-descriptions-item :label="`${t('report.rptEna')} (RptEna)`">
                     <el-tag v-if="selectedRcb.rpt_ena" type="success" size="small">
-                      {{ t('report.enabled') }}
+                      {{ t("report.enabled") }}
                     </el-tag>
                     <el-tag v-else type="danger" size="small">
-                      {{ t('report.disabled') }}
+                      {{ t("report.disabled") }}
                     </el-tag>
                   </el-descriptions-item>
-                  <el-descriptions-item :label="`${t('report.trgOps')} (TrgOps)`" :span="2">
-                    <span class="field-summary">{{ trgOpsSummary || '-' }}</span>
+                  <el-descriptions-item
+                    :label="`${t('report.trgOps')} (TrgOps)`"
+                    :span="2"
+                  >
+                    <span class="field-summary">{{ trgOpsSummary || "-" }}</span>
                   </el-descriptions-item>
-                  <el-descriptions-item :label="`${t('report.optFields')} (OptFlds)`" :span="2">
-                    <span class="field-summary">{{ optFieldsSummary || '-' }}</span>
+                  <el-descriptions-item
+                    :label="`${t('report.optFields')} (OptFlds)`"
+                    :span="2"
+                  >
+                    <span class="field-summary">{{ optFieldsSummary || "-" }}</span>
                   </el-descriptions-item>
                   <el-descriptions-item :label="`${t('report.bufTime')} (BufTm)`">
                     {{ selectedRcb.buf_time }} ms
@@ -105,7 +135,7 @@
                     v-if="selectedRcb.rcb_type === 'BRCB'"
                     :label="`${t('report.entryId')} (EntryID)`"
                   >
-                    {{ selectedRcb.entry_id || '-' }}
+                    {{ selectedRcb.entry_id || "-" }}
                   </el-descriptions-item>
                   <el-descriptions-item
                     v-if="selectedRcb.rcb_type === 'BRCB'"
@@ -117,31 +147,34 @@
                     v-if="selectedRcb.rcb_type === 'BRCB'"
                     :label="`${t('report.purgeBuf')} (PurgeBuf)`"
                   >
-                    <el-tag :type="selectedRcb.purge_buf ? 'warning' : 'info'" size="small">
-                      {{ selectedRcb.purge_buf ? 'True' : 'False' }}
+                    <el-tag
+                      :type="selectedRcb.purge_buf ? 'warning' : 'info'"
+                      size="small"
+                    >
+                      {{ selectedRcb.purge_buf ? "True" : "False" }}
                     </el-tag>
                   </el-descriptions-item>
                   <el-descriptions-item
                     v-if="selectedRcb.rcb_type === 'URCB'"
                     :label="`${t('report.owner')} (Owner)`"
                   >
-                    {{ selectedRcb.owner || '-' }}
+                    {{ selectedRcb.owner || "-" }}
                   </el-descriptions-item>
                   <el-descriptions-item
                     v-if="selectedRcb.rcb_type === 'URCB'"
                     :label="`${t('report.resv')} (Resv)`"
                   >
                     <el-tag :type="selectedRcb.resv ? 'warning' : 'danger'" size="small">
-                      {{ selectedRcb.resv ? 'True' : 'False' }}
+                      {{ selectedRcb.resv ? "True" : "False" }}
                     </el-tag>
                   </el-descriptions-item>
                 </el-descriptions>
 
                 <!-- 报告使能 (独立勾选) -->
-                <h4 class="section-title">{{ t('report.reportConfig') }}</h4>
+                <h4 class="section-title">{{ t("report.reportConfig") }}</h4>
                 <div class="rpt-ena-row">
                   <el-checkbox v-model="rptEnaModel" size="default">
-                    {{ t('report.rptEnaToggle') }}
+                    {{ t("report.rptEnaToggle") }}
                   </el-checkbox>
                   <el-tag
                     v-if="selectedRcb.rpt_ena"
@@ -149,17 +182,22 @@
                     size="small"
                     class="ena-tag"
                   >
-                    {{ t('report.enabled') }}
+                    {{ t("report.enabled") }}
                   </el-tag>
                   <el-tag v-else type="danger" size="small" class="ena-tag">
-                    {{ t('report.disabled') }}
+                    {{ t("report.disabled") }}
                   </el-tag>
                 </div>
 
                 <!-- TrgOps + OptFields (报告使能时整体禁用) -->
-                <div class="config-fields-section" :class="{ 'is-disabled': selectedRcb.rpt_ena }">
+                <div
+                  class="config-fields-section"
+                  :class="{ 'is-disabled': selectedRcb.rpt_ena }"
+                >
                   <div class="config-fields-header">
-                    <h4 class="section-title" style="margin:0">{{ t('report.configFields') }}</h4>
+                    <h4 class="section-title" style="margin: 0">
+                      {{ t("report.configFields") }}
+                    </h4>
                     <el-alert
                       v-if="selectedRcb.rpt_ena"
                       :title="t('report.configFieldsDisabledHint')"
@@ -170,25 +208,93 @@
                     />
                   </div>
 
-                  <h5 class="subsection-title">{{ t('report.trgOps') }}</h5>
+                  <h5 class="subsection-title">{{ t("report.trgOps") }}</h5>
                   <el-checkbox-group v-model="trgOpsModel" class="config-checkbox-group">
-                    <el-checkbox label="dchg" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.dchg') }}</el-checkbox>
-                    <el-checkbox label="qchg" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.qchg') }}</el-checkbox>
-                    <el-checkbox label="dupd" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.dupd') }}</el-checkbox>
-                    <el-checkbox label="period" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.period') }}</el-checkbox>
-                    <el-checkbox label="gi" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.giLabel') }}</el-checkbox>
+                    <el-checkbox
+                      label="dchg"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.dchg") }}</el-checkbox
+                    >
+                    <el-checkbox
+                      label="qchg"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.qchg") }}</el-checkbox
+                    >
+                    <el-checkbox
+                      label="dupd"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.dupd") }}</el-checkbox
+                    >
+                    <el-checkbox
+                      label="period"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.period") }}</el-checkbox
+                    >
+                    <el-checkbox
+                      label="gi"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.giLabel") }}</el-checkbox
+                    >
                   </el-checkbox-group>
 
-                  <h5 class="subsection-title">{{ t('report.optFields') }}</h5>
-                  <el-checkbox-group v-model="optFieldsModel" class="config-checkbox-group">
-                    <el-checkbox label="seq_num" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.seqNum') }}</el-checkbox>
-                    <el-checkbox label="time_stamp" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.timeStamp') }}</el-checkbox>
-                    <el-checkbox label="data_set" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.dataSetField') }}</el-checkbox>
-                    <el-checkbox label="reason_code" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.reasonCode') }}</el-checkbox>
-                    <el-checkbox label="data_ref" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.dataRef') }}</el-checkbox>
-                    <el-checkbox label="entry_id" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.entryId') }}</el-checkbox>
-                    <el-checkbox label="config_ref" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.configRef') }}</el-checkbox>
-                    <el-checkbox label="buf_ovfl" size="default" :disabled="selectedRcb.rpt_ena">{{ t('report.bufOvfl') }}</el-checkbox>
+                  <h5 class="subsection-title">{{ t("report.optFields") }}</h5>
+                  <el-checkbox-group
+                    v-model="optFieldsModel"
+                    class="config-checkbox-group"
+                  >
+                    <el-checkbox
+                      label="seq_num"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.seqNum") }}</el-checkbox
+                    >
+                    <el-checkbox
+                      label="time_stamp"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.timeStamp") }}</el-checkbox
+                    >
+                    <el-checkbox
+                      label="data_set"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.dataSetField") }}</el-checkbox
+                    >
+                    <el-checkbox
+                      label="reason_code"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.reasonCode") }}</el-checkbox
+                    >
+                    <el-checkbox
+                      label="data_ref"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.dataRef") }}</el-checkbox
+                    >
+                    <el-checkbox
+                      label="entry_id"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.entryId") }}</el-checkbox
+                    >
+                    <el-checkbox
+                      label="config_ref"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.configRef") }}</el-checkbox
+                    >
+                    <el-checkbox
+                      label="buf_ovfl"
+                      size="default"
+                      :disabled="selectedRcb.rpt_ena"
+                      >{{ t("report.bufOvfl") }}</el-checkbox
+                    >
                   </el-checkbox-group>
                 </div>
 
@@ -199,7 +305,7 @@
                     :loading="actionLoading"
                     @click="handleApplyConfig"
                   >
-                    {{ t('report.applyConfig') }}
+                    {{ t("report.applyConfig") }}
                   </el-button>
                   <el-button
                     type="warning"
@@ -207,12 +313,12 @@
                     :loading="giLoading"
                     @click="handleGi"
                   >
-                    {{ t('report.gi') }}
+                    {{ t("report.gi") }}
                   </el-button>
                 </div>
 
                 <!-- Information received in last Report -->
-                <h4 class="section-title">{{ t('report.lastReportInfo') }}</h4>
+                <h4 class="section-title">{{ t("report.lastReportInfo") }}</h4>
                 <el-alert
                   v-if="!lastReport"
                   :title="t('report.noData')"
@@ -223,29 +329,29 @@
                 <template v-if="lastReport">
                   <el-descriptions :column="2" border size="small" label-width="130px">
                     <el-descriptions-item :label="t('report.rptId')">
-                      {{ lastReport.rpt_id || '-' }}
+                      {{ lastReport.rpt_id || "-" }}
                     </el-descriptions-item>
                     <el-descriptions-item :label="t('report.seqNum')">
-                      {{ lastReport.seq_num != null ? lastReport.seq_num : '-' }}
+                      {{ lastReport.seq_num != null ? lastReport.seq_num : "-" }}
                     </el-descriptions-item>
                     <el-descriptions-item :label="t('report.timeOfEntry')">
-                      {{ lastReport.time_stamp || '-' }}
+                      {{ lastReport.time_stamp || "-" }}
                     </el-descriptions-item>
                     <el-descriptions-item :label="t('report.dataSet')">
-                      {{ lastReport.data_set || '-' }}
+                      {{ lastReport.data_set || "-" }}
                     </el-descriptions-item>
                     <el-descriptions-item :label="t('report.confRev')">
-                      {{ lastReport.conf_rev != null ? lastReport.conf_rev : '-' }}
+                      {{ lastReport.conf_rev != null ? lastReport.conf_rev : "-" }}
                     </el-descriptions-item>
                     <el-descriptions-item
                       v-if="selectedRcb.rcb_type === 'BRCB'"
                       :label="t('report.entryId')"
                     >
-                      {{ lastReport.entry_id || '-' }}
+                      {{ lastReport.entry_id || "-" }}
                     </el-descriptions-item>
                   </el-descriptions>
 
-                  <h4 class="section-title">{{ t('report.reportDataItems') }}</h4>
+                  <h4 class="section-title">{{ t("report.reportDataItems") }}</h4>
                   <el-table
                     :data="lastReportDataItems"
                     border
@@ -253,15 +359,29 @@
                     max-height="400"
                     style="width: 100%"
                   >
-                    <el-table-column :label="t('report.dataRef')" prop="ref" min-width="180" />
-                    <el-table-column :label="t('report.value')" prop="value" min-width="120" />
+                    <el-table-column
+                      :label="t('report.dataRef')"
+                      prop="ref"
+                      min-width="180"
+                    />
+                    <el-table-column
+                      :label="t('report.value')"
+                      prop="value"
+                      min-width="120"
+                    />
                     <el-table-column :label="t('report.reason')" width="130">
                       <template #default="{ row }">
                         <el-tag
                           size="small"
-                          :type="row.reason === 'data-change' ? 'warning'
-                            : row.reason === 'gi' ? 'success'
-                            : row.reason === 'integrity' ? 'primary' : 'info'"
+                          :type="
+                            row.reason === 'data-change'
+                              ? 'warning'
+                              : row.reason === 'gi'
+                              ? 'success'
+                              : row.reason === 'integrity'
+                              ? 'primary'
+                              : 'info'
+                          "
                         >
                           {{ row.reason }}
                         </el-tag>
@@ -295,15 +415,33 @@
                   max-height="500"
                   style="width: 100%"
                 >
-                  <el-table-column :label="t('report.seqNumShort')" prop="seq_num" width="60" />
-                  <el-table-column :label="t('report.time')" prop="time_stamp" width="160" />
-                  <el-table-column :label="t('report.reason')" prop="reason_codes" min-width="120">
+                  <el-table-column
+                    :label="t('report.seqNumShort')"
+                    prop="seq_num"
+                    width="60"
+                  />
+                  <el-table-column
+                    :label="t('report.time')"
+                    prop="time_stamp"
+                    width="160"
+                  />
+                  <el-table-column
+                    :label="t('report.reason')"
+                    prop="reason_codes"
+                    min-width="120"
+                  >
                     <template #default="{ row }">
                       <el-tag
                         v-for="(rc, idx) in Object.values(row.reason_codes).slice(0, 3)"
                         :key="idx"
                         size="small"
-                        :type="rc === 'data-change' ? 'warning' : rc === 'gi' ? 'success' : 'info'"
+                        :type="
+                          rc === 'data-change'
+                            ? 'warning'
+                            : rc === 'gi'
+                            ? 'success'
+                            : 'info'
+                        "
                       >
                         {{ rc }}
                       </el-tag>
@@ -330,7 +468,7 @@
                   class="clear-btn"
                   @click="handleClearData"
                 >
-                  {{ t('common.clear') }}
+                  {{ t("common.clear") }}
                 </el-button>
               </div>
             </el-tab-pane>
@@ -342,7 +480,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onActivated, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onActivated, onBeforeUnmount, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, ElTree } from 'element-plus';
 import {
@@ -374,6 +512,35 @@ const rptEnaModel = ref(false);          // 报告使能配置项 (待应用)
 // 报告数据
 const reportData = ref<any[]>([]);
 const reportDataTotal = ref(0);
+const autoRefresh = ref(true);               // 自动刷新开关
+const pollInterval = ref(1000);              // 轮询间隔(ms), 默认1s
+const REFRESH_INTERVAL_OPTIONS = [
+  { value: 1000, label: '1s' },
+  { value: 3000, label: '3s' },
+  { value: 5000, label: '5s' },
+  { value: 10000, label: '10s' },
+];
+let reportPollTimer: ReturnType<typeof setInterval> | null = null;
+
+function startReportPolling() {
+  stopReportPolling();
+  if (!autoRefresh.value || !selectedRcb.value || !props.channelId) return;
+  reportPollTimer = setInterval(() => {
+    loadReportData();
+  }, pollInterval.value);
+}
+
+function stopReportPolling() {
+  if (reportPollTimer !== null) {
+    clearInterval(reportPollTimer);
+    reportPollTimer = null;
+  }
+}
+
+// 选中 RCB、自动刷新开关或刷新频率变化时重启轮询
+watch([selectedRcb, autoRefresh, pollInterval], () => {
+  startReportPolling();
+});
 
 // 全称映射
 const TRGOPS_NAME_MAP: Record<string, string> = {
@@ -618,6 +785,10 @@ async function handleApplyConfig() {
       if (result.rcb) {
         updateRcbInList(result.rcb);
       }
+      // 使能成功后立即加载一次报告数据
+      if (rptEnaModel.value) {
+        loadReportData();
+      }
     } else {
       ElMessage.error(t('report.applyConfigFailed'));
       // 失败回滚勾选框到后端实际状态
@@ -649,8 +820,11 @@ async function handleGi() {
     const ok = await triggerGi(props.channelId, selectedRcb.value.ref);
     if (ok) {
       ElMessage.success(t('report.giSuccess'));
-      // GI 后延迟加载报告数据
-      setTimeout(loadReportData, 1000);
+      // GI 后延迟加载报告数据，并确保轮询定时器已启动
+      setTimeout(() => {
+        loadReportData();
+        startReportPolling();
+      }, 1000);
     } else {
       ElMessage.error(t('report.giFailed'));
     }
@@ -670,11 +844,16 @@ onMounted(() => {
   loadRcbs();
 });
 
+onBeforeUnmount(() => {
+  stopReportPolling();
+});
+
 // keep-alive 组件从其他路由切回来时重新加载，确保获取最新 RCB 列表
 onActivated(() => {
   if (props.channelId) {
     loadRcbs();
   }
+  startReportPolling();
 });
 </script>
 
@@ -700,11 +879,31 @@ onActivated(() => {
     font-weight: 600;
   }
 
-  @include bp.respond-to('small') {
+  @include bp.respond-to("small") {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
   }
+}
+
+.reports-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auto-refresh-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-right: 1px solid #dcdfe6;
+}
+
+.auto-refresh-label {
+  font-size: 14px;
+  color: #606266;
+  white-space: nowrap;
 }
 
 .reports-body {
@@ -720,7 +919,7 @@ onActivated(() => {
     padding: 48px 0;
   }
 
-  @include bp.respond-to('small') {
+  @include bp.respond-to("small") {
     flex-direction: column;
   }
 }
@@ -733,12 +932,12 @@ onActivated(() => {
   padding: 8px;
   overflow-y: auto;
 
-  @include bp.respond-to('medium-down') {
+  @include bp.respond-to("medium-down") {
     width: 260px;
     min-width: 260px;
   }
 
-  @include bp.respond-to('small') {
+  @include bp.respond-to("small") {
     width: 100%;
     min-width: unset;
     border-right: none;
@@ -807,7 +1006,7 @@ onActivated(() => {
   padding: 16px;
   overflow-y: auto;
 
-  @include bp.respond-to('small') {
+  @include bp.respond-to("small") {
     padding: 12px;
   }
 }
@@ -876,7 +1075,7 @@ onActivated(() => {
     }
   }
 
-  @include bp.respond-to('small') {
+  @include bp.respond-to("small") {
     grid-template-columns: repeat(2, 1fr);
   }
 }

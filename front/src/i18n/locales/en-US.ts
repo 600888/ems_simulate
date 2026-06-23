@@ -844,5 +844,6 @@ export default {
     applyConfigFailed: 'Failed to apply configuration',
     configFields: 'Report Attribute Configuration',
     configFieldsDisabledHint: 'Report is enabled, attributes cannot be modified. Please uncheck "Enable Report" and click "Apply Config" to disable first, then set attributes.',
+    autoRefresh: 'Auto Refresh',
   },
 }

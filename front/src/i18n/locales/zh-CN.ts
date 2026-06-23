@@ -844,5 +844,6 @@ export default {
     applyConfigFailed: '应用配置失败',
     configFields: '报告属性配置',
     configFieldsDisabledHint: '报告已使能，无法修改属性。请先取消"报告使能"并点击"应用配置"禁用后，再设置属性。',
+    autoRefresh: '自动刷新',
   },
 }
