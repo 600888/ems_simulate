@@ -143,8 +143,25 @@ class FileTransfer:
 
                 if not ok or mms_code != 0:
                     progress.status = TransferStatus.FAILED
-                    progress.error = f"MMS 下载失败: {_mms_error_name(mms_code)}({mms_code})"
-                    log.error(f"下载文件失败: {remote_filename}, MMS 错误: {_mms_error_name(mms_code)}({mms_code})")
+                    if not ok and mms_code == 0:
+                        # 某些 IED 的 MmsConnection_downloadFile 对特定文件返回 false,
+                        # 尝试加上 "./" 前缀重试
+                        log.warning(
+                            f"下载文件失败: {remote_filename}, "
+                            f"MmsConnection_downloadFile 返回 false, mms_code=0, "
+                            f"尝试备用路径重试..."
+                        )
+                        alt_filename = f"./{remote_filename.lstrip('/')}"
+                        if alt_filename != remote_filename:
+                            alt_progress = self._retry_download_file(alt_filename, local_path, overwrite)
+                            if alt_progress.status == TransferStatus.COMPLETED:
+                                return alt_progress
+                        progress.error = f"远程文件不存在或无法访问: {remote_filename}"
+                        log.error(f"下载文件失败: {remote_filename}, 远程文件不存在")
+                    else:
+                        progress.error = f"MMS 下载失败: {_mms_error_name(mms_code)}({mms_code})"
+                        err_name = _mms_error_name(mms_code)
+                        log.error(f"下载文件失败: {remote_filename}, MMS 错误: {err_name}({mms_code})")
                     try:
                         if os.path.exists(local_path):
                             os.remove(local_path)
@@ -257,10 +274,71 @@ class FileTransfer:
 
                     if not ok or mms_code != 0:
                         progress.status = TransferStatus.FAILED
-                        progress.error = f"MMS 下载失败: {_mms_error_name(mms_code)}({mms_code})"
-                        log.error(
-                            f"下载文件到内存失败: {remote_filename}, MMS 错误: {_mms_error_name(mms_code)}({mms_code})"
-                        )
+                        if not ok and mms_code == 0:
+                            # libiec61850: ok=False + mms_code=0 通常表示远程文件不存在，
+                            # 但某些 IED 的 MmsConnection_downloadFile C 层实现存在 bug，
+                            # 对特定文件会返回 false 而不设置错误码。
+                            # 经验证：加上 "./" 前缀可以绕过此问题。
+                            log.warning(
+                                f"下载文件到内存失败: {remote_filename}, "
+                                f"MmsConnection_downloadFile 返回 false, mms_code=0, "
+                                f"尝试备用路径重试..."
+                            )
+                            # 清理临时文件
+                            try:
+                                if os.path.exists(tmp_path):
+                                    os.remove(tmp_path)
+                            except OSError:
+                                pass
+
+                            # 备用路径1: 加上 ./ 前缀（已验证对 .cid 文件有效）
+                            alt_filename1 = f"./{remote_filename.lstrip('/')}"
+                            if alt_filename1 != remote_filename:
+                                tmp_fd2, tmp_path2 = tempfile.mkstemp(suffix=".iecdl", dir=_tmp_dir)
+                                os.close(tmp_fd2)
+                                tmp_path_fwd2 = tmp_path2.replace("\\", "/")
+                                data, alt_progress = self._retry_download_to_bytes(
+                                    alt_filename1, tmp_path_fwd2, progress_callback
+                                )
+                                if data:
+                                    log.info(f"备用路径重试成功: {alt_filename1} ({len(data)} bytes)")
+                                    return data, alt_progress
+                                else:
+                                    log.warning(
+                                        f"备用路径重试失败: {alt_filename1}, 错误: {alt_progress.error or '未知'}"
+                                    )
+
+                            # 备用路径2: 尝试通过 getFileDirectory 获取精确文件名
+                            try:
+                                from src.proto.iec61850.plugins.files.directory import DirectoryBrowser
+
+                                browser = DirectoryBrowser(self._conn)
+                                parent_dir, file_basename = self._split_remote_path(remote_filename)
+                                entries = browser.list_directory(parent_dir)
+                                for entry in entries:
+                                    if entry.name.lower() == file_basename.lower():
+                                        exact_filename = entry.full_path
+                                        if exact_filename != remote_filename:
+                                            log.info(f"发现精确文件名: {exact_filename}, 重试下载...")
+                                            tmp_fd3, tmp_path3 = tempfile.mkstemp(suffix=".iecdl", dir=_tmp_dir)
+                                            os.close(tmp_fd3)
+                                            tmp_path_fwd3 = tmp_path3.replace("\\", "/")
+                                            data, retry_progress = self._retry_download_to_bytes(
+                                                exact_filename, tmp_path_fwd3, progress_callback
+                                            )
+                                            if data:
+                                                return data, retry_progress
+                                        break
+                            except Exception as diag_err:
+                                log.debug(f"目录查询 fallback 失败: {diag_err}")
+
+                            # 所有重试都失败
+                            progress.error = f"远程文件不存在或无法访问: {remote_filename}"
+                            log.error(f"下载文件到内存失败: {remote_filename}, 远程文件不存在")
+                        else:
+                            progress.error = f"MMS 下载失败: {_mms_error_name(mms_code)}({mms_code})"
+                            err_name = _mms_error_name(mms_code)
+                            log.error(f"下载文件到内存失败: {remote_filename}, MMS 错误: {err_name}({mms_code})")
                         return b"", progress
                     succeeded = True
                 finally:
@@ -517,6 +595,78 @@ class FileTransfer:
     # ===== 内部方法 =====
 
     @staticmethod
+    def _split_remote_path(remote_path: str) -> tuple[str, str]:
+        """将远程路径拆分为父目录和文件名
+
+        Args:
+            remote_path: 远程文件完整路径 (如 "/logs/fault1.comtrade" 或 "/35M1.cid")
+
+        Returns:
+            (父目录, 文件名)
+        """
+        normalized = remote_path.replace("\\", "/").rstrip("/")
+        last_sep = normalized.rfind("/")
+        if last_sep <= 0:
+            return "", normalized
+        return normalized[:last_sep], normalized[last_sep + 1 :]
+
+    def _retry_download_file(
+        self,
+        remote_filename: str,
+        local_path: str,
+        overwrite: bool = False,
+    ) -> TransferProgress:
+        """使用备用路径重试下载文件到磁盘
+
+        Args:
+            remote_filename: 备用远程文件路径
+            local_path: 本地保存路径
+            overwrite: 是否覆盖已存在文件
+
+        Returns:
+            传输进度
+        """
+        from pyiec61850 import pyiec61850 as iec61850
+
+        conn = self._conn.connection
+        mms_conn = iec61850.IedConnection_getMmsConnection(conn)
+        if not mms_conn:
+            return TransferProgress(remote_filename, status=TransferStatus.FAILED, error="无法获取 MmsConnection")
+
+        mms_error = iec61850.MmsError_create()
+        succeeded = False
+        try:
+            ok = iec61850.MmsConnection_downloadFile(
+                mms_conn, mms_error, self._normalize_remote(remote_filename), local_path.replace("\\", "/")
+            )
+            mms_code = iec61850.MmsError_getValue(mms_error)
+            if ok and mms_code == 0:
+                succeeded = True
+        finally:
+            try:
+                iec61850.MmsErrror_destroy(mms_error)
+            except AttributeError:
+                with contextlib.suppress(Exception):
+                    iec61850.MmsError_destroy(mms_error)
+
+        if succeeded:
+            downloaded_size = os.path.getsize(local_path) if os.path.exists(local_path) else 0
+            if downloaded_size > 0:
+                progress = TransferProgress(
+                    filename=remote_filename,
+                    status=TransferStatus.COMPLETED,
+                    bytes_transferred=downloaded_size,
+                    total_bytes=downloaded_size,
+                )
+                log.info(f"备用路径重试下载完成: {remote_filename} → {local_path} ({downloaded_size} bytes)")
+                return progress
+            with contextlib.suppress(OSError):
+                os.remove(local_path)
+
+        log.warning(f"备用路径下载失败: {remote_filename} → {local_path}")
+        return TransferProgress(remote_filename, status=TransferStatus.FAILED, error="备用路径重试失败")
+
+    @staticmethod
     def _notify_progress(progress: TransferProgress, callback: ProgressCallback | None) -> None:
         """安全调用进度回调"""
         if callback:
@@ -524,3 +674,71 @@ class FileTransfer:
                 callback(progress)
             except Exception as e:
                 log.debug(f"进度回调异常: {e}")
+
+    def _retry_download_to_bytes(
+        self,
+        remote_filename: str,
+        tmp_path_fwd: str,
+        progress_callback: ProgressCallback | None = None,
+    ) -> tuple[bytes, TransferProgress]:
+        """使用备用路径重试下载文件到内存
+
+        某些 IED 对路径格式敏感（如是否需要去掉开头的 "/"），
+        尝试不同路径格式再试一次。
+
+        Args:
+            remote_filename: 备用远程文件路径
+            tmp_path_fwd: 临时文件路径（正斜杠格式）
+            progress_callback: 进度回调
+
+        Returns:
+            (文件字节数据, 传输进度)，失败返回 (b"", progress)
+        """
+        from pyiec61850 import pyiec61850 as iec61850
+
+        conn = self._conn.connection
+        mms_conn = iec61850.IedConnection_getMmsConnection(conn)
+        if not mms_conn:
+            return b"", TransferProgress(remote_filename, status=TransferStatus.FAILED, error="无法获取 MmsConnection")
+
+        mms_error = iec61850.MmsError_create()
+        try:
+            ok = iec61850.MmsConnection_downloadFile(
+                mms_conn, mms_error, self._normalize_remote(remote_filename), tmp_path_fwd
+            )
+            mms_code = iec61850.MmsError_getValue(mms_error)
+
+            if ok and mms_code == 0:
+                # 读取临时文件
+                try:
+                    with open(tmp_path_fwd, "rb") as f:
+                        file_data = f.read()
+                except OSError as e:
+                    log.warning(f"备用路径重试读取临时文件失败: {e}")
+                    return b"", TransferProgress(remote_filename, status=TransferStatus.FAILED, error=str(e))
+                finally:
+                    with contextlib.suppress(OSError):
+                        os.remove(tmp_path_fwd)
+
+                if file_data:
+                    progress = TransferProgress(
+                        filename=remote_filename,
+                        status=TransferStatus.COMPLETED,
+                        bytes_transferred=len(file_data),
+                        total_bytes=len(file_data),
+                    )
+                    log.info(f"备用路径重试下载完成: {remote_filename} ({len(file_data)} bytes)")
+                    return file_data, progress
+        finally:
+            try:
+                iec61850.MmsErrror_destroy(mms_error)
+            except AttributeError:
+                with contextlib.suppress(Exception):
+                    iec61850.MmsError_destroy(mms_error)
+
+        # 清理临时文件
+        with contextlib.suppress(OSError):
+            os.remove(tmp_path_fwd)
+
+        log.warning(f"备用路径下载失败: {remote_filename}, MmsConnection_downloadFile 返回 false, mms_code={mms_code}")
+        return b"", TransferProgress(remote_filename, status=TransferStatus.FAILED, error="备用路径重试失败")
