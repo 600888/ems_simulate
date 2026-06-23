@@ -235,20 +235,39 @@ class ReportCallbackHandler:
 
             try:
                 nref = _normalize_ref(rcb_ref, rcb_type)
+                log.info(f"安装报告回调: rcb_ref={rcb_ref}, mms_ref={nref}, rpt_id={rpt_id!r}, rcb_type={rcb_type}")
+
+                # 警告：RptId 为空时，部分版本的 libIEC61850 RCBSubscriber
+                # 无法匹配服务器推送的报告，导致 RCBHandler.trigger 永远不会被调用
+                effective_rpt_id = rpt_id or ""
+                if not effective_rpt_id:
+                    log.warning(
+                        f"RptId 为空，报告回调可能无法匹配服务器推送的报告！"
+                        f"请检查 IED 的 RCB 配置中是否设置了 RptId。rcb_ref={rcb_ref}"
+                    )
+
                 handler = _PyRCBHandler(rcb_ref)
                 subscriber = iec61850.RCBSubscriber()
                 subscriber.setIedConnection(conn)
                 subscriber.setRcbReference(nref)
-                subscriber.setRcbRptId(rpt_id or "")
+                subscriber.setRcbRptId(effective_rpt_id)
                 subscriber.setEventHandler(handler)
-                if not subscriber.subscribe():
-                    log.warning(f"订阅报告失败: ref={nref}")
+
+                log.debug(f"RCBSubscriber.subscribe() 调用: ref={nref}, rpt_id={effective_rpt_id!r}")
+                subscribe_ok = subscriber.subscribe()
+                if not subscribe_ok:
+                    log.warning(
+                        f"RCBSubscriber.subscribe() 返回失败: ref={nref}, rpt_id={effective_rpt_id!r}, "
+                        f"rcb_ref={rcb_ref}"
+                    )
                     with contextlib.suppress(Exception):
                         subscriber.deleteEventHandler()
                     if hasattr(handler, "thisown"):
                         with contextlib.suppress(Exception):
                             handler.thisown = 0
                     return False
+
+                log.info(f"RCBSubscriber.subscribe() 成功: ref={nref}, rpt_id={effective_rpt_id!r}")
 
                 _CALLBACK_REGISTRY[rcb_ref] = _CallbackInfo(
                     rcb_ref=rcb_ref,
@@ -258,13 +277,13 @@ class ReportCallbackHandler:
                     max_cache=max_cache,
                     enabled_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     mms_ref=nref,
-                    rpt_id=rpt_id or "",
+                    rpt_id=effective_rpt_id,
                     dataset_members=dataset_members or [],
                 )
-                log.info(f"报告回调已安装: {rcb_ref} (mms_ref={nref})")
+                log.info(f"报告回调已安装: {rcb_ref} (mms_ref={nref}, rpt_id={effective_rpt_id!r})")
                 return True
             except Exception as e:
-                log.error(f"安装报告回调异常: {rcb_ref}, {e}")
+                log.error(f"安装报告回调异常: {rcb_ref}, {e}", exc_info=True)
                 return False
 
     @staticmethod

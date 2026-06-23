@@ -494,14 +494,43 @@ class ReportsPlugin:
         # 回调不会被触发, 导致报告数据缓存为空。
         rpt_id = ""
         data_set_ref = ""
+
+        # 优先通过 getRCBValues 直接读取 RptId（比 get_rcb_detail 更直接可靠）
         try:
-            detail = self.get_rcb_detail(rcb_ref)
-            if detail:
-                rpt_id = str(detail.get("rpt_id", "") or "")
-                data_set_ref = str(detail.get("data_set_ref", "") or "")
-                log.info(f"_enable_report: 读取 RptId: {rcb_ref}, rpt_id={rpt_id!r}")
+            if rcb_type == "BRCB":
+                rcb_info = BrcbHandler.get_rcb_values(self._connection, rcb_ref)
+            else:
+                rcb_info = UrcbHandler.get_rcb_values(self._connection, rcb_ref)
+            if rcb_info and hasattr(rcb_info, "rpt_id") and rcb_info.rpt_id:
+                rpt_id = str(rcb_info.rpt_id)
+                data_set_ref = str(rcb_info.data_set_ref or "")
+                log.info(f"_enable_report: 直接读取 RptId 成功: {rcb_ref}, rpt_id={rpt_id!r}")
+            elif rcb_info:
+                data_set_ref = str(rcb_info.data_set_ref or "")
+                log.info(f"_enable_report: 直接读取 RptId 为空: {rcb_ref}, data_set_ref={data_set_ref!r}")
         except Exception as e:
-            log.warning(f"_enable_report: 读取 RptId 失败: {rcb_ref}, {e}")
+            log.warning(f"_enable_report: 直接读取 RptId 失败: {rcb_ref}, {e}, 尝试从缓存读取")
+
+        # 备用：从缓存中读取
+        if not rpt_id:
+            try:
+                detail = self.get_rcb_detail(rcb_ref)
+                if detail:
+                    rpt_id = str(detail.get("rpt_id", "") or "")
+                    if not data_set_ref:
+                        data_set_ref = str(detail.get("data_set_ref", "") or "")
+                    log.info(f"_enable_report: 从缓存读取 RptId: {rcb_ref}, rpt_id={rpt_id!r}")
+            except Exception as e:
+                log.warning(f"_enable_report: 从缓存读取 RptId 失败: {rcb_ref}, {e}")
+
+        # 如果 RptId 仍为空，记录严重警告
+        if not rpt_id:
+            log.warning(
+                f"_enable_report: RptId 为空！"
+                f"部分 libIEC61850 版本中空 RptId 会导致报告回调无法被触发。"
+                f"请检查 IED 的 RCB ({rcb_ref}) 是否配置了 RptId。"
+                f"rcb_type={rcb_type}"
+            )
 
         # 查询数据集成员引用列表，用于报告数据解析时将 data[i] 映射为具体引用
         dataset_members: list[str] = []
