@@ -840,10 +840,16 @@ class IcdExporter:
             fcda.pop("@prefix", None)
 
     def _extract_ld_inst(self, ld_name: str, ied_name: str) -> str:
+        if not ld_name:
+            return ""
+        if not ied_name:
+            return ld_name
         if ld_name.startswith(ied_name + "_"):
             return ld_name[len(ied_name) + 1 :]
         if ld_name.startswith(ied_name):
-            return ld_name[len(ied_name) :]
+            rest = ld_name[len(ied_name) :]
+            if rest:
+                return rest
         return ld_name
 
     def _extract_ln_inst(self, ln_name: str) -> str:

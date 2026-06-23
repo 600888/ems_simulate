@@ -78,6 +78,11 @@ class TestIcdExporter:
             ("CTMP01", "KG_BAMS", "CTMP01"),
             ("KG_BAMS_CTMP01", "KG_BAMS", "CTMP01"),
             ("BAMS", "IED", "BAMS"),
+            # Bug fix: ld_name == ied_name 时不应返回空字符串
+            ("GenericLD", "GenericLD", "GenericLD"),
+            ("EMS", "EMS", "EMS"),
+            ("", "IED", ""),
+            ("PCS001", "", "PCS001"),
         ],
     )
     def test_extract_ld_inst(self, ld_name, ied_name, expected):
