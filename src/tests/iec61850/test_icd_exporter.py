@@ -654,11 +654,13 @@ class TestIcdExporter:
         if isinstance(lnode_types, dict):
             lnode_types = [lnode_types]
 
-        # GGIO1和GGIO2是不同LN，各自有独立DOType id（含LN名），所以LNodeType不共享
+        # GGIO1和GGIO2具有相同的lnClass和DO结构，应共享同一LNodeType
         ggio_count = sum(1 for lt in lnode_types if lt.get("@lnClass") == "GGIO")
-        assert ggio_count == 2, f"不同LN的GGIO应有2个LNodeType，实际: {ggio_count}"
-        # 验证ln_type_mapping为空（无去重）
-        assert not self.exporter._ln_type_mapping
+        assert ggio_count == 1, f"相同lnClass和DO结构的GGIO应有1个LNodeType，实际: {ggio_count}"
+        # 验证ln_type_mapping存在去重映射（GGIO2 → GGIO1）
+        assert len(self.exporter._ln_type_mapping) == 1, f"应有1条去重映射，实际: {self.exporter._ln_type_mapping}"
+        mapped_to = list(self.exporter._ln_type_mapping.values())[0]
+        assert mapped_to == "IED1LD0.GGIO1", f"GGIO2应映射到IED1LD0.GGIO1，实际: {mapped_to}"
 
     def test_lnode_type_no_dedup_different_do(self):
         """验证不同DO结构的LN不共享LNodeType"""
@@ -796,13 +798,25 @@ class TestIcdExporter:
         do_types = templates.get("DOType", [])
         if isinstance(do_types, dict):
             do_types = [do_types]
-        # 找到MMCL1相关的DOType
-        mmcl_do_types = [dt for dt in do_types if "MMCL1" in dt.get("@id", "")]
-        # Temp001和Temp002结构相同，应共享同一DOType（id为MMCL1.Temp001）
-        mmcl_do_ids = {dt["@id"] for dt in mmcl_do_types}
-        expected_id = "IED1LD0.MMCL1.Temp001"
-        assert expected_id in mmcl_do_ids, f"应包含DOType id '{expected_id}'，实际: {mmcl_do_ids}"
-        assert len(mmcl_do_ids) == 1, f"Temp001和Temp002应共享同一DOType，实际: {mmcl_do_ids}"
+        # 找到MV类型的DOType（ID格式为IED1LD0.MMCL1.Temp001）
+        mv_do_types = [dt for dt in do_types if dt.get("@cdc") == "MV"]
+        assert len(mv_do_types) == 1, f"MV DOType应去重为1个，实际: {len(mv_do_types)}"
+        mv_do_type_id = mv_do_types[0]["@id"]
+        expected_do_type_id = "IED1LD0.MMCL1.Temp001"
+        assert mv_do_type_id == expected_do_type_id, f"DOType ID应为'{expected_do_type_id}'，实际: '{mv_do_type_id}'"
+
+        # 验证LNodeType中Temp001和Temp002引用同一DOType
+        lnode_types = templates.get("LNodeType", [])
+        if isinstance(lnode_types, dict):
+            lnode_types = [lnode_types]
+        mmcl_ln_type = next((lt for lt in lnode_types if lt.get("@lnClass") == "MMCL"), None)
+        assert mmcl_ln_type is not None, "应存在MMCL的LNodeType"
+        mmcl_dos = mmcl_ln_type.get("DO", [])
+        if isinstance(mmcl_dos, dict):
+            mmcl_dos = [mmcl_dos]
+        do_type_ids = {d["@type"] for d in mmcl_dos}
+        assert len(do_type_ids) == 1, f"Temp001和Temp002应引用同一DOType，实际: {do_type_ids}"
+        assert mv_do_type_id in do_type_ids, f"DOType引用应为'{mv_do_type_id}'，实际: {do_type_ids}"
 
     # ===== IED名称推断 =====
 

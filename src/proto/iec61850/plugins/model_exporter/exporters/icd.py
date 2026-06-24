@@ -458,20 +458,20 @@ class IcdExporter:
     ) -> str:
         """查找或创建共享 DOType
 
-        DOType ID 格式: {ln_type_id}.{do_name}
-        相同 LN 中具有相同 DA 结构的 DO 共享同一 DOType。
+        DOType 使用结构指纹全局去重，相同 CDC + DA 结构的 DO 共享同一 DOType，
+        无论它们属于哪个 LN/LD。DOType ID 使用首次出现的 `{ln_type_id}.{do_name}` 格式，
+        保持可读性。
 
         Returns:
             do_type_id: 共享的 DOType ID
         """
         fingerprint = self._make_do_type_fingerprint(do, cdc)
-        # 缓存键包含 ln_type_id，避免不同 LN 的同结构 DO 误用同一 ID
-        cache_key = (ln_type_id, fingerprint)
-        if cache_key in do_type_cache:
-            return do_type_cache[cache_key]
+        # 全局缓存（不绑定 ln_type_id），使跨 LN 的相同结构 DO 共享 DOType
+        if fingerprint in do_type_cache:
+            return do_type_cache[fingerprint]
 
         do_type_id = f"{ln_type_id}.{do.name}"
-        do_type_cache[cache_key] = do_type_id
+        do_type_cache[fingerprint] = do_type_id
 
         do_type_item = {"@id": do_type_id, "@cdc": cdc}
         da_refs = []
