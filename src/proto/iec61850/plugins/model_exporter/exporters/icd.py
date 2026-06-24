@@ -21,6 +21,9 @@ import xmltodict
 
 from ....defs.constants import FRAME_TYPE_DESC, IecType
 
+# 空元素转自闭合标签: 匹配 <tag ...></tag> → <tag .../>
+_RE_EMPTY_ELEMENT = re.compile(r"<(\w+)([^>]*)></\1>")
+
 # DOType/DAType 类型模板 ID 计数器
 _do_type_counter: dict[str, int] = {}
 _da_type_counter: dict[str, int] = {}
@@ -79,6 +82,8 @@ class IcdExporter:
 
         scl_dict = self._model_to_scl_dict(model, ied_name)
         xml_str = xmltodict.unparse(scl_dict, pretty=pretty, indent="\t")
+        # xmltodict 不自持自闭合标签，将空元素 <tag></tag> 转为 <tag/>
+        xml_str = _RE_EMPTY_ELEMENT.sub(r"<\1\2/>", xml_str)
 
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
@@ -263,6 +268,8 @@ class IcdExporter:
             ln_list = []
             for ln in ld.lns:
                 ln_type_id = f"{ied_name}{ld_inst}.{ln.name}"
+                # 使用去重后的LNodeType id（如果存在映射）
+                dedup_ln_type_id = self._ln_type_mapping.get(ln_type_id, ln_type_id)
                 ln_inst = self._extract_ln_inst(ln.name)
                 ln_class = ln.ln_class or self._extract_ln_class_from_name(ln.name)
                 ln_prefix = self._extract_ln_prefix(ln.name, ln_class)
@@ -271,7 +278,7 @@ class IcdExporter:
                     if not ln.dos and not ln.datasets and not ln.rcb_list:
                         continue
                     ln0_item = {
-                        "@lnType": ln_type_id,
+                        "@lnType": dedup_ln_type_id,
                         "@lnClass": "LLN0",
                         "@inst": "",
                     }
@@ -281,7 +288,7 @@ class IcdExporter:
                         ln0_item["ReportControl"] = self._build_report_controls(ln.rcb_list)
                 else:
                     ln_item = {
-                        "@lnType": ln_type_id,
+                        "@lnType": dedup_ln_type_id,
                         "@lnClass": ln_class,
                         "@inst": ln_inst,
                     }
@@ -337,6 +344,10 @@ class IcdExporter:
 
         do_type_cache: dict[tuple, str] = {}  # (cdc, da_fingerprint) → do_type_id
         da_type_cache: dict[tuple, str] = {}  # bda_fingerprint → da_type_id
+        # LNodeType去重映射: fingerprint → lnode_type_id
+        lnode_fingerprint_cache: dict[tuple, str] = {}
+        # 原始ln_type_id → 去重后ln_type_id 的映射
+        self._ln_type_mapping: dict[str, str] = {}
 
         for ld in model.lds:
             ld_inst = self._get_ld_inst(ld, ied_name)
@@ -363,10 +374,19 @@ class IcdExporter:
                 if not do_refs and ln_class == "LLN0":
                     continue
 
-                lnode_type = {"@id": ln_type_id, "@lnClass": ln_class}
-                if do_refs:
-                    lnode_type["DO"] = do_refs if len(do_refs) > 1 else do_refs[0]
-                lnode_types.append(lnode_type)
+                # LNodeType去重：对具有相同lnClass和DO结构（名称+类型）的LNodeType进行合并
+                do_fingerprint = tuple(sorted((ref["@name"], ref["@type"]) for ref in do_refs))
+                ln_fingerprint = (ln_class, do_fingerprint)
+                if ln_fingerprint in lnode_fingerprint_cache:
+                    # 命中缓存，使用已存在的LNodeType id
+                    dedup_id = lnode_fingerprint_cache[ln_fingerprint]
+                    self._ln_type_mapping[ln_type_id] = dedup_id
+                else:
+                    lnode_fingerprint_cache[ln_fingerprint] = ln_type_id
+                    lnode_type = {"@id": ln_type_id, "@lnClass": ln_class}
+                    if do_refs:
+                        lnode_type["DO"] = do_refs if len(do_refs) > 1 else do_refs[0]
+                    lnode_types.append(lnode_type)
 
         return self._assemble_type_templates(lnode_types, do_types, da_types, enum_types)
 
@@ -438,15 +458,20 @@ class IcdExporter:
     ) -> str:
         """查找或创建共享 DOType
 
+        DOType ID 格式: {ln_type_id}.{do_name}
+        相同 LN 中具有相同 DA 结构的 DO 共享同一 DOType。
+
         Returns:
             do_type_id: 共享的 DOType ID
         """
         fingerprint = self._make_do_type_fingerprint(do, cdc)
-        if fingerprint in do_type_cache:
-            return do_type_cache[fingerprint]
+        # 缓存键包含 ln_type_id，避免不同 LN 的同结构 DO 误用同一 ID
+        cache_key = (ln_type_id, fingerprint)
+        if cache_key in do_type_cache:
+            return do_type_cache[cache_key]
 
-        do_type_id = _next_do_type_id(cdc)
-        do_type_cache[fingerprint] = do_type_id
+        do_type_id = f"{ln_type_id}.{do.name}"
+        do_type_cache[cache_key] = do_type_id
 
         do_type_item = {"@id": do_type_id, "@cdc": cdc}
         da_refs = []
@@ -604,7 +629,6 @@ class IcdExporter:
                 ref = m.get("ref", "")
                 fcda = {
                     "@ldInst": ld_inst,
-                    "@prefix": "",
                     "@fc": m.get("fc", ""),
                 }
                 if ref and "/" in ref:
@@ -655,10 +679,18 @@ class IcdExporter:
                         continue
                 else:
                     continue
-                fcda_list.append(fcda)
+                # 验证FCDA的必要属性不为空，避免输出冗余空标签
+                if fcda.get("@lnClass") and fcda.get("@doName"):
+                    fcda_list.append(fcda)
 
-            if fcda_list:
-                ds_item["FCDA"] = fcda_list if len(fcda_list) > 1 else fcda_list[0]
+            # 过滤FCDA列表：移除所有不完整的FCDA条目
+            valid_fcda = []
+            for fcda in fcda_list:
+                if fcda.get("@lnClass") and fcda.get("@doName") and fcda.get("@fc"):
+                    valid_fcda.append(fcda)
+
+            if valid_fcda:
+                ds_item["FCDA"] = valid_fcda if len(valid_fcda) > 1 else valid_fcda[0]
                 ds_list.append(ds_item)
         return ds_list if len(ds_list) > 1 else (ds_list[0] if ds_list else [])
 
@@ -671,30 +703,66 @@ class IcdExporter:
                     return dln
         return None
 
+    @staticmethod
+    def _strip_report_name_suffix(name: str) -> str:
+        """去除报告名尾部数字后缀，获取基础名。
+
+        只剥离2位以上的数字后缀（如 "urcbAin01" → "urcbAin"），
+        避免误伤报告名本身末尾的个位数字。
+        若去除后缀后为空或名本身无数字后缀，返回原值。
+        """
+        stripped = re.sub(r"\d{2,}$", "", name)
+        return stripped if stripped else name
+
     def _build_report_controls(self, rcb_list) -> Any:
-        rcb_items = []
+        """构建ReportControl XML元素。
+
+        尾部带数字后缀的报告名视为同一报告的多实例，合并为一个ReportControl，
+        RptEnabled的max属性记录实例数量。
+
+        例如: urcbAin01~urcbAin12 12个实例 → 1个ReportControl + RptEnabled max="12"
+        """
+        # 按基础名聚合RCB，统计每个报告的实例数
+        rcb_groups: dict[str, dict] = {}
         for rcb in rcb_list:
-            buffered = "true" if rcb.rcb_type == "BRCB" else "false"
-            rcb_items.append(
-                {
-                    "@name": rcb.name,
-                    "@rptID": rcb.name,
+            base_name = self._strip_report_name_suffix(rcb.name)
+            if base_name not in rcb_groups:
+                buffered = "true" if rcb.rcb_type == "BRCB" else "false"
+                item = {
+                    "@name": base_name,
+                    "@rptID": base_name,
                     "@buffered": buffered,
                     "@bufTime": "0",
                     "@confRev": "1",
-                    "TrgOps": {"@dchg": "true", "@qchg": "false", "@dupd": "false", "@period": "false"},
-                    "OptFields": {
-                        "@seqNum": "false",
-                        "@timeStamp": "false",
-                        "@dataSet": "false",
-                        "@reasonCode": "false",
-                        "@dataRef": "false",
-                        "@entryID": "false",
-                        "@configRef": "false",
-                    },
-                    "RptEnabled": {"@max": "1"},
                 }
-            )
+                # 如果有datSet引用，则加入ReportControl的属性中
+                if rcb.dat_set:
+                    item["@datSet"] = rcb.dat_set
+                # 如果有intgPd(完整性周期)，则加入ReportControl的属性中(仅URCB)
+                if rcb.intg_pd:
+                    item["@intgPd"] = str(rcb.intg_pd)
+                item["TrgOps"] = {"@dchg": "true", "@qchg": "false", "@dupd": "false", "@period": "false"}
+                item["OptFields"] = {
+                    "@seqNum": "false",
+                    "@timeStamp": "false",
+                    "@dataSet": "false",
+                    "@reasonCode": "false",
+                    "@dataRef": "false",
+                    "@entryID": "false",
+                    "@configRef": "false",
+                }
+                item["RptEnabled"] = {"@max": "1"}
+                item["_count"] = 1
+                rcb_groups[base_name] = item
+            else:
+                rcb_groups[base_name]["_count"] += 1
+
+        rcb_items = []
+        for item in rcb_groups.values():
+            count = item.pop("_count", 1)
+            item["RptEnabled"]["@max"] = str(count)
+            rcb_items.append(item)
+
         return rcb_items if len(rcb_items) > 1 else (rcb_items[0] if rcb_items else [])
 
     def _model_to_xml_dict(self, model: IedModel) -> dict[str, Any]:
@@ -785,18 +853,27 @@ class IcdExporter:
         if not ld_names:
             return "IED"
 
+        # 策略1: 多LD时尝试公共前缀
         if len(ld_names) > 1:
             prefix = os.path.commonprefix(ld_names).rstrip("_-. ")
-            if prefix and all(self._looks_like_ld_inst(name[len(prefix) :]) for name in ld_names):
-                return prefix
+            if prefix:
+                # 检查每个LD的剩余部分是否为合法的LD实例名
+                rest_parts = [name[len(prefix) :].lstrip("_-. ") for name in ld_names]
+                if all(self._looks_like_ld_inst(part) for part in rest_parts if part):
+                    return prefix.rstrip("_-. ")
 
+        # 策略2: 从第一个LD名中拆分已知后缀
         suffix_split = self._split_known_ld_suffix(ld_names[0])
         if suffix_split is not None:
-            return suffix_split[0]
+            ied_name, _ = suffix_split
+            return ied_name
 
+        # 策略3: 从左分割下划线，IED名本身可能包含下划线时从左取
         parts = ld_names[0].split("_", 1)
         if len(parts) > 1 and parts[0]:
             return parts[0]
+
+        # 策略4: 回退，整个LD名作为IED名
         return ld_names[0]
 
     def _get_ld_inst(self, ld, ied_name: str) -> str:
@@ -814,11 +891,22 @@ class IcdExporter:
 
     @staticmethod
     def _split_known_ld_suffix(ld_name: str) -> tuple[str, str] | None:
+        """从LD名中拆分已知后缀。
+
+        已知后缀包含标准LD实例名模式，拆分时确保IED名不包含尾部非字母数字字符。
+        例如: "KG_BAMSCTMP01" → ("KG_BAMS", "CTMP01")
+              "PCS001LD0" → ("PCS001", "LD0")
+              "IED1_LD0" → ("IED1", "LD0")
+        """
         match = re.match(r"^(.+?)(LD\d+|CTRL\d*|MEAS\d*|PROT\d*|CTMP\d*|BAY\d*|GOOSE\d*|MMS\d*)$", ld_name)
         if not match:
             return None
         ied_name, ld_inst = match.groups()
         if not ied_name or not ld_inst:
+            return None
+        # 去除IED名尾部分隔符（下划线、连字符等）
+        ied_name = ied_name.rstrip("_-. ")
+        if not ied_name:
             return None
         return (ied_name, ld_inst)
 

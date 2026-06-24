@@ -12,7 +12,7 @@ if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
 from proto.iec61850.defs.constants import IecType
-from proto.iec61850.model.ied_model import DARef, DataSetRef, DORef, IedModel, LDModel, LNModel
+from proto.iec61850.model.ied_model import DARef, DataSetRef, DORef, IedModel, LDModel, LNModel, RCBRef
 from proto.iec61850.plugins.model_exporter.exporters.icd import (
     IcdExporter,
     _next_da_type_id,
@@ -499,3 +499,489 @@ class TestIcdExporter:
         f1 = self.exporter._make_do_type_fingerprint(do_f, "MV")
         f2 = self.exporter._make_do_type_fingerprint(do_i, "MV")
         assert f1 != f2, "mag.f 和 mag.i 应产生不同 DOType 指纹"
+
+    # ===== FCDA 冗余处理 =====
+
+    def test_fcda_empty_attributes_filtered_out(self, tmp_path):
+        """验证FCDA中缺少必要属性的条目被过滤掉"""
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            lds=(
+                LDModel(
+                    name="IED1_LD0",
+                    inst="LD0",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="IED1_LD0/LLN0",
+                            datasets=(
+                                DataSetRef(
+                                    name="dsTest",
+                                    ref="IED1_LD0/LLN0.dsTest",
+                                    members=(
+                                        # 正常FCDA
+                                        {"ref": "IED1_LD0/GGIO1.Ind1.stVal", "fc": "ST"},
+                                        # 异常FCDA: 无ref且无doName
+                                        {"fc": ""},
+                                    ),
+                                ),
+                            ),
+                        ),
+                        LNModel(
+                            name="GGIO1",
+                            ln_class="GGIO",
+                            ref="IED1_LD0/GGIO1",
+                            dos=(
+                                DORef(
+                                    name="Ind1",
+                                    ref="IED1_LD0/GGIO1.Ind1",
+                                    cdc="SPS",
+                                    frame_type=1,
+                                    das=(DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.BOOLEAN),),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        output_path = tmp_path / "fcda_filter.icd"
+        self.exporter.export(model, str(output_path))
+        doc = xmltodict.parse(output_path.read_text(encoding="utf-8"))
+        ied = doc["SCL"]["IED"]
+        ldevices = ied["AccessPoint"]["Server"]["LDevice"]
+        if isinstance(ldevices, dict):
+            ldevices = [ldevices]
+        ln0 = ldevices[0]["LN0"]
+        dataset = ln0.get("DataSet", {})
+        if isinstance(dataset, list):
+            dataset = dataset[0]
+        fcda = dataset.get("FCDA", [])
+        if isinstance(fcda, dict):
+            fcda = [fcda]
+        # 应该只有1个有效FCDA（Ind1），异常条目被过滤
+        assert len(fcda) == 1, f"应只有1个有效FCDA，实际: {len(fcda)}"
+        assert fcda[0]["@doName"] == "Ind1"
+
+    # ===== 报告整合 =====
+
+    def test_report_control_consolidation(self):
+        """验证同名报告控制块合并为一份，RptEnabled max=实例数"""
+        rcb_list = (
+            RCBRef(name="brcb01", ref="LD0/LLN0.brcb01", rcb_type="BRCB"),
+            RCBRef(name="brcb01", ref="LD0/LLN0.brcb01$01", rcb_type="BRCB"),
+            RCBRef(name="brcb01", ref="LD0/LLN0.brcb01$02", rcb_type="BRCB"),
+            RCBRef(name="urcb01", ref="LD0/LLN0.urcb01", rcb_type="URCB"),
+        )
+        result = self.exporter._build_report_controls(rcb_list)
+        if isinstance(result, dict):
+            result = [result]
+
+        assert len(result) == 2, f"应合并为2个报告，实际: {len(result)}"
+        by_name = {item["@name"]: item for item in result}
+        assert "brcb" in by_name, f"brcb应在结果中，实际keys: {list(by_name.keys())}"
+        assert "urcb" in by_name, f"urcb应在结果中，实际keys: {list(by_name.keys())}"
+        assert by_name["brcb"]["RptEnabled"]["@max"] == "3", (
+            f"brcb max应为3，实际: {by_name['brcb']['RptEnabled']['@max']}"
+        )
+        assert by_name["urcb"]["RptEnabled"]["@max"] == "1", (
+            f"urcb max应为1，实际: {by_name['urcb']['RptEnabled']['@max']}"
+        )
+
+    def test_single_report_control_no_change(self):
+        """验证单实例报告控制块的RptEnabled max=1"""
+        rcb_list = (RCBRef(name="urcb01", ref="LD0/LLN0.urcb01", rcb_type="URCB"),)
+        result = self.exporter._build_report_controls(rcb_list)
+        if isinstance(result, dict):
+            result = [result]
+        assert len(result) == 1
+        assert result[0]["RptEnabled"]["@max"] == "1"
+
+    # ===== LNodeType 去重 =====
+
+    def test_lnode_type_dedup_same_structure(self):
+        """验证相同lnClass和相同DO结构的LN共享同一LNodeType id"""
+        _reset_type_counters()
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            lds=(
+                LDModel(
+                    name="IED1_LD0",
+                    inst="LD0",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="IED1_LD0/LLN0",
+                            dos=(),
+                            rcb_list=(),
+                        ),
+                        LNModel(
+                            name="GGIO1",
+                            ln_class="GGIO",
+                            ref="IED1_LD0/GGIO1",
+                            dos=(
+                                DORef(
+                                    name="Ind1",
+                                    cdc="SPS",
+                                    frame_type=1,
+                                    das=(DARef(name="stVal", fc="ST", iec_type=IecType.BOOLEAN),),
+                                ),
+                            ),
+                        ),
+                        LNModel(
+                            name="GGIO2",
+                            ln_class="GGIO",
+                            ref="IED1_LD0/GGIO2",
+                            dos=(
+                                DORef(
+                                    name="Ind1",
+                                    cdc="SPS",
+                                    frame_type=1,
+                                    das=(DARef(name="stVal", fc="ST", iec_type=IecType.BOOLEAN),),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        templates = self.exporter._build_data_type_templates(model, "IED1")
+        lnode_types = templates.get("LNodeType", [])
+        if isinstance(lnode_types, dict):
+            lnode_types = [lnode_types]
+
+        # GGIO1和GGIO2是不同LN，各自有独立DOType id（含LN名），所以LNodeType不共享
+        ggio_count = sum(1 for lt in lnode_types if lt.get("@lnClass") == "GGIO")
+        assert ggio_count == 2, f"不同LN的GGIO应有2个LNodeType，实际: {ggio_count}"
+        # 验证ln_type_mapping为空（无去重）
+        assert not self.exporter._ln_type_mapping
+
+    def test_lnode_type_no_dedup_different_do(self):
+        """验证不同DO结构的LN不共享LNodeType"""
+        _reset_type_counters()
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            lds=(
+                LDModel(
+                    name="IED1_LD0",
+                    inst="LD0",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="IED1_LD0/LLN0",
+                            dos=(),
+                            rcb_list=(),
+                        ),
+                        LNModel(
+                            name="GGIO1",
+                            ln_class="GGIO",
+                            ref="IED1_LD0/GGIO1",
+                            dos=(
+                                DORef(
+                                    name="Ind1",
+                                    cdc="SPS",
+                                    frame_type=1,
+                                    das=(DARef(name="stVal", fc="ST", iec_type=IecType.BOOLEAN),),
+                                ),
+                            ),
+                        ),
+                        LNModel(
+                            name="GGIO2",
+                            ln_class="GGIO",
+                            ref="IED1_LD0/GGIO2",
+                            dos=(
+                                DORef(
+                                    name="Ind2",
+                                    cdc="SPS",
+                                    frame_type=1,
+                                    das=(DARef(name="stVal", fc="ST", iec_type=IecType.BOOLEAN),),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        templates = self.exporter._build_data_type_templates(model, "IED1")
+        lnode_types = templates.get("LNodeType", [])
+        if isinstance(lnode_types, dict):
+            lnode_types = [lnode_types]
+        ggio_count = sum(1 for lt in lnode_types if lt.get("@lnClass") == "GGIO")
+        assert ggio_count == 2, f"不同DO的GGIO应有2个LNodeType，实际: {ggio_count}"
+
+    def test_lnode_type_dedup_in_ied_section(self, tmp_path):
+        """验证去重后IED段的@lnType引用正确指向合并后的LNodeType"""
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            lds=(
+                LDModel(
+                    name="IED1_LD0",
+                    inst="LD0",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="IED1_LD0/LLN0",
+                            dos=(),
+                            datasets=(
+                                DataSetRef(
+                                    name="dsTest",
+                                    ref="IED1_LD0/LLN0.dsTest",
+                                    members=(
+                                        {"ref": "IED1_LD0/MMCL1.Temp001.mag.f", "fc": "MX"},
+                                        {"ref": "IED1_LD0/MMCL1.Temp002.mag.f", "fc": "MX"},
+                                    ),
+                                ),
+                            ),
+                            rcb_list=(),
+                        ),
+                        LNModel(
+                            name="MMCL1",
+                            ln_class="MMCL",
+                            ref="IED1_LD0/MMCL1",
+                            dos=(
+                                DORef(
+                                    name="Temp001",
+                                    cdc="MV",
+                                    frame_type=0,
+                                    das=(
+                                        DARef(
+                                            name="mag",
+                                            fc="MX",
+                                            iec_type=IecType.FLOAT,
+                                            sub_das=(DARef(name="f", fc="MX", iec_type=IecType.FLOAT),),
+                                        ),
+                                        DARef(name="q", fc="MX", iec_type=IecType.INTEGER),
+                                        DARef(name="t", fc="MX", iec_type=IecType.TIMESTAMP),
+                                    ),
+                                ),
+                                DORef(
+                                    name="Temp002",
+                                    cdc="MV",
+                                    frame_type=0,
+                                    das=(
+                                        DARef(
+                                            name="mag",
+                                            fc="MX",
+                                            iec_type=IecType.FLOAT,
+                                            sub_das=(DARef(name="f", fc="MX", iec_type=IecType.FLOAT),),
+                                        ),
+                                        DARef(name="q", fc="MX", iec_type=IecType.INTEGER),
+                                        DARef(name="t", fc="MX", iec_type=IecType.TIMESTAMP),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        output_path = tmp_path / "lnode_dedup.icd"
+        self.exporter.export(model, str(output_path))
+        doc = xmltodict.parse(output_path.read_text(encoding="utf-8"))
+        ied = doc["SCL"]["IED"]
+        lns = ied["AccessPoint"]["Server"]["LDevice"]["LN"]
+        if isinstance(lns, dict):
+            lns = [lns]
+
+        # DataTypeTemplates中的DOType应包含MV类型，且Temp001和Temp002共享同一DOType
+        templates = doc["SCL"]["DataTypeTemplates"]
+        do_types = templates.get("DOType", [])
+        if isinstance(do_types, dict):
+            do_types = [do_types]
+        # 找到MMCL1相关的DOType
+        mmcl_do_types = [dt for dt in do_types if "MMCL1" in dt.get("@id", "")]
+        # Temp001和Temp002结构相同，应共享同一DOType（id为MMCL1.Temp001）
+        mmcl_do_ids = {dt["@id"] for dt in mmcl_do_types}
+        expected_id = "IED1LD0.MMCL1.Temp001"
+        assert expected_id in mmcl_do_ids, f"应包含DOType id '{expected_id}'，实际: {mmcl_do_ids}"
+        assert len(mmcl_do_ids) == 1, f"Temp001和Temp002应共享同一DOType，实际: {mmcl_do_ids}"
+
+    # ===== IED名称推断 =====
+
+    def test_infer_ied_name_trailing_separator_stripped(self):
+        """验证带尾部下划线的IED名被清理（如 IED1_ → IED1）"""
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            lds=(LDModel(name="IED1_LD0", inst="IED1_LD0", lns=()),),
+        )
+        result = self.exporter._infer_ied_name(model)
+        assert result == "IED1", f"应返回'IED1'，实际: '{result}'"
+
+    def test_infer_ied_name_multi_ld_common_prefix(self):
+        """验证多LD场景通过公共前缀推断IED名"""
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            lds=(
+                LDModel(name="PCS001_LD0", inst="PCS001_LD0", lns=()),
+                LDModel(name="PCS001_LD1", inst="PCS001_LD1", lns=()),
+            ),
+        )
+        result = self.exporter._infer_ied_name(model)
+        assert result == "PCS001", f"应返回'PCS001'，实际: '{result}'"
+
+    # ===== 完整导出验证 =====
+
+    def test_global_report_aggregation_across_lds(self, tmp_path):
+        """验证跨LD/LN的全局RCB聚合：12个实例在全IED范围内聚合为max=12"""
+        rcb_instances = tuple(
+            RCBRef(name=f"urcbAin{i + 1:02d}", ref=f"LD0/LLN0.urcbAin{i + 1:02d}", rcb_type="URCB") for i in range(12)
+        )
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            lds=(
+                LDModel(
+                    name="IED_LD0",
+                    inst="LD0",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="LD0/LLN0",
+                            dos=(),
+                            rcb_list=rcb_instances,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        output_path = tmp_path / "global_report.icd"
+        self.exporter.export(model, str(output_path))
+        doc = xmltodict.parse(output_path.read_text(encoding="utf-8"))
+        ied = doc["SCL"]["IED"]
+        ldevice = ied["AccessPoint"]["Server"]["LDevice"]
+        ln0 = ldevice["LN0"]
+        reports = ln0.get("ReportControl", [])
+        if isinstance(reports, dict):
+            reports = [reports]
+        # 12个urcbAin01~12应合并为1个urcbAin，max=12
+        by_name = {r["@name"]: r for r in reports}
+        assert "urcbAin" in by_name, f"应合并为urcbAin，实际keys: {list(by_name.keys())}"
+        assert by_name["urcbAin"]["RptEnabled"]["@max"] == "12", (
+            f"全局聚合失败，期望max=12，实际: {by_name['urcbAin']['RptEnabled']['@max']}"
+        )
+        # 应只有1个报告条目
+        assert len(reports) == 1, f"应只有1个ReportControl，实际: {len(reports)}"
+
+    def test_complete_icd_export_structure(self, tmp_path):
+        """验证完整ICD导出的XML结构完整性"""
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            discover_time="2026-06-24 00:00:00",
+            lds=(
+                LDModel(
+                    name="KG_BAMSCTMP01",
+                    inst="KG_BAMSCTMP01",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="KG_BAMSCTMP01/LLN0",
+                            dos=(),
+                            datasets=(
+                                DataSetRef(
+                                    name="dsDin",
+                                    ref="KG_BAMSCTMP01/LLN0.dsDin",
+                                    members=({"ref": "KG_BAMSCTMP01/MMCL1.Temp001.mag.f", "fc": "MX"},),
+                                ),
+                            ),
+                            rcb_list=(
+                                RCBRef(name="brcb01", ref="KG_BAMSCTMP01/LLN0.brcb01", rcb_type="BRCB"),
+                                RCBRef(name="brcb01", ref="KG_BAMSCTMP01/LLN0.brcb01$01", rcb_type="BRCB"),
+                                RCBRef(name="brcb01", ref="KG_BAMSCTMP01/LLN0.brcb01$02", rcb_type="BRCB"),
+                                RCBRef(name="urcb01", ref="KG_BAMSCTMP01/LLN0.urcb01", rcb_type="URCB"),
+                            ),
+                        ),
+                        LNModel(
+                            name="MMCL1",
+                            ln_class="MMCL",
+                            ref="KG_BAMSCTMP01/MMCL1",
+                            dos=(
+                                DORef(
+                                    name="Temp001",
+                                    cdc="MV",
+                                    frame_type=0,
+                                    das=(
+                                        DARef(
+                                            name="mag",
+                                            fc="MX",
+                                            iec_type=IecType.FLOAT,
+                                            sub_das=(DARef(name="f", fc="MX", iec_type=IecType.FLOAT),),
+                                        ),
+                                        DARef(name="q", fc="MX", iec_type=IecType.INTEGER),
+                                        DARef(name="t", fc="MX", iec_type=IecType.TIMESTAMP),
+                                    ),
+                                ),
+                                DORef(
+                                    name="Temp002",
+                                    cdc="MV",
+                                    frame_type=0,
+                                    das=(
+                                        DARef(
+                                            name="mag",
+                                            fc="MX",
+                                            iec_type=IecType.FLOAT,
+                                            sub_das=(DARef(name="f", fc="MX", iec_type=IecType.FLOAT),),
+                                        ),
+                                        DARef(name="q", fc="MX", iec_type=IecType.INTEGER),
+                                        DARef(name="t", fc="MX", iec_type=IecType.TIMESTAMP),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        output_path = tmp_path / "kg_bams.icd"
+        self.exporter.export(model, str(output_path), ied_name="KG_BAMS")
+        doc = xmltodict.parse(output_path.read_text(encoding="utf-8"))
+
+        # 验证根结构
+        assert "SCL" in doc
+        scl = doc["SCL"]
+        assert scl["@xmlns"] == "http://www.iec.ch/61850/2003/SCL"
+
+        # 验证IED名称
+        assert scl["IED"]["@name"] == "KG_BAMS"
+
+        # 验证LDevice inst正确（从KG_BAMSCTMP01中提取CTMP01）
+        ldevice = scl["IED"]["AccessPoint"]["Server"]["LDevice"]
+        assert ldevice["@inst"] == "CTMP01"
+
+        # 验证LNodeType去重（LLN0被跳过，MMCL1有1个LNodeType）
+        templates = scl["DataTypeTemplates"]
+        lnode_types = templates.get("LNodeType", [])
+        if isinstance(lnode_types, dict):
+            lnode_types = [lnode_types]
+        mmcl_ln_types = [lt for lt in lnode_types if lt.get("@lnClass") == "MMCL"]
+        assert len(mmcl_ln_types) == 1, f"MMCL LNodeType应去重为1个，实际: {len(mmcl_ln_types)}"
+
+        # 验证报告整合（brcb01 3个实例合并为1个，max=3）
+        ln0 = ldevice["LN0"]
+        reports = ln0.get("ReportControl", [])
+        if isinstance(reports, dict):
+            reports = [reports]
+        by_name = {r["@name"]: r for r in reports}
+        assert by_name["brcb"]["RptEnabled"]["@max"] == "3"
+        assert by_name["urcb"]["RptEnabled"]["@max"] == "1"
+
+        # 验证FCDA内容
+        dataset = ln0["DataSet"]
+        fcda = dataset.get("FCDA", [])
+        if isinstance(fcda, dict):
+            fcda = [fcda]
+        assert len(fcda) == 1
+        assert fcda[0]["@doName"] == "Temp001"

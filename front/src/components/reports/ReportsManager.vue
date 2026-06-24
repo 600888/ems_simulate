@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="reports-manager">
     <header class="reports-header">
       <h3>{{ t('report.title') }}</h3>
@@ -110,7 +110,7 @@ const actionLoading = ref(false);
 const giLoading = ref(false);
 const rcbs = ref<RcbInfo[]>([]);
 const selectedRcb = ref<RcbInfo | null>(null);
-const detailTab = ref('latest');
+const detailTab = ref('attributes');
 
 const reportData = ref<ReportDataEntry[]>([]);
 const reportDataTotal = ref(0);
@@ -225,7 +225,7 @@ async function loadSelectedTree() {
 
 function onRcbSelect(rcb: RcbInfo) {
   selectedRcb.value = rcb;
-  detailTab.value = 'latest';
+  detailTab.value = 'attributes';
   resetReportData();
   loadReportData(true);
 }

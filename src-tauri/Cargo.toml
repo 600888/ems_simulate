@@ -1,6 +1,6 @@
 [package]
 name = "ems-simulate"
-version = "1.4.1"
+version = "1.4.2"
 description = "EMS Simulate - 工业协议仿真桌面客户端"
 authors = ["EMS Simulate Project"]
 edition = "2021"

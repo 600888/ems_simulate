@@ -291,7 +291,7 @@ class ModelDiscoveryService:
                         ln_builder.add_dataset(ds)
 
                 # RCB
-                for rcb in self._discover_rcbs(conn, ln_ref):
+                for rcb in self._discover_rcbs(conn, ld_name, ln_ref):
                     ln_builder.add_rcb(rcb)
 
                 # GoCB — GOOSE 控制块仅存在于 LLN0, 跳过其他 LN
@@ -718,12 +718,16 @@ class ModelDiscoveryService:
 
         return members
 
-    def _discover_rcbs(self, conn, ln_ref: str) -> list[RCBRef]:
-        """发现 LN 下所有 RCB"""
+    def _discover_rcbs(self, conn, ld_name: str, ln_ref: str) -> list[RCBRef]:
+        """发现 LN 下所有 RCB (含 datSet, intgPd 等详情)
+
+        通过 getRCBValues 读取 RCB 属性以获取 datSet 和 intgPd。
+        每个 RCB 独立 try/except，单点失败不影响其他 RCB 发现。
+        """
         rcbs = []
-        for acsi_val, type_name in [
-            (AcsiClass.URCB, "URCB"),
-            (AcsiClass.BRCB, "BRCB"),
+        for acsi_val, type_name, fc_seg in [
+            (AcsiClass.URCB, "URCB", "RP"),
+            (AcsiClass.BRCB, "BRCB", "BR"),
         ]:
             try:
                 result = iec61850.IedConnection_getLogicalNodeDirectory(conn, ln_ref, acsi_val)
@@ -735,16 +739,66 @@ class ModelDiscoveryService:
 
                 rcb_names = get_list_from_linked_list(rcb_list)
                 for rcb_name in rcb_names:
+                    dat_set, intg_pd = self._read_rcb_detail(conn, ld_name, ln_ref, rcb_name, fc_seg)
                     rcbs.append(
                         RCBRef(
                             name=rcb_name,
                             ref=f"{ln_ref}.{rcb_name}",
                             rcb_type=type_name,
+                            dat_set=dat_set,
+                            intg_pd=intg_pd,
                         )
                     )
             except Exception:
                 pass
         return rcbs
+
+    def _read_rcb_detail(self, conn, ld_name: str, ln_ref: str, rcb_name: str, fc_seg: str) -> tuple[str, int]:
+        """读取 RCB 的 datSet 和 intgPd 属性
+
+        使用完整参考路径(含 FC 段)读取 RCB 值。
+        失败时静默返回空值，不阻断发现流程。
+
+        Returns:
+            (dat_set, intg_pd) 二元组
+        """
+        ln_name = ln_ref.split("/", 1)[-1] if "/" in ln_ref else ln_ref
+        nref = f"{ld_name}/{ln_name}.{fc_seg}.{rcb_name}"
+        rcb = None
+        try:
+            rcb = iec61850.ClientReportControlBlock_create(nref)
+            if rcb is not None:
+                result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
+                err = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
+                if err == iec61850.IED_ERROR_OK:
+                    dat_set = ""
+                    try:
+                        ds_ref = iec61850.ClientReportControlBlock_getDataSetReference(rcb)
+                        if ds_ref:
+                            ds_str = str(ds_ref)
+                            if "$" in ds_str:
+                                dat_set = ds_str.split("$", 1)[-1]
+                            elif "." in ds_str:
+                                dat_set = ds_str.rsplit(".", 1)[-1]
+                            else:
+                                dat_set = ds_str
+                    except Exception:
+                        pass
+
+                    intg_pd = 0
+                    try:
+                        intg_pd = int(iec61850.ClientReportControlBlock_getIntgPd(rcb) or 0)
+                    except Exception:
+                        pass
+
+                    return (dat_set, intg_pd)
+        except Exception:
+            pass
+        finally:
+            if rcb is not None:
+                with contextlib.suppress(Exception):
+                    iec61850.ClientReportControlBlock_destroy(rcb)
+        return ("", 0)
 
     def _discover_gocbs(self, conn, ld_name: str, ln_ref: str) -> list[GoCBRef]:
         """发现 LN 下所有 GoCB (含完整信息)"""

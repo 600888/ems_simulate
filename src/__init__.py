@@ -8,7 +8,6 @@ except PackageNotFoundError:
     # 开发模式下未安装包，从 pyproject.toml 读取
     try:
         from pathlib import Path
-
         import tomllib
 
         _pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"

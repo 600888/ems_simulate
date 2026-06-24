@@ -136,9 +136,16 @@ class RCBRef:
     name: str = ""
     ref: str = ""
     rcb_type: str = ""  # "URCB" / "BRCB"
+    dat_set: str = ""  # 引用的 DataSet 名称
+    intg_pd: int = 0  # 完整性周期(毫秒), URCB 专用
 
     def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "ref": self.ref, "type": self.rcb_type}
+        result: dict[str, Any] = {"name": self.name, "ref": self.ref, "type": self.rcb_type}
+        if self.dat_set:
+            result["datSet"] = self.dat_set
+        if self.intg_pd:
+            result["intgPd"] = self.intg_pd
+        return result
 
 
 @dataclass(slots=True, frozen=True)
