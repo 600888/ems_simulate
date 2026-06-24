@@ -356,7 +356,7 @@ jobs:
           prerelease: false
           make_latest: true
           body_path: ${{ steps.changelog.outputs.notes_file }}
-          files: release-assets/*.msi
+          files: release-assets/**/*.msi
           fail_on_unmatched_files: true
           generate_release_notes: false
         env:
