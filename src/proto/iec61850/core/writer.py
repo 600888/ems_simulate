@@ -77,18 +77,12 @@ class Iec61850Writer:
                 return error == iec61850.IED_ERROR_OK
 
             if iec_type == IEC_TYPE_INTEGER:
-                if hasattr(iec61850, "IedConnection_writeIntegerValue"):
-                    error = iec61850.IedConnection_writeIntegerValue(conn, ref, fc_val, int(value))
-                    return error == iec61850.IED_ERROR_OK
-                log.error(f"pyiec61850 不支持 writeIntegerValue: ref={ref}")
-                return False
+                error = iec61850.IedConnection_writeIntegerValue(conn, ref, fc_val, int(value))
+                return error == iec61850.IED_ERROR_OK
 
             if iec_type == IEC_TYPE_STRING:
-                if hasattr(iec61850, "IedConnection_writeStringValue"):
-                    error = iec61850.IedConnection_writeStringValue(conn, ref, fc_val, str(value))
-                    return error == iec61850.IED_ERROR_OK
-                log.error(f"pyiec61850 不支持 writeStringValue: ref={ref}")
-                return False
+                error = iec61850.IedConnection_writeStringValue(conn, ref, fc_val, str(value))
+                return error == iec61850.IED_ERROR_OK
 
             if isinstance(value, float):
                 error = iec61850.IedConnection_writeFloatValue(conn, ref, fc_val, float(value))
@@ -97,16 +91,11 @@ class Iec61850Writer:
                 error = iec61850.IedConnection_writeBooleanValue(conn, ref, fc_val, bool(value))
                 return error == iec61850.IED_ERROR_OK
             if isinstance(value, int):
-                if hasattr(iec61850, "IedConnection_writeIntegerValue"):
-                    error = iec61850.IedConnection_writeIntegerValue(conn, ref, fc_val, int(value))
-                    return error == iec61850.IED_ERROR_OK
-                error = iec61850.IedConnection_writeFloatValue(conn, ref, fc_val, float(value))
+                error = iec61850.IedConnection_writeIntegerValue(conn, ref, fc_val, int(value))
                 return error == iec61850.IED_ERROR_OK
             if isinstance(value, str):
-                if hasattr(iec61850, "IedConnection_writeStringValue"):
-                    error = iec61850.IedConnection_writeStringValue(conn, ref, fc_val, str(value))
-                    return error == iec61850.IED_ERROR_OK
-                return False
+                error = iec61850.IedConnection_writeStringValue(conn, ref, fc_val, str(value))
+                return error == iec61850.IED_ERROR_OK
 
             log.error(f"不支持写入的数据类型: ref={ref}, value_type={type(value)}")
             return False

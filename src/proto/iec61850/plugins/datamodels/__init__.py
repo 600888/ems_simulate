@@ -319,8 +319,6 @@ class DataModelsPlugin:
         """
         if not self._connection or not self._connection.is_connected:
             return ""
-        if not hasattr(iec61850, "IedConnection_readStringValue"):
-            return ""
         for da_name, fc in (
             ("dU", iec61850.IEC61850_FC_DC),
             ("d", iec61850.IEC61850_FC_DC),

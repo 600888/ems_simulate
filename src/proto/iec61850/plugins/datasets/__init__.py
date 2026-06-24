@@ -59,10 +59,6 @@ class DataSetsPlugin:
         """
         if not self._connection or not self._connection.is_connected:
             return []
-        if not hasattr(iec61850, "IedConnection_getLogicalDeviceDataSets"):
-            log.warning("pyiec61850 不支持获取逻辑设备 DataSet 列表")
-            return []
-
         # 1. 获取逻辑设备列表
         try:
             lds = self._connection.browse_logical_devices()
@@ -130,9 +126,6 @@ class DataSetsPlugin:
             成员信息列表
         """
         if not self._connection or not self._connection.is_connected:
-            return []
-        if not hasattr(iec61850, "IedConnection_getDataSetDirectory"):
-            log.warning("pyiec61850 不支持浏览 DataSet 目录")
             return []
 
         try:
@@ -413,18 +406,6 @@ class DataSetsPlugin:
 
     def _read_dataset_values_by_mms(self, dataset_ref: str) -> dict[str, Any]:
         """Read a DataSet in one MMS request via NamedVariableList values."""
-        required = (
-            "IedConnection_getMmsConnection",
-            "MmsConnection_readNamedVariableListValues",
-            "MmsError_create",
-            "MmsError_getValue",
-            "MmsValue_getArraySize",
-            "MmsValue_getElement",
-        )
-        if not all(hasattr(iec61850, name) for name in required):
-            log.debug(f"MMS DataSet read unavailable: missing API, ref={dataset_ref}")
-            return {}
-
         mms_ref = self._connection.build_dataset_ref(dataset_ref)
         slash = mms_ref.find("/")
         if slash <= 0 or slash == len(mms_ref) - 1:
@@ -512,12 +493,6 @@ class DataSetsPlugin:
         if not members:
             log.warning(f"Read DataSet values fallback failed: no members, ref={dataset_ref}, reason={reason}")
             return {}
-        if not hasattr(iec61850, "IedConnection_readObject"):
-            log.warning(
-                f"Read DataSet values fallback failed: readObject unavailable, ref={dataset_ref}, reason={reason}"
-            )
-            return {}
-
         values: dict[str, Any] = {}
         for member in members:
             ref = member.get("ref") or ""

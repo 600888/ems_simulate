@@ -7,7 +7,13 @@ IEC 61850 MMS 客户端封装 (门面模式)
 v3.0 变更: 集成 ModelDiscoveryService，连接时一次发现 → IedModel 缓存 → 多处消费。
 """
 
-from typing import Any
+from typing import Any, cast
+
+from src.proto.iec61850.plugins.datamodels import DataModelsPlugin
+from src.proto.iec61850.plugins.datasets import DataSetsPlugin
+from src.proto.iec61850.plugins.files import FilesPlugin
+from src.proto.iec61850.plugins.model_exporter import ModelExporterPlugin
+from src.proto.iec61850.plugins.reports import ReportsPlugin
 
 from .core import (
     Iec61850Connection,
@@ -170,7 +176,7 @@ class IEC61850Client:
 
         parsed = parse_ref(address)
         if not parsed:
-            return MetadataInfo.empty()
+            return MetadataInfo()
         ld_inst, ln_name, do_name, _ = parsed
         do_ref = f"{ld_inst}/{ln_name}.{do_name}"
 
@@ -211,12 +217,12 @@ class IEC61850Client:
     @property
     def datamodels(self):
         """获取 DataModels 插件"""
-        return self._plugins.get("datamodels")
+        return cast(DataModelsPlugin | None, self._plugins.get("datamodels"))
 
     @property
-    def datasets(self):
+    def datasets(self) -> DataSetsPlugin | None:
         """获取 DataSets 插件"""
-        return self._plugins.get("datasets")
+        return cast(DataSetsPlugin | None, self._plugins.get("datasets"))
 
     @property
     def goose(self):
@@ -226,12 +232,12 @@ class IEC61850Client:
     @property
     def reports(self):
         """获取 Reports 插件"""
-        return self._plugins.get("reports")
+        return cast(ReportsPlugin | None, self._plugins.get("reports"))
 
     @property
-    def files(self):
+    def files(self) -> FilesPlugin | None:
         """获取 Files 插件 (文件下载服务)"""
-        return self._plugins.get("files")
+        return cast(FilesPlugin | None, self._plugins.get("files"))
 
     # ===== 文件操作 (委托给 Files 插件) =====
 
@@ -483,9 +489,9 @@ class IEC61850Client:
     # ===== 模型导出 (委托给 ModelExporter 插件) =====
 
     @property
-    def model_exporter(self):
+    def model_exporter(self) -> ModelExporterPlugin | None:
         """获取模型导出工具实例 (通过插件系统)"""
-        return self._plugins.get("model_exporter")
+        return cast(ModelExporterPlugin | None, self._plugins.get("model_exporter"))
 
     def export_model(self, export_type: str, output_path: str = "", **kwargs) -> str:
         """统一模型导出入口

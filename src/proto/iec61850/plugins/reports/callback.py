@@ -229,10 +229,6 @@ class ReportCallbackHandler:
             ReportCallbackHandler.uninstall(connection, rcb_ref)
 
         with _CALLBACK_LOCK:
-            if not (hasattr(iec61850, "RCBHandler") and hasattr(iec61850, "RCBSubscriber")):
-                log.warning("pyiec61850 不支持 RCBHandler/RCBSubscriber, 无法安装报告回调")
-                return False
-
             try:
                 nref = _normalize_ref(rcb_ref, rcb_type)
                 log.info(f"安装报告回调: rcb_ref={rcb_ref}, mms_ref={nref}, rpt_id={rpt_id!r}, rcb_type={rcb_type}")
@@ -262,9 +258,6 @@ class ReportCallbackHandler:
                     )
                     with contextlib.suppress(Exception):
                         subscriber.deleteEventHandler()
-                    if hasattr(handler, "thisown"):
-                        with contextlib.suppress(Exception):
-                            handler.thisown = 0
                     return False
 
                 log.info(f"RCBSubscriber.subscribe() 成功: ref={nref}, rpt_id={effective_rpt_id!r}")
@@ -530,7 +523,7 @@ def _dispatch_report(rcb_ref: str, report) -> None:
             log.error(f"报告回调函数异常: {rcb_ref}, {cb_err}")
 
 
-if HAS_IEC61850 and hasattr(iec61850, "RCBHandler"):
+if HAS_IEC61850:
 
     class _PyRCBHandler(iec61850.RCBHandler):
         """SWIG director 子类, C++ 收到报告时回调 trigger()"""
@@ -667,21 +660,22 @@ def _parse_client_report(report, rcb_ref: str, dataset_members: list[str] | None
 
 def _get_reason_for_inclusion(report, index: int) -> str:
     try:
-        if hasattr(iec61850, "ClientReport_getReasonForInclusion"):
-            reason = iec61850.ClientReport_getReasonForInclusion(report, index)
-            if hasattr(iec61850, "ReasonForInclusion_getValueAsString"):
-                reason_text = iec61850.ReasonForInclusion_getValueAsString(reason)
-                if reason_text:
-                    return str(reason_text)
-            reason_value = int(reason)
-            reason_map = {
-                1: "data-change",
-                2: "quality-change",
-                4: "data-update",
-                8: "integrity",
-                16: "gi",
-            }
-            return reason_map.get(reason_value, f"code={reason_value}")
+        reason = iec61850.ClientReport_getReasonForInclusion(report, index)
+        try:
+            reason_text = iec61850.ReasonForInclusion_getValueAsString(reason)
+            if reason_text:
+                return str(reason_text)
+        except Exception:
+            pass
+        reason_value = int(reason)
+        reason_map = {
+            1: "data-change",
+            2: "quality-change",
+            4: "data-update",
+            8: "integrity",
+            16: "gi",
+        }
+        return reason_map.get(reason_value, f"code={reason_value}")
     except Exception:
         log.error(f"get_reason_for_inclusion failed: {report}, {index}")
     return "unknown"
@@ -689,10 +683,9 @@ def _get_reason_for_inclusion(report, index: int) -> str:
 
 def _get_data_reference(report, index: int) -> str:
     try:
-        if hasattr(iec61850, "ClientReport_getDataReference"):
-            ref = iec61850.ClientReport_getDataReference(report, index)
-            if ref:
-                return str(ref)
+        ref = iec61850.ClientReport_getDataReference(report, index)
+        if ref:
+            return str(ref)
     except Exception:
         log.error(f"get_data_reference failed: {report}, {index}")
     return ""

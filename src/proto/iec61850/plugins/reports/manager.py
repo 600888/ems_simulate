@@ -183,10 +183,6 @@ class ReportManager:
             return False, "pyiec61850 未安装"
 
         try:
-            # 检查 API 是否可用
-            if not hasattr(iec61850, "ReportControlBlock_create"):
-                return False, "ReportControlBlock_create API 未暴露到 Python SWIG (libIEC61850 版本不支持)"
-
             # data_set_ref: "LD/LN$ds" -> dataSetName: "LN$ds"
             ds_name = data_set_ref.split("/", 1)[-1] if "/" in data_set_ref else data_set_ref
 

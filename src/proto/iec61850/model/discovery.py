@@ -606,11 +606,10 @@ class ModelDiscoveryService:
                 ds_ref = f"{ln_ref}.{ds_name}"
 
                 is_deletable = False
-                if hasattr(iec61850, "IedConnection_isDataSetEditable"):
-                    try:
-                        is_deletable = bool(iec61850.IedConnection_isDataSetEditable(conn, ds_ref))
-                    except Exception:
-                        pass
+                try:
+                    is_deletable = bool(iec61850.IedConnection_isDataSetEditable(conn, ds_ref))
+                except Exception:
+                    pass
 
                 members = self._discover_dataset_members(conn, ds_ref)
                 datasets.append(
@@ -636,9 +635,6 @@ class ModelDiscoveryService:
         """
         members = []
         try:
-            if not hasattr(iec61850, "IedConnection_getDataSetDirectory"):
-                return members
-
             mms_ref = ds_ref
             # libIEC61850 签名: (connection, dataSetRef, isDeletable)
             try_methods = [

@@ -280,9 +280,6 @@ class TestIntegerReader:
 
         conn = connection.connection
         strategy = IntegerReader()
-        if not hasattr(iec61850, "IedConnection_readIntegerValue"):
-            pytest.skip("pyiec61850 不支持 readIntegerValue")
-
         ref = f"{connection.model_name}{connection.ld_name}/LLN0.Mod.stVal"
         fc_val = connection.get_fc_value("ST")
         value = strategy.read(conn, ref, fc_val)
@@ -304,9 +301,6 @@ class TestStringReader:
 
         conn = connection.connection
         strategy = StringReader()
-        if not hasattr(iec61850, "IedConnection_readStringValue"):
-            pytest.skip("pyiec61850 不支持 readStringValue")
-
         # 尝试读取描述属性 dU
         ref = f"{connection.model_name}{connection.ld_name}/LLN0.Mod.dU"
         fc_val = iec61850.IEC61850_FC_DC
@@ -356,14 +350,13 @@ class TestTimestampReader:
         conn = connection.connection
         strategy = TimestampReader()
 
-        if hasattr(iec61850, "IedConnection_readTimestampValue"):
-            # 某个 DO 的完整 t 属性
-            ref = f"{connection.model_name}{connection.ld_name}/LLN0.Mod.t"
-            fc_val = connection.get_fc_value("MX")
-            value = strategy.read(conn, ref, fc_val)
-            print(f"  [timestamp-direct] {ref} → {value}")
-            if value is not None:
-                assert isinstance(value, (int, float))
+        # 某个 DO 的完整 t 属性
+        ref = f"{connection.model_name}{connection.ld_name}/LLN0.Mod.t"
+        fc_val = connection.get_fc_value("MX")
+        value = strategy.read(conn, ref, fc_val)
+        print(f"  [timestamp-direct] {ref} → {value}")
+        if value is not None:
+            assert isinstance(value, (int, float))
 
 
 # ============================================================

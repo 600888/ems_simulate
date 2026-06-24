@@ -242,8 +242,8 @@ class IEC61850Server:
                     iec61850.IedServer_updateQuality(self._server, da, 0)
                 elif iec_type == "timestamp":
                     iec61850.IedServer_updateUTCTimeAttributeValue(self._server, da, now_ms)
-                elif iec_type == "string" and hasattr(iec61850, "IedServer_updateStringAttributeValue"):
-                    iec61850.IedServer_updateStringAttributeValue(self._server, da, "")
+                elif iec_type == "string":
+                    iec61850.IedServer_updateVisibleStringAttributeValue(self._server, da, "")
             except Exception as e:
                 log.warning(f"初始化标准 DA 默认值失败: {name}({iec_type}), error={e}")
 
@@ -463,26 +463,17 @@ class IEC61850Server:
                 value = iec61850.IedServer_getBooleanAttributeValue(self._server, da)
                 return bool(value) if value is not None else False
             elif iec_type == "integer":
-                if hasattr(iec61850, "IedServer_getIntegerAttributeValue"):
-                    value = iec61850.IedServer_getIntegerAttributeValue(self._server, da)
-                    return int(value) if value is not None else 0
-                value = iec61850.IedServer_getBooleanAttributeValue(self._server, da)
-                return bool(value) if value is not None else False
+                value = iec61850.IedServer_getInt32AttributeValue(self._server, da)
+                return int(value) if value is not None else 0
             elif iec_type == "string":
-                if hasattr(iec61850, "IedServer_getStringAttributeValue"):
-                    value = iec61850.IedServer_getStringAttributeValue(self._server, da)
-                    return str(value).strip() if value else ""
-                return ""
+                value = iec61850.IedServer_getStringAttributeValue(self._server, da)
+                return str(value).strip() if value else ""
             elif iec_type == "quality":
-                if hasattr(iec61850, "IedServer_getUnsignedAttributeValue"):
-                    value = iec61850.IedServer_getUnsignedAttributeValue(self._server, da)
-                    return int(value) if value is not None else 0
-                return 0
+                value = iec61850.IedServer_getUInt32AttributeValue(self._server, da)
+                return int(value) if value is not None else 0
             elif iec_type == "timestamp":
-                if hasattr(iec61850, "IedServer_getUTCTimeAttributeValue"):
-                    value = iec61850.IedServer_getUTCTimeAttributeValue(self._server, da)
-                    return int(value) if value is not None else 0
-                return 0
+                value = iec61850.IedServer_getUTCTimeAttributeValue(self._server, da)
+                return int(value) if value is not None else 0
             else:
                 try:
                     value = iec61850.IedServer_getFloatAttributeValue(self._server, da)
@@ -494,12 +485,11 @@ class IEC61850Server:
                     return bool(value) if value is not None else False
                 except Exception:
                     pass
-                if hasattr(iec61850, "IedServer_getIntegerAttributeValue"):
-                    try:
-                        value = iec61850.IedServer_getIntegerAttributeValue(self._server, da)
-                        return int(value) if value is not None else 0
-                    except Exception:
-                        pass
+                try:
+                    value = iec61850.IedServer_getInt32AttributeValue(self._server, da)
+                    return int(value) if value is not None else 0
+                except Exception:
+                    pass
                 return 0
         except Exception as e:
             log.error(f"IEC61850 调用底层获取值函数失败: address={address}, error={e}")
@@ -520,16 +510,12 @@ class IEC61850Server:
         iec_type = self._point_iec_type.get(resolved_addr, self._point_iec_type.get(addr_str, "unknown"))
         try:
             if isinstance(value, str) or iec_type == "string":
-                if hasattr(iec61850, "IedServer_updateStringAttributeValue"):
-                    iec61850.IedServer_updateStringAttributeValue(self._server, da, str(value))
+                iec61850.IedServer_updateVisibleStringAttributeValue(self._server, da, str(value))
             elif iec_type == "float":
                 iec61850.IedServer_updateFloatAttributeValue(self._server, da, float(value))
             elif iec_type == "integer":
                 if isinstance(value, int) and not isinstance(value, bool):
-                    if hasattr(iec61850, "IedServer_updateIntegerAttributeValue"):
-                        iec61850.IedServer_updateIntegerAttributeValue(self._server, da, int(value))
-                    else:
-                        iec61850.IedServer_updateBooleanAttributeValue(self._server, da, bool(value))
+                    iec61850.IedServer_updateInt32AttributeValue(self._server, da, int(value))
                 else:
                     iec61850.IedServer_updateBooleanAttributeValue(self._server, da, bool(value))
             elif iec_type == "boolean":
@@ -544,10 +530,7 @@ class IEC61850Server:
                 elif isinstance(value, bool):
                     iec61850.IedServer_updateBooleanAttributeValue(self._server, da, bool(value))
                 elif isinstance(value, int):
-                    if hasattr(iec61850, "IedServer_updateIntegerAttributeValue"):
-                        iec61850.IedServer_updateIntegerAttributeValue(self._server, da, int(value))
-                    else:
-                        iec61850.IedServer_updateBooleanAttributeValue(self._server, da, bool(value))
+                    iec61850.IedServer_updateInt32AttributeValue(self._server, da, int(value))
         except Exception as e:
             log.error(f"IEC61850 调用底层设置值函数失败: address={address}, value={value}, error={e}")
 

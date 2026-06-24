@@ -37,9 +37,6 @@ def mms_value_to_python(mms_value, iec_type: str = IEC_TYPE_UNKNOWN) -> Any:
     if mms_value is None:
         return None
 
-    if not hasattr(iec61850, "MmsValue_getType"):
-        return None
-
     # 优先按已知 iec_type 读取
     if iec_type in (IEC_TYPE_FLOAT, IEC_TYPE_INTEGER):
         try:

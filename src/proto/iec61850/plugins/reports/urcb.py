@@ -114,7 +114,7 @@ class UrcbHandler:
 
     @staticmethod
     def _error_text(error) -> str:
-        if isinstance(error, int) and hasattr(iec61850, "IedClientError_toString"):
+        if isinstance(error, int):
             with contextlib.suppress(Exception):
                 return f"{error}({iec61850.IedClientError_toString(error)})"
         return str(error)
@@ -123,7 +123,7 @@ class UrcbHandler:
     def _trigger_gi_write_object(conn, rcb_ref: str) -> bool:
         """Trigger URCB GI by writing the RP/GI attribute directly."""
         fc_rp = getattr(iec61850, "IEC61850_FC_RP", None)
-        if fc_rp is None or not hasattr(iec61850, "IedConnection_writeObject"):
+        if fc_rp is None:
             return False
 
         failures = []
@@ -154,9 +154,6 @@ class UrcbHandler:
     @staticmethod
     def _trigger_gi_direct(conn, rcb_ref: str) -> bool:
         """Use libiec61850's dedicated GI API when available."""
-        if not hasattr(iec61850, "IedConnection_triggerGIReport"):
-            return False
-
         refs = []
         for nref in UrcbHandler._candidate_refs(rcb_ref):
             for ref in (UrcbHandler._normalize_mms_ref(nref), nref):

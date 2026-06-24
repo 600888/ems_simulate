@@ -67,9 +67,6 @@ class BrcbHandler:
     @staticmethod
     def _trigger_gi_direct(conn, rcb_ref: str) -> bool:
         """Use libiec61850's dedicated GI API when available."""
-        if not hasattr(iec61850, "IedConnection_triggerGIReport"):
-            return False
-
         refs = []
         for ref in (BrcbHandler._normalize_mms_ref(rcb_ref), BrcbHandler._normalize_ref(rcb_ref), rcb_ref):
             if ref and ref not in refs:

@@ -151,9 +151,6 @@ class StringReader:
     """字符串值读取策略"""
 
     def read(self, conn, ref: str, fc_val) -> Any:
-        if not hasattr(iec61850, "IedConnection_readStringValue"):
-            log.debug("pyiec61850 不支持 readStringValue")
-            return None
         try:
             [value, error] = iec61850.IedConnection_readStringValue(conn, ref, fc_val)
             if error == iec61850.IED_ERROR_OK:
@@ -164,8 +161,6 @@ class StringReader:
         return None
 
     def read_batch(self, conn, items: list, results: dict) -> None:
-        if not hasattr(iec61850, "IedConnection_readStringValue"):
-            return
         for addr_str, ref, fc_val, _ in items:
             try:
                 [value, error] = iec61850.IedConnection_readStringValue(conn, ref, fc_val)
@@ -182,13 +177,12 @@ class TimestampReader:
 
     def read(self, conn, ref: str, fc_val) -> Any:
         # 尝试专用 timestamp 读取函数 (libiec61850 原生支持)
-        if hasattr(iec61850, "IedConnection_readTimestampValue"):
-            try:
-                [value, error] = iec61850.IedConnection_readTimestampValue(conn, ref, fc_val)
-                if error == iec61850.IED_ERROR_OK:
-                    return int(value)  # 毫秒级 Unix 时间戳
-            except Exception:
-                pass
+        try:
+            [value, error] = iec61850.IedConnection_readTimestampValue(conn, ref, fc_val, 0)
+            if error == iec61850.IED_ERROR_OK:
+                return int(iec61850.Timestamp_getTimeInMs(value))
+        except Exception:
+            log.debug(f"读取时标值失败: ref={ref}")
         # 降级: 尝试整数 (使用通用 readObject 替代不存在的 readIntegerValue)
         try:
             [obj_value, obj_error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
@@ -248,13 +242,12 @@ class AutoDetectReader:
             pass
 
         # 尝试字符串
-        if hasattr(iec61850, "IedConnection_readStringValue"):
-            try:
-                [value, error] = iec61850.IedConnection_readStringValue(conn, ref, fc_val)
-                if error == iec61850.IED_ERROR_OK:
-                    return str(value).strip() if value else ""
-            except Exception:
-                pass
+        try:
+            [value, error] = iec61850.IedConnection_readStringValue(conn, ref, fc_val)
+            if error == iec61850.IED_ERROR_OK:
+                return str(value).strip() if value else ""
+        except Exception:
+            pass
 
         log.error(f"自动探测读取失败: ref={ref}")
         return None
