@@ -1,4 +1,4 @@
-﻿export default {
+export default {
   common: {
     cancel: 'Cancel',
     confirm: 'Confirm',
@@ -845,6 +845,15 @@
     configFields: 'Report Attribute Configuration',
     configFieldsDisabledHint: 'Report is enabled, attributes cannot be modified. Please uncheck "Enable Report" and click "Apply Config" to disable first, then set attributes.',
     autoRefresh: 'Auto Refresh',
+    selectAll: 'Select All',
+    selectedCount: '{count} selected',
+    applyToSelected: 'Apply to Selected ({count})',
+    batchApplySuccess: 'Successfully applied to {count} RCBs',
+    batchApplyPartial: 'Partial failure ({failed}/{total})',
+    batchApplyInProgress: 'Configuring {current}/{total}...',
+    batchApplyProgress: 'Completed {current}/{total} (success: {success}, failed: {fail})',
+    batchProgressTitle: 'Batch Apply Config',
+    noRcbSelected: 'Please select RCBs from the left tree first',
   },
 }
 

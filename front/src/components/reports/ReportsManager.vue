@@ -1,11 +1,11 @@
 <template>
   <div class="reports-manager">
     <header class="reports-header">
-      <h3>{{ t('report.title') }}</h3>
+      <h3>{{ t("report.title") }}</h3>
       <div class="reports-header-right">
         <div class="auto-refresh-group">
           <el-switch v-model="autoRefresh" />
-          <span class="auto-refresh-label">{{ t('report.autoRefresh') }}</span>
+          <span class="auto-refresh-label">{{ t("report.autoRefresh") }}</span>
           <el-select v-model="pollInterval" :disabled="!autoRefresh" style="width: 90px">
             <el-option
               v-for="opt in REFRESH_INTERVAL_OPTIONS"
@@ -16,15 +16,43 @@
           </el-select>
         </div>
         <el-button type="primary" :loading="loading" @click="loadRcbs">
-          {{ t('common.refresh') }}
+          {{ t("common.refresh") }}
         </el-button>
       </div>
     </header>
 
+    <!-- 批量操作进度对话框 -->
+    <el-dialog
+      v-model="batchProgressVisible"
+      :title="t('report.batchProgressTitle')"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+      width="420px"
+      destroy-on-close
+    >
+      <div class="batch-progress-body">
+        <el-progress
+          :percentage="batchProgressPercent"
+          :status="batchProgressStatus"
+          :stroke-width="16"
+          :text-inside="true"
+        />
+        <p class="batch-progress-text">{{ batchProgressText }}</p>
+      </div>
+    </el-dialog>
+
     <main class="reports-body" v-loading="loading">
       <el-empty v-if="!loading && rcbs.length === 0" :description="t('report.noRcbs')" />
       <template v-else>
-        <RcbTreePanel :rcbs="rcbs" :selected-ref="selectedRcb?.ref" @select="onRcbSelect" />
+        <RcbTreePanel
+          :rcbs="rcbs"
+          :selected-ref="selectedRcb?.ref"
+          show-checkbox
+          :checked-refs="checkedRefs"
+          @select="onRcbSelect"
+          @update:checked-refs="checkedRefs = $event"
+        />
 
         <section v-if="selectedRcb" class="report-workspace">
           <el-tabs v-model="detailTab" class="report-tabs">
@@ -33,7 +61,10 @@
                 :rcb="selectedRcb"
                 :action-loading="actionLoading"
                 :gi-loading="giLoading"
+                :batch-loading="batchLoading"
+                :selected-count="selectedCount"
                 @apply="handleApplyConfig"
+                @batch-apply="handleBatchApplyConfig"
                 @gi="handleGi"
               />
             </el-tab-pane>
@@ -41,16 +72,28 @@
             <el-tab-pane :label="t('report.lastReportInfo')" name="latest">
               <div class="latest-pane">
                 <div class="entry-summary" v-if="latestEntry">
-                  <span>{{ t('report.seqNum') }}: {{ latestEntry.seq_num ?? '-' }}</span>
-                  <span>{{ t('report.time') }}: {{ latestEntry.received_at || latestEntry.time_stamp || '-' }}</span>
-                  <span>{{ t('report.dataSet') }}: {{ latestEntry.data_set || '-' }}</span>
-                  <span>{{ t('report.values') }}: {{ latestEntry.value_count }}</span>
+                  <span>{{ t("report.seqNum") }}: {{ latestEntry.seq_num ?? "-" }}</span>
+                  <span
+                    >{{ t("report.time") }}:
+                    {{ latestEntry.received_at || latestEntry.time_stamp || "-" }}</span
+                  >
+                  <span
+                    >{{ t("report.dataSet") }}: {{ latestEntry.data_set || "-" }}</span
+                  >
+                  <span>{{ t("report.values") }}: {{ latestEntry.value_count }}</span>
                 </div>
-                <ReportDataTreeTable :tree-items="latestTreeItems" :loading="dataLoading" />
+                <ReportDataTreeTable
+                  :tree-items="latestTreeItems"
+                  :loading="dataLoading"
+                />
               </div>
             </el-tab-pane>
 
-            <el-tab-pane :label="`${t('report.reportData')} (${reportDataTotal})`" name="data" lazy>
+            <el-tab-pane
+              :label="`${t('report.reportData')} (${reportDataTotal})`"
+              name="data"
+              lazy
+            >
               <div class="history-pane">
                 <ReportHistoryPanel
                   class="history-list"
@@ -60,12 +103,25 @@
                 />
                 <div class="history-tree">
                   <div class="entry-summary" v-if="selectedEntry">
-                    <span>{{ t('report.seqNum') }}: {{ selectedEntry.seq_num ?? '-' }}</span>
-                    <span>{{ t('report.time') }}: {{ selectedEntry.received_at || selectedEntry.time_stamp || '-' }}</span>
-                    <span>{{ t('report.dataSet') }}: {{ selectedEntry.data_set || '-' }}</span>
-                    <span>{{ t('report.values') }}: {{ selectedEntry.value_count }}</span>
+                    <span
+                      >{{ t("report.seqNum") }}: {{ selectedEntry.seq_num ?? "-" }}</span
+                    >
+                    <span
+                      >{{ t("report.time") }}:
+                      {{
+                        selectedEntry.received_at || selectedEntry.time_stamp || "-"
+                      }}</span
+                    >
+                    <span
+                      >{{ t("report.dataSet") }}:
+                      {{ selectedEntry.data_set || "-" }}</span
+                    >
+                    <span>{{ t("report.values") }}: {{ selectedEntry.value_count }}</span>
                   </div>
-                  <ReportDataTreeTable :tree-items="selectedTreeItems" :loading="dataLoading" />
+                  <ReportDataTreeTable
+                    :tree-items="selectedTreeItems"
+                    :loading="dataLoading"
+                  />
                 </div>
               </div>
             </el-tab-pane>
@@ -107,10 +163,20 @@ const props = defineProps<{
 const loading = ref(false);
 const dataLoading = ref(false);
 const actionLoading = ref(false);
+const batchLoading = ref(false);
 const giLoading = ref(false);
 const rcbs = ref<RcbInfo[]>([]);
 const selectedRcb = ref<RcbInfo | null>(null);
 const detailTab = ref('attributes');
+
+const checkedRefs = ref<string[]>([]);
+const selectedCount = computed(() => checkedRefs.value.length);
+
+// 批量操作进度
+const batchProgressVisible = ref(false);
+const batchProgressPercent = ref(0);
+const batchProgressStatus = ref<'success' | 'exception' | ''>('');
+const batchProgressText = ref('');
 
 const reportData = ref<ReportDataEntry[]>([]);
 const reportDataTotal = ref(0);
@@ -261,6 +327,82 @@ async function handleApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps; opt
   } finally {
     actionLoading.value = false;
   }
+}
+
+const BATCH_DELAY_MS = 200; // 每个 RCB 操作间的延迟
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps; optFields: OptFields }) {
+  if (checkedRefs.value.length === 0) {
+    ElMessage.warning(t('report.noRcbSelected'));
+    return;
+  }
+  batchLoading.value = true;
+  const refs = [...checkedRefs.value];
+  const total = refs.length;
+  let successCount = 0;
+  let failCount = 0;
+
+  // 打开进度对话框
+  batchProgressPercent.value = 0;
+  batchProgressStatus.value = '';
+  batchProgressText.value = t('report.batchApplyInProgress', { current: 0, total });
+  batchProgressVisible.value = true;
+
+  for (let i = 0; i < total; i++) {
+    const rcbRef = refs[i];
+    try {
+      const result = await applyConfig(
+        props.channelId,
+        rcbRef,
+        payload.rptEna,
+        payload.trgOps,
+        payload.optFields,
+      );
+      if (result.success) {
+        successCount++;
+        if (result.rcb) updateRcbInList(result.rcb);
+      } else {
+        failCount++;
+      }
+    } catch {
+      failCount++;
+    }
+
+    // 更新进度
+    const done = i + 1;
+    batchProgressPercent.value = Math.round((done / total) * 100);
+    batchProgressText.value = t('report.batchApplyProgress', {
+      current: done,
+      total,
+      success: successCount,
+      fail: failCount,
+    });
+
+    // 每个操作间加延迟
+    if (i < total - 1) {
+      await sleep(BATCH_DELAY_MS);
+    }
+  }
+
+  // 关闭进度对话框
+  await sleep(300);
+  batchProgressVisible.value = false;
+
+  if (failCount === 0) {
+    ElMessage.success(t('report.batchApplySuccess', { count: successCount }));
+  } else {
+    ElMessage.warning(t('report.batchApplyPartial', { failed: failCount, total }));
+  }
+
+  if (payload.rptEna && selectedRcb.value) {
+    await loadReportData(false);
+  }
+
+  batchLoading.value = false;
 }
 
 async function handleGi() {
@@ -439,6 +581,17 @@ onBeforeUnmount(() => {
   background: #f6f8fb;
   color: #263241;
   font-size: 13px;
+}
+
+.batch-progress-body {
+  padding: 8px 0;
+  text-align: center;
+}
+
+.batch-progress-text {
+  margin: 12px 0 0;
+  color: #5d6876;
+  font-size: 14px;
 }
 
 @media (max-width: 900px) {

@@ -1,9 +1,9 @@
-﻿/**
+/**
  * IEC 61850 Reports API 调用层
  */
 
-import { requestApi } from './http';
-import { REPORT_API } from '@/constants/api';
+import { requestApi } from "./http";
+import { REPORT_API } from "@/constants/api";
 
 // ===== 类型定义 =====
 
@@ -82,7 +82,7 @@ export interface ReportEntrySummary {
 export interface ReportTreeNode {
   id: string;
   label: string;
-  node_type: 'ld' | 'ln' | 'do' | 'da' | 'bda' | 'group' | 'value' | string;
+  node_type: "ld" | "ln" | "do" | "da" | "bda" | "group" | "value" | string;
   fc?: string | null;
   reason?: string | null;
   value?: any;
@@ -115,12 +115,12 @@ export interface ReportDataTreeOptions {
 
 export async function listRcbs(channelId: number): Promise<RcbInfo[]> {
   try {
-    const result = await requestApi(REPORT_API.LIST, 'post', {
+    const result = await requestApi(REPORT_API.LIST, "post", {
       channel_id: channelId,
     });
     return result?.rcbs || [];
   } catch (error) {
-    console.error('Error listing RCBs:', error);
+    console.error("Error listing RCBs:", error);
     return [];
   }
 }
@@ -130,9 +130,9 @@ export async function applyConfig(
   rcbRef: string,
   rptEna: boolean,
   trgOps?: Partial<TrgOps>,
-  optFields?: Partial<OptFields>,
+  optFields?: Partial<OptFields>
 ): Promise<{ success: boolean; rcb?: RcbInfo }> {
-  const result = await requestApi(REPORT_API.APPLY, 'post', {
+  const result = await requestApi(REPORT_API.APPLY, "post", {
     channel_id: channelId,
     rcb_ref: rcbRef,
     rpt_ena: rptEna,
@@ -143,7 +143,7 @@ export async function applyConfig(
 }
 
 export async function triggerGi(channelId: number, rcbRef: string): Promise<boolean> {
-  const result = await requestApi(REPORT_API.GI, 'post', {
+  const result = await requestApi(REPORT_API.GI, "post", {
     channel_id: channelId,
     rcb_ref: rcbRef,
   });
@@ -153,17 +153,17 @@ export async function triggerGi(channelId: number, rcbRef: string): Promise<bool
 export async function getReportData(
   channelId: number,
   rcbRef: string,
-  limit: number = 100,
+  limit: number = 100
 ): Promise<ReportDataResponse> {
   try {
-    const result = await requestApi(REPORT_API.DATA, 'post', {
+    const result = await requestApi(REPORT_API.DATA, "post", {
       channel_id: channelId,
       rcb_ref: rcbRef,
       limit,
     });
     return result || { data: [], total: 0 };
   } catch (error) {
-    console.error('Error fetching report data:', error);
+    console.error("Error fetching report data:", error);
     return { data: [], total: 0 };
   }
 }
@@ -171,10 +171,10 @@ export async function getReportData(
 export async function getReportDataTree(
   channelId: number,
   rcbRef: string,
-  options: ReportDataTreeOptions = {},
+  options: ReportDataTreeOptions = {}
 ): Promise<ReportDataTreeResponse> {
   try {
-    const result = await requestApi(REPORT_API.DATA_TREE, 'post', {
+    const result = await requestApi(REPORT_API.DATA_TREE, "post", {
       channel_id: channelId,
       rcb_ref: rcbRef,
       entry_key: options.entryKey || null,
@@ -182,43 +182,49 @@ export async function getReportDataTree(
     });
     return result || { rcb_ref: rcbRef, entry: null, tree_items: [] };
   } catch (error) {
-    console.error('Error fetching report data tree:', error);
+    console.error("Error fetching report data tree:", error);
     return { rcb_ref: rcbRef, entry: null, tree_items: [] };
   }
 }
 
-export async function getRcbDetail(channelId: number, rcbRef: string): Promise<RcbInfo | null> {
+export async function getRcbDetail(
+  channelId: number,
+  rcbRef: string
+): Promise<RcbInfo | null> {
   try {
-    return await requestApi(REPORT_API.DETAIL, 'post', {
+    return await requestApi(REPORT_API.DETAIL, "post", {
       channel_id: channelId,
       rcb_ref: rcbRef,
     });
   } catch (error) {
-    console.error('Error fetching RCB detail:', error);
+    console.error("Error fetching RCB detail:", error);
     return null;
   }
 }
 
-export async function refreshRcb(channelId: number, rcbRef: string): Promise<RcbInfo | null> {
+export async function refreshRcb(
+  channelId: number,
+  rcbRef: string
+): Promise<RcbInfo | null> {
   try {
-    return await requestApi(REPORT_API.REFRESH, 'post', {
+    return await requestApi(REPORT_API.REFRESH, "post", {
       channel_id: channelId,
       rcb_ref: rcbRef,
     });
   } catch (error) {
-    console.error('Error refreshing RCB:', error);
+    console.error("Error refreshing RCB:", error);
     return null;
   }
 }
 
 export async function listActiveReports(channelId: number): Promise<ActiveReport[]> {
   try {
-    const result = await requestApi(REPORT_API.ACTIVE, 'post', {
+    const result = await requestApi(REPORT_API.ACTIVE, "post", {
       channel_id: channelId,
     });
     return result?.active_reports || [];
   } catch (error) {
-    console.error('Error listing active reports:', error);
+    console.error("Error listing active reports:", error);
     return [];
   }
 }

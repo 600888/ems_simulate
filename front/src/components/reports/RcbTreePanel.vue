@@ -1,12 +1,24 @@
 <template>
   <aside class="rcb-tree-panel">
-    <el-input
-      v-model="searchText"
-      :placeholder="t('common.searchPlaceholder')"
-      clearable
-      class="rcb-search"
-      :prefix-icon="Search"
-    />
+    <div class="rcb-tree-header">
+      <el-input
+        v-model="searchText"
+        :placeholder="t('common.searchPlaceholder')"
+        clearable
+        class="rcb-search"
+        :prefix-icon="Search"
+      />
+      <div class="rcb-select-actions" v-if="showCheckbox">
+        <el-checkbox
+          :model-value="selectAllModel"
+          :indeterminate="isIndeterminate"
+          @change="handleSelectAllChange"
+        >
+          {{ t('report.selectAll') }}
+        </el-checkbox>
+        <span class="selected-count">{{ t('report.selectedCount', { count: (props.checkedRefs || []).length }) }}</span>
+      </div>
+    </div>
     <el-tree
       ref="treeRef"
       :data="treeData"
@@ -16,7 +28,10 @@
       highlight-current
       :current-node-key="selectedRef"
       :filter-node-method="filterNode"
+      :show-checkbox="showCheckbox"
+      :check-strictly="false"
       @node-click="handleNodeClick"
+      @check-change="handleCheckChange"
     >
       <template #default="{ node, data }">
         <span class="rcb-tree-node">
@@ -34,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Search } from '@element-plus/icons-vue';
 import type { ElTree } from 'element-plus';
@@ -52,16 +67,30 @@ interface RcbTreeNode {
 const props = defineProps<{
   rcbs: RcbInfo[];
   selectedRef?: string;
+  showCheckbox?: boolean;
+  checkedRefs?: string[];
 }>();
 
 const emit = defineEmits<{
   (e: 'select', rcb: RcbInfo): void;
+  (e: 'update:checkedRefs', refs: string[]): void;
 }>();
 
 const { t } = useI18n();
 const searchText = ref('');
 const treeRef = ref<InstanceType<typeof ElTree> | null>(null);
 const treeProps = { children: 'children', label: 'label' };
+
+const rcbRefs = computed<string[]>(() => props.rcbs.map((r) => r.ref));
+
+const selectAllModel = computed(() =>
+  (props.checkedRefs || []).length === rcbRefs.value.length && rcbRefs.value.length > 0,
+);
+
+const isIndeterminate = computed(() => {
+  const checked = props.checkedRefs || [];
+  return checked.length > 0 && checked.length < rcbRefs.value.length;
+});
 
 const treeData = computed<RcbTreeNode[]>(() => {
   const ldMap = new Map<string, Map<string, RcbTreeNode[]>>();
@@ -92,6 +121,22 @@ const treeData = computed<RcbTreeNode[]>(() => {
   }));
 });
 
+// Sync tree checked state when checkedRefs changes from parent (e.g. after loading new RCBs)
+watch(
+  () => props.checkedRefs,
+  (newRefs) => {
+    if (!treeRef.value) return;
+    nextTick(() => {
+      if (newRefs && newRefs.length > 0) {
+        treeRef.value?.setCheckedKeys([...newRefs]);
+      } else {
+        treeRef.value?.setCheckedKeys([]);
+      }
+    });
+  },
+  { deep: true },
+);
+
 watch(searchText, (value) => {
   treeRef.value?.filter(value);
 });
@@ -113,6 +158,26 @@ function handleNodeClick(data: RcbTreeNode) {
   const rcb = props.rcbs.find((item) => item.ref === data.ref);
   if (rcb) emit('select', rcb);
 }
+
+function handleCheckChange() {
+  if (!treeRef.value) return;
+  // getCheckedKeys returns all checked node keys (including parent LD/LN nodes)
+  const allKeys = treeRef.value.getCheckedKeys(false) as string[];
+  // Filter to only RCB leaf refs
+  const rcbKeys = allKeys.filter((key) => !key.startsWith('ld-') && !key.startsWith('ln-'));
+  emit('update:checkedRefs', rcbKeys);
+}
+
+function handleSelectAllChange(value: boolean) {
+  if (!treeRef.value) return;
+  if (value) {
+    treeRef.value.setCheckedKeys([...rcbRefs.value]);
+    emit('update:checkedRefs', [...rcbRefs.value]);
+  } else {
+    treeRef.value.setCheckedKeys([]);
+    emit('update:checkedRefs', []);
+  }
+}
 </script>
 
 <style scoped lang="scss">
@@ -126,8 +191,36 @@ function handleNodeClick(data: RcbTreeNode) {
   overflow: auto;
 }
 
-.rcb-search {
+.rcb-tree-header {
   margin-bottom: 10px;
+}
+
+.rcb-search {
+  margin-bottom: 8px;
+}
+
+.rcb-select-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+
+  .el-checkbox {
+    height: 24px;
+    font-size: 13px;
+
+    --el-checkbox-input-height: 16px;
+    --el-checkbox-input-width: 16px;
+
+    :deep(.el-checkbox__label) {
+      font-size: 13px;
+    }
+  }
+}
+
+.selected-count {
+  color: #5d6876;
+  font-size: 12px;
 }
 
 .rcb-tree-node {

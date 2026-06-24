@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="report-control-panel">
     <el-empty v-if="!rcb" :description="t('report.noRcbs')" />
     <template v-else>
@@ -12,23 +12,23 @@
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item :label="t('report.ref')" :span="2">
-          <span class="ref-text" :title="rcb.ref">{{ rcb.ref || '-' }}</span>
+          <span class="ref-text" :title="rcb.ref">{{ rcb.ref || "-" }}</span>
         </el-descriptions-item>
         <el-descriptions-item :label="`${t('report.rptId')} (RptID)`">
-          {{ rcb.rpt_id || '-' }}
+          {{ rcb.rpt_id || "-" }}
         </el-descriptions-item>
         <el-descriptions-item :label="`${t('report.dataSet')} (DatSet)`">
-          {{ rcb.data_set_ref || '-' }}
+          {{ rcb.data_set_ref || "-" }}
         </el-descriptions-item>
         <el-descriptions-item :label="`${t('report.confRev')} (ConfRev)`">
           {{ rcb.conf_rev }}
         </el-descriptions-item>
         <el-descriptions-item :label="`${t('report.sqNum')} (SqNum)`">
-          {{ rcb.sq_num ?? '-' }}
+          {{ rcb.sq_num ?? "-" }}
         </el-descriptions-item>
         <el-descriptions-item :label="`${t('report.rptEna')} (RptEna)`">
           <el-tag :type="rcb.rpt_ena ? 'success' : 'danger'" size="small">
-            {{ rcb.rpt_ena ? t('report.enabled') : t('report.disabled') }}
+            {{ rcb.rpt_ena ? t("report.enabled") : t("report.disabled") }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item :label="`${t('report.bufTime')} (BufTm)`">
@@ -37,28 +37,40 @@
         <el-descriptions-item :label="`${t('report.intgPeriod')} (IntgPd)`">
           {{ rcb.intg_period }} ms
         </el-descriptions-item>
-        <el-descriptions-item v-if="rcb.rcb_type === 'BRCB'" :label="`${t('report.entryId')} (EntryID)`">
-          {{ rcb.entry_id || '-' }}
+        <el-descriptions-item
+          v-if="rcb.rcb_type === 'BRCB'"
+          :label="`${t('report.entryId')} (EntryID)`"
+        >
+          {{ rcb.entry_id || "-" }}
         </el-descriptions-item>
-        <el-descriptions-item v-if="rcb.rcb_type === 'BRCB'" :label="`${t('report.timeOfEntry')} (TimeOfEntry)`">
-          {{ rcb.time_of_entry || '-' }}
+        <el-descriptions-item
+          v-if="rcb.rcb_type === 'BRCB'"
+          :label="`${t('report.timeOfEntry')} (TimeOfEntry)`"
+        >
+          {{ rcb.time_of_entry || "-" }}
         </el-descriptions-item>
-        <el-descriptions-item v-if="rcb.rcb_type === 'URCB'" :label="`${t('report.owner')} (Owner)`">
-          {{ rcb.owner || '-' }}
+        <el-descriptions-item
+          v-if="rcb.rcb_type === 'URCB'"
+          :label="`${t('report.owner')} (Owner)`"
+        >
+          {{ rcb.owner || "-" }}
         </el-descriptions-item>
-        <el-descriptions-item v-if="rcb.rcb_type === 'URCB'" :label="`${t('report.resv')} (Resv)`">
-          {{ rcb.resv ? 'True' : 'False' }}
+        <el-descriptions-item
+          v-if="rcb.rcb_type === 'URCB'"
+          :label="`${t('report.resv')} (Resv)`"
+        >
+          {{ rcb.resv ? "True" : "False" }}
         </el-descriptions-item>
       </el-descriptions>
 
       <section class="control-section">
-        <div class="section-title">{{ t('report.reportConfig') }}</div>
+        <div class="section-title">{{ t("report.reportConfig") }}</div>
         <div class="rpt-row">
           <el-checkbox v-model="rptEnaModel">
-            {{ t('report.rptEnaToggle') }}
+            {{ t("report.rptEnaToggle") }}
           </el-checkbox>
           <el-tag :type="rcb.rpt_ena ? 'success' : 'danger'" size="small">
-            {{ rcb.rpt_ena ? t('report.enabled') : t('report.disabled') }}
+            {{ rcb.rpt_ena ? t("report.enabled") : t("report.disabled") }}
           </el-tag>
         </div>
       </section>
@@ -73,16 +85,26 @@
           class="config-disabled-alert"
         />
 
-        <div class="section-title">{{ t('report.trgOps') }}</div>
+        <div class="section-title">{{ t("report.trgOps") }}</div>
         <el-checkbox-group v-model="trgOpsModel" class="checkbox-grid">
-          <el-checkbox v-for="item in trgOpsOptions" :key="item.value" :label="item.value" :disabled="rcb.rpt_ena">
+          <el-checkbox
+            v-for="item in trgOpsOptions"
+            :key="item.value"
+            :label="item.value"
+            :disabled="rcb.rpt_ena"
+          >
             {{ item.label }}
           </el-checkbox>
         </el-checkbox-group>
 
-        <div class="section-title">{{ t('report.optFields') }}</div>
+        <div class="section-title">{{ t("report.optFields") }}</div>
         <el-checkbox-group v-model="optFieldsModel" class="checkbox-grid">
-          <el-checkbox v-for="item in optFieldOptions" :key="item.value" :label="item.value" :disabled="rcb.rpt_ena">
+          <el-checkbox
+            v-for="item in optFieldOptions"
+            :key="item.value"
+            :label="item.value"
+            :disabled="rcb.rpt_ena"
+          >
             {{ item.label }}
           </el-checkbox>
         </el-checkbox-group>
@@ -90,10 +112,24 @@
 
       <div class="action-row">
         <el-button type="primary" :loading="actionLoading" @click="handleApply">
-          {{ t('report.applyConfig') }}
+          {{ t("report.applyConfig") }}
         </el-button>
-        <el-button type="warning" :disabled="!rcb.rpt_ena" :loading="giLoading" @click="emit('gi')">
-          {{ t('report.gi') }}
+        <el-button
+          type="primary"
+          plain
+          :loading="batchLoading"
+          :disabled="!selectedCount || selectedCount === 0"
+          @click="emit('batchApply', getCurrentConfig())"
+        >
+          {{ t("report.applyToSelected", { count: selectedCount }) }}
+        </el-button>
+        <el-button
+          type="warning"
+          :disabled="!rcb.rpt_ena"
+          :loading="giLoading"
+          @click="emit('gi')"
+        >
+          {{ t("report.gi") }}
         </el-button>
       </div>
     </template>
@@ -101,19 +137,25 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import { useI18n } from 'vue-i18n';
-import type { OptFields, RcbInfo, TrgOps } from '@/api/reportApi';
+import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import type { OptFields, RcbInfo, TrgOps } from "@/api/reportApi";
 
 const props = defineProps<{
   rcb: RcbInfo | null;
   actionLoading?: boolean;
   giLoading?: boolean;
+  batchLoading?: boolean;
+  selectedCount?: number;
 }>();
 
 const emit = defineEmits<{
-  (e: 'apply', payload: { rptEna: boolean; trgOps: TrgOps; optFields: OptFields }): void;
-  (e: 'gi'): void;
+  (e: "apply", payload: { rptEna: boolean; trgOps: TrgOps; optFields: OptFields }): void;
+  (
+    e: "batchApply",
+    payload: { rptEna: boolean; trgOps: TrgOps; optFields: OptFields }
+  ): void;
+  (e: "gi"): void;
 }>();
 
 const { t } = useI18n();
@@ -122,28 +164,28 @@ const trgOpsModel = ref<string[]>([]);
 const optFieldsModel = ref<string[]>([]);
 
 const trgOpsOptions = computed(() => [
-  { value: 'dchg', label: `${t('report.dchg')} (dchg)` },
-  { value: 'qchg', label: `${t('report.qchg')} (qchg)` },
-  { value: 'dupd', label: `${t('report.dupd')} (dupd)` },
-  { value: 'period', label: `${t('report.period')} (period)` },
-  { value: 'gi', label: `${t('report.giLabel')} (gi)` },
+  { value: "dchg", label: `${t("report.dchg")} (dchg)` },
+  { value: "qchg", label: `${t("report.qchg")} (qchg)` },
+  { value: "dupd", label: `${t("report.dupd")} (dupd)` },
+  { value: "period", label: `${t("report.period")} (period)` },
+  { value: "gi", label: `${t("report.giLabel")} (gi)` },
 ]);
 
 const optFieldOptions = computed(() => [
-  { value: 'seq_num', label: `${t('report.seqNum')} (seqNum)` },
-  { value: 'time_stamp', label: `${t('report.timeStamp')} (timeStamp)` },
-  { value: 'data_set', label: `${t('report.dataSetField')} (dataSet)` },
-  { value: 'reason_code', label: `${t('report.reasonCode')} (reasonCode)` },
-  { value: 'data_ref', label: `${t('report.dataRef')} (dataRef)` },
-  { value: 'entry_id', label: `${t('report.entryId')} (entryID)` },
-  { value: 'config_ref', label: `${t('report.configRef')} (configRef)` },
-  { value: 'buf_ovfl', label: `${t('report.bufOvfl')} (bufOvfl)` },
+  { value: "seq_num", label: `${t("report.seqNum")} (seqNum)` },
+  { value: "time_stamp", label: `${t("report.timeStamp")} (timeStamp)` },
+  { value: "data_set", label: `${t("report.dataSetField")} (dataSet)` },
+  { value: "reason_code", label: `${t("report.reasonCode")} (reasonCode)` },
+  { value: "data_ref", label: `${t("report.dataRef")} (dataRef)` },
+  { value: "entry_id", label: `${t("report.entryId")} (entryID)` },
+  { value: "config_ref", label: `${t("report.configRef")} (configRef)` },
+  { value: "buf_ovfl", label: `${t("report.bufOvfl")} (bufOvfl)` },
 ]);
 
 watch(
   () => props.rcb,
   () => syncModels(),
-  { immediate: true },
+  { immediate: true }
 );
 
 function syncModels() {
@@ -162,27 +204,31 @@ function syncModels() {
     .map(([key]) => key);
 }
 
-function handleApply() {
-  emit('apply', {
+function getCurrentConfig() {
+  return {
     rptEna: rptEnaModel.value,
     trgOps: {
-      dchg: trgOpsModel.value.includes('dchg'),
-      qchg: trgOpsModel.value.includes('qchg'),
-      dupd: trgOpsModel.value.includes('dupd'),
-      period: trgOpsModel.value.includes('period'),
-      gi: trgOpsModel.value.includes('gi'),
+      dchg: trgOpsModel.value.includes("dchg"),
+      qchg: trgOpsModel.value.includes("qchg"),
+      dupd: trgOpsModel.value.includes("dupd"),
+      period: trgOpsModel.value.includes("period"),
+      gi: trgOpsModel.value.includes("gi"),
     },
     optFields: {
-      seq_num: optFieldsModel.value.includes('seq_num'),
-      time_stamp: optFieldsModel.value.includes('time_stamp'),
-      data_set: optFieldsModel.value.includes('data_set'),
-      reason_code: optFieldsModel.value.includes('reason_code'),
-      data_ref: optFieldsModel.value.includes('data_ref'),
-      entry_id: optFieldsModel.value.includes('entry_id'),
-      config_ref: optFieldsModel.value.includes('config_ref'),
-      buf_ovfl: optFieldsModel.value.includes('buf_ovfl'),
+      seq_num: optFieldsModel.value.includes("seq_num"),
+      time_stamp: optFieldsModel.value.includes("time_stamp"),
+      data_set: optFieldsModel.value.includes("data_set"),
+      reason_code: optFieldsModel.value.includes("reason_code"),
+      data_ref: optFieldsModel.value.includes("data_ref"),
+      entry_id: optFieldsModel.value.includes("entry_id"),
+      config_ref: optFieldsModel.value.includes("config_ref"),
+      buf_ovfl: optFieldsModel.value.includes("buf_ovfl"),
     },
-  });
+  };
+}
+
+function handleApply() {
+  emit("apply", getCurrentConfig());
 }
 </script>
 
@@ -275,5 +321,3 @@ function handleApply() {
   }
 }
 </style>
-
-
