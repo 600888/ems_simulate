@@ -241,7 +241,7 @@ def _select_report_entry(
         for entry, summary in zip(data, summaries, strict=True):
             if summary.get("entry_key") == entry_key:
                 return entry, summary
-        raise NotFoundError("报告条目不存在或已被缓存淘汰")
+        return None, None
 
     index = len(data) - 1 if latest else 0
     return data[index], summaries[index]

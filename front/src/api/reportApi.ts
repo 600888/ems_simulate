@@ -59,6 +59,7 @@ export interface ReportDataEntry {
   data_set: string;
   rpt_id: string;
   received_at: string;
+  uid: number;
 }
 
 export interface ReportDataResponse {

@@ -4,6 +4,7 @@
 回调在 libIEC61850 的接收线程中执行，使用 queue 异步处理避免阻塞。
 """
 
+from collections import deque
 from collections.abc import Callable
 import contextlib
 from dataclasses import dataclass, field
@@ -28,7 +29,16 @@ _CALLBACK_LOCK = threading.Lock()
 _PENDING_GI_ROUTES: dict[str, tuple[set[str], float]] = {}
 # 常规报告 round-robin 分发计数器: rpt_id -> 当前索引
 _ROUND_ROBIN_INDEX: dict[str, int] = {}
+# 全局稳定递增 ID，用作环状缓冲区 entry_id
+_ENTRY_SEQUENCE: int = 0
 MAX_REPORT_VALUES_PER_ENTRY = 512
+
+
+def _get_next_entry_uid() -> int:
+    """获取全局唯一递增 ID，用于环状缓冲区条目标识"""
+    global _ENTRY_SEQUENCE
+    _ENTRY_SEQUENCE += 1
+    return _ENTRY_SEQUENCE
 
 
 @dataclass
@@ -39,12 +49,17 @@ class _CallbackInfo:
     handler: Any = None  # _PyRCBHandler 实例 (保持引用防 GC)
     subscriber: Any = None  # RCBSubscriber 实例 (保持引用防 GC)
     on_report: Callable | None = None  # Python 回调函数
-    data_cache: list[ReportDataEntry] = field(default_factory=list)
+    data_cache: deque = field(default_factory=lambda: deque(maxlen=1000))
     max_cache: int = 1000
     enabled_at: str = ""
     mms_ref: str = ""
     rpt_id: str = ""
     dataset_members: list[str] = field(default_factory=list)  # 数据集成员引用列表，用于索引到引用的映射
+
+    def __post_init__(self):
+        """确保 data_cache 的 maxlen 与 max_cache 一致"""
+        if self.data_cache.maxlen != self.max_cache:
+            self.data_cache = deque(self.data_cache, maxlen=self.max_cache)
 
 
 def _normalize_ref(rcb_ref: str, rcb_type: str = "") -> str:
@@ -435,9 +450,8 @@ class ReportCallbackHandler:
             if not info:
                 log.warning(f"报告缓存写入失败: RCB 未注册, ref={rcb_ref}")
                 return False
+            entry.uid = _get_next_entry_uid()
             info.data_cache.append(entry)
-            if len(info.data_cache) > info.max_cache:
-                info.data_cache.pop(0)
             log.info(f"报告缓存已写入: rcb_ref={matched_key}, cache_size={len(info.data_cache)}")
             return True
 
@@ -555,6 +569,7 @@ class ReportCallbackHandler:
             "data_set": entry.data_set,
             "rpt_id": entry.rpt_id,
             "received_at": entry.received_at,
+            "uid": entry.uid,
         }
 
 
@@ -599,13 +614,13 @@ def _dispatch_report(rcb_ref: str, report) -> None:
             # GI 报告 — 写入所有触发 GI 的目标 RCB 实例
             written = 0
             on_report = None
+            if not entry.uid:
+                entry.uid = _get_next_entry_uid()
             for target_ref in target_refs:
                 info = _CALLBACK_REGISTRY.get(target_ref)
                 if not info:
                     continue
                 info.data_cache.append(entry)
-                if len(info.data_cache) > info.max_cache:
-                    info.data_cache.pop(0)
                 if on_report is None:
                     on_report = info.on_report
                 written += 1
@@ -629,9 +644,9 @@ def _dispatch_report(rcb_ref: str, report) -> None:
                 rpt_key = entry.rpt_id or rcb_ref
                 idx = _ROUND_ROBIN_INDEX.get(rpt_key, 0) % len(instances)
                 target_ref, target_info = instances[idx]
+                if not entry.uid:
+                    entry.uid = _get_next_entry_uid()
                 target_info.data_cache.append(entry)
-                if len(target_info.data_cache) > target_info.max_cache:
-                    target_info.data_cache.pop(0)
                 on_report = target_info.on_report
                 _ROUND_ROBIN_INDEX[rpt_key] = idx + 1
                 log.info(

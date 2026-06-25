@@ -355,7 +355,7 @@ def select_report_entry(
         for entry, summary in zip(data, summaries, strict=True):
             if summary.get("entry_key") == entry_key:
                 return entry, summary
-        raise ReportEntryNotFoundError(entry_key)
+        return None, None
 
     index = len(data) - 1 if latest else 0
     return data[index], summaries[index]
@@ -542,14 +542,12 @@ def node_sort_key(label: str, node_type: str) -> tuple[int, str]:
 
 
 def make_entry_summary(entry: dict[str, Any], index: int) -> dict[str, Any]:
-    """Create a stable enough frontend key for a cached report entry."""
+    """Create a stable frontend key for a cached report entry."""
     received_at = str(entry.get("received_at") or "")
     seq_num = entry.get("seq_num")
     rpt_id = str(entry.get("rpt_id") or "")
-    if received_at:
-        entry_key = f"{received_at}|{seq_num}|{index}"
-    else:
-        entry_key = f"{rpt_id}|{seq_num}|{index}"
+    uid = entry.get("uid", 0)
+    entry_key = f"uid:{uid}"
 
     return {
         "entry_key": entry_key,
@@ -562,4 +560,5 @@ def make_entry_summary(entry: dict[str, Any], index: int) -> dict[str, Any]:
         "conf_rev": entry.get("conf_rev"),
         "entry_id": entry.get("entry_id"),
         "value_count": len(entry.get("data_values") or {}),
+        "uid": uid,
     }

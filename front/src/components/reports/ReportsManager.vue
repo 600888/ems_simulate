@@ -458,6 +458,7 @@ function resetReportData() {
 }
 
 function makeEntryKey(entry: ReportDataEntry, index: number): string {
+  if (entry.uid !== undefined && entry.uid !== null) return `uid:${entry.uid}`;
   if (entry.received_at) return `${entry.received_at}|${entry.seq_num}|${index}`;
   return `${entry.rpt_id || ''}|${entry.seq_num}|${index}`;
 }

@@ -1,7 +1,6 @@
 import unittest
 
 from src.proto.iec61850.plugins.reports.report_tree import (
-    ReportEntryNotFoundError,
     ReportTreeBuilder,
     decode_quality,
     decode_timestamp,
@@ -90,9 +89,10 @@ class ReportTreeEntrySelectionTest(unittest.TestCase):
         self.assertEqual(entry["seq_num"], 2)
         self.assertEqual(summary["index"], 1)
 
-    def test_missing_entry_key_raises_not_found(self):
-        with self.assertRaises(ReportEntryNotFoundError):
-            select_report_entry([{"seq_num": 1, "data_values": {}}], "missing", True)
+    def test_missing_entry_key_returns_none(self):
+        entry, summary = select_report_entry([{"seq_num": 1, "data_values": {}}], "missing", True)
+        self.assertIsNone(entry)
+        self.assertIsNone(summary)
 
     def test_empty_cache_returns_none(self):
         entry, summary = select_report_entry([], None, True)

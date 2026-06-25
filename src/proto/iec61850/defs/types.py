@@ -106,3 +106,4 @@ class ReportDataEntry:
     data_set: str = ""
     rpt_id: str = ""
     received_at: str = ""
+    uid: int = 0  # 全局唯一递增 ID，用作环状缓冲区稳定标识
