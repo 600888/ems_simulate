@@ -329,7 +329,10 @@ async def get_report_data(body: ReportDataRequest, request: Request):
     reports = _get_reports_plugin(body.channel_id, request)
 
     if _is_server_mode(reports):
-        raise ValidationError("服务端模式不支持报告数据查询，正在开发中", data={"data": [], "total": 0})
+        return BaseResponse(
+            message="服务端无报告缓存数据",
+            data={"data": [], "total": 0},
+        )
 
     data = reports.get_report_data(rcb_ref=body.rcb_ref, limit=body.limit)
     return BaseResponse(
@@ -347,7 +350,10 @@ async def get_report_data_tree(body: ReportTreeDataRequest, request: Request):
     reports = _get_reports_plugin(body.channel_id, request)
 
     if _is_server_mode(reports):
-        raise ValidationError("服务端模式不支持报告数据查询", data={"entry": None, "tree_items": []})
+        return BaseResponse(
+            message="服务端无报告缓存数据",
+            data={"entry": None, "tree_items": []},
+        )
 
     data = reports.get_report_data(rcb_ref=body.rcb_ref, limit=1000)
     entry, summary = _select_report_entry(data, body.entry_key, body.latest)

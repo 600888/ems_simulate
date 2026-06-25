@@ -536,6 +536,7 @@ class IedModelBuilder:
             )
             self._da_map[du_key] = du_da
             self._keep_alive.append(du_da)
+            self._standard_bda_list.append((du_da, "dU", "string"))
 
     # ===== FCDA 模型节点确保 =====
 

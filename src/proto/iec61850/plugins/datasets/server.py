@@ -290,6 +290,10 @@ class ServerDataSetManager:
                     ld_part = default_ld_inst
                     rest_part = fcda_ref
 
+                # 处理 ld_part 为空的情况（FCDA 引用缺失 LD 前缀）
+                if not ld_part:
+                    ld_part = default_ld_inst
+
                 dot_idx = rest_part.find(".")
                 if dot_idx > 0:
                     ln_name = rest_part[:dot_idx]

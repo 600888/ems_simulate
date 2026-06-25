@@ -94,13 +94,8 @@ class ReportManager:
         ln_node = self._builder.ln_map.get(ln_key)
 
         if ln_node is None:
-            if ld_inst == self._builder.ld_name:
-                self._builder.ensure_base_ld()
-                ln_node = self._builder.ln_map.get(ln_key)
-            if ln_node is None:
-                self._builder.get_or_create_ld(ld_inst)
-                ln_node = self._builder.ln_map.get(ln_key)
-                log.info(f"为 register_rcb 自动创建 LD/LN: {ld_inst}/{ln_name}")
+            ln_node = self._builder.get_or_create_ln(ld_inst, ln_name)
+            log.info(f"为 register_rcb 自动创建 LN: {ln_key}")
 
         if not ln_node:
             log.warning(f"无法注册 RCB: LN 未找到 (ld_inst={ld_inst}, ln_name={ln_name})")

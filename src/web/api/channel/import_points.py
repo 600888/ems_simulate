@@ -305,6 +305,7 @@ async def import_icd(
         try:
             # 优先使用 SclImportService (统一解析)，失败时回退到旧 Importer
             goose_data: dict[str, Any] = {}
+            do_descriptions: dict[str, str] = {}
             try:
                 from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
 
@@ -314,6 +315,18 @@ async def import_icd(
                 # 补充 SclImportService 不提供的字段
                 goose_data["pure_datasets"] = scl_result.goose.pure_datasets
                 goose_data["report_controls"] = scl_result.to_dict().get("report_controls", [])
+                # 提取 DO 描述用于设置 dU
+                for p in (
+                    scl_result.points.yc_points
+                    + scl_result.points.yx_points
+                    + scl_result.points.yk_points
+                    + scl_result.points.yt_points
+                ):
+                    if p.name and p.reg_addr:
+                        # reg_addr: "LD/LN.DO.DA" → DO ref: "LD/LN.DO"
+                        do_ref = ".".join(p.reg_addr.split(".")[:2])
+                        if do_ref not in do_descriptions:
+                            do_descriptions[do_ref] = p.name
             except Exception as scl_err:
                 log.warning(f"SclImportService GOOSE 解析失败，回退到旧 Importer: {scl_err}")
                 from src.tools.icd_goose_importer import import_goose_from_icd
@@ -451,6 +464,9 @@ async def import_icd(
             # 所有 DataSet 和 GoCB 已注册到 IedModel，现在启动 IedServer
             # IedServer_create 一次性构建包含所有节点的 MMS 命名空间
             # register_default_rcbs=False: ICD 已提供 RCB 配置，不应再创建默认 brcb01/brcb02
+            # 先存储 dU 描述（无论 need_start 如何），start() 内部 _apply_du_descriptions 会自动应用
+            if do_descriptions and iec61850_server:
+                iec61850_server.set_du_descriptions(do_descriptions)
             need_start = created_goose_count > 0 or pure_ds_count > 0 or rc_registered > 0 or was_running
             if need_start and iec61850_server:
                 # 启动前诊断：确认 GoCB/DataSet 已注册到 IedModel

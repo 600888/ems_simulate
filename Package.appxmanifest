@@ -9,7 +9,7 @@
   <Identity
     Name="CDY.emsSimulate"
     Publisher="CN=628FD90B-10CD-4471-B982-3319EE73185B"
-    Version="1.4.2.0"
+    Version="1.4.3.0"
     ProcessorArchitecture="x64" />
 
   <Properties>

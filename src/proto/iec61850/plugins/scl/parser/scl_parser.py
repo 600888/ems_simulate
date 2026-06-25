@@ -430,21 +430,23 @@ class SclParser:
         ln0 = None
         lns = []
 
+        ld_inst = elem.get("inst", "")
+
         ln0_elem = self._ns.find(elem, "LN0")
         if ln0_elem is not None:
-            ln0 = self._parse_ln(ln0_elem)
+            ln0 = self._parse_ln(ln0_elem, ld_inst)
 
         for ln_elem in self._ns.findall(elem, "LN"):
-            lns.append(self._parse_ln(ln_elem))
+            lns.append(self._parse_ln(ln_elem, ld_inst))
 
         return SclLDevice(
-            inst=elem.get("inst", ""),
+            inst=ld_inst,
             desc=elem.get("desc", ""),
             ln0=ln0,
             lns=lns,
         )
 
-    def _parse_ln(self, elem: ET.Element) -> SclLN:
+    def _parse_ln(self, elem: ET.Element, ld_inst: str = "") -> SclLN:
         # DOI
         dois = []
         for doi_elem in self._ns.findall(elem, "DOI"):
@@ -453,7 +455,7 @@ class SclParser:
         # DataSet
         datasets = []
         for ds_elem in self._ns.findall(elem, "DataSet"):
-            datasets.append(self._parse_dataset(ds_elem))
+            datasets.append(self._parse_dataset(ds_elem, ld_inst))
 
         # ReportControl
         report_controls = []
@@ -492,15 +494,17 @@ class SclParser:
             dai_values=dai_values,
         )
 
-    def _parse_dataset(self, elem: ET.Element) -> SclDataSet:
+    def _parse_dataset(self, elem: ET.Element, ld_inst: str = "") -> SclDataSet:
         members = []
         for fcda_elem in self._ns.findall(elem, "FCDA"):
             da_name = fcda_elem.get("daName", "")
             # 展开结构体 DA 路径
             da_name = STRUCT_DA_TO_FULL_PATH.get(da_name, da_name)
+            # 部分 ICD 文件的 FCDA 省略 ldInst，需从父 LDevice 继承
+            fcda_ld_inst = fcda_elem.get("ldInst", "") or ld_inst
             members.append(
                 SclFCDA(
-                    ld_inst=fcda_elem.get("ldInst", ""),
+                    ld_inst=fcda_ld_inst,
                     ln_class=fcda_elem.get("lnClass", ""),
                     ln_inst=fcda_elem.get("lnInst", ""),
                     ln_prefix=fcda_elem.get("prefix", ""),

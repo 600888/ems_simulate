@@ -52,6 +52,8 @@ class IEC61850Server:
 
         self._server = None
         self._is_running = False
+        # dU 描述存储: {do_key: desc}，set_du_descriptions 存储，start() 时自动应用
+        self._du_descriptions: dict[str, str] = {}
 
     # ===== 向后兼容属性: 委托给 builder =====
 
@@ -286,6 +288,7 @@ class IEC61850Server:
             if iec61850.IedServer_isRunning(self._server):
                 log.info("IedServer 重建成功")
                 self._init_standard_bda_defaults()
+                self._apply_du_descriptions()
                 self._try_enable_goose_publishing()
                 import platform
                 import time as _time
@@ -339,6 +342,7 @@ class IEC61850Server:
             log.info(f"IEC 61850 MMS 服务器已启动, 端口: {self.port}")
             try:
                 self._init_standard_bda_defaults()
+                self._apply_du_descriptions()
             except Exception as e:
                 log.warning(f"初始化标准 DA 默认值异常 (非致命): {e}")
             self._try_enable_goose_publishing()
@@ -540,6 +544,50 @@ class IEC61850Server:
     def reports(self):
         """获取 Reports 管理对象"""
         return self._report_manager
+
+    def set_du_descriptions(self, descriptions: dict[str, str]) -> None:
+        """存储 DO 的 dU 描述值，服务器运行后自动应用
+
+        Args:
+            descriptions: {do_key: desc} 映射,
+                          do_key 如 "LD/LLN0.Temp001" (LD_inst/LN_name.DO_name)
+        """
+        if not descriptions:
+            return
+        self._du_descriptions.update(descriptions)
+        log.info(
+            f"已存储 {len(descriptions)} 个 DO 的描述, "
+            f"总计 {len(self._du_descriptions)} 个, "
+            f"服务器运行={'是' if self._is_running else '否'}"
+        )
+        self._apply_du_descriptions()
+
+    def _apply_du_descriptions(self) -> None:
+        """应用已存储的 dU 描述值到运行中的 IedServer"""
+        if not self._du_descriptions or not self._server or not self._is_running:
+            log.debug(
+                f"_apply_du_descriptions: 条件不满足, desc={len(self._du_descriptions)}, running={self._is_running}"
+            )
+            return
+        set_count = 0
+        not_found = []
+        for do_key, desc in list(self._du_descriptions.items()):
+            if not desc:
+                continue
+            du_key = f"{do_key}.dU"
+            da = self._builder._da_map.get(du_key)
+            if da and hasattr(da, "this"):
+                try:
+                    iec61850.IedServer_updateVisibleStringAttributeValue(self._server, da, str(desc))
+                    set_count += 1
+                except Exception as e:
+                    log.debug(f"设置 dU 描述失败: {do_key}={desc}, {e}")
+            else:
+                not_found.append(do_key)
+        if set_count > 0:
+            log.info(f"已应用 {set_count} 个 DO 的 dU 描述值")
+        if not_found:
+            log.warning(f"以下 {len(not_found)} 个 DO 的 dU DA 未在 _da_map 中找到 (前5): {not_found[:5]}")
 
     def _register_default_rcbs(self):
         """注册默认报告控制块 (BRCB/URCB)
