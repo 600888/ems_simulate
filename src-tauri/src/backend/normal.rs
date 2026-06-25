@@ -301,3 +301,9 @@ pub fn stop() {
 
     *BACKEND_READY.lock().unwrap() = false;
 }
+
+pub fn restart(app: &AppHandle) -> String {
+    stop();
+    std::thread::sleep(Duration::from_millis(800));
+    spawn_backend(app)
+}

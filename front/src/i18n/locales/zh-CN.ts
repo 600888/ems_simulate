@@ -58,6 +58,10 @@ export default {
     stopSuccess: "停止成功",
     editGroup: "编辑设备组",
     editDevice: "编辑设备",
+    backendHealthy: "服务运行中",
+    backendDown: "服务离线",
+    restartBackend: "重启服务",
+    checking: "检测中...",
   },
   device: {
     serverAddress: "服务器地址",

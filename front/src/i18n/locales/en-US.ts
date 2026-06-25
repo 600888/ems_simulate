@@ -58,6 +58,10 @@ export default {
     stopSuccess: 'Stopped successfully',
     editGroup: 'Edit Group',
     editDevice: 'Edit Device',
+    backendHealthy: 'Service Running',
+    backendDown: 'Service Down',
+    restartBackend: 'Restart Service',
+    checking: 'Checking...',
   },
   device: {
     serverAddress: 'Server Address',

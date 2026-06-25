@@ -109,6 +109,7 @@ declare module 'vue' {
     SclUploadDialog: typeof import('./src/components/scl/SclUploadDialog.vue')['default']
     SclValidationResults: typeof import('./src/components/scl/SclValidationResults.vue')['default']
     SclXmlViewer: typeof import('./src/components/scl/SclXmlViewer.vue')['default']
+    SideBarStatus: typeof import('./src/components/layout/SideBarStatus.vue')['default']
     SideNavActions: typeof import('./src/components/layout/SideNavActions.vue')['default']
     SideNavHeader: typeof import('./src/components/layout/SideNavHeader.vue')['default']
     SideNavTree: typeof import('./src/components/layout/SideNavTree.vue')['default']

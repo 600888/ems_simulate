@@ -63,6 +63,15 @@ export async function getAppConfig() {
   }
 }
 
+/** 重启后端服务 */
+export async function restartBackend(): Promise<string> {
+  if (!isTauri()) {
+    throw new Error('不在 Tauri 环境中运行')
+  }
+  const { invoke } = await import('@tauri-apps/api/core')
+  return invoke<string>('restart_backend')
+}
+
 /** 打开外部 URL（使用系统默认浏览器） */
 export async function openExternal(url: string) {
   if (!isTauri()) {

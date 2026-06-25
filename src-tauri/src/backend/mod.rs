@@ -44,6 +44,18 @@ pub fn get_backend_url() -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+pub async fn restart_backend(app: tauri::AppHandle) -> Result<String, String> {
+    let url = if is_msix_env() {
+        msix::restart(&app)
+    } else {
+        normal::restart(&app)
+    };
+    // 异步等待后端就绪
+    wait_backend_ready(&url).await;
+    Ok(url)
+}
+
 // ── 统一入口：根据环境转发到对应模块 ──
 
 pub fn spawn_backend(app: &AppHandle) -> String {

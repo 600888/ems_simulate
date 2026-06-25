@@ -223,6 +223,12 @@ pub fn stop() {
     *MSIX_READY.lock().unwrap() = false;
 }
 
+pub fn restart(app: &AppHandle) -> String {
+    stop();
+    std::thread::sleep(Duration::from_millis(800));
+    spawn_backend(app)
+}
+
 fn kill_processes_on_port(port: u16) {
     #[cfg(target_os = "windows")]
     {

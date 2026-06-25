@@ -44,6 +44,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             backend::get_backend_url,
             backend::is_backend_ready,
+            backend::restart_backend,
         ])
         .build(tauri::generate_context!())
         .expect("启动 EMS Simulate 失败");

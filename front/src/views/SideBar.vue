@@ -45,6 +45,9 @@
         @node-click="handleUngroupedNodeClick"
       />
     </el-scrollbar>
+
+    <!-- 6. 后端状态栏 -->
+    <SideBarStatus :is-collapse="isCollapse" />
   </el-aside>
 
   <!-- 5. 对话框组件 -->
@@ -88,6 +91,7 @@ import SideNavHeader from "@/components/layout/SideNavHeader.vue";
 import SideNavActions from "@/components/layout/SideNavActions.vue";
 import SideNavTree from "@/components/layout/SideNavTree.vue";
 import SideNavUngrouped from "@/components/layout/SideNavUngrouped.vue";
+import SideBarStatus from "@/components/layout/SideBarStatus.vue";
 import AddDeviceDialog from "@/components/device/AddDeviceDialog.vue";
 import AddDeviceGroupDialog from "@/components/device/AddDeviceGroupDialog.vue";
 import CopyDeviceDialog from "@/components/device/CopyDeviceDialog.vue";
