@@ -848,6 +848,8 @@ export default {
     selectAll: 'Select All',
     selectedCount: '{count} selected',
     applyToSelected: 'Apply to Selected ({count})',
+    batchMode: 'Batch Operation',
+    exitBatchMode: 'Exit Batch',
     batchApplySuccess: 'Successfully applied to {count} RCBs',
     batchApplyPartial: 'Partial failure ({failed}/{total})',
     batchApplyInProgress: 'Configuring {current}/{total}...',

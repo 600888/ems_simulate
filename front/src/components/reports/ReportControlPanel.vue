@@ -115,6 +115,7 @@
           {{ t("report.applyConfig") }}
         </el-button>
         <el-button
+          v-if="batchMode"
           type="primary"
           plain
           :loading="batchLoading"
@@ -146,6 +147,7 @@ const props = defineProps<{
   actionLoading?: boolean;
   giLoading?: boolean;
   batchLoading?: boolean;
+  batchMode?: boolean;
   selectedCount?: number;
 }>();
 

@@ -266,6 +266,13 @@ function handleSelectAllChange(value: boolean) {
   flex: 0 0 auto;
 }
 
+// 强制树节点复选框保持方形，防止全局样式干扰
+.el-tree {
+  :deep(.el-checkbox__inner) {
+    border-radius: 2px;
+  }
+}
+
 @include bp.respond-to("small") {
   .rcb-tree-panel {
     width: 100%;

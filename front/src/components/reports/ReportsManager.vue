@@ -15,6 +15,12 @@
             />
           </el-select>
         </div>
+        <el-button
+          :type="batchMode ? 'primary' : 'default'"
+          @click="batchMode = !batchMode"
+        >
+          {{ batchMode ? t("report.exitBatchMode") : t("report.batchMode") }}
+        </el-button>
         <el-button type="primary" :loading="loading" @click="loadRcbs">
           {{ t("common.refresh") }}
         </el-button>
@@ -48,7 +54,7 @@
         <RcbTreePanel
           :rcbs="rcbs"
           :selected-ref="selectedRcb?.ref"
-          show-checkbox
+          :show-checkbox="batchMode"
           :checked-refs="checkedRefs"
           @select="onRcbSelect"
           @update:checked-refs="checkedRefs = $event"
@@ -62,6 +68,7 @@
                 :action-loading="actionLoading"
                 :gi-loading="giLoading"
                 :batch-loading="batchLoading"
+                :batch-mode="batchMode"
                 :selected-count="selectedCount"
                 @apply="handleApplyConfig"
                 @batch-apply="handleBatchApplyConfig"
@@ -171,6 +178,12 @@ const detailTab = ref('attributes');
 
 const checkedRefs = ref<string[]>([]);
 const selectedCount = computed(() => checkedRefs.value.length);
+const batchMode = ref(false);
+
+// 退出批量模式时清空勾选
+watch(batchMode, (val) => {
+  if (!val) checkedRefs.value = [];
+});
 
 // 批量操作进度
 const batchProgressVisible = ref(false);
@@ -329,7 +342,7 @@ async function handleApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps; opt
   }
 }
 
-const BATCH_DELAY_MS = 200; // 每个 RCB 操作间的延迟
+const BATCH_DELAY_MS = 50; // 每个 RCB 操作间的延迟
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -403,6 +416,7 @@ async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps
   }
 
   batchLoading.value = false;
+  batchMode.value = false;
 }
 
 async function handleGi() {

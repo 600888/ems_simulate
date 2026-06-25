@@ -25,7 +25,9 @@ if HAS_IEC61850:
 # C 回调无法绑定到实例方法，需通过静态函数 + 全局字典分发
 _CALLBACK_REGISTRY: dict[str, "_CallbackInfo"] = {}
 _CALLBACK_LOCK = threading.Lock()
-_PENDING_GI_ROUTES: dict[str, tuple[str, float]] = {}
+_PENDING_GI_ROUTES: dict[str, tuple[set[str], float]] = {}
+# 常规报告 round-robin 分发计数器: rpt_id -> 当前索引
+_ROUND_ROBIN_INDEX: dict[str, int] = {}
 MAX_REPORT_VALUES_PER_ENTRY = 512
 
 
@@ -145,9 +147,8 @@ def _find_registered_info(rcb_ref: str) -> tuple[str, "_CallbackInfo"] | tuple[N
 
 
 def _route_keys_for_info(rcb_ref: str, info: "_CallbackInfo") -> set[str]:
+    """基于 RCB 实例引用的路由键，不包含 RptId 以避免跨实例混淆。"""
     keys = set()
-    if info.rpt_id:
-        keys.add(info.rpt_id)
     keys.update(_ref_aliases(rcb_ref))
     keys.update(_ref_aliases(info.mms_ref))
     return {key for key in keys if key}
@@ -157,16 +158,29 @@ def _expire_pending_gi_routes(now: float | None = None) -> None:
     now = time.monotonic() if now is None else now
     expired = [key for key, (_, deadline) in _PENDING_GI_ROUTES.items() if deadline <= now]
     for key in expired:
+        log.debug(f"Expiring pending GI route for key={key!r}")
         _PENDING_GI_ROUTES.pop(key, None)
 
 
-def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry) -> str:
-    """Route same-RptId GI reports back to the RCB that triggered GI."""
+def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry) -> tuple[set[str], bool]:
+    """基于 RCB 实例引用路由 GI 报告，C++ 层按 RptId 路由时用 RptId 回查。
+
+    libIEC61850 的 C++ 层 EventSubscriber 使用 RptId 匹配入站报告，
+    同一 RptId 的所有报告会到达最先注册的 subscriber。
+    因此当 ref 别名匹配失败时，用 RptId 回查 _PENDING_GI_ROUTES，
+    将报告重路由到实际触发 GI 的 RCB 实例。
+
+    Returns:
+        (目标 ref 集合, 是否通过 GI 路由匹配)
+    """
     now = time.monotonic()
     _expire_pending_gi_routes(now)
 
+    targets: set[str] = set()
+
+    # 1. 先尝试用 RCB 实例引用精确匹配
     _, current_info = _find_registered_info(rcb_ref)
-    route_keys = {entry.rpt_id} if entry.rpt_id else set()
+    route_keys: set[str] = set()
     if current_info:
         route_keys.update(_route_keys_for_info(rcb_ref, current_info))
 
@@ -174,13 +188,28 @@ def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry) -> str:
         pending = _PENDING_GI_ROUTES.get(key)
         if not pending:
             continue
-        target_ref, _ = pending
-        matched_key, target_info = _find_registered_info(target_ref)
-        if target_info:
-            if matched_key != rcb_ref:
-                log.info(f"GI 报告按触发目标重路由: from={rcb_ref}, to={matched_key}, rpt_id={entry.rpt_id!r}")
-            return matched_key or target_ref
-    return rcb_ref
+        target_set, _ = pending
+        for target_ref in target_set:
+            matched_key, target_info = _find_registered_info(target_ref)
+            if target_info:
+                targets.add(matched_key or target_ref)
+
+    # 2. 引用匹配失败时，用 RptId 回查
+    if entry.rpt_id:
+        pending = _PENDING_GI_ROUTES.get(entry.rpt_id)
+        if pending:
+            target_set, _ = pending
+            for target_ref in target_set:
+                matched_key, target_info = _find_registered_info(target_ref)
+                if target_info:
+                    targets.add(matched_key or target_ref)
+
+    if targets:
+        if len(targets) > 1 or next(iter(targets)) != rcb_ref:
+            log.info(f"GI 报告重路由: from={rcb_ref}, to_count={len(targets)}, rpt_id={entry.rpt_id!r}")
+        return targets, True
+
+    return {rcb_ref}, False
 
 
 class ReportCallbackHandler:
@@ -202,6 +231,9 @@ class ReportCallbackHandler:
         dataset_members: list[str] | None = None,
     ) -> bool:
         """安装报告回调
+
+        基于 RCB 实例引用（rcb_ref）进行精确的订阅管理与回调绑定。
+        每个 RCB 实例有独立唯一标识，不受 RptId 属性影响。
 
         Args:
             connection: Iec61850Connection 实例
@@ -228,13 +260,50 @@ class ReportCallbackHandler:
         if already_registered:
             ReportCallbackHandler.uninstall(connection, rcb_ref)
 
+        # 查找同 RptId 的旧订阅 — 复用而非注销
+        # libIEC61850 的 EventSubscriber 在 C++ 层用 RptId 匹配 subscriber，
+        # 同一 RptId 只能有一个 C++ 订阅。当多个 RCB 实例共享同一 RptId 时，
+        # 复用已有 subscriber，将新 RCB 注册到 _CALLBACK_REGISTRY 由
+        # _resolve_pending_gi_route 路由报告到正确缓存。
+        stale_rcb_ref = None
+        if rpt_id:
+            with _CALLBACK_LOCK:
+                for existing_ref, existing_info in list(_CALLBACK_REGISTRY.items()):
+                    if existing_info.rpt_id == rpt_id and existing_ref != rcb_ref:
+                        stale_rcb_ref = existing_ref
+                        break
+
         with _CALLBACK_LOCK:
             try:
                 nref = _normalize_ref(rcb_ref, rcb_type)
                 log.info(f"安装报告回调: rcb_ref={rcb_ref}, mms_ref={nref}, rpt_id={rpt_id!r}, rcb_type={rcb_type}")
 
+                if stale_rcb_ref:
+                    # 同 RptId 的旧订阅仍活跃，复用其 C++ subscriber
+                    # libIEC61850 的 EventSubscriber 按 RptId 匹配，
+                    # 同一 RptId 只能有一个 C++ 订阅。复用旧订阅实例，
+                    # 将新 RCB 注册到 _CALLBACK_REGISTRY，报告通过
+                    # _resolve_pending_gi_route 按 RptId 路由到正确缓存。
+                    stale_info = _CALLBACK_REGISTRY.get(stale_rcb_ref)
+                    if not stale_info:
+                        log.warning(f"复用旧订阅失败: 注册表中未找到 {stale_rcb_ref}")
+                        return False
+
+                    _CALLBACK_REGISTRY[rcb_ref] = _CallbackInfo(
+                        rcb_ref=rcb_ref,
+                        handler=stale_info.handler,
+                        subscriber=stale_info.subscriber,
+                        on_report=on_report,
+                        max_cache=max_cache,
+                        enabled_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        mms_ref=nref,
+                        rpt_id=rpt_id or "",
+                        dataset_members=dataset_members or [],
+                    )
+                    log.info(f"报告回调已复用: new={rcb_ref} (复用 {stale_rcb_ref} 的订阅), rpt_id={rpt_id!r}")
+                    return True
+
                 # 警告：RptId 为空时，部分版本的 libIEC61850 RCBSubscriber
-                # 无法匹配服务器推送的报告，导致 RCBHandler.trigger 永远不会被调用
                 effective_rpt_id = rpt_id or ""
                 if not effective_rpt_id:
                     log.warning(
@@ -381,7 +450,16 @@ class ReportCallbackHandler:
 
     @staticmethod
     def mark_pending_gi(rcb_ref: str, ttl: float = 3.0) -> None:
-        """Remember the RCB that explicitly triggered GI for same-RptId routing."""
+        """记录 GI 触发目标，供 _dispatch_report 将入站报告重路由到正确的 RCB。
+
+        libIEC61850 的 C++ 层 EventSubscriber 使用 RptId 匹配入站报告，
+        同一 RptId 的所有报告会到达最先注册的 subscriber。
+        因此除了用 RCB 实例引用注册外，额外用 RptId 注册，
+        当报告被 C++ 路由到同 RptId 的另一个 subscriber 时仍能找回正确的实例。
+
+        注意：同一 RptId 可能有多个 RCB 实例同时触发 GI（如批量应用），
+        _PENDING_GI_ROUTES 按 key 存储目标集合，避免互相覆盖。
+        """
         log_message = ""
         with _CALLBACK_LOCK:
             matched_key, info = _find_registered_info(rcb_ref)
@@ -392,7 +470,18 @@ class ReportCallbackHandler:
                 deadline = time.monotonic() + ttl
                 _expire_pending_gi_routes()
                 for key in _route_keys_for_info(target_ref, info):
-                    _PENDING_GI_ROUTES[key] = (target_ref, deadline)
+                    existing = _PENDING_GI_ROUTES.get(key)
+                    if existing:
+                        existing[0].add(target_ref)
+                    else:
+                        _PENDING_GI_ROUTES[key] = ({target_ref}, deadline)
+                if info.rpt_id:
+                    rpt_key = info.rpt_id
+                    existing = _PENDING_GI_ROUTES.get(rpt_key)
+                    if existing:
+                        existing[0].add(target_ref)
+                    else:
+                        _PENDING_GI_ROUTES[rpt_key] = ({target_ref}, deadline)
                 log_message = f"GI 待路由已记录: target={target_ref}, rpt_id={info.rpt_id!r}"
         if log_message:
             log.debug(log_message)
@@ -504,16 +593,53 @@ def _dispatch_report(rcb_ref: str, report) -> None:
 
     # 3. 锁内写入缓存
     with _CALLBACK_LOCK:
-        target_ref = _resolve_pending_gi_route(rcb_ref, entry)
-        info = _CALLBACK_REGISTRY.get(target_ref)
-        if not info:
-            log.warning(f"_dispatch_report: 写缓存时 rcb_ref={target_ref} 已被注销")
-            return
-        on_report = info.on_report
-        info.data_cache.append(entry)
-        if len(info.data_cache) > info.max_cache:
-            info.data_cache.pop(0)
-        log.info(f"_dispatch_report: 已写入缓存, rcb_ref={target_ref}, cache_size={len(info.data_cache)}")
+        target_refs, is_gi_route = _resolve_pending_gi_route(rcb_ref, entry)
+
+        if is_gi_route:
+            # GI 报告 — 写入所有触发 GI 的目标 RCB 实例
+            written = 0
+            on_report = None
+            for target_ref in target_refs:
+                info = _CALLBACK_REGISTRY.get(target_ref)
+                if not info:
+                    continue
+                info.data_cache.append(entry)
+                if len(info.data_cache) > info.max_cache:
+                    info.data_cache.pop(0)
+                if on_report is None:
+                    on_report = info.on_report
+                written += 1
+            if written > 0:
+                log.info(f"_dispatch_report: GI 报告已写入 {written} 个 RCB 实例, rpt_id={entry.rpt_id!r}")
+        else:
+            # 常规报告（变化上送）：C++ 层按 RptId 路由，所有报告集中到
+            # 第一个 subscriber（brcbDin01）。用 round-robin 分发到共享
+            # 同一 RptId 的所有 RCB 实例，确保各实例均分报告。
+            on_report = None
+            instances = (
+                sorted(
+                    [(r, i) for r, i in _CALLBACK_REGISTRY.items() if i.rpt_id == entry.rpt_id and i.rpt_id],
+                    key=lambda x: x[0],
+                )
+                if entry.rpt_id
+                else [(rcb_ref, _CALLBACK_REGISTRY.get(rcb_ref))]
+            )
+
+            if instances:
+                rpt_key = entry.rpt_id or rcb_ref
+                idx = _ROUND_ROBIN_INDEX.get(rpt_key, 0) % len(instances)
+                target_ref, target_info = instances[idx]
+                target_info.data_cache.append(entry)
+                if len(target_info.data_cache) > target_info.max_cache:
+                    target_info.data_cache.pop(0)
+                on_report = target_info.on_report
+                _ROUND_ROBIN_INDEX[rpt_key] = idx + 1
+                log.info(
+                    f"_dispatch_report: 常规报告已分发, round_robin_idx={idx}, "
+                    f"rcb_ref={target_ref}, cache_size={len(target_info.data_cache)}"
+                )
+            else:
+                log.warning(f"_dispatch_report: rcb_ref={rcb_ref} 已被注销")
 
     # 4. 锁外调用用户回调
     if on_report:

@@ -852,6 +852,8 @@ export default {
     selectAll: "全选",
     selectedCount: "已选 {count} 项",
     applyToSelected: "应用到选中 ({count})",
+    batchMode: "批量操作",
+    exitBatchMode: "退出批量",
     batchApplySuccess: "已成功应用到 {count} 个 RCB",
     batchApplyPartial: "部分应用失败 ({failed}/{total})",
     batchApplyInProgress: "正在配置第 {current}/{total} 个...",
