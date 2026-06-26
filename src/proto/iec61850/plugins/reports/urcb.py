@@ -301,6 +301,12 @@ class UrcbHandler:
                             opt_flds_val |= 0x08
                         if opt_fields.data_ref:
                             opt_flds_val |= 0x10
+                        if opt_fields.buf_ovfl:
+                            opt_flds_val |= 0x20
+                        if opt_fields.entry_id:
+                            opt_flds_val |= 0x40
+                        if opt_fields.config_ref:
+                            opt_flds_val |= 0x80
                         iec61850.ClientReportControlBlock_setOptFlds(rcb, opt_flds_val)
                         changes |= UrcbHandler.RCB_OPT_FLDS
 
@@ -445,6 +451,9 @@ class UrcbHandler:
                 reason_code=bool(opt_val & 0x04),
                 data_set=bool(opt_val & 0x08),
                 data_ref=bool(opt_val & 0x10),
+                buf_ovfl=bool(opt_val & 0x20),
+                entry_id=bool(opt_val & 0x40),
+                config_ref=bool(opt_val & 0x80),
             )
         except Exception:
             pass

@@ -169,7 +169,7 @@ class ReportManager:
 
         注意: ReportControlBlock_create 的真实签名为
         (name, parent, rptId, isBuffered, dataSetName, confRef, trgOps, options, bufTm, intgPd)。
-        dataSetName 期望 "LNName$dataSetName" 形式 (parent 已是 LN, 不含 LD 前缀)。
+        dataSetName 期望 DataSet 本地名称，parent 已是 LN。
 
         Returns:
             (success: bool, reason: str) - 成功/失败标志及原因描述
@@ -178,8 +178,8 @@ class ReportManager:
             return False, "pyiec61850 未安装"
 
         try:
-            # data_set_ref: "LD/LN$ds" -> dataSetName: "LN$ds"
-            ds_name = data_set_ref.split("/", 1)[-1] if "/" in data_set_ref else data_set_ref
+            # data_set_ref: "LD/LN$ds" -> dataSetName: "ds"
+            ds_name = data_set_ref.rsplit("/", 1)[-1].rsplit("$", 1)[-1].rsplit(".", 1)[-1] if data_set_ref else ""
 
             t = trg_ops or {}
             trg_val = (

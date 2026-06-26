@@ -276,7 +276,7 @@ class ServerDataSetManager:
         }
 
         added_count = 0
-        for idx, entry in enumerate(entries):
+        for entry in entries:
             try:
                 fcda_ref = entry.get("name", "")
                 if not fcda_ref:
@@ -308,15 +308,35 @@ class ServerDataSetManager:
                     if not fc:
                         fc = "MX"
 
-                    self._builder.ensure_fcda_model_nodes(ld_part, ln_name, do_da_part, fc, entry.get("iec_type", ""))
+                    do_parts = do_da_part.split(".")
+                    do_name = do_parts[0]
+                    component_parts = do_parts[1:]
+                    entry_index = -1
+                    if do_name.endswith(")") and "(" in do_name:
+                        base_name, _, index_text = do_name[:-1].rpartition("(")
+                        if base_name and index_text.isdigit():
+                            do_name = base_name
+                            entry_index = int(index_text)
+                    if not component_parts:
+                        component_parts = {
+                            "ST": ["stVal"],
+                            "MX": ["mag", "f"],
+                            "CO": ["ctlVal"],
+                            "DC": ["dU"],
+                        }.get(fc, [])
 
-                    do_da_mms = do_da_part.replace(".", "$")
-                    variable_ref = f"{ld_part}/{ln_name}${fc}${do_da_mms}"
+                    model_do_da_part = ".".join([do_name, *component_parts]) if component_parts else do_name
+                    self._builder.ensure_fcda_model_nodes(
+                        ld_part, ln_name, model_do_da_part, fc, entry.get("iec_type", "")
+                    )
+
+                    variable_ref = f"{ld_part}/{ln_name}${fc}${do_name}"
+                    component_ref = "$".join(component_parts) if component_parts else None
                 else:
                     continue
 
                 try:
-                    ds_entry = iec61850.DataSetEntry_create(data_set, variable_ref, idx, None)
+                    ds_entry = iec61850.DataSetEntry_create(data_set, variable_ref, entry_index, component_ref)
                     if ds_entry:
                         self._builder.keep_alive.append(ds_entry)
                         added_count += 1
