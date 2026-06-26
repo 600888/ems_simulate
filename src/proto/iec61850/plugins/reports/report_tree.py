@@ -324,7 +324,6 @@ class ReportTreeBuilder:
             raw_ref=raw_ref,
         )
         parent.children.append(child)
-        parent.children.sort(key=lambda item: node_sort_key(item.label, item.node_type))
         return child
 
     @staticmethod
@@ -522,23 +521,44 @@ def _timestamp_ms(value: Any) -> int | None:
 def stringify_value(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
-    return str(value)
+    # 尝试将 pyiec61850 MmsValue SWIG 对象转换为 Python 原生类型
+    raw_str = str(value)
+    if "<Swig Object" in raw_str:
+        try:
+            from pyiec61850 import pyiec61850 as iec61850
 
-
-def node_sort_key(label: str, node_type: str) -> tuple[int, str]:
-    priority = {
-        "stVal": 0,
-        "mag": 1,
-        "instMag": 1,
-        "cVal": 1,
-        "ctlVal": 2,
-        "setVal": 2,
-        "q": 90,
-        "t": 91,
-    }
-    if node_type in {"ld", "ln", "do"}:
-        return (0, label)
-    return (priority.get(label, 50), label)
+            # 优先尝试 float 转换（最常见）
+            try:
+                return float(iec61850.MmsValue_toFloat(value))
+            except Exception:
+                pass
+            # 尝试 int 转换
+            try:
+                return int(iec61850.MmsValue_toInt32(value))
+            except Exception:
+                pass
+            # 尝试 boolean 转换
+            try:
+                return bool(iec61850.MmsValue_getBoolean(value))
+            except Exception:
+                pass
+            # 尝试 toString 获取可读字符串
+            try:
+                s = iec61850.MmsValue_toString(value)
+                if s and "<Swig Object" not in str(s):
+                    return str(s)
+            except Exception:
+                pass
+            # 尝试 getTypeString 获取类型提示
+            try:
+                type_str = iec61850.MmsValue_getTypeString(value)
+                return f"[{type_str}]"
+            except Exception:
+                pass
+        except Exception:
+            pass
+        return "[unresolved]"
+    return raw_str
 
 
 def make_entry_summary(entry: dict[str, Any], index: int) -> dict[str, Any]:
