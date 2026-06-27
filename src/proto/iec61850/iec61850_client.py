@@ -29,6 +29,7 @@ from .defs import (
     IecType,
     extract_ln_class,
 )
+from .log import log
 from .model import IedModel
 from .model.discovery import ModelDiscoveryService
 from .model.registry_bridge import build_registry_from_model
@@ -485,6 +486,130 @@ class IEC61850Client:
     def _resolve_dataset_ref_with_ld_prefix(self, dataset_ref: str) -> str:
         """解析 DataSet 引用 LD 前缀 (向后兼容, 委托给 connection)"""
         return self._conn._resolve_dataset_ref_with_ld_prefix(dataset_ref)
+
+    # ===== 模型加载 (整改 v2.0: 支持 ICD 文件加载与远程发现两种方式) =====
+
+    def load_model_from_icd(self, icd_path: str) -> bool:
+        """从本地 ICD 文件加载模型
+
+        解析 ICD 文件并构建 PointRegistry，后续 MMS 读写使用此模型。
+        不依赖远程 MMS 连接，适合离线加载已知设备模型。
+
+        Args:
+            icd_path: ICD 文件路径
+
+        Returns:
+            是否加载成功
+        """
+        from .log import log
+        from .plugins.scl.service.import_service import SclImportService
+
+        log.info(f"正在从 ICD 文件加载模型: {icd_path}")
+
+        # 1. 解析 ICD 文件
+        service = SclImportService()
+        result = service.import_file(icd_path)
+        if not result.is_valid:
+            log.error(f"ICD 文件校验失败: {icd_path}, 错误数: {result.validation.error_count}")
+            return False
+
+        # 2. 从解析结果构建 PointRegistry
+        #    SCL 解析后各个 PointData 的 reg_addr 就是 MMS 引用路径
+        point_count = 0
+        for point in result.points.yc_points:
+            self._registry.set_ref(point.reg_addr, point.reg_addr)
+            self._registry.set_fc(point.reg_addr, point.fc)
+            self._registry.set_iec_type(point.reg_addr, "float")
+            if point.name:
+                self._registry.set_name(point.reg_addr, point.name)
+            point_count += 1
+
+        for point in result.points.yx_points:
+            self._registry.set_ref(point.reg_addr, point.reg_addr)
+            self._registry.set_fc(point.reg_addr, point.fc)
+            self._registry.set_iec_type(point.reg_addr, "boolean")
+            if point.name:
+                self._registry.set_name(point.reg_addr, point.name)
+            point_count += 1
+
+        for point in result.points.yk_points:
+            self._registry.set_ref(point.reg_addr, point.reg_addr)
+            self._registry.set_fc(point.reg_addr, point.fc)
+            self._registry.set_iec_type(point.reg_addr, "boolean")
+            if point.name:
+                self._registry.set_name(point.reg_addr, point.name)
+            point_count += 1
+
+        for point in result.points.yt_points:
+            self._registry.set_ref(point.reg_addr, point.reg_addr)
+            self._registry.set_fc(point.reg_addr, point.fc)
+            self._registry.set_iec_type(point.reg_addr, "float")
+            if point.name:
+                self._registry.set_name(point.reg_addr, point.name)
+            point_count += 1
+
+        # 3. 发现 GOOSE 控制块 (从 ICD 文件)
+        self._registry.discovered_goose_items.clear()
+        for gse in result.goose.gse_controls:
+            goose_dict = {
+                "go_cb_ref": gse.go_cb_ref,
+                "name": gse.name,
+                "app_id": gse.app_id or gse.gse_app_id,
+                "dat_set": gse.dat_set,
+                "data_set_ref": gse.data_set_ref,
+                "conf_rev": gse.conf_rev,
+                "mac_address": gse.mac_address,
+                "dataset_members": gse.dataset_members,
+            }
+            self._registry.discovered_goose_items.append(goose_dict)
+
+        # 4. 更新 IED 名称
+        if result.ied_name:
+            self.model_name = result.ied_name
+
+        log.info(
+            f"ICD 模型加载完成: IED={result.ied_name or icd_path}, "
+            f"测点数={point_count}, "
+            f"GOOSE={len(result.goose.gse_controls)}, "
+            f"Report={len(result.reports.report_controls)}"
+        )
+        return True
+
+    def remote_discover_model(self) -> bool:
+        """远程发现模型（通过 MMS 在线遍历）
+
+        先尝试从 ModelCache 获取，缓存未命中时执行在线发现。
+
+        Returns:
+            是否发现成功
+        """
+        from .model import ModelCache
+        from .model.registry_bridge import build_registry_from_model
+
+        cache_key = f"{self.ip}:{self.port}"
+
+        # 1. 尝试从缓存获取
+        cached = ModelCache.instance().get(cache_key)
+        if cached is not None:
+            log.info(f"远程模型缓存命中: {cache_key}")
+            build_registry_from_model(cached, self._registry)
+            return True
+
+        # 2. 确保已连接
+        if not self._conn.is_connected:
+            log.error("远程发现模型失败: 未连接到服务器")
+            return False
+
+        # 3. 在线发现
+        model = self._discovery.discover(self._conn)
+        if model is not None:
+            ModelCache.instance().set(cache_key, model)
+            build_registry_from_model(model, self._registry)
+            log.info(f"远程模型发现完成并已缓存: {cache_key}")
+            return True
+
+        log.warning("远程模型发现失败")
+        return False
 
     # ===== 模型导出 (委托给 ModelExporter 插件) =====
 

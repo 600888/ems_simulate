@@ -11,6 +11,7 @@ IedModel 是 IED 在线模型的标准不可变表示，替代:
 - 使用 tuple 保证子元素不可变
 """
 
+from .cache import ModelCache
 from .ied_model import (
     DARef,
     DataSetRef,
@@ -31,4 +32,5 @@ __all__ = [
     "LDModel",
     "LNModel",
     "RCBRef",
+    "ModelCache",
 ]

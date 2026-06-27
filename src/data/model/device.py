@@ -23,6 +23,9 @@ class DeviceDict(TypedDict):
     enable: bool
     created_at: datetime | None
     updated_at: datetime | None
+    # IEC 61850 ICD 文件关联
+    icd_path: str | None
+    icd_file_hash: str | None
 
 
 class Device(Base):
@@ -52,6 +55,10 @@ class Device(Base):
 
     # 关系 - 所属设备组
     group = relationship("DeviceGroup", back_populates="devices")
+
+    # IEC 61850 ICD 文件关联
+    icd_path: Mapped[str | None] = mapped_column(String(512), nullable=True, comment="ICD文件存储路径 (IEC61850)")
+    icd_file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="ICD文件内容Hash (IEC61850)")
 
     __table_args__ = {"comment": "设备表"}
 

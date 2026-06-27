@@ -1,5 +1,7 @@
 """通道模块 - 公共辅助函数"""
 
+import os
+
 from src.config.config import Config
 from src.data.service.channel_service import ChannelService
 from src.device.factory.general_device_builder import GeneralDeviceBuilder
@@ -47,6 +49,10 @@ def configure_builder_network(builder, conn_type, protocol_type, ip, port, chann
         model_name = channel_data.get("model_name")
         if model_name:
             builder.setDeviceModelName(model_name)
+        # v2.0: 传递 ICD 文件路径
+        icd_path = channel_data.get("icd_path")
+        if icd_path:
+            builder.setDeviceIcdPath(icd_path)
 
 
 def is_client_protocol(protocol_type) -> bool:
@@ -91,6 +97,16 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         is_start=is_start,
     )
     new_device.name = device_name
+
+    # IEC61850: 如果有 ICD 文件路径，自动加载模型
+    if channel_protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client):
+        icd_path = channel.get("icd_path")
+        if icd_path:
+            try:
+                if os.path.exists(icd_path) and new_device.load_iec61850_model(icd_path):
+                    log.info(f"重新加载设备时已自动加载 ICD 模型: {icd_path}")
+            except Exception as load_err:
+                log.warning(f"重新加载设备时自动加载 ICD 模型失败: {load_err}")
 
     if is_start and is_client_protocol(channel_protocol_type):
         if channel_protocol_type == ProtocolType.Iec61850Client:

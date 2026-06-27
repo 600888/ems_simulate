@@ -121,3 +121,35 @@ class ChannelService:
         except Exception as e:
             log.error(f"删除通道失败: {e}")
             return False
+
+    # ==== IEC 61850 ICD 路径管理 ====
+
+    @classmethod
+    def set_icd_path(cls, channel_id: int, icd_path: str, file_hash: str = "") -> bool:
+        """设置通道的 ICD 文件路径
+
+        自动同步到关联的设备记录。
+        """
+        try:
+            return ChannelDao.set_channel_icd_path(channel_id, icd_path, file_hash)
+        except Exception as e:
+            log.error(f"设置通道 ICD 路径失败: {e}")
+            return False
+
+    @classmethod
+    def get_icd_path(cls, channel_id: int) -> str | None:
+        """获取通道的 ICD 文件路径"""
+        try:
+            return ChannelDao.get_channel_icd_path(channel_id)
+        except Exception as e:
+            log.error(f"获取通道 ICD 路径失败: {e}")
+            return None
+
+    @classmethod
+    def clear_icd_path(cls, channel_id: int) -> bool:
+        """清除通道的 ICD 文件路径关联"""
+        try:
+            return ChannelDao.clear_channel_icd_path(channel_id)
+        except Exception as e:
+            log.error(f"清除通道 ICD 路径失败: {e}")
+            return False

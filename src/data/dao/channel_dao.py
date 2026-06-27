@@ -120,10 +120,69 @@ class ChannelDao:
                                 device.name = kwargs["name"]
                             if "code" in kwargs:
                                 device.code = kwargs["code"]
+                            # IEC 61850: 同步 icd_path 到设备
+                            if "icd_path" in kwargs:
+                                device.icd_path = kwargs["icd_path"]
+                            if "icd_file_hash" in kwargs:
+                                device.icd_file_hash = kwargs["icd_file_hash"]
                     return True
                 return False
         except Exception as e:
             log.error(f"更新通道失败: {str(e)}")
+            raise e
+
+    # ==== IEC 61850 ICD 路径管理 ====
+
+    @classmethod
+    def set_channel_icd_path(cls, channel_id: int, icd_path: str, file_hash: str = "") -> bool:
+        """设置通道的 ICD 文件路径
+
+        自动同步到关联的设备记录。
+        """
+        from src.data.model.device import Device
+
+        try:
+            with local_session() as session, session.begin():
+                channel = session.query(Channel).where(Channel.id == channel_id).first()
+                if not channel:
+                    return False
+                channel.icd_path = icd_path
+                channel.icd_file_hash = file_hash
+                # 同步到设备
+                if channel.device_id:
+                    device = session.query(Device).where(Device.id == channel.device_id).first()
+                    if device:
+                        device.icd_path = icd_path
+                        device.icd_file_hash = file_hash
+                return True
+        except Exception as e:
+            log.error(f"设置通道 ICD 路径失败: {str(e)}")
+            raise e
+
+    @classmethod
+    def get_channel_icd_path(cls, channel_id: int) -> str | None:
+        """获取通道的 ICD 文件路径"""
+        try:
+            with local_session() as session, session.begin():
+                channel = session.query(Channel).where(Channel.id == channel_id).first()
+                return channel.icd_path if channel else None
+        except Exception as e:
+            log.error(f"获取通道 ICD 路径失败: {str(e)}")
+            return None
+
+    @classmethod
+    def clear_channel_icd_path(cls, channel_id: int) -> bool:
+        """清除通道的 ICD 文件路径关联"""
+        try:
+            with local_session() as session, session.begin():
+                channel = session.query(Channel).where(Channel.id == channel_id).first()
+                if channel:
+                    channel.icd_path = None
+                    channel.icd_file_hash = None
+                    return True
+                return False
+        except Exception as e:
+            log.error(f"清除通道 ICD 路径失败: {str(e)}")
             raise e
 
     @classmethod

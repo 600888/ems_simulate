@@ -1,5 +1,6 @@
 """设备管理 - 设备操作路由"""
 
+import asyncio
 import atexit
 from copy import deepcopy
 
@@ -17,6 +18,7 @@ from src.web.api.schemas import (
     DeviceStopRequest,
     DeviceTableRequest,
     ExportModelRequest,
+    IEC61850LoadModelFromIcdRequest,
     ManualReadRequest,
     MessageListRequest,
     SimulationStartRequest,
@@ -78,6 +80,7 @@ async def get_device_info(req: DeviceInfoRequest, request: Request):
         info_dict["conn_type"] = 2
 
     info_dict["server_status"] = device.is_protocol_running()
+    info_dict["iec61850_model_loaded"] = device.iec61850_model_loaded
     return BaseResponse(message="获取设备信息成功!", data=info_dict)
 
 
@@ -165,6 +168,40 @@ async def get_iec61850_connect_progress(req: DeviceInfoRequest, request: Request
     device = _get_device(req.device_name, request)
     progress = device.get_iec61850_connect_progress()
     return BaseResponse(data=progress)
+
+
+@device_router.post("/iec61850/load-model", response_model=BaseResponse)
+async def load_iec61850_model(req: IEC61850LoadModelFromIcdRequest, request: Request):
+    """加载 IEC61850 ICD 模型（不启动设备）
+
+    用户手动在界面点击"加载模型"后调用。
+    ICD 文件必须已通过 SCL 导入功能上传到服务器。
+
+    Args:
+        req: {device_name, icd_path}
+    """
+    device = _get_device(req.device_name, request)
+    success = device.load_iec61850_model(req.icd_path)
+    if not success:
+        raise OperationError("IEC61850 模型加载失败!", data=False)
+    return BaseResponse(message="IEC61850 模型加载成功!", data=True)
+
+
+@device_router.post("/iec61850/discover-model", response_model=BaseResponse)
+async def discover_iec61850_model(req: DeviceInfoRequest, request: Request):
+    """远程发现 IEC61850 模型（通过 MMS 在线遍历）
+
+    如果客户端未连接，自动先连接再发现。
+    connect() 是 C 扩展同步调用，通过 to_thread 避免阻塞事件循环。
+
+    Args:
+        req: {device_name}
+    """
+    device = _get_device(req.device_name, request)
+    success = await asyncio.to_thread(device.iec61850_remote_discover_model)
+    if not success:
+        raise OperationError("IEC61850 远程模型发现失败!", data=False)
+    return BaseResponse(message="IEC61850 远程模型发现成功!", data=True)
 
 
 # ===== 自动读取控制 =====

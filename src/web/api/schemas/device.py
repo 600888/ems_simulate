@@ -19,17 +19,15 @@ class SlaveIdListRequest(BaseModel):
     device_name: str
 
 
-class SlaveIdListResponse:
-    pass  # 使用 BaseResponse 统一返回
-
-
 class DeviceTableRequest(BaseModel):
+    """获取表格数据请求"""
+
     device_name: str
     slave_id: int
     point_name: str | None = None
-    page_index: int = 1
-    page_size: int = 10
-    point_types: list[int] = Field(default_factory=list)
+    page_index: int | None = Field(1, ge=1, description="当前页码")
+    page_size: int | None = Field(10, ge=1, le=500, description="每页条数")
+    point_types: list[int] | None = None  # 为空表示全部
     order_by: str | None = None
     order_direction: str | None = None
 
@@ -103,8 +101,30 @@ class SlaveEditRequest(BaseModel):
 
 
 class ExportModelRequest(BaseModel):
-    """IEC 61850 模型导出请求"""
+    """导出 IEC61850 模型请求"""
 
     device_name: str = Field(..., description="设备名称")
-    export_type: str = Field("icd", description="导出类型: icd/json/xml/csv/tree")
-    ied_name: str = Field("", description="IED 名称 (ICD 导出时使用，为空则自动推断)")
+    export_type: str = Field(..., description="导出格式: icd/json/xml/csv/tree")
+    ied_name: str | None = Field(None, description="IED 名称 (导出 ICD 时使用)")
+
+
+class IEC61850LoadModelRequest(BaseModel):
+    """加载 IEC61850 模型请求"""
+
+    device_name: str = Field(..., description="设备名称")
+    source: str = Field(..., description="模型来源: 'icd' 从ICD文件加载, 'discovery' 远程发现")
+
+
+class IEC61850LoadModelFromIcdRequest(BaseModel):
+    """从 ICD 文件加载模型请求"""
+
+    device_name: str = Field(..., description="设备名称")
+    icd_path: str = Field(..., description="ICD 文件路径")
+
+
+class IEC61850ModelStatusResponse(BaseModel):
+    """IEC61850 模型状态响应"""
+
+    model_loaded: bool = Field(..., description="模型是否已加载")
+    loaded_icd_path: str | None = Field(None, description="已加载的 ICD 文件路径")
+    model_name: str | None = Field(None, description="模型名称")

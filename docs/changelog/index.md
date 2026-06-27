@@ -20,6 +20,7 @@
 | [模块化重构计划](./iec61850/02-iec61850-refactoring-plan) | IEC61850 代码架构重整，插件模式 — 版本：1.0，日期：2026-05-30 |
 | [GOOSE 模块插件化重构](./iec61850/06-goose-plugin-refactoring) | GOOSE 插件化重构 — 版本：1.0，日期：2026-05-31 |
 | [统一模型架构重构](./iec61850/09-iec61850-unified-model-refactoring) | 模型发现重构 + SCL 模块 + 全局单次发现 — 版本：3.0，日期：2026-06-02 |
+| [数据存储架构与协议流程整改计划](./iec61850/18-iec61850-data-storage-optimization-plan) | ICD 文件权威存储 + 流程解耦 + 数据清理 — 版本：1.0，日期：2026-06-27 |
 
 ### 功能开发
 

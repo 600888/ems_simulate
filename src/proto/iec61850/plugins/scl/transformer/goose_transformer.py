@@ -31,6 +31,7 @@ class GseControlInfo:
     go_cb_ref: str = ""
     app_id: str = ""
     dat_set: str = ""
+    data_set_ref: str = ""
     conf_rev: int = 1
     control_type: str = "GOOSE"
     desc: str = ""

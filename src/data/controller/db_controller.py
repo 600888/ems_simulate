@@ -73,12 +73,48 @@ class DbController:
             # 创建所有表
             Base.metadata.create_all(self.db_config.engine)
 
-            # 迁移: 为现有数据库添加 model_name 列 (IEC61850 IED 名称)
+            # 迁移: 为现有数据库添加 IEC61850 相关字段
             try:
                 from sqlalchemy import text
 
                 with self.db_config.engine.connect() as conn:
                     conn.execute(text("ALTER TABLE channel ADD COLUMN model_name VARCHAR(128)"))
+                    conn.commit()
+            except Exception:
+                pass  # 列已存在或数据库不支持
+
+            try:
+                from sqlalchemy import text
+
+                with self.db_config.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE channel ADD COLUMN icd_path VARCHAR(512)"))
+                    conn.commit()
+            except Exception:
+                pass  # 列已存在或数据库不支持
+
+            try:
+                from sqlalchemy import text
+
+                with self.db_config.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE channel ADD COLUMN icd_file_hash VARCHAR(64)"))
+                    conn.commit()
+            except Exception:
+                pass  # 列已存在或数据库不支持
+
+            try:
+                from sqlalchemy import text
+
+                with self.db_config.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE device ADD COLUMN icd_path VARCHAR(512)"))
+                    conn.commit()
+            except Exception:
+                pass  # 列已存在或数据库不支持
+
+            try:
+                from sqlalchemy import text
+
+                with self.db_config.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE device ADD COLUMN icd_file_hash VARCHAR(64)"))
                     conn.commit()
             except Exception:
                 pass  # 列已存在或数据库不支持

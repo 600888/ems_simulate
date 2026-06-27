@@ -30,7 +30,7 @@
 import { 
   Monitor, Connection, Cpu, Link, 
   Setting, Operation, Connection as PortIcon,
-  VideoPlay
+  VideoPlay, Collection
 } from "@element-plus/icons-vue";
 
 const props = defineProps({
@@ -54,6 +54,7 @@ const getIconByLabel = (label: string) => {
       'comm': Cpu,
       'device-status': Monitor,
       'sim-status': VideoPlay,
+      'model': Collection,
     };
     return iconMap[props.iconType] || Setting;
   }

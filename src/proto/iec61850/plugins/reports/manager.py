@@ -35,11 +35,67 @@ class ReportManager:
         self.model_name = model_name
         self._rcb_list: list[dict[str, Any]] = []
         self._model_changed: bool = False
+        # IedServer 运行时引用（start() 后注入）
+        self._ied_server = None
+        # 保存每个 RCB 的 RptEna DataAttribute 引用，用于读取运行时状态
+        self._rptena_da_map: dict[str, Any] = {}
 
     @property
     def rcb_list(self) -> list[dict[str, Any]]:
         """获取已注册的 RCB 列表"""
         return list(self._rcb_list)
+
+    def set_server(self, server) -> None:
+        """注入 IedServer 引用
+
+        用于直接通过模型 DataAttribute 读取 RCB 运行时状态（如 RptEna），
+        不需要额外的 MMS 连接。
+
+        Args:
+            server: IedServer 对象 (start() 后可用)
+        """
+        self._ied_server = server
+        log.info("ReportManager 已注入 IedServer 引用")
+
+    def browse_rcbs(self) -> list[dict[str, Any]]:
+        """返回服务器上所有已注册的 RCB 目录（运行时状态从 IedServer 直接读取）"""
+        if not self._ied_server or not hasattr(iec61850, "IedServer_getBooleanAttributeValue"):
+            return list(self._rcb_list)
+
+        results = []
+        for rcb_info in self._rcb_list:
+            name = rcb_info.get("name", "")
+            synced = dict(rcb_info)
+
+            rpt_ena_da = self._rptena_da_map.get(name)
+            if rpt_ena_da is not None and hasattr(rpt_ena_da, "this"):
+                try:
+                    runtime_rpt_ena = iec61850.IedServer_getBooleanAttributeValue(self._ied_server, rpt_ena_da)
+                    if runtime_rpt_ena is not None:
+                        synced["rpt_ena"] = bool(runtime_rpt_ena)
+                except Exception as e:
+                    log.debug(f"读取 RCB [{name}] RptEna 运行时状态失败: {e}")
+
+            results.append(synced)
+        return results
+
+    def _register_rptena_da(self, rc_name: str, da) -> None:
+        """保存 RptEna DataAttribute 引用
+
+        Args:
+            rc_name: RCB 名称
+            da: RptEna 的 DataAttribute 对象
+        """
+        if da is not None and hasattr(da, "this"):
+            self._rptena_da_map[rc_name] = da
+
+    def _get_rcb_rptena_da(self, rcb_obj) -> Any:
+        """从 ReportControlBlock 对象获取 RptEna 的 DataAttribute"""
+        try:
+            return iec61850.ReportControlBlock_getRptEna(rcb_obj)
+        except Exception as e:
+            log.error(f"_get_rcb_rptena_da 失败: {e}")
+        return None
 
     @property
     def model_changed(self) -> bool:
@@ -216,6 +272,13 @@ class ReportManager:
                 # 保持引用防止 GC
                 if hasattr(self._builder, "keep_alive"):
                     self._builder.keep_alive.append(rcb)
+                # 获取 RptEna DataAttribute，用于后续读取运行时状态
+                rpt_ena_da = self._get_rcb_rptena_da(rcb)
+                if rpt_ena_da is not None:
+                    self._register_rptena_da(name, rpt_ena_da)
+                    log.debug(f"RCB [{name}] RptEna DataAttribute 已获取")
+                else:
+                    log.debug(f"RCB [{name}] 无法获取 RptEna DataAttribute (非致命)")
                 log.info(f"ReportControlBlock_create 成功: {name}, dataSet={ds_name}")
                 return True, ""
             else:
@@ -226,10 +289,6 @@ class ReportManager:
             reason = f"ReportControlBlock_create 异常: {type(e).__name__}: {e}"
             log.warning(reason)
             return False, reason
-
-    def browse_rcbs(self) -> list[dict[str, Any]]:
-        """返回服务器上所有已注册的 RCB 目录"""
-        return list(self._rcb_list)
 
     def add_to_pending(self, rcb_config: dict[str, Any]) -> None:
         """添加 RCB 配置到待注册队列（启动后批量注册）

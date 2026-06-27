@@ -28,6 +28,7 @@ class IEC61850ServerHandler(ServerHandler):
                 - model_name: IED 模型名称
                 - ied_name: IED 名称
                 - ld_name: 逻辑设备名称
+                - icd_path: ICD 文件路径（可选，v2.0 新增）
         """
         from src.proto.iec61850.iec61850_server import IEC61850Server
 
@@ -37,6 +38,7 @@ class IEC61850ServerHandler(ServerHandler):
         model_name = config.get("model_name")
         ied_name = config.get("ied_name")
         ld_name = config.get("ld_name", "GenericLD")
+        self._icd_path: str | None = config.get("icd_path")
 
         # model_name 由 Device._build_protocol_config() 从通道配置传入，
         # 对应 ICD 文件的 IED 名称 (如 "PCS001G")，传给 ied_name 参数
@@ -50,18 +52,54 @@ class IEC61850ServerHandler(ServerHandler):
             ld_name=ld_name,
         )
 
-    async def start(self) -> bool:
-        """启动 IEC 61850 服务器"""
-        try:
-            if self._server:
-                self._server.start()
-                self._is_running = self._server.is_running
-                return self._is_running
+    @property
+    def model_loaded(self) -> bool:
+        """模型是否已加载"""
+        if not self._server:
             return False
+        return self._server.model_loaded
+
+    async def start(self) -> bool:
+        """启动 IEC 61850 服务器
+
+        注意: v2.0 起模型加载与启动分离。
+        如果使用 ICD 模型，必须先调 load_model()，再调 start()。
+        未加载 ICD 模型时使用默认 GenericLD 模型。
+        """
+        try:
+            if not self._server:
+                return False
+
+            if self._server.model_loaded:
+                # ICD 模式: 模型已加载，仅启动 MMS 服务
+                self._server.start_device()
+            else:
+                # 传统模式: 使用默认模型
+                self._server.start()
+
+            self._is_running = self._server.is_running
+            return self._is_running
         except Exception as e:
             if self._log:
                 self._log.error(f"启动 IEC 61850 服务器失败: {e}")
             return False
+
+    def load_model(self, icd_path: str) -> bool:
+        """加载 ICD 模型（不启动 MMS 服务）
+
+        用户手动在界面点击"加载模型"后调用。
+        加载完 ICD 模型后再通过 start() 启动 MMS 服务。
+
+        Args:
+            icd_path: ICD 文件路径
+
+        Returns:
+            是否加载成功
+        """
+        if not self._server:
+            return False
+        self._icd_path = icd_path
+        return self._server.load_model(icd_path)
 
     async def stop(self) -> bool:
         """停止 IEC 61850 服务器"""
@@ -208,6 +246,16 @@ class IEC61850ClientHandler(ClientHandler):
         self._discovered_goose_items: list[dict[str, Any]] = []  # 发现的 GOOSE 控制块
         self._discovered_datasets: list[dict[str, Any]] = []  # 发现的 DataSet 列表
         self._discovered_rcbs: list[dict[str, Any]] = []  # 发现的报告控制块 (连接时缓存)
+        self._model_loaded: bool = False  # 模型是否已加载
+
+    @property
+    def model_loaded(self) -> bool:
+        """模型是否已加载"""
+        return self._model_loaded
+
+    @model_loaded.setter
+    def model_loaded(self, value: bool) -> None:
+        self._model_loaded = value
 
     def set_on_points_discovered(self, callback):
         """设置测点发现回调
@@ -246,7 +294,10 @@ class IEC61850ClientHandler(ClientHandler):
         )
 
     async def start(self) -> bool:
-        """启动客户端（在后台线程中连接服务器，立即返回）
+        """启动客户端（仅连接 MMS 服务器，不自动发现模型）
+
+        v2.0: 模型加载与连接分离。
+        连接后需要手动调用 load_model_from_icd() 或 remote_discover_model() 加载模型。
 
         IEC 61850 的 IedConnection_connect 是 C 扩展同步阻塞调用，会持有 GIL，
         导致 run_in_executor 也无法避免阻塞事件循环。
@@ -271,70 +322,92 @@ class IEC61850ClientHandler(ClientHandler):
         thread.start()
         return True  # 立即返回，表示连接任务已受理
 
-    async def stop(self) -> bool:
-        """停止客户端（断开连接）"""
-        self.disconnect()
-        return True
+    def load_model_from_icd(self, icd_path: str) -> bool:
+        """从 ICD 文件加载模型（不依赖 MMS 连接）
 
-    def connect(self) -> bool:
-        """同步连接方法（供外部直接调用）
+        Args:
+            icd_path: ICD 文件路径
 
-        注意：此方法会阻塞调用线程，不建议在事件循环中直接调用。
-        通常应使用 async start() 方法（后台线程执行连接）。
+        Returns:
+            是否加载成功
         """
         if not self._client:
-            self._connect_phase = self.PHASE_FAILED
+            return False
+        success = self._client.load_model_from_icd(icd_path)
+        if success:
+            self._model_loaded = True
+        return success
+
+    def remote_discover_model(self) -> bool:
+        """远程发现模型（通过 MMS 在线遍历）
+
+        如果客户端未连接，自动先连接再发现。
+        注意：这是一个同步阻塞调用（connect + discover），
+        不要在事件循环中直接调用。
+
+        Returns:
+            是否发现成功
+        """
+        if not self._client:
             return False
 
-        # 阶段1: 连接服务器
         self._connect_phase = self.PHASE_CONNECTING
         self._connect_progress = 10
-        is_connected = self._client.connect(auto_discover=False)  # 仅连接，不自动发现
-        self._is_running = is_connected
 
-        if not is_connected:
+        if not self._client.is_connected:
+            if self._log:
+                self._log.info("客户端未连接，自动先连接 MMS 服务器...")
+            is_connected = self._client.connect(auto_discover=False)
+            self._is_running = is_connected
+            if not is_connected:
+                self._connect_phase = self.PHASE_FAILED
+                self._connect_progress = 0
+                if self._log:
+                    self._log.error("远程发现模型失败: 连接 MMS 服务器失败")
+                return False
+
+        self._connect_phase = self.PHASE_DISCOVERING
+        self._connect_progress = 50
+        if self._log:
+            self._log.info("开始远程发现模型...")
+
+        success = self._client.remote_discover_model()
+        if not success:
             self._connect_phase = self.PHASE_FAILED
             self._connect_progress = 0
             return False
 
-        # 阶段2: 发现数据模型
-        self._connect_phase = self.PHASE_DISCOVERING
-        self._connect_progress = 40
-        self._client.discover_model()
-        self._connect_progress = 80
+        # 保存发现的 GOOSE 控制块和 DataSet
+        self._discovered_goose_items.clear()
+        self._discovered_goose_items.extend(self._client._discovered_goose_items)
+        if self._discovered_goose_items and self._log:
+            self._log.info(
+                f"发现 {len(self._discovered_goose_items)} 个 GOOSE 控制块: "
+                + ", ".join(g.get("go_cb_ref", g.get("name", "")) for g in self._discovered_goose_items)
+            )
 
-        # 阶段3: 保存发现的 GOOSE 控制块和 DataSet（供结构树展示）
-        if self._client:
-            self._discovered_goose_items.clear()
-            self._discovered_goose_items.extend(self._client._discovered_goose_items)
-            if self._discovered_goose_items and self._log:
+        self._discovered_datasets.clear()
+        if hasattr(self._client, "get_discovered_datasets"):
+            self._discovered_datasets.extend(self._client.get_discovered_datasets())
+            if self._discovered_datasets and self._log:
                 self._log.info(
-                    f"发现 {len(self._discovered_goose_items)} 个 GOOSE 控制块: "
-                    + ", ".join(g.get("go_cb_ref", g.get("name", "")) for g in self._discovered_goose_items)
+                    f"发现 {len(self._discovered_datasets)} 个 DataSet: "
+                    + ", ".join(ds.get("ref", ds.get("name", "")) for ds in self._discovered_datasets)
                 )
 
-            self._discovered_datasets.clear()
-            if hasattr(self._client, "get_discovered_datasets"):
-                self._discovered_datasets.extend(self._client.get_discovered_datasets())
-                if self._discovered_datasets and self._log:
-                    self._log.info(
-                        f"发现 {len(self._discovered_datasets)} 个 DataSet: "
-                        + ", ".join(ds.get("ref", ds.get("name", "")) for ds in self._discovered_datasets)
-                    )
+        # 缓存报告控制块
+        self._discovered_rcbs.clear()
+        client = getattr(self, "_client", None)
+        if client and getattr(client, "reports", None):
+            try:
+                self._discovered_rcbs.extend(client.reports.discover_rcbs())
+                if self._discovered_rcbs and self._log:
+                    self._log.info(f"发现 {len(self._discovered_rcbs)} 个报告控制块")
+            except Exception as e:
+                if self._log:
+                    self._log.warning(f"缓存 RCB 失败: {e}")
 
-            # 缓存报告控制块 (RCB)，避免 structure 接口每次现场探测导致首屏空白
-            self._discovered_rcbs.clear()
-            client = getattr(self, "_client", None)
-            if client and getattr(client, "reports", None):
-                try:
-                    self._discovered_rcbs.extend(client.reports.discover_rcbs())
-                    if self._discovered_rcbs and self._log:
-                        self._log.info(f"发现 {len(self._discovered_rcbs)} 个报告控制块")
-                except Exception as e:
-                    if self._log:
-                        self._log.warning(f"缓存 RCB 失败: {e}")
-
-        # 阶段4: 通知上层发现的测点
+        # 通知上层发现的测点
         if self._on_points_discovered:
             discovered = self._client.get_discovered_points()
             if discovered:
@@ -346,6 +419,39 @@ class IEC61850ClientHandler(ClientHandler):
 
         self._connect_phase = self.PHASE_DONE
         self._connect_progress = 100
+        self._model_loaded = True
+        return True
+
+    async def stop(self) -> bool:
+        """停止客户端（断开连接）"""
+        self.disconnect()
+        return True
+
+    def connect(self) -> bool:
+        """同步连接方法（仅连接 MMS 服务器，不自动发现模型）
+
+        v2.0: 模型发现与连接分离。连接后调用 remote_discover_model() 或
+        load_model_from_icd() 来加载模型。
+
+        注意：此方法会阻塞调用线程，不建议在事件循环中直接调用。
+        通常应使用 async start() 方法（后台线程执行连接）。
+        """
+        if not self._client:
+            self._connect_phase = self.PHASE_FAILED
+            return False
+
+        self._connect_phase = self.PHASE_CONNECTING
+        self._connect_progress = 10
+        is_connected = self._client.connect(auto_discover=False)  # 仅连接，不自动发现
+        self._is_running = is_connected
+
+        if not is_connected:
+            self._connect_phase = self.PHASE_FAILED
+            self._connect_progress = 0
+            return False
+
+        self._connect_progress = 100
+        self._connect_phase = self.PHASE_DONE
         return is_connected
 
     def _connect_background(self):

@@ -86,6 +86,8 @@ export interface PointImportResult {
     yk_count: number;
     yt_count: number;
     total: number;
+    // IEC61850 模型状态
+    model_loaded?: boolean;
     // GOOSE 配置 (ICD 导入时可能返回)
     goose?: GooseImportData | null;
 }

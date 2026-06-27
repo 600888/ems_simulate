@@ -152,7 +152,7 @@ class ServerDataSetManager:
         go_id: str = "",
         min_time: int = 10,
         max_time: int = 1000,
-        ld_inst: str = None,
+        ld_inst: str | None = None,
         entries: list[dict[str, Any]] | None = None,
         dst_mac: list[int] | None = None,
         vlan_id: int = 0,
@@ -232,7 +232,18 @@ class ServerDataSetManager:
             # 3. 添加 PhyComAddress
             try:
                 if dst_mac and len(dst_mac) == 6:
-                    phy_addr = iec61850.PhyComAddress_create(vlan_prio, vlan_id, app_id, dst_mac)
+                    # PhyComAddress_create 的 uint8_t[] 参数 SWIG 绑定时类型不匹配
+                    # 改用先创建对象再通过 ctypes 填充内存的方式
+                    phy_addr = iec61850.PhyComAddress()
+                    phy_addr.vlanPriority = vlan_prio
+                    phy_addr.vlanId = vlan_id
+                    phy_addr.appId = app_id
+                    # 手动填充 dstAddress 的 6 字节 MAC
+                    mac_ptr = int(phy_addr.dstAddress)
+                    import ctypes
+
+                    for i, b in enumerate(dst_mac):
+                        ctypes.memset(mac_ptr + i, b, 1)
                     if phy_addr:
                         iec61850.GSEControlBlock_addPhyComAddress(gse_cb, phy_addr)
                         self._builder.keep_alive.append(phy_addr)

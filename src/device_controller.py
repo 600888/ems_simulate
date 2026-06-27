@@ -185,6 +185,10 @@ class DeviceController:
                     model_name = channel.get("model_name")
                     if model_name:
                         general_device_builder.setDeviceModelName(model_name)
+                    # v2.0: 传递 ICD 文件路径
+                    icd_path = channel.get("icd_path")
+                    if icd_path:
+                        general_device_builder.setDeviceIcdPath(icd_path)
 
                 general_device = general_device_builder.makeGeneralDevice(
                     device_id=channel_id,
@@ -193,6 +197,16 @@ class DeviceController:
                     is_start=False,
                 )
                 general_device.name = channel_name
+
+                # IEC61850: 如果有 ICD 文件路径，自动加载模型
+                if channel_protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client):
+                    icd_path = channel.get("icd_path")
+                    if icd_path and os.path.exists(icd_path):
+                        try:
+                            if general_device.load_iec61850_model(icd_path):
+                                log.info(f"从数据库导入设备时已自动加载 ICD 模型: {icd_path}")
+                        except Exception as load_err:
+                            log.warning(f"自动加载 ICD 模型失败 (设备启动后可手动加载): {load_err}")
 
                 # 特殊处理储能电表
                 is_energy_meter = (

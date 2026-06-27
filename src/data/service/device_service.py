@@ -67,3 +67,32 @@ class DeviceService:
         except Exception as e:
             log.error(f"删除设备失败: {e}")
             return False
+
+    # ==== IEC 61850 ICD 路径管理 ====
+
+    @classmethod
+    def set_icd_path(cls, device_id: int, icd_path: str, file_hash: str = "") -> bool:
+        """设置设备的 ICD 文件路径"""
+        try:
+            return DeviceDao.set_device_icd_path(device_id, icd_path, file_hash)
+        except Exception as e:
+            log.error(f"设置设备 ICD 路径失败: {e}")
+            return False
+
+    @classmethod
+    def get_icd_path(cls, device_id: int) -> str | None:
+        """获取设备的 ICD 文件路径"""
+        try:
+            return DeviceDao.get_device_icd_path(device_id)
+        except Exception as e:
+            log.error(f"获取设备 ICD 路径失败: {e}")
+            return None
+
+    @classmethod
+    def get_devices_by_icd_path(cls, icd_path: str) -> list[DeviceDict]:
+        """根据 ICD 文件路径查找关联的设备列表"""
+        try:
+            return DeviceDao.get_devices_by_icd_path(icd_path)
+        except Exception as e:
+            log.error(f"通过 ICD 路径查找设备失败: {e}")
+            return []

@@ -54,6 +54,9 @@ class IEC61850Server:
         self._is_running = False
         # dU 描述存储: {do_key: desc}，set_du_descriptions 存储，start() 时自动应用
         self._du_descriptions: dict[str, str] = {}
+        # 整改 v2.0: 模型加载状态
+        self._model_loaded = False
+        self._loaded_icd_path: str = ""
 
     # ===== 向后兼容属性: 委托给 builder =====
 
@@ -267,7 +270,162 @@ class IEC61850Server:
         self._ds_manager = ServerDataSetManager(self._builder, self.model_name)
         self._report_manager = ReportManager(self._builder, self.model_name)
         self._model_changed = True
+        self._model_loaded = False
+        self._loaded_icd_path = ""
         log.info("数据模型已重置，默认 GenericLD 已清除")
+
+    # ===== 整改 v2.0: 模型加载与设备启动分离 =====
+
+    def load_model(self, icd_path: str) -> bool:
+        """从 ICD 文件加载模型（不启动 MMS 服务）
+
+        将 ICD 文件解析并构建完整 IedModel，
+        注册 GOOSE/DataSet/RCB 配置，
+        但不创建 IedServer 实例（不占用端口）。
+
+        Args:
+            icd_path: ICD 文件路径
+
+        Returns:
+            是否加载成功
+        """
+        from .plugins.scl.service.import_service import SclImportService
+
+        log.info(f"正在从 ICD 文件加载模型: {icd_path}")
+
+        # 1. 解析 ICD 文件
+        service = SclImportService()
+        result = service.import_file(icd_path)
+        if not result.is_valid:
+            log.error(f"ICD 文件校验失败: {icd_path}, 错误数: {result.validation.error_count}")
+            return False
+
+        # 2. 重置现有模型
+        self.reset_model()
+
+        # 3. 从解析结果构建模型节点
+        ied_name = result.ied_name or self.ied_name
+        self.ied_name = ied_name
+        self.model_name = ied_name
+
+        # 为每个逻辑设备创建 LD
+        seen_lds: set[str] = set()
+        for point in (
+            result.points.yc_points + result.points.yx_points + result.points.yk_points + result.points.yt_points
+        ):
+            address = point.reg_addr
+            if "/" not in address:
+                continue
+            ld_inst = address.split("/")[0]
+            if ld_inst not in seen_lds:
+                seen_lds.add(ld_inst)
+                self._get_or_create_ld(ld_inst)
+                log.debug(f"创建逻辑设备: {ld_inst}")
+
+            # 解析 LN/DO/DA
+            rest = address[address.index("/") + 1 :]
+            if "." not in rest:
+                continue
+            ln_name = rest[: rest.index(".")]
+            self._get_or_create_ln(ld_inst, ln_name)
+
+        # 4. 注册 GOOSE 发布配置
+        for gse in result.goose.gse_controls:
+            self._ds_manager.pending_registrations.append(gse.to_publisher_dict())
+
+        # 5. 应用待注册配置
+        self._apply_pending_registrations()
+
+        # 6. 应用 Report 配置
+        from dataclasses import asdict
+
+        for rc in result.reports.report_controls:
+            try:
+                self._report_manager.register_rcb(
+                    ld_inst=rc.ld_inst,
+                    name=rc.name,
+                    rpt_id=rc.rpt_id,
+                    data_set_ref=rc.dat_set,
+                    conf_rev=rc.conf_rev,
+                    buf_time=rc.buf_time,
+                    intg_period=rc.intg_period,
+                    rcb_type=rc.rcb_type,
+                    ln_name=rc.ln_name,
+                    trg_ops=asdict(rc.trg_ops) if rc.trg_ops else None,  # type: ignore[arg-type]
+                    opt_fields=asdict(rc.opt_fields) if rc.opt_fields else None,  # type: ignore[arg-type]
+                )
+            except Exception as e:
+                log.warning(f"注册 ReportControl 失败: {rc.name}, error={e}")
+
+        self._model_loaded = True
+        self._loaded_icd_path = icd_path
+        log.info(f"IED 模型加载完成: {ied_name}, LD={len(seen_lds)}, ICD={icd_path}")
+        return True
+
+    def start_device(self) -> bool:
+        """启动 MMS 服务（模型必须已加载）
+
+        先决条件: 必须先调用 load_model() 加载 ICD 模型。
+
+        Returns:
+            是否启动成功
+        """
+        if self._is_running:
+            log.warning("MMS 服务器已在运行中")
+            return True
+
+        if not self._model_loaded:
+            log.error("模型未加载，请先调用 load_model(icd_path)")
+            return False
+
+        log.info(f"正在启动 MMS 服务器 (模型: {self.ied_name})...")
+
+        self._server = iec61850.IedServer_create(self._builder.model)
+        if not self._server:
+            self._is_running = False
+            log.error("IedServer_create 失败")
+            return False
+
+        iec61850.IedServer_setServerIdentity(self._server, "EMS", self.model_name, "1.0")
+        self._is_running = True
+        iec61850.IedServer_start(self._server, self.port)
+
+        if iec61850.IedServer_isRunning(self._server):
+            log.info(f"IEC 61850 MMS 服务器启动成功 (模型: {self.ied_name}, 端口: {self.port})")
+            try:
+                self._report_manager.set_server(self._server)
+            except Exception as e:
+                log.warning(f"注入 ReportManager IedServer 引用失败: {e}")
+            try:
+                self._init_standard_bda_defaults()
+                self._apply_du_descriptions()
+            except Exception as e:
+                log.warning(f"初始化标准 DA 默认值异常: {e}")
+            self._try_enable_goose_publishing()
+            import platform
+            import time as _time
+
+            _time.sleep(0.3)
+            if platform.system() != "Windows":
+                try:
+                    self._enable_all_goose_cbs()
+                except Exception as e:
+                    log.warning(f"设置 GoCB GoEna 异常: {e}")
+            return True
+        else:
+            self._is_running = False
+            log.error(f"IEC 61850 MMS 服务器启动失败 (端口: {self.port})")
+            return False
+
+    @property
+    def model_loaded(self) -> bool:
+        """模型是否已加载"""
+        return self._model_loaded
+
+    @property
+    def loaded_icd_path(self) -> str:
+        """已加载的 ICD 文件路径"""
+        return self._loaded_icd_path
 
     def apply_model_changes(self) -> bool:
         """应用模型变更: 若 IedServer 已运行且有变更，重建 IedServer"""
@@ -303,6 +461,10 @@ class IEC61850Server:
             iec61850.IedServer_start(self._server, self.port)
             if iec61850.IedServer_isRunning(self._server):
                 log.info("IedServer 重建成功")
+                try:
+                    self._report_manager.set_server(self._server)
+                except Exception as e:
+                    log.warning(f"重建后注入 ReportManager IedServer 引用失败: {e}")
                 self._init_standard_bda_defaults()
                 self._apply_du_descriptions()
                 self._try_enable_goose_publishing()
@@ -356,6 +518,11 @@ class IEC61850Server:
 
         if iec61850.IedServer_isRunning(self._server):
             log.info(f"IEC 61850 MMS 服务器已启动, 端口: {self.port}")
+            # 注入 IedServer 引用到 ReportManager，使 UI 能读取 RCB 运行时状态
+            try:
+                self._report_manager.set_server(self._server)
+            except Exception as e:
+                log.warning(f"注入 ReportManager IedServer 引用失败 (非致命): {e}")
             try:
                 self._init_standard_bda_defaults()
                 self._apply_du_descriptions()
@@ -440,6 +607,10 @@ class IEC61850Server:
         iec61850.IedServer_start(self._server, self.port)
         if iec61850.IedServer_isRunning(self._server):
             log.info(f"IEC 61850 服务器重启成功, 端口: {self.port}")
+            try:
+                self._report_manager.set_server(self._server)
+            except Exception as e:
+                log.warning(f"重启后注入 ReportManager IedServer 引用失败: {e}")
             self._init_standard_bda_defaults()
             self._try_enable_goose_publishing()
             import platform

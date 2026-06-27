@@ -48,6 +48,10 @@ class GeneralDeviceBuilder:
         """设置设备模型名称 (IEC61850 IED 名称)"""
         self.general_device.model_name = model_name
 
+    def setDeviceIcdPath(self, icd_path: str) -> None:
+        """设置设备 ICD 文件路径 (IEC61850, v2.0)"""
+        self.general_device.icd_path = icd_path
+
     def setDeviceSerialConfig(
         self, serial_port: str, baudrate: int = 9600, databits: int = 8, stopbits: int = 1, parity: str = "E"
     ) -> None:

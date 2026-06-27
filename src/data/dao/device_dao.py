@@ -93,3 +93,42 @@ class DeviceDao:
         except Exception as e:
             log.error(f"删除设备失败: {str(e)}")
             raise e
+
+    # ==== IEC 61850 ICD 路径管理 ====
+
+    @classmethod
+    def set_device_icd_path(cls, device_id: int, icd_path: str, file_hash: str = "") -> bool:
+        """设置设备的 ICD 文件路径"""
+        try:
+            with local_session() as session, session.begin():
+                result = session.query(Device).where(Device.id == device_id).first()
+                if result:
+                    result.icd_path = icd_path
+                    result.icd_file_hash = file_hash
+                    return True
+                return False
+        except Exception as e:
+            log.error(f"设置设备 ICD 路径失败: {str(e)}")
+            raise e
+
+    @classmethod
+    def get_device_icd_path(cls, device_id: int) -> str | None:
+        """获取设备的 ICD 文件路径"""
+        try:
+            with local_session() as session, session.begin():
+                result = session.query(Device).where(Device.id == device_id).first()
+                return result.icd_path if result else None
+        except Exception as e:
+            log.error(f"获取设备 ICD 路径失败: {str(e)}")
+            return None
+
+    @classmethod
+    def get_devices_by_icd_path(cls, icd_path: str) -> list[DeviceDict]:
+        """根据 ICD 文件路径查找关联的设备列表"""
+        try:
+            with local_session() as session, session.begin():
+                results = session.query(Device).where(Device.icd_path == icd_path, Device.enable).all()
+                return [item.to_dict() for item in results]
+        except Exception as e:
+            log.error(f"通过 ICD 路径查找设备失败: {str(e)}")
+            return []

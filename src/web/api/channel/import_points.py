@@ -569,6 +569,48 @@ async def import_icd(
             log.warning(f"解析 ICD GOOSE 配置失败 (不影响 MMS 导入): {e}")
             goose_errors.append(f"GOOSE 解析失败: {e}")
 
+        # ===== 3. 保存 ICD 文件到 data/device/ 目录 =====
+        icd_saved_path = tmp_path  # 默认用临时路径
+        try:
+            from src.proto.iec61850.plugins.scl.service.file_manager import SclFileManager
+
+            fm = SclFileManager()
+            # 获取设备名称用于存储路径
+            channel_info = ChannelService.get_channel_by_id(channel_id)
+            ied_name_fallback = importer.get_ied_name() if hasattr(importer, "get_ied_name") else "unknown"
+            device_name = channel_info.get("name", ied_name_fallback) if channel_info else ied_name_fallback
+
+            dest_path = fm.save_to_device_dir(
+                source_path=tmp_path,
+                device_name=device_name,
+                original_filename=file.filename,
+                channel_id=channel_id,
+            )
+            icd_saved_path = dest_path
+
+            # 更新数据库中的 icd_path
+            ChannelService.update_channel(
+                channel_id,
+                icd_path=dest_path,
+                icd_file_hash=fm.compute_hash_from_file(dest_path),
+            )
+            log.info(f"ICD 文件已保存到设备目录并记录到数据库: {dest_path}")
+        except Exception as e:
+            log.warning(f"保存 ICD 文件到设备目录失败 (使用临时路径加载模型): {e}")
+
+        # ===== 4. 自动加载模型到内存（无论文件保存成功与否） =====
+        model_loaded = False
+        try:
+            device = device_controller.get_device_by_id(channel_id)
+            if device and hasattr(device, "load_iec61850_model"):
+                if device.load_iec61850_model(icd_saved_path):
+                    log.info(f"ICD 模型已自动加载到内存: {icd_saved_path}")
+                    model_loaded = True
+                else:
+                    log.warning(f"ICD 模型加载到内存失败: {icd_saved_path}")
+        except Exception as load_err:
+            log.warning(f"自动加载 ICD 模型异常 (非致命): {load_err}")
+
         return BaseResponse(
             message="导入ICD文件成功",
             data={
@@ -578,6 +620,8 @@ async def import_icd(
                 "yk_count": yk_count,
                 "yt_count": yt_count,
                 "total": yc_count + yx_count + yk_count + yt_count,
+                # IEC61850 模型状态
+                "model_loaded": model_loaded,
                 # GOOSE 配置
                 "goose": {
                     "summary": goose_data.get("summary", {"gse_control_count": 0, "gse_controls": []}),

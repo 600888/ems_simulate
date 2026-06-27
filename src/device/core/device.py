@@ -65,6 +65,7 @@ class Device:
         self.device_type: DeviceType = DeviceType.Other
         self.protocol_type: ProtocolType = protocol_type
         self.model_name: str | None = None  # IED 模型名称 (IEC61850)
+        self.icd_path: str | None = None  # ICD 文件存储路径 (IEC61850, v2.0)
 
         # 核心组件
         self.point_manager: PointManager = PointManager()
@@ -177,6 +178,7 @@ class Device:
             "meter_address": self.meter_address,
             "model_name": self.model_name,
             "ied_name": self.model_name,  # IEC61850 IED 名称 (与 model_name 相同，对应 ICD 文件的 IED name)
+            "icd_path": self.icd_path,  # ICD 文件路径 (IEC61850, v2.0)
         }
 
     def initProtocol(self) -> None:
@@ -253,11 +255,61 @@ class Device:
             {"phase": str, "progress": int, "connecting": bool}
             非 IEC61850 客户端返回空 dict
         """
-        if self.protocol_type != ProtocolType.Iec61850Client:
+        if self.protocol_type not in (ProtocolType.Iec61850Client, ProtocolType.Iec61850Server):
             return {}
         if not self.protocol_handler:
             return {}
-        return self.protocol_handler.get_connect_progress()
+        if hasattr(self.protocol_handler, "get_connect_progress"):
+            return self.protocol_handler.get_connect_progress()
+        return {}
+
+    @property
+    def iec61850_model_loaded(self) -> bool:
+        """IEC61850 模型是否已加载"""
+        if self.protocol_type not in (ProtocolType.Iec61850Client, ProtocolType.Iec61850Server):
+            return False
+        if not self.protocol_handler:
+            return False
+        if hasattr(self.protocol_handler, "model_loaded"):
+            return self.protocol_handler.model_loaded
+        # 服务端: 检查 server.model_loaded
+        if hasattr(self.protocol_handler, "server") and self.protocol_handler.server:
+            return getattr(self.protocol_handler.server, "model_loaded", False)
+        return False
+
+    def load_iec61850_model(self, icd_path: str) -> bool:
+        """加载 IEC61850 ICD 模型（不启动设备）
+
+        Args:
+            icd_path: ICD 文件路径
+
+        Returns:
+            是否加载成功
+        """
+        if not self.protocol_handler:
+            return False
+
+        if self.protocol_type == ProtocolType.Iec61850Server:
+            if hasattr(self.protocol_handler, "load_model"):
+                return self.protocol_handler.load_model(icd_path)
+        elif self.protocol_type == ProtocolType.Iec61850Client:
+            if hasattr(self.protocol_handler, "load_model_from_icd"):
+                return self.protocol_handler.load_model_from_icd(icd_path)
+        return False
+
+    def iec61850_remote_discover_model(self) -> bool:
+        """远程发现 IEC61850 模型（需要 MMS 连接）
+
+        Returns:
+            是否发现成功
+        """
+        if self.protocol_type != ProtocolType.Iec61850Client:
+            return False
+        if not self.protocol_handler:
+            return False
+        if hasattr(self.protocol_handler, "remote_discover_model"):
+            return self.protocol_handler.remote_discover_model()
+        return False
 
     def _on_iec61850_points_discovered(self, discovered_points: list) -> None:
         """处理 IEC61850 客户端发现的测点，自动注册到系统

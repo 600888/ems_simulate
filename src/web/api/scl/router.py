@@ -291,7 +291,14 @@ async def import_points_from_scl(
     channel_id: int = Form(...),
     filename: str = Form(...),
 ):
-    """从已上传的 SCL 文件导入测点到数据库"""
+    """从已上传的 SCL 文件导入模型信息到数据库
+
+    整改后行为 (v2.0):
+        - 不再将 61850 测点数据写入 point_yc/yx/yk/yt 表
+        - 将 ICD 文件保存到规范存储位置
+        - 在 channel/device 表中记录 ICD 文件路径
+        - 数据库仅保存 ICD 路径，模型以 ICD 文件为权威来源
+    """
     file_path = _get_scl_file_path(request, filename)
 
     # 使用 SclImportService 解析
@@ -304,31 +311,59 @@ async def import_points_from_scl(
             data=result.to_dict()["validation"],
         )
 
-    # 持久化到数据库 (复用 IcdPointImporter 的存储逻辑)
-    from src.tools.icd_point_importer import IcdPointImporter
+    # 保存到设备目录 (data/device/{device_name}/)
+    fm = _get_file_manager(request)
+    from src.data.service.channel_service import ChannelService
 
-    importer = IcdPointImporter(channel_id=channel_id)
-    # 使用 SclImportService 解析的结果，委托 IcdPointImporter 存储
-    yc_count, yx_count, yk_count, yt_count = importer.import_from_icd(file_path)
+    channel_info = ChannelService.get_channel_by_id(channel_id)
+    device_name = channel_info.get("name", result.ied_name) if channel_info else result.ied_name
+    dest_path = fm.save_to_device_dir(
+        source_path=file_path,
+        device_name=device_name,
+        original_filename=filename,
+        channel_id=channel_id,
+    )
 
-    # 更新 IED 名称
-    if result.ied_name:
-        try:
-            from src.data.service.channel_service import ChannelService
+    # 计算文件 hash
+    file_hash = fm.compute_hash_from_file(dest_path)
 
-            ChannelService.update_channel(channel_id, model_name=result.ied_name)
-        except Exception as e:
-            log.warning(f"更新 IED 名称失败: {e}")
+    # 在数据库记录 ICD 路径（不再写入 point_yc/yx/yk/yt 表）
+    ChannelService.update_channel(
+        channel_id,
+        model_name=result.ied_name,
+        icd_path=dest_path,
+        icd_file_hash=file_hash,
+    )
+
+    # 同步更新元数据中的设备关联
+    channel = ChannelService.get_channel_by_id(channel_id)
+    if channel and channel.get("device_id"):
+        fm.update_meta_device_assoc(dest_path, channel["device_id"], channel_id)
+
+    # 自动加载模型到内存
+    try:
+        device_controller = request.app.state.device_controller
+        device = device_controller.get_device_by_id(channel_id)
+        if device and hasattr(device, "load_iec61850_model"):
+            if device.load_iec61850_model(dest_path):
+                log.info(f"ICD 模型已自动加载到内存: {dest_path}")
+            else:
+                log.warning(f"ICD 模型加载到内存失败: {dest_path}")
+    except Exception as load_err:
+        log.warning(f"自动加载 ICD 模型异常 (非致命): {load_err}")
 
     return BaseResponse(
-        message="测点导入成功",
+        message="ICD 模型导入成功 (测点数据不再写入数据库，以 ICD 文件为权威来源)",
         data={
-            "yc_count": yc_count,
-            "yx_count": yx_count,
-            "yk_count": yk_count,
-            "yt_count": yt_count,
-            "total": yc_count + yx_count + yk_count + yt_count,
             "ied_name": result.ied_name,
+            "icd_path": dest_path,
+            "file_hash": file_hash,
+            "yc_count": len(result.points.yc_points),
+            "yx_count": len(result.points.yx_points),
+            "yk_count": len(result.points.yk_points),
+            "yt_count": len(result.points.yt_points),
+            "goose_count": len(result.goose.gse_controls),
+            "report_count": len(result.reports.report_controls),
         },
     )
 
@@ -400,41 +435,75 @@ async def import_full_from_scl(
     filename: str = Form(...),
     interface: str = Form("eth0"),
 ):
-    """完整导入 SCL 文件 (测点 + GOOSE + Report)"""
+    """完整导入 SCL 文件 (模型 + GOOSE + Report)
+
+    整改后行为 (v2.0):
+        - 不再将 61850 测点数据写入 point_yc/yx/yk/yt 表
+        - 将 ICD 文件保存到规范存储位置
+        - 在 channel/device 表中记录 ICD 文件路径
+        - 数据库仅保存 ICD 路径，模型以 ICD 文件为权威来源
+    """
     file_path = _get_scl_file_path(request, filename)
 
     service = _get_import_service(request)
     result = service.import_file(file_path)
 
-    # 使用 IcdPointImporter 存储测点
-    from src.tools.icd_point_importer import IcdPointImporter
+    # 保存到设备目录 (data/device/{device_name}/)
+    fm = _get_file_manager(request)
+    from src.data.service.channel_service import ChannelService
 
-    importer = IcdPointImporter(channel_id=channel_id)
-    yc_count, yx_count, yk_count, yt_count = importer.import_from_icd(file_path)
+    channel_info = ChannelService.get_channel_by_id(channel_id)
+    device_name = channel_info.get("name", result.ied_name) if channel_info else result.ied_name
+    dest_path = fm.save_to_device_dir(
+        source_path=file_path,
+        device_name=device_name,
+        original_filename=filename,
+        channel_id=channel_id,
+    )
 
-    # 更新 IED 名称
-    if result.ied_name:
-        try:
-            from src.data.service.channel_service import ChannelService
+    # 计算文件 hash
+    file_hash = fm.compute_hash_from_file(dest_path)
 
-            ChannelService.update_channel(channel_id, model_name=result.ied_name)
-        except Exception:
-            pass
+    # 在数据库记录 ICD 路径（不再写入 point_yc/yx/yk/yt 表）
+    ChannelService.update_channel(
+        channel_id,
+        model_name=result.ied_name,
+        icd_path=dest_path,
+        icd_file_hash=file_hash,
+    )
+
+    # 同步更新元数据中的设备关联
+    channel = ChannelService.get_channel_by_id(channel_id)
+    if channel and channel.get("device_id"):
+        fm.update_meta_device_assoc(dest_path, channel["device_id"], channel_id)
+
+    # 自动加载模型到内存
+    try:
+        device_controller = request.app.state.device_controller
+        device = device_controller.get_device_by_id(channel_id)
+        if device and hasattr(device, "load_iec61850_model"):
+            if device.load_iec61850_model(dest_path):
+                log.info(f"ICD 模型已自动加载到内存: {dest_path}")
+            else:
+                log.warning(f"ICD 模型加载到内存失败: {dest_path}")
+    except Exception as load_err:
+        log.warning(f"自动加载 ICD 模型异常 (非致命): {load_err}")
 
     # 构建 GOOSE 响应
     goose_data = result.to_dict()
 
     return BaseResponse(
-        message="完整导入成功",
+        message="完整导入成功 (测点数据不再写入数据库，以 ICD 文件为权威来源)",
         data={
-            "yc_count": yc_count,
-            "yx_count": yx_count,
-            "yk_count": yk_count,
-            "yt_count": yt_count,
-            "total": yc_count + yx_count + yk_count + yt_count,
+            "ied_name": result.ied_name,
+            "icd_path": dest_path,
+            "file_hash": file_hash,
+            "yc_count": len(result.points.yc_points),
+            "yx_count": len(result.points.yx_points),
+            "yk_count": len(result.points.yk_points),
+            "yt_count": len(result.points.yt_points),
             "goose": goose_data.get("goose"),
             "report_controls": goose_data.get("report_controls", []),
-            "ied_name": result.ied_name,
         },
     )
 

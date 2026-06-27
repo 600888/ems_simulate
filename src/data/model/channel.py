@@ -35,6 +35,8 @@ class ChannelDict(TypedDict):
     enable: bool
     # IEC 61850 专用
     model_name: str | None
+    icd_path: str | None
+    icd_file_hash: str | None
 
 
 class Channel(Base):
@@ -75,6 +77,10 @@ class Channel(Base):
 
     # IEC 61850 专用字段
     model_name: Mapped[str | None] = mapped_column(String(128), nullable=True, comment="IED 模型名称 (IEC61850)")
+    icd_path: Mapped[str | None] = mapped_column(String(512), nullable=True, comment="ICD文件存储路径 (IEC61850)")
+    icd_file_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, comment="ICD文件内容Hash (用于缓存校验)"
+    )
 
     # 关系
     device = relationship("Device", back_populates="channels")
