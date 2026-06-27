@@ -253,6 +253,22 @@ class IEC61850Server:
         """处理待注册的 GoCB/DataSet 队列 (委托给 ds_manager)"""
         self._ds_manager.apply_pending_registrations(self.add_goose_control_block, self.register_dataset)
 
+    def reset_model(self):
+        """重置数据模型，清除所有已注册的 LD/LN/DO/DA
+
+        用于 ICD 导入场景：清理之前 start() 创建的默认 GenericLD，
+        确保模型只包含 ICD 文件中的自定义 LD。
+        导入 ICD 后必须重新注册所有 DataSet 和 RCB 才能生效。
+
+        注意：此操作会丢失所有已注册的测点（add_point 添加的），
+        调用前应确保测点已在 ICD 导入流程中重新注册。
+        """
+        self._builder = IedModelBuilder(self.model_name, self.ied_name, self.ld_name)
+        self._ds_manager = ServerDataSetManager(self._builder, self.model_name)
+        self._report_manager = ReportManager(self._builder, self.model_name)
+        self._model_changed = True
+        log.info("数据模型已重置，默认 GenericLD 已清除")
+
     def apply_model_changes(self) -> bool:
         """应用模型变更: 若 IedServer 已运行且有变更，重建 IedServer"""
         if not self._model_changed or not self._is_running:
@@ -626,8 +642,21 @@ class IEC61850Server:
             log.debug("_register_default_rcbs: 模型未初始化，跳过")
             return
 
-        # 为默认 LD 创建 DataSet 和 BRCB
+        # 检查模型中是否已有用户自定义的 LD（来自 ICD 导入等）。
+        # 如果已有，说明用户使用了 ICD 自定义模型，跳过默认 GenericLD 的创建。
         default_ld = self.ld_name
+        other_lds = [k for k in self._builder.ld_map if k != default_ld]
+        if other_lds:
+            log.info(f"检测到已有自定义 LD: {other_lds}，跳过默认 RCB 注册")
+            return
+
+        # 检查是否已有测点注册到非默认 LD
+        has_custom_points = any(not ref.startswith(f"{default_ld}/") for ref in self._builder.point_refs.values())
+        if has_custom_points:
+            log.info("检测到已有自定义测点，跳过默认 RCB 注册")
+            return
+
+        # 为默认 LD 创建 DataSet 和 BRCB
         default_rcbs = [
             {
                 "ld_inst": default_ld,
