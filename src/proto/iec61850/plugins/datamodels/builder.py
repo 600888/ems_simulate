@@ -134,6 +134,12 @@ class IedModelBuilder:
         if key in self._ln_map:
             return self._ln_map[key]
         ld = self.get_or_create_ld(ld_inst)
+
+        # get_or_create_ld 会为新 LD 自动创建 LLN0。若本次请求本身
+        # 就是该 LD 的首个 LLN0，请直接复用它，避免创建两个同名节点。
+        if key in self._ln_map:
+            return self._ln_map[key]
+
         ln = iec61850.LogicalNode_create(ln_name, ld)
         self._ln_map[key] = ln
         log.info(f"IEC61850 动态创建逻辑节点: {key}")

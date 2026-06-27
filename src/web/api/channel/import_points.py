@@ -22,6 +22,44 @@ from src.web.log import log
 router = APIRouter(tags=["channel"])
 
 
+def _collect_dataset_configs(goose_data: dict[str, Any]) -> list[dict[str, Any]]:
+    """收集导入时必须注册的 DataSet，并按完整引用去重。
+
+    ``pure_datasets`` 只包含未被控制块引用的数据集；被 GSEControl
+    引用的数据集位于 publisher 配置中。DataSet 是独立的 MMS 模型
+    对象，因此即使不自动创建 GOOSE Publisher，也必须注册。
+    """
+    datasets_by_ref: dict[str, dict[str, Any]] = {}
+
+    for ds_info in goose_data.get("pure_datasets", []):
+        ds_ref = ds_info.get("data_set_ref") or ds_info.get("ds_ref", "")
+        if ds_ref:
+            datasets_by_ref[ds_ref] = {
+                **ds_info,
+                "data_set_ref": ds_ref,
+            }
+
+    for publisher in goose_data.get("publishers", []):
+        ds_ref = publisher.get("data_set_ref", "")
+        if not ds_ref:
+            continue
+        ld_inst = ds_ref.split("/", 1)[0]
+        ds_name = ds_ref.rsplit("$", 1)[-1] if "$" in ds_ref else ds_ref.rsplit(".", 1)[-1]
+        datasets_by_ref.setdefault(
+            ds_ref,
+            {
+                "ld_inst": ld_inst,
+                "ds_name": ds_name,
+                "ds_ref": ds_ref,
+                "data_set_ref": ds_ref,
+                "member_count": len(publisher.get("entries", [])),
+                "entries": publisher.get("entries", []),
+            },
+        )
+
+    return list(datasets_by_ref.values())
+
+
 @router.post("/import-points", response_model=BaseResponse)
 async def import_points(
     request: Request,
@@ -262,6 +300,8 @@ async def import_icd(
         goose_errors: list[str] = []
         created_goose_count = 0
         pure_datasets: list[dict[str, Any]] = []
+        datasets_to_register: list[dict[str, Any]] = []
+        publisher_dataset_refs: set[str] = set()
 
         # 先清除旧的 GOOSE 持久化记录和内存中的 Publisher
         try:
@@ -311,10 +351,11 @@ async def import_icd(
 
                 service = SclImportService()
                 scl_result = service.import_file(tmp_path)
-                goose_data = scl_result.to_dict()
-                # 补充 SclImportService 不提供的字段
+                scl_data = scl_result.to_dict()
+                # GOOSE 配置位于统一导入结果的 goose 子对象中。
+                goose_data = dict(scl_data.get("goose", {}))
                 goose_data["pure_datasets"] = scl_result.goose.pure_datasets
-                goose_data["report_controls"] = scl_result.to_dict().get("report_controls", [])
+                goose_data["report_controls"] = scl_data.get("report_controls", [])
                 # 提取 DO 描述用于设置 dU
                 for p in (
                     scl_result.points.yc_points
@@ -334,17 +375,18 @@ async def import_icd(
                 goose_result = import_goose_from_icd(tmp_path, interface=interface)
                 goose_data = goose_result
 
-            # ===== 2a. 注册纯 DataSet（必须在 GoCB 之前） =====
+            # ===== 2a. 注册全部 DataSet（必须在 GoCB 之前） =====
             # IEC 61850 标准创建顺序：数据模型 → DataSet → GSEControlBlock
             # DataSet 必须先于引用它的 GSEControlBlock 存在于 IedModel 中
             pure_datasets = goose_data.get("pure_datasets", [])
-            pure_ds_count = 0
+            datasets_to_register = _collect_dataset_configs(goose_data)
+            registered_dataset_count = 0
             log.info(
-                f"纯 DataSet 注册准备: pure_datasets={len(pure_datasets)}个, "
+                f"DataSet 注册准备: all={len(datasets_to_register)}个, pure={len(pure_datasets)}个, "
                 f"iec61850_server={'可用' if iec61850_server else 'None'}"
             )
-            if pure_datasets and iec61850_server:
-                for ds_info in pure_datasets:
+            if datasets_to_register and iec61850_server:
+                for ds_info in datasets_to_register:
                     try:
                         success = iec61850_server.register_dataset(
                             ld_inst=ds_info["ld_inst"],
@@ -353,9 +395,9 @@ async def import_icd(
                             entries=ds_info.get("entries", []),
                         )
                         if success:
-                            pure_ds_count += 1
+                            registered_dataset_count += 1
                     except Exception as ds_err:
-                        log.warning(f"注册纯 DataSet 失败 ({ds_info.get('ds_name', '')}): {ds_err}")
+                        log.warning(f"注册 DataSet 失败 ({ds_info.get('ds_name', '')}): {ds_err}")
 
             # ===== 2ab. 注册 ReportControl (RCB) =====
             # 从 ICD 的 ReportControl 元素创建 RCB 对象到 IedModel
@@ -453,6 +495,7 @@ async def import_icd(
                             )
                             if pub_result:
                                 created_goose_count += 1
+                                publisher_dataset_refs.add(pub_config.get("data_set_ref", ""))
                             else:
                                 goose_errors.append(f"创建 Publisher 失败: {pub_config['go_cb_ref']}")
                         except Exception as e:
@@ -467,7 +510,7 @@ async def import_icd(
             # 先存储 dU 描述（无论 need_start 如何），start() 内部 _apply_du_descriptions 会自动应用
             if do_descriptions and iec61850_server:
                 iec61850_server.set_du_descriptions(do_descriptions)
-            need_start = created_goose_count > 0 or pure_ds_count > 0 or rc_registered > 0 or was_running
+            need_start = created_goose_count > 0 or registered_dataset_count > 0 or rc_registered > 0 or was_running
             if need_start and iec61850_server:
                 # 启动前诊断：确认 GoCB/DataSet 已注册到 IedModel
                 log.info(
@@ -480,7 +523,7 @@ async def import_icd(
                 )
                 try:
                     log.info(
-                        f"启动 MMS 服务器 (DataSet={pure_ds_count}, "
+                        f"启动 MMS 服务器 (DataSet={registered_dataset_count}, "
                         f"GoCB={created_goose_count}, "
                         f"RCB={rc_registered}, "
                         f"was_running={was_running})..."
@@ -495,13 +538,17 @@ async def import_icd(
                 except Exception as start_err:
                     goose_errors.append(f"启动 MMS 服务器失败: {start_err}")
 
-            # 持久化纯 DataSet 到数据库（应用重启后可自动恢复）
-            if pure_datasets:
+            # 持久化未由 Publisher 持久化的数据集，应用重启后可自动恢复。
+            # 成功创建的 Publisher 会携带自己的 DataSet 配置，无需重复保存。
+            datasets_to_persist = [
+                ds for ds in datasets_to_register if ds.get("data_set_ref", "") not in publisher_dataset_refs
+            ]
+            if datasets_to_persist:
                 try:
                     from src.data.dao.goose_publisher_dao import GoosePublisherDao
 
-                    saved_pure_count = 0
-                    for ds_info in pure_datasets:
+                    saved_dataset_count = 0
+                    for ds_info in datasets_to_persist:
                         dao_result = GoosePublisherDao.save_pure_dataset(
                             channel_id=channel_id,
                             ld_inst=ds_info.get("ld_inst", ""),
@@ -510,14 +557,14 @@ async def import_icd(
                             entries=ds_info.get("entries", []),
                         )
                         if dao_result is not None:
-                            saved_pure_count += 1
-                    if saved_pure_count > 0:
-                        log.info(f"已持久化 {saved_pure_count} 个纯 DataSet 到数据库")
+                            saved_dataset_count += 1
+                    if saved_dataset_count > 0:
+                        log.info(f"已持久化 {saved_dataset_count} 个 DataSet 到数据库")
                 except Exception as persist_err:
-                    log.warning(f"持久化纯 DataSet 到数据库失败 (不影响内存注册): {persist_err}")
+                    log.warning(f"持久化 DataSet 到数据库失败 (不影响内存注册): {persist_err}")
 
-                if pure_ds_count > 0:
-                    log.info(f"已注册 {pure_ds_count} 个纯 DataSet 到 MMS 模型")
+                if registered_dataset_count > 0:
+                    log.info(f"已注册 {registered_dataset_count} 个 DataSet 到 MMS 模型")
         except Exception as e:
             log.warning(f"解析 ICD GOOSE 配置失败 (不影响 MMS 导入): {e}")
             goose_errors.append(f"GOOSE 解析失败: {e}")
@@ -537,6 +584,7 @@ async def import_icd(
                     "publishers": goose_data.get("publishers", []),
                     "subscriptions": goose_data.get("subscriptions", []),
                     "created_count": created_goose_count,
+                    "dataset_count": len(datasets_to_register),
                     "pure_dataset_count": len(pure_datasets) if pure_datasets else 0,
                     "errors": goose_errors,
                 }

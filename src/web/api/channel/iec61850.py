@@ -681,7 +681,8 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
                 if server and hasattr(server, "reports") and server.reports:
                     rcbs = server.reports.browse_rcbs()
                     for rcb in rcbs:
-                        report_items.append(f"{rcb.get('ld_inst', '')}/LLN0.{rcb['name']} ({rcb['rcb_type']})")
+                        ln_name = rcb.get("ln_name", "LLN0")
+                        report_items.append(f"{rcb.get('ld_inst', '')}/{ln_name}.{rcb['name']} ({rcb['rcb_type']})")
                     log.info(f"通过 ReportManager 发现 {len(rcbs)} 个服务端 RCB")
         except Exception as e:
             log.warning(f"获取 Reports 信息失败: {e}")

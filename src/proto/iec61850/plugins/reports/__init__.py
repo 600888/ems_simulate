@@ -156,11 +156,10 @@ class ReportsPlugin:
     def _discover_rcbs_via_directory(self, conn, ln_ref: str, ld_name: str, ln_name: str) -> list[dict]:
         """通过 ACSI 目录发现 RCB
 
-        仅对 LLN0 执行 ACSI 目录查询（RCB 按 IEC 61850 标准只定义在 LLN0 下）。
-        非 LLN0 节点直接返回空。
+        对所有 LN 执行 ACSI 目录查询，不限于 LLN0。
+        IEC 61850 标准允许 RCB 定义在任何逻辑节点下，
+        ICD 文件常将 ReportControl 放在功能 LN（如 MMXU、GGIO）下。
         """
-        if ln_name.upper() != "LLN0":
-            return []
 
         rcbs = []
         for _rcb_type, acsi_class in [("URCB", AcsiClass.URCB), ("BRCB", AcsiClass.BRCB)]:

@@ -55,7 +55,9 @@ class GseControlInfo:
 
     def to_publisher_dict(self, interface: str = "eth0") -> dict[str, Any]:
         """转换为 GoosePublisher 创建参数"""
-        app_id_int = self._parse_app_id(self.app_id or self.gse_app_id)
+        # Communication/GSE/Address 中的 APPID 是实际网络 APPID；
+        # GSEControl.appID 在部分 ICD 中是控制块引用字符串，不能当作数值解析。
+        app_id_int = self._parse_app_id(self.gse_app_id or self.app_id)
         dst_mac = self._parse_mac(self.mac_address) if self.mac_address else None
 
         entries = []
@@ -247,7 +249,7 @@ class SclGooseTransformer:
         for p in gse.address:
             if p.type == "APPID":
                 info.gse_app_id = p.value
-            elif p.type == "Multicast":
+            elif p.type in ("MAC-Address", "Multicast"):
                 info.mac_address = p.value
             elif p.type == "VLAN-PRIORITY":
                 try:

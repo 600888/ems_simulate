@@ -179,31 +179,36 @@ class ServerDataSetManager:
             return False
 
         try:
-            # 1. 创建 DataSet
+            # 1. 创建或复用 DataSet。ICD 导入会先独立注册全部 DataSet，
+            # GSEControlBlock 必须复用同一对象，不能在 LLN0 下创建重名节点。
             ds_name = data_set_ref.split("$")[-1] if "$" in data_set_ref else f"ds{name}"
-            data_set = iec61850.DataSet_create(ds_name, lln0)
-            if not data_set:
-                log.warning(f"创建 DataSet {ds_name} 失败")
-                return False
-            self._builder.keep_alive.append(data_set)
-            self._add_fcda_entries_to_dataset(data_set, entries, ld_inst)
+            existing_dataset = next((ds for ds in self._dataset_catalog if ds.get("ref") == data_set_ref), None)
+            if existing_dataset is None:
+                data_set = iec61850.DataSet_create(ds_name, lln0)
+                if not data_set:
+                    log.warning(f"创建 DataSet {ds_name} 失败")
+                    return False
+                self._builder.keep_alive.append(data_set)
+                self._add_fcda_entries_to_dataset(data_set, entries, ld_inst)
 
-            # 记录 DataSet 到目录
-            ds_members = self._build_ds_members(entries)
-            ds_ln = ""
-            if "$" in data_set_ref:
-                ref_ln_part = data_set_ref.split("/")[-1] if "/" in data_set_ref else data_set_ref
-                ds_ln = ref_ln_part.split("$")[0]
-            self._dataset_catalog.append(
-                {
-                    "ref": data_set_ref,
-                    "name": ds_name,
-                    "ld": ld_inst,
-                    "ln": ds_ln,
-                    "member_count": len(ds_members),
-                    "members": ds_members,
-                }
-            )
+                # 记录 DataSet 到目录
+                ds_members = self._build_ds_members(entries)
+                ds_ln = ""
+                if "$" in data_set_ref:
+                    ref_ln_part = data_set_ref.split("/")[-1] if "/" in data_set_ref else data_set_ref
+                    ds_ln = ref_ln_part.split("$")[0]
+                self._dataset_catalog.append(
+                    {
+                        "ref": data_set_ref,
+                        "name": ds_name,
+                        "ld": ld_inst,
+                        "ln": ds_ln,
+                        "member_count": len(ds_members),
+                        "members": ds_members,
+                    }
+                )
+            else:
+                log.info(f"GSEControlBlock 复用已注册 DataSet: {data_set_ref}")
 
             # 2. 创建 GSEControlBlock
             app_id_str = f"{app_id:04X}" if isinstance(app_id, int) else str(app_id)
