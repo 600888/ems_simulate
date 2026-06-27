@@ -1,7 +1,11 @@
 <template>
   <el-aside
     class="sidebar"
-    :class="[`sidebar-theme-${currentTheme}`, { 'sidebar-collapsed': isCollapse }, { 'sidebar-overlay-mode': overlayMode }]"
+    :class="[
+      `sidebar-theme-${currentTheme}`,
+      { 'sidebar-collapsed': isCollapse },
+      { 'sidebar-overlay-mode': overlayMode },
+    ]"
   >
     <el-scrollbar ref="scrollbarRef">
       <!-- 1. 头部徽标与主题切换 -->
@@ -560,6 +564,8 @@ watch(refreshCounter, () => {
 <style lang="scss" scoped>
 /* 全局侧边栏基础样式 - 通过主题变量驱动 */
 .sidebar {
+  display: flex;
+  flex-direction: column;
   width: auto !important;
   min-width: var(--sidebar-width);
   height: 100vh;
@@ -568,6 +574,13 @@ watch(refreshCounter, () => {
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   box-shadow: var(--sb-shadow);
+
+  /* 让滚动区域弹性伸缩占满剩余空间，将状态栏固定在底部 */
+  :deep(> .el-scrollbar) {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
 
   &.sidebar-collapsed {
     width: var(--sidebar-collapsed-width) !important;
