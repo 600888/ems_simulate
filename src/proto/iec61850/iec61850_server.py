@@ -589,6 +589,30 @@ class IEC61850Server:
         if not_found:
             log.warning(f"以下 {len(not_found)} 个 DO 的 dU DA 未在 _da_map 中找到 (前5): {not_found[:5]}")
 
+    def _build_point_fcda_entries(self) -> list[dict[str, Any]]:
+        """从已注册的测点构建 FCDA 条目列表
+
+        DataSet 的 FCDA 条目需要引用 MMS 模型中已存在的 DataAttribute，
+        每个条目包含 name(LD/LN.DO.DA)、fc(功能约束) 和 iec_type。
+
+        Returns:
+            FCDA 条目列表，每个条目格式:
+            {"name": "LD_inst/LN_name.DO_name.mag.f", "fc": "MX", "iec_type": "float"}
+        """
+        ied_prefix = self.model_name
+        entries = []
+        for address, ref in self._point_refs.items():
+            # ref 格式: "{IEDName}{LD_inst}/{LN_name}.{DO_name}.{DA_path}"
+            # FCDA entry name 需要: "{LD_inst}/{LN_name}.{DO_name}.{DA_path}" (不含 IEDName)
+            if ref.startswith(ied_prefix):
+                fcda_name = ref[len(ied_prefix) :]
+            else:
+                fcda_name = ref
+            fc = self._point_fc.get(address, "MX")
+            iec_type = self._point_iec_type.get(address, "unknown")
+            entries.append({"name": fcda_name, "fc": fc, "iec_type": iec_type})
+        return entries
+
     def _register_default_rcbs(self):
         """注册默认报告控制块 (BRCB/URCB)
 
@@ -649,6 +673,16 @@ class IEC61850Server:
             },
         ]
 
+        # 从已注册的测点构建 FCDA 条目，使 DataSet 有实际数据可报告
+        point_entries = self._build_point_fcda_entries()
+        if point_entries:
+            log.info(f"自动构建 {len(point_entries)} 个 FCDA 条目用于默认报告 DataSet")
+        else:
+            log.warning(
+                "未发现已注册的测点，默认报告 DataSet 将为空！"
+                "请确保在调用 start() 前已通过 add_points() 或 add_point() 注册测点。"
+            )
+
         registered_count = 0
         failed_count = 0
         for rcb_cfg in default_rcbs:
@@ -659,9 +693,9 @@ class IEC61850Server:
                     ld_inst=rcb_cfg["ld_inst"],
                     ds_name=ds_name,
                     data_set_ref=rcb_cfg["data_set_ref"],
-                    entries=None,
+                    entries=point_entries if point_entries else None,
                 )
-                log.info(f"为默认 RCB 自动创建 DataSet: {rcb_cfg['data_set_ref']}")
+                log.info(f"为默认 RCB 自动创建 DataSet: {rcb_cfg['data_set_ref']}, entries={len(point_entries)}")
 
             # 注册 RCB
             success = self._report_manager.register_rcb(
