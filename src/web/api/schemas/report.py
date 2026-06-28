@@ -34,6 +34,7 @@ class ReportTreeDataRequest(BaseModel):
     rcb_ref: str = Field(..., description="RCB 引用路径")
     entry_key: str | None = Field(None, description="报告条目 key，不传则按 latest 选择")
     latest: bool = Field(True, description="是否返回最新一条报告")
+    known_latest_uid: int | None = Field(None, description="前端已知的最新报告 uid，用于无变化短路")
 
 
 class RcbListResponse(BaseModel):

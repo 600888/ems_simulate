@@ -699,6 +699,20 @@ class ReportsPlugin:
         """获取报告缓存数量和最新 uid，不序列化大体积 data_values。"""
         return ReportCallbackHandler.get_cache_state(rcb_ref)
 
+    def get_report_summaries(self, rcb_ref: str, limit: int = 100) -> list[dict[str, Any]]:
+        """获取报告历史摘要列表，不返回 data_values。"""
+        return ReportCallbackHandler.get_cache_summaries(rcb_ref, limit)
+
+    def get_report_entry(
+        self,
+        rcb_ref: str,
+        *,
+        uid: int | None = None,
+        latest: bool = True,
+    ) -> dict[str, Any] | None:
+        """按需获取一条完整报告。"""
+        return ReportCallbackHandler.get_cache_entry(rcb_ref, uid=uid, latest=latest)
+
     def clear_report_data(self, rcb_ref: str) -> None:
         """清除指定 RCB 的缓存数据"""
         ReportCallbackHandler.clear_cache(rcb_ref)

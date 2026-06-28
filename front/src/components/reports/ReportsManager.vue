@@ -91,7 +91,7 @@
                 </div>
                 <ReportDataTreeTable
                   :tree-items="latestTreeItems"
-                  :loading="dataLoading"
+                  :loading="latestLoading"
                 />
               </div>
             </el-tab-pane>
@@ -104,8 +104,9 @@
               <div class="history-pane">
                 <ReportHistoryPanel
                   class="history-list"
-                  :entries="reportData"
+                  :entries="reportHistory"
                   :selected-entry-key="selectedEntryKey"
+                  :loading="historyLoading"
                   @select="handleHistorySelect"
                 />
                 <div class="history-tree">
@@ -127,7 +128,7 @@
                   </div>
                   <ReportDataTreeTable
                     :tree-items="selectedTreeItems"
-                    :loading="dataLoading"
+                    :loading="selectedTreeLoading"
                   />
                 </div>
               </div>
@@ -154,13 +155,14 @@ import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import {
   applyConfig,
-  getReportData,
+  getLatestReport,
   getReportDataTree,
+  getReportHistory,
+  getReportState,
   listRcbs,
   triggerGi,
   type OptFields,
   type RcbInfo,
-  type ReportDataEntry,
   type ReportEntrySummary,
   type ReportTreeNode,
   type TrgOps,
@@ -177,7 +179,9 @@ const props = defineProps<{
 }>();
 
 const loading = ref(false);
-const dataLoading = ref(false);
+const latestLoading = ref(false);
+const historyLoading = ref(false);
+const selectedTreeLoading = ref(false);
 const actionLoading = ref(false);
 const batchLoading = ref(false);
 const giLoading = ref(false);
@@ -200,7 +204,7 @@ const batchProgressPercent = ref(0);
 const batchProgressStatus = ref<'success' | 'exception' | ''>('');
 const batchProgressText = ref('');
 
-const reportData = ref<ReportDataEntry[]>([]);
+const reportHistory = ref<ReportEntrySummary[]>([]);
 const reportDataTotal = ref(0);
 const latestEntry = ref<ReportEntrySummary | null>(null);
 const latestTreeItems = ref<ReportTreeNode[]>([]);
@@ -217,41 +221,45 @@ const REFRESH_INTERVAL_OPTIONS = [
   { value: 10000, label: '10s' },
 ];
 let reportPollTimer: ReturnType<typeof setTimeout> | null = null;
-let reportRequestInFlight = false;
-let reportReloadPending = false;
+let latestRequestId = 0;
+let historyRequestId = 0;
+let selectedTreeRequestId = 0;
 let rcbRequestInFlight = false;
-let latestReportUid: number | null = null;
+let latestKnownUid: number | null = null;
+let historyKnownUid: number | null = null;
 let reportPollingActive = true;
-
-const latestHistoryKey = computed(() => {
-  if (reportData.value.length === 0) return null;
-  return makeEntryKey(reportData.value[reportData.value.length - 1], reportData.value.length - 1);
-});
 
 watch(
   () => props.channelId,
   (newId) => {
     resetReportState();
+    detailTab.value = 'attributes';
     if (newId) loadRcbs();
   },
 );
 
-watch([selectedRcb, autoRefresh, pollInterval], () => {
+watch(detailTab, (tab) => {
+  if (tab === 'latest') void loadLatestReportData(true);
+  if (tab === 'data') void loadReportHistory(true);
+});
+
+watch([selectedRcb, autoRefresh, pollInterval, detailTab], () => {
   startReportPolling();
 });
 
 function startReportPolling() {
   stopReportPolling();
-  if (!reportPollingActive || !autoRefresh.value || !selectedRcb.value || !props.channelId) return;
+  const isReportTab = detailTab.value === 'latest' || detailTab.value === 'data';
+  if (!reportPollingActive || !autoRefresh.value || !selectedRcb.value || !props.channelId || !isReportTab) return;
   reportPollTimer = setTimeout(async () => {
-    await loadReportData(false);
+    await refreshVisibleReportData(false);
     startReportPolling();
   }, pollInterval.value);
 }
 
 function stopReportPolling() {
   if (reportPollTimer !== null) {
-    clearInterval(reportPollTimer);
+    clearTimeout(reportPollTimer);
     reportPollTimer = null;
   }
 }
@@ -265,9 +273,9 @@ async function loadRcbs() {
     rcbs.value = await listRcbs(props.channelId);
     await nextTick();
     if (rcbs.value.length > 0) {
-      selectedRcb.value = rcbs.value.find((rcb) => rcb.ref === previousRef) || rcbs.value[0];
-      selectedEntryKey.value = null;
-      await loadReportData(true);
+      const nextRcb = rcbs.value.find((rcb) => rcb.ref === previousRef) || rcbs.value[0];
+      if (nextRcb.ref !== previousRef) resetReportData();
+      selectedRcb.value = nextRcb;
     } else {
       selectedRcb.value = null;
       resetReportData();
@@ -280,95 +288,85 @@ async function loadRcbs() {
   }
 }
 
-async function loadReportData(showLoading = true) {
+async function loadLatestReportData(showLoading = true) {
   if (!selectedRcb.value || !props.channelId) return;
-  if (reportRequestInFlight) {
-    if (showLoading) reportReloadPending = true;
-    return;
-  }
-  reportRequestInFlight = true;
+  const requestId = ++latestRequestId;
   const requestedRcbRef = selectedRcb.value.ref;
-  if (showLoading) dataLoading.value = true;
+  if (showLoading) latestLoading.value = true;
   try {
-    const resp = await getReportData(
+    const resp = await getLatestReport(
+      props.channelId,
+      requestedRcbRef,
+      showLoading ? null : latestKnownUid,
+    );
+    if (requestId !== latestRequestId || selectedRcb.value?.ref !== requestedRcbRef || resp.unchanged) return;
+    latestKnownUid = resp.latest_uid ?? null;
+    latestEntry.value = resp.entry;
+    latestTreeItems.value = resp.tree_items || [];
+  } finally {
+    if (requestId === latestRequestId && showLoading) latestLoading.value = false;
+  }
+}
+
+async function loadReportHistory(showLoading = true) {
+  if (!selectedRcb.value || !props.channelId) return;
+  const requestId = ++historyRequestId;
+  const requestedRcbRef = selectedRcb.value.ref;
+  if (showLoading) historyLoading.value = true;
+  try {
+    const resp = await getReportHistory(
       props.channelId,
       requestedRcbRef,
       100,
-      showLoading ? null : latestReportUid,
+      showLoading ? null : historyKnownUid,
     );
-    if (selectedRcb.value?.ref !== requestedRcbRef || resp.unchanged) return;
-
-    const previousLatestKey = latestHistoryKey.value;
-    reportData.value = resp.data || [];
+    if (requestId !== historyRequestId || selectedRcb.value?.ref !== requestedRcbRef || resp.unchanged) return;
+    historyKnownUid = resp.latest_uid ?? null;
+    reportHistory.value = resp.entries || [];
     reportDataTotal.value = resp.total || 0;
-    latestReportUid = resp.latest_uid ?? null;
 
-    const currentLatestKey = latestHistoryKey.value;
-    if (showLoading || currentLatestKey !== previousLatestKey) {
-      await loadLatestTree();
-    }
-    const stillExists = selectedEntryKey.value && reportData.value.some((entry, index) => makeEntryKey(entry, index) === selectedEntryKey.value);
-    if (!stillExists) selectedEntryKey.value = latestHistoryKey.value;
-    if (selectedEntryKey.value === latestHistoryKey.value) {
-      reuseLatestTreeForSelection();
-    } else if (selectedEntry.value?.entry_key !== selectedEntryKey.value) {
-      await loadSelectedTree();
+    if (selectedEntryKey.value && !reportHistory.value.some((entry) => entry.entry_key === selectedEntryKey.value)) {
+      selectedEntryKey.value = null;
+      selectedEntry.value = null;
+      selectedTreeItems.value = [];
     }
   } finally {
-    if (showLoading) dataLoading.value = false;
-    reportRequestInFlight = false;
-    if (reportReloadPending) {
-      reportReloadPending = false;
-      void loadReportData(true);
-    }
+    if (requestId === historyRequestId && showLoading) historyLoading.value = false;
   }
 }
 
-async function loadLatestTree() {
-  if (!selectedRcb.value || !props.channelId) return;
-  const result = await getReportDataTree(props.channelId, selectedRcb.value.ref, { latest: true });
-  latestEntry.value = result.entry;
-  latestTreeItems.value = result.tree_items || [];
-}
-
-async function loadSelectedTree() {
-  if (!selectedRcb.value || !props.channelId) return;
-  if (!selectedEntryKey.value) {
-    selectedEntry.value = null;
-    selectedTreeItems.value = [];
-    return;
-  }
-  if (selectedEntryKey.value === latestHistoryKey.value) {
-    reuseLatestTreeForSelection();
-    return;
-  }
-  const result = await getReportDataTree(props.channelId, selectedRcb.value.ref, {
-    entryKey: selectedEntryKey.value,
-    latest: false,
-  });
-  selectedEntry.value = result.entry;
-  selectedTreeItems.value = result.tree_items || [];
-}
-
-function reuseLatestTreeForSelection() {
-  selectedEntry.value = latestEntry.value;
-  selectedTreeItems.value = latestTreeItems.value;
+async function refreshVisibleReportData(showLoading = true) {
+  if (detailTab.value === 'latest') await loadLatestReportData(showLoading);
+  if (detailTab.value === 'data') await loadReportHistory(showLoading);
 }
 
 function onRcbSelect(rcb: RcbInfo) {
   selectedRcb.value = rcb;
   detailTab.value = 'attributes';
   resetReportData();
-  loadReportData(true);
 }
 
 async function handleHistorySelect(row: { entry_key: string }) {
   selectedEntryKey.value = row.entry_key;
-  dataLoading.value = true;
+  if (!selectedRcb.value || !props.channelId) return;
+  const requestedRcbRef = selectedRcb.value.ref;
+  const requestedEntryKey = row.entry_key;
+  const requestId = ++selectedTreeRequestId;
+  selectedTreeLoading.value = true;
   try {
-    await loadSelectedTree();
+    const result = await getReportDataTree(props.channelId, requestedRcbRef, {
+      entryKey: requestedEntryKey,
+      latest: false,
+    });
+    if (
+      requestId !== selectedTreeRequestId
+      || selectedRcb.value?.ref !== requestedRcbRef
+      || selectedEntryKey.value !== requestedEntryKey
+    ) return;
+    selectedEntry.value = result.entry;
+    selectedTreeItems.value = result.tree_items || [];
   } finally {
-    dataLoading.value = false;
+    if (requestId === selectedTreeRequestId) selectedTreeLoading.value = false;
   }
 }
 
@@ -386,7 +384,7 @@ async function handleApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps; opt
     if (result.success) {
       ElMessage.success(t('report.applyConfigSuccess'));
       if (result.rcb) updateRcbInList(result.rcb);
-      if (payload.rptEna) await loadReportData(false);
+      if (payload.rptEna) await refreshVisibleReportData(false);
     } else {
       ElMessage.error(t('report.applyConfigFailed'));
     }
@@ -465,7 +463,7 @@ async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps
   }
 
   if (payload.rptEna && selectedRcb.value) {
-    await loadReportData(false);
+    await refreshVisibleReportData(false);
   }
 
   batchLoading.value = false;
@@ -474,17 +472,42 @@ async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps
 
 async function handleGi() {
   if (!selectedRcb.value) return;
+  const requestedRcbRef = selectedRcb.value.ref;
+  const requestedChannelId = props.channelId;
   giLoading.value = true;
   try {
-    const ok = await triggerGi(props.channelId, selectedRcb.value.ref);
+    const before = await getReportState(requestedChannelId, requestedRcbRef);
+    reportDataTotal.value = before.total;
+    const ok = await triggerGi(requestedChannelId, requestedRcbRef);
     if (ok) {
       ElMessage.success(t('report.giSuccess'));
-      setTimeout(() => loadReportData(false), 1000);
+      void refreshReportCountAfterGi(requestedChannelId, requestedRcbRef, before);
     } else {
       ElMessage.error(t('report.giFailed'));
     }
   } finally {
     giLoading.value = false;
+  }
+}
+
+async function refreshReportCountAfterGi(
+  channelId: number,
+  rcbRef: string,
+  before: { total: number; latest_uid: number | null },
+) {
+  const maxAttempts = 6;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await sleep(attempt === 0 ? 200 : 400);
+    if (!reportPollingActive || props.channelId !== channelId || selectedRcb.value?.ref !== rcbRef) return;
+
+    const state = await getReportState(channelId, rcbRef);
+    reportDataTotal.value = state.total;
+    if (state.total !== before.total || state.latest_uid !== before.latest_uid) {
+      // 新报告已进入缓存；使下次打开页签时强制获取最新内容。
+      latestKnownUid = null;
+      historyKnownUid = null;
+      return;
+    }
   }
 }
 
@@ -501,20 +524,21 @@ function resetReportState() {
 }
 
 function resetReportData() {
-  reportData.value = [];
+  latestRequestId++;
+  historyRequestId++;
+  selectedTreeRequestId++;
+  latestLoading.value = false;
+  historyLoading.value = false;
+  selectedTreeLoading.value = false;
+  reportHistory.value = [];
   reportDataTotal.value = 0;
   latestEntry.value = null;
   latestTreeItems.value = [];
   selectedEntry.value = null;
   selectedEntryKey.value = null;
   selectedTreeItems.value = [];
-  latestReportUid = null;
-}
-
-function makeEntryKey(entry: ReportDataEntry, index: number): string {
-  if (entry.uid !== undefined && entry.uid !== null) return `uid:${entry.uid}`;
-  if (entry.received_at) return `${entry.received_at}|${entry.seq_num}|${index}`;
-  return `${entry.rpt_id || ''}|${entry.seq_num}|${index}`;
+  latestKnownUid = null;
+  historyKnownUid = null;
 }
 
 onMounted(() => {

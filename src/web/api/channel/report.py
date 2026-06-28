@@ -247,6 +247,16 @@ def _select_report_entry(
     return data[index], summaries[index]
 
 
+def _uid_from_entry_key(entry_key: str | None) -> int | None:
+    """从前端稳定 key 中提取报告 uid。"""
+    if not entry_key or not entry_key.startswith("uid:"):
+        return None
+    try:
+        return int(entry_key.removeprefix("uid:"))
+    except ValueError:
+        return None
+
+
 @router.post("/iec61850/reports/list", response_model=BaseResponse)
 async def list_rcbs(body: RcbListRequest, request: Request):
     """列出 IEC61850 设备的报告控制块 (RCB)"""
@@ -358,6 +368,116 @@ async def get_report_data(body: ReportDataRequest, request: Request):
     )
 
 
+@router.post("/iec61850/reports/state", response_model=BaseResponse)
+async def get_report_state(body: RcbDetailRequest, request: Request):
+    """获取报告缓存轻量状态，不序列化报告正文。"""
+    reports = _get_reports_plugin(body.channel_id, request)
+
+    if _is_server_mode(reports):
+        return BaseResponse(
+            message="服务端无报告缓存数据",
+            data={"total": 0, "latest_uid": None},
+        )
+
+    total, latest_uid = reports.get_report_data_state(body.rcb_ref)
+    return BaseResponse(
+        message="获取报告缓存状态成功",
+        data={"total": total, "latest_uid": latest_uid},
+    )
+
+
+@router.post("/iec61850/reports/history", response_model=BaseResponse)
+async def get_report_history(body: ReportDataRequest, request: Request):
+    """获取报告历史轻量摘要列表，不返回报告值。"""
+    reports = _get_reports_plugin(body.channel_id, request)
+
+    if _is_server_mode(reports):
+        return BaseResponse(
+            message="服务端无报告缓存数据",
+            data={"entries": [], "total": 0, "latest_uid": None, "unchanged": False},
+        )
+
+    cache_total, latest_uid = reports.get_report_data_state(body.rcb_ref)
+    if body.known_latest_uid is not None and latest_uid == body.known_latest_uid:
+        return BaseResponse(
+            message="报告历史无变化",
+            data={
+                "entries": [],
+                "total": cache_total,
+                "latest_uid": latest_uid,
+                "unchanged": True,
+            },
+        )
+
+    entries = reports.get_report_summaries(body.rcb_ref, body.limit)
+    return BaseResponse(
+        message="获取报告历史成功",
+        data={
+            "entries": entries,
+            "total": cache_total,
+            "latest_uid": latest_uid,
+            "unchanged": False,
+        },
+    )
+
+
+@router.post("/iec61850/reports/latest", response_model=BaseResponse)
+async def get_latest_report(body: ReportTreeDataRequest, request: Request):
+    """按需获取最新一条报告及其树形结构。"""
+    reports = _get_reports_plugin(body.channel_id, request)
+
+    if _is_server_mode(reports):
+        return BaseResponse(
+            message="服务端无报告缓存数据",
+            data={
+                "rcb_ref": body.rcb_ref,
+                "entry": None,
+                "tree_items": [],
+                "latest_uid": None,
+                "unchanged": False,
+            },
+        )
+
+    _, latest_uid = reports.get_report_data_state(body.rcb_ref)
+    if body.known_latest_uid is not None and latest_uid == body.known_latest_uid:
+        return BaseResponse(
+            message="最近报告无变化",
+            data={
+                "rcb_ref": body.rcb_ref,
+                "entry": None,
+                "tree_items": [],
+                "latest_uid": latest_uid,
+                "unchanged": True,
+            },
+        )
+
+    entry = reports.get_report_entry(body.rcb_ref, latest=True)
+    if entry is None:
+        return BaseResponse(
+            message="暂无报告数据",
+            data={
+                "rcb_ref": body.rcb_ref,
+                "entry": None,
+                "tree_items": [],
+                "latest_uid": latest_uid,
+                "unchanged": False,
+            },
+        )
+
+    summary = make_entry_summary(entry, 0)
+    tree_items = ReportTreeBuilder().build(entry)
+    return BaseResponse(
+        message="获取最近报告成功",
+        data={
+            "rcb_ref": body.rcb_ref,
+            "entry": summary,
+            "tree_items": tree_items,
+            "latest_uid": latest_uid,
+            "unchanged": False,
+        },
+    )
+
+
 @router.post("/iec61850/reports/data-tree", response_model=BaseResponse)
 async def get_report_data_tree(body: ReportTreeDataRequest, request: Request):
     """获取单条报告数据的 IEDScout 风格树形结构。"""
@@ -369,14 +489,20 @@ async def get_report_data_tree(body: ReportTreeDataRequest, request: Request):
             data={"entry": None, "tree_items": []},
         )
 
-    data = reports.get_report_data(rcb_ref=body.rcb_ref, limit=1000)
-    entry, summary = _select_report_entry(data, body.entry_key, body.latest)
+    uid = _uid_from_entry_key(body.entry_key)
+    if body.entry_key and uid is None:
+        return BaseResponse(
+            message="报告条目标识无效",
+            data={"rcb_ref": body.rcb_ref, "entry": None, "tree_items": []},
+        )
+    entry = reports.get_report_entry(rcb_ref=body.rcb_ref, uid=uid, latest=body.latest)
     if entry is None:
         return BaseResponse(
             message="暂无报告数据",
             data={"rcb_ref": body.rcb_ref, "entry": None, "tree_items": []},
         )
 
+    summary = make_entry_summary(entry, 0)
     tree_items = ReportTreeBuilder().build(entry)
     return BaseResponse(
         message="获取报告树形数据成功",

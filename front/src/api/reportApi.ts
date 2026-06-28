@@ -69,6 +69,11 @@ export interface ReportDataResponse {
   unchanged: boolean;
 }
 
+export interface ReportStateResponse {
+  total: number;
+  latest_uid: number | null;
+}
+
 export interface ReportEntrySummary {
   entry_key: string;
   index: number;
@@ -97,6 +102,18 @@ export interface ReportDataTreeResponse {
   rcb_ref: string;
   entry: ReportEntrySummary | null;
   tree_items: ReportTreeNode[];
+}
+
+export interface LatestReportResponse extends ReportDataTreeResponse {
+  latest_uid: number | null;
+  unchanged: boolean;
+}
+
+export interface ReportHistoryResponse {
+  entries: ReportEntrySummary[];
+  total: number;
+  latest_uid: number | null;
+  unchanged: boolean;
 }
 
 export interface ActiveReport {
@@ -173,6 +190,22 @@ export async function getReportData(
   }
 }
 
+export async function getReportState(
+  channelId: number,
+  rcbRef: string,
+): Promise<ReportStateResponse> {
+  try {
+    const result = await requestApi(REPORT_API.STATE, "post", {
+      channel_id: channelId,
+      rcb_ref: rcbRef,
+    });
+    return result || { total: 0, latest_uid: null };
+  } catch (error) {
+    console.error("Error fetching report state:", error);
+    return { total: 0, latest_uid: null };
+  }
+}
+
 export async function getReportDataTree(
   channelId: number,
   rcbRef: string,
@@ -189,6 +222,57 @@ export async function getReportDataTree(
   } catch (error) {
     console.error("Error fetching report data tree:", error);
     return { rcb_ref: rcbRef, entry: null, tree_items: [] };
+  }
+}
+
+export async function getLatestReport(
+  channelId: number,
+  rcbRef: string,
+  knownLatestUid: number | null = null,
+): Promise<LatestReportResponse> {
+  try {
+    const result = await requestApi(REPORT_API.LATEST, "post", {
+      channel_id: channelId,
+      rcb_ref: rcbRef,
+      latest: true,
+      known_latest_uid: knownLatestUid,
+    });
+    return result || {
+      rcb_ref: rcbRef,
+      entry: null,
+      tree_items: [],
+      latest_uid: null,
+      unchanged: false,
+    };
+  } catch (error) {
+    console.error("Error fetching latest report:", error);
+    return {
+      rcb_ref: rcbRef,
+      entry: null,
+      tree_items: [],
+      latest_uid: null,
+      unchanged: false,
+    };
+  }
+}
+
+export async function getReportHistory(
+  channelId: number,
+  rcbRef: string,
+  limit: number = 100,
+  knownLatestUid: number | null = null,
+): Promise<ReportHistoryResponse> {
+  try {
+    const result = await requestApi(REPORT_API.HISTORY, "post", {
+      channel_id: channelId,
+      rcb_ref: rcbRef,
+      limit,
+      known_latest_uid: knownLatestUid,
+    });
+    return result || { entries: [], total: 0, latest_uid: null, unchanged: false };
+  } catch (error) {
+    console.error("Error fetching report history:", error);
+    return { entries: [], total: 0, latest_uid: null, unchanged: false };
   }
 }
 

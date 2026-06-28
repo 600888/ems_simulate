@@ -435,6 +435,40 @@ class ReportCallbackHandler:
             return [ReportCallbackHandler._entry_to_dict(entry) for entry in info.data_cache]
 
     @staticmethod
+    def get_cache_summaries(rcb_ref: str, limit: int = 100) -> list[dict[str, Any]]:
+        """获取轻量报告摘要，不复制报告值和原因字典。"""
+        with _CALLBACK_LOCK:
+            _, info = _find_registered_info(rcb_ref)
+            if not info:
+                return []
+
+            entries = list(info.data_cache)
+            start_index = max(0, len(entries) - limit) if limit > 0 else 0
+            return [
+                ReportCallbackHandler._entry_to_summary(entry, index)
+                for index, entry in enumerate(entries[start_index:], start=start_index)
+            ]
+
+    @staticmethod
+    def get_cache_entry(
+        rcb_ref: str,
+        *,
+        uid: int | None = None,
+        latest: bool = True,
+    ) -> dict[str, Any] | None:
+        """按 uid 获取单条报告；未指定 uid 时返回最新（或最早）一条。"""
+        with _CALLBACK_LOCK:
+            _, info = _find_registered_info(rcb_ref)
+            if not info or not info.data_cache:
+                return None
+
+            if uid is not None:
+                entry = next((item for item in info.data_cache if item.uid == uid), None)
+            else:
+                entry = info.data_cache[-1] if latest else info.data_cache[0]
+            return ReportCallbackHandler._entry_to_dict(entry) if entry is not None else None
+
+    @staticmethod
     def get_cache_state(rcb_ref: str) -> tuple[int, int]:
         """Return cache size and latest uid without serializing report values."""
         with _CALLBACK_LOCK:
@@ -578,6 +612,23 @@ class ReportCallbackHandler:
             "data_set": entry.data_set,
             "rpt_id": entry.rpt_id,
             "received_at": entry.received_at,
+            "uid": entry.uid,
+        }
+
+    @staticmethod
+    def _entry_to_summary(entry: ReportDataEntry, index: int) -> dict[str, Any]:
+        """将 ReportDataEntry 转为历史列表所需的轻量摘要。"""
+        return {
+            "entry_key": f"uid:{entry.uid}",
+            "index": index,
+            "seq_num": entry.seq_num,
+            "time_stamp": entry.time_stamp,
+            "received_at": entry.received_at,
+            "data_set": entry.data_set,
+            "rpt_id": entry.rpt_id,
+            "conf_rev": entry.conf_rev,
+            "entry_id": entry.entry_id.hex() if entry.entry_id else None,
+            "value_count": len(entry.data_values),
             "uid": entry.uid,
         }
 

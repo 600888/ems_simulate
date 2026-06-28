@@ -4,9 +4,10 @@
       <span>{{ t('report.history') }}</span>
       <el-tag size="small" type="info">{{ entries.length }}</el-tag>
     </div>
-    <el-empty v-if="entries.length === 0" :description="t('report.noData')" />
+    <el-empty v-if="!loading && entries.length === 0" :description="t('report.noData')" />
     <el-table
       v-else
+      v-loading="loading"
       :data="rows"
       size="small"
       height="100%"
@@ -24,7 +25,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ReportDataEntry } from '@/api/reportApi';
+import type { ReportEntrySummary } from '@/api/reportApi';
 
 export interface ReportHistoryRow {
   entry_key: string;
@@ -35,8 +36,9 @@ export interface ReportHistoryRow {
 }
 
 const props = defineProps<{
-  entries: ReportDataEntry[];
+  entries: ReportEntrySummary[];
   selectedEntryKey?: string | null;
+  loading?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -47,11 +49,11 @@ const { t } = useI18n();
 
 const rows = computed<ReportHistoryRow[]>(() =>
   props.entries.map((entry, index) => ({
-    entry_key: makeEntryKey(entry, index),
-    index,
+    entry_key: entry.entry_key,
+    index: entry.index ?? index,
     seq_num: entry.seq_num ?? '-',
     display_time: entry.received_at || entry.time_stamp || '-',
-    value_count: Object.keys(entry.data_values || {}).length,
+    value_count: entry.value_count,
   })),
 );
 
@@ -63,11 +65,6 @@ function rowClassName({ row }: { row: ReportHistoryRow }) {
   return row.entry_key === props.selectedEntryKey ? 'is-selected-report' : '';
 }
 
-function makeEntryKey(entry: ReportDataEntry, index: number): string {
-  if (entry.uid !== undefined && entry.uid !== null) return `uid:${entry.uid}`;
-  if (entry.received_at) return `${entry.received_at}|${entry.seq_num}|${index}`;
-  return `${entry.rpt_id || ''}|${entry.seq_num}|${index}`;
-}
 </script>
 
 <style scoped lang="scss">

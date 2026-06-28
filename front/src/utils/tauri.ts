@@ -29,19 +29,19 @@ export async function invoke<T = any>(cmd: string, args?: Record<string, unknown
 
 /** 检查后端服务状态 */
 export async function checkBackendStatus(backendUrl?: string): Promise<boolean> {
-  if (!isTauri()) {
-    // 浏览器环境：直接 HTTP 请求健康检查
+  // 优先获取后端实际 URL（Tauri 模式下端口可能非 8991）
+  let baseUrl = backendUrl || 'http://127.0.0.1:8991'
+  if (isTauri()) {
     try {
-      const resp = await fetch(`${backendUrl || 'http://127.0.0.1:8991'}/api/health`)
-      return resp.ok
+      const url = await invoke<string>('get_backend_url')
+      if (url) baseUrl = url
     } catch {
-      return false
+      // 使用默认 URL
     }
   }
   try {
-    return await invoke<boolean>('check_backend_status', {
-      backendUrl: backendUrl || 'http://127.0.0.1:8991'
-    })
+    const resp = await fetch(`${baseUrl}/api/health`)
+    return resp.ok
   } catch {
     return false
   }
