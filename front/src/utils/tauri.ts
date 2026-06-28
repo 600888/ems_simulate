@@ -39,11 +39,18 @@ export async function checkBackendStatus(backendUrl?: string): Promise<boolean> 
       // 使用默认 URL
     }
   }
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 2000)
   try {
-    const resp = await fetch(`${baseUrl}/api/health`)
+    const resp = await fetch(`${baseUrl}/api/health`, {
+      cache: 'no-store',
+      signal: controller.signal
+    })
     return resp.ok
   } catch {
     return false
+  } finally {
+    window.clearTimeout(timeout)
   }
 }
 

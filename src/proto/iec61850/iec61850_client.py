@@ -738,7 +738,8 @@ class IEC61850Client:
             cached = cache.get(cache_key)
             if cached is not None:
                 log.info(f"远程模型缓存命中: {cache_key}")
-                build_registry_from_model(cached, self._registry)
+                discovered = build_registry_from_model(cached, self._registry)
+                self._fill_du_names(discovered)
                 return True
 
         # 2. 确保已连接
@@ -750,7 +751,10 @@ class IEC61850Client:
         model = self._discovery.discover(self._conn)
         if model is not None:
             cache.set(cache_key, model)
-            build_registry_from_model(model, self._registry)
+            discovered = build_registry_from_model(model, self._registry)
+            # dU 是 DO 的在线描述值，不包含在目录发现结果中，需要在
+            # PointRegistry 建好后按 DO 补读并写回各测点名称。
+            self._fill_du_names(discovered)
             log.info(f"远程模型发现完成并已缓存: {cache_key}")
             return True
 

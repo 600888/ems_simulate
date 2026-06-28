@@ -61,6 +61,9 @@ export default {
     backendHealthy: "服务运行中",
     backendDown: "服务离线",
     restartBackend: "重启服务",
+    restartSuccess: "服务已重新启动",
+    restartFailed: "服务重启失败",
+    restartUnavailable: "仅桌面客户端支持重启服务",
     checking: "检测中...",
   },
   device: {

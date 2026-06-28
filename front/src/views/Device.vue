@@ -199,13 +199,12 @@
       <el-progress
         :percentage="modelProgressPercent"
         :stroke-width="20"
-        :text-inside="true"
-        :format="() => modelProgressText"
+        :show-text="false"
         striped
         striped-flow
-        :status="modelProgressDone ? 'success' : ''"
         style="width: 100%"
       />
+      <span class="model-progress-text">{{ modelProgressText }}</span>
     </el-row>
     <Slave ref="slaveRef" />
 
@@ -412,24 +411,45 @@ const modelProgressText = computed(() => {
   if (modelImporting.value) {
     return `${t("addDevice.icdImporting")} (${modelImportElapsed.value}s)`;
   }
-  return iec61850PhaseText.value;
+  if (!iec61850ConnectProgress.value) {
+    return `${t("device.preparing")} 0% (${iec61850Elapsed.value}s)`;
+  }
+  const phaseText = iec61850PhaseText.value.replace(/ \(\d+s\)$/, "");
+  return `${phaseText} ${Math.round(modelProgressPercent.value)}% (${iec61850Elapsed.value}s)`;
 });
 
 let iec61850ProgressTimer: number | null = null;
 let iec61850ProgressMode: "connect" | "discover" = "connect";
+let iec61850ProgressRunId = 0;
 
 const startIec61850ProgressPolling = (mode: "connect" | "discover" = "connect") => {
   stopIec61850ProgressPolling();
+  const runId = ++iec61850ProgressRunId;
+  let observedCurrentDiscovery = false;
   iec61850ProgressMode = mode;
   iec61850Connecting.value = true;
-  iec61850ConnectProgress.value = null;
+  iec61850ConnectProgress.value = {
+    phase: mode === "discover" ? "discovering" : "connecting",
+    progress: 0,
+    connecting: true,
+  };
   iec61850Elapsed.value = 0;
   iec61850ElapsedTimer = window.setInterval(() => {
     iec61850Elapsed.value++;
   }, 1000);
-  iec61850ProgressTimer = window.setInterval(async () => {
+  const pollProgress = async () => {
     const progress = await getIEC61850ConnectProgress(routeName.value);
+    if (runId !== iec61850ProgressRunId) return;
     if (progress) {
+      if (mode === "discover" && !observedCurrentDiscovery) {
+        if (progress.phase === "connecting" || progress.phase === "discovering") {
+          observedCurrentDiscovery = true;
+        } else {
+          // 发现接口和进度接口并发启动时，可能先读到上一次连接的
+          // idle/done/failed；在看到本次发现的活动阶段前忽略这些旧状态。
+          return;
+        }
+      }
       iec61850ConnectProgress.value = progress;
       if (progress.phase === "done" || progress.phase === "failed") {
         stopIec61850ProgressPolling();
@@ -443,10 +463,13 @@ const startIec61850ProgressPolling = (mode: "connect" | "discover" = "connect") 
         }
       }
     }
-  }, 500);
+  };
+  void pollProgress();
+  iec61850ProgressTimer = window.setInterval(pollProgress, 500);
 };
 
 const stopIec61850ProgressPolling = () => {
+  iec61850ProgressRunId++;
   if (iec61850ProgressTimer) {
     clearInterval(iec61850ProgressTimer);
     iec61850ProgressTimer = null;
@@ -941,9 +964,23 @@ watch(
 }
 
 .progress-row {
-  :deep(.el-progress-bar__innerText) {
+  position: relative;
+
+  .model-progress-text {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 1;
+    transform: translate(-50%, -50%);
+    max-width: calc(100% - 32px);
+    overflow: hidden;
+    color: var(--el-text-color-primary);
     font-size: 12px;
-    color: #fff;
+    line-height: 18px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    text-shadow: 0 0 3px var(--el-bg-color), 0 0 3px var(--el-bg-color);
+    pointer-events: none;
   }
 
   .model-import-progress-hint {

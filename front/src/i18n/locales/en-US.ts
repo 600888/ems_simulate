@@ -61,6 +61,9 @@ export default {
     backendHealthy: "Service Running",
     backendDown: "Service Down",
     restartBackend: "Restart Service",
+    restartSuccess: "Service restarted",
+    restartFailed: "Failed to restart service",
+    restartUnavailable: "Restart is only available in the desktop app",
     checking: "Checking...",
   },
   device: {

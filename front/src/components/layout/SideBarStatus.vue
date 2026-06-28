@@ -33,6 +33,7 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { Refresh } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
 import { isTauri, checkBackendStatus, restartBackend } from "@/utils/tauri";
 import { useI18n } from "vue-i18n";
 
@@ -74,14 +75,25 @@ const handleRestart = async () => {
   restarting.value = true;
   isHealthy.value = false;
   try {
-    if (isTauri()) {
-      await restartBackend();
+    if (!isTauri()) {
+      ElMessage.warning(t("sidebar.restartUnavailable"));
+      return;
     }
-    // 等待一段时间后开始健康检查
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    await doHealthCheck();
-  } catch {
+
+    await restartBackend();
+    // Rust 已等待健康检查成功；前端再确认一次，确保状态栏与实际服务一致。
+    const ok = await checkBackendStatus();
+    isHealthy.value = ok;
+    if (ok) {
+      ElMessage.success(t("sidebar.restartSuccess"));
+    } else {
+      ElMessage.error(t("sidebar.restartFailed"));
+    }
+  } catch (error) {
+    console.error("Restart backend failed:", error);
     isHealthy.value = false;
+    const detail = error instanceof Error ? error.message : String(error || "");
+    ElMessage.error(detail || t("sidebar.restartFailed"));
   } finally {
     restarting.value = false;
   }
