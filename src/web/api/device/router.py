@@ -202,7 +202,10 @@ async def load_iec61850_model(req: DeviceInfoRequest, request: Request):
     success = device.load_iec61850_model(icd_path)
     if not success:
         raise OperationError("IEC61850 模型加载失败!", data=False)
-    return BaseResponse(message="IEC61850 模型加载成功!", data=True)
+    return BaseResponse(
+        message=f"IEC61850 模型加载成功! 路径: {icd_path}",
+        data={"icd_path": icd_path},
+    )
 
 
 @device_router.post("/iec61850/discover-model", response_model=BaseResponse)

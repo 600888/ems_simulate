@@ -246,8 +246,8 @@ async def import_icd(
 ):
     """导入 IEC 61850 ICD/SCD/CID 文件
 
-    同时解析:
-    - MMS 测点 (遥测/遥信/遥控/遥调) → 写入数据库
+    解析 ICD 文件并加载到设备内存模型:
+    - MMS 测点 (遥测/遥信/遥控/遥调) → 仅解析返回数量，不写入数据库
     - GOOSE 配置 (GSEControl/DataSet/GSE) → 返回给前端，可选自动创建 Publisher
     """
     require_iec61850_channel(channel_id)
@@ -263,44 +263,68 @@ async def import_icd(
         tmp_path = tmp.name
 
     try:
-        # ===== 1. MMS 测点导入 =====
-        # IcdPointImporter.import_from_icd() 内部会先清除旧测点，此处无需重复删除
-        from src.tools.icd_point_importer import IcdPointImporter
+        # 先从通道获取设备名称，用于构建存储路径
+        channel_info = ChannelService.get_channel_by_id(channel_id)
+        device_name = channel_info.get("name", "unknown") if channel_info else "unknown"
 
-        importer = IcdPointImporter(channel_id=channel_id)
-        yc_count, yx_count, yk_count, yt_count = importer.import_from_icd(tmp_path)
+        # ===== 1. 解析 ICD 文件（仅一次，后续复用） =====
+        from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
 
-        # 从 ICD 文件中提取 IED 名称，更新通道配置
-        try:
-            ied_name = importer.get_ied_name()
-            if ied_name:
+        service = SclImportService()
+        scl_result = service.import_file(tmp_path)
+        scl_data = scl_result.to_dict()
+
+        # 提取 IED 名称并更新通道配置
+        ied_name = scl_result.ied_name or ""
+        if ied_name:
+            try:
                 ChannelService.update_channel(channel_id, model_name=ied_name)
                 log.info(f"已从 ICD 文件提取 IED 名称: {ied_name} -> 通道 {channel_id}")
-        except Exception as e:
-            log.warning(f"提取 IED 名称失败 (不影响测点导入): {e}")
+            except Exception as e:
+                log.warning(f"更新通道 IED 名称失败: {e}")
 
-        # 重建设备实例（暂不启动），先注册 DataSet/GoCB 再启动服务器
-        # IEC 61850 标准要求的创建顺序：数据模型(DO/DA) → DataSet → GSEControlBlock → IedServer_create
+        # 提取测点计数
+        yc_count = len(scl_result.points.yc_points)
+        yx_count = len(scl_result.points.yx_points)
+        yk_count = len(scl_result.points.yk_points)
+        yt_count = len(scl_result.points.yt_points)
+
+        # ===== 2. 保存 ICD 文件到 data/device/ 目录（在重建设备前更新 icd_path） =====
+        try:
+            from src.proto.iec61850.plugins.scl.service.file_manager import SclFileManager
+
+            fm = SclFileManager()
+            dest_path = fm.save_to_device_dir(
+                source_path=tmp_path,
+                device_name=device_name,
+                original_filename=file.filename,
+                channel_id=channel_id,
+            )
+            # 更新数据库中的 icd_path（在重建设备之前，使 reload 能加载新文件）
+            ChannelService.update_channel(
+                channel_id,
+                icd_path=dest_path,
+                icd_file_hash=fm.compute_hash_from_file(dest_path),
+            )
+            log.info(f"ICD 文件已保存到设备目录并记录到数据库: {dest_path}")
+        except Exception as e:
+            log.warning(f"保存 ICD 文件到设备目录失败 (使用临时路径加载模型): {e}")
+
+        # ===== 3. 重建设备实例（复用 scl_result，跳过内部重新解析） =====
         device_controller = request.app.state.device_controller
         was_running = False
         try:
             device = device_controller.get_device_by_id(channel_id)
             if device:
-                if device.protocol_type == ProtocolType.Iec61850Server:
-                    was_running = device.is_protocol_running()
-                    # 关键：is_start=False，不立即启动服务器
-                    # 先完成 DataSet 和 GoCB 注册，最后统一启动
-                    await reload_device_instance(device_controller, channel_id, is_start=False)
-                    log.info("IEC 61850 服务端设备已重建 (暂未启动，待 DataSet/GoCB 注册后再启动)")
-                else:
-                    device.importDataPointFromChannel(channel_id, device.protocol_type)
-                    log.info(f"已同步更新设备 {device.name} (ID: {channel_id}) 的内存点表")
+                was_running = device.is_protocol_running()
+                await reload_device_instance(device_controller, channel_id, is_start=False, scl_result=scl_result)
+                log.info("IEC 61850 设备已重建 (暂未启动，待 DataSet/GoCB 注册后再启动)")
             else:
                 log.warning(f"导入ICD后未找到内存设备 (ID: {channel_id})，需要手动加载或重启")
         except Exception as e:
             log.error(f"同步内存点表失败: {e}")
 
-        # ===== 2. GOOSE 配置解析 =====
+        # ===== 4. GOOSE/DataSet/RCB 配置处理 =====
         goose_data: dict[str, Any] = {}
         goose_errors: list[str] = []
         created_goose_count = 0
@@ -324,7 +348,6 @@ async def import_icd(
 
             old_manager: GooseResourceManager | None = getattr(request.app.state, "goose_manager", None)
             if old_manager:
-                # 仅清除当前通道的 Publisher（通过 _channel_map 过滤）
                 old_go_cb_refs = [go_cb_ref for go_cb_ref, cid in old_manager._channel_map.items() if cid == channel_id]
                 deleted_old = 0
                 for go_cb_ref in old_go_cb_refs:
@@ -337,6 +360,7 @@ async def import_icd(
 
         # 获取 IEC 61850 服务器（用于在 MMS 数据模型中注册 GSEControlBlock）
         iec61850_server = None
+        do_descriptions: dict[str, str] = {}
         try:
             _device = device_controller.get_device_by_id(channel_id)
             if _device and _device.protocol_handler:
@@ -350,37 +374,21 @@ async def import_icd(
             log.warning(f"获取 IEC61850Server 失败: {e}")
 
         try:
-            # 优先使用 SclImportService (统一解析)，失败时回退到旧 Importer
-            goose_data: dict[str, Any] = {}
-            do_descriptions: dict[str, str] = {}
-            try:
-                from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
-
-                service = SclImportService()
-                scl_result = service.import_file(tmp_path)
-                scl_data = scl_result.to_dict()
-                # GOOSE 配置位于统一导入结果的 goose 子对象中。
-                goose_data = dict(scl_data.get("goose", {}))
-                goose_data["pure_datasets"] = scl_result.goose.pure_datasets
-                goose_data["report_controls"] = scl_data.get("report_controls", [])
-                # 提取 DO 描述用于设置 dU
-                for p in (
-                    scl_result.points.yc_points
-                    + scl_result.points.yx_points
-                    + scl_result.points.yk_points
-                    + scl_result.points.yt_points
-                ):
-                    if p.name and p.reg_addr:
-                        # reg_addr: "LD/LN.DO.DA" → DO ref: "LD/LN.DO"
-                        do_ref = ".".join(p.reg_addr.split(".")[:2])
-                        if do_ref not in do_descriptions:
-                            do_descriptions[do_ref] = p.name
-            except Exception as scl_err:
-                log.warning(f"SclImportService GOOSE 解析失败，回退到旧 Importer: {scl_err}")
-                from src.tools.icd_goose_importer import import_goose_from_icd
-
-                goose_result = import_goose_from_icd(tmp_path, interface=interface)
-                goose_data = goose_result
+            # 从 scl_result 提取 GOOSE 配置和 DO 描述（复用已解析的结果）
+            scl_data = scl_result.to_dict()
+            goose_data = dict(scl_data.get("goose", {}))
+            goose_data["pure_datasets"] = scl_result.goose.pure_datasets
+            goose_data["report_controls"] = scl_data.get("report_controls", [])
+            for p in (
+                scl_result.points.yc_points
+                + scl_result.points.yx_points
+                + scl_result.points.yk_points
+                + scl_result.points.yt_points
+            ):
+                if p.name and p.reg_addr:
+                    do_ref = ".".join(p.reg_addr.split(".")[:2])
+                    if do_ref not in do_descriptions:
+                        do_descriptions[do_ref] = p.name
 
             # ===== 2a. 注册全部 DataSet（必须在 GoCB 之前） =====
             # IEC 61850 标准创建顺序：数据模型 → DataSet → GSEControlBlock
@@ -576,47 +584,8 @@ async def import_icd(
             log.warning(f"解析 ICD GOOSE 配置失败 (不影响 MMS 导入): {e}")
             goose_errors.append(f"GOOSE 解析失败: {e}")
 
-        # ===== 3. 保存 ICD 文件到 data/device/ 目录 =====
-        icd_saved_path = tmp_path  # 默认用临时路径
-        try:
-            from src.proto.iec61850.plugins.scl.service.file_manager import SclFileManager
-
-            fm = SclFileManager()
-            # 获取设备名称用于存储路径
-            channel_info = ChannelService.get_channel_by_id(channel_id)
-            ied_name_fallback = importer.get_ied_name() or "unknown"
-            device_name = channel_info.get("name", ied_name_fallback) if channel_info else ied_name_fallback
-
-            dest_path = fm.save_to_device_dir(
-                source_path=tmp_path,
-                device_name=device_name,
-                original_filename=file.filename,
-                channel_id=channel_id,
-            )
-            icd_saved_path = dest_path
-
-            # 更新数据库中的 icd_path
-            ChannelService.update_channel(
-                channel_id,
-                icd_path=dest_path,
-                icd_file_hash=fm.compute_hash_from_file(dest_path),
-            )
-            log.info(f"ICD 文件已保存到设备目录并记录到数据库: {dest_path}")
-        except Exception as e:
-            log.warning(f"保存 ICD 文件到设备目录失败 (使用临时路径加载模型): {e}")
-
-        # ===== 4. 自动加载模型到内存（无论文件保存成功与否） =====
-        model_loaded = False
-        try:
-            device = device_controller.get_device_by_id(channel_id)
-            if device:
-                if device.load_iec61850_model(icd_saved_path):
-                    log.info(f"ICD 模型已自动加载到内存: {icd_saved_path}")
-                    model_loaded = True
-                else:
-                    log.warning(f"ICD 模型加载到内存失败: {icd_saved_path}")
-        except Exception as load_err:
-            log.warning(f"自动加载 ICD 模型异常 (非致命): {load_err}")
+        # 模型已在 reload_device_instance 中通过 load_iec61850_model 加载
+        model_loaded = True
 
         return BaseResponse(
             message="导入ICD文件成功",

@@ -34,6 +34,7 @@ class ReportManager:
         self._builder = builder
         self.model_name = model_name
         self._rcb_list: list[dict[str, Any]] = []
+        self._rcb_registered_keys: set[tuple[str, str, str]] = set()  # (ld_inst, ln_name, name) O(1) 去重
         self._model_changed: bool = False
         # IedServer 运行时引用（start() 后注入）
         self._ied_server = None
@@ -146,6 +147,13 @@ class ReportManager:
         if not rpt_id:
             rpt_id = name
 
+        # 去重：检查是否已注册过同名 RCB（同一 ld_inst + ln_name + name）
+        rcb_key = (ld_inst, ln_name, name)
+        if rcb_key in self._rcb_registered_keys:
+            log.debug(f"register_rcb [{name}]: RCB 已存在，跳过重复注册 (ld_inst={ld_inst}, ln_name={ln_name})")
+            return True
+        self._rcb_registered_keys.add(rcb_key)
+
         ln_key = f"{ld_inst}/{ln_name}"
         ln_node = self._builder.ln_map.get(ln_key)
 
@@ -164,7 +172,7 @@ class ReportManager:
             name, ln_node, rpt_id, data_set_ref, conf_rev, buffered, buf_time, intg_period, trg_ops, opt_fields
         )
         if api_success:
-            log.info(f"RCB 通过 API 创建成功: {name}, ld={ld_inst}, ln={ln_name}, type={rcb_type}")
+            log.debug(f"RCB 通过 API 创建成功: {name}, ld={ld_inst}, ln={ln_name}, type={rcb_type}")
         else:
             # API 不可用或失败，RCB 仅记录到 Python 目录未写入 MMS 模型
             log.warning(
@@ -279,7 +287,7 @@ class ReportManager:
                     log.debug(f"RCB [{name}] RptEna DataAttribute 已获取")
                 else:
                     log.debug(f"RCB [{name}] 无法获取 RptEna DataAttribute (非致命)")
-                log.info(f"ReportControlBlock_create 成功: {name}, dataSet={ds_name}")
+                # log.info(f"ReportControlBlock_create 成功: {name}, dataSet={ds_name}")
                 return True, ""
             else:
                 reason = f"ReportControlBlock_create 返回 None (name={name}, dataSet={ds_name})"

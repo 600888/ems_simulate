@@ -57,6 +57,7 @@ class IEC61850Server:
         # 整改 v2.0: 模型加载状态
         self._model_loaded = False
         self._loaded_icd_path: str = ""
+        self._last_import_result = None
 
     # ===== 向后兼容属性: 委托给 builder =====
 
@@ -272,11 +273,12 @@ class IEC61850Server:
         self._model_changed = True
         self._model_loaded = False
         self._loaded_icd_path = ""
+        self._last_import_result = None
         log.info("数据模型已重置，默认 GenericLD 已清除")
 
     # ===== 整改 v2.0: 模型加载与设备启动分离 =====
 
-    def load_model(self, icd_path: str) -> bool:
+    def load_model(self, icd_path: str, scl_result: Any = None) -> bool:
         """从 ICD 文件加载模型（不启动 MMS 服务）
 
         将 ICD 文件解析并构建完整 IedModel，
@@ -285,6 +287,7 @@ class IEC61850Server:
 
         Args:
             icd_path: ICD 文件路径
+            scl_result: 可选，预先解析的 SclImportResult。提供时跳过内部解析步骤。
 
         Returns:
             是否加载成功
@@ -293,9 +296,12 @@ class IEC61850Server:
 
         log.info(f"正在从 ICD 文件加载模型: {icd_path}")
 
-        # 1. 解析 ICD 文件
-        service = SclImportService()
-        result = service.import_file(icd_path)
+        # 1. 解析 ICD 文件（复用外部传入的结果，避免重复解析）
+        if scl_result is not None:
+            result = scl_result
+        else:
+            service = SclImportService()
+            result = service.import_file(icd_path)
         if not result.is_valid:
             log.error(f"ICD 文件校验失败: {icd_path}, 错误数: {result.validation.error_count}")
             return False
@@ -329,17 +335,92 @@ class IEC61850Server:
             ln_name = rest[: rest.index(".")]
             self._get_or_create_ln(ld_inst, ln_name)
 
-        # 4. 注册 GOOSE 发布配置
+        # 将 ICD 中的测点注册到数据模型（DO/DA 节点）
+        registered_count = 0
+        for point in result.points.yc_points:
+            if self._builder._add_point_from_ref(point.reg_addr, 0, getattr(point, "fc", "") or "MX"):
+                registered_count += 1
+        for point in result.points.yx_points:
+            if self._builder._add_point_from_ref(point.reg_addr, 1, getattr(point, "fc", "") or "ST"):
+                registered_count += 1
+        for point in result.points.yk_points:
+            if self._builder._add_point_from_ref(point.reg_addr, 2, getattr(point, "fc", "") or "CO"):
+                registered_count += 1
+        for point in result.points.yt_points:
+            if self._builder._add_point_from_ref(point.reg_addr, 3, getattr(point, "fc", "") or "CO"):
+                registered_count += 1
+        log.info(f"已注册 {registered_count} 个测点到数据模型")
+
+        # 4. 注册 DataSet + GOOSE 发布配置
+        # 4a. 注册所有 DataSet（必须早于 GoCB，标准顺序：DataSet → GSEControlBlock）
+        seen_ds_refs: set[str] = set()
+
+        def _fcda_to_entry(member: dict) -> dict:
+            """将 FCDA member dict 转换为 register_dataset 所需的 entry 格式"""
+            return {
+                "name": member.get("fcda_ref", member.get("name", "")),
+                "fc": member.get("fc", "MX"),
+            }
+
+        # 纯 DataSet（未被 GOOSE/Report 引用）
+        for pd in result.goose.pure_datasets:
+            ref = pd.get("ds_ref", "")
+            if ref and ref not in seen_ds_refs:
+                seen_ds_refs.add(ref)
+                entries = pd.get("entries", [])
+                self._ds_manager.register_dataset(
+                    ld_inst=pd.get("ld_inst", ""),
+                    ds_name=pd.get("ds_name", ""),
+                    data_set_ref=ref,
+                    entries=entries,
+                )
+
+        # GOOSE 控制块引用的 DataSet
         for gse in result.goose.gse_controls:
-            self._ds_manager.pending_registrations.append(gse.to_publisher_dict())
+            ref = gse.data_set_ref
+            if ref and ref not in seen_ds_refs:
+                seen_ds_refs.add(ref)
+                entries = [_fcda_to_entry(m) for m in gse.dataset_members]
+                ld_inst = gse.ld_inst
+                ds_name = ref.split("$")[-1] if "$" in ref else ""
+                self._ds_manager.register_dataset(
+                    ld_inst=ld_inst,
+                    ds_name=ds_name,
+                    data_set_ref=ref,
+                    entries=entries,
+                )
+
+        # Report 引用的 DataSet
+        for rc in result.reports.report_controls:
+            ref = rc.data_set_ref
+            if ref and ref not in seen_ds_refs:
+                seen_ds_refs.add(ref)
+                entries = [_fcda_to_entry(e) for e in rc.entries]
+                ds_name = ref.split("$")[-1] if "$" in ref else rc.dat_set
+                self._ds_manager.register_dataset(
+                    ld_inst=rc.ld_inst,
+                    ds_name=ds_name,
+                    data_set_ref=ref,
+                    entries=entries,
+                )
+
+        # 4b. 注册 GOOSE 控制块（带 _type 标记，确保 apply_pending 能正确处理）
+        self._ds_manager.pending_registrations.clear()
+        for gse in result.goose.gse_controls:
+            pub = gse.to_publisher_dict()
+            pub["_type"] = "gocb"
+            self._ds_manager.pending_registrations.append(pub)
 
         # 5. 应用待注册配置
         self._apply_pending_registrations()
 
-        # 6. 应用 Report 配置
-        from dataclasses import asdict
-
+        # 6. 应用 Report 配置（去重，RptEnabled max 多实例展开后防止重复）
+        seen_rcb_names: set[tuple[str, str, str]] = set()
         for rc in result.reports.report_controls:
+            rcb_key = (rc.ld_inst, rc.ln_name or "LLN0", rc.name)
+            if rcb_key in seen_rcb_names:
+                continue
+            seen_rcb_names.add(rcb_key)
             try:
                 self._report_manager.register_rcb(
                     ld_inst=rc.ld_inst,
@@ -351,16 +432,34 @@ class IEC61850Server:
                     intg_period=rc.intg_period,
                     rcb_type=rc.rcb_type,
                     ln_name=rc.ln_name,
-                    trg_ops=asdict(rc.trg_ops) if rc.trg_ops else None,  # type: ignore[arg-type]
-                    opt_fields=asdict(rc.opt_fields) if rc.opt_fields else None,  # type: ignore[arg-type]
+                    trg_ops=rc.trg_ops,
+                    opt_fields=rc.opt_fields,
                 )
             except Exception as e:
                 log.warning(f"注册 ReportControl 失败: {rc.name}, error={e}")
 
         self._model_loaded = True
         self._loaded_icd_path = icd_path
+        self._last_import_result = result  # 存储解析结果，供后续获取测点列表
         log.info(f"IED 模型加载完成: {ied_name}, LD={len(seen_lds)}, ICD={icd_path}")
         return True
+
+    def get_icd_points(self) -> dict[str, list]:
+        """获取最近一次 ICD 导入的测点列表
+
+        Returns:
+            {"yc_points": [...], "yx_points": [...], "yk_points": [...], "yt_points": [...]}
+            每个 point 包含 code, name, reg_addr, fc, cdc, da_name
+        """
+        if not self._model_loaded or self._last_import_result is None:
+            return {"yc_points": [], "yx_points": [], "yk_points": [], "yt_points": []}
+        result = self._last_import_result
+        return {
+            "yc_points": result.points.yc_points,
+            "yx_points": result.points.yx_points,
+            "yk_points": result.points.yk_points,
+            "yt_points": result.points.yt_points,
+        }
 
     def start_device(self) -> bool:
         """启动 MMS 服务（模型必须已加载）
@@ -487,10 +586,16 @@ class IEC61850Server:
     def start(self, register_default_rcbs: bool = True):
         """启动 IEC 61850 MMS 服务器
 
+        v3.0+: 必须先通过 load_model() 加载 ICD 模型才能启动，不再支持默认 GenericLD 模型。
+
         Args:
             register_default_rcbs: 是否注册默认 BRCB (brcb01/brcb02)。
                 ICD 导入时应设为 False，避免在默认 LD 上创建多余 RCB。
         """
+        if not self._model_loaded:
+            log.error("启动失败: 未加载 ICD 模型，请先调用 load_model(icd_path)")
+            return
+
         if self._is_running:
             if self._model_changed:
                 self.apply_model_changes()

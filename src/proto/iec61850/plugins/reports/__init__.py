@@ -178,13 +178,13 @@ class ReportsPlugin:
                     log.debug(f"ACSI目录法: {_rcb_type} {ln_ref} 无有效 RCB 名称")
                     continue
 
-                log.info(f"ACSI目录法: {ln_ref} 下发现 {len(rcb_name_list)} 个 {_rcb_type}: {rcb_name_list}")
+                log.debug(f"ACSI目录法: {ln_ref} 下发现 {len(rcb_name_list)} 个 {_rcb_type}")
 
                 for rcb_name in rcb_name_list:
                     rcb_ref = f"{ln_ref}.{rcb_name}"
                     rcb_info = self._get_rcb_info(rcb_ref, _rcb_type, ld_name, ln_name)
                     rcbs.append(rcb_info)
-                    log.info(f"发现 {_rcb_type}: {rcb_ref}")
+                    log.debug(f"发现 {_rcb_type}: {rcb_ref}")
 
             except Exception as e:
                 log.debug(f"ACSI目录法 发现 {_rcb_type} 异常: {ln_ref}, {e}")

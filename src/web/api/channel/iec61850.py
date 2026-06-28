@@ -553,6 +553,44 @@ async def get_iec61850_tree_data(
     )
 
 
+def _extract_lds_from_points(device) -> list[str]:
+    """从 PointManager 的测点地址中提取唯一 LD 列表（MMS 不可用时 fallback）"""
+    seen: set[str] = set()
+    result: list[str] = []
+    pm = getattr(device, "point_manager", None)
+    if not pm:
+        return result
+    for slave_id in device.slave_id_list:
+        for point in pm.yc_dict.get(slave_id, []) + pm.yx_dict.get(slave_id, []):
+            addr = str(point.address)
+            if "/" in addr:
+                ld = addr.split("/")[0]
+                if ld not in seen:
+                    seen.add(ld)
+                    result.append(ld)
+    return result
+
+
+def _extract_lns_from_points(device, ld: str) -> list[str]:
+    """从 PointManager 的测点地址中提取指定 LD 下的 LN 列表（MMS 不可用时 fallback）"""
+    seen: set[str] = set()
+    result: list[str] = []
+    pm = getattr(device, "point_manager", None)
+    if not pm:
+        return result
+    for slave_id in device.slave_id_list:
+        for point in pm.yc_dict.get(slave_id, []) + pm.yx_dict.get(slave_id, []):
+            addr = str(point.address)
+            if addr.startswith(f"{ld}/"):
+                rest = addr[len(ld) + 1 :]
+                if "." in rest:
+                    ln = rest[: rest.index(".")]
+                    if ln not in seen:
+                        seen.add(ln)
+                        result.append(ln)
+    return result
+
+
 @router.post("/iec61850-structure", response_model=BaseResponse)
 async def get_iec61850_structure(body: Iec61850StructureRequest, request: Request):
     """获取 IEC61850 设备的子节点结构树"""
@@ -568,10 +606,14 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
             client = protocol_handler._client
             if client:
                 logical_devices = client.browse_logical_devices()
-            # 获取每个 LD 下的 LN 列表
+            # 如果 MMS 连接不可用（ICD 离线模式），从 PointManager 解析 LD/LN
+            if not logical_devices:
+                logical_devices = _extract_lds_from_points(device)
             data_model = []
             for ld in logical_devices:
-                lns = client.browse_logical_nodes(ld) if client else []
+                lns = client.browse_logical_nodes(ld) if client and client._conn.is_connected else []
+                if not lns:
+                    lns = _extract_lns_from_points(device, ld)
                 data_model.append({"name": ld, "children": lns})
         elif isinstance(protocol_handler, IEC61850ServerHandler):
             server = protocol_handler._server

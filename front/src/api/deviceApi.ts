@@ -255,11 +255,11 @@ export async function getIEC61850ConnectProgress(
 
 export async function loadIEC61850Model(
   deviceName: string
-): Promise<boolean> {
+): Promise<any> {
   try {
     const data = await requestApi(DEVICE_API.IEC61850_LOAD_MODEL, "post", {
       device_name: deviceName,
-    });
+    }, 60000);
     return data;
   } catch (error) {
     console.error("Error loading IEC61850 model:", error);
@@ -275,7 +275,7 @@ export async function importIEC61850Model(
     const data = await requestApi(DEVICE_API.IEC61850_IMPORT_MODEL, "post", {
       device_name: deviceName,
       icd_path: icdPath,
-    });
+    }, 60000);
     return data;
   } catch (error) {
     console.error("Error importing IEC61850 model:", error);

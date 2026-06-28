@@ -194,22 +194,18 @@
       </div>
     </el-row>
 
-    <!-- 第三行：IEC61850 模型发现/导入共用进度条 -->
+    <!-- 第三行：IEC61850 模型加载/导入/发现共用进度条 -->
     <el-row v-if="modelProgressVisible" class="nodes progress-row" :span="24">
       <el-progress
         :percentage="modelProgressPercent"
-        :indeterminate="modelImporting"
-        :duration="3"
-        :stroke-width="modelImporting ? 4 : 20"
-        :text-inside="!modelImporting"
-        :format="() => (modelImporting ? '' : modelProgressText)"
-        :striped="!modelImporting"
-        :striped-flow="!modelImporting"
+        :stroke-width="20"
+        :text-inside="true"
+        :format="() => modelProgressText"
+        striped
+        striped-flow
+        :status="modelProgressDone ? 'success' : ''"
         style="width: 100%"
       />
-      <p v-if="modelImporting" class="model-import-progress-hint">
-        {{ modelProgressText }}
-      </p>
     </el-row>
     <Slave ref="slaveRef" />
 
@@ -338,13 +334,18 @@ const simTooltipDisabled = computed(() => {
 // IEC61850 模型加载状态
 const modelLoaded = ref(false);
 const isModelProcessing = ref(false);
+const modelLoading = ref(false);
 const modelImporting = ref(false);
 const modelDiscovering = ref(false);
 const modelImportElapsed = ref(0);
 let modelImportElapsedTimer: number | null = null;
 const channelId = ref<number | null>(null);
 const isAnyModelProcessing = computed(
-  () => isModelProcessing.value || modelImporting.value || modelDiscovering.value,
+  () =>
+    isModelProcessing.value ||
+    modelLoading.value ||
+    modelImporting.value ||
+    modelDiscovering.value
 );
 
 const simulateOptions = computed(() => [
@@ -393,12 +394,21 @@ const iec61850PhaseText = computed(() => {
 });
 
 const modelProgressVisible = computed(
-  () => iec61850Connecting.value || modelImporting.value || modelDiscovering.value,
+  () =>
+    iec61850Connecting.value ||
+    modelLoading.value ||
+    modelImporting.value ||
+    modelDiscovering.value
 );
-const modelProgressPercent = computed(() =>
-  modelImporting.value ? 100 : iec61850ProgressPercent.value,
-);
+const modelProgressPercent = computed(() => {
+  if (modelLoading.value) return 50;
+  if (modelImporting.value) return 50;
+  return iec61850ProgressPercent.value;
+});
 const modelProgressText = computed(() => {
+  if (modelLoading.value) {
+    return `${t("device.loadModel")} (${modelImportElapsed.value}s)`;
+  }
   if (modelImporting.value) {
     return `${t("addDevice.icdImporting")} (${modelImportElapsed.value}s)`;
   }
@@ -545,11 +555,20 @@ const startFunction = async () => {
 // IEC61850 模型加载：从数据库加载
 const handleLoadModelFromDb = async () => {
   isModelProcessing.value = true;
+  modelLoading.value = true;
+  modelImportElapsed.value = 0;
+  modelImportElapsedTimer = window.setInterval(() => {
+    modelImportElapsed.value++;
+  }, 1000);
   try {
-    const success = await loadIEC61850Model(routeName.value);
-    if (success) {
+    const result = await loadIEC61850Model(routeName.value);
+    if (result) {
       modelLoaded.value = true;
-      ElMessage.success(t("device.modelLoadSuccess"));
+      const path = result.icd_path || "";
+      const msg = path
+        ? `${t("device.modelLoadSuccess")} 路径: ${path}`
+        : t("device.modelLoadSuccess");
+      ElMessage.success(msg);
       triggerSidebarRefresh(routeName.value);
     } else {
       ElMessage.error(t("device.modelLoadFailed"));
@@ -559,6 +578,11 @@ const handleLoadModelFromDb = async () => {
     // 后端返回的错误消息已由全局拦截器处理
   } finally {
     isModelProcessing.value = false;
+    modelLoading.value = false;
+    if (modelImportElapsedTimer) {
+      clearInterval(modelImportElapsedTimer);
+      modelImportElapsedTimer = null;
+    }
   }
 };
 

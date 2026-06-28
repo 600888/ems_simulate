@@ -63,21 +63,20 @@ class IEC61850ServerHandler(ServerHandler):
     async def start(self) -> bool:
         """启动 IEC 61850 服务器
 
-        注意: v2.0 起模型加载与启动分离。
-        如果使用 ICD 模型，必须先调 load_model()，再调 start()。
-        未加载 ICD 模型时使用默认 GenericLD 模型。
+        v3.0+: 必须先加载 ICD 模型后才能启动，不再支持默认 GenericLD 模型。
+        请先通过 load_model(icd_path) 加载 ICD 模型，再调用 start()。
         """
         try:
             if not self._server:
                 return False
 
-            if self._server.model_loaded:
-                # ICD 模式: 模型已加载，仅启动 MMS 服务
-                self._server.start_device()
-            else:
-                # 传统模式: 使用默认模型
-                self._server.start()
+            if not self._server.model_loaded:
+                if self._log:
+                    self._log.error("启动 IEC 61850 服务器失败: 未加载 ICD 模型，请先通过 ICD 文件加载模型")
+                return False
 
+            # 模型已加载，启动 MMS 服务
+            self._server.start_device()
             self._is_running = self._server.is_running
             return self._is_running
         except Exception as e:
@@ -85,7 +84,7 @@ class IEC61850ServerHandler(ServerHandler):
                 self._log.error(f"启动 IEC 61850 服务器失败: {e}")
             return False
 
-    def load_model(self, icd_path: str) -> bool:
+    def load_model(self, icd_path: str, scl_result: Any = None) -> bool:
         """加载 ICD 模型（不启动 MMS 服务）
 
         用户手动在界面点击"加载模型"后调用。
@@ -93,6 +92,7 @@ class IEC61850ServerHandler(ServerHandler):
 
         Args:
             icd_path: ICD 文件路径
+            scl_result: 可选，预先解析的 SclImportResult，提供时跳过内部解析
 
         Returns:
             是否加载成功
@@ -100,7 +100,24 @@ class IEC61850ServerHandler(ServerHandler):
         if not self._server:
             return False
         self._icd_path = icd_path
-        return self._server.load_model(icd_path)
+        return self._server.load_model(icd_path, scl_result=scl_result)
+
+    def get_icd_points(self) -> dict[str, list]:
+        """获取最近一次 ICD 导入的测点列表
+
+        透传自 IEC61850Server.get_icd_points()
+
+        Returns:
+            {"yc_points": [...], "yx_points": [...], "yk_points": [...], "yt_points": [...]}
+        """
+        if not self._server:
+            return {"yc_points": [], "yx_points": [], "yk_points": [], "yt_points": []}
+        return self._server.get_icd_points()
+
+    def clear_cache(self) -> None:
+        """清除服务端侧的缓存"""
+        if self._server:
+            self._server.reset_model()
 
     async def stop(self) -> bool:
         """停止 IEC 61850 服务器"""
@@ -323,21 +340,44 @@ class IEC61850ClientHandler(ClientHandler):
         thread.start()
         return True  # 立即返回，表示连接任务已受理
 
-    def load_model_from_icd(self, icd_path: str) -> bool:
+    def load_model_from_icd(self, icd_path: str, scl_result: Any = None) -> bool:
         """从 ICD 文件加载模型（不依赖 MMS 连接）
 
         Args:
             icd_path: ICD 文件路径
+            scl_result: 可选，预先解析的 SclImportResult，提供时跳过内部解析
 
         Returns:
             是否加载成功
         """
         if not self._client:
             return False
-        success = self._client.load_model_from_icd(icd_path)
+        success = self._client.load_model_from_icd(icd_path, scl_result=scl_result)
         if success:
+            # 同步 DataSet 和 RCB 缓存，供 UI 展示
+            self._discovered_datasets = self._client.get_discovered_datasets()
+            self._discovered_rcbs = list(getattr(self._client, "_rcbs_from_icd", []))
             self._model_loaded = True
         return success
+
+    def get_icd_points(self) -> dict[str, list]:
+        """获取最近一次 ICD 导入的测点列表
+
+        Returns:
+            {"yc_points": [...], "yx_points": [...], "yk_points": [...], "yt_points": [...]}
+        """
+        if not self._client:
+            return {"yc_points": [], "yx_points": [], "yk_points": [], "yt_points": []}
+        return self._client.get_icd_points()
+
+    def clear_cache(self) -> None:
+        """清除客户端侧的缓存"""
+        self._model_loaded = False
+        self._discovered_goose_items.clear()
+        self._discovered_datasets.clear()
+        self._discovered_rcbs.clear()
+        if self._client:
+            self._client._last_import_result = None
 
     def remote_discover_model(self) -> bool:
         """远程发现模型（通过 MMS 在线遍历）

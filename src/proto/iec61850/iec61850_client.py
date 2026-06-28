@@ -72,6 +72,11 @@ class IEC61850Client:
         # ===== 统一模型发现服务 =====
         self._discovery = ModelDiscoveryService()
 
+        # ICD 导入结果缓存
+        self._last_import_result = None
+        # ICD 解析出的 RCB 列表（供 UI 展示，不依赖 MMS 连接）
+        self._rcbs_from_icd: list[dict[str, Any]] = []
+
         # ===== 插件系统 =====
         self._plugins = PluginRegistry(auto_register=False)
         _register_builtin_plugins(self._plugins)
@@ -489,7 +494,7 @@ class IEC61850Client:
 
     # ===== 模型加载 (整改 v2.0: 支持 ICD 文件加载与远程发现两种方式) =====
 
-    def load_model_from_icd(self, icd_path: str) -> bool:
+    def load_model_from_icd(self, icd_path: str, scl_result: Any = None) -> bool:
         """从本地 ICD 文件加载模型
 
         解析 ICD 文件并构建 PointRegistry，后续 MMS 读写使用此模型。
@@ -497,6 +502,7 @@ class IEC61850Client:
 
         Args:
             icd_path: ICD 文件路径
+            scl_result: 可选，预先解析的 SclImportResult。提供时跳过内部解析步骤。
 
         Returns:
             是否加载成功
@@ -506,9 +512,12 @@ class IEC61850Client:
 
         log.info(f"正在从 ICD 文件加载模型: {icd_path}")
 
-        # 1. 解析 ICD 文件
-        service = SclImportService()
-        result = service.import_file(icd_path)
+        # 1. 解析 ICD 文件（复用外部传入的结果，避免重复解析）
+        if scl_result is not None:
+            result = scl_result
+        else:
+            service = SclImportService()
+            result = service.import_file(icd_path)
         if not result.is_valid:
             log.error(f"ICD 文件校验失败: {icd_path}, 错误数: {result.validation.error_count}")
             return False
@@ -567,13 +576,140 @@ class IEC61850Client:
         if result.ied_name:
             self.model_name = result.ied_name
 
+        # 5. 填充 DataSet 列表（供 UI 展示，不依赖 MMS 连接）
+        datasets: list[dict[str, Any]] = []
+        seen_ds_refs: set[str] = set()
+
+        # 5a. 纯 DataSet（未被 GOOSE/Report 引用）
+        for pd in result.goose.pure_datasets:
+            ref = pd.get("ds_ref", "")
+            if ref and ref not in seen_ds_refs:
+                seen_ds_refs.add(ref)
+                members = []
+                for entry in pd.get("entries", []):
+                    members.append(
+                        {
+                            "ref": entry.get("name", ""),
+                            "fc": entry.get("fc", ""),
+                            "iec_type": entry.get("iec_type", ""),
+                        }
+                    )
+                datasets.append(
+                    {
+                        "ref": ref,
+                        "name": pd.get("ds_name", ""),
+                        "ld": pd.get("ld_inst", ""),
+                        "ln": "",
+                        "member_count": pd.get("member_count", 0),
+                        "members": members,
+                    }
+                )
+
+        # 5b. GOOSE 控制块引用的 DataSet
+        for gse in result.goose.gse_controls:
+            ref = gse.data_set_ref
+            if ref and ref not in seen_ds_refs:
+                seen_ds_refs.add(ref)
+                ld_inst = gse.ld_inst
+                ln_class = gse.ln_class
+                ds_name = ref.split("$")[-1] if "$" in ref else ""
+                members = []
+                for m in gse.dataset_members:
+                    members.append(
+                        {
+                            "ref": m.get("fcda_ref", ""),
+                            "fc": m.get("fc", ""),
+                            "iec_type": "",
+                        }
+                    )
+                datasets.append(
+                    {
+                        "ref": ref,
+                        "name": ds_name,
+                        "ld": ld_inst,
+                        "ln": ln_class,
+                        "member_count": len(members),
+                        "members": members,
+                    }
+                )
+
+        # 5c. Report 引用的 DataSet
+        for rc in result.reports.report_controls:
+            ref = rc.data_set_ref
+            if ref and ref not in seen_ds_refs:
+                seen_ds_refs.add(ref)
+                ds_name = ref.split("$")[-1] if "$" in ref else rc.dat_set
+                members = []
+                for entry in rc.entries:
+                    members.append(
+                        {
+                            "ref": entry.get("name", ""),
+                            "fc": entry.get("fc", ""),
+                            "iec_type": entry.get("iec_type", ""),
+                        }
+                    )
+                datasets.append(
+                    {
+                        "ref": ref,
+                        "name": ds_name,
+                        "ld": rc.ld_inst,
+                        "ln": rc.ln_name,
+                        "member_count": len(members),
+                        "members": members,
+                    }
+                )
+
+        self._registry.discovered_datasets = datasets
+
+        # 6. 缓存 RCB 信息（供 UI 展示 Report 列表，不依赖 MMS 连接）
+        rcbs: list[dict[str, Any]] = []
+        for rc in result.reports.report_controls:
+            rcb_ref = f"{rc.ld_inst}/{rc.ln_name}.{rc.name}" if rc.ln_name else ""
+            rcbs.append(
+                {
+                    "ref": rcb_ref,
+                    "name": rc.name,
+                    "rcb_type": rc.rcb_type,
+                    "ld": rc.ld_inst,
+                    "ln": rc.ln_name,
+                    "rpt_id": rc.rpt_id,
+                    "data_set_ref": rc.data_set_ref,
+                    "conf_rev": rc.conf_rev,
+                    "buf_time": rc.buf_time,
+                    "intg_period": rc.intg_period,
+                    "trg_ops": rc.trg_ops,
+                    "opt_fields": rc.opt_fields,
+                    "rpt_ena": False,  # ICD 文件不包含运行状态，默认未使能
+                }
+            )
+        self._rcbs_from_icd = rcbs
+
         log.info(
             f"ICD 模型加载完成: IED={result.ied_name or icd_path}, "
             f"测点数={point_count}, "
             f"GOOSE={len(result.goose.gse_controls)}, "
-            f"Report={len(result.reports.report_controls)}"
+            f"DataSet={len(datasets)}, "
+            f"Report={len(rcbs)}"
         )
+
+        # 缓存解析结果，供 Device 注册 BasePoint 到 PointManager
+        self._last_import_result = result
         return True
+
+    def get_icd_points(self) -> dict[str, list]:
+        """获取最近一次 ICD 导入的测点列表
+
+        Returns:
+            {"yc_points": [...], "yx_points": [...], "yk_points": [...], "yt_points": [...]}
+        """
+        if self._last_import_result is None:
+            return {"yc_points": [], "yx_points": [], "yk_points": [], "yt_points": []}
+        return {
+            "yc_points": self._last_import_result.points.yc_points,
+            "yx_points": self._last_import_result.points.yx_points,
+            "yk_points": self._last_import_result.points.yk_points,
+            "yt_points": self._last_import_result.points.yt_points,
+        }
 
     def remote_discover_model(self, force_refresh: bool = True) -> bool:
         """远程发现模型（通过 MMS 在线遍历）

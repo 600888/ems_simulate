@@ -235,7 +235,7 @@ class GeneralDeviceBuilder:
         print("初始化IEC61850服务端")
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
-        self.importDataPoints()
+        # IEC61850 测点来自 ICD 模型文件，不从数据库导入
         self.initIec61850Server()
         self.general_device.setSpecialDataPointValues()
         return self.general_device
@@ -245,7 +245,7 @@ class GeneralDeviceBuilder:
         print("初始化IEC61850客户端")
         self.setDeviceId(self.device_id)
         self.setDeviceName(name=self.device_name)
-        self.importDataPoints()
+        # IEC61850 测点来自 ICD 模型文件或 MMS 在线发现，不从数据库导入
         self.initIec61850Client()
         self.general_device.setSpecialDataPointValues()
         return self.general_device

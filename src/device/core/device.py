@@ -192,6 +192,10 @@ class Device:
         ):
             self.protocol_handler.set_on_points_discovered(self._on_iec61850_points_discovered)
 
+        # IEC61850 测点来自 ICD 模型文件或 MMS 在线发现，不从数据库注册测点
+        if self.protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client):
+            return
+
         # 添加测点
         all_points = self.point_manager.get_all_points()
         self.protocol_handler.add_points(all_points)
@@ -279,11 +283,15 @@ class Device:
             return self.protocol_handler.server.model_loaded
         return False
 
-    def load_iec61850_model(self, icd_path: str) -> bool:
+    def load_iec61850_model(self, icd_path: str, scl_result: Any = None) -> bool:
         """加载 IEC61850 ICD 模型（不启动设备）
+
+        加载前先清除内存中所有相关的缓存（测点、模拟控制器等），
+        然后加载 ICD 模型并注册到 PointManager。
 
         Args:
             icd_path: ICD 文件路径
+            scl_result: 可选，预先解析的 SclImportResult，提供时跳过内部解析步骤
 
         Returns:
             是否加载成功
@@ -291,16 +299,126 @@ class Device:
         if not self.protocol_handler:
             return False
 
+        # 清除内存缓存
+        self._clear_iec61850_cache()
+
+        success = False
+        icd_points = None
+
         if self.protocol_type == ProtocolType.Iec61850Server:
             if isinstance(self.protocol_handler, IEC61850ServerHandler):
-                return self.protocol_handler.load_model(icd_path)
+                success = self.protocol_handler.load_model(icd_path, scl_result=scl_result)
+                if success:
+                    icd_points = self.protocol_handler.get_icd_points()
         elif self.protocol_type == ProtocolType.Iec61850Client:
             if isinstance(self.protocol_handler, IEC61850ClientHandler):
-                return self.protocol_handler.load_model_from_icd(icd_path)
-        return False
+                success = self.protocol_handler.load_model_from_icd(icd_path, scl_result=scl_result)
+                if success:
+                    icd_points = self.protocol_handler.get_icd_points()
+
+        if success and icd_points:
+            self._register_icd_points(icd_points)
+
+        return success
+
+    def _clear_iec61850_cache(self) -> None:
+        """清除 IEC61850 内存中所有相关缓存
+
+        在加载/导入/发现模型前调用，确保旧数据不会残留。
+        """
+        slave_id = 1  # IEC61850 默认使用从机地址 1
+
+        # 清除 PointManager 中的测点
+        self.point_manager.yc_dict[slave_id] = []
+        self.point_manager.yx_dict[slave_id] = []
+        self.point_manager.yk_dict[slave_id] = []
+        self.point_manager.yt_dict[slave_id] = []
+        self.point_manager.code_map.clear()
+        self.point_manager.slave_code_index.clear()
+        if slave_id in self.point_manager.slave_id_list:
+            self.point_manager.slave_id_list.remove(slave_id)
+
+        # 清除 SimulationController 中的模拟点
+        self.simulation_controller.points.clear()
+
+        # 清除协议处理器侧的缓存
+        if isinstance(self.protocol_handler, IEC61850ClientHandler):
+            self.protocol_handler.clear_cache()
+        elif isinstance(self.protocol_handler, IEC61850ServerHandler):
+            if self.protocol_handler.server:
+                self.protocol_handler.server.reset_model()
+
+        self.log.info("IEC61850 内存缓存已清除")
+
+    def _register_icd_points(self, icd_points: dict[str, list]) -> None:
+        """将 ICD 解析出的测点注册到 PointManager
+
+        Args:
+            icd_points: {"yc_points": [...], "yx_points": [...], "yk_points": [...], "yt_points": [...]}
+        """
+        slave_id = 1  # IEC61850 默认使用从机地址 1
+        added_count = 0
+
+        frame_type_map = {
+            "yc_points": 0,
+            "yx_points": 1,
+            "yk_points": 2,
+            "yt_points": 3,
+        }
+
+        point_class_map = {
+            "yc_points": Yc,
+            "yx_points": Yx,
+            "yk_points": Yk,
+            "yt_points": Yt,
+        }
+
+        func_code_map = {
+            "yc_points": 3,
+            "yx_points": 1,
+            "yk_points": 5,
+            "yt_points": 6,
+        }
+
+        # 使用哈希集 O(1) 查重，避免线性扫描
+        seen: set[tuple[int, int]] = set()
+        for category_key, ft in frame_type_map.items():
+            point_class = point_class_map[category_key]
+            func_code = func_code_map[category_key]
+            for pd in icd_points.get(category_key, []):
+                addr = pd.reg_addr
+                # 根据 address + frame_type 去重
+                key = (addr, ft)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                point = point_class(
+                    rtu_addr=str(slave_id),
+                    address=str(addr),
+                    func_code=func_code,
+                    name=pd.name or pd.code or str(addr),
+                    code=pd.code or str(addr),
+                    value=0,
+                    frame_type=ft,
+                    fc=pd.fc or "",
+                )
+                self.point_manager.add_point(slave_id, point)
+
+                # 添加到模拟控制器
+                self.simulation_controller.add_point(point, SimulateMethod.Random, 1)
+                self.simulation_controller.set_point_status(point, True)
+
+                added_count += 1
+
+        if added_count > 0:
+            self.log.info(f"IEC61850 ICD 模型加载: 已注册 {added_count} 个测点到 PointManager")
 
     def iec61850_remote_discover_model(self) -> bool:
         """远程发现 IEC61850 模型（需要 MMS 连接）
+
+        发现前先清除内存中所有相关缓存（测点、模拟控制器等），
+        然后开始远程发现，通过 _on_iec61850_points_discovered 回调逐批注册新测点。
 
         Returns:
             是否发现成功
@@ -309,6 +427,8 @@ class Device:
             return False
         if not self.protocol_handler:
             return False
+        # 清除内存缓存
+        self._clear_iec61850_cache()
         if isinstance(self.protocol_handler, IEC61850ClientHandler):
             return self.protocol_handler.remote_discover_model()
         return False

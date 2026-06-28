@@ -1,7 +1,6 @@
 import asyncio
 from datetime import UTC
 import time
-import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -43,27 +42,27 @@ def create_app():
     )
 
     # 请求日志中间件：记录请求方法、路径、状态码、耗时，并注入 trace_id
-    @app.middleware("http")
-    async def request_logging_middleware(request: Request, call_next):
-        trace_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
-        request.state.trace_id = trace_id
+    # @app.middleware("http")
+    # async def request_logging_middleware(request: Request, call_next):
+    #     trace_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+    #     request.state.trace_id = trace_id
 
-        start = time.perf_counter()
-        try:
-            response = await call_next(request)
-        except Exception:
-            cost = (time.perf_counter() - start) * 1000
-            log.error(f"[{trace_id}] {request.method} {request.url.path} -> 500 ({cost:.1f}ms) 未捕获异常")
-            raise
+    #     start = time.perf_counter()
+    #     try:
+    #         response = await call_next(request)
+    #     except Exception:
+    #         cost = (time.perf_counter() - start) * 1000
+    #         log.error(f"[{trace_id}] {request.method} {request.url.path} -> 500 ({cost:.1f}ms) 未捕获异常")
+    #         raise
 
-        cost = (time.perf_counter() - start) * 1000
-        # 将 trace_id 回写到响应头，方便前端/日志关联
-        response.headers["X-Request-ID"] = trace_id
-        if response.status_code >= 400:
-            log.warning(f"[{trace_id}] {request.method} {request.url.path} -> {response.status_code} ({cost:.1f}ms)")
-        else:
-            log.debug(f"[{trace_id}] {request.method} {request.url.path} -> {response.status_code} ({cost:.1f}ms)")
-        return response
+    #     cost = (time.perf_counter() - start) * 1000
+    #     # 将 trace_id 回写到响应头，方便前端/日志关联
+    #     response.headers["X-Request-ID"] = trace_id
+    #     if response.status_code >= 400:
+    #         log.warning(f"[{trace_id}] {request.method} {request.url.path} -> {response.status_code} ({cost:.1f}ms)")
+    #     else:
+    #         log.debug(f"[{trace_id}] {request.method} {request.url.path} -> {response.status_code} ({cost:.1f}ms)")
+    #     return response
 
     # 注册路由
     app.include_router(channel_router)
@@ -173,7 +172,6 @@ async def _background_init():
 
     不阻塞 uvicorn 端口监听，Tauri 通过 /api/health 检测初始化状态
     """
-    import time
 
     t0 = time.perf_counter()
     log.info("开始后台初始化...")

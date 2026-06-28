@@ -1,6 +1,7 @@
 """通道模块 - 公共辅助函数"""
 
 import os
+from typing import Any
 
 from src.config.config import Config
 from src.data.service.channel_service import ChannelService
@@ -65,8 +66,15 @@ def is_client_protocol(protocol_type) -> bool:
     ]
 
 
-async def reload_device_instance(device_controller, channel_id: int, is_start: bool = True):
-    """重载/重启设备实例"""
+async def reload_device_instance(device_controller, channel_id: int, is_start: bool = True, scl_result: Any = None):
+    """重载/重启设备实例
+
+    Args:
+        device_controller: 设备控制器
+        channel_id: 通道 ID
+        is_start: 是否启动设备
+        scl_result: 可选，预先解析的 SclImportResult。提供时跳过 ICD 文件重新解析。
+    """
     await device_controller.remove_device_by_id(channel_id)
 
     channel = ChannelService.get_channel_by_id(channel_id)
@@ -103,7 +111,12 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         icd_path = channel.get("icd_path")
         if icd_path:
             try:
-                if os.path.exists(icd_path) and new_device.load_iec61850_model(icd_path):
+                if os.path.exists(icd_path):
+                    if scl_result is not None:
+                        # 复用提前解析的结果，避免二次解析
+                        new_device.load_iec61850_model(icd_path, scl_result=scl_result)
+                    else:
+                        new_device.load_iec61850_model(icd_path)
                     log.info(f"重新加载设备时已自动加载 ICD 模型: {icd_path}")
             except Exception as load_err:
                 log.warning(f"重新加载设备时自动加载 ICD 模型失败: {load_err}")
