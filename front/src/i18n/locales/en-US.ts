@@ -97,6 +97,7 @@ export default {
     startDeviceSuccess: "Device started successfully",
     startDeviceFailed: "Failed to start device",
     loadModel: "Load Model",
+    importModel: "Import Model",
     loadModelFromIcd: "From ICD File",
     loadModelDiscover: "Remote Discovery",
     modelNotLoaded: "Model not loaded",

@@ -97,6 +97,7 @@ export default {
     startDeviceSuccess: "启动设备成功",
     startDeviceFailed: "启动设备失败",
     loadModel: "加载模型",
+    importModel: "导入模型",
     loadModelFromIcd: "从ICD文件加载",
     loadModelDiscover: "远程发现模型",
     modelNotLoaded: "模型未加载",

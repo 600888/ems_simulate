@@ -73,7 +73,7 @@ class MessageFormatter:
         Returns:
             报文记录列表（字典格式）
         """
-        if not self._handler or not hasattr(self._handler, "get_captured_messages"):
+        if not self._handler:
             return []
 
         messages = self._handler.get_captured_messages(limit or 100)
@@ -165,7 +165,7 @@ class MessageFormatter:
 
     def clear_messages(self) -> None:
         """清空报文历史记录"""
-        if self._handler and hasattr(self._handler, "clear_captured_messages"):
+        if self._handler:
             self._handler.clear_captured_messages()
 
     def get_avg_time(self) -> dict:
@@ -174,6 +174,6 @@ class MessageFormatter:
         Returns:
             统计字典，包含发送/接收报文数量、平均间隔等
         """
-        if self._handler and hasattr(self._handler, "get_avg_time"):
+        if self._handler:
             return self._handler.get_avg_time()
         return {}

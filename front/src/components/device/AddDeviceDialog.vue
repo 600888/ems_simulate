@@ -27,22 +27,14 @@
         ref="uploadCompRef" 
         :protocol-type="form.protocol_type"
         :conn-type="form.conn_type"
+        :disabled="loading"
         @file-change="(f) => selectedFile = f" 
-        @icd-file-change="(f) => selectedIcdFile = f" 
+        @icd-preview-result="onIcdPreviewResult"
       />
     </el-form>
 
-    <!-- ICD 导入进度条（indeterminate 动画，不显示百分比数字） -->
-    <div v-if="icdImporting" class="icd-import-progress">
-      <el-progress :percentage="100" :indeterminate="true" :duration="3" :stroke-width="6" :format="() => ''" />
-      <p class="icd-import-hint">{{ $t('addDevice.icdImporting') }} ({{ icdImportElapsed }}s)</p>
-    </div>
-    
     <template #footer>
       <div class="dialog-footer">
-        <el-button v-if="showPreviewBtn" type="warning" :icon="View" :loading="previewLoading" @click="handlePreview">
-          {{ $t('addDevice.previewIcd') }}
-        </el-button>
         <el-button @click="handleClose" round>{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="loading" @click="handleSubmit" round class="submit-btn" :icon="Check">
           {{ isEditMode ? $t('addDevice.saveChanges') : $t('addDevice.confirmAdd') }}
@@ -114,7 +106,7 @@ import { ref, computed, reactive, watch, onMounted, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
-import { Check, View } from "@element-plus/icons-vue";
+import { Check } from "@element-plus/icons-vue";
 
 // 子组件
 import DeviceFormBasic from './DeviceFormBasic.vue';
@@ -123,7 +115,7 @@ import DeviceFormPoints from './DeviceFormPoints.vue';
 import { isAutoRefreshPaused } from '@/composables/useAutoRead';
 
 // API
-import { createChannel, importPoints, importIcdPoints, previewIcd, getChannel, updateChannel, getSerialPorts, reloadDeviceConfig, getProtocolConfig } from '@/api/channelApi';
+import { createChannel, importPoints, getChannel, updateChannel, getSerialPorts, reloadDeviceConfig, getProtocolConfig } from '@/api/channelApi';
 import { getAllDeviceGroups, type DeviceGroupInfo } from '@/api/deviceGroupApi';
 import type { ChannelCreateRequest, ProtocolOption, PointImportResult } from '@/types/channel';
 
@@ -145,14 +137,9 @@ const emit = defineEmits<{
 const formRef = ref<FormInstance>();
 const uploadCompRef = ref();
 const loading = ref(false);
-const previewLoading = ref(false);
-const icdImporting = ref(false);
-const icdImportElapsed = ref(0);
-let icdImportTimer: number | null = null;
 const originalName = ref('');
 const mediaType = ref<'serial' | 'network'>('network');
 const selectedFile = ref<File | null>(null);
-const selectedIcdFile = ref<File | null>(null);
 const deviceGroupOptions = ref<DeviceGroupInfo[]>([]);
 const serialPorts = ref<Array<{device: string, description: string}>>([]);
 const protocols = ref<ProtocolOption[]>([]);
@@ -161,8 +148,6 @@ const protocols = ref<ProtocolOption[]>([]);
 const goosePreviewVisible = ref(false);
 const goosePreviewData = ref<PointImportResult | null>(null);
 const previewDone = ref(false);
-
-const showPreviewBtn = computed(() => !!selectedIcdFile.value);
 
 const gooseControlList = computed(() => {
   return goosePreviewData.value?.goose?.summary?.gse_controls || [];
@@ -199,7 +184,6 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  if (icdImportTimer) { clearInterval(icdImportTimer); icdImportTimer = null; }
 });
 
 watch(() => props.visible, async (val) => {
@@ -238,11 +222,8 @@ const resetForm = () => {
     group_id: null
   });
   selectedFile.value = null;
-  selectedIcdFile.value = null;
   goosePreviewData.value = null;
   previewDone.value = false;
-  icdImporting.value = false;
-  if (icdImportTimer) { clearInterval(icdImportTimer); icdImportTimer = null; }
   uploadCompRef.value?.clearFiles();
 };
 
@@ -259,21 +240,11 @@ const formatMac = (row: any) => {
   return '-';
 };
 
-// ICD 预览
-const handlePreview = async () => {
-  if (!selectedIcdFile.value) return;
-  previewLoading.value = true;
-  try {
-    const result = await previewIcd(selectedIcdFile.value);
-    goosePreviewData.value = result;
-    previewDone.value = true;
-    goosePreviewVisible.value = true;
-  } catch (e: any) {
-    console.error('预览 ICD 失败', e);
-    // error handled by global interceptor
-  } finally {
-    previewLoading.value = false;
-  }
+// ICD 预览结果回调
+const onIcdPreviewResult = (result: PointImportResult) => {
+  goosePreviewData.value = result;
+  previewDone.value = true;
+  goosePreviewVisible.value = true;
 };
 
 // 提交保存
@@ -295,22 +266,22 @@ const handleSubmit = async () => {
         ElMessage.success(t('addDevice.createSuccess'));
       }
       
-      if (selectedIcdFile.value) {
-        icdImporting.value = true;
-        icdImportElapsed.value = 0;
-        icdImportTimer = window.setInterval(() => { icdImportElapsed.value++; }, 1000);
-        // 暂停后台自动轮询，避免干扰导入
-        isAutoRefreshPaused.value = true;
-        try {
-          const importResult = await importIcdPoints(resultId, selectedIcdFile.value, 'eth0', true);
-          ElMessage.success(t('addDevice.icdImportSuccess', { total: importResult?.total || 0, goose: importResult?.goose?.created_count || 0 }));
-        } finally {
-          if (icdImportTimer) { clearInterval(icdImportTimer); icdImportTimer = null; }
-          icdImporting.value = false;
-          isAutoRefreshPaused.value = false;
-        }
-      } else if (selectedFile.value) {
+      if (selectedFile.value) {
         await importPoints(resultId, selectedFile.value);
+      } else {
+        // 如果有 ICD 文件，通过公共组件导入
+        const icdUpload = uploadCompRef.value?.getIcdUploadRef?.()
+        if (icdUpload?.getFile()) {
+          isAutoRefreshPaused.value = true;
+          try {
+            const importResult = await icdUpload.importIcd(resultId);
+            if (importResult) {
+              ElMessage.success(t('addDevice.icdImportSuccess', { total: importResult.total || 0, goose: importResult?.goose?.created_count || 0 }));
+            }
+          } finally {
+            isAutoRefreshPaused.value = false;
+          }
+        }
       }
       
       emit('success', form.name, isEditMode.value, originalName.value);
@@ -330,7 +301,6 @@ const handleClose = () => {
   goosePreviewVisible.value = false;
   goosePreviewData.value = null;
   previewDone.value = false;
-  icdImporting.value = false;
   emit('close');
 };
 </script>

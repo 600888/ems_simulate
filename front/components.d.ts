@@ -81,6 +81,7 @@ declare module 'vue' {
     FloatRegister: typeof import('./src/components/register/FloatRegister.vue')['default']
     GooseCapture: typeof import('./src/components/goose/GooseCapture.vue')['default']
     GooseManager: typeof import('./src/components/goose/GooseManager.vue')['default']
+    IcdImportUpload: typeof import('./src/components/common/IcdImportUpload.vue')['default']
     Iec61850WriteDialog: typeof import('./src/components/device/Iec61850WriteDialog.vue')['default']
     LongRegister: typeof import('./src/components/register/LongRegister.vue')['default']
     MessageViewDialog: typeof import('./src/components/device/MessageViewDialog.vue')['default']

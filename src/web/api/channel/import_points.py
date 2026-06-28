@@ -334,9 +334,11 @@ async def import_icd(
         iec61850_server = None
         try:
             _device = device_controller.get_device_by_id(channel_id)
-            if _device and hasattr(_device, "protocol_handler") and _device.protocol_handler:
+            if _device and _device.protocol_handler:
                 _handler = _device.protocol_handler
-                if hasattr(_handler, "server"):
+                from src.device.protocol.iec61850_handler import IEC61850ServerHandler
+
+                if isinstance(_handler, IEC61850ServerHandler):
                     iec61850_server = _handler.server
                     log.info("已获取 IEC61850Server，将在 MMS 模型中注册 DataSet/GSEControlBlock")
         except Exception as e:
@@ -577,7 +579,7 @@ async def import_icd(
             fm = SclFileManager()
             # 获取设备名称用于存储路径
             channel_info = ChannelService.get_channel_by_id(channel_id)
-            ied_name_fallback = importer.get_ied_name() if hasattr(importer, "get_ied_name") else "unknown"
+            ied_name_fallback = importer.get_ied_name() or "unknown"
             device_name = channel_info.get("name", ied_name_fallback) if channel_info else ied_name_fallback
 
             dest_path = fm.save_to_device_dir(
@@ -602,7 +604,7 @@ async def import_icd(
         model_loaded = False
         try:
             device = device_controller.get_device_by_id(channel_id)
-            if device and hasattr(device, "load_iec61850_model"):
+            if device:
                 if device.load_iec61850_model(icd_saved_path):
                     log.info(f"ICD 模型已自动加载到内存: {icd_saved_path}")
                     model_loaded = True

@@ -3,6 +3,7 @@ IEC 61850 协议处理器
 支持 IEC 61850 MMS 服务端和客户端
 """
 
+from collections.abc import Sequence
 from typing import Any
 
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
@@ -156,7 +157,7 @@ class IEC61850ServerHandler(ServerHandler):
 
     def get_discovered_datasets(self) -> list[dict[str, Any]]:
         """获取服务端上已注册的 DataSet 列表"""
-        if self._server and hasattr(self._server, "browse_datasets"):
+        if self._server:
             return self._server.browse_datasets()
         return []
 
@@ -543,7 +544,7 @@ class IEC61850ClientHandler(ClientHandler):
             return {"quality": {}, "timestamp": {}}
 
         fc = getattr(point, "fc", "") or ""
-        meta = self._client.read_metadata(address=point.address, fc=fc)
+        meta = self._client.read_metadata(address=str(point.address), fc=fc)
         return meta.to_dict()
 
     def write_value(self, point: BasePoint, value: Any) -> bool:
@@ -575,7 +576,7 @@ class IEC61850ClientHandler(ClientHandler):
 
         return False
 
-    def read_points_batch(self, points: list[BasePoint]) -> dict[str, Any]:
+    def read_points_batch(self, points: Sequence[BasePoint]) -> dict[str, Any]:
         """批量读取测点值
 
         利用 IEC61850Client 的 read_points_batch 按 iec_type 分组读取，

@@ -63,7 +63,9 @@ class SlaveManager:
 
             # 3. 同步更新底层协议服务器 (Modbus)
             server = self._device.server
-            if server and hasattr(server, "add_slave"):
+            from src.proto.pyModbus.server.modbus_server import ModbusServer
+
+            if isinstance(server, ModbusServer):
                 server.add_slave(slave_id)
 
             self._log.info(f"动态添加从机成功: {slave_id}")
@@ -102,7 +104,9 @@ class SlaveManager:
 
             # 4. 同步更新底层协议服务器 (Modbus)
             server = self._device.server
-            if server and hasattr(server, "remove_slave"):
+            from src.proto.pyModbus.server.modbus_server import ModbusServer
+
+            if isinstance(server, ModbusServer):
                 server.remove_slave(slave_id)
 
             # 5. 如果是 IEC104，需要重新初始化
@@ -184,7 +188,9 @@ class SlaveManager:
 
             # 6. 同步更新底层协议服务器 (Modbus)
             server = self._device.server
-            if server and hasattr(server, "add_slave") and hasattr(server, "remove_slave"):
+            from src.proto.pyModbus.server.modbus_server import ModbusServer
+
+            if isinstance(server, ModbusServer):
                 server.add_slave(new_slave_id)
                 server.remove_slave(old_slave_id)
 

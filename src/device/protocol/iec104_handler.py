@@ -93,7 +93,7 @@ class IEC104ServerHandler(ServerHandler):
     def read_value(self, point: BasePoint) -> Any:
         """读取测点值"""
         if self._server:
-            return self._server.get_point_value(io_address=point.address, frame_type=point.frame_type)
+            return self._server.get_point_value(io_address=int(point.address), frame_type=point.frame_type)
         return 0
 
     def write_value(self, point: BasePoint, value: Any) -> bool:
@@ -113,7 +113,7 @@ class IEC104ServerHandler(ServerHandler):
             elif isinstance(point, (Yx, Yk)):
                 # 遥信/遥控: 直接用 bool/int
                 self._server.set_point_value(
-                    io_address=point.address,
+                    io_address=int(point.address),
                     value=bool(point.value),
                     frame_type=point.frame_type,
                 )
@@ -121,7 +121,7 @@ class IEC104ServerHandler(ServerHandler):
                 if supports_quality(point.frame_type):
                     quality_int = encode_quality_for_c104(point.iec_quality, point.frame_type)
                     self._server.set_point_quality(
-                        io_address=point.address,
+                        io_address=int(point.address),
                         quality=quality_int,
                         frame_type=point.frame_type,
                     )
@@ -133,7 +133,7 @@ class IEC104ServerHandler(ServerHandler):
             encoded_value = encode_iec104_value(real_value, point.iec_type_id)
 
             self._server.set_point_value(
-                io_address=point.address,
+                io_address=int(point.address),
                 value=encoded_value,
                 frame_type=point.frame_type,
             )
@@ -141,7 +141,7 @@ class IEC104ServerHandler(ServerHandler):
             if supports_quality(point.frame_type):
                 quality_int = encode_quality_for_c104(point.iec_quality, point.frame_type)
                 self._server.set_point_quality(
-                    io_address=point.address,
+                    io_address=int(point.address),
                     quality=quality_int,
                     frame_type=point.frame_type,
                 )
@@ -177,7 +177,7 @@ class IEC104ServerHandler(ServerHandler):
                     point_type=point_type,
                 )
                 # 建立 IOA → BasePoint 映射，用于命令接收后同步更新应用层值
-                self._command_point_map[point.address] = point
+                self._command_point_map[int(point.address)] = point
 
         # 注册命令接收回调（每次 add_points 时更新）
         self._server.set_on_command_callback(self._on_command_received)
@@ -349,12 +349,12 @@ class IEC104ClientHandler(ClientHandler):
 
         # IEC104 客户端通过 read_point 获取值
         # c104 库已内部完成类型解码，float() 即可得到物理值
-        c104_value = self._client.read_point(io_address=point.address, frame_type=point.frame_type)
+        c104_value = self._client.read_point(io_address=int(point.address), frame_type=point.frame_type)
 
         # 同步品质描述符（c104.Point.quality 在服务端上报时自动更新）
         # c104 库的品质位编码与应用层不同，需要转换
         try:
-            c104_point = self._client.station.get_point(io_address=point.address)
+            c104_point = self._client.station.get_point(io_address=int(point.address))
             if c104_point and hasattr(c104_point, "quality") and c104_point.quality is not None:
                 from src.enums.points.iec104_quality import decode_quality_from_c104
 
@@ -384,7 +384,7 @@ class IEC104ClientHandler(ClientHandler):
                     return float(internal_value)
                 return int(round(internal_value))
             except (ZeroDivisionError, TypeError):
-                self._log.error("IEC104 客户端读取测点值失败，系数计算失败")
+                self._log.error(f"IEC104 客户端读取测点值失败，系数计算失败，地址: {point.address}")
                 return None
         return c104_value
 
@@ -406,11 +406,11 @@ class IEC104ClientHandler(ClientHandler):
                 # 根据 IEC104 类型编码值（返回 c104 原生类型）
                 encoded_value = encode_iec104_value(real_to_send, point.iec_type_id)
                 return self._client.write_point(
-                    io_address=point.address, value=encoded_value, frame_type=point.frame_type
+                    io_address=int(point.address), value=encoded_value, frame_type=point.frame_type
                 )
             elif isinstance(point, (Yx, Yk)):
                 return self._client.write_point(
-                    io_address=point.address, value=bool(value), frame_type=point.frame_type
+                    io_address=int(point.address), value=bool(value), frame_type=point.frame_type
                 )
         except Exception as e:
             self._log.error(f"IEC104 客户端写入失败: {e}")
@@ -434,7 +434,7 @@ class IEC104ClientHandler(ClientHandler):
         for point in points:
             point_type = _resolve_c104_type(point)
             self._client.add_point(
-                io_address=point.address,
+                io_address=int(point.address),
                 point_type=point_type,
             )
 

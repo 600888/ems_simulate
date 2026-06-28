@@ -12,13 +12,12 @@ from src.enums.modbus_def import ProtocolType
 from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import (
     BaseResponse,
-    CurrentTableRequest,
     DeviceInfoRequest,
     DeviceStartRequest,
     DeviceStopRequest,
     DeviceTableRequest,
     ExportModelRequest,
-    IEC61850LoadModelFromIcdRequest,
+    IEC61850ImportModelRequest,
     ManualReadRequest,
     MessageListRequest,
     SimulationStartRequest,
@@ -125,23 +124,6 @@ async def stop_simulation(req: SimulationStopRequest, request: Request):
     return BaseResponse(message="停止模拟程序成功!", data=True)
 
 
-@device_router.post("/current-table", response_model=BaseResponse)
-async def get_current_table(req: CurrentTableRequest, request: Request):
-    """获取当前表数据"""
-    device = _get_device(req.device_name, request)
-    data_list, hex_data_list, real_data_list, max_limit_list, min_limit_list = device.getSlaveValueList(
-        req.slave_id, req.point_name
-    )
-    data_dict = {
-        "data_list": data_list,
-        "hex_data_list": hex_data_list,
-        "real_data_list": real_data_list,
-        "max_limit_list": max_limit_list,
-        "min_limit_list": min_limit_list,
-    }
-    return BaseResponse(message="获取当前表数据成功!", data=data_dict)
-
-
 @device_router.post("/start", response_model=BaseResponse)
 async def start_device(req: DeviceStartRequest, request: Request):
     """启动设备"""
@@ -170,11 +152,11 @@ async def get_iec61850_connect_progress(req: DeviceInfoRequest, request: Request
     return BaseResponse(data=progress)
 
 
-@device_router.post("/iec61850/load-model", response_model=BaseResponse)
-async def load_iec61850_model(req: IEC61850LoadModelFromIcdRequest, request: Request):
-    """加载 IEC61850 ICD 模型（不启动设备）
+@device_router.post("/iec61850/import_model", response_model=BaseResponse)
+async def import_iec61850_model(req: IEC61850ImportModelRequest, request: Request):
+    """导入 IEC61850 ICD 模型（从指定的 ICD 文件路径加载）
 
-    用户手动在界面点击"加载模型"后调用。
+    用户手动在界面点击"导入模型"后调用。
     ICD 文件必须已通过 SCL 导入功能上传到服务器。
 
     Args:
@@ -182,6 +164,42 @@ async def load_iec61850_model(req: IEC61850LoadModelFromIcdRequest, request: Req
     """
     device = _get_device(req.device_name, request)
     success = device.load_iec61850_model(req.icd_path)
+    if not success:
+        raise OperationError("IEC61850 模型导入失败!", data=False)
+    return BaseResponse(message="IEC61850 模型导入成功!", data=True)
+
+
+@device_router.post("/iec61850/load_model", response_model=BaseResponse)
+async def load_iec61850_model(req: DeviceInfoRequest, request: Request):
+    """从数据库存储的 ICD 路径加载 IEC61850 模型
+
+    查询通道配置中记录的 icd_path，若存在且文件有效则加载模型到内存。
+    如果没有记录或文件不存在则返回错误提示。
+
+    Args:
+        req: {device_name}
+    """
+    import os
+
+    from src.data.service.channel_service import ChannelService
+
+    device = _get_device(req.device_name, request)
+
+    # 查询数据库中的 icd_path
+    channels = ChannelService.get_all_channels()
+    channel = next((c for c in channels if c.get("name") == req.device_name), None)
+
+    if not channel:
+        raise NotFoundError(f"设备 {req.device_name} 的通道配置不存在")
+
+    icd_path = channel.get("icd_path")
+    if not icd_path:
+        raise OperationError("数据库中未存储 ICD 模型路径，请先导入模型!", data=False)
+
+    if not os.path.exists(icd_path):
+        raise OperationError(f"ICD 文件不存在: {icd_path}，请重新导入模型!", data=False)
+
+    success = device.load_iec61850_model(icd_path)
     if not success:
         raise OperationError("IEC61850 模型加载失败!", data=False)
     return BaseResponse(message="IEC61850 模型加载成功!", data=True)

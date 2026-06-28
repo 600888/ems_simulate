@@ -115,8 +115,8 @@ class IEC61850LoadModelRequest(BaseModel):
     source: str = Field(..., description="模型来源: 'icd' 从ICD文件加载, 'discovery' 远程发现")
 
 
-class IEC61850LoadModelFromIcdRequest(BaseModel):
-    """从 ICD 文件加载模型请求"""
+class IEC61850ImportModelRequest(BaseModel):
+    """导入 ICD 模型请求"""
 
     device_name: str = Field(..., description="设备名称")
     icd_path: str = Field(..., description="ICD 文件路径")

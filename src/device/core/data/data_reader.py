@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 import struct
 from typing import TYPE_CHECKING
@@ -72,7 +73,7 @@ class DataReader:
     def _get_client_info(self) -> str:
         """获取作为客户端时的真实远程服务地址(IP:Port 或 串口号)"""
         if isinstance(self._handler, ClientHandler):
-            if hasattr(self._device, "serial_port") and self._device.serial_port:
+            if self._device.serial_port:
                 return self._device.serial_port
             return f"{self._device.ip}:{self._device.port}"
         return ""
@@ -101,7 +102,7 @@ class DataReader:
                 point.is_valid = False
 
     async def get_slave_values_async(
-        self, yc_list: list[Yc], yx_list: list[Yx], interval_ms: int = 0
+        self, yc_list: list[Yc], yx_list: list[Yx], interval_ms: int | None = 0
     ) -> tuple[int, int]:
         """异步读取从机的测点值（支持批量读取优化）
 
@@ -132,17 +133,17 @@ class DataReader:
         is_modbus_client = isinstance(self._handler, ModbusClientHandler)
         is_iec61850_client = isinstance(self._handler, IEC61850ClientHandler)
 
-        if is_modbus_client and hasattr(self._handler, "read_registers_batch_async"):
+        if is_modbus_client:
             # Modbus 批量读取优化
             return await self._batch_read_async(all_points, interval_ms=interval_ms)
-        elif is_iec61850_client and hasattr(self._handler, "read_points_batch"):
+        elif is_iec61850_client:
             # IEC61850 批量读取优化
             return await self._iec61850_batch_read_async(all_points)
         else:
             # 回退到逐点读取
             return await self._single_read_async(all_points)
 
-    async def _iec61850_batch_read_async(self, points: list[BasePoint]) -> tuple[int, int]:
+    async def _iec61850_batch_read_async(self, points: Sequence[BasePoint]) -> tuple[int, int]:
         """IEC61850 批量读取模式
 
         利用 IEC61850ClientHandler.read_points_batch 按 iec_type 分组读取，
@@ -179,14 +180,14 @@ class DataReader:
 
         return success_count, fail_count
 
-    async def _single_read_async(self, points: list[BasePoint]) -> tuple[int, int]:
+    async def _single_read_async(self, points: Sequence[BasePoint]) -> tuple[int, int]:
         """逐点读取模式（回退方案）"""
         success_count = 0
         fail_count = 0
         change_source = self._get_change_source()
         for point in points:
             try:
-                if hasattr(self._handler, "read_value_async"):
+                if isinstance(self._handler, ClientHandler):
                     value = await self._handler.read_value_async(point)
                 else:
                     value = self._handler.read_value(point)
@@ -205,7 +206,7 @@ class DataReader:
                 fail_count += 1
         return success_count, fail_count
 
-    async def _batch_read_async(self, points: list[BasePoint], interval_ms: int = 0) -> tuple[int, int]:
+    async def _batch_read_async(self, points: Sequence[BasePoint], interval_ms: int | None = 0) -> tuple[int, int]:
         """批量读取模式（优化方案）
 
         将连续地址的测点分组，一次性读取多个数据点，然后解码映射。
@@ -228,7 +229,7 @@ class DataReader:
             for group in address_groups:
                 try:
                     # 在请求之间添加间隔（第一次请求不等待）
-                    if not is_first_request and interval_ms > 0:
+                    if not is_first_request and interval_ms is not None and interval_ms > 0:
                         await asyncio.sleep(interval_ms / 1000.0)
                     is_first_request = False
 
@@ -257,7 +258,7 @@ class DataReader:
 
     def _group_points_by_address(
         self,
-        points: list[BasePoint],
+        points: Sequence[BasePoint],
         max_gap: int = 0,
         max_count: int = 120,
     ) -> dict[tuple[int, int], list[AddressGroup]]:
@@ -274,8 +275,6 @@ class DataReader:
         # 按 (slave_id, func_code) 分组
         grouped: dict[tuple[int, int], list[BasePoint]] = {}
         for point in points:
-            if not hasattr(point, "rtu_addr") or not hasattr(point, "func_code"):
-                continue
             key = (point.rtu_addr, point.func_code)
             if key not in grouped:
                 grouped[key] = []
@@ -294,12 +293,12 @@ class DataReader:
                 # 获取该测点占用的寄存器数量
                 decode_info = Decode.get_info(point.decode)
                 point_reg_count = decode_info.register_cnt
-                point_end_addr = point.address + point_reg_count
+                point_end_addr = int(point.address) + point_reg_count
 
                 if current_group is None:
                     # 新建分组
                     current_group = AddressGroup(
-                        start_address=point.address,
+                        start_address=int(point.address),
                         register_count=point_reg_count,
                         points=[point],
                     )
@@ -311,7 +310,7 @@ class DataReader:
                     new_count = new_end - current_group.start_address
 
                     # 检查是否连续或在允许的间隙内，且总数量不超过限制
-                    if point.address <= current_end + max_gap and new_count <= max_count:
+                    if int(point.address) <= current_end + max_gap and new_count <= max_count:
                         # 扩展当前分组
                         if point_end_addr > current_end:
                             current_group.register_count = new_count
@@ -320,7 +319,7 @@ class DataReader:
                         # 保存当前分组，开始新分组
                         address_groups.append(current_group)
                         current_group = AddressGroup(
-                            start_address=point.address,
+                            start_address=int(point.address),
                             register_count=point_reg_count,
                             points=[point],
                         )
@@ -358,7 +357,7 @@ class DataReader:
         for point in points:
             try:
                 # 计算该测点在数据数组中的偏移
-                offset = point.address - start_address
+                offset = int(point.address) - start_address
                 decode_info = Decode.get_info(point.decode)
                 reg_count = decode_info.register_cnt
 

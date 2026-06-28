@@ -78,33 +78,36 @@
             :status="modelLoaded"
           />
 
-          <!-- 加载模型 -->
-          <el-select
-            v-model="currentModelMethod"
-            :placeholder="$t('device.selectModelSource')"
-            size="large"
-            class="model-select"
-            :disabled="isModelProcessing"
-          >
-            <el-option
-              v-for="item in modelOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
+          <!-- 加载模型：从数据库加载 -->
           <el-button
             class="button btn-load-model"
-            @click="handleLoadModel"
+            @click="handleLoadModelFromDb"
             :disabled="isModelProcessing"
             :loading="isModelProcessing"
             size="large"
           >
-            <el-icon class="icon"><Upload /></el-icon>
+            <el-icon class="icon"><FolderOpened /></el-icon>
             <span>{{ $t("device.loadModel") }}</span>
           </el-button>
 
-          <!-- 导出模型 -->
+          <!-- 导入模型 -->
+          <el-button
+            class="button btn-import-model"
+            :disabled="isModelProcessing"
+            size="large"
+            @click="handleImportModel"
+          >
+            <el-icon class="icon"><Upload /></el-icon>
+            <span>{{ $t("device.importModel") }}</span>
+          </el-button>
+          <IcdImportUpload
+            ref="icdImportUploadRef"
+            @file-change="onIcdFileChange"
+            @import-success="onIcdImportSuccess"
+            @import-error="onIcdImportError"
+          />
+
+          <!-- 导出模型（仅客户端） -->
           <el-button
             v-if="isIec61850Client"
             class="button btn-export"
@@ -155,7 +158,10 @@
                 :class="['button', simulationStatus ? 'btn-stop' : 'btn-start']"
                 @click="startFunction"
                 :disabled="
-                  isSimProcessing || !deviceStatus || isClientDevice || (isIec61850Protocol && !modelLoaded)
+                  isSimProcessing ||
+                  !deviceStatus ||
+                  isClientDevice ||
+                  (isIec61850Protocol && !modelLoaded)
                 "
                 :loading="isSimProcessing"
               >
@@ -219,21 +225,18 @@ import {
   stopDevice,
   getIEC61850ConnectProgress,
   loadIEC61850Model,
-  discoverIEC61850Model,
 } from "@/api/deviceApi";
 import type { IEC61850ConnectProgress } from "@/api/deviceApi";
 import { triggerSidebarRefresh } from "@/composables";
+import IcdImportUpload from "@/components/common/IcdImportUpload.vue";
 import {
   CaretRight,
   VideoPause,
   Document,
   Download,
-  Upload,
-  ArrowDown,
   FolderOpened,
-  Search,
 } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 
 const route = useRoute();
 const { t } = useI18n();
@@ -256,6 +259,7 @@ const simulationStatus = ref<boolean>(false);
 const showMessageDialog = ref<boolean>(false);
 const showExportDialog = ref<boolean>(false);
 const slaveRef = ref<any>(null);
+const icdImportUploadRef = ref<InstanceType<typeof IcdImportUpload>>();
 
 // 设备状态文字：使用 computed 确保语言切换时自动刷新
 const deviceStatusStr = computed(() => {
@@ -302,13 +306,17 @@ const simTooltipText = computed(() => {
 });
 const simTooltipDisabled = computed(() => {
   // 当按钮因任何原因禁用时，显示提示
-  return isClientDevice.value || !deviceStatus.value || (isIec61850Protocol.value && !modelLoaded.value);
+  return (
+    isClientDevice.value ||
+    !deviceStatus.value ||
+    (isIec61850Protocol.value && !modelLoaded.value)
+  );
 });
 
 // IEC61850 模型加载状态
 const modelLoaded = ref(false);
 const isModelProcessing = ref(false);
-const sclIcdFilePath = ref(""); // SCL 导入的 ICD 文件路径，由用户输入或选择
+const channelId = ref<number | null>(null);
 
 const simulateOptions = computed(() => [
   { value: "Random", label: t("device.random") },
@@ -319,20 +327,6 @@ const simulateOptions = computed(() => [
   { value: "Pulse", label: t("device.pulse") },
 ]);
 const currentSimulateMethod = ref<string>("Random");
-
-// IEC61850 模型加载选项
-const modelOptions = computed(() => {
-  const options = [{ value: "icd", label: t("device.loadModelFromIcd") }];
-  // 仅客户端有远程发现选项
-  if (isIec61850Client.value) {
-    options.push({
-      value: "discovery",
-      label: t("device.loadModelDiscover"),
-    });
-  }
-  return options;
-});
-const currentModelMethod = ref<string>("icd");
 
 const isDeviceProcessing = ref<boolean>(false);
 const isSimProcessing = ref<boolean>(false);
@@ -453,6 +447,7 @@ const fetchDeviceInfo = async () => {
     serialPort.value = info.get("serial_port") || null;
     baudrate.value = info.get("baudrate") || 9600;
     communicationType.value = info.get("type") || null;
+    channelId.value = info.get("channel_id") ?? null;
     const serverStatus = info.get("server_status");
     deviceStatus.value = serverStatus;
     // 初始化防抖状态，避免初始加载时误弹通知
@@ -503,39 +498,11 @@ const startFunction = async () => {
   }
 };
 
-// IEC61850 模型加载
-const handleLoadModel = async () => {
-  const command = currentModelMethod.value;
-  if (command === "icd") {
-    // 从 ICD 文件加载: 弹出输入框让用户输入 ICD 文件路径
-    try {
-      const { value } = await ElMessageBox.prompt(
-        t("device.selectModelSource"),
-        t("device.loadModelFromIcd"),
-        {
-          confirmButtonText: t("common.confirm"),
-          cancelButtonText: t("common.cancel"),
-          inputPlaceholder: "data/61850icd/{ied_name}/{ied_name}_v{revision}.icd",
-          inputValue: sclIcdFilePath.value,
-        }
-      );
-      if (value) {
-        sclIcdFilePath.value = value;
-        await doLoadModel(value);
-      }
-    } catch {
-      // 取消输入，不做操作
-    }
-  } else if (command === "discovery") {
-    // 远程发现模型
-    await doDiscoverModel();
-  }
-};
-
-const doLoadModel = async (icdPath: string) => {
+// IEC61850 模型加载：从数据库加载
+const handleLoadModelFromDb = async () => {
   isModelProcessing.value = true;
   try {
-    const success = await loadIEC61850Model(routeName.value, icdPath);
+    const success = await loadIEC61850Model(routeName.value);
     if (success) {
       modelLoaded.value = true;
       ElMessage.success(t("device.modelLoadSuccess"));
@@ -543,31 +510,39 @@ const doLoadModel = async (icdPath: string) => {
     } else {
       ElMessage.error(t("device.modelLoadFailed"));
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
-    ElMessage.error(t("device.modelLoadFailed"));
+    // 后端返回的错误消息已由全局拦截器处理
   } finally {
     isModelProcessing.value = false;
   }
 };
 
-const doDiscoverModel = async () => {
-  isModelProcessing.value = true;
-  try {
-    const success = await discoverIEC61850Model(routeName.value, 120000);
-    if (success) {
-      modelLoaded.value = true;
-      ElMessage.success(t("device.modelLoadSuccess"));
-      triggerSidebarRefresh(routeName.value);
-    } else {
-      ElMessage.error(t("device.modelLoadFailed"));
-    }
-  } catch (error) {
-    console.error(error);
+// IEC61850 模型导入：文件选择回调
+const onIcdFileChange = () => {
+  // 文件选中后自动开始导入
+  if (!channelId.value) {
     ElMessage.error(t("device.modelLoadFailed"));
-  } finally {
-    isModelProcessing.value = false;
+    return;
   }
+  icdImportUploadRef.value?.importIcd(channelId.value).catch(() => {});
+};
+
+// IEC61850 模型导入：点击按钮打开文件选择框
+const handleImportModel = () => {
+  icdImportUploadRef.value?.openFileDialog();
+};
+
+// IEC61850 模型导入：成功回调
+const onIcdImportSuccess = () => {
+  modelLoaded.value = true;
+  ElMessage.success(t("device.modelLoadSuccess"));
+  triggerSidebarRefresh(routeName.value);
+};
+
+// IEC61850 模型导入：失败回调
+const onIcdImportError = () => {
+  ElMessage.error(t("device.modelLoadFailed"));
 };
 
 // 状态轮询定时器
@@ -833,6 +808,11 @@ watch(
   box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
 }
 
+.btn-import-model {
+  background-color: #f59e0b;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+}
+
 .progress-row {
   :deep(.el-progress-bar__innerText) {
     font-size: 12px;
@@ -840,8 +820,7 @@ watch(
   }
 }
 
-.simulation-select,
-.model-select {
+.simulation-select {
   margin: 0;
   width: 200px;
   :deep(.el-input__wrapper) {

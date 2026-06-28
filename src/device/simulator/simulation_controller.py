@@ -45,7 +45,7 @@ class SimulationController:
         log.error(f"未找到点 {point_code}")
         return False
 
-    def get_point_info(self, point_code: str) -> dict:
+    def get_point_info(self, point_code: str) -> dict | None:
         """获取单个点的信息"""
         for point, simulator in self.points.items():
             if point.code == point_code:
@@ -65,14 +65,14 @@ class SimulationController:
                     "iec_quality": getattr(point, "iec_quality_value", 0),
                 }
                 # 遥测和遥调特有字段
-                if hasattr(point, "mul_coe"):
+                if isinstance(point, (Yc, Yt)):
                     info["mul_coe"] = point.mul_coe
-                if hasattr(point, "add_coe"):
+                if isinstance(point, Yt):
                     info["add_coe"] = point.add_coe
-                if hasattr(point, "bit"):
+                if isinstance(point, Yx):
                     info["bit"] = point.bit
                 # 上下限值（Yc/Yt 都有）
-                if hasattr(point, "min_value_limit") and hasattr(point, "max_value_limit"):
+                if isinstance(point, (Yc, Yt)):
                     info["min_value"] = point.min_value_limit
                     info["max_value"] = point.max_value_limit
                 return info

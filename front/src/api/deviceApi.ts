@@ -188,26 +188,7 @@ export async function manualRead(deviceName: string, interval: number = 0): Prom
   }
 }
 
-export async function getCurrentTable(
-  deviceName: string,
-  slaveId: number,
-  pointName: string = ""
-): Promise<Map<string, any>> {
-  try {
-    const data = await requestApi(DEVICE_API.CURRENT_TABLE, "post", {
-      device_name: deviceName,
-      slave_id: slaveId,
-      point_name: pointName,
-    });
-    return new Map<string, any>(Object.entries(data));
-  } catch (error) {
-    console.error("Error getting current table:", error);
-    throw error;
-  }
-}
-
 // ===== 报文捕获 =====
-
 export async function getMessages(
   deviceName: string,
   limit: number = 100
@@ -270,20 +251,34 @@ export async function getIEC61850ConnectProgress(
   }
 }
 
-// ===== IEC61850 模型加载 =====
+// ===== IEC61850 模型加载/导入 =====
 
 export async function loadIEC61850Model(
+  deviceName: string
+): Promise<boolean> {
+  try {
+    const data = await requestApi(DEVICE_API.IEC61850_LOAD_MODEL, "post", {
+      device_name: deviceName,
+    });
+    return data;
+  } catch (error) {
+    console.error("Error loading IEC61850 model:", error);
+    throw error;
+  }
+}
+
+export async function importIEC61850Model(
   deviceName: string,
   icdPath: string
 ): Promise<boolean> {
   try {
-    const data = await requestApi(DEVICE_API.IEC61850_LOAD_MODEL, "post", {
+    const data = await requestApi(DEVICE_API.IEC61850_IMPORT_MODEL, "post", {
       device_name: deviceName,
       icd_path: icdPath,
     });
     return data;
   } catch (error) {
-    console.error("Error loading IEC61850 model:", error);
+    console.error("Error importing IEC61850 model:", error);
     throw error;
   }
 }

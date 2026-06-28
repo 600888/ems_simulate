@@ -178,7 +178,8 @@ class IEC104Server:
                         if command and hasattr(command, "quality"):
                             command.quality = quality
         except Exception as e:
-            log.info(f"设置监控点品质失败: {e}")
+            log.error(f"设置监控点品质失败: {e}")
+            raise
 
     def get_point_quality(self, io_address: int, frame_type: int = 0) -> int:
         """
@@ -202,8 +203,8 @@ class IEC104Server:
                             return int(command.quality)
             return 0
         except Exception as e:
-            log.info(f"获取监控点品质失败: {e}")
-            return 0
+            log.error(f"获取监控点品质失败: {e}")
+            raise
 
     def start(self):
         """启动IEC 104服务器"""

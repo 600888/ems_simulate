@@ -85,15 +85,14 @@ class DeviceController:
         # 停止设备
         try:
             # 停止更新线程
-            if hasattr(device, "data_update_thread") and device.data_update_thread:
+            if device.data_update_thread:
                 device.data_update_thread.stop()
 
             # 停止模拟
-            if hasattr(device, "simulation_controller"):
-                device.simulation_controller.stop_simulation()
+            device.simulation_controller.stop_simulation()
 
             # 停止协议服务端/客户端
-            if hasattr(device, "protocol_handler") and device.protocol_handler:
+            if device.protocol_handler:
                 await device.protocol_handler.stop()
         except Exception as e:
             log.error(f"移除设备 {device.name} (ID: {device_id}) 时出错: {e}")
@@ -123,7 +122,7 @@ class DeviceController:
                 if device.name.upper().find("PCS") != -1:
                     # 获取PCS的功率值（假设测点编码为"totalAcP"）
                     power_point = device.get_point_data(["totalAcP"])
-                    if power_point and hasattr(power_point, "real_value"):
+                    if power_point:
                         total_power += power_point.real_value
 
             # 将功率之和设置到储能电表的指定测点（假设测点编码为"pcs_total_power"）
@@ -286,26 +285,27 @@ class DeviceController:
     async def stop_all_modbus_server(self):
         for device in self.device_list:
             # 停止数据更新线程
-            if hasattr(device, "data_update_thread"):
+            if device.data_update_thread:
                 device.data_update_thread.stop()
             # 停止模拟控制器
-            if hasattr(device, "simulation_controller"):
-                device.simulation_controller.stop_simulation()
+            device.simulation_controller.stop_simulation()
             # 停止服务器
-            if hasattr(device, "server") and device.server:
-                # 根据协议类型选择停止方法
-                if hasattr(device.server, "stopAsync"):
-                    await device.server.stopAsync()
-                elif hasattr(device.server, "stop"):
+            if device.server:
+                from src.proto.iec61850.iec61850_server import IEC61850Server
+                from src.proto.pyModbus.server.modbus_server import ModbusServer
+
+                if isinstance(device.server, IEC61850Server):
                     device.server.stop()
+                elif isinstance(device.server, ModbusServer):
+                    await device.server.stopAsync()
             # 停止客户端
-            if hasattr(device, "client") and device.client and hasattr(device.client, "disconnect"):
+            if device.client:
                 device.client.disconnect()
 
         # 停止数据同步线程
-        if hasattr(self, "data_sync_thread"):
+        if self.data_sync_thread:
             self.data_sync_thread.stop()
-            log.info("PCS功率同步线程已停止")
+            log.info("数据同步线程已停止")
 
 
 device_controller = None

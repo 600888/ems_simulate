@@ -78,7 +78,7 @@ def _get_file_manager(request: Request):
     """从 app.state 获取或创建 SclFileManager"""
     from src.proto.iec61850.plugins.scl.service.file_manager import SclFileManager
 
-    if not hasattr(request.app.state, "scl_file_manager"):
+    if not request.app.state.scl_file_manager:
         request.app.state.scl_file_manager = SclFileManager()
     return request.app.state.scl_file_manager
 
@@ -87,7 +87,7 @@ def _get_import_service(request: Request):
     """从 app.state 获取或创建 SclImportService"""
     from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
 
-    if not hasattr(request.app.state, "scl_import_service"):
+    if not request.app.state.scl_import_service:
         request.app.state.scl_import_service = SclImportService()
     return request.app.state.scl_import_service
 
@@ -344,7 +344,7 @@ async def import_points_from_scl(
     try:
         device_controller = request.app.state.device_controller
         device = device_controller.get_device_by_id(channel_id)
-        if device and hasattr(device, "load_iec61850_model"):
+        if device:
             if device.load_iec61850_model(dest_path):
                 log.info(f"ICD 模型已自动加载到内存: {dest_path}")
             else:
@@ -481,7 +481,7 @@ async def import_full_from_scl(
     try:
         device_controller = request.app.state.device_controller
         device = device_controller.get_device_by_id(channel_id)
-        if device and hasattr(device, "load_iec61850_model"):
+        if device:
             if device.load_iec61850_model(dest_path):
                 log.info(f"ICD 模型已自动加载到内存: {dest_path}")
             else:

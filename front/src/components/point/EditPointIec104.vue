@@ -133,9 +133,13 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 const startRefresh = () => {
   stopRefresh();
-  refreshTimer = setInterval(() => {
-    loadIec104Quality();
-  }, 1000);
+  // 服务端模式：品质可被用户编辑，不自动刷新以免覆盖
+  // 客户端模式：品质只读，每秒刷新以显示远端最新值
+  if (!isIec104Server.value) {
+    refreshTimer = setInterval(() => {
+      loadIec104Quality();
+    }, 1000);
+  }
 };
 
 const stopRefresh = () => {

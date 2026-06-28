@@ -44,15 +44,12 @@ class PointTreeService:
                     add_points(points, "YX")
 
                 # 遥调
-                # PointManager 中维护了所有类型的字典
-                if hasattr(device.point_manager, "yt_dict"):
-                    for _, points in device.point_manager.yt_dict.items():
-                        add_points(points, "YT")
+                for _, points in device.point_manager.yt_dict.items():
+                    add_points(points, "YT")
 
                 # 遥控
-                if hasattr(device.point_manager, "yk_dict"):
-                    for _, points in device.point_manager.yk_dict.items():
-                        add_points(points, "YK")
+                for _, points in device.point_manager.yk_dict.items():
+                    add_points(points, "YK")
 
                 # 收集非空类型节点
                 children = []
@@ -78,7 +75,7 @@ class PointTreeService:
     def _create_leaf(point: BasePoint, type_label: str) -> PointLeaf:
         """创建测点叶子节点"""
         # 获取值：优先 real_value
-        val = point.real_value if hasattr(point, "real_value") else point.value
+        val = point.real_value
 
         return PointLeaf(
             code=point.code,

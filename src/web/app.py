@@ -147,9 +147,11 @@ async def _init_goose_manager(device_controller):
             server_map = {}
             for device in device_controller.device_list:
                 device_id = getattr(device, "device_id", None) or getattr(device, "id", None)
-                if device_id and hasattr(device, "protocol_handler") and device.protocol_handler:
+                if device_id and device.protocol_handler:
                     handler = device.protocol_handler
-                    if hasattr(handler, "server") and handler.server:
+                    from src.device.protocol.iec61850_handler import IEC61850ServerHandler
+
+                    if isinstance(handler, IEC61850ServerHandler) and handler.server:
                         if isinstance(handler.server, IEC61850Server):
                             server_map[device_id] = handler.server
 

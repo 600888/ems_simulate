@@ -94,9 +94,11 @@ async def create_goose_publisher(
             device_controller = getattr(request.app.state, "device_controller", None)
             if device_controller:
                 _device = device_controller.get_device_by_id(body.channel_id)
-                if _device and hasattr(_device, "protocol_handler") and _device.protocol_handler:
+                if _device and _device.protocol_handler:
                     _handler = _device.protocol_handler
-                    if hasattr(_handler, "server"):
+                    from src.device.protocol.iec61850_handler import IEC61850ServerHandler
+
+                    if isinstance(_handler, IEC61850ServerHandler):
                         iec61850_server = _handler.server
         except Exception as e:
             log.warning(f"获取 IEC61850Server 失败: {e}")
@@ -279,9 +281,11 @@ async def update_publisher_entry(
             device_controller = getattr(request.app.state, "device_controller", None)
             if device_controller:
                 _device = device_controller.get_device_by_id(channel_id)
-                if _device and hasattr(_device, "protocol_handler") and _device.protocol_handler:
+                if _device and _device.protocol_handler:
                     _handler = _device.protocol_handler
-                    if hasattr(_handler, "server") and _handler.server:
+                    from src.device.protocol.iec61850_handler import IEC61850ServerHandler
+
+                    if isinstance(_handler, IEC61850ServerHandler) and _handler.server:
                         iec61850_server = _handler.server
                         publisher = manager._publishers.get(body.publisher_id)
                         if publisher:

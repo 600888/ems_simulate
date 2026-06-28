@@ -56,11 +56,11 @@ def _get_reports_plugin(channel_id: int, request: Request) -> Any:
 
     if isinstance(protocol_handler, IEC61850ClientHandler):
         client = getattr(protocol_handler, "_client", None)
-        if client and hasattr(client, "reports"):
+        if client:
             return client.reports
     elif isinstance(protocol_handler, IEC61850ServerHandler):
         server = getattr(protocol_handler, "_server", None)
-        if server and hasattr(server, "reports"):
+        if server:
             return server.reports
 
     raise ValidationError("Reports 插件不可用")
@@ -199,7 +199,7 @@ def _refresh_single_rcb(reports: Any, rcb_ref: str, channel_id: int, request: Re
 
         # 更新缓存中对应的那条记录
         handler = _get_client_handler(channel_id, request)
-        if handler and hasattr(handler, "update_discovered_rcb"):
+        if handler:
             handler.update_discovered_rcb(rcb_ref, detail)
         return detail
     except Exception as e:

@@ -259,7 +259,7 @@ def _build_iec61850_tree(
         if point_name and point_name not in str(point.name):
             continue
 
-        address = str(point.address) if hasattr(point, "address") else ""
+        address = str(point.address)
         parsed = _parse_iec61850_address(address)
         if not parsed:
             continue
@@ -562,23 +562,25 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
     logical_devices = []
     protocol_handler = getattr(device, "protocol_handler", None)
     if protocol_handler:
-        if hasattr(protocol_handler, "_client") and protocol_handler._client:
+        from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+
+        if isinstance(protocol_handler, IEC61850ClientHandler):
             client = protocol_handler._client
-            if hasattr(client, "browse_logical_devices"):
+            if client:
                 logical_devices = client.browse_logical_devices()
             # 获取每个 LD 下的 LN 列表
             data_model = []
             for ld in logical_devices:
-                lns = client.browse_logical_nodes(ld) if hasattr(client, "browse_logical_nodes") else []
+                lns = client.browse_logical_nodes(ld) if client else []
                 data_model.append({"name": ld, "children": lns})
-        elif hasattr(protocol_handler, "_server") and protocol_handler._server:
+        elif isinstance(protocol_handler, IEC61850ServerHandler):
             server = protocol_handler._server
-            if hasattr(server, "browse_logical_devices"):
+            if server:
                 logical_devices = server.browse_logical_devices()
             # 获取每个 LD 下的 LN 列表
             data_model = []
             for ld in logical_devices:
-                lns = server.browse_logical_nodes(ld) if hasattr(server, "browse_logical_nodes") else []
+                lns = server.browse_logical_nodes(ld) if server else []
                 data_model.append({"name": ld, "children": lns})
 
     # 获取 GOOSE 信息（本机发布者）
@@ -598,7 +600,7 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
 
     # 如果是客户端设备，补充远端发现的 GOOSE 控制块和 DataSet
     dataset_items = []
-    if device and hasattr(device, "protocol_handler") and device.protocol_handler:
+    if device.protocol_handler:
         protocol_handler = device.protocol_handler
         discovered_goose = getattr(protocol_handler, "_discovered_goose_items", None)
         if discovered_goose:
@@ -610,7 +612,9 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
                 goose_items.append(f"远端GoCB: {cb_ref} ({status}, APPID={app_id_str})")
 
         # 获取 DataSet 列表（含成员信息），按 LD > LN 组织层级
-        if hasattr(protocol_handler, "get_discovered_datasets"):
+        from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+
+        if isinstance(protocol_handler, (IEC61850ClientHandler, IEC61850ServerHandler)):
             discovered_datasets = protocol_handler.get_discovered_datasets()
             log.info(
                 f"get_discovered_datasets() 返回 {len(discovered_datasets)} 个 DataSet: "
@@ -660,14 +664,12 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
 
             if isinstance(protocol_handler, IEC61850ClientHandler):
                 # 优先用连接时缓存的 RCB，避免首屏现场探测导致空白
-                rcbs = []
-                if hasattr(protocol_handler, "get_discovered_rcbs"):
-                    rcbs = protocol_handler.get_discovered_rcbs()
+                rcbs = protocol_handler.get_discovered_rcbs()
                 client = getattr(protocol_handler, "_client", None)
                 if not rcbs and client and hasattr(client, "reports") and client.reports:
                     rcbs = client.reports.discover_rcbs()
                     # 现场发现成功则回写缓存，供 /reports 页面复用
-                    if rcbs and hasattr(protocol_handler, "set_discovered_rcbs"):
+                    if rcbs:
                         protocol_handler.set_discovered_rcbs(rcbs)
                 for rcb in rcbs:
                     active_mark = " 🟢" if rcb.get("rpt_ena") else ""
@@ -699,7 +701,7 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
             elif isinstance(protocol_handler, IEC61850ServerHandler):
                 iec61850_client = getattr(protocol_handler, "_server", None)
 
-            if iec61850_client and hasattr(iec61850_client, "files") and iec61850_client.files:
+            if iec61850_client:
                 files_plugin = iec61850_client.files
                 root_entries = files_plugin.list_directory("")
                 for entry in root_entries:
@@ -790,7 +792,7 @@ async def iec61850_read_points(
     # 判断是否为 IEC61850 客户端且支持批量读取
     protocol_handler = device.protocol_handler
     is_iec61850_client = isinstance(protocol_handler, IEC61850ClientHandler)
-    has_batch = is_iec61850_client and hasattr(protocol_handler, "read_points_batch")
+    has_batch = is_iec61850_client
 
     all_points = yc_list + yx_list
     success_count = 0
@@ -821,13 +823,16 @@ async def iec61850_read_points(
                 if body.interval_ms > 0:
                     await asyncio.sleep(body.interval_ms / 1000.0)
 
-                if hasattr(protocol_handler, "read_value_async"):
-                    value = await protocol_handler.read_value_async(point)
-                else:
-                    value = protocol_handler.read_value(point)
+                value = await protocol_handler.read_value_async(point)
 
                 if value is not None:
-                    source = ChangeSource.CLIENT_READ if hasattr(protocol_handler, "_client") else ChangeSource.INTERNAL
+                    from src.device.protocol.base_handler import ClientHandler
+
+                    source = (
+                        ChangeSource.CLIENT_READ
+                        if isinstance(protocol_handler, ClientHandler)
+                        else ChangeSource.INTERNAL
+                    )
                     with track_change(source, f"IEC61850批量读取 {point.code}"):
                         point.value = value
                     point.is_valid = True
@@ -884,8 +889,6 @@ def _build_iec61850_dataset_tree(device, dataset_ref: str) -> dict[str, Any]:
         return {"items": [], "total": 0}
 
     # 从 handler 获取已发现的 DataSet 列表
-    if not hasattr(protocol_handler, "get_discovered_datasets"):
-        return {"items": [], "total": 0}
     discovered_datasets = protocol_handler.get_discovered_datasets()
 
     matched_ds = None
@@ -907,9 +910,7 @@ def _build_iec61850_dataset_tree(device, dataset_ref: str) -> dict[str, Any]:
     members = matched_ds.get("members", [])
 
     # 读取 DataSet 所有值
-    values = {}
-    if hasattr(protocol_handler, "read_dataset_values"):
-        values = protocol_handler.read_dataset_values(dataset_ref)
+    values = protocol_handler.read_dataset_values(dataset_ref)
 
     # 记录读取时间（用于前端显示"最后更新时间"）
     import datetime
@@ -1030,7 +1031,7 @@ def _get_iec61850_filtered_points(device, category: str, item: str) -> list[Base
     if category == "DataModel" and item:
         result = []
         for point in all_points:
-            address = str(point.address) if hasattr(point, "address") else ""
+            address = str(point.address)
             if address.startswith(f"{item}/") or address.startswith(f"{item}."):
                 result.append(point)
         return result
@@ -1049,11 +1050,13 @@ async def get_iec61850_do_children(
     do_items = []
     protocol_handler = getattr(device, "protocol_handler", None)
     if protocol_handler:
-        if hasattr(protocol_handler, "_client") and protocol_handler._client:
+        from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+
+        if isinstance(protocol_handler, IEC61850ClientHandler) and protocol_handler._client:
             client = protocol_handler._client
             if hasattr(client, "browse_data_objects"):
                 do_items = client.browse_data_objects(body.ld, body.ln)
-        elif hasattr(protocol_handler, "_server") and protocol_handler._server:
+        elif isinstance(protocol_handler, IEC61850ServerHandler) and protocol_handler._server:
             server = protocol_handler._server
             if hasattr(server, "browse_data_objects"):
                 do_items = server.browse_data_objects(body.ld, body.ln)
@@ -1072,11 +1075,13 @@ async def get_iec61850_da_children(
     da_items = []
     protocol_handler = getattr(device, "protocol_handler", None)
     if protocol_handler:
-        if hasattr(protocol_handler, "_client") and protocol_handler._client:
+        from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+
+        if isinstance(protocol_handler, IEC61850ClientHandler) and protocol_handler._client:
             client = protocol_handler._client
             if hasattr(client, "browse_data_attributes"):
                 da_items = client.browse_data_attributes(body.ld, body.ln, body.do_name)
-        elif hasattr(protocol_handler, "_server") and protocol_handler._server:
+        elif isinstance(protocol_handler, IEC61850ServerHandler) and protocol_handler._server:
             server = protocol_handler._server
             if hasattr(server, "browse_data_attributes"):
                 da_items = server.browse_data_attributes(body.ld, body.ln, body.do_name)
@@ -1190,10 +1195,8 @@ async def get_iec61850_dataset_detail(
 
     # 优先实时浏览 DataSet 目录（获取最新成员信息）
     matched_ds = None
-    if isinstance(protocol_handler, IEC61850ClientHandler) and hasattr(
-        protocol_handler.client, "browse_dataset_directory"
-    ):
-        members = protocol_handler.client.browse_dataset_directory(body.dataset_ref)
+    if isinstance(protocol_handler, IEC61850ClientHandler):
+        members = protocol_handler.client.browse_dataset_directory(body.dataset_ref) if protocol_handler.client else []
         matched_ds = {
             "ref": body.dataset_ref,
             "name": body.dataset_ref.split("$")[-1] if "$" in body.dataset_ref else body.dataset_ref,
@@ -1202,9 +1205,7 @@ async def get_iec61850_dataset_detail(
         }
 
     # 如果实时浏览失败，从缓存查找
-    if (not matched_ds or matched_ds.get("member_count", 0) == 0) and hasattr(
-        protocol_handler, "get_discovered_datasets"
-    ):
+    if not matched_ds or matched_ds.get("member_count", 0) == 0:
         for ds in protocol_handler.get_discovered_datasets():
             if ds.get("ref") == body.dataset_ref:
                 matched_ds = ds
@@ -1214,9 +1215,7 @@ async def get_iec61850_dataset_detail(
         raise NotFoundError("DataSet 未找到，请先连接设备获取结构")
 
     # 读取 DataSet 所有成员的值
-    values = {}
-    if hasattr(protocol_handler, "read_dataset_values"):
-        values = protocol_handler.read_dataset_values(body.dataset_ref)
+    values = protocol_handler.read_dataset_values(body.dataset_ref)
 
     # 将值合并到成员列表
     members = matched_ds.get("members", [])

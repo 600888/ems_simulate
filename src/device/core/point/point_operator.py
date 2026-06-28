@@ -63,7 +63,7 @@ class PointOperator:
     def _get_client_info(self) -> str:
         """获取作为客户端时的真实远程服务地址(IP:Port 或 串口号)"""
         if isinstance(self._handler, ClientHandler):
-            if hasattr(self._device, "serial_port") and self._device.serial_port:
+            if self._device.serial_port:
                 return self._device.serial_port
             return f"{self._device.ip}:{self._device.port}"
         return ""
@@ -163,10 +163,7 @@ class PointOperator:
 
             if self._handler:
                 try:
-                    if hasattr(self._handler, "write_value_async"):
-                        result = await self._handler.write_value_async(point, point.value)
-                    else:
-                        result = self._handler.write_value(point, point.value)
+                    result = await self._handler.write_value_async(point, point.value)
                 except Exception as e:
                     self._log.error(f"测点 {point_code} 写入失败: {e}")
                     raise ValueError(f"测点 {point_code} 写入失败: {e}") from e
@@ -204,11 +201,7 @@ class PointOperator:
                     point.value = value
                 point.is_valid = True
                 self._log.info(f"读取测点 {point_code} 成功: {value}")
-                return (
-                    float(point.value)
-                    if getattr(point, "bit", None) is not None
-                    else (point.real_value if hasattr(point, "real_value") else float(value))
-                )
+                return float(point.value) if getattr(point, "bit", None) is not None else point.real_value
             else:
                 point.is_valid = False
                 self._log.info(f"读取测点 {point_code} 失败: {value}")
@@ -242,11 +235,7 @@ class PointOperator:
                     point.value = value
                 point.is_valid = True
                 self._log.info(f"异步读取测点 {point_code} 成功: {value}")
-                return (
-                    float(point.value)
-                    if getattr(point, "bit", None) is not None
-                    else (point.real_value if hasattr(point, "real_value") else float(value))
-                )
+                return float(point.value) if getattr(point, "bit", None) is not None else point.real_value
             else:
                 point.is_valid = False
                 self._log.info(f"异步读取测点 {point_code} 失败: {value}")
@@ -261,7 +250,9 @@ class PointOperator:
         if not self._handler:
             return {"quality": {}, "timestamp": {}}
 
-        if not hasattr(self._handler, "read_metadata_async"):
+        from src.device.protocol.iec61850_handler import IEC61850ClientHandler
+
+        if not isinstance(self._handler, IEC61850ClientHandler):
             self._log.debug(f"协议处理器不支持元数据读取: {point_code}")
             return {"quality": {}, "timestamp": {}}
 

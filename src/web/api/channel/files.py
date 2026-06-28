@@ -91,9 +91,11 @@ def _get_iec61850_client(request: Request, channel_id: int):
 
     # 获取客户端或服务端的 files 插件
     client = None
-    if hasattr(protocol_handler, "_client") and protocol_handler._client:
+    from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+
+    if isinstance(protocol_handler, IEC61850ClientHandler) and protocol_handler._client:
         client = protocol_handler._client
-    elif hasattr(protocol_handler, "_server") and protocol_handler._server:
+    elif isinstance(protocol_handler, IEC61850ServerHandler) and protocol_handler._server:
         client = protocol_handler._server
 
     if not client:

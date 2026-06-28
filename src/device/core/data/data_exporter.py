@@ -122,7 +122,7 @@ class DataExporter:
 
     def _format_yc_row(self, point: Yc, frame_type_dict: dict[int, str], mask_error: bool = True) -> list[str]:
         """格式化遥测/遥调行"""
-        is_valid = point.is_valid if hasattr(point, "is_valid") else None
+        is_valid = point.is_valid
 
         status = "未知"
         if is_valid is True:
@@ -144,9 +144,7 @@ class DataExporter:
                 real_val = str(point.real_value)
 
         # 获取 IEC104 类型标识（发 type_id，前端用 i18n key 翻译）
-        iec_type_label = ""
-        if hasattr(point, "iec_type_id") and point.iec_type_id:
-            iec_type_label = point.iec_type_id
+        iec_type_label = str(point.iec_type_id) if point.iec_type_id else ""
 
         return [
             str(point.address),
@@ -168,8 +166,8 @@ class DataExporter:
 
     def _format_yx_row(self, point: Yx, frame_type_dict: dict[int, str], mask_error: bool = True) -> list[str]:
         """格式化遥信/遥控行"""
-        bit = point.bit if hasattr(point, "bit") else 0
-        is_valid = point.is_valid if hasattr(point, "is_valid") else None
+        bit = point.bit
+        is_valid = point.is_valid
 
         status = "未知"
         if is_valid is True:
@@ -190,9 +188,7 @@ class DataExporter:
                 real_val = str(int(point.value))
 
         # 获取 IEC104 类型标识（发 type_id，前端用 i18n key 翻译）
-        iec_type_label = ""
-        if hasattr(point, "iec_type_id") and point.iec_type_id:
-            iec_type_label = point.iec_type_id
+        iec_type_label = str(point.iec_type_id) if point.iec_type_id else ""
 
         return [
             str(point.address),

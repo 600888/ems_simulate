@@ -20,22 +20,25 @@ from src.config.log.device_logger import DeviceLoggerManager, get_device_logger
 from src.device.core.data.data_exporter import DataExporter
 from src.device.core.data.data_reader import DataReader
 from src.device.core.message.message_formatter import MessageFormatter
-
-# 协议处理器延迟导入，减少启动时间
-# from src.device.protocol.modbus_handler import ModbusServerHandler, ModbusClientHandler
-# from src.device.protocol.iec104_handler import IEC104ServerHandler, IEC104ClientHandler
-# from src.device.protocol.dlt645_handler import DLT645ServerHandler, DLT645ClientHandler
-# from src.device.protocol.iec61850_handler import IEC61850ServerHandler, IEC61850ClientHandler
 from src.device.core.point.point_calculator import PointCalculator
 from src.device.core.point.point_manager import PointManager
 from src.device.core.point.point_operator import PointOperator
 from src.device.core.slave_manager import SlaveManager
 from src.device.data_update.data_update_thread import DataUpdateThread
-from src.device.protocol.base_handler import ClientHandler, ProtocolHandler, ServerHandler
+
+# 协议处理器延迟导入，减少启动时间
+from src.device.protocol import ProtocolHandler
+from src.device.protocol.base_handler import ClientHandler
+from src.device.protocol.dlt645_handler import DLT645ClientHandler, DLT645ServerHandler
+from src.device.protocol.iec104_handler import IEC104ClientHandler, IEC104ServerHandler
+from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+from src.device.protocol.modbus_handler import ModbusClientHandler, ModbusServerHandler
 from src.device.simulator.simulation_controller import SimulationController
 from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import BasePoint, DeviceType, SimulateMethod, Yc, Yk, Yt, Yx
 from src.enums.points.change_tracker import ChangeSource
+from src.proto.iec61850.iec61850_client import IEC61850Client
+from src.proto.iec61850.iec61850_server import IEC61850Server
 
 
 class Device:
@@ -70,7 +73,6 @@ class Device:
         # 核心组件
         self.point_manager: PointManager = PointManager()
         self.protocol_handler: ProtocolHandler | None = None
-        self.simulation_controller: SimulationController = SimulationController(self)
         self.data_exporter: DataExporter = DataExporter(self.point_manager)
 
         # 功能组件（持有 self 引用，始终跟踪最新状态）
@@ -81,6 +83,9 @@ class Device:
 
         # 测点计算器
         self.point_calculator: PointCalculator = PointCalculator(self)
+
+        # 仿真控制器
+        self.simulation_controller: SimulationController = SimulationController(self)
 
         # 日志（延迟初始化，在 set_name 或 initLog 时创建）
         self._logger = None
@@ -114,14 +119,14 @@ class Device:
     @property
     def server(self):
         """获取底层服务器对象"""
-        if isinstance(self.protocol_handler, ServerHandler):
+        if isinstance(self.protocol_handler, IEC61850ServerHandler):
             return self.protocol_handler.server
         return None
 
     @property
     def client(self):
         """获取底层客户端对象"""
-        if isinstance(self.protocol_handler, ClientHandler):
+        if isinstance(self.protocol_handler, IEC61850ClientHandler):
             return self.protocol_handler.client
         return None
 
@@ -139,10 +144,7 @@ class Device:
 
     def _create_protocol_handler(self) -> ProtocolHandler:
         """根据协议类型创建处理器（延迟导入协议模块）"""
-        from src.device.protocol.dlt645_handler import DLT645ClientHandler, DLT645ServerHandler
-        from src.device.protocol.iec104_handler import IEC104ClientHandler, IEC104ServerHandler
         from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
-        from src.device.protocol.modbus_handler import ModbusClientHandler, ModbusServerHandler
 
         handler_map = {
             ProtocolType.ModbusTcp: lambda: ModbusServerHandler(self.log),
@@ -187,7 +189,9 @@ class Device:
         self.protocol_handler.initialize(self._build_protocol_config())
 
         # IEC61850 客户端: 注册测点发现回调
-        if self.protocol_type == ProtocolType.Iec61850Client:
+        if self.protocol_type == ProtocolType.Iec61850Client and isinstance(
+            self.protocol_handler, IEC61850ClientHandler
+        ):
             self.protocol_handler.set_on_points_discovered(self._on_iec61850_points_discovered)
 
         # 添加测点
@@ -259,7 +263,7 @@ class Device:
             return {}
         if not self.protocol_handler:
             return {}
-        if hasattr(self.protocol_handler, "get_connect_progress"):
+        if isinstance(self.protocol_handler, IEC61850ClientHandler):
             return self.protocol_handler.get_connect_progress()
         return {}
 
@@ -270,11 +274,11 @@ class Device:
             return False
         if not self.protocol_handler:
             return False
-        if hasattr(self.protocol_handler, "model_loaded"):
+        if isinstance(self.protocol_handler, IEC61850ClientHandler):
             return self.protocol_handler.model_loaded
         # 服务端: 检查 server.model_loaded
-        if hasattr(self.protocol_handler, "server") and self.protocol_handler.server:
-            return getattr(self.protocol_handler.server, "model_loaded", False)
+        if isinstance(self.protocol_handler, IEC61850ServerHandler) and self.protocol_handler.server:
+            return self.protocol_handler.server.model_loaded
         return False
 
     def load_iec61850_model(self, icd_path: str) -> bool:
@@ -290,10 +294,10 @@ class Device:
             return False
 
         if self.protocol_type == ProtocolType.Iec61850Server:
-            if hasattr(self.protocol_handler, "load_model"):
+            if isinstance(self.protocol_handler, IEC61850Server):
                 return self.protocol_handler.load_model(icd_path)
         elif self.protocol_type == ProtocolType.Iec61850Client:
-            if hasattr(self.protocol_handler, "load_model_from_icd"):
+            if isinstance(self.protocol_handler, IEC61850Client):
                 return self.protocol_handler.load_model_from_icd(icd_path)
         return False
 
@@ -307,7 +311,7 @@ class Device:
             return False
         if not self.protocol_handler:
             return False
-        if hasattr(self.protocol_handler, "remote_discover_model"):
+        if isinstance(self.protocol_handler, IEC61850Client):
             return self.protocol_handler.remote_discover_model()
         return False
 
@@ -506,7 +510,7 @@ class Device:
         self.data_reader.get_slave_values(yc_list, yx_list)
 
     async def getSlaveRegisterValuesAsync(
-        self, yc_list: list[Yc], yx_list: list[Yx], interval_ms: int = 0
+        self, yc_list: list[Yc], yx_list: list[Yx], interval_ms: int | None = 0
     ) -> tuple[int, int]:
         """从协议处理器获取数据值（异步版，支持批量读取优化）"""
         return await self.data_reader.get_slave_values_async(yc_list, yx_list, interval_ms)
@@ -525,7 +529,7 @@ class Device:
         """检查自动读取是否正在运行"""
         return self.data_update_thread.is_alive()
 
-    async def single_read(self, event_emitter=None, interval_ms: int = 0) -> dict[str, int]:
+    async def single_read(self, event_emitter=None, interval_ms: int | None = 0) -> dict[str, int]:
         """执行单次读取操作
 
         Args:
