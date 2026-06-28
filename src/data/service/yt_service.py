@@ -8,6 +8,8 @@ from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import Yt
 from src.tools.transform import decimal_to_hex, process_hex_address, transform
 
+from .point_protocol_filter import reject_foreign_protocol_points
+
 
 def _infer_iec61850_fc(address: str, frame_type: int) -> str:
     """从 IEC61850 地址推断 FC, 推断失败则根据帧类型回退"""
@@ -40,7 +42,7 @@ class YtService:
             遥调点列表
         """
         try:
-            result = PointDao.get_yt_list(channel_id)
+            result = reject_foreign_protocol_points(PointDao.get_yt_list(channel_id), channel_id, protocol_type, "遥调")
             point_list: list[Yt] = []
 
             for item in result:
@@ -51,13 +53,13 @@ class YtService:
             return point_list
         except Exception as e:
             print(f"获取遥调列表失败: {e}")
-            raise e
+            raise
 
     @classmethod
     def get_all(cls, protocol_type: ProtocolType) -> list[Yt]:
         """获取所有遥调点"""
         try:
-            result = PointDao.get_all_yt()
+            result = reject_foreign_protocol_points(PointDao.get_all_yt(), 0, protocol_type, "遥调")
             point_list: list[Yt] = []
 
             for item in result:

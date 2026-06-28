@@ -30,6 +30,9 @@ from src.web.log import log
 
 point_router = APIRouter(prefix="/api/points", tags=["测点管理"])
 
+_IEC104_PROTOCOLS = (ProtocolType.Iec104Server, ProtocolType.Iec104Client)
+_IEC61850_PROTOCOLS = (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client)
+
 
 def _get_device(device_name: str, request: Request) -> Device:
     """获取设备，不存在时抛出 NotFoundError（由全局异常处理器统一返回 404）"""
@@ -144,6 +147,8 @@ async def edit_point_metadata(req: PointMetadataEditRequest, request: Request):
 async def edit_iec104_metadata(req: Iec104MetadataEditRequest, request: Request):
     """修改IEC104协议专属测点属性（ASDU类型、品质描述符）"""
     device = _get_device(req.device_name, request)
+    if device.protocol_type not in _IEC104_PROTOCOLS:
+        raise ValidationError("只有 IEC 104 设备可以编辑 IEC 104 专属测点属性", data=False)
     metadata = {
         "iec_type_id": req.iec_type_id,
         "iec_quality": req.iec_quality,
@@ -168,6 +173,8 @@ async def read_single_point(req: PointInfoRequest, request: Request):
 async def add_point(req: PointCreateRequest, request: Request):
     """添加测点"""
     device = _get_device(req.device_name, request)
+    if device.protocol_type in _IEC61850_PROTOCOLS:
+        raise ValidationError("IEC 61850 测点由 ICD/SCL 模型管理，不能手工添加", data=False)
     channel = ChannelDao.get_channel_by_code(req.device_name)
     if not channel:
         channels = ChannelDao.get_all_channels()
@@ -200,6 +207,8 @@ async def add_point(req: PointCreateRequest, request: Request):
 async def add_points_batch(req: PointsBatchCreateRequest, request: Request):
     """批量添加测点"""
     device = _get_device(req.device_name, request)
+    if device.protocol_type in _IEC61850_PROTOCOLS:
+        raise ValidationError("IEC 61850 测点由 ICD/SCL 模型管理，不能批量添加", data=False)
     channel = ChannelDao.get_channel_by_code(req.device_name)
     if not channel:
         channels = ChannelDao.get_all_channels()

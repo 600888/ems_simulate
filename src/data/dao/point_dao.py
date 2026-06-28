@@ -177,6 +177,19 @@ class PointDao:
             raise e
 
     @classmethod
+    def count_points_by_channel(cls, channel_id: int) -> int:
+        """Return the number of persisted points owned by a channel."""
+        try:
+            with local_session() as session, session.begin():
+                return sum(
+                    session.query(model).where(model.channel_id == channel_id).count()
+                    for model in (PointYc, PointYx, PointYk, PointYt)
+                )
+        except Exception as e:
+            log.error(f"统计通道测点失败: {str(e)}")
+            raise
+
+    @classmethod
     def get_point_by_code(cls, code: str, channel_id: int | None = None) -> dict | None:
         """根据编码获取测点"""
         try:

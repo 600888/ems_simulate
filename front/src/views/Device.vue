@@ -82,18 +82,19 @@
           <el-button
             class="button btn-load-model"
             @click="handleLoadModelFromDb"
-            :disabled="isModelProcessing"
+            :disabled="isAnyModelProcessing"
             :loading="isModelProcessing"
             size="large"
           >
-            <el-icon class="icon"><FolderOpened /></el-icon>
+            <el-icon class="icon"><Refresh /></el-icon>
             <span>{{ $t("device.loadModel") }}</span>
           </el-button>
 
           <!-- 导入模型 -->
           <el-button
             class="button btn-import-model"
-            :disabled="isModelProcessing"
+            :disabled="isAnyModelProcessing"
+            :loading="modelImporting"
             size="large"
             @click="handleImportModel"
           >
@@ -103,9 +104,23 @@
           <IcdImportUpload
             ref="icdImportUploadRef"
             @file-change="onIcdFileChange"
+            @import-start="onIcdImportStart"
             @import-success="onIcdImportSuccess"
             @import-error="onIcdImportError"
           />
+
+          <!-- 远程发现模型（仅客户端） -->
+          <el-button
+            v-if="isIec61850Client"
+            class="button btn-discover-model"
+            :disabled="isAnyModelProcessing"
+            :loading="modelDiscovering"
+            size="large"
+            @click="handleDiscoverModel"
+          >
+            <el-icon class="icon"><Search /></el-icon>
+            <span>{{ $t("device.discoverModel") }}</span>
+          </el-button>
 
           <!-- 导出模型（仅客户端） -->
           <el-button
@@ -179,17 +194,22 @@
       </div>
     </el-row>
 
-    <!-- 第三行：IEC61850 连接进度条 -->
-    <el-row v-if="iec61850Connecting" class="nodes progress-row" :span="24">
+    <!-- 第三行：IEC61850 模型发现/导入共用进度条 -->
+    <el-row v-if="modelProgressVisible" class="nodes progress-row" :span="24">
       <el-progress
-        :percentage="iec61850ProgressPercent"
-        :stroke-width="20"
-        :text-inside="true"
-        :format="() => iec61850PhaseText"
-        striped
-        striped-flow
+        :percentage="modelProgressPercent"
+        :indeterminate="modelImporting"
+        :duration="3"
+        :stroke-width="modelImporting ? 4 : 20"
+        :text-inside="!modelImporting"
+        :format="() => (modelImporting ? '' : modelProgressText)"
+        :striped="!modelImporting"
+        :striped-flow="!modelImporting"
         style="width: 100%"
       />
+      <p v-if="modelImporting" class="model-import-progress-hint">
+        {{ modelProgressText }}
+      </p>
     </el-row>
     <Slave ref="slaveRef" />
 
@@ -225,6 +245,7 @@ import {
   stopDevice,
   getIEC61850ConnectProgress,
   loadIEC61850Model,
+  discoverIEC61850Model,
 } from "@/api/deviceApi";
 import type { IEC61850ConnectProgress } from "@/api/deviceApi";
 import { triggerSidebarRefresh } from "@/composables";
@@ -234,7 +255,8 @@ import {
   VideoPause,
   Document,
   Download,
-  FolderOpened,
+  Refresh,
+  Search,
 } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 
@@ -316,7 +338,14 @@ const simTooltipDisabled = computed(() => {
 // IEC61850 模型加载状态
 const modelLoaded = ref(false);
 const isModelProcessing = ref(false);
+const modelImporting = ref(false);
+const modelDiscovering = ref(false);
+const modelImportElapsed = ref(0);
+let modelImportElapsedTimer: number | null = null;
 const channelId = ref<number | null>(null);
+const isAnyModelProcessing = computed(
+  () => isModelProcessing.value || modelImporting.value || modelDiscovering.value,
+);
 
 const simulateOptions = computed(() => [
   { value: "Random", label: t("device.random") },
@@ -363,10 +392,25 @@ const iec61850PhaseText = computed(() => {
   return label;
 });
 
-let iec61850ProgressTimer: number | null = null;
+const modelProgressVisible = computed(
+  () => iec61850Connecting.value || modelImporting.value || modelDiscovering.value,
+);
+const modelProgressPercent = computed(() =>
+  modelImporting.value ? 100 : iec61850ProgressPercent.value,
+);
+const modelProgressText = computed(() => {
+  if (modelImporting.value) {
+    return `${t("addDevice.icdImporting")} (${modelImportElapsed.value}s)`;
+  }
+  return iec61850PhaseText.value;
+});
 
-const startIec61850ProgressPolling = () => {
+let iec61850ProgressTimer: number | null = null;
+let iec61850ProgressMode: "connect" | "discover" = "connect";
+
+const startIec61850ProgressPolling = (mode: "connect" | "discover" = "connect") => {
   stopIec61850ProgressPolling();
+  iec61850ProgressMode = mode;
   iec61850Connecting.value = true;
   iec61850ConnectProgress.value = null;
   iec61850Elapsed.value = 0;
@@ -379,12 +423,12 @@ const startIec61850ProgressPolling = () => {
       iec61850ConnectProgress.value = progress;
       if (progress.phase === "done" || progress.phase === "failed") {
         stopIec61850ProgressPolling();
-        if (progress.phase === "done") {
+        if (iec61850ProgressMode === "connect" && progress.phase === "done") {
           deviceStatus.value = true;
           ElMessage.success(t("device.iec61850DeviceConnectSuccess"));
           slaveRef.value?.reloadDatas();
           triggerSidebarRefresh(routeName.value);
-        } else {
+        } else if (iec61850ProgressMode === "connect") {
           ElMessage.error(t("device.iec61850DeviceConnectFailed"));
         }
       }
@@ -533,8 +577,47 @@ const handleImportModel = () => {
   icdImportUploadRef.value?.openFileDialog();
 };
 
+const handleDiscoverModel = async () => {
+  modelDiscovering.value = true;
+  startIec61850ProgressPolling("discover");
+  try {
+    const success = await discoverIEC61850Model(routeName.value, 120000);
+    if (success) {
+      modelLoaded.value = true;
+      ElMessage.success(t("device.modelLoadSuccess"));
+      await slaveRef.value?.reloadDatas();
+      triggerSidebarRefresh(routeName.value);
+    } else {
+      ElMessage.error(t("device.modelLoadFailed"));
+    }
+  } catch (error) {
+    console.error(error);
+  } finally {
+    modelDiscovering.value = false;
+    stopIec61850ProgressPolling();
+  }
+};
+
+const stopModelImportProgress = () => {
+  if (modelImportElapsedTimer) {
+    clearInterval(modelImportElapsedTimer);
+    modelImportElapsedTimer = null;
+  }
+  modelImporting.value = false;
+};
+
+const onIcdImportStart = () => {
+  stopModelImportProgress();
+  modelImporting.value = true;
+  modelImportElapsed.value = 0;
+  modelImportElapsedTimer = window.setInterval(() => {
+    modelImportElapsed.value++;
+  }, 1000);
+};
+
 // IEC61850 模型导入：成功回调
 const onIcdImportSuccess = () => {
+  stopModelImportProgress();
   modelLoaded.value = true;
   ElMessage.success(t("device.modelLoadSuccess"));
   triggerSidebarRefresh(routeName.value);
@@ -542,6 +625,7 @@ const onIcdImportSuccess = () => {
 
 // IEC61850 模型导入：失败回调
 const onIcdImportError = () => {
+  stopModelImportProgress();
   ElMessage.error(t("device.modelLoadFailed"));
 };
 
@@ -657,6 +741,7 @@ onDeactivated(() => {
 onUnmounted(() => {
   stopStatusPolling();
   stopIec61850ProgressPolling();
+  stopModelImportProgress();
 });
 
 watch(
@@ -730,10 +815,12 @@ watch(
 
   .model-section {
     min-width: 0;
+    flex: 3 1 0;
   }
 
   .sim-section {
     min-width: 0;
+    flex: 2 1 0;
   }
 
   .model-controls,
@@ -742,6 +829,17 @@ watch(
     flex-wrap: wrap;
     gap: 10px;
     align-items: center;
+  }
+
+  .model-controls {
+    flex-wrap: nowrap;
+
+    .button {
+      min-width: 96px;
+      padding-right: 12px;
+      padding-left: 12px;
+      flex-shrink: 0;
+    }
   }
 
   .section-divider {
@@ -809,14 +907,27 @@ watch(
 }
 
 .btn-import-model {
-  background-color: #f59e0b;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+  background-color: #6366f1;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+}
+
+.btn-discover-model {
+  background-color: #14b8a6;
+  box-shadow: 0 4px 12px rgba(20, 184, 166, 0.25);
 }
 
 .progress-row {
   :deep(.el-progress-bar__innerText) {
     font-size: 12px;
     color: #fff;
+  }
+
+  .model-import-progress-hint {
+    width: 100%;
+    margin: -4px 0 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    text-align: center;
   }
 }
 
@@ -844,9 +955,23 @@ watch(
     gap: 10px;
   }
   .row-model-sim {
+    flex-direction: column;
+
     .model-section,
     .sim-section {
       padding: 12px 16px;
+    }
+
+    .section-divider {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--sidebar-border) 15%,
+        var(--sidebar-border) 85%,
+        transparent 100%
+      );
     }
   }
   .button {
@@ -876,6 +1001,11 @@ watch(
   }
   .row-model-sim {
     flex-direction: column;
+
+    .model-controls {
+      flex-wrap: wrap;
+    }
+
     .model-section,
     .sim-section {
       padding: 12px 14px;

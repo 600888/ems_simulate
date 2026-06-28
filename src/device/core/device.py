@@ -37,8 +37,6 @@ from src.device.simulator.simulation_controller import SimulationController
 from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import BasePoint, DeviceType, SimulateMethod, Yc, Yk, Yt, Yx
 from src.enums.points.change_tracker import ChangeSource
-from src.proto.iec61850.iec61850_client import IEC61850Client
-from src.proto.iec61850.iec61850_server import IEC61850Server
 
 
 class Device:
@@ -294,10 +292,10 @@ class Device:
             return False
 
         if self.protocol_type == ProtocolType.Iec61850Server:
-            if isinstance(self.protocol_handler, IEC61850Server):
+            if isinstance(self.protocol_handler, IEC61850ServerHandler):
                 return self.protocol_handler.load_model(icd_path)
         elif self.protocol_type == ProtocolType.Iec61850Client:
-            if isinstance(self.protocol_handler, IEC61850Client):
+            if isinstance(self.protocol_handler, IEC61850ClientHandler):
                 return self.protocol_handler.load_model_from_icd(icd_path)
         return False
 
@@ -311,7 +309,7 @@ class Device:
             return False
         if not self.protocol_handler:
             return False
-        if isinstance(self.protocol_handler, IEC61850Client):
+        if isinstance(self.protocol_handler, IEC61850ClientHandler):
             return self.protocol_handler.remote_discover_model()
         return False
 

@@ -127,6 +127,19 @@ class PointRegistry:
         """直接设置地址的描述 (dU)"""
         self._point_name[str(address)] = name
 
+    def clear(self) -> None:
+        """清空当前模型派生的所有测点与结构缓存。
+
+        远程重新发现和 ICD 重新加载都是“替换模型”操作。如果只覆盖
+        同名 key，上一个模型已删除的测点会永久残留在内存中。
+        """
+        self._point_refs.clear()
+        self._point_fc.clear()
+        self._point_iec_type.clear()
+        self._point_name.clear()
+        self._discovered_goose_items.clear()
+        self._discovered_datasets.clear()
+
     @property
     def discovered_goose_items(self) -> list:
         """发现的 GOOSE 控制块列表"""

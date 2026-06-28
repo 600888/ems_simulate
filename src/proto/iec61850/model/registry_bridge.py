@@ -26,7 +26,13 @@ def build_registry_from_model(model: IedModel, registry: Any) -> list[dict[str, 
         发现的测点列表 (向后兼容 DataModelsPlugin.discover_model() 返回格式)
     """
     discovered_points: list[dict[str, Any]] = []
-    registry.discovered_goose_items.clear()
+    # 模型发现/加载是全量替换，不能把新模型叠加到旧注册表上。
+    # 兼容测试或外部传入的简化 registry 实现。
+    clear_registry = getattr(registry, "clear", None)
+    if callable(clear_registry):
+        clear_registry()
+    else:
+        registry.discovered_goose_items.clear()
 
     # 填充测点映射
     for address, info in model.point_refs.items():

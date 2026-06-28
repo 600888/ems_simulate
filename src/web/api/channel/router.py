@@ -3,13 +3,14 @@
 from fastapi import APIRouter, Request
 
 from src.config.config import Config
+from src.data.dao.point_dao import PointDao
 from src.data.service.channel_service import ChannelService
 from src.enums.modbus_def import ProtocolType
 from src.web.api.channel.helpers import (
     get_device_builder,
     reload_device_instance,
 )
-from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
+from src.web.api.exceptions import ConflictError, NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import (
     BaseResponse,
     ChannelCreateRequest,
@@ -40,6 +41,14 @@ CONN_TYPE_OPTIONS = [
 ]
 
 
+def _validate_protocol_connection(protocol_type: int, conn_type: int) -> None:
+    option = next((item for item in PROTOCOL_OPTIONS if item["value"] == protocol_type), None)
+    if not option:
+        raise ValidationError(f"不支持的协议类型: {protocol_type}")
+    if conn_type not in option["conn_types"]:
+        raise ValidationError(f"协议 {option['label']} 不支持连接类型 {conn_type}")
+
+
 @router.post("/protocols", response_model=BaseResponse)
 async def get_protocols():
     """获取支持的协议列表"""
@@ -61,6 +70,8 @@ async def get_serial_ports():
 @router.post("/create", response_model=BaseResponse)
 async def create_channel(req: ChannelCreateRequest, request: Request):
     """创建通道/设备"""
+    _validate_protocol_connection(req.protocol_type, req.conn_type)
+
     existing = ChannelService.get_channel_by_code(req.code)
     if existing:
         raise ValidationError(f"设备编码 '{req.code}' 已存在，请使用其他编码")
@@ -188,6 +199,18 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
         raise NotFoundError("通道不存在")
 
     protocol_to_use = req.protocol_type if req.protocol_type is not None else existing.get("protocol_type", 1)
+    conn_type_to_use = req.conn_type if req.conn_type is not None else existing.get("conn_type", 1)
+    _validate_protocol_connection(protocol_to_use, conn_type_to_use)
+
+    old_protocol = existing.get("protocol_type", 1)
+    if protocol_to_use != old_protocol:
+        point_count = PointDao.count_points_by_channel(channel_id)
+        has_iec61850_model = bool(existing.get("icd_path") or existing.get("model_name"))
+        if point_count or has_iec61850_model:
+            raise ConflictError(
+                "通道已有测点或 IEC 61850 模型，不能直接切换协议；请先显式清理原协议数据",
+                data={"point_count": point_count, "has_iec61850_model": has_iec61850_model},
+            )
 
     success = ChannelService.update_channel(
         channel_id=channel_id,

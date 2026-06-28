@@ -575,10 +575,14 @@ class IEC61850Client:
         )
         return True
 
-    def remote_discover_model(self) -> bool:
+    def remote_discover_model(self, force_refresh: bool = True) -> bool:
         """远程发现模型（通过 MMS 在线遍历）
 
-        先尝试从 ModelCache 获取，缓存未命中时执行在线发现。
+        用户主动点击“发现模型”时默认强制在线遍历，避免同一 IP:端口
+        换了 IED/模型后仍命中上一份缓存。
+
+        Args:
+            force_refresh: True 时忽略并刷新进程级模型缓存。
 
         Returns:
             是否发现成功
@@ -588,12 +592,18 @@ class IEC61850Client:
 
         cache_key = f"{self.ip}:{self.port}"
 
-        # 1. 尝试从缓存获取
-        cached = ModelCache.instance().get(cache_key)
-        if cached is not None:
-            log.info(f"远程模型缓存命中: {cache_key}")
-            build_registry_from_model(cached, self._registry)
-            return True
+        cache = ModelCache.instance()
+
+        # 1. 显式发现必须反映远端当前状态；只有内部复用场景才允许读缓存。
+        if force_refresh:
+            cache.invalidate(cache_key)
+            self._discovery.invalidate()
+        else:
+            cached = cache.get(cache_key)
+            if cached is not None:
+                log.info(f"远程模型缓存命中: {cache_key}")
+                build_registry_from_model(cached, self._registry)
+                return True
 
         # 2. 确保已连接
         if not self._conn.is_connected:
@@ -603,7 +613,7 @@ class IEC61850Client:
         # 3. 在线发现
         model = self._discovery.discover(self._conn)
         if model is not None:
-            ModelCache.instance().set(cache_key, model)
+            cache.set(cache_key, model)
             build_registry_from_model(model, self._registry)
             log.info(f"远程模型发现完成并已缓存: {cache_key}")
             return True

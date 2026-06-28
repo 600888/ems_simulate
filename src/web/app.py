@@ -62,7 +62,7 @@ def create_app():
         if response.status_code >= 400:
             log.warning(f"[{trace_id}] {request.method} {request.url.path} -> {response.status_code} ({cost:.1f}ms)")
         else:
-            log.info(f"[{trace_id}] {request.method} {request.url.path} -> {response.status_code} ({cost:.1f}ms)")
+            log.debug(f"[{trace_id}] {request.method} {request.url.path} -> {response.status_code} ({cost:.1f}ms)")
         return response
 
     # 注册路由

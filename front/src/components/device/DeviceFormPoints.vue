@@ -2,27 +2,28 @@
   <div class="device-form-points">
     <!-- IEC 61850 服务端: ICD 文件导入 -->
     <template v-if="protocolType === 4 && connType === 2">
-      <el-divider content-position="left">{{ $t('device.icdImport') }}</el-divider>
+      <el-divider content-position="left">{{ $t("device.icdImport") }}</el-divider>
 
       <el-form-item :label="$t('device.icdFile')">
-        <div class="icd-upload-row">
-          <IcdImportUpload ref="icdUploadRef" @file-change="onIcdFileChange" />
-
-          <el-button type="success" plain :icon="Upload" @click="icdUploadRef?.openFileDialog()">
-            {{ $t('device.selectIcd') }}
-          </el-button>
-
-          <el-button
-            v-if="hasIcdFile"
-            type="warning"
-            plain
-            :icon="View"
-            :loading="previewLoading"
-            @click="handlePreview"
-          >
-            {{ $t('addDevice.previewIcd') }}
-          </el-button>
-        </div>
+        <el-upload
+          ref="icdUploadRef"
+          action="#"
+          :auto-upload="true"
+          :limit="1"
+          :http-request="handleIcdFileRequest"
+          accept=".icd,.scd,.cid,.xml"
+        >
+          <template #trigger>
+            <el-button type="success" plain :icon="Upload">{{
+              $t("device.selectIcd")
+            }}</el-button>
+          </template>
+          <template #tip>
+            <div class="el-upload__tip">
+              {{ $t("device.icdTip") }}
+            </div>
+          </template>
+        </el-upload>
       </el-form-item>
     </template>
 
@@ -39,7 +40,7 @@
 
     <!-- 其他协议: Excel 点表导入 -->
     <template v-else>
-      <el-divider content-position="left">{{ $t('device.pointTable') }}</el-divider>
+      <el-divider content-position="left">{{ $t("device.pointTable") }}</el-divider>
 
       <el-form-item :label="$t('device.pointFile')">
         <el-upload
@@ -51,11 +52,13 @@
           accept=".xlsx,.xls"
         >
           <template #trigger>
-            <el-button type="success" plain :icon="Upload">{{ $t('device.selectExcel') }}</el-button>
+            <el-button type="success" plain :icon="Upload">{{
+              $t("device.selectExcel")
+            }}</el-button>
           </template>
           <template #tip>
             <div class="el-upload__tip">
-              {{ $t('device.excelTip') }}
+              {{ $t("device.excelTip") }}
             </div>
           </template>
         </el-upload>
@@ -66,25 +69,19 @@
 
 <script lang="ts" setup>
 import { ref } from "vue";
-import { Upload, View } from "@element-plus/icons-vue";
-import IcdImportUpload from "@/components/common/IcdImportUpload.vue";
-import { previewIcd } from "@/api/channelApi";
-import type { PointImportResult } from "@/types/channel";
+import { Upload } from "@element-plus/icons-vue";
 
 const props = defineProps<{
   protocolType?: number;
   connType?: number;
-  disabled?: boolean;
 }>();
 
 const uploadRef = ref();
-const icdUploadRef = ref<InstanceType<typeof IcdImportUpload>>();
-const hasIcdFile = ref(false);
-const previewLoading = ref(false);
+const icdUploadRef = ref();
 
 const emit = defineEmits<{
   (e: "file-change", file: any): void;
-  (e: "icd-preview-result", result: PointImportResult): void;
+  (e: "icd-file-change", file: any): void;
 }>();
 
 const handleFileRequest = (options: any) => {
@@ -92,42 +89,21 @@ const handleFileRequest = (options: any) => {
   return Promise.resolve();
 };
 
-const onIcdFileChange = (file: File | null) => {
-  hasIcdFile.value = !!file;
+const handleIcdFileRequest = (options: any) => {
+  emit("icd-file-change", options.file);
+  return Promise.resolve();
 };
-
-const handlePreview = async () => {
-  const file = icdUploadRef.value?.getFile()
-  if (!file) return
-  previewLoading.value = true
-  try {
-    const result = await previewIcd(file)
-    emit('icd-preview-result', result)
-  } catch (e: any) {
-    console.error('预览 ICD 失败', e)
-  } finally {
-    previewLoading.value = false
-  }
-}
 
 const clearFiles = () => {
   uploadRef.value?.clearFiles();
-  icdUploadRef.value?.clear();
-  hasIcdFile.value = false;
+  icdUploadRef.value?.clearFiles();
 };
 
-defineExpose({ clearFiles, getIcdUploadRef: () => icdUploadRef.value });
+defineExpose({ clearFiles });
 </script>
 
 <style lang="scss" scoped>
 .device-form-points {
   margin-top: 10px;
-}
-
-.icd-upload-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 </style>

@@ -15,6 +15,7 @@ from src.data.service.channel_service import ChannelService
 from src.enums.modbus_def import ProtocolType
 from src.tools.excel_point_importer import ExcelPointImporter
 from src.web.api.channel.helpers import reload_device_instance
+from src.web.api.channel.protocol_guards import require_iec61850_channel, require_tabular_point_channel
 from src.web.api.exceptions import ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
@@ -67,6 +68,8 @@ async def import_points(
     file: UploadFile = File(...),
 ):
     """导入 Excel 点表"""
+    require_tabular_point_channel(channel_id)
+
     if not file.filename.endswith((".xlsx", ".xls")):
         raise ValidationError("请上传 Excel 文件 (.xlsx 或 .xls)")
 
@@ -247,6 +250,8 @@ async def import_icd(
     - MMS 测点 (遥测/遥信/遥控/遥调) → 写入数据库
     - GOOSE 配置 (GSEControl/DataSet/GSE) → 返回给前端，可选自动创建 Publisher
     """
+    require_iec61850_channel(channel_id)
+
     valid_extensions = (".icd", ".scd", ".cid", ".xml")
     if not file.filename.lower().endswith(valid_extensions):
         raise ValidationError(f"请上传 ICD 文件 ({', '.join(valid_extensions)})")

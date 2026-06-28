@@ -9,19 +9,6 @@
       @change="onFileSelected"
     />
 
-    <!-- 导入进度条 -->
-    <div v-if="importing" class="icd-import-progress">
-      <el-progress
-        :percentage="100"
-        :indeterminate="true"
-        :duration="3"
-        :stroke-width="4"
-        :format="() => ''"
-      />
-      <p class="icd-import-hint">
-        {{ $t("addDevice.icdImporting") }} ({{ importElapsed }}s)
-      </p>
-    </div>
   </div>
 </template>
 
@@ -39,8 +26,6 @@ const emit = defineEmits<{
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const importing = ref(false);
-const importElapsed = ref(0);
-let importTimer: number | null = null;
 let selectedFile: File | null = null;
 
 const onFileSelected = (event: Event) => {
@@ -62,10 +47,6 @@ const importIcd = async (channelId: number): Promise<PointImportResult | null> =
   }
 
   importing.value = true;
-  importElapsed.value = 0;
-  importTimer = window.setInterval(() => {
-    importElapsed.value++;
-  }, 1000);
   emit("import-start");
 
   try {
@@ -76,10 +57,6 @@ const importIcd = async (channelId: number): Promise<PointImportResult | null> =
     emit("import-error", error);
     throw error;
   } finally {
-    if (importTimer) {
-      clearInterval(importTimer);
-      importTimer = null;
-    }
     importing.value = false;
   }
 };
@@ -88,10 +65,6 @@ const clear = () => {
   selectedFile = null;
   importing.value = false;
   if (fileInputRef.value) fileInputRef.value.value = "";
-  if (importTimer) {
-    clearInterval(importTimer);
-    importTimer = null;
-  }
 };
 
 defineExpose({
@@ -102,14 +75,3 @@ defineExpose({
   importing,
 });
 </script>
-
-<style lang="scss" scoped>
-.icd-import-progress {
-  .icd-import-hint {
-    margin: 4px 0 0;
-    font-size: 12px;
-    color: #909399;
-    text-align: center;
-  }
-}
-</style>

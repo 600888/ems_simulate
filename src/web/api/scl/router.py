@@ -26,6 +26,7 @@ import tempfile
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import PlainTextResponse
 
+from src.web.api.channel.protocol_guards import require_iec61850_channel
 from src.web.api.exceptions import NotFoundError, ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
@@ -299,6 +300,7 @@ async def import_points_from_scl(
         - 在 channel/device 表中记录 ICD 文件路径
         - 数据库仅保存 ICD 路径，模型以 ICD 文件为权威来源
     """
+    require_iec61850_channel(channel_id)
     file_path = _get_scl_file_path(request, filename)
 
     # 使用 SclImportService 解析
@@ -376,6 +378,7 @@ async def import_goose_from_scl(
     interface: str = Form("eth0"),
 ):
     """从已上传的 SCL 文件导入 GOOSE 配置"""
+    require_iec61850_channel(channel_id)
     file_path = _get_scl_file_path(request, filename)
 
     service = _get_import_service(request)
@@ -443,6 +446,7 @@ async def import_full_from_scl(
         - 在 channel/device 表中记录 ICD 文件路径
         - 数据库仅保存 ICD 路径，模型以 ICD 文件为权威来源
     """
+    require_iec61850_channel(channel_id)
     file_path = _get_scl_file_path(request, filename)
 
     service = _get_import_service(request)

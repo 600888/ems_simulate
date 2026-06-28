@@ -55,7 +55,8 @@ const importReports = ref(false)
 
 onMounted(async () => {
   try {
-    channelList.value = await getChannelList()
+    const channels = await getChannelList()
+    channelList.value = channels.filter((channel) => channel.protocol_type === 4)
   } catch {
     channelList.value = []
   }
