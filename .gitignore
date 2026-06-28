@@ -176,3 +176,5 @@ dist_msix
 .codex
 # Windows environment variable literal (防止工具错误展开)
 %SystemDrive%/
+
+data/

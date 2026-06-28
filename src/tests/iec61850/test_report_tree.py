@@ -5,6 +5,7 @@ from src.proto.iec61850.plugins.reports.report_tree import (
     decode_quality,
     decode_timestamp,
     parse_report_ref,
+    parse_structured_value,
     select_report_entry,
 )
 
@@ -75,6 +76,61 @@ class ReportTreeBuilderTest(unittest.TestCase):
         self.assertIn("stVal", child_labels)
         self.assertIn("q", child_labels)
         self.assertIn("t", child_labels)
+
+    def test_serialized_analogue_structure_expands_to_mag_quality_timestamp(self):
+        entry = {
+            "data_values": {
+                "LD0/MMXU1$MX$Temp1$mag$f": "[[43.0], 0.0, 0.0]",
+            },
+            "reason_codes": {"LD0/MMXU1$MX$Temp1$mag$f": "gi"},
+        }
+
+        tree = ReportTreeBuilder().build(entry)
+        do_node = tree[0]["children"][0]["children"][0]
+        children = {child["label"]: child for child in do_node["children"]}
+
+        self.assertEqual(set(children), {"mag", "q", "t"})
+        self.assertEqual(children["mag"]["children"][0]["label"], "f")
+        self.assertEqual(children["mag"]["children"][0]["value"], 43.0)
+        self.assertEqual(children["q"]["value"], "good")
+        self.assertTrue(children["q"]["children"])
+        self.assertEqual(children["t"]["value"], decode_timestamp(0)["datetime"])
+
+    def test_status_structure_expands_to_stval_quality_timestamp(self):
+        entry = {
+            "data_values": {"LD0/GGIO1.Ind1": "[true, 0, 1000]"},
+            "reason_codes": {"LD0/GGIO1.Ind1": "data-change"},
+        }
+
+        tree = ReportTreeBuilder().build(entry)
+        do_node = tree[0]["children"][0]["children"][0]
+        children = {child["label"]: child for child in do_node["children"]}
+
+        self.assertIs(children["stVal"]["value"], True)
+        self.assertEqual(children["q"]["value"], "good")
+        self.assertEqual(children["t"]["children"][0]["label"], "Datetime")
+
+    def test_integer_status_structure_is_expanded(self):
+        entry = {"data_values": {"LD0/GGIO1.Ind1": [1, 0, 1000]}}
+
+        tree = ReportTreeBuilder().build(entry)
+        do_node = tree[0]["children"][0]["children"][0]
+
+        self.assertEqual(do_node["children"][0]["label"], "stVal")
+        self.assertEqual(do_node["children"][0]["value"], 1)
+
+    def test_non_structure_array_remains_a_plain_value(self):
+        entry = {"data_values": {"LD0/GGIO1.Ind1": "[1, 2]"}}
+
+        tree = ReportTreeBuilder().build(entry)
+        do_node = tree[0]["children"][0]["children"][0]
+
+        self.assertEqual(do_node["value"], "[1, 2]")
+
+    def test_parse_structured_value_rejects_non_literal_text(self):
+        text = "__import__('os').system('echo unsafe')"
+
+        self.assertEqual(parse_structured_value(text), text)
 
 
 class ReportTreeEntrySelectionTest(unittest.TestCase):

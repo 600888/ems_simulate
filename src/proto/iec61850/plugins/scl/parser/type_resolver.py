@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..model.enums import CDC_CONTROL_DA_PATH, CDC_VALUE_DA_PATH, STRUCT_DA_TO_FULL_PATH
 from ..model.scl_document import (
@@ -37,7 +37,7 @@ class TypeResolver:
         self._doc = doc
         # 结果缓存: key=(do_type_id, cdc) → result
         self._da_path_cache: dict[tuple[str, str], str | None] = {}
-        self._all_das_cache: dict[tuple[str, str], list[dict[str, str]]] = {}
+        self._all_das_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
         # get_do_desc 缓存: key=do_name → desc（同一 do_name 在所有 LN 中描述相同）
         self._do_desc_cache: dict[str, str] = {}
 
@@ -113,7 +113,7 @@ class TypeResolver:
 
         return None
 
-    def collect_all_das(self, do_type_id: str, cdc: str) -> list[dict[str, str]]:
+    def collect_all_das(self, do_type_id: str, cdc: str) -> list[dict[str, Any]]:
         """收集 DOType 下所有 DA（带缓存）
 
         Returns:
@@ -134,9 +134,9 @@ class TypeResolver:
         self._all_das_cache[key] = result
         return list(result)
 
-    def _collect_all_das_impl(self, do_type: SclDOType) -> list[dict[str, str]]:
+    def _collect_all_das_impl(self, do_type: SclDOType) -> list[dict[str, Any]]:
         """collect_all_das 的实现体"""
-        result: list[dict[str, str]] = []
+        result: list[dict[str, Any]] = []
         for da in do_type.das:
             self._collect_da(da, result, da.name)
 
@@ -157,12 +157,17 @@ class TypeResolver:
     def _collect_da(
         self,
         da: SclDA,
-        result: list[dict[str, str]],
+        result: list[dict[str, Any]],
         path_prefix: str,
         fc_override: str | None = None,
     ) -> None:
         """收集单个 DA 信息"""
-        da_path = STRUCT_DA_TO_FULL_PATH.get(da.name, da.name)
+        mapped_name = STRUCT_DA_TO_FULL_PATH.get(da.name, da.name)
+        if "." in path_prefix:
+            parent_path = path_prefix.rsplit(".", 1)[0]
+            da_path = f"{parent_path}.{mapped_name}"
+        else:
+            da_path = mapped_name
         fc = fc_override or da.fc
 
         result.append(
@@ -171,6 +176,9 @@ class TypeResolver:
                 "path": da_path,
                 "fc": fc,
                 "bType": da.b_type,
+                "dchg": da.dchg,
+                "qchg": da.qchg,
+                "dupd": da.dupd,
             }
         )
 
@@ -184,9 +192,14 @@ class TypeResolver:
                     result.append(
                         {
                             "name": bda.name,
-                            "path": f"{da.name}.{bda.name}",
+                            "path": f"{path_prefix}.{bda.name}",
                             "fc": fc,
                             "bType": bda.b_type,
+                            # BDA 沿用其所属 DA 的触发语义；libIEC61850 的动态
+                            # 模型最终更新的是叶子属性，因此触发位也必须落到叶子上。
+                            "dchg": da.dchg,
+                            "qchg": da.qchg,
+                            "dupd": da.dupd,
                         }
                     )
 

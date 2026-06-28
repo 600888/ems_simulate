@@ -27,6 +27,9 @@ class PointData:
     cdc: str = ""
     da_name: str = ""
     fc: str = ""
+    dchg: bool = False
+    qchg: bool = False
+    dupd: bool = False
     category: PointCategory = PointCategory.YC
 
 
@@ -91,6 +94,7 @@ class SclPointTransformer:
 
             category = CDC_CATEGORY_MAP[cdc]
             ref_prefix = f"{ld.inst}/{ln.ln_name}.{do_def.name}"
+            all_das = self._resolver.collect_all_das(do_def.type_id, cdc)
 
             # 获取 DO 描述
             doi = doi_map.get(do_def.name)
@@ -100,19 +104,22 @@ class SclPointTransformer:
             main_da_path = self._resolver.get_value_da_path(do_def.type_id, cdc)
             if main_da_path:
                 fc = CDC_DEFAULT_FC.get(cdc, "")
+                main_da = next((item for item in all_das if item["path"] == main_da_path), {})
                 point = PointData(
                     code=f"{ld.inst}_{ln.ln_name}_{do_def.name}_{main_da_path.replace('.', '_')}",
                     name=do_desc,
                     reg_addr=f"{ref_prefix}.{main_da_path}",
                     cdc=cdc,
                     da_name=main_da_path,
-                    fc=fc,
+                    fc=str(main_da.get("fc") or fc),
+                    dchg=bool(main_da.get("dchg", False)),
+                    qchg=bool(main_da.get("qchg", False)),
+                    dupd=bool(main_da.get("dupd", False)),
                     category=category,
                 )
                 self._add_point(result, point, category)
 
             # 额外 DA 测点
-            all_das = self._resolver.collect_all_das(do_def.type_id, cdc)
             for da_info in all_das:
                 da_path = da_info["path"]
                 da_fc = da_info["fc"]
@@ -135,6 +142,9 @@ class SclPointTransformer:
                     cdc=cdc,
                     da_name=da_path,
                     fc=da_fc,
+                    dchg=bool(da_info.get("dchg", False)),
+                    qchg=bool(da_info.get("qchg", False)),
+                    dupd=bool(da_info.get("dupd", False)),
                     category=category,
                 )
                 self._add_point(result, point, category)

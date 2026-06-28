@@ -435,6 +435,15 @@ class ReportCallbackHandler:
             return [ReportCallbackHandler._entry_to_dict(entry) for entry in info.data_cache]
 
     @staticmethod
+    def get_cache_state(rcb_ref: str) -> tuple[int, int]:
+        """Return cache size and latest uid without serializing report values."""
+        with _CALLBACK_LOCK:
+            _, info = _find_registered_info(rcb_ref)
+            if not info or not info.data_cache:
+                return 0, 0
+            return len(info.data_cache), info.data_cache[-1].uid
+
+    @staticmethod
     def clear_cache(rcb_ref: str) -> None:
         """清除指定 RCB 的缓存"""
         with _CALLBACK_LOCK:

@@ -695,6 +695,10 @@ class ReportsPlugin:
             data = data[-limit:]
         return data
 
+    def get_report_data_state(self, rcb_ref: str) -> tuple[int, int]:
+        """获取报告缓存数量和最新 uid，不序列化大体积 data_values。"""
+        return ReportCallbackHandler.get_cache_state(rcb_ref)
+
     def clear_report_data(self, rcb_ref: str) -> None:
         """清除指定 RCB 的缓存数据"""
         ReportCallbackHandler.clear_cache(rcb_ref)

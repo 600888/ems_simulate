@@ -140,7 +140,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import {
@@ -207,7 +216,12 @@ const REFRESH_INTERVAL_OPTIONS = [
   { value: 5000, label: '5s' },
   { value: 10000, label: '10s' },
 ];
-let reportPollTimer: ReturnType<typeof setInterval> | null = null;
+let reportPollTimer: ReturnType<typeof setTimeout> | null = null;
+let reportRequestInFlight = false;
+let reportReloadPending = false;
+let rcbRequestInFlight = false;
+let latestReportUid: number | null = null;
+let reportPollingActive = true;
 
 const latestHistoryKey = computed(() => {
   if (reportData.value.length === 0) return null;
@@ -228,9 +242,10 @@ watch([selectedRcb, autoRefresh, pollInterval], () => {
 
 function startReportPolling() {
   stopReportPolling();
-  if (!autoRefresh.value || !selectedRcb.value || !props.channelId) return;
-  reportPollTimer = setInterval(() => {
-    loadReportData(false);
+  if (!reportPollingActive || !autoRefresh.value || !selectedRcb.value || !props.channelId) return;
+  reportPollTimer = setTimeout(async () => {
+    await loadReportData(false);
+    startReportPolling();
   }, pollInterval.value);
 }
 
@@ -242,7 +257,8 @@ function stopReportPolling() {
 }
 
 async function loadRcbs() {
-  if (!props.channelId) return;
+  if (!props.channelId || rcbRequestInFlight) return;
+  rcbRequestInFlight = true;
   const previousRef = selectedRcb.value?.ref;
   loading.value = true;
   try {
@@ -260,23 +276,51 @@ async function loadRcbs() {
     console.error('Load RCBs error:', err);
   } finally {
     loading.value = false;
+    rcbRequestInFlight = false;
   }
 }
 
 async function loadReportData(showLoading = true) {
   if (!selectedRcb.value || !props.channelId) return;
+  if (reportRequestInFlight) {
+    if (showLoading) reportReloadPending = true;
+    return;
+  }
+  reportRequestInFlight = true;
+  const requestedRcbRef = selectedRcb.value.ref;
   if (showLoading) dataLoading.value = true;
   try {
-    const resp = await getReportData(props.channelId, selectedRcb.value.ref);
+    const resp = await getReportData(
+      props.channelId,
+      requestedRcbRef,
+      100,
+      showLoading ? null : latestReportUid,
+    );
+    if (selectedRcb.value?.ref !== requestedRcbRef || resp.unchanged) return;
+
+    const previousLatestKey = latestHistoryKey.value;
     reportData.value = resp.data || [];
     reportDataTotal.value = resp.total || 0;
+    latestReportUid = resp.latest_uid ?? null;
 
-    await loadLatestTree();
+    const currentLatestKey = latestHistoryKey.value;
+    if (showLoading || currentLatestKey !== previousLatestKey) {
+      await loadLatestTree();
+    }
     const stillExists = selectedEntryKey.value && reportData.value.some((entry, index) => makeEntryKey(entry, index) === selectedEntryKey.value);
     if (!stillExists) selectedEntryKey.value = latestHistoryKey.value;
-    await loadSelectedTree();
+    if (selectedEntryKey.value === latestHistoryKey.value) {
+      reuseLatestTreeForSelection();
+    } else if (selectedEntry.value?.entry_key !== selectedEntryKey.value) {
+      await loadSelectedTree();
+    }
   } finally {
     if (showLoading) dataLoading.value = false;
+    reportRequestInFlight = false;
+    if (reportReloadPending) {
+      reportReloadPending = false;
+      void loadReportData(true);
+    }
   }
 }
 
@@ -294,12 +338,21 @@ async function loadSelectedTree() {
     selectedTreeItems.value = [];
     return;
   }
+  if (selectedEntryKey.value === latestHistoryKey.value) {
+    reuseLatestTreeForSelection();
+    return;
+  }
   const result = await getReportDataTree(props.channelId, selectedRcb.value.ref, {
     entryKey: selectedEntryKey.value,
     latest: false,
   });
   selectedEntry.value = result.entry;
   selectedTreeItems.value = result.tree_items || [];
+}
+
+function reuseLatestTreeForSelection() {
+  selectedEntry.value = latestEntry.value;
+  selectedTreeItems.value = latestTreeItems.value;
 }
 
 function onRcbSelect(rcb: RcbInfo) {
@@ -455,6 +508,7 @@ function resetReportData() {
   selectedEntry.value = null;
   selectedEntryKey.value = null;
   selectedTreeItems.value = [];
+  latestReportUid = null;
 }
 
 function makeEntryKey(entry: ReportDataEntry, index: number): string {
@@ -464,15 +518,23 @@ function makeEntryKey(entry: ReportDataEntry, index: number): string {
 }
 
 onMounted(() => {
+  reportPollingActive = true;
   loadRcbs();
 });
 
 onActivated(() => {
+  reportPollingActive = true;
   if (props.channelId) loadRcbs();
   startReportPolling();
 });
 
+onDeactivated(() => {
+  reportPollingActive = false;
+  stopReportPolling();
+});
+
 onBeforeUnmount(() => {
+  reportPollingActive = false;
   stopReportPolling();
 });
 </script>

@@ -62,7 +62,7 @@ function nodeBadge(type: string): string {
     ln: 'LN',
     do: 'DO',
     da: 'DA',
-    bda: 'DA',
+    bda: '',
     group: '',
     value: '',
   };
@@ -136,8 +136,7 @@ function formatValue(value: any): string {
 }
 
 .node-badge.type-do,
-.node-badge.type-da,
-.node-badge.type-bda {
+.node-badge.type-da {
   background: #1976d2;
   color: #fff;
 }

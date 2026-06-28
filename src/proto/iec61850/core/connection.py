@@ -63,6 +63,8 @@ class Iec61850Connection:
 
             try:
                 self._connection = iec61850.IedConnection_create()
+                # 设置连接超时 3000ms（默认 TCP 超时 20-30s 太长）
+                iec61850.IedConnection_setConnectTimeout(self._connection, 3000)
                 result = iec61850.IedConnection_connect(self._connection, self.ip, self.port)
 
                 error = result

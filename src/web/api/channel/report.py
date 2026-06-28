@@ -331,7 +331,19 @@ async def get_report_data(body: ReportDataRequest, request: Request):
     if _is_server_mode(reports):
         return BaseResponse(
             message="服务端无报告缓存数据",
-            data={"data": [], "total": 0},
+            data={"data": [], "total": 0, "latest_uid": None, "unchanged": False},
+        )
+
+    cache_total, latest_uid = reports.get_report_data_state(body.rcb_ref)
+    if body.known_latest_uid is not None and latest_uid == body.known_latest_uid:
+        return BaseResponse(
+            message="报告数据无变化",
+            data={
+                "data": [],
+                "total": min(cache_total, body.limit),
+                "latest_uid": latest_uid,
+                "unchanged": True,
+            },
         )
 
     data = reports.get_report_data(rcb_ref=body.rcb_ref, limit=body.limit)
@@ -340,6 +352,8 @@ async def get_report_data(body: ReportDataRequest, request: Request):
         data={
             "data": data,
             "total": len(data),
+            "latest_uid": latest_uid,
+            "unchanged": False,
         },
     )
 

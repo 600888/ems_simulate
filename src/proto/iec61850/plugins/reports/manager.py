@@ -166,10 +166,23 @@ class ReportManager:
             return False
 
         buffered = rcb_type == "BRCB"
+        # 仿真服务端始终支持客户端发起的 GI。厂家 ICD 中经常省略 gi 属性，
+        # 省略在 SCL 语义中等价于 false，但这不应让通用测试主站的总召唤静默失效。
+        effective_trg_ops = dict(trg_ops or {"dchg": True, "qchg": False, "dupd": False, "period": False})
+        effective_trg_ops["gi"] = True
 
         # 尝试使用 ReportControlBlock_create API
         api_success, api_reason = self._try_api_create(
-            name, ln_node, rpt_id, data_set_ref, conf_rev, buffered, buf_time, intg_period, trg_ops, opt_fields
+            name,
+            ln_node,
+            rpt_id,
+            data_set_ref,
+            conf_rev,
+            buffered,
+            buf_time,
+            intg_period,
+            effective_trg_ops,
+            opt_fields,
         )
         if api_success:
             log.debug(f"RCB 通过 API 创建成功: {name}, ld={ld_inst}, ln={ln_name}, type={rcb_type}")
@@ -197,7 +210,7 @@ class ReportManager:
             "time_of_entry": "",
             "owner": "",
             "resv": False,
-            "trg_ops": trg_ops or {"dchg": True, "qchg": False, "dupd": False, "period": False, "gi": True},
+            "trg_ops": effective_trg_ops,
             "opt_fields": opt_fields
             or {
                 "seq_num": True,

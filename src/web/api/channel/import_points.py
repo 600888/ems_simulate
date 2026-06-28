@@ -390,94 +390,19 @@ async def import_icd(
                     if do_ref not in do_descriptions:
                         do_descriptions[do_ref] = p.name
 
-            # ===== 2a. 注册全部 DataSet（必须在 GoCB 之前） =====
-            # IEC 61850 标准创建顺序：数据模型 → DataSet → GSEControlBlock
-            # DataSet 必须先于引用它的 GSEControlBlock 存在于 IedModel 中
+            # ===== 2a. 复用 load_model() 已注册的 DataSet/RCB =====
+            # reload_device_instance() 上一步已经通过 IEC61850Server.load_model()
+            # 完成 DataSet 和 ReportControlBlock 的唯一一次注册。这里仅统计并持久化，
+            # 不再二次创建模型节点，避免 RCB 数量翻倍和同名节点状态分裂。
             pure_datasets = goose_data.get("pure_datasets", [])
             datasets_to_register = _collect_dataset_configs(goose_data)
-            registered_dataset_count = 0
-            log.info(
-                f"DataSet 注册准备: all={len(datasets_to_register)}个, pure={len(pure_datasets)}个, "
-                f"iec61850_server={'可用' if iec61850_server else 'None'}"
-            )
-            if datasets_to_register and iec61850_server:
-                for ds_info in datasets_to_register:
-                    try:
-                        success = iec61850_server.register_dataset(
-                            ld_inst=ds_info["ld_inst"],
-                            ds_name=ds_info["ds_name"],
-                            data_set_ref=ds_info["data_set_ref"],
-                            entries=ds_info.get("entries", []),
-                        )
-                        if success:
-                            registered_dataset_count += 1
-                    except Exception as ds_err:
-                        log.warning(f"注册 DataSet 失败 ({ds_info.get('ds_name', '')}): {ds_err}")
-
-            # ===== 2ab. 注册 ReportControl (RCB) =====
-            # 从 ICD 的 ReportControl 元素创建 RCB 对象到 IedModel
             report_controls = goose_data.get("report_controls", [])
-            rc_registered = 0
-            rc_failed = 0
-            if report_controls and iec61850_server:
-                log.info(f"ReportControl 注册准备: {len(report_controls)}个")
-                for rc_info in report_controls:
-                    try:
-                        # 确保 DataSet 已注册 (RCB 引用的 DataSet)
-                        ds_ref = rc_info.get("data_set_ref", "")
-                        rc_entries = rc_info.get("entries", [])
-                        if ds_ref and iec61850_server:
-                            ds_name = ds_ref.split("$")[-1] if "$" in ds_ref else ""
-                            if ds_name and not any(d.get("ref") == ds_ref for d in iec61850_server.browse_datasets()):
-                                ds_ok = iec61850_server.register_dataset(
-                                    ld_inst=rc_info["ld_inst"],
-                                    ds_name=ds_name,
-                                    data_set_ref=ds_ref,
-                                    entries=rc_entries if rc_entries else None,
-                                )
-                                if not ds_ok:
-                                    log.warning(f"RCB DataSet 注册失败: {ds_ref}，RCB 可能无法正常工作")
-                        # 注册 RCB 到 MMS 模型
-                        trg_ops = rc_info.get("trg_ops", {})
-                        opt_fields = rc_info.get("opt_fields", {})
-                        ln_name = rc_info.get("ln_name", "LLN0")
-                        if hasattr(iec61850_server, "reports") and iec61850_server.reports:
-                            success = iec61850_server.reports.register_rcb(
-                                ld_inst=rc_info["ld_inst"],
-                                name=rc_info["name"],
-                                rcb_type=rc_info["rcb_type"],
-                                rpt_id=rc_info.get("rpt_id", rc_info["name"]),
-                                data_set_ref=ds_ref,
-                                conf_rev=rc_info.get("conf_rev", 1),
-                                buf_time=rc_info.get("buf_time", 0),
-                                intg_period=rc_info.get("intg_period", 0),
-                                trg_ops=trg_ops if any(trg_ops.values()) else None,
-                                opt_fields=opt_fields if any(opt_fields.values()) else None,
-                                ln_name=ln_name,
-                            )
-                            if success:
-                                rc_registered += 1
-                                log.info(f"RCB 已注册到 MMS 模型: {rc_info['ld_inst']}/{rc_info['name']}")
-                            else:
-                                rc_failed += 1
-                                log.warning(
-                                    f"RCB 注册失败 (libIEC61850 版本可能不支持 ReportControlBlock_create): "
-                                    f"{rc_info['ld_inst']}/{rc_info['name']}，此 RCB 不会出现在 MMS 模型中"
-                                )
-                        else:
-                            rc_failed += 1
-                            log.warning(f"reports 管理器不可用，跳过 RCB 注册: {rc_info['name']}")
-                    except Exception as rc_err:
-                        rc_failed += 1
-                        log.warning(f"注册 RCB 异常 ({rc_info.get('name', '')}): {rc_err}")
-                if rc_failed > 0:
-                    log.warning(
-                        f"ReportControl 注册完成: 成功={rc_registered}/{len(report_controls)}, "
-                        f"失败={rc_failed}。"
-                        f"失败原因: libIEC61850 的 ReportControlBlock_create API 可能未暴露到 Python SWIG"
-                    )
-                else:
-                    log.info(f"ReportControl 注册完成: 全部 {rc_registered}/{len(report_controls)} 成功")
+            registered_dataset_count = len(iec61850_server.browse_datasets()) if iec61850_server else 0
+            rc_registered = len(iec61850_server.reports.rcb_list) if iec61850_server else 0
+            log.info(
+                f"load_model 已完成模型注册: DataSet={registered_dataset_count}, "
+                f"RCB={rc_registered}/{len(report_controls)}"
+            )
 
             # ===== 2b. 创建 GOOSE Publisher（注册 GSEControlBlock） =====
             # GoCB 引用的 DataSet 会在 add_goose_control_block 内部创建

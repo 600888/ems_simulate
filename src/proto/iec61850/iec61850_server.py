@@ -185,17 +185,41 @@ class IEC61850Server:
         """获取或创建逻辑节点 (委托给 builder)"""
         return self._builder.get_or_create_ln(ld_inst, ln_name)
 
-    def add_point(self, address, frame_type: int = 0, fc: str = "") -> str | None:
+    def add_point(
+        self,
+        address,
+        frame_type: int = 0,
+        fc: str = "",
+        dchg: bool = False,
+        qchg: bool = False,
+        dupd: bool = False,
+    ) -> str | None:
         """添加测点到数据模型 (委托给 builder)"""
-        return self._builder.add_point(address, frame_type, fc)
+        return self._builder.add_point(address, frame_type, fc, dchg=dchg, qchg=qchg, dupd=dupd)
 
     def _add_point_simple(self, address, frame_type: int) -> str | None:
         """简单地址模式添加测点 (委托给 builder)"""
         return self._builder._add_point_simple(address, frame_type)
 
-    def _add_point_from_ref(self, address: str, frame_type: int, fc: str = "") -> str | None:
+    def _add_point_from_ref(
+        self,
+        address: str,
+        frame_type: int,
+        fc: str = "",
+        *,
+        dchg: bool = False,
+        qchg: bool = False,
+        dupd: bool = False,
+    ) -> str | None:
         """完整引用路径模式添加测点 (委托给 builder)"""
-        return self._builder._add_point_from_ref(address, frame_type, fc)
+        return self._builder._add_point_from_ref(
+            address,
+            frame_type,
+            fc,
+            dchg=dchg,
+            qchg=qchg,
+            dupd=dupd,
+        )
 
     # ===== FC/IEC type 推断 (委托给 builder) =====
 
@@ -337,17 +361,30 @@ class IEC61850Server:
 
         # 将 ICD 中的测点注册到数据模型（DO/DA 节点）
         registered_count = 0
+
+        def _register_point(point, frame_type: int, default_fc: str) -> bool:
+            return bool(
+                self._builder._add_point_from_ref(
+                    point.reg_addr,
+                    frame_type,
+                    getattr(point, "fc", "") or default_fc,
+                    dchg=bool(getattr(point, "dchg", False)),
+                    qchg=bool(getattr(point, "qchg", False)),
+                    dupd=bool(getattr(point, "dupd", False)),
+                )
+            )
+
         for point in result.points.yc_points:
-            if self._builder._add_point_from_ref(point.reg_addr, 0, getattr(point, "fc", "") or "MX"):
+            if _register_point(point, 0, "MX"):
                 registered_count += 1
         for point in result.points.yx_points:
-            if self._builder._add_point_from_ref(point.reg_addr, 1, getattr(point, "fc", "") or "ST"):
+            if _register_point(point, 1, "ST"):
                 registered_count += 1
         for point in result.points.yk_points:
-            if self._builder._add_point_from_ref(point.reg_addr, 2, getattr(point, "fc", "") or "CO"):
+            if _register_point(point, 2, "CO"):
                 registered_count += 1
         for point in result.points.yt_points:
-            if self._builder._add_point_from_ref(point.reg_addr, 3, getattr(point, "fc", "") or "CO"):
+            if _register_point(point, 3, "CO"):
                 registered_count += 1
         log.info(f"已注册 {registered_count} 个测点到数据模型")
 

@@ -65,6 +65,8 @@ export interface ReportDataEntry {
 export interface ReportDataResponse {
   data: ReportDataEntry[];
   total: number;
+  latest_uid: number | null;
+  unchanged: boolean;
 }
 
 export interface ReportEntrySummary {
@@ -154,18 +156,20 @@ export async function triggerGi(channelId: number, rcbRef: string): Promise<bool
 export async function getReportData(
   channelId: number,
   rcbRef: string,
-  limit: number = 100
+  limit: number = 100,
+  knownLatestUid: number | null = null,
 ): Promise<ReportDataResponse> {
   try {
     const result = await requestApi(REPORT_API.DATA, "post", {
       channel_id: channelId,
       rcb_ref: rcbRef,
       limit,
+      known_latest_uid: knownLatestUid,
     });
-    return result || { data: [], total: 0 };
+    return result || { data: [], total: 0, latest_uid: null, unchanged: false };
   } catch (error) {
     console.error("Error fetching report data:", error);
-    return { data: [], total: 0 };
+    return { data: [], total: 0, latest_uid: null, unchanged: false };
   }
 }
 

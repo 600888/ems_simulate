@@ -11,8 +11,10 @@ FastAPI dependency so it is easy to test.
 
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass, field
 from datetime import datetime
+import json
 import re
 from typing import Any
 
@@ -151,6 +153,17 @@ class ReportTreeBuilder:
         reason: str,
         raw_ref: str,
     ) -> None:
+        structured_value = parse_structured_value(value)
+        if self._is_standard_do_structure(structured_value):
+            self._append_standard_do_structure(
+                do_node,
+                parsed,
+                structured_value,
+                reason,
+                raw_ref,
+            )
+            return
+
         if not parsed.da_parts:
             do_node.value = stringify_value(value)
             do_node.reason = reason
@@ -178,9 +191,117 @@ class ReportTreeBuilder:
                     self._decorate_timestamp_node(node, value)
             current = node
 
+    @staticmethod
+    def _is_standard_do_structure(value: Any) -> bool:
+        """Return whether value looks like a common CDC ``value/q/t`` structure.
+
+        Some devices return an entire MMS structure even when the DataSet member
+        reference points at a leaf DA.  The most common layouts are
+        ``[[mag], q, t]`` for measured values and ``[stVal, q, t]`` for status
+        values.  Requiring a nested analogue value or a boolean status keeps
+        arbitrary numeric arrays from being mislabeled as IEC 61850 fields.
+        """
+        if not isinstance(value, (list, tuple)) or len(value) < 3:
+            return False
+        primary = value[0]
+        is_status_value = isinstance(primary, bool) or (
+            isinstance(primary, int) and not isinstance(primary, bool) and primary in (0, 1)
+        )
+        if not isinstance(primary, (list, tuple)) and not is_status_value:
+            return False
+        return decode_quality(value[1]) is not None and decode_timestamp(value[2]) is not None
+
+    def _append_standard_do_structure(
+        self,
+        do_node: ReportTreeNode,
+        parsed: ParsedReportRef,
+        value: list[Any] | tuple[Any, ...],
+        reason: str,
+        raw_ref: str,
+    ) -> None:
+        """Expand common CDC values into named DA/BDA nodes."""
+        fc = parsed.fc or None
+        primary = value[0]
+
+        if isinstance(primary, (list, tuple)):
+            mag_node = self._get_child_by_id(
+                do_node,
+                f"{parsed.do_ref}.mag",
+                "mag",
+                "da",
+                fc=fc,
+            )
+            for index, item in enumerate(primary):
+                if len(primary) == 1:
+                    field_name = (
+                        parsed.da_parts[-1]
+                        if parsed.da_parts[:1] == ("mag",) and parsed.da_parts[-1] in ("f", "i")
+                        else "f"
+                        if isinstance(item, float)
+                        else "i"
+                    )
+                else:
+                    field_name = f"component[{index}]"
+                child = self._get_child_by_id(
+                    mag_node,
+                    f"{parsed.do_ref}.mag.{field_name}",
+                    field_name,
+                    "bda",
+                    raw_ref=raw_ref,
+                )
+                child.reason = reason
+                child.value = stringify_value(item)
+        else:
+            st_val = self._get_child_by_id(
+                do_node,
+                f"{parsed.do_ref}.stVal",
+                "stVal",
+                "da",
+                fc=fc,
+                raw_ref=raw_ref,
+            )
+            st_val.reason = reason
+            st_val.value = stringify_value(primary)
+
+        q_node = self._get_child_by_id(
+            do_node,
+            f"{parsed.do_ref}.q",
+            "q",
+            "da",
+            fc=fc,
+            raw_ref=raw_ref,
+        )
+        q_node.reason = reason
+        self._decorate_quality_node(q_node, value[1])
+
+        t_node = self._get_child_by_id(
+            do_node,
+            f"{parsed.do_ref}.t",
+            "t",
+            "da",
+            fc=fc,
+            raw_ref=raw_ref,
+        )
+        t_node.reason = reason
+        self._decorate_timestamp_node(t_node, value[2])
+
+        for index, item in enumerate(value[3:], start=3):
+            label = f"component[{index}]"
+            extra_node = self._get_child_by_id(
+                do_node,
+                f"{parsed.do_ref}.{label}",
+                label,
+                "da",
+                fc=fc,
+                raw_ref=raw_ref,
+            )
+            extra_node.reason = reason
+            extra_node.value = stringify_value(item)
+
     def _decorate_quality_node(self, node: ReportTreeNode, value: Any) -> None:
         decoded = decode_quality(value)
         if decoded is None:
+            node.value = stringify_value(value)
             return
 
         node.value = decoded["validity_text"]
@@ -189,7 +310,6 @@ class ReportTreeBuilder:
                 id=f"{node.id}.Validity",
                 label="Validity",
                 node_type="bda",
-                fc=node.fc,
                 reason=node.reason,
                 value=decoded["validity_text"],
                 raw_ref=node.raw_ref,
@@ -198,14 +318,12 @@ class ReportTreeBuilder:
                 id=f"{node.id}.QualityDetails",
                 label="Quality Details",
                 node_type="group",
-                fc=node.fc,
                 reason=node.reason,
                 children=[
                     ReportTreeNode(
                         id=f"{node.id}.QualityDetails.{field_name}",
                         label=label,
                         node_type="bda",
-                        fc=node.fc,
                         reason=node.reason,
                         value=decoded[field_name],
                         raw_ref=node.raw_ref,
@@ -217,7 +335,6 @@ class ReportTreeBuilder:
                 id=f"{node.id}.Source",
                 label="Source",
                 node_type="bda",
-                fc=node.fc,
                 reason=node.reason,
                 value=decoded["source_text"],
                 raw_ref=node.raw_ref,
@@ -226,7 +343,6 @@ class ReportTreeBuilder:
                 id=f"{node.id}.Test",
                 label="Test",
                 node_type="bda",
-                fc=node.fc,
                 reason=node.reason,
                 value=decoded["test"],
                 raw_ref=node.raw_ref,
@@ -235,7 +351,6 @@ class ReportTreeBuilder:
                 id=f"{node.id}.OperatorBlocked",
                 label="OperatorBlocked",
                 node_type="bda",
-                fc=node.fc,
                 reason=node.reason,
                 value=decoded["operator_blocked"],
                 raw_ref=node.raw_ref,
@@ -245,6 +360,7 @@ class ReportTreeBuilder:
     def _decorate_timestamp_node(self, node: ReportTreeNode, value: Any) -> None:
         decoded = decode_timestamp(value)
         if decoded is None:
+            node.value = stringify_value(value)
             return
 
         node.value = decoded["datetime"]
@@ -253,7 +369,6 @@ class ReportTreeBuilder:
                 id=f"{node.id}.Datetime",
                 label="Datetime",
                 node_type="bda",
-                fc=node.fc,
                 reason=node.reason,
                 value=decoded["datetime"],
                 raw_ref=node.raw_ref,
@@ -262,7 +377,6 @@ class ReportTreeBuilder:
                 id=f"{node.id}.Seconds",
                 label="Seconds",
                 node_type="bda",
-                fc=node.fc,
                 reason=node.reason,
                 value=decoded["seconds"],
                 raw_ref=node.raw_ref,
@@ -271,7 +385,6 @@ class ReportTreeBuilder:
                 id=f"{node.id}.UnixMs",
                 label="UnixMs",
                 node_type="bda",
-                fc=node.fc,
                 reason=node.reason,
                 value=decoded["unix_ms"],
                 raw_ref=node.raw_ref,
@@ -280,7 +393,6 @@ class ReportTreeBuilder:
                 id=f"{node.id}.Fraction",
                 label="Fraction",
                 node_type="bda",
-                fc=node.fc,
                 reason=node.reason,
                 value=decoded["fraction"],
                 raw_ref=node.raw_ref,
@@ -452,6 +564,8 @@ def _quality_packed_value(value: Any) -> int | None:
         return None
     if isinstance(value, int):
         return value
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else None
     if isinstance(value, str):
         text = value.strip()
         if not text:
@@ -559,6 +673,31 @@ def stringify_value(value: Any) -> Any:
             pass
         return "[unresolved]"
     return raw_str
+
+
+def parse_structured_value(value: Any) -> Any:
+    """Convert a serialized MMS aggregate into safe Python containers.
+
+    ``MmsValue_toString`` commonly returns structures such as
+    ``[[43.0], 0.0, 0.0]``.  ``literal_eval`` accepts only Python literals, so
+    the display layer can recover the hierarchy without evaluating code.
+    """
+    if isinstance(value, (list, tuple, dict)):
+        return value
+    if not isinstance(value, str):
+        return value
+
+    text = value.strip()
+    if len(text) < 2 or text[0] not in "[{(" or text[-1] not in "]})":
+        return value
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        try:
+            parsed = ast.literal_eval(text)
+        except (SyntaxError, ValueError):
+            return value
+    return parsed if isinstance(parsed, (list, tuple, dict)) else value
 
 
 def make_entry_summary(entry: dict[str, Any], index: int) -> dict[str, Any]:

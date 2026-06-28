@@ -26,6 +26,7 @@ class ReportDataRequest(BaseModel):
     channel_id: int = Field(..., description="通道ID")
     rcb_ref: str = Field(..., description="RCB 引用路径")
     limit: int = Field(100, description="最多返回条数", ge=1, le=10000)
+    known_latest_uid: int | None = Field(None, description="前端已知的最新报告 uid，用于无变化短路")
 
 
 class ReportTreeDataRequest(BaseModel):

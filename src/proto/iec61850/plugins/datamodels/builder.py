@@ -147,13 +147,21 @@ class IedModelBuilder:
 
     # ===== 测点添加 =====
 
-    def add_point(self, address, frame_type: int = 0, fc: str = "") -> str | None:
+    def add_point(
+        self,
+        address,
+        frame_type: int = 0,
+        fc: str = "",
+        dchg: bool = False,
+        qchg: bool = False,
+        dupd: bool = False,
+    ) -> str | None:
         """添加测点到数据模型"""
         addr_str = str(address)
         if addr_str in self._point_refs:
             return self._point_refs[addr_str]
         if is_full_ref(address):
-            return self._add_point_from_ref(address, frame_type, fc)
+            return self._add_point_from_ref(address, frame_type, fc, dchg=dchg, qchg=qchg, dupd=dupd)
         else:
             return self._add_point_simple(address, frame_type)
 
@@ -180,7 +188,13 @@ class IedModelBuilder:
                 self._do_map[mag_key] = mag
                 self._keep_alive.append(mag)
             da = iec61850.DataAttribute_create(
-                "f", iec61850.toModelNode(mag), iec61850.IEC61850_FLOAT32, FC_MX, 0, 0, 0
+                "f",
+                iec61850.toModelNode(mag),
+                iec61850.IEC61850_FLOAT32,
+                FC_MX,
+                iec61850.TRG_OPT_DATA_CHANGED,
+                0,
+                0,
             )
             ref = f"{self.model_name}{self.ld_name}/MMXU1.{do_name}.mag.f"
             self._point_attrs[addr_str] = da
@@ -198,7 +212,13 @@ class IedModelBuilder:
                 self._keep_alive.append(do)
                 self._add_standard_das(do, do_key, "ST", 1, ["stVal"])
             da = iec61850.DataAttribute_create(
-                "stVal", iec61850.toModelNode(do), iec61850.IEC61850_BOOLEAN, FC_ST, 0, 0, 0
+                "stVal",
+                iec61850.toModelNode(do),
+                iec61850.IEC61850_BOOLEAN,
+                FC_ST,
+                iec61850.TRG_OPT_DATA_CHANGED,
+                0,
+                0,
             )
             ref = f"{self.model_name}{self.ld_name}/GGIO1.{do_name}.stVal"
             self._point_attrs[addr_str] = da
@@ -247,7 +267,16 @@ class IedModelBuilder:
             log.error(f"IEC61850 添加测点失败: address={address}, frame_type={frame_type}")
         return ref
 
-    def _add_point_from_ref(self, address: str, frame_type: int, fc: str = "") -> str | None:
+    def _add_point_from_ref(
+        self,
+        address: str,
+        frame_type: int,
+        fc: str = "",
+        *,
+        dchg: bool = False,
+        qchg: bool = False,
+        dupd: bool = False,
+    ) -> str | None:
         """完整引用路径模式: 按 ICD 结构动态创建 LD/LN/DO/DA"""
         parsed = parse_ref(address)
         if not parsed:
@@ -281,7 +310,6 @@ class IedModelBuilder:
             do_obj = iec61850.DataObject_create(do_name, iec61850.toModelNode(ln), 0)
             self._do_map[do_key] = do_obj
             self._keep_alive.append(do_obj)
-            self._add_standard_das(do_obj, do_key, fc, frame_type, da_parts)
 
         # 推断 FC
         if not fc:
@@ -291,6 +319,12 @@ class IedModelBuilder:
             fc_const = FC_MX
 
         iec_type = self._infer_iec_type(frame_type, da_parts)
+        trigger_options = self._build_trigger_options(dchg=dchg, qchg=qchg, dupd=dupd)
+        if trigger_options == 0:
+            # 部分厂家 ICD 仅在 ReportControl.TrgOps 声明 dchg/qchg，DA 本身
+            # 省略触发属性。对标准值叶子补充 IEC 61850 常用触发语义，避免
+            # RCB 已使能但数据变化永远不产生事件。
+            trigger_options = self._infer_da_trigger_options(da_parts)
 
         # 沿 da_path 逐级创建
         parent = do_obj
@@ -303,7 +337,15 @@ class IedModelBuilder:
                 if existing_da is not None:
                     da = existing_da
                 else:
-                    da = iec61850.DataAttribute_create(part, iec61850.toModelNode(parent), iec_type, fc_const, 0, 0, 0)
+                    da = iec61850.DataAttribute_create(
+                        part,
+                        iec61850.toModelNode(parent),
+                        iec_type,
+                        fc_const,
+                        trigger_options,
+                        0,
+                        0,
+                    )
                     self._da_map[part_key] = da
                     self._keep_alive.append(da)
             else:
@@ -381,6 +423,27 @@ class IedModelBuilder:
             "RP": iec61850.IEC61850_FC_RP,
         }
         return FC_CONST_MAP.get(fc)
+
+    @staticmethod
+    def _build_trigger_options(*, dchg: bool = False, qchg: bool = False, dupd: bool = False) -> int:
+        """Build the libIEC61850 DataAttribute trigger bit mask."""
+        if not HAS_IEC61850:
+            return 0
+        return (
+            (iec61850.TRG_OPT_DATA_CHANGED if dchg else 0)
+            | (iec61850.TRG_OPT_QUALITY_CHANGED if qchg else 0)
+            | (iec61850.TRG_OPT_DATA_UPDATE if dupd else 0)
+        )
+
+    @staticmethod
+    def _infer_da_trigger_options(da_parts: list[str]) -> int:
+        """Fallback trigger semantics for FCDA-created attributes without SCL point metadata."""
+        leaf = da_parts[-1] if da_parts else ""
+        if leaf == "q":
+            return IedModelBuilder._build_trigger_options(qchg=True)
+        if leaf in ("stVal", "f", "actVal"):
+            return IedModelBuilder._build_trigger_options(dchg=True)
+        return 0
 
     @staticmethod
     def _infer_iec_type(frame_type: int, da_parts: list) -> int:
@@ -520,7 +583,13 @@ class IedModelBuilder:
         q_key = f"{do_key}.q"
         if q_key not in self._da_map and qt_fc_const:
             q_da = iec61850.DataAttribute_create(
-                "q", iec61850.toModelNode(do_obj), iec61850.IEC61850_QUALITY, qt_fc_const, 0, 0, 0
+                "q",
+                iec61850.toModelNode(do_obj),
+                iec61850.IEC61850_QUALITY,
+                qt_fc_const,
+                self._build_trigger_options(qchg=True),
+                0,
+                0,
             )
             self._da_map[q_key] = q_da
             self._keep_alive.append(q_da)
@@ -568,6 +637,7 @@ class IedModelBuilder:
         if fc_const is None:
             fc_const = FC_MX
         iec_type_const = self._infer_iec_type_from_str(iec_type, da_path_parts)
+        trigger_options = self._infer_da_trigger_options(da_path_parts)
 
         parent = do_obj
         for i, part in enumerate(da_path_parts):
@@ -576,7 +646,13 @@ class IedModelBuilder:
             if is_leaf:
                 if part_key not in self._da_map:
                     da = iec61850.DataAttribute_create(
-                        part, iec61850.toModelNode(parent), iec_type_const, fc_const, 0, 0, 0
+                        part,
+                        iec61850.toModelNode(parent),
+                        iec_type_const,
+                        fc_const,
+                        trigger_options,
+                        0,
+                        0,
                     )
                     self._da_map[part_key] = da
                     self._keep_alive.append(da)
