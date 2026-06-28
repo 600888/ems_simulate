@@ -39,7 +39,7 @@ class AsyncModbusClient:
         self,
         host: str = "127.0.0.1",
         port: int = 502,
-        timeout: float = 1.0,
+        timeout: float = 3.0,
         retries: int = 1,
         log=None,
     ):

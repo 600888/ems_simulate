@@ -2,6 +2,7 @@ import random
 from typing import Any
 
 import c104
+from c104 import Quality
 
 from src.device.core.message.message_capture import MessageCapture
 from src.proto.iec104.log import log
@@ -170,13 +171,13 @@ class IEC104Server:
                     if point.io_address == io_address:
                         point = self.station.get_point(io_address=io_address)
                         if point and hasattr(point, "quality"):
-                            point.quality = quality
+                            point.quality = Quality(value=quality)
             elif frame_type == 2 or frame_type == 3:
                 for command in self.commands:
                     if command.io_address == io_address:
                         command = self.station.get_point(io_address=io_address)
                         if command and hasattr(command, "quality"):
-                            command.quality = quality
+                            command.quality = Quality(value=quality)
         except Exception as e:
             log.error(f"设置监控点品质失败: {e}")
             raise

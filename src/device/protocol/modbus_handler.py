@@ -257,7 +257,7 @@ class ModbusClientHandler(ClientHandler):
 
         # 对于 TCP 客户端，使用专门的异步客户端以避免同一进程中的阻塞
         if protocol_type == ProtocolType.ModbusTcpClient or protocol_type == ProtocolType.ModbusTcp:
-            self._client = AsyncModbusClient(host=ip, port=port, timeout=1.0, retries=1, log=self._log)
+            self._client = AsyncModbusClient(host=ip, port=port, timeout=3.0, retries=1, log=self._log)
         else:
             self._client = ModbusClient(
                 host=ip,

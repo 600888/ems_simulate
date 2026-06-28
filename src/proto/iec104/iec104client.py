@@ -62,7 +62,7 @@ class IEC104Client:
         """清空捕获的报文"""
         self.message_capture.clear()
 
-    async def connect(self, timeout: int = 5) -> bool:
+    async def connect(self, timeout: int = 3) -> bool:
         """
         连接到IEC 104服务器
         :param timeout: 连接超时时间(秒)

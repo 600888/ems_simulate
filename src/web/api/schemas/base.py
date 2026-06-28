@@ -20,6 +20,9 @@ def _sanitize_for_serialization(obj: Any) -> Any:
         return {str(k): _sanitize_for_serialization(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_sanitize_for_serialization(item) for item in obj]
+    # Pydantic BaseModel → 转为 dict 再递归处理
+    if isinstance(obj, BaseModel):
+        return _sanitize_for_serialization(obj.model_dump(mode="json"))
     # method、function 等不可序列化类型
     if callable(obj):
         return f"<{type(obj).__name__}>"
