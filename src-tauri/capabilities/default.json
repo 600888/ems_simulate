@@ -12,6 +12,9 @@
     "process:allow-exit",
     "process:allow-restart",
     "shell:allow-open",
-    "shell:default"
+    "shell:default",
+    "allow-get-backend-url",
+    "allow-is-backend-ready",
+    "allow-restart-backend"
   ]
 }

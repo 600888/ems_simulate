@@ -5,9 +5,9 @@ use std::time::Duration;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-use tauri::AppHandle;
-use tauri_plugin_shell::ShellExt;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_shell::ShellExt;
 
 // ── 全局状态 ──
 
@@ -87,10 +87,13 @@ fn backend_base_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
 }
 
-fn ensure_data_dir(_app: &AppHandle) -> String {
-    let dir = std::env::current_exe()
+fn ensure_data_dir(app: &AppHandle) -> String {
+    // MSI 通常安装在 Program Files，exe 所在目录不可写。运行数据统一放到
+    // Tauri 的用户级应用数据目录，避免后端刚拉起就因无法创建数据库/日志退出。
+    let dir = app
+        .path()
+        .app_local_data_dir()
         .ok()
-        .and_then(|exe| exe.parent().map(|parent| parent.to_path_buf()))
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| std::path::PathBuf::from("."));
 
@@ -125,23 +128,25 @@ fn find_project_root() -> Option<std::path::PathBuf> {
     None
 }
 
-fn try_spawn_sidecar(app: &AppHandle, port: u16) -> Option<CommandChild> {
-    let sidecar_cmd = app.shell().sidecar("ems_simulate_backend").ok()?;
+fn try_spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
+    let sidecar_cmd = app
+        .shell()
+        .sidecar("ems_simulate_backend")
+        .map_err(|e| format!("无法定位后端 sidecar: {e}"))?;
     let data_dir = ensure_data_dir(app);
 
     let (_, child) = sidecar_cmd
         .args(["--port", &port.to_string()])
         .env("EMS_ROOT_DIR", &data_dir)
         .spawn()
-        .inspect_err(|e| eprintln!("[EMS] sidecar spawn failed: {e}"))
-        .ok()?;
+        .map_err(|e| format!("后端 sidecar 启动失败: {e}"))?;
 
     eprintln!("[EMS] sidecar started, port={port}, data={data_dir}");
-    Some(child)
+    Ok(child)
 }
 
-fn try_spawn_python_direct(port: u16) -> Option<Child> {
-    let project_root = find_project_root()?;
+fn try_spawn_python_direct(port: u16) -> Result<Child, String> {
+    let project_root = find_project_root().ok_or_else(|| "未找到 start_back_end.py".to_string())?;
     let data_dir = project_root.to_string_lossy().to_string();
 
     for sub in &["data", "log", "config", "upload", "plan"] {
@@ -154,28 +159,30 @@ fn try_spawn_python_direct(port: u16) -> Option<Child> {
         vec!["python3", "python"]
     };
 
+    let mut errors = Vec::new();
     for py in &python_cmds {
         let mut cmd = new_detached_cmd(py);
-        let child = cmd
+        match cmd
             .args(["start_back_end.py", "--port", &port.to_string()])
             .env("EMS_ROOT_DIR", &data_dir)
             .current_dir(&project_root)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .inspect(|c| {
+        {
+            Ok(child) => {
                 eprintln!(
                     "[EMS] direct python '{}' started, port={port}, root={data_dir}, pid={:?}",
                     py,
-                    c.id()
-                )
-            })
-            .ok()?;
-        return Some(child);
+                    child.id()
+                );
+                return Ok(child);
+            }
+            Err(e) => errors.push(format!("{py}: {e}")),
+        }
     }
 
-    eprintln!("[EMS] no Python executable found in PATH");
-    None
+    Err(format!("没有可用的 Python 解释器 ({})", errors.join("; ")))
 }
 
 fn kill_processes_on_port(port: u16) {
@@ -218,42 +225,57 @@ fn kill_processes_on_port(port: u16) {
 
 // ── 公开 API ──
 
-pub fn spawn_backend(app: &AppHandle) -> String {
-    let port = get_available_port(8991);
+fn spawn_backend_checked(app: &AppHandle, port: u16) -> Result<String, String> {
     *BACKEND_PORT.lock().unwrap() = port;
     *BACKEND_READY.lock().unwrap() = false;
 
     let url = health_url(port);
+    let process = match try_spawn_sidecar(app, port) {
+        Ok(child) => ProcessHandle::Sidecar(child),
+        Err(sidecar_error) => {
+            eprintln!("[EMS] {sidecar_error}; trying direct Python");
+            try_spawn_python_direct(port)
+                .map(ProcessHandle::Direct)
+                .map_err(|python_error| format!("{sidecar_error}; {python_error}"))?
+        }
+    };
 
-    let process = try_spawn_sidecar(app, port)
-        .map(ProcessHandle::Sidecar)
-        .or_else(|| try_spawn_python_direct(port).map(ProcessHandle::Direct));
-
-    if let Some(handle) = process {
-        *BACKEND_PROCESS.lock().unwrap() = Some(handle);
-        eprintln!("[EMS] backend process spawned on port {port}");
-    } else {
-        eprintln!("[EMS] cannot start backend, check Python environment");
-    }
-
-    url
+    *BACKEND_PROCESS.lock().unwrap() = Some(process);
+    eprintln!("[EMS] backend process spawned on port {port}");
+    Ok(url)
 }
 
-pub async fn wait_backend_ready(url: &str) {
-    let client = reqwest::Client::new();
+pub fn spawn_backend(app: &AppHandle) -> String {
+    let port = get_available_port(8991);
+    match spawn_backend_checked(app, port) {
+        Ok(url) => url,
+        Err(error) => {
+            eprintln!("[EMS] cannot start backend: {error}");
+            health_url(port)
+        }
+    }
+}
+
+pub async fn wait_backend_ready(url: &str) -> bool {
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(1))
+        .timeout(Duration::from_secs(2))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let start = std::time::Instant::now();
     let timeout = Duration::from_secs(15);
 
     loop {
         if start.elapsed() > timeout {
             eprintln!("[EMS] backend startup timeout ({url})");
-            return;
+            *BACKEND_READY.lock().unwrap() = false;
+            return false;
         }
         match client.get(url).send().await {
             Ok(resp) if resp.status().is_success() => {
                 *BACKEND_READY.lock().unwrap() = true;
                 eprintln!("[EMS] backend ready -> {url}");
-                return;
+                return true;
             }
             _ => tokio::time::sleep(Duration::from_millis(500)).await,
         }
@@ -261,20 +283,22 @@ pub async fn wait_backend_ready(url: &str) {
 }
 
 pub async fn is_backend_ready() -> Result<bool, String> {
-    if let Ok(g) = BACKEND_READY.lock() {
-        if *g {
-            return Ok(true);
-        }
-    }
     let port = *BACKEND_PORT.lock().map_err(|e| e.to_string())?;
-    match reqwest::get(&health_url(port)).await {
-        Ok(resp) if resp.status().is_success() => {
-            if let Ok(mut g) = BACKEND_READY.lock() {
-                *g = true;
-            }
-            Ok(true)
-        }
-        _ => Ok(false),
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(1))
+        .timeout(Duration::from_secs(2))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let ready = matches!(
+        client.get(health_url(port)).send().await,
+        Ok(resp) if resp.status().is_success()
+    );
+    if let Ok(mut g) = BACKEND_READY.lock() {
+        *g = ready;
+    }
+    match ready {
+        true => Ok(true),
+        false => Ok(false),
     }
 }
 
@@ -302,8 +326,17 @@ pub fn stop() {
     *BACKEND_READY.lock().unwrap() = false;
 }
 
-pub fn restart(app: &AppHandle) -> String {
+pub fn restart(app: &AppHandle) -> Result<String, String> {
+    let port = *BACKEND_PORT.lock().map_err(|e| e.to_string())?;
     stop();
     std::thread::sleep(Duration::from_millis(800));
-    spawn_backend(app)
+    // 重启尽量复用原端口：WebView 当前页面来自这个 origin，切换端口会让
+    // 页面仍指向已经失效的旧服务。
+    for _ in 0..20 {
+        if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return spawn_backend_checked(app, port);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    Err(format!("后端端口 {port} 未能释放，无法重启"))
 }

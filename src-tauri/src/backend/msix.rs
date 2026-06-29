@@ -99,8 +99,8 @@ fn find_in_dir(dir: &std::path::Path, base_name: &str) -> Option<PathBuf> {
     None
 }
 
-fn try_spawn(data_dir: &str) -> Option<Child> {
-    let binary_path = find_sidecar()?;
+fn try_spawn(data_dir: &str) -> Result<Child, String> {
+    let binary_path = find_sidecar().ok_or_else(|| "未找到后端 sidecar 可执行文件".to_string())?;
     let port = MSIX_PORT.to_string();
 
     let log_dir = std::path::Path::new(data_dir).join("log");
@@ -131,16 +131,15 @@ fn try_spawn(data_dir: &str) -> Option<Child> {
 
     let child = cmd
         .spawn()
-        .inspect_err(|e| eprintln!("[EMS:msix] spawn failed: {e}"))
-        .ok()?;
+        .map_err(|e| format!("后端 sidecar 启动失败: {e}"))?;
 
     eprintln!("[EMS:msix] spawned, pid={:?}", child.id());
-    Some(child)
+    Ok(child)
 }
 
 // ── 公开 API ──
 
-pub fn spawn_backend(app: &AppHandle) -> String {
+fn spawn_backend_checked(app: &AppHandle) -> Result<String, String> {
     *MSIX_READY.lock().unwrap() = false;
 
     let data_dir = if let Ok(dir) = app.path().app_local_data_dir() {
@@ -158,18 +157,29 @@ pub fn spawn_backend(app: &AppHandle) -> String {
         ".".to_string()
     };
 
-    if let Some(child) = try_spawn(&data_dir) {
-        *MSIX_HANDLE.lock().unwrap() = Some(child);
-        eprintln!("[EMS:msix] backend process spawned");
-    } else {
-        eprintln!("[EMS:msix] cannot start backend binary");
-    }
+    let child = try_spawn(&data_dir)?;
+    *MSIX_HANDLE.lock().unwrap() = Some(child);
+    eprintln!("[EMS:msix] backend process spawned");
 
-    health_url()
+    Ok(health_url())
 }
 
-pub async fn wait_backend_ready() {
-    let client = reqwest::Client::new();
+pub fn spawn_backend(app: &AppHandle) -> String {
+    match spawn_backend_checked(app) {
+        Ok(url) => url,
+        Err(error) => {
+            eprintln!("[EMS:msix] cannot start backend binary: {error}");
+            health_url()
+        }
+    }
+}
+
+pub async fn wait_backend_ready() -> bool {
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(1))
+        .timeout(Duration::from_secs(2))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let url = health_url();
     let start = std::time::Instant::now();
     let timeout = Duration::from_secs(15);
@@ -177,13 +187,14 @@ pub async fn wait_backend_ready() {
     loop {
         if start.elapsed() > timeout {
             eprintln!("[EMS:msix] backend startup timeout ({url})");
-            return;
+            *MSIX_READY.lock().unwrap() = false;
+            return false;
         }
         match client.get(&url).send().await {
             Ok(resp) if resp.status().is_success() => {
                 *MSIX_READY.lock().unwrap() = true;
                 eprintln!("[EMS:msix] backend ready");
-                return;
+                return true;
             }
             _ => tokio::time::sleep(Duration::from_millis(500)).await,
         }
@@ -191,22 +202,19 @@ pub async fn wait_backend_ready() {
 }
 
 pub async fn is_backend_ready() -> bool {
-    if let Ok(guard) = MSIX_READY.lock() {
-        if *guard {
-            return true;
-        }
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(1))
+        .timeout(Duration::from_secs(2))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+    let ready = matches!(
+        client.get(health_url()).send().await,
+        Ok(resp) if resp.status().is_success()
+    );
+    if let Ok(mut guard) = MSIX_READY.lock() {
+        *guard = ready;
     }
-
-    match reqwest::get(&health_url()).await {
-        Ok(resp) if resp.status().is_success() => {
-            if let Ok(mut guard) = MSIX_READY.lock() {
-                *guard = true;
-            }
-            eprintln!("[EMS:msix] backend ready (fallback health check)");
-            true
-        }
-        _ => false,
-    }
+    ready
 }
 
 pub fn cleanup() {
@@ -223,10 +231,10 @@ pub fn stop() {
     *MSIX_READY.lock().unwrap() = false;
 }
 
-pub fn restart(app: &AppHandle) -> String {
+pub fn restart(app: &AppHandle) -> Result<String, String> {
     stop();
     std::thread::sleep(Duration::from_millis(800));
-    spawn_backend(app)
+    spawn_backend_checked(app)
 }
 
 fn kill_processes_on_port(port: u16) {

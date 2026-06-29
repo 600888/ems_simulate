@@ -47,13 +47,15 @@ pub fn get_backend_url() -> Result<String, String> {
 #[tauri::command]
 pub async fn restart_backend(app: tauri::AppHandle) -> Result<String, String> {
     let url = if is_msix_env() {
-        msix::restart(&app)
+        msix::restart(&app)?
     } else {
-        normal::restart(&app)
+        normal::restart(&app)?
     };
-    // 异步等待后端就绪
-    wait_backend_ready(&url).await;
-    Ok(url)
+    if wait_backend_ready(&url).await {
+        Ok(url.trim_end_matches("/api/health").to_string())
+    } else {
+        Err(format!("后端进程已启动，但健康检查超时: {url}"))
+    }
 }
 
 // ── 统一入口：根据环境转发到对应模块 ──
@@ -67,11 +69,19 @@ pub fn spawn_backend(app: &AppHandle) -> String {
     }
 }
 
-pub async fn wait_backend_ready(url: &str) {
+pub async fn wait_backend_ready(url: &str) -> bool {
     if is_msix_env() {
         msix::wait_backend_ready().await
     } else {
         normal::wait_backend_ready(url).await
+    }
+}
+
+/// Rust 侧持续检测后端存活状态。异常退出后 READY 会立即复位，等待用户重启。
+pub async fn monitor_backend() {
+    loop {
+        let _ = is_backend_ready().await;
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     }
 }
 

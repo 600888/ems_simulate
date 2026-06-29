@@ -17,8 +17,11 @@ pub fn run() {
 
             // 异步等待后端就绪（loading 页面 JS 同时通过 invoke 轮询 is_backend_ready）
             tauri::async_runtime::spawn(async move {
-                backend::wait_backend_ready(&health_url).await;
+                let _ = backend::wait_backend_ready(&health_url).await;
             });
+
+            // 后端异常退出时及时刷新 Rust 侧状态，重启命令不再被旧 READY 状态误导。
+            tauri::async_runtime::spawn(backend::monitor_backend());
 
             // 窗口由 tauri.conf.json 自动创建（visible=false + backgroundColor 消除白屏），
             // 延迟 show() 等 CSS 渲染完成后再显示，消除纯色→渐变的视觉跳跃

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-is-backend-ready"
+description = "Enables the is_backend_ready command without any pre-configured scope."
+commands.allow = ["is_backend_ready"]
+
+[[permission]]
+identifier = "deny-is-backend-ready"
+description = "Denies the is_backend_ready command without any pre-configured scope."
+commands.deny = ["is_backend_ready"]

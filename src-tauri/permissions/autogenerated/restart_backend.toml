@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-restart-backend"
+description = "Enables the restart_backend command without any pre-configured scope."
+commands.allow = ["restart_backend"]
+
+[[permission]]
+identifier = "deny-restart-backend"
+description = "Denies the restart_backend command without any pre-configured scope."
+commands.deny = ["restart_backend"]
