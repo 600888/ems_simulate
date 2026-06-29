@@ -342,14 +342,20 @@ class IEC61850Client:
         """获取当前已发现的 DataSet 列表"""
         return list(self._registry.discovered_datasets)
 
-    # ===== 浏览方法 (委托给 DataModels 插件) =====
+    # ===== 浏览方法 (优先使用已发现的 IedModel，MMS 实时浏览作为 fallback) =====
 
     def browse_logical_devices(self) -> list[str]:
         """浏览远端 IED 的逻辑设备列表"""
+        if self.model is not None:
+            return [ld.name for ld in self.model.lds]
         return self._conn.browse_logical_devices()
 
     def browse_logical_nodes(self, ld: str) -> list[str]:
         """浏览指定逻辑设备下的逻辑节点列表"""
+        if self.model is not None:
+            for ld_model in self.model.lds:
+                if ld_model.name == ld:
+                    return [ln.name for ln in ld_model.lns]
         dm = self.datamodels
         if dm:
             return dm.browse_logical_nodes(ld)
@@ -357,6 +363,13 @@ class IEC61850Client:
 
     def browse_data_objects(self, ld: str, ln: str) -> list[dict[str, Any]]:
         """浏览指定逻辑节点下的数据对象列表"""
+        if self.model is not None:
+            for ld_model in self.model.lds:
+                if ld_model.name != ld:
+                    continue
+                for ln_model in ld_model.lns:
+                    if ln_model.name == ln:
+                        return [{"name": do.name, "frame_type": do.frame_type} for do in ln_model.dos]
         dm = self.datamodels
         if dm:
             return dm.browse_data_objects(ld, ln)
@@ -364,6 +377,26 @@ class IEC61850Client:
 
     def browse_data_attributes(self, ld: str, ln: str, do_name: str) -> list[dict[str, Any]]:
         """浏览指定数据对象下的数据属性列表"""
+        if self.model is not None:
+            for ld_model in self.model.lds:
+                if ld_model.name != ld:
+                    continue
+                for ln_model in ld_model.lns:
+                    if ln_model.name != ln:
+                        continue
+                    for do in ln_model.dos:
+                        if do.name != do_name:
+                            continue
+                        return [
+                            {
+                                "name": da.name,
+                                "path": da.name if da.sub_das else da.path,
+                                "fc": da.fc,
+                                "type": da.iec_type,
+                                "children": [bda.to_flat_dict() for bda in da.sub_das],
+                            }
+                            for da in do.das
+                        ]
         dm = self.datamodels
         if dm:
             return dm.browse_data_attributes(ld, ln, do_name)

@@ -170,6 +170,25 @@ class DataModelsPlugin:
     def get_discovered_points(self) -> list[dict[str, Any]]:
         """获取当前已映射的测点列表（含 GOOSE 控制块）"""
         result = []
+        if self._client and hasattr(self._client, "model") and self._client.model is not None:
+            for addr, info in self._client.model.point_refs.items():
+                code = info.get("code") or self._extract_code_from_address(addr)
+                parsed = parse_ref(addr)
+                name = self._registry.get_name(addr) or (parsed[2] if parsed else code)
+                result.append(
+                    {
+                        "address": addr,
+                        "frame_type": info.get("frame_type", 0),
+                        "ref": info.get("ref", ""),
+                        "code": code,
+                        "name": name,
+                        "fc": info.get("fc", ""),
+                        "iec_type": info.get("iec_type", IEC_TYPE_UNKNOWN),
+                    }
+                )
+            result.extend(self._registry.discovered_goose_items)
+            return result
+
         for addr, ref in self._registry.point_refs.items():
             code = self._extract_code_from_address(addr)
             fc = self._registry.get_fc(addr)

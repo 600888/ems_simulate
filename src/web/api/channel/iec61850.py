@@ -183,6 +183,184 @@ def _infer_fc_from_da(da_path: str, fallback_fc: str = "MX") -> str:
     return DA_NAME_FC_MAP.get(top_da, fallback_fc)
 
 
+def _get_cached_iec61850_model(device):
+    """从 IEC61850 客户端处理器获取最近一次发现的完整 IedModel。"""
+    protocol_handler = getattr(device, "protocol_handler", None)
+    client = getattr(protocol_handler, "_client", None) if protocol_handler else None
+    return getattr(client, "model", None) if client else None
+
+
+def _point_value_and_status(point: BasePoint) -> tuple[str, str]:
+    """提取前端展示用的测点值和读取状态。"""
+    from src.enums.point_data import Yc, Yk, Yt, Yx
+
+    point_fc = getattr(point, "fc", "") or ""
+    is_valid = getattr(point, "is_valid", None)
+    status = "成功" if is_valid is True else ("失败" if is_valid is False else "未知")
+
+    if point_fc == "DC":
+        value = str(point.name)
+    elif isinstance(point, (Yc, Yt)):
+        value = str(point.real_value) if point.real_value is not None else ""
+    elif isinstance(point, (Yx, Yk)):
+        try:
+            value = str(int(point.value)) if point.value is not None else ""
+        except (ValueError, TypeError):
+            value = str(point.value) if point.value is not None else ""
+    else:
+        value = ""
+    return value, status
+
+
+def _build_point_display_index(all_points: list[BasePoint]) -> dict[str, dict[str, Any]]:
+    """按 IEC61850 完整地址索引已注册测点，供模型树叠加值/状态。"""
+    index: dict[str, dict[str, Any]] = {}
+    for point in all_points:
+        address = str(point.address)
+        value, status = _point_value_and_status(point)
+        index[address] = {
+            "point_code": str(point.code),
+            "point_name": str(point.name),
+            "value": value,
+            "status": status,
+            "fc": getattr(point, "fc", "") or "",
+            "frame_type": point.frame_type,
+        }
+    return index
+
+
+def _matches_iec61850_model_item(ld: str, ln: str, item: str) -> bool:
+    """匹配 DataModel 左侧树过滤项，item 可为 LD 或 LD/LN。"""
+    if not item:
+        return True
+    return item == ld or item == f"{ld}/{ln}"
+
+
+def _build_iec61850_tree_from_model(
+    model,
+    all_points: list[BasePoint],
+    category: str = "",
+    item: str = "",
+    point_name: str | None = None,
+    point_types: list[int] | None = None,
+    *,
+    include_unknown: bool = False,
+) -> dict[str, Any]:
+    """从完整 IedModel 构建 DO→DA→BDA 树，避免只显示已注册测点导致模型缺失。"""
+    if category and category != "DataModel":
+        return {"items": [], "total": 0}
+
+    if point_types is None:
+        point_types = [0, 1, 2, 3]
+
+    point_index = _build_point_display_index(all_points)
+    items: list[dict[str, Any]] = []
+
+    priority_order = {
+        "mag": 0,
+        "instMag": 0,
+        "cVal": 0,
+        "mxVal": 0,
+        "stVal": 0,
+        "ctlVal": 0,
+        "setVal": 0,
+        "Oper": 1,
+        "Cancel": 1,
+        "origin": 2,
+        "q": 3,
+        "t": 4,
+        "dU": 5,
+    }
+
+    for ld in model.lds:
+        for ln in ld.lns:
+            if not _matches_iec61850_model_item(ld.name, ln.name, item):
+                continue
+            for do in ln.dos:
+                if do.frame_type not in point_types and not (include_unknown and do.frame_type < 0):
+                    continue
+                do_ref = do.ref
+                if point_name and point_name not in do.name and point_name not in do_ref:
+                    matched_point_name = any(
+                        point_name in info.get("point_name", "")
+                        for addr, info in point_index.items()
+                        if addr.startswith(f"{do_ref}.")
+                    )
+                    if not matched_point_name:
+                        continue
+
+                da_list: list[dict[str, Any]] = []
+                do_desc = ""
+                for da in do.das:
+                    da_path = da.name if da.sub_das else da.path
+                    da_addr = f"{do_ref}.{da.path}"
+                    da_point = point_index.get(da_addr, {})
+                    da_value = da_point.get("value", "")
+                    da_name = da_point.get("point_name") or da.name
+                    if da.name == "dU" and da_value:
+                        do_desc = da_value
+
+                    children = []
+                    for bda in da.sub_das:
+                        bda_addr = f"{do_ref}.{bda.path}"
+                        bda_point = point_index.get(bda_addr, {})
+                        children.append(
+                            {
+                                "bda_name": bda.name,
+                                "bda_path": bda.path,
+                                "fc": bda_point.get("fc") or bda.fc or da.fc,
+                                "point_code": bda_point.get("point_code", ""),
+                                "value": bda_point.get("value", ""),
+                                "status": bda_point.get("status", ""),
+                            }
+                        )
+                        if not da_value and bda_point.get("value"):
+                            da_value = bda_point["value"]
+
+                    da_list.append(
+                        {
+                            "da_name": da.name,
+                            "da_path": da_path,
+                            "fc": da_point.get("fc") or da.fc or _infer_fc_from_da(da_path),
+                            "is_struct": bool(children),
+                            "point_code": da_point.get("point_code", ""),
+                            "point_name": da_name,
+                            "value": da_value,
+                            "status": da_point.get("status", ""),
+                            "children": children,
+                        }
+                    )
+
+                da_list.sort(key=lambda d: priority_order.get(d["da_name"], 2))
+
+                da_statuses = [d["status"] for d in da_list if d.get("status")]
+                for da in da_list:
+                    da_statuses.extend(bda["status"] for bda in da.get("children", []) if bda.get("status"))
+                if any(s == "失败" for s in da_statuses):
+                    do_status = "失败"
+                elif all(s == "成功" for s in da_statuses) and da_statuses:
+                    do_status = "成功"
+                else:
+                    do_status = "未知"
+
+                primary_fc = da_list[0]["fc"] if da_list else ""
+                items.append(
+                    {
+                        "do_name": do.name,
+                        "do_ref": do_ref,
+                        "ld": ld.name,
+                        "ln": ln.name,
+                        "du_name": do_desc,
+                        "fc": primary_fc,
+                        "frame_type": do.frame_type,
+                        "status": do_status,
+                        "children": da_list,
+                    }
+                )
+
+    return {"items": items, "total": len(items)}
+
+
 def _build_iec61850_tree(
     all_points: list[BasePoint],
     category: str = "",
@@ -527,15 +705,27 @@ async def get_iec61850_tree_data(
     # 获取所有测点对象
     all_points = _get_iec61850_filtered_points(device, "", "")
 
-    # 构建树形结构
-    tree_data = _build_iec61850_tree(
-        all_points,
-        category=body.category,
-        item=body.item,
-        point_name=body.point_name,
-        point_types=pt_filter,
-        device=device,
-    )
+    model = _get_cached_iec61850_model(device)
+    if model is not None and (not body.category or body.category == "DataModel"):
+        tree_data = _build_iec61850_tree_from_model(
+            model,
+            all_points,
+            category=body.category,
+            item=body.item,
+            point_name=body.point_name,
+            point_types=pt_filter,
+            include_unknown=not bool(body.point_types),
+        )
+    else:
+        # DataSet 或无缓存模型时保持原有从 PointManager 反推树的逻辑
+        tree_data = _build_iec61850_tree(
+            all_points,
+            category=body.category,
+            item=body.item,
+            point_name=body.point_name,
+            point_types=pt_filter,
+            device=device,
+        )
 
     # DO 级分页
     all_items = tree_data["items"]
