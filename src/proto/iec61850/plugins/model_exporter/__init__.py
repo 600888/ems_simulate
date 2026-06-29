@@ -113,12 +113,6 @@ class ModelExporterPlugin:
         if ied_model is None:
             raise RuntimeError("无 IedModel 缓存，请先连接 IED 设备")
 
-        if export_type == "xml":
-            # XML 由 IcdExporter.export_xml 单独处理
-            from .exporters.icd import IcdExporter
-
-            return IcdExporter().export_xml(ied_model, output_path)
-
         exporter = get_exporter(export_type)
         if export_type == "icd":
             # 提取 dU 描述值传入导出器

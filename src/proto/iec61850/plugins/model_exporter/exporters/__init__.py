@@ -8,6 +8,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from .csv import CsvExporter
+from .icd import IcdExporter
+from .json import JsonExporter
+from .tree import TreeTextExporter
+from .xml import XmlExporter
+
 if TYPE_CHECKING:
     from ....model import IedModel
 
@@ -29,25 +35,16 @@ class ModelExporter(Protocol):
         ...
 
 
-# 延迟导入，避免循环依赖
-_EXPORTER_CLASSES: dict[str, str] = {
-    "json": ".json.JsonExporter",
-    "csv": ".csv.CsvExporter",
-    "icd": ".icd.IcdExporter",
-    "xml": ".icd.IcdExporter",
-    "tree": ".tree.TreeTextExporter",
+# 使用静态导入，确保 PyInstaller 能发现并打包全部导出器。
+_EXPORTER_CLASSES: dict[str, type] = {
+    "json": JsonExporter,
+    "csv": CsvExporter,
+    "icd": IcdExporter,
+    "xml": XmlExporter,
+    "tree": TreeTextExporter,
 }
 
 _cache: dict[str, type] = {}
-
-
-def _load_class(dotted_path: str) -> type:
-    """延迟加载导出器类"""
-    import importlib
-
-    module_path, class_name = dotted_path.rsplit(".", 1)
-    module = importlib.import_module(module_path, __package__)
-    return getattr(module, class_name)
 
 
 def get_exporter(export_type: str) -> ModelExporter:
@@ -66,7 +63,7 @@ def get_exporter(export_type: str) -> ModelExporter:
         raise ValueError(f"不支持的导出类型: {export_type}，支持: {', '.join(_EXPORTER_CLASSES)}")
 
     if export_type not in _cache:
-        _cache[export_type] = _load_class(_EXPORTER_CLASSES[export_type])
+        _cache[export_type] = _EXPORTER_CLASSES[export_type]
 
     return _cache[export_type]()
 
