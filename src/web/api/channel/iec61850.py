@@ -229,6 +229,29 @@ def _build_point_display_index(all_points: list[BasePoint]) -> dict[str, dict[st
     return index
 
 
+def _build_do_description_index(point_index: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """从测点名称恢复 ``DO ref -> dU`` 映射。
+
+    在线发现不会把 dU 注册成独立测点；客户端会把读到的 dU 写入该
+    DO 下所有已注册测点的 name。自动生成且未读到 dU 的测点则保持
+    ``name == code``，必须排除，避免把 ``MMXU1.TotW.mag.f`` 当成描述。
+    """
+    descriptions: dict[str, str] = {}
+    for address, info in point_index.items():
+        parsed = _parse_iec61850_address(address)
+        if not parsed:
+            continue
+        ld = parsed["ld"]
+        ln = parsed["ln"]
+        do_name = parsed["do_name"]
+        point_name = str(info.get("point_name", "")).strip()
+        point_code = str(info.get("point_code", "")).strip()
+        if not point_name or point_name in (do_name, point_code, address):
+            continue
+        descriptions.setdefault(f"{ld}/{ln}.{do_name}", point_name)
+    return descriptions
+
+
 def _matches_iec61850_model_item(ld: str, ln: str, item: str) -> bool:
     """匹配 DataModel 左侧树过滤项，item 可为 LD 或 LD/LN。"""
     if not item:
@@ -254,6 +277,7 @@ def _build_iec61850_tree_from_model(
         point_types = [0, 1, 2, 3]
 
     point_index = _build_point_display_index(all_points)
+    do_description_index = _build_do_description_index(point_index)
     items: list[dict[str, Any]] = []
 
     priority_order = {
@@ -290,15 +314,21 @@ def _build_iec61850_tree_from_model(
                         continue
 
                 da_list: list[dict[str, Any]] = []
-                do_desc = ""
+                do_desc = do_description_index.get(do_ref, "")
                 for da in do.das:
                     da_path = da.name if da.sub_das else da.path
                     da_addr = f"{do_ref}.{da.path}"
                     da_point = point_index.get(da_addr, {})
                     da_value = da_point.get("value", "")
                     da_name = da_point.get("point_name") or da.name
-                    if da.name == "dU" and da_value:
-                        do_desc = da_value
+                    if da.name == "dU":
+                        if da_value:
+                            do_desc = da_value
+                        elif do_desc:
+                            # dU 不作为独立测点注册，使用客户端已写入普通
+                            # 子测点 name 的描述值补全模型树中的虚拟 dU 行。
+                            da_value = do_desc
+                            da_name = do_desc
 
                     children = []
                     for bda in da.sub_das:

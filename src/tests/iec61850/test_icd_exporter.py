@@ -125,6 +125,24 @@ class TestIcdExporter:
                                 ),
                             ),
                         ),
+                        LNModel(
+                            name="LTSM1",
+                            ln_class="LTSM",
+                            ref="IED1_LD0/LTSM1",
+                            dos=(
+                                DORef(
+                                    name="Ind2",
+                                    ref="IED1_LD0/LTSM1.Ind2",
+                                    cdc="",
+                                    frame_type=1,
+                                    das=(
+                                        DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.BOOLEAN),
+                                        DARef(name="q", path="q", fc="MX", iec_type=IecType.INTEGER),
+                                        DARef(name="t", path="t", fc="MX", iec_type=IecType.TIMESTAMP),
+                                    ),
+                                ),
+                            ),
+                        ),
                     ),
                 ),
                 LDModel(
@@ -154,6 +172,24 @@ class TestIcdExporter:
                                     cdc="SPS",
                                     frame_type=1,
                                     das=(DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.BOOLEAN),),
+                                ),
+                            ),
+                        ),
+                        LNModel(
+                            name="LTSM1",
+                            ln_class="LTSM",
+                            ref="IED1_LD0/LTSM1",
+                            dos=(
+                                DORef(
+                                    name="Ind2",
+                                    ref="IED1_LD0/LTSM1.Ind2",
+                                    cdc="",
+                                    frame_type=1,
+                                    das=(
+                                        DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.BOOLEAN),
+                                        DARef(name="q", path="q", fc="MX", iec_type=IecType.INTEGER),
+                                        DARef(name="t", path="t", fc="MX", iec_type=IecType.TIMESTAMP),
+                                    ),
                                 ),
                             ),
                         ),
@@ -399,6 +435,487 @@ class TestIcdExporter:
         for fcda in fcda_list:
             assert fcda.get("@lnClass") == "MMCL", f"lnClass 应为 MMCL，实际: {fcda.get('@lnClass')}"
             assert fcda.get("@lnInst") == "1", f"lnInst 应为 1，实际: {fcda.get('@lnInst')}"
+
+    def test_build_datasets_infers_fc_from_do_primary_da(self):
+        discovered_lns = (
+            LNModel(
+                name="GGIO1",
+                ln_class="GGIO",
+                ref="LD0/GGIO1",
+                dos=(
+                    DORef(
+                        name="Ind1",
+                        ref="LD0/GGIO1.Ind1",
+                        cdc="SPS",
+                        frame_type=1,
+                        das=(
+                            DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.BOOLEAN),
+                            DARef(name="q", path="q", fc="MX", iec_type=IecType.INTEGER),
+                            DARef(name="t", path="t", fc="MX", iec_type=IecType.TIMESTAMP),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        datasets = [
+            DataSetRef(
+                name="dsDin",
+                ref="LD0/LLN0.dsDin",
+                members=({"ref": "LD0/GGIO1.Ind1", "fc": "MX", "iec_type": "unknown", "index": 0},),
+            ),
+        ]
+        ln = LNModel(name="LLN0", ln_class="LLN0", ref="LD0/LLN0", datasets=datasets)
+
+        result = self.exporter._build_datasets(datasets, "LD0", ln, discovered_lns)
+        fcda = result["FCDA"]
+
+        assert fcda["@doName"] == "Ind1"
+        assert fcda["@fc"] == "ST"
+        assert "@daName" not in fcda
+
+    def test_build_datasets_keeps_prefix_specific_ln_match(self):
+        discovered_lns = (
+            LNModel(
+                name="GGIO1",
+                ln_class="GGIO",
+                ref="MEAS/GGIO1",
+                dos=(
+                    DORef(
+                        name="AnIn1",
+                        ref="MEAS/GGIO1.AnIn1",
+                        cdc="MV",
+                        frame_type=0,
+                        das=(DARef(name="mag", path="mag.f", fc="MX", iec_type=IecType.FLOAT),),
+                    ),
+                ),
+            ),
+            LNModel(
+                name="dcGGIO1",
+                ln_class="GGIO",
+                ref="MEAS/dcGGIO1",
+                dos=(
+                    DORef(
+                        name="AnIn1",
+                        ref="MEAS/dcGGIO1.AnIn1",
+                        cdc="MV",
+                        frame_type=0,
+                        das=(DARef(name="mag", path="mag.f", fc="MX", iec_type=IecType.FLOAT),),
+                    ),
+                ),
+            ),
+            LNModel(
+                name="wkGGIO1",
+                ln_class="GGIO",
+                ref="MEAS/wkGGIO1",
+                dos=(
+                    DORef(
+                        name="Ind1",
+                        ref="MEAS/wkGGIO1.Ind1",
+                        cdc="SPS",
+                        frame_type=1,
+                        das=(DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.BOOLEAN),),
+                    ),
+                ),
+            ),
+        )
+        datasets = [
+            DataSetRef(
+                name="dsAin",
+                ref="MEAS/LLN0.dsAin",
+                members=(
+                    {"ref": "MEAS/GGIO1.AnIn1", "fc": "MX", "iec_type": "float", "index": 0},
+                    {"ref": "MEAS/wkGGIO1.Ind1", "fc": "ST", "iec_type": "boolean", "index": 1},
+                ),
+            ),
+        ]
+        ln0 = LNModel(name="LLN0", ln_class="LLN0", ref="MEAS/LLN0", datasets=tuple(datasets))
+
+        result = self.exporter._build_datasets(datasets, "MEAS", ln0, discovered_lns)
+        fcda_list = result["FCDA"]
+
+        assert fcda_list[0]["@doName"] == "AnIn1"
+        assert fcda_list[0]["@lnClass"] == "GGIO"
+        assert fcda_list[0]["@lnInst"] == "1"
+        assert "@prefix" not in fcda_list[0]
+        assert fcda_list[1]["@doName"] == "Ind1"
+        assert fcda_list[1]["@prefix"] == "wk"
+
+    def test_export_fills_empty_da_fc_in_type_templates(self, tmp_path):
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            discover_time="2026-06-29 00:00:00",
+            lds=(
+                LDModel(
+                    name="IED1_LD0",
+                    inst="LD0",
+                    lns=(
+                        LNModel(
+                            name="GGIO1",
+                            ln_class="GGIO",
+                            ref="IED1_LD0/GGIO1",
+                            dos=(
+                                DORef(
+                                    name="Ind1",
+                                    ref="IED1_LD0/GGIO1.Ind1",
+                                    cdc="SPC",
+                                    frame_type=1,
+                                    das=(
+                                        DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.BOOLEAN),
+                                        DARef(name="pulseConfig", path="pulseConfig", fc="", iec_type=IecType.INTEGER),
+                                    ),
+                                ),
+                                DORef(
+                                    name="AnIn1",
+                                    ref="IED1_LD0/GGIO1.AnIn1",
+                                    cdc="MV",
+                                    frame_type=0,
+                                    das=(
+                                        DARef(name="mag", path="mag.f", fc="MX", iec_type=IecType.FLOAT),
+                                        DARef(name="units", path="units", fc="", iec_type=IecType.INTEGER),
+                                    ),
+                                ),
+                                DORef(
+                                    name="NamPlt",
+                                    ref="IED1_LD0/GGIO1.NamPlt",
+                                    cdc="LPL",
+                                    frame_type=-1,
+                                    das=(DARef(name="hwRev", path="hwRev", fc="", iec_type=IecType.STRING),),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        output_path = tmp_path / "empty_fc.icd"
+        self.exporter.export(model, str(output_path), ied_name="IED1")
+        xml_text = output_path.read_text(encoding="utf-8")
+        assert 'fc=""' not in xml_text
+
+        doc = xmltodict.parse(xml_text)
+        do_types = doc["SCL"]["DataTypeTemplates"]["DOType"]
+        if isinstance(do_types, dict):
+            do_types = [do_types]
+        das = []
+        for do_type in do_types:
+            da_items = do_type.get("DA", [])
+            if isinstance(da_items, dict):
+                da_items = [da_items]
+            das.extend(da_items)
+
+        assert all(da.get("@fc") for da in das)
+        by_name = {da["@name"]: da["@fc"] for da in das}
+        assert by_name["pulseConfig"] == "CF"
+        assert by_name["units"] == "CF"
+        assert by_name["hwRev"] == "DC"
+
+    def test_export_normalizes_quality_and_timestamp_fc_by_cdc(self, tmp_path):
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            lds=(
+                LDModel(
+                    name="IED1_LD0",
+                    inst="LD0",
+                    lns=(
+                        LNModel(
+                            name="GGIO1",
+                            ln_class="GGIO",
+                            ref="IED1_LD0/GGIO1",
+                            dos=(
+                                DORef(
+                                    name="Ind1",
+                                    ref="IED1_LD0/GGIO1.Ind1",
+                                    cdc="SPC",
+                                    frame_type=1,
+                                    das=(
+                                        DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.BOOLEAN),
+                                        DARef(name="q", path="q", fc="MX", iec_type=IecType.INTEGER),
+                                        DARef(name="t", path="t", fc="MX", iec_type=IecType.TIMESTAMP),
+                                    ),
+                                ),
+                                DORef(
+                                    name="AnIn1",
+                                    ref="IED1_LD0/GGIO1.AnIn1",
+                                    cdc="MV",
+                                    frame_type=0,
+                                    das=(
+                                        DARef(name="mag", path="mag.f", fc="MX", iec_type=IecType.FLOAT),
+                                        DARef(name="q", path="q", fc="MX", iec_type=IecType.INTEGER),
+                                        DARef(name="t", path="t", fc="MX", iec_type=IecType.TIMESTAMP),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        output_path = tmp_path / "qt_fc.icd"
+        self.exporter.export(model, str(output_path), ied_name="IED1")
+        doc = xmltodict.parse(output_path.read_text(encoding="utf-8"))
+        do_types = doc["SCL"]["DataTypeTemplates"]["DOType"]
+        if isinstance(do_types, dict):
+            do_types = [do_types]
+
+        by_cdc = {do_type["@cdc"]: do_type for do_type in do_types}
+        for cdc, expected_fc in (("SPC", "ST"), ("MV", "MX")):
+            das = by_cdc[cdc]["DA"]
+            if isinstance(das, dict):
+                das = [das]
+            fc_by_name = {da["@name"]: da["@fc"] for da in das}
+            assert fc_by_name["q"] == expected_fc
+            assert fc_by_name["t"] == expected_fc
+
+        source_q = DARef(name="q", path="q", fc="MX", iec_type=IecType.INTEGER)
+        assert self.exporter._infer_cdc_from_do("Ind2", "LTSM") == "SPS"
+        assert self.exporter._resolve_fc(source_q, "SPS") == "ST"
+
+    def test_export_uses_complete_and_distinct_standard_enum_types(self, tmp_path):
+        def enum_do(name: str) -> DORef:
+            return DORef(
+                name=name,
+                ref=f"IED1_LD0/LLN0.{name}",
+                cdc="ENC",
+                frame_type=-1,
+                das=(
+                    DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.INTEGER),
+                    DARef(name="q", path="q", fc="MX", iec_type=IecType.INTEGER),
+                    DARef(name="t", path="t", fc="MX", iec_type=IecType.TIMESTAMP),
+                ),
+            )
+
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            lds=(
+                LDModel(
+                    name="IED1_LD0",
+                    inst="LD0",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="IED1_LD0/LLN0",
+                            dos=(enum_do("Mod"), enum_do("Beh"), enum_do("Health")),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        output_path = tmp_path / "enum_types.icd"
+        self.exporter.export(model, str(output_path), ied_name="IED1")
+        doc = xmltodict.parse(output_path.read_text(encoding="utf-8"))
+        templates = doc["SCL"]["DataTypeTemplates"]
+        lnode_type = templates["LNodeType"]
+        if isinstance(lnode_type, list):
+            lnode_type = lnode_type[0]
+        do_refs = lnode_type["DO"]
+        if isinstance(do_refs, dict):
+            do_refs = [do_refs]
+        type_by_do = {do_ref["@name"]: do_ref["@type"] for do_ref in do_refs}
+
+        do_types = templates["DOType"]
+        if isinstance(do_types, dict):
+            do_types = [do_types]
+        do_type_by_id = {do_type["@id"]: do_type for do_type in do_types}
+
+        def st_val_enum_type(do_name: str) -> str:
+            das = do_type_by_id[type_by_do[do_name]]["DA"]
+            if isinstance(das, dict):
+                das = [das]
+            return next(da["@type"] for da in das if da["@name"] == "stVal")
+
+        assert st_val_enum_type("Mod") == "BehKind"
+        assert st_val_enum_type("Beh") == "BehKind"
+        assert st_val_enum_type("Health") == "HealthKind"
+        assert type_by_do["Mod"] == type_by_do["Beh"]
+        assert type_by_do["Health"] != type_by_do["Mod"]
+
+        enum_types = templates["EnumType"]
+        if isinstance(enum_types, dict):
+            enum_types = [enum_types]
+        enum_by_id = {enum_type["@id"]: enum_type for enum_type in enum_types}
+        originator_values = enum_by_id["orCategory"]["EnumVal"]
+        assert [(item["@ord"], item["#text"]) for item in originator_values] == [
+            ("0", "not-supported"),
+            ("1", "bay-control"),
+            ("2", "station-control"),
+            ("3", "remote-control"),
+            ("4", "automatic-bay"),
+            ("5", "automatic-station"),
+            ("6", "automatic-remote"),
+            ("7", "maintenance"),
+            ("8", "process"),
+        ]
+        assert "Origin" not in enum_by_id
+
+    def test_export_builds_origin_struct_with_or_category_enum(self, tmp_path):
+        oper = DARef(
+            name="Oper",
+            path="Oper.ctlVal",
+            fc="CO",
+            iec_type=IecType.BOOLEAN,
+            sub_das=(
+                DARef(name="ctlVal", path="Oper.ctlVal", fc="CO", iec_type=IecType.BOOLEAN),
+                DARef(name="origin", path="Oper.origin", fc="OR", iec_type=IecType.INTEGER),
+                DARef(name="ctlNum", path="Oper.ctlNum", fc="CO", iec_type=IecType.INTEGER),
+            ),
+        )
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            lds=(
+                LDModel(
+                    name="IED1_LD0",
+                    inst="LD0",
+                    lns=(
+                        LNModel(
+                            name="GGIO1",
+                            ln_class="GGIO",
+                            ref="IED1_LD0/GGIO1",
+                            dos=(
+                                DORef(
+                                    name="SPCSO1",
+                                    ref="IED1_LD0/GGIO1.SPCSO1",
+                                    cdc="SPC",
+                                    frame_type=2,
+                                    das=(oper,),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        output_path = tmp_path / "origin_struct.icd"
+        self.exporter.export(model, str(output_path), ied_name="IED1")
+        doc = xmltodict.parse(output_path.read_text(encoding="utf-8"))
+        templates = doc["SCL"]["DataTypeTemplates"]
+        da_types = templates["DAType"]
+        if isinstance(da_types, dict):
+            da_types = [da_types]
+        da_type_by_id = {da_type["@id"]: da_type for da_type in da_types}
+
+        oper_type = next(
+            da_type
+            for da_type in da_types
+            if any(
+                bda.get("@name") == "origin"
+                for bda in (da_type["BDA"] if isinstance(da_type["BDA"], list) else [da_type["BDA"]])
+            )
+        )
+        oper_bdas = oper_type["BDA"] if isinstance(oper_type["BDA"], list) else [oper_type["BDA"]]
+        origin_bda = next(bda for bda in oper_bdas if bda["@name"] == "origin")
+        assert origin_bda["@bType"] == "Struct"
+
+        origin_type = da_type_by_id[origin_bda["@type"]]
+        origin_bdas = origin_type["BDA"] if isinstance(origin_type["BDA"], list) else [origin_type["BDA"]]
+        origin_by_name = {bda["@name"]: bda for bda in origin_bdas}
+        assert origin_by_name["orCat"] == {"@name": "orCat", "@bType": "Enum", "@type": "orCategory"}
+        assert origin_by_name["orIdent"] == {"@name": "orIdent", "@bType": "Octet64"}
+
+        ln = doc["SCL"]["IED"]["AccessPoint"]["Server"]["LDevice"]["LN"]
+        oper_sdi = ln["DOI"]["SDI"]
+        assert oper_sdi["@name"] == "Oper"
+        origin_sdi = oper_sdi["SDI"]
+        assert origin_sdi["@name"] == "origin"
+        origin_dais = origin_sdi["DAI"]
+        assert [dai["@name"] for dai in origin_dais] == ["orCat", "orIdent"]
+
+    def test_build_dois_includes_status_dais(self):
+        self.exporter._do_descriptions = {"LD0/GGIO1.Ind1": "Trip"}
+        ln = LNModel(
+            name="GGIO1",
+            ln_class="GGIO",
+            ref="LD0/GGIO1",
+            dos=(
+                DORef(
+                    name="Ind1",
+                    ref="LD0/GGIO1.Ind1",
+                    cdc="SPS",
+                    frame_type=1,
+                    das=(
+                        DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.BOOLEAN),
+                        DARef(name="q", path="q", fc="MX", iec_type=IecType.INTEGER),
+                        DARef(name="t", path="t", fc="MX", iec_type=IecType.TIMESTAMP),
+                        DARef(name="dU", path="dU", fc="DC", iec_type=IecType.STRING),
+                    ),
+                ),
+            ),
+        )
+
+        doi = self.exporter._build_dois(ln)
+        dais = doi["DAI"]
+        if isinstance(dais, dict):
+            dais = [dais]
+        by_name = {dai["@name"]: dai for dai in dais}
+
+        assert set(by_name) == {"stVal", "q", "t", "dU"}
+        assert by_name["dU"]["Val"] == "Trip"
+
+    def test_build_dois_uses_sdi_for_struct_da_path(self):
+        ln = LNModel(
+            name="GGIO1",
+            ln_class="GGIO",
+            ref="LD0/GGIO1",
+            dos=(
+                DORef(
+                    name="AnIn1",
+                    ref="LD0/GGIO1.AnIn1",
+                    cdc="MV",
+                    frame_type=0,
+                    das=(
+                        DARef(name="mag", path="mag.f", fc="MX", iec_type=IecType.FLOAT),
+                        DARef(name="q", path="q", fc="MX", iec_type=IecType.INTEGER),
+                        DARef(name="t", path="t", fc="MX", iec_type=IecType.TIMESTAMP),
+                    ),
+                ),
+            ),
+        )
+
+        doi = self.exporter._build_dois(ln)
+
+        assert doi["SDI"]["@name"] == "mag"
+        assert doi["SDI"]["DAI"]["@name"] == "f"
+
+    def test_build_datasets_infers_fc_from_explicit_da_name(self):
+        discovered_lns = (
+            LNModel(
+                name="GGIO1",
+                ln_class="GGIO",
+                ref="LD0/GGIO1",
+                dos=(
+                    DORef(
+                        name="Ind1",
+                        ref="LD0/GGIO1.Ind1",
+                        cdc="SPS",
+                        frame_type=1,
+                        das=(DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.BOOLEAN),),
+                    ),
+                ),
+            ),
+        )
+        datasets = [
+            DataSetRef(
+                name="dsDin",
+                ref="LD0/LLN0.dsDin",
+                members=({"ref": "LD0/GGIO1.Ind1.stVal", "fc": "MX", "iec_type": "boolean", "index": 0},),
+            ),
+        ]
+        ln = LNModel(name="LLN0", ln_class="LLN0", ref="LD0/LLN0", datasets=datasets)
+
+        result = self.exporter._build_datasets(datasets, "LD0", ln, discovered_lns)
+        fcda = result["FCDA"]
+
+        assert fcda["@doName"] == "Ind1"
+        assert fcda["@daName"] == "stVal"
+        assert fcda["@fc"] == "ST"
 
     def test_mag_struct_da_uses_discovered_bdas(self):
         """验证 mag 结构体 DA 使用在线发现的子属性（不加默认的 i）
@@ -844,6 +1361,65 @@ class TestIcdExporter:
         assert result == "PCS001", f"应返回'PCS001'，实际: '{result}'"
 
     # ===== 完整导出验证 =====
+
+    def test_infer_ied_name_alpha_numeric_site_prefix(self):
+        model = IedModel(
+            host="192.168.1.1",
+            port=102,
+            lds=(
+                LDModel(name="LC001BESSSYS", inst="LC001BESSSYS", lns=()),
+                LDModel(name="LC001EMTR01", inst="LC001EMTR01", lns=()),
+                LDModel(name="LC001PCS01", inst="LC001PCS01", lns=()),
+                LDModel(name="LC001RACK01", inst="LC001RACK01", lns=()),
+            ),
+        )
+
+        assert self.exporter._infer_ied_name(model) == "LC001"
+
+    def test_icd_export_avoids_repeated_ied_prefix_for_named_lds(self, tmp_path):
+        status_da = DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.INTEGER)
+        model = IedModel(
+            host="10.1.15.76",
+            port=102,
+            lds=(
+                LDModel(
+                    name="LC001BESSSYS",
+                    inst="LC001BESSSYS",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="LC001BESSSYS/LLN0",
+                            dos=(DORef(name="Health", cdc="ENC", frame_type=-1, das=(status_da,)),),
+                        ),
+                    ),
+                ),
+                LDModel(
+                    name="LC001EMTR01",
+                    inst="LC001EMTR01",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="LC001EMTR01/LLN0",
+                            dos=(DORef(name="Health", cdc="ENC", frame_type=-1, das=(status_da,)),),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        output_path = tmp_path / "lc001.icd"
+        self.exporter.export(model, str(output_path))
+        xml_text = output_path.read_text(encoding="utf-8")
+        doc = xmltodict.parse(xml_text)
+        ldevices = doc["SCL"]["IED"]["AccessPoint"]["Server"]["LDevice"]
+        if isinstance(ldevices, dict):
+            ldevices = [ldevices]
+
+        assert doc["SCL"]["IED"]["@name"] == "LC001"
+        assert [ld["@inst"] for ld in ldevices] == ["BESSSYS", "EMTR01"]
+        assert "LC001BESSSYSLC001BESSSYS" not in xml_text
 
     def test_global_report_aggregation_across_lds(self, tmp_path):
         """验证跨LD/LN的全局RCB聚合：12个实例在全IED范围内聚合为max=12"""

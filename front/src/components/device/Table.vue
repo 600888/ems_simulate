@@ -478,6 +478,7 @@ import { getPointType, PointType, getIec104TypeLabelKey } from '@/types/point'
 import { readSinglePoint, deletePoint } from '@/api/pointApi'
 import { iec61850ReadPoint, iec61850ReadPointMetadata } from '@/api/channelApi'
 import type { IEC61850TreeDataResponse, Iec61850MetadataResponse } from '@/api/channelApi'
+import { resolveDoReadPointCode } from '@/utils/iec61850Tree'
 import {
   INT_REGISTER_DECODE_LIST,
   LONG_REGISTER_DECODE_LIST,
@@ -818,8 +819,8 @@ const iec61850FlatRows = computed(() => {
       return '';
     };
     const doValue = getDoDisplayValue(doNode.children || []) || doNode.value || '';
-    // DO 行
-    const primaryDa = { 0: 'mag.f', 1: 'stVal', 2: 'ctlVal', 3: 'ctlVal' }[doNode.frame_type] || '';
+    // DO 行：使用模型实际返回的主值测点，兼容 mag.i、Oper.ctlVal 等路径。
+    const readPointCode = resolveDoReadPointCode(doNode);
     result.push({
       _isDoRow: true,
       _rowKey: `do-${doRef}`,
@@ -830,7 +831,7 @@ const iec61850FlatRows = computed(() => {
       _duName: doNode.du_name,
       '地址': doRef,
       '测点名称': doName,
-      '测点编码': primaryDa ? `${doRef}.${primaryDa}` : '',
+      '测点编码': readPointCode,
       '帧类型': FRAME_TYPE_LABELS[doNode.frame_type] || '',
       '真实值': doValue,
       '16进制地址': '',

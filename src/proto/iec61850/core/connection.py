@@ -48,6 +48,15 @@ class Iec61850Connection:
     def is_connected(self) -> bool:
         return self._is_connected
 
+    @contextlib.contextmanager
+    def native_operation(self):
+        """在连接锁保护下提供当前底层连接，避免操作期间被重连销毁。"""
+        with self._lock:
+            if not self._connection or not self._is_connected:
+                yield None
+                return
+            yield self._connection
+
     def connect(self, auto_discover: bool = True, discover_callback=None) -> bool:
         """连接到 IEC 61850 服务器
 

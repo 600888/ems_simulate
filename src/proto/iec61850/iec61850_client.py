@@ -178,13 +178,15 @@ class IEC61850Client:
             >>> meta = client.read_metadata("KG_BAMSCTMP01/MMCL1.Temp001.mag.f")
             >>> print(meta.quality.is_valid, meta.timestamp.unix_timestamp_ms)
         """
-        from .defs.address import parse_ref
+        from .defs.address import infer_fc_from_address, parse_ref
 
         parsed = parse_ref(address)
         if not parsed:
             return MetadataInfo()
         ld_inst, ln_name, do_name, _ = parsed
         do_ref = f"{ld_inst}/{ln_name}.{do_name}"
+        if not fc:
+            fc = self._registry.get_fc(address) or infer_fc_from_address(address)
 
         reader = MetadataReader()
         return reader.read_metadata(self._conn, do_ref, fc=fc)

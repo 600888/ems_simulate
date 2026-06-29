@@ -182,7 +182,10 @@ class IcdExporter:
         "mag": [("f", "FLOAT32"), ("i", "INT32")],
         "setMag": [("f", "FLOAT32"), ("i", "INT32")],
         "instMag": [("f", "FLOAT32"), ("i", "INT32")],
+        "origin": [("orCat", "Enum"), ("orIdent", "Octet64")],
     }
+
+    _BDA_ENUM_TYPE_MAP = {"orCat": "orCategory"}
 
     _DA_NAME_FC_MAP = {
         "mag": "MX",
@@ -220,8 +223,68 @@ class IcdExporter:
         "configRev": "DC",
         "d": "DC",
         "lnNs": "DC",
+        "ldNs": "DC",
+        "phNs": "DC",
+        "cdcNs": "DC",
+        "dataNs": "DC",
+        "hwRev": "DC",
+        "serNum": "DC",
+        "model": "DC",
+        "location": "DC",
         "ctlModel": "CF",
         "dbRef": "CF",
+        "pulseConfig": "CF",
+        "minVal": "CF",
+        "maxVal": "CF",
+        "stepSize": "CF",
+        "units": "CF",
+        "db": "CF",
+        "zeroDb": "CF",
+        "sVC": "CF",
+        "rangeC": "CF",
+        "smpRate": "CF",
+        "subMag": "MX",
+        "subQ": "SV",
+        "subID": "SV",
+    }
+
+    _CDC_DEFAULT_FC_MAP = {
+        "MV": "CF",
+        "CMV": "CF",
+        "SAV": "CF",
+        "SPC": "CF",
+        "DPC": "CF",
+        "INC": "CF",
+        "ENC": "CF",
+        "APC": "CF",
+        "ASG": "SP",
+        "LPL": "DC",
+        "DPL": "DC",
+        "SPS": "ST",
+        "DPS": "ST",
+        "INS": "ST",
+        "ENS": "ST",
+        "ACT": "ST",
+        "ACD": "ST",
+        "SEC": "ST",
+    }
+
+    _CDC_QT_FC_MAP = {
+        "MV": "MX",
+        "CMV": "MX",
+        "SAV": "MX",
+        "APC": "MX",
+        "SPS": "ST",
+        "DPS": "ST",
+        "INS": "ST",
+        "ENS": "ST",
+        "ACT": "ST",
+        "ACD": "ST",
+        "SEC": "ST",
+        "SPC": "ST",
+        "DPC": "ST",
+        "INC": "ST",
+        "ENC": "ST",
     }
 
     def _model_to_scl_dict(self, model: IedModel, ied_name: str) -> dict[str, Any]:
@@ -411,8 +474,11 @@ class IcdExporter:
                     "bay-control",
                     "station-control",
                     "remote-control",
-                    "automatic-control",
-                    "maintenance-control",
+                    "automatic-bay",
+                    "automatic-station",
+                    "automatic-remote",
+                    "maintenance",
+                    "process",
                 ]
             )
         ]
@@ -437,11 +503,12 @@ class IcdExporter:
         """
         da_tuples = []
         for da in do.das:
-            fc = da.fc or self._DA_NAME_FC_MAP.get(da.name, "")
-            btype, _ = self._resolve_btype(da, do.name, cdc, "")
+            fc = self._resolve_fc(da, cdc)
+            btype, type_ref = self._resolve_btype(da, do.name, cdc, "")
             # 对于 Struct 类型，加上 BDA 指纹以区分不同子属性组合
             bda_fp = self._make_da_type_fingerprint(da) if btype == "Struct" else ()
-            da_tuples.append((da.name, fc, btype, bda_fp))
+            enum_type_ref = type_ref if btype == "Enum" else ""
+            da_tuples.append((da.name, fc, btype, enum_type_ref, bda_fp))
         da_tuples.sort(key=lambda x: x[0])
         return (cdc, tuple(da_tuples))
 
@@ -477,7 +544,7 @@ class IcdExporter:
         da_refs = []
 
         for da in do.das:
-            fc = da.fc or self._DA_NAME_FC_MAP.get(da.name, "")
+            fc = self._resolve_fc(da, cdc)
             btype, da_type_ref = self._resolve_btype(da, do.name, cdc, ln_type_id)
             da_ref = {"@name": da.name, "@fc": fc, "@bType": btype}
             if da_type_ref:
@@ -512,14 +579,31 @@ class IcdExporter:
         默认定义为兜底方案（在线发现失败时使用）。
         """
         if da.sub_das:
-            bda_tuples = tuple(
-                sorted((bda.name, self._IEC_TYPE_TO_BTYPE.get(bda.iec_type, "INT32")) for bda in da.sub_das)
-            )
-            return bda_tuples
+            return tuple(sorted(self._make_bda_fingerprint(bda) for bda in da.sub_das))
         if da.name in self._STRUCT_DA_DEFAULT_BDAS:
-            bda_tuples = tuple(sorted((name, btype) for name, btype in self._STRUCT_DA_DEFAULT_BDAS[da.name]))
-            return bda_tuples
+            return tuple(
+                sorted(
+                    (name, btype, self._BDA_ENUM_TYPE_MAP.get(name, ""))
+                    for name, btype in self._STRUCT_DA_DEFAULT_BDAS[da.name]
+                )
+            )
         return ()
+
+    def _make_bda_fingerprint(self, bda) -> tuple:
+        if bda.sub_das:
+            nested = tuple(sorted(self._make_bda_fingerprint(child) for child in bda.sub_das))
+            return (bda.name, "Struct", "", nested)
+        if bda.name in self._STRUCT_DA_DEFAULT_BDAS:
+            nested = tuple(
+                sorted(
+                    (name, btype, self._BDA_ENUM_TYPE_MAP.get(name, ""))
+                    for name, btype in self._STRUCT_DA_DEFAULT_BDAS[bda.name]
+                )
+            )
+            return (bda.name, "Struct", "", nested)
+        enum_type = self._BDA_ENUM_TYPE_MAP.get(bda.name, "")
+        btype = "Enum" if enum_type else self._IEC_TYPE_TO_BTYPE.get(bda.iec_type, "INT32")
+        return (bda.name, btype, enum_type, ())
 
     def _resolve_or_create_da_type(
         self,
@@ -537,11 +621,24 @@ class IcdExporter:
 
         bda_refs = []
         for bda in da.sub_das:
-            bda_btype = self._IEC_TYPE_TO_BTYPE.get(bda.iec_type, "INT32")
-            bda_ref = {"@name": bda.name, "@bType": bda_btype}
-            if bda.iec_type == IecType.INTEGER and bda.name == "orCat":
-                bda_ref["@bType"] = "Enum"
-                bda_ref["@type"] = "orCategory"
+            if bda.sub_das:
+                bda_ref = {
+                    "@name": bda.name,
+                    "@bType": "Struct",
+                    "@type": self._resolve_or_create_da_type(bda, da_type_cache, da_types),
+                }
+            elif bda.name in self._STRUCT_DA_DEFAULT_BDAS:
+                bda_ref = {
+                    "@name": bda.name,
+                    "@bType": "Struct",
+                    "@type": self._resolve_or_create_default_da_type(bda, da_type_cache, da_types),
+                }
+            else:
+                enum_type = self._BDA_ENUM_TYPE_MAP.get(bda.name)
+                bda_btype = "Enum" if enum_type else self._IEC_TYPE_TO_BTYPE.get(bda.iec_type, "INT32")
+                bda_ref = {"@name": bda.name, "@bType": bda_btype}
+                if enum_type:
+                    bda_ref["@type"] = enum_type
             bda_refs.append(bda_ref)
 
         da_type_item = {"@id": da_type_id}
@@ -566,6 +663,9 @@ class IcdExporter:
         bda_refs = []
         for bda_name, bda_btype in self._STRUCT_DA_DEFAULT_BDAS[da.name]:
             bda_ref = {"@name": bda_name, "@bType": bda_btype}
+            enum_type = self._BDA_ENUM_TYPE_MAP.get(bda_name)
+            if enum_type:
+                bda_ref["@type"] = enum_type
             bda_refs.append(bda_ref)
 
         da_type_item = {"@id": da_type_id}
@@ -601,23 +701,72 @@ class IcdExporter:
         doi_list = []
         for do in ln.dos:
             doi = {"@name": do.name}
+            dai_items = []
+            sdi_items = []
+            for da in do.das:
+                if da.name in ("dU", "du"):
+                    continue
+                if da.name in ("q", "t"):
+                    dai_items.append({"@name": da.name})
+                elif da.sub_das:
+                    sdi_items.append(self._build_sdi_from_da_ref(da))
+                elif da.path and "." in da.path and da.path.split(".", 1)[0] == da.name:
+                    sdi_items.append(self._build_sdi_from_da_path(da.path))
+                else:
+                    dai_items.append({"@name": da.name})
             # 从客户端读取的 dU 描述值填充 DAI
-            du_val = self._do_descriptions.get(do.ref, "") if self._do_descriptions else ""
+            do_descriptions = getattr(self, "_do_descriptions", {})
+            du_val = do_descriptions.get(do.ref, "") if do_descriptions else ""
             if du_val:
-                doi["DAI"] = {"@name": "dU", "Val": du_val}
+                dai_items.append({"@name": "dU", "Val": du_val})
+            if sdi_items:
+                doi["SDI"] = sdi_items if len(sdi_items) > 1 else sdi_items[0]
+            if dai_items:
+                doi["DAI"] = dai_items if len(dai_items) > 1 else dai_items[0]
             doi_list.append(doi)
         return doi_list if len(doi_list) > 1 else (doi_list[0] if doi_list else [])
+
+    def _build_sdi_from_da_ref(self, da) -> dict[str, Any]:
+        item: dict[str, Any] = {"@name": da.name}
+        dai_items = []
+        sdi_items = []
+        for bda in da.sub_das:
+            if bda.sub_das:
+                sdi_items.append(self._build_sdi_from_da_ref(bda))
+            elif bda.name in self._STRUCT_DA_DEFAULT_BDAS:
+                fallback_dais = [{"@name": name} for name, _ in self._STRUCT_DA_DEFAULT_BDAS[bda.name]]
+                sdi_items.append(
+                    {
+                        "@name": bda.name,
+                        "DAI": fallback_dais if len(fallback_dais) > 1 else fallback_dais[0],
+                    }
+                )
+            else:
+                dai_items.append({"@name": bda.name})
+        if sdi_items:
+            item["SDI"] = sdi_items if len(sdi_items) > 1 else sdi_items[0]
+        if dai_items:
+            item["DAI"] = dai_items if len(dai_items) > 1 else dai_items[0]
+        return item
+
+    def _build_sdi_from_da_path(self, da_path: str) -> dict[str, Any]:
+        parts = [part for part in da_path.split(".") if part]
+        if len(parts) < 2:
+            return {"@name": da_path}
+        if len(parts) == 2:
+            return {"@name": parts[0], "DAI": {"@name": parts[1]}}
+        return {"@name": parts[0], "SDI": self._build_sdi_from_da_path(".".join(parts[1:]))}
 
     def _build_datasets(self, datasets, ld_inst: str, ln, discovered_lns) -> Any:
         # 构建 LN 索引: (lnClass, lnInst) → discovered LN
         # 同时构建所有 DO 名称集合用于灵活匹配
-        ln_index: dict[str, Any] = {}
+        ln_index: dict[tuple[str, str, str], Any] = {}
         all_do_names: set[str] = set()
         for dln in discovered_lns:
             dln_class = dln.ln_class or self._extract_ln_class_from_name(dln.name) or ""
             dln_inst = self._extract_ln_inst(dln.name)
-            ln_index[f"{dln_class}{dln_inst}"] = dln
-            ln_index[dln.name] = dln
+            dln_prefix = self._extract_ln_prefix(dln.name, dln_class)
+            ln_index[(dln_prefix, dln_class, dln_inst)] = dln
             for do in dln.dos:
                 all_do_names.add(do.name)
 
@@ -663,17 +812,17 @@ class IcdExporter:
                 # 2. 如果 LN 名不匹配，通过 DO 名称匹配（MMS DataSet 的 LN 名
                 #    可能是短格式如 "L1" 而非 "MMCL1"，但 DO 名始终准确）
                 fcda_do_name = fcda.get("@doName", "")
-                ln_key = f"{fcda.get('@lnClass', '')}{fcda.get('@lnInst', '')}"
-
-                if ln_key in ln_index:
-                    # Normalize with discovered LN metadata after an exact match.
-                    self._normalize_fcda_ln(fcda, ln_index[ln_key])
+                matched_ln = self._find_ln_for_fcda(fcda, ln_index, discovered_lns)
+                if matched_ln is not None:
+                    self._normalize_fcda_ln(fcda, matched_ln)
+                    self._normalize_fcda_fc(fcda, matched_ln)
                 elif fcda_do_name in all_do_names:
                     # 通过 DO 名称匹配到模型：查找拥有该 DO 的 LN
                     matched_ln = self._find_ln_by_do_name(discovered_lns, fcda_do_name)
                     if matched_ln is not None:
                         # Update FCDA lnClass/lnInst from the discovered LN.
                         self._normalize_fcda_ln(fcda, matched_ln)
+                        self._normalize_fcda_fc(fcda, matched_ln)
                     else:
                         # DO 名匹配也失败，跳过此 FCDA
                         continue
@@ -694,14 +843,53 @@ class IcdExporter:
                 ds_list.append(ds_item)
         return ds_list if len(ds_list) > 1 else (ds_list[0] if ds_list else [])
 
+    def _find_ln_for_fcda(self, fcda: dict[str, Any], ln_index: dict[tuple[str, str, str], Any], discovered_lns):
+        do_name = fcda.get("@doName", "")
+        key = (
+            fcda.get("@prefix", ""),
+            fcda.get("@lnClass", ""),
+            fcda.get("@lnInst", ""),
+        )
+        matched_ln = ln_index.get(key)
+        if matched_ln is not None and self._ln_has_do(matched_ln, do_name):
+            return matched_ln
+        return self._find_ln_by_do_name(discovered_lns, do_name)
+
     @staticmethod
     def _find_ln_by_do_name(discovered_lns, do_name: str):
         """通过 DO 名称查找所属的逻辑节点"""
         for dln in discovered_lns:
-            for do in dln.dos:
-                if do.name == do_name:
-                    return dln
+            if IcdExporter._ln_has_do(dln, do_name):
+                return dln
         return None
+
+    @staticmethod
+    def _ln_has_do(ln, do_name: str) -> bool:
+        return any(do.name == do_name for do in ln.dos)
+
+    def _normalize_fcda_fc(self, fcda: dict[str, Any], ln) -> None:
+        do_name = fcda.get("@doName", "")
+        if not do_name:
+            return
+
+        matched_do = next((do for do in ln.dos if do.name == do_name), None)
+        if matched_do is None:
+            return
+
+        da_path = fcda.get("@daName", "")
+        da_name = da_path.split(".", 1)[0]
+        if da_name:
+            for da in matched_do.das:
+                if da.name == da_name or da.path == da_path:
+                    if da.fc:
+                        fcda["@fc"] = da.fc
+                    return
+            return
+
+        for da in matched_do.das:
+            if da.name not in ("q", "t", "dU", "du") and da.fc:
+                fcda["@fc"] = da.fc
+                return
 
     @staticmethod
     def _strip_report_name_suffix(name: str) -> str:
@@ -861,6 +1049,12 @@ class IcdExporter:
                 rest_parts = [name[len(prefix) :].lstrip("_-. ") for name in ld_names]
                 if all(self._looks_like_ld_inst(part) for part in rest_parts if part):
                     return prefix.rstrip("_-. ")
+                if (
+                    prefix[-1:].isdigit()
+                    and all(part for part in rest_parts)
+                    and all(self._looks_like_named_ld_inst(part) for part in rest_parts)
+                ):
+                    return prefix.rstrip("_-. ")
 
         # 策略2: 从第一个LD名中拆分已知后缀
         suffix_split = self._split_known_ld_suffix(ld_names[0])
@@ -888,6 +1082,12 @@ class IcdExporter:
         if not value:
             return False
         return bool(re.match(r"^(LD\d+|CTRL\d*|MEAS\d*|PROT\d*|CTMP\d*|BAY\d*|GOOSE\d*|MMS\d*)$", value))
+
+    @staticmethod
+    def _looks_like_named_ld_inst(value: str) -> bool:
+        if not value:
+            return False
+        return bool(re.match(r"^(?=.*[A-Za-z]{2})[A-Za-z][A-Za-z0-9]*$", value))
 
     @staticmethod
     def _split_known_ld_suffix(ld_name: str) -> tuple[str, str] | None:
@@ -990,7 +1190,24 @@ class IcdExporter:
             if do_name == "NamPlt":
                 return "LPL"
             return "SPS"
+        if do_name.startswith("DInd"):
+            return "DPS"
+        if do_name.startswith(("Ind", "Alm", "St", "Blk", "Sw")):
+            return "SPS"
         return "MV"
+
+    def _resolve_fc(self, da, cdc: str) -> str:
+        if da.name in ("q", "t"):
+            qt_fc = self._CDC_QT_FC_MAP.get(cdc)
+            if qt_fc:
+                return qt_fc
+        fc = (getattr(da, "fc", "") or "").strip()
+        if fc:
+            return fc
+        mapped_fc = self._DA_NAME_FC_MAP.get(da.name)
+        if mapped_fc:
+            return mapped_fc
+        return self._CDC_DEFAULT_FC_MAP.get(cdc, "CF")
 
     def _resolve_btype(self, da, do_name: str, cdc: str, ln_type_id: str) -> tuple:
         if da.name == "q":
@@ -1004,14 +1221,19 @@ class IcdExporter:
             return ("Unicode255", None)
         if da.sub_das:
             return ("Struct", f"{ln_type_id}.{do_name}.{da.name}")
+        if da.name in self._STRUCT_DA_DEFAULT_BDAS:
+            return ("Struct", f"{ln_type_id}.{do_name}.{da.name}")
         # 根据 CDC 推断已知结构体 DA（即使在线发现未展开 sub_das）
         if cdc in self._CDC_BTYPE_MAP and da.name in self._CDC_BTYPE_MAP[cdc]:
             cdc_btype, _ = self._CDC_BTYPE_MAP[cdc][da.name]
             if cdc_btype == "Struct":
                 return ("Struct", f"{ln_type_id}.{do_name}.{da.name}")
         btype = self._IEC_TYPE_TO_BTYPE.get(da.iec_type, "INT32")
-        if do_name in ("Mod", "Beh", "Health") and da.name in ("stVal", "ctlVal"):
-            return ("Enum", "Origin")
+        if da.name in ("stVal", "ctlVal"):
+            if do_name in ("Mod", "Beh"):
+                return ("Enum", "BehKind")
+            if do_name == "Health":
+                return ("Enum", "HealthKind")
         return (btype, None)
 
     def _build_fixed_do_type(self, ln_class: str, do_name: str) -> dict[str, Any] | None:
@@ -1022,8 +1244,8 @@ class IcdExporter:
                 "DA": [
                     {"@name": "stVal", "@fc": "ST", "@bType": "Enum", "@type": "BehKind"},
                     {"@name": "ctlVal", "@fc": "CO", "@bType": "Enum", "@type": "BehKind"},
-                    {"@name": "q", "@fc": "MX", "@bType": "Quality"},
-                    {"@name": "t", "@fc": "MX", "@bType": "Timestamp"},
+                    {"@name": "q", "@fc": "ST", "@bType": "Quality"},
+                    {"@name": "t", "@fc": "ST", "@bType": "Timestamp"},
                     {"@name": "ctlModel", "@fc": "CF", "@bType": "Enum", "@type": "ctlModel"},
                 ],
             }
@@ -1033,8 +1255,8 @@ class IcdExporter:
                 "@cdc": "ENC",
                 "DA": [
                     {"@name": "stVal", "@fc": "ST", "@bType": "Enum", "@type": "BehKind"},
-                    {"@name": "q", "@fc": "MX", "@bType": "Quality"},
-                    {"@name": "t", "@fc": "MX", "@bType": "Timestamp"},
+                    {"@name": "q", "@fc": "ST", "@bType": "Quality"},
+                    {"@name": "t", "@fc": "ST", "@bType": "Timestamp"},
                 ],
             }
         if do_name == "Health":
@@ -1043,8 +1265,8 @@ class IcdExporter:
                 "@cdc": "ENC",
                 "DA": [
                     {"@name": "stVal", "@fc": "ST", "@bType": "Enum", "@type": "HealthKind"},
-                    {"@name": "q", "@fc": "MX", "@bType": "Quality"},
-                    {"@name": "t", "@fc": "MX", "@bType": "Timestamp"},
+                    {"@name": "q", "@fc": "ST", "@bType": "Quality"},
+                    {"@name": "t", "@fc": "ST", "@bType": "Timestamp"},
                 ],
             }
         if do_name == "NamPlt" and ln_class == "LLN0":

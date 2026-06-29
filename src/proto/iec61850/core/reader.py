@@ -25,6 +25,15 @@ if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
 
 
+def _delete_mms_value(value) -> None:
+    if value is None:
+        return
+    try:
+        iec61850.MmsValue_delete(value)
+    except Exception as e:
+        log.debug(f"释放读取 MmsValue 异常: {e}")
+
+
 class FloatReader:
     """浮点值读取策略"""
 
@@ -59,6 +68,7 @@ class BooleanReader:
             if error == iec61850.IED_ERROR_OK:
                 return bool(value)
             # 布尔读取失败, 尝试通用对象读取提取整数值
+            obj_value = None
             try:
                 [obj_value, obj_error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
                 if obj_error == iec61850.IED_ERROR_OK:
@@ -71,6 +81,8 @@ class BooleanReader:
                         return bool(iec61850.MmsValue_getBoolean(obj_value))
             except Exception:
                 pass
+            finally:
+                _delete_mms_value(obj_value)
             log.debug(f"读取布尔值失败: ref={ref}, error={error}")
         except Exception as e:
             log.debug(f"读取布尔值异常: ref={ref}, error={e}")
@@ -84,6 +96,7 @@ class BooleanReader:
                     results[addr_str] = bool(value)
                     continue
                 # 布尔读取失败, 尝试通用对象读取提取整数值
+                obj_value = None
                 try:
                     [obj_value, obj_error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
                     if obj_error == iec61850.IED_ERROR_OK:
@@ -99,6 +112,8 @@ class BooleanReader:
                             continue
                 except Exception:
                     pass
+                finally:
+                    _delete_mms_value(obj_value)
                 log.debug(f"批量读取布尔值失败: ref={ref}, error={error}")
             except Exception as e:
                 log.debug(f"批量读取布尔值异常: ref={ref}, error={e}")
@@ -108,6 +123,7 @@ class IntegerReader:
     """整数值读取策略 (使用 readObject + MmsValue_toInt32 通用方案)"""
 
     def read(self, conn, ref: str, fc_val) -> Any:
+        value = None
         try:
             # pyiec61850-ng 没有 IedConnection_readIntegerValue，
             # 使用通用 readObject + MmsValue_toInt32 替代
@@ -123,11 +139,8 @@ class IntegerReader:
                 elif value_type == iec61850.MMS_BOOLEAN:
                     return int(iec61850.MmsValue_getBoolean(value))
                 else:
-                    # 其他类型尝试通用 int() 转换
-                    try:
-                        return int(iec61850.MmsValue_toInt32(value))
-                    except Exception:
-                        return int(iec61850.MmsValue_toFloat(value))
+                    log.debug(f"整数 MMS 类型不匹配: ref={ref}, type={value_type}")
+                    return None
             # 整数读取失败, 尝试浮点回退
             try:
                 [f_value, f_error] = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
@@ -138,6 +151,8 @@ class IntegerReader:
             log.debug(f"读取整数值失败: ref={ref}, error={error}")
         except Exception as e:
             log.debug(f"读取整数值异常: ref={ref}, error={e}")
+        finally:
+            _delete_mms_value(value)
         return None
 
     def read_batch(self, conn, items: list, results: dict) -> None:
@@ -176,29 +191,20 @@ class TimestampReader:
     """时标值读取策略"""
 
     def read(self, conn, ref: str, fc_val) -> Any:
-        # 尝试专用 timestamp 读取函数 (libiec61850 原生支持)
+        mms_value = None
         try:
-            [value, error] = iec61850.IedConnection_readTimestampValue(conn, ref, fc_val, 0)
-            if error == iec61850.IED_ERROR_OK:
-                return int(iec61850.Timestamp_getTimeInMs(value))
-        except Exception:
-            log.debug(f"读取时标值失败: ref={ref}")
-        # 降级: 尝试整数 (使用通用 readObject 替代不存在的 readIntegerValue)
-        try:
-            [obj_value, obj_error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
-            if obj_error == iec61850.IED_ERROR_OK:
-                vtype = iec61850.MmsValue_getType(obj_value)
-                if vtype in (iec61850.MMS_INTEGER, iec61850.MMS_UNSIGNED):
-                    return int(iec61850.MmsValue_toInt32(obj_value))
-        except Exception:
-            pass
-        # 降级: 尝试浮点
-        try:
-            [value, error] = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
-            if error == iec61850.IED_ERROR_OK:
-                return float(value)
-        except Exception:
-            pass
+            [mms_value, error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
+            if error != iec61850.IED_ERROR_OK or not mms_value:
+                return None
+            value_type = iec61850.MmsValue_getType(mms_value)
+            if value_type != getattr(iec61850, "MMS_UTC_TIME", None):
+                log.debug(f"时标 MMS 类型不匹配: ref={ref}, type={value_type}")
+                return None
+            return int(iec61850.MmsValue_getUtcTimeInMs(mms_value))
+        except Exception as e:
+            log.debug(f"读取时标值异常: ref={ref}, error={e}")
+        finally:
+            _delete_mms_value(mms_value)
         log.debug(f"读取时标值失败: ref={ref}")
         return None
 
@@ -230,6 +236,7 @@ class AutoDetectReader:
             pass
 
         # 尝试整数 (使用通用 readObject 替代不存在的 readIntegerValue)
+        obj_value = None
         try:
             [obj_value, obj_error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
             if obj_error == iec61850.IED_ERROR_OK:
@@ -240,6 +247,8 @@ class AutoDetectReader:
                     return int(iec61850.MmsValue_toFloat(obj_value))
         except Exception:
             pass
+        finally:
+            _delete_mms_value(obj_value)
 
         # 尝试字符串
         try:
@@ -309,16 +318,15 @@ class Iec61850Reader:
         return value
 
     def _read_once(self, address: str, ref: str, fc_val, iec_type: str) -> Any:
-        conn = self._connection.connection
-        if not conn or not self._connection.is_connected:
-            return None
-
         strategy = READ_STRATEGIES.get(iec_type, READ_STRATEGIES[IEC_TYPE_UNKNOWN])
-        try:
-            return strategy.read(conn, ref, fc_val)
-        except Exception as e:
-            log.error(f"IEC61850 读取异常: address={address}, ref={ref}, error={e}")
-            return None
+        with self._connection.native_operation() as conn:
+            if conn is None:
+                return None
+            try:
+                return strategy.read(conn, ref, fc_val)
+            except Exception as e:
+                log.error(f"IEC61850 读取异常: address={address}, ref={ref}, error={e}")
+                return None
 
     def read_batch(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[str, Any]:
         """批量读取多个测点值
@@ -360,14 +368,13 @@ class Iec61850Reader:
         return groups
 
     def _read_groups_once(self, groups: dict[str, list]) -> dict[str, Any]:
-        conn = self._connection.connection
-        if not conn or not self._connection.is_connected:
-            return {}
-
         results: dict[str, Any] = {}
-        for iec_type, items in groups.items():
-            strategy = READ_STRATEGIES.get(iec_type, READ_STRATEGIES[IEC_TYPE_UNKNOWN])
-            strategy.read_batch(conn, items, results)
+        with self._connection.native_operation() as conn:
+            if conn is None:
+                return results
+            for iec_type, items in groups.items():
+                strategy = READ_STRATEGIES.get(iec_type, READ_STRATEGIES[IEC_TYPE_UNKNOWN])
+                strategy.read_batch(conn, items, results)
         return results
 
     def _build_ref(self, address: str) -> str:
