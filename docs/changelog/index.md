@@ -51,6 +51,7 @@
 | [报告回调崩溃与禁用逻辑修复](./iec61850/15-iec61850-report-callback-crash-fix) | RCB 回调注销崩溃 + URCB 禁用逻辑修复 — 日期：2026-06-19 |
 | [报告 GI 与 DataSet 读取修复](./iec61850/16-iec61850-report-gi-dataset-read-fix) | 多报告 GI 路由修复 + URCB 软件 GI + MMS DataSet 批量读取 — 日期：2026-06-22 |
 | [服务端总召唤与主动报告修复](./iec61850/19-iec61850-server-gi-spontaneous-report-fix) | DA 触发语义恢复 + 运行时 GI 能力 + DataSet/RCB 去重 — 日期：2026-06-28 |
+| [客户端模型发现进度条修复](./iec61850/20-iec61850-client-discovery-progress-fix) | 发现模型进度展示稳定性修复 + 后端进度快照 + 秒数同步 — 日期：2026-06-29 |
 
 ## Optimization
 

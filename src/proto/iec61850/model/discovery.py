@@ -239,6 +239,7 @@ class ModelDiscoveryService:
             progress and progress("discovering", i, total_lds, f"发现 LD: {ld_name}")
             with self._error_guard(f"LD {ld_name}", on_error):
                 self._discover_ld(conn, builder, ld_name, max_depth=max_depth, on_error=on_error)
+            progress and progress("discovering", i + 1, total_lds, f"已发现 LD: {ld_name}")
 
         self._model = builder.build()
         self._model_timestamp = time.time()

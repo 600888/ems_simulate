@@ -4,6 +4,7 @@ IEC 61850 协议处理器
 """
 
 from collections.abc import Sequence
+import time
 from typing import Any
 
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
@@ -261,6 +262,12 @@ class IEC61850ClientHandler(ClientHandler):
         self._connecting = False  # 是否正在连接中（防止重复启动）
         self._connect_phase = self.PHASE_IDLE  # 当前连接阶段
         self._connect_progress = 0  # 连接进度 0-100
+        self._progress_active = False  # 连接或发现任务是否仍在执行
+        self._progress_operation = "idle"  # idle/connect/discover
+        self._progress_message = ""
+        self._progress_started_at: float | None = None
+        self._progress_elapsed_seconds = 0
+        self._progress_operation_id = 0
         self._discovered_goose_items: list[dict[str, Any]] = []  # 发现的 GOOSE 控制块
         self._discovered_datasets: list[dict[str, Any]] = []  # 发现的 DataSet 列表
         self._discovered_rcbs: list[dict[str, Any]] = []  # 发现的报告控制块 (连接时缓存)
@@ -328,12 +335,15 @@ class IEC61850ClientHandler(ClientHandler):
         # 防止重复启动连接
         if self._connecting:
             return True  # 已在连接中，视为成功受理
+        if self._progress_active:
+            return False
 
         # 重置连接进度（重新连接时清除上一次的状态）
         self._connect_phase = self.PHASE_IDLE
         self._connect_progress = 0
 
         self._connecting = True
+        self._begin_progress("connect", self.PHASE_CONNECTING, 10, "正在连接 MMS 服务器")
         import threading
 
         thread = threading.Thread(target=self._connect_background, daemon=True)
@@ -391,77 +401,124 @@ class IEC61850ClientHandler(ClientHandler):
         """
         if not self._client:
             return False
-
-        self._connect_phase = self.PHASE_CONNECTING
-        self._connect_progress = 10
-
-        if not self._client.is_connected:
+        if self._progress_active:
             if self._log:
-                self._log.info("客户端未连接，自动先连接 MMS 服务器...")
-            is_connected = self._client.connect(auto_discover=False)
-            self._is_running = is_connected
-            if not is_connected:
-                self._connect_phase = self.PHASE_FAILED
-                self._connect_progress = 0
-                if self._log:
-                    self._log.error("远程发现模型失败: 连接 MMS 服务器失败")
-                return False
-
-        self._connect_phase = self.PHASE_DISCOVERING
-        self._connect_progress = 50
-        if self._log:
-            self._log.info("开始远程发现模型...")
-
-        success = self._client.remote_discover_model()
-        if not success:
-            self._connect_phase = self.PHASE_FAILED
-            self._connect_progress = 0
+                self._log.warning("IEC61850 连接或模型发现任务已在执行")
             return False
 
-        # 保存发现的 GOOSE 控制块和 DataSet
-        self._discovered_goose_items.clear()
-        self._discovered_goose_items.extend(self._client._discovered_goose_items)
-        if self._discovered_goose_items and self._log:
-            self._log.info(
-                f"发现 {len(self._discovered_goose_items)} 个 GOOSE 控制块: "
-                + ", ".join(g.get("go_cb_ref", g.get("name", "")) for g in self._discovered_goose_items)
-            )
+        initial_phase = self.PHASE_DISCOVERING if self._client.is_connected else self.PHASE_CONNECTING
+        initial_progress = 20 if self._client.is_connected else 10
+        self._begin_progress("discover", initial_phase, initial_progress, "正在准备发现模型")
 
-        self._discovered_datasets.clear()
-        if hasattr(self._client, "get_discovered_datasets"):
-            self._discovered_datasets.extend(self._client.get_discovered_datasets())
-            if self._discovered_datasets and self._log:
+        try:
+            if not self._client.is_connected:
+                if self._log:
+                    self._log.info("客户端未连接，自动先连接 MMS 服务器...")
+                self._update_progress(self.PHASE_CONNECTING, 10, "正在连接 MMS 服务器")
+                is_connected = self._client.connect(auto_discover=False)
+                self._is_running = is_connected
+                if not is_connected:
+                    self._finish_progress(False, "连接 MMS 服务器失败")
+                    if self._log:
+                        self._log.error("远程发现模型失败: 连接 MMS 服务器失败")
+                    return False
+
+            self._update_progress(self.PHASE_DISCOVERING, 20, "开始远程发现模型")
+            if self._log:
+                self._log.info("开始远程发现模型...")
+
+            def on_discovery_progress(phase: str, current: int, total: int, message: str) -> None:
+                ratio = min(max(current / total, 0.0), 1.0) if total > 0 else 0.0
+                if phase == "discovering":
+                    percent = 20 + round(ratio * 50)
+                elif phase == "building":
+                    percent = 75
+                else:
+                    percent = 80 + round(ratio * 5)
+                self._update_progress(self.PHASE_DISCOVERING, percent, message)
+
+            success = self._client.remote_discover_model(progress=on_discovery_progress)
+            if not success:
+                self._finish_progress(False, "远程模型发现失败")
+                return False
+
+            self._update_progress(self.PHASE_DISCOVERING, 88, "正在整理模型资源")
+
+            # 保存发现的 GOOSE 控制块和 DataSet
+            self._discovered_goose_items.clear()
+            self._discovered_goose_items.extend(self._client._discovered_goose_items)
+            if self._discovered_goose_items and self._log:
                 self._log.info(
-                    f"发现 {len(self._discovered_datasets)} 个 DataSet: "
-                    + ", ".join(ds.get("ref", ds.get("name", "")) for ds in self._discovered_datasets)
+                    f"发现 {len(self._discovered_goose_items)} 个 GOOSE 控制块: "
+                    + ", ".join(g.get("go_cb_ref", g.get("name", "")) for g in self._discovered_goose_items)
                 )
 
-        # 缓存报告控制块
-        self._discovered_rcbs.clear()
-        client = getattr(self, "_client", None)
-        if client and getattr(client, "reports", None):
-            try:
-                self._discovered_rcbs.extend(client.reports.discover_rcbs())
-                if self._discovered_rcbs and self._log:
-                    self._log.info(f"发现 {len(self._discovered_rcbs)} 个报告控制块")
-            except Exception as e:
-                if self._log:
-                    self._log.warning(f"缓存 RCB 失败: {e}")
+            self._discovered_datasets.clear()
+            if hasattr(self._client, "get_discovered_datasets"):
+                self._discovered_datasets.extend(self._client.get_discovered_datasets())
+                if self._discovered_datasets and self._log:
+                    self._log.info(
+                        f"发现 {len(self._discovered_datasets)} 个 DataSet: "
+                        + ", ".join(ds.get("ref", ds.get("name", "")) for ds in self._discovered_datasets)
+                    )
 
-        # 通知上层发现的测点
-        if self._on_points_discovered:
-            discovered = self._client.get_discovered_points()
-            if discovered:
+            # 缓存报告控制块
+            self._update_progress(self.PHASE_DISCOVERING, 92, "正在发现报告控制块")
+            self._discovered_rcbs.clear()
+            client = getattr(self, "_client", None)
+            if client and getattr(client, "reports", None):
                 try:
-                    self._on_points_discovered(discovered)
+                    self._discovered_rcbs.extend(client.reports.discover_rcbs())
+                    if self._discovered_rcbs and self._log:
+                        self._log.info(f"发现 {len(self._discovered_rcbs)} 个报告控制块")
                 except Exception as e:
                     if self._log:
-                        self._log.error(f"处理发现的测点时出错: {e}")
+                        self._log.warning(f"缓存 RCB 失败: {e}")
 
-        self._connect_phase = self.PHASE_DONE
-        self._connect_progress = 100
-        self._model_loaded = True
-        return True
+            # 通知上层发现的测点
+            self._update_progress(self.PHASE_DISCOVERING, 96, "正在刷新测点")
+            if self._on_points_discovered:
+                discovered = self._client.get_discovered_points()
+                if discovered:
+                    try:
+                        self._on_points_discovered(discovered)
+                    except Exception as e:
+                        if self._log:
+                            self._log.error(f"处理发现的测点时出错: {e}")
+
+            self._model_loaded = True
+            self._finish_progress(True, "远程模型发现完成")
+            return True
+        except Exception as e:
+            self._finish_progress(False, str(e))
+            if self._log:
+                self._log.error(f"远程发现模型时出错: {e}")
+            return False
+
+    def _begin_progress(self, operation: str, phase: str, progress: int, message: str) -> None:
+        """开始一轮连接或发现进度，重置计时和操作标识。"""
+        self._progress_operation_id += 1
+        self._progress_operation = operation
+        self._progress_active = True
+        self._progress_started_at = time.monotonic()
+        self._progress_elapsed_seconds = 0
+        self._update_progress(phase, progress, message)
+
+    def _update_progress(self, phase: str, progress: int, message: str = "") -> None:
+        """更新可供前端轮询的进度快照。"""
+        self._connect_phase = phase
+        self._connect_progress = min(max(int(progress), 0), 100)
+        self._progress_message = message
+
+    def _finish_progress(self, success: bool, message: str = "") -> None:
+        """结束进度并保留最终快照，避免前端读到重置后的 0%。"""
+        if self._progress_started_at is not None:
+            self._progress_elapsed_seconds = max(0, int(time.monotonic() - self._progress_started_at))
+        self._progress_active = False
+        self._progress_started_at = None
+        final_phase = self.PHASE_DONE if success else self.PHASE_FAILED
+        final_progress = 100 if success else self._connect_progress
+        self._update_progress(final_phase, final_progress, message)
 
     async def stop(self) -> bool:
         """停止客户端（断开连接）"""
@@ -507,25 +564,39 @@ class IEC61850ClientHandler(ClientHandler):
             self._connect_progress = 0
         finally:
             self._connecting = False
+            self._finish_progress(self._connect_phase == self.PHASE_DONE, self._progress_message)
 
     def get_connect_progress(self) -> dict:
         """获取连接进度信息
 
         Returns:
-            {"phase": str, "progress": int, "connecting": bool}
+            {"phase": str, "progress": int, "connecting": bool, "active": bool, ...}
             phase: idle/connecting/discovering/done/failed
             progress: 0-100
             connecting: 是否正在连接中
         """
+        elapsed_seconds = self._progress_elapsed_seconds
+        if self._progress_active and self._progress_started_at is not None:
+            elapsed_seconds = max(0, int(time.monotonic() - self._progress_started_at))
         return {
             "phase": self._connect_phase,
             "progress": self._connect_progress,
             "connecting": self._connecting,
+            "active": self._progress_active,
+            "operation": self._progress_operation,
+            "operation_id": self._progress_operation_id,
+            "elapsed_seconds": elapsed_seconds,
+            "message": self._progress_message,
         }
 
     def disconnect(self) -> None:
         """断开连接"""
         self._connecting = False
+        self._progress_active = False
+        self._progress_operation = "idle"
+        self._progress_started_at = None
+        self._progress_elapsed_seconds = 0
+        self._progress_message = ""
         self._connect_phase = self.PHASE_IDLE
         self._connect_progress = 0
         self._discovered_goose_items = []

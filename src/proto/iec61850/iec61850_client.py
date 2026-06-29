@@ -31,7 +31,7 @@ from .defs import (
 )
 from .log import log
 from .model import IedModel
-from .model.discovery import ModelDiscoveryService
+from .model.discovery import DiscoveryProgress, ModelDiscoveryService
 from .model.registry_bridge import build_registry_from_model
 from .plugins import PluginRegistry, _register_builtin_plugins
 
@@ -711,7 +711,11 @@ class IEC61850Client:
             "yt_points": self._last_import_result.points.yt_points,
         }
 
-    def remote_discover_model(self, force_refresh: bool = True) -> bool:
+    def remote_discover_model(
+        self,
+        force_refresh: bool = True,
+        progress: DiscoveryProgress | None = None,
+    ) -> bool:
         """远程发现模型（通过 MMS 在线遍历）
 
         用户主动点击“发现模型”时默认强制在线遍历，避免同一 IP:端口
@@ -719,6 +723,7 @@ class IEC61850Client:
 
         Args:
             force_refresh: True 时忽略并刷新进程级模型缓存。
+            progress: 可选的发现进度回调。
 
         Returns:
             是否发现成功
@@ -748,13 +753,19 @@ class IEC61850Client:
             return False
 
         # 3. 在线发现
-        model = self._discovery.discover(self._conn)
+        model = self._discovery.discover(self._conn, progress=progress)
         if model is not None:
             cache.set(cache_key, model)
+            if progress:
+                progress("building", 0, 1, "正在构建测点索引")
             discovered = build_registry_from_model(model, self._registry)
+            if progress:
+                progress("descriptions", 0, 1, "正在读取模型描述")
             # dU 是 DO 的在线描述值，不包含在目录发现结果中，需要在
             # PointRegistry 建好后按 DO 补读并写回各测点名称。
             self._fill_du_names(discovered)
+            if progress:
+                progress("descriptions", 1, 1, "模型描述读取完成")
             log.info(f"远程模型发现完成并已缓存: {cache_key}")
             return True
 

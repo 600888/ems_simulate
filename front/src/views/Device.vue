@@ -226,6 +226,7 @@ import {
   watch,
   onActivated,
   onDeactivated,
+  nextTick,
 } from "vue";
 import { useRoute } from "vue-router";
 import TextNode from "@/components/common/TextNode.vue";
@@ -344,7 +345,8 @@ const isAnyModelProcessing = computed(
     isModelProcessing.value ||
     modelLoading.value ||
     modelImporting.value ||
-    modelDiscovering.value
+    modelDiscovering.value ||
+    iec61850Connecting.value
 );
 
 const simulateOptions = computed(() => [
@@ -365,6 +367,7 @@ const iec61850Connecting = ref(false);
 const iec61850ConnectProgress = ref<IEC61850ConnectProgress | null>(null);
 const iec61850Elapsed = ref(0);
 let iec61850ElapsedTimer: number | null = null;
+let iec61850ProgressStartedAt = 0;
 const iec61850PhaseLabel: Record<string, string> = {
   idle: t("device.preparing"),
   connecting: t("device.connectingServer"),
@@ -379,17 +382,13 @@ const isIec61850Client = computed(() => {
 
 const iec61850ProgressPercent = computed(() => {
   if (!iec61850ConnectProgress.value) return 0;
-  return iec61850ConnectProgress.value.progress || 0;
+  const value = Number(iec61850ConnectProgress.value.progress);
+  return Number.isFinite(value) ? Math.min(Math.max(value, 0), 100) : 0;
 });
 
 const iec61850PhaseText = computed(() => {
   if (!iec61850ConnectProgress.value) return "";
-  const label = iec61850PhaseLabel[iec61850ConnectProgress.value.phase] || "";
-  const phase = iec61850ConnectProgress.value.phase;
-  if (phase === "idle" || phase === "connecting" || phase === "discovering") {
-    return `${label} (${iec61850Elapsed.value}s)`;
-  }
-  return label;
+  return iec61850PhaseLabel[iec61850ConnectProgress.value.phase] || "";
 });
 
 const modelProgressVisible = computed(
@@ -414,54 +413,87 @@ const modelProgressText = computed(() => {
   if (!iec61850ConnectProgress.value) {
     return `${t("device.preparing")} 0% (${iec61850Elapsed.value}s)`;
   }
-  const phaseText = iec61850PhaseText.value.replace(/ \(\d+s\)$/, "");
-  return `${phaseText} ${Math.round(modelProgressPercent.value)}% (${iec61850Elapsed.value}s)`;
+  return `${iec61850PhaseText.value} ${Math.round(modelProgressPercent.value)}% (${iec61850Elapsed.value}s)`;
 });
 
 let iec61850ProgressTimer: number | null = null;
 let iec61850ProgressMode: "connect" | "discover" = "connect";
 let iec61850ProgressRunId = 0;
 
-const startIec61850ProgressPolling = (mode: "connect" | "discover" = "connect") => {
+const startIec61850ProgressPolling = (
+  mode: "connect" | "discover" = "connect",
+  initialProgress: IEC61850ConnectProgress | null = null
+) => {
   stopIec61850ProgressPolling();
   const runId = ++iec61850ProgressRunId;
-  let observedCurrentDiscovery = false;
+  const initialActive = initialProgress?.active ?? initialProgress?.connecting ?? false;
+  let observedCurrentDiscovery = mode === "discover" && initialActive;
+  let observedOperationId = observedCurrentDiscovery ? initialProgress?.operation_id : undefined;
+  let pollInFlight = false;
   iec61850ProgressMode = mode;
   iec61850Connecting.value = true;
-  iec61850ConnectProgress.value = {
+  iec61850ConnectProgress.value = initialProgress || {
     phase: mode === "discover" ? "discovering" : "connecting",
-    progress: 0,
-    connecting: true,
+    progress: 10,
+    connecting: mode === "connect",
+    active: true,
+    operation: mode,
   };
-  iec61850Elapsed.value = 0;
+  iec61850Elapsed.value = initialProgress?.elapsed_seconds || 0;
+  iec61850ProgressStartedAt = Date.now() - iec61850Elapsed.value * 1000;
   iec61850ElapsedTimer = window.setInterval(() => {
-    iec61850Elapsed.value++;
-  }, 1000);
+    iec61850Elapsed.value = Math.max(
+      iec61850Elapsed.value,
+      Math.floor((Date.now() - iec61850ProgressStartedAt) / 1000)
+    );
+  }, 250);
   const pollProgress = async () => {
-    const progress = await getIEC61850ConnectProgress(routeName.value);
-    if (runId !== iec61850ProgressRunId) return;
-    if (progress) {
-      if (mode === "discover" && !observedCurrentDiscovery) {
-        if (progress.phase === "connecting" || progress.phase === "discovering") {
-          observedCurrentDiscovery = true;
-        } else {
-          // 发现接口和进度接口并发启动时，可能先读到上一次连接的
-          // idle/done/failed；在看到本次发现的活动阶段前忽略这些旧状态。
+    if (pollInFlight) return;
+    pollInFlight = true;
+    try {
+      const progress = await getIEC61850ConnectProgress(routeName.value);
+      if (runId !== iec61850ProgressRunId) return;
+      if (progress) {
+        const active = progress.active ?? progress.connecting;
+        const operationMatches = !progress.operation || progress.operation === mode;
+        if (mode === "discover" && !observedCurrentDiscovery) {
+          if (
+            operationMatches &&
+            active &&
+            (progress.phase === "connecting" || progress.phase === "discovering")
+          ) {
+            observedCurrentDiscovery = true;
+            observedOperationId = progress.operation_id;
+          } else {
+            // 发现接口和进度接口并发启动时，先读到的可能是上一次任务快照。
+            return;
+          }
+        }
+        if (
+          observedOperationId !== undefined &&
+          progress.operation_id !== undefined &&
+          progress.operation_id !== observedOperationId
+        ) {
           return;
         }
-      }
-      iec61850ConnectProgress.value = progress;
-      if (progress.phase === "done" || progress.phase === "failed") {
-        stopIec61850ProgressPolling();
-        if (iec61850ProgressMode === "connect" && progress.phase === "done") {
-          deviceStatus.value = true;
-          ElMessage.success(t("device.iec61850DeviceConnectSuccess"));
-          slaveRef.value?.reloadDatas();
-          triggerSidebarRefresh(routeName.value);
-        } else if (iec61850ProgressMode === "connect") {
-          ElMessage.error(t("device.iec61850DeviceConnectFailed"));
+        iec61850ConnectProgress.value = progress;
+        if (progress.elapsed_seconds !== undefined) {
+          iec61850Elapsed.value = Math.max(iec61850Elapsed.value, progress.elapsed_seconds);
+        }
+        if (progress.phase === "done" || progress.phase === "failed") {
+          stopIec61850ProgressPolling();
+          if (iec61850ProgressMode === "connect" && progress.phase === "done") {
+            deviceStatus.value = true;
+            ElMessage.success(t("device.iec61850DeviceConnectSuccess"));
+            slaveRef.value?.reloadDatas();
+            triggerSidebarRefresh(routeName.value);
+          } else if (iec61850ProgressMode === "connect") {
+            ElMessage.error(t("device.iec61850DeviceConnectFailed"));
+          }
         }
       }
+    } finally {
+      pollInFlight = false;
     }
   };
   void pollProgress();
@@ -535,14 +567,13 @@ const fetchDeviceInfo = async () => {
     const simuStatus = info.get("simulation_status");
     simulationStatus.value = simuStatus;
 
-    // IEC61850 客户端：如果设备未运行，检查是否正在后台连接中
-    if (!serverStatus && String(communicationType.value) === "Iec61850Client") {
+    // IEC61850 客户端：恢复正在执行的连接或发现任务（切页回来后继续显示同一计时）。
+    if (String(communicationType.value) === "Iec61850Client") {
       const progress = await getIEC61850ConnectProgress(routeName.value);
-      if (progress && progress.connecting) {
-        // 正在连接中，启动进度轮询
-        iec61850Connecting.value = true;
-        iec61850ConnectProgress.value = progress;
-        startIec61850ProgressPolling();
+      const active = progress?.active ?? progress?.connecting ?? false;
+      if (progress && active) {
+        const mode = progress.operation === "discover" ? "discover" : "connect";
+        startIec61850ProgressPolling(mode, progress);
       }
     }
 
@@ -627,19 +658,39 @@ const handleImportModel = () => {
 const handleDiscoverModel = async () => {
   modelDiscovering.value = true;
   startIec61850ProgressPolling("discover");
+  // 先让初始进度真正绘制一帧，避免极快任务在浏览器首次渲染前就结束。
+  await nextTick();
+  await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
   try {
     const success = await discoverIEC61850Model(routeName.value, 120000);
     if (success) {
+      iec61850ConnectProgress.value = {
+        phase: "done",
+        progress: 100,
+        connecting: false,
+        active: false,
+        operation: "discover",
+        elapsed_seconds: iec61850Elapsed.value,
+      };
       modelLoaded.value = true;
       ElMessage.success(t("device.modelLoadSuccess"));
       await slaveRef.value?.reloadDatas();
       triggerSidebarRefresh(routeName.value);
     } else {
+      if (iec61850ConnectProgress.value) {
+        iec61850ConnectProgress.value.phase = "failed";
+      }
       ElMessage.error(t("device.modelLoadFailed"));
     }
   } catch (error) {
     console.error(error);
+    if (iec61850ConnectProgress.value) {
+      iec61850ConnectProgress.value.phase = "failed";
+    }
   } finally {
+    // 最终状态至少保留一帧，避免成功时直接从处理中跳到隐藏。
+    await nextTick();
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
     modelDiscovering.value = false;
     stopIec61850ProgressPolling();
   }
@@ -712,7 +763,10 @@ const fetchDeviceStatus = async () => {
         String(communicationType.value) === "Iec61850Client"
       ) {
         slaveRef.value?.reloadDatas();
-        stopIec61850ProgressPolling();
+        // 远程发现可能先完成自动连接、再继续遍历模型；此时不能停掉发现进度。
+        if (iec61850ProgressMode === "connect") {
+          stopIec61850ProgressPolling();
+        }
         triggerSidebarRefresh(routeName.value);
       }
     }

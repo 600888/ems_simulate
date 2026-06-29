@@ -258,7 +258,7 @@ class Device:
         """获取 IEC61850 客户端连接进度
 
         Returns:
-            {"phase": str, "progress": int, "connecting": bool}
+            包含阶段、百分比、任务类型、活动状态和统一耗时的进度快照。
             非 IEC61850 客户端返回空 dict
         """
         if self.protocol_type not in (ProtocolType.Iec61850Client, ProtocolType.Iec61850Server):

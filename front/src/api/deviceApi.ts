@@ -235,6 +235,11 @@ export interface IEC61850ConnectProgress {
   phase: "idle" | "connecting" | "discovering" | "done" | "failed";
   progress: number;
   connecting: boolean;
+  active?: boolean;
+  operation?: "idle" | "connect" | "discover";
+  operation_id?: number;
+  elapsed_seconds?: number;
+  message?: string;
 }
 
 export async function getIEC61850ConnectProgress(
