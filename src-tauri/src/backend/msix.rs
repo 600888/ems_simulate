@@ -15,6 +15,7 @@ use tauri::Manager;
 const MSIX_PORT: u16 = 8991;
 static MSIX_HANDLE: Mutex<Option<Child>> = Mutex::new(None);
 static MSIX_READY: Mutex<bool> = Mutex::new(false);
+static HEALTH_FAILURES: Mutex<u8> = Mutex::new(0);
 
 // ── 工具函数 ──
 
@@ -27,6 +28,17 @@ fn new_detached_cmd(program: &str) -> Command {
 
 fn health_url() -> String {
     format!("http://127.0.0.1:{MSIX_PORT}/api/health")
+}
+
+fn is_process_alive() -> bool {
+    MSIX_HANDLE
+        .lock()
+        .map(|mut child| {
+            child
+                .as_mut()
+                .is_some_and(|process| matches!(process.try_wait(), Ok(None)))
+        })
+        .unwrap_or(false)
 }
 
 fn find_sidecar() -> Option<PathBuf> {
@@ -141,6 +153,7 @@ fn try_spawn(data_dir: &str) -> Result<Child, String> {
 
 fn spawn_backend_checked(app: &AppHandle) -> Result<String, String> {
     *MSIX_READY.lock().unwrap() = false;
+    *HEALTH_FAILURES.lock().unwrap() = 0;
 
     let data_dir = if let Ok(dir) = app.path().app_local_data_dir() {
         for sub in &["", "data", "config", "upload", "plan", "log"] {
@@ -193,6 +206,7 @@ pub async fn wait_backend_ready() -> bool {
         match client.get(&url).send().await {
             Ok(resp) if resp.status().is_success() => {
                 *MSIX_READY.lock().unwrap() = true;
+                *HEALTH_FAILURES.lock().unwrap() = 0;
                 eprintln!("[EMS:msix] backend ready");
                 return true;
             }
@@ -202,19 +216,36 @@ pub async fn wait_backend_ready() -> bool {
 }
 
 pub async fn is_backend_ready() -> bool {
+    if !is_process_alive() {
+        *MSIX_READY.lock().unwrap() = false;
+        *HEALTH_FAILURES.lock().unwrap() = 0;
+        return false;
+    }
+
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(1))
         .timeout(Duration::from_secs(2))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
-    let ready = matches!(
+    let health_ok = matches!(
         client.get(health_url()).send().await,
         Ok(resp) if resp.status().is_success()
     );
-    if let Ok(mut guard) = MSIX_READY.lock() {
-        *guard = ready;
-    }
+    let was_ready = *MSIX_READY.lock().unwrap();
+    let failures = *HEALTH_FAILURES.lock().unwrap();
+    let (ready, next_failures) =
+        super::evaluate_backend_status(true, health_ok, was_ready, failures);
+
+    *MSIX_READY.lock().unwrap() = ready;
+    *HEALTH_FAILURES.lock().unwrap() = next_failures;
     ready
+}
+
+pub fn refresh_process_status() {
+    if !is_process_alive() {
+        *MSIX_READY.lock().unwrap() = false;
+        *HEALTH_FAILURES.lock().unwrap() = 0;
+    }
 }
 
 pub fn cleanup() {
@@ -229,6 +260,7 @@ pub fn stop() {
     cleanup();
     kill_processes_on_port(MSIX_PORT);
     *MSIX_READY.lock().unwrap() = false;
+    *HEALTH_FAILURES.lock().unwrap() = 0;
 }
 
 pub fn restart(app: &AppHandle) -> Result<String, String> {

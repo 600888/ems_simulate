@@ -873,8 +873,9 @@ checksum = "4ef6b89e5b37196644d8796de5268852ff179b44e96276cf4290264843743bb7"
 
 [[package]]
 name = "ems-simulate"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
+ "libc",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -886,6 +887,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tokio",
  "url",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

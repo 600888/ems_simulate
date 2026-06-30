@@ -14,6 +14,7 @@ use tauri_plugin_shell::ShellExt;
 static BACKEND_PROCESS: Mutex<Option<ProcessHandle>> = Mutex::new(None);
 static BACKEND_PORT: Mutex<u16> = Mutex::new(8991);
 static BACKEND_READY: Mutex<bool> = Mutex::new(false);
+static HEALTH_FAILURES: Mutex<u8> = Mutex::new(0);
 
 // ── 进程句柄 ──
 
@@ -25,15 +26,20 @@ enum ProcessHandle {
 impl ProcessHandle {
     fn kill(self) -> std::io::Result<()> {
         match self {
-            ProcessHandle::Sidecar(c) => c
-                .kill()
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
+            ProcessHandle::Sidecar(c) => c.kill().map_err(std::io::Error::other),
             ProcessHandle::Direct(mut c) => {
                 kill_process_tree(c.id());
                 let _ = c.kill();
                 let _ = c.wait();
                 Ok(())
             }
+        }
+    }
+
+    fn is_alive(&mut self) -> bool {
+        match self {
+            ProcessHandle::Sidecar(child) => pid_exists(child.pid()),
+            ProcessHandle::Direct(child) => matches!(child.try_wait(), Ok(None)),
         }
     }
 }
@@ -45,6 +51,38 @@ fn new_detached_cmd(program: &str) -> Command {
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000 | 0x00000008); // CREATE_NO_WINDOW | DETACHED_PROCESS
     cmd
+}
+
+#[cfg(target_os = "windows")]
+fn pid_exists(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return false;
+        }
+        let mut exit_code = 0;
+        let ok = GetExitCodeProcess(handle, &mut exit_code) != 0;
+        CloseHandle(handle);
+        ok && exit_code == STILL_ACTIVE as u32
+    }
+}
+
+#[cfg(unix)]
+fn pid_exists(pid: u32) -> bool {
+    let result = unsafe { libc::kill(pid as libc::pid_t, 0) };
+    result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+fn is_process_alive() -> bool {
+    BACKEND_PROCESS
+        .lock()
+        .map(|mut process| process.as_mut().is_some_and(ProcessHandle::is_alive))
+        .unwrap_or(false)
 }
 
 fn kill_process_tree(pid: u32) {
@@ -228,6 +266,7 @@ fn kill_processes_on_port(port: u16) {
 fn spawn_backend_checked(app: &AppHandle, port: u16) -> Result<String, String> {
     *BACKEND_PORT.lock().unwrap() = port;
     *BACKEND_READY.lock().unwrap() = false;
+    *HEALTH_FAILURES.lock().unwrap() = 0;
 
     let url = health_url(port);
     let process = match try_spawn_sidecar(app, port) {
@@ -274,6 +313,7 @@ pub async fn wait_backend_ready(url: &str) -> bool {
         match client.get(url).send().await {
             Ok(resp) if resp.status().is_success() => {
                 *BACKEND_READY.lock().unwrap() = true;
+                *HEALTH_FAILURES.lock().unwrap() = 0;
                 eprintln!("[EMS] backend ready -> {url}");
                 return true;
             }
@@ -283,22 +323,41 @@ pub async fn wait_backend_ready(url: &str) -> bool {
 }
 
 pub async fn is_backend_ready() -> Result<bool, String> {
+    let process_alive = is_process_alive();
+    if !process_alive {
+        *BACKEND_READY.lock().map_err(|e| e.to_string())? = false;
+        *HEALTH_FAILURES.lock().map_err(|e| e.to_string())? = 0;
+        return Ok(false);
+    }
+
     let port = *BACKEND_PORT.lock().map_err(|e| e.to_string())?;
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(1))
         .timeout(Duration::from_secs(2))
         .build()
         .map_err(|e| e.to_string())?;
-    let ready = matches!(
+    let health_ok = matches!(
         client.get(health_url(port)).send().await,
         Ok(resp) if resp.status().is_success()
     );
-    if let Ok(mut g) = BACKEND_READY.lock() {
-        *g = ready;
-    }
-    match ready {
-        true => Ok(true),
-        false => Ok(false),
+    let was_ready = *BACKEND_READY.lock().map_err(|e| e.to_string())?;
+    let failures = *HEALTH_FAILURES.lock().map_err(|e| e.to_string())?;
+    let (ready, next_failures) =
+        super::evaluate_backend_status(true, health_ok, was_ready, failures);
+
+    *BACKEND_READY.lock().map_err(|e| e.to_string())? = ready;
+    *HEALTH_FAILURES.lock().map_err(|e| e.to_string())? = next_failures;
+    Ok(ready)
+}
+
+pub fn refresh_process_status() {
+    if !is_process_alive() {
+        if let Ok(mut ready) = BACKEND_READY.lock() {
+            *ready = false;
+        }
+        if let Ok(mut failures) = HEALTH_FAILURES.lock() {
+            *failures = 0;
+        }
     }
 }
 
@@ -324,6 +383,7 @@ pub fn stop() {
     }
 
     *BACKEND_READY.lock().unwrap() = false;
+    *HEALTH_FAILURES.lock().unwrap() = 0;
 }
 
 pub fn restart(app: &AppHandle) -> Result<String, String> {

@@ -29,16 +29,18 @@ export async function invoke<T = any>(cmd: string, args?: Record<string, unknown
 
 /** 检查后端服务状态 */
 export async function checkBackendStatus(backendUrl?: string): Promise<boolean> {
-  // 优先获取后端实际 URL（Tauri 模式下端口可能非 8991）
-  let baseUrl = backendUrl || 'http://127.0.0.1:8991'
+  // 桌面端由 Rust 同时检查受管进程和健康接口：进程退出立即失败，
+  // 进程仍在时连续三次健康探测失败才判定为卡死。
   if (isTauri()) {
     try {
-      const url = await invoke<string>('get_backend_url')
-      if (url) baseUrl = url
+      return await invoke<boolean>('is_backend_ready')
     } catch {
-      // 使用默认 URL
+      return false
     }
   }
+
+  // 优先获取后端实际 URL（Tauri 模式下端口可能非 8991）
+  let baseUrl = backendUrl || 'http://127.0.0.1:8991'
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 2000)
   try {
