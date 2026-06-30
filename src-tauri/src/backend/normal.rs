@@ -5,7 +5,7 @@ use std::time::Duration;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
@@ -125,15 +125,20 @@ fn backend_base_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
 }
 
-fn ensure_data_dir(app: &AppHandle) -> String {
-    // MSI 通常安装在 Program Files，exe 所在目录不可写。运行数据统一放到
-    // Tauri 的用户级应用数据目录，避免后端刚拉起就因无法创建数据库/日志退出。
-    let dir = app
-        .path()
-        .app_local_data_dir()
-        .ok()
-        .or_else(|| std::env::current_dir().ok())
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
+fn msi_data_dir(
+    executable_path: Option<std::path::PathBuf>,
+    current_dir: Option<std::path::PathBuf>,
+) -> std::path::PathBuf {
+    executable_path
+        .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+        .or(current_dir)
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+}
+
+fn ensure_data_dir() -> String {
+    // 普通 MSI 使用主程序所在目录作为运行数据根目录。安装到任意自定义
+    // 位置后，数据库与缓存仍会跟随实际安装位置，例如 INSTALLDIR/data。
+    let dir = msi_data_dir(std::env::current_exe().ok(), std::env::current_dir().ok());
 
     for sub in &["", "data", "config", "upload", "plan", "log"] {
         let _ = std::fs::create_dir_all(dir.join(sub));
@@ -171,7 +176,7 @@ fn try_spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String>
         .shell()
         .sidecar("ems_simulate_backend")
         .map_err(|e| format!("无法定位后端 sidecar: {e}"))?;
-    let data_dir = ensure_data_dir(app);
+    let data_dir = ensure_data_dir();
 
     let (_, child) = sidecar_cmd
         .args(["--port", &port.to_string()])
@@ -399,4 +404,29 @@ pub fn restart(app: &AppHandle) -> Result<String, String> {
         std::thread::sleep(Duration::from_millis(100));
     }
     Err(format!("后端端口 {port} 未能释放，无法重启"))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::msi_data_dir;
+
+    #[test]
+    fn msi_uses_executable_install_directory() {
+        let result = msi_data_dir(
+            Some(PathBuf::from(
+                r"C:\Program Files\EMS Simulate\ems-simulate.exe",
+            )),
+            None,
+        );
+
+        assert_eq!(result, PathBuf::from(r"C:\Program Files\EMS Simulate"));
+    }
+
+    #[test]
+    fn msi_falls_back_to_current_directory_without_executable_path() {
+        let fallback = PathBuf::from(r"D:\EMS Simulate");
+        assert_eq!(msi_data_dir(None, Some(fallback.clone())), fallback);
+    }
 }

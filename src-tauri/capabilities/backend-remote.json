@@ -11,6 +11,9 @@
     ]
   },
   "permissions": [
+    "dialog:allow-open",
+    "opener:allow-open-path",
+    "opener:allow-reveal-item-in-dir",
     "allow-get-backend-url",
     "allow-is-backend-ready",
     "allow-restart-backend"

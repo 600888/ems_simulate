@@ -5,6 +5,8 @@
   "permissions": [
     "core:default",
     "opener:allow-open-url",
+    "opener:allow-open-path",
+    "opener:allow-reveal-item-in-dir",
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",

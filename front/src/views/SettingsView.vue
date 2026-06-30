@@ -127,8 +127,8 @@ async function openDirectory(key: StoragePathKey) {
     return
   }
   try {
-    const { open } = await import('@tauri-apps/plugin-shell')
-    await open(path)
+    const { openPath } = await import('@tauri-apps/plugin-opener')
+    await openPath(path)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : t('settings.directoryOpenFailed'))
   }
