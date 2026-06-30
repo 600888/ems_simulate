@@ -698,64 +698,28 @@ class IcdExporter:
         return result
 
     def _build_dois(self, ln) -> list[dict[str, Any]]:
+        """Build instance overrides for values known by the client.
+
+        The discovered ``DARef`` objects describe the data *type*.  Merely
+        discovering a DA does not mean that an ICD needs a corresponding
+        empty DAI/SDI in the instance section; the DOType/DAType templates
+        already carry that structure.  At present the client retains only
+        the dU description value, so that is the only instance override that
+        can be exported faithfully.
+        """
         doi_list = []
         for do in ln.dos:
-            doi = {"@name": do.name}
-            dai_items = []
-            sdi_items = []
-            for da in do.das:
-                if da.name in ("dU", "du"):
-                    continue
-                if da.name in ("q", "t"):
-                    dai_items.append({"@name": da.name})
-                elif da.sub_das:
-                    sdi_items.append(self._build_sdi_from_da_ref(da))
-                elif da.path and "." in da.path and da.path.split(".", 1)[0] == da.name:
-                    sdi_items.append(self._build_sdi_from_da_path(da.path))
-                else:
-                    dai_items.append({"@name": da.name})
-            # 从客户端读取的 dU 描述值填充 DAI
             do_descriptions = getattr(self, "_do_descriptions", {})
             du_val = do_descriptions.get(do.ref, "") if do_descriptions else ""
-            if du_val:
-                dai_items.append({"@name": "dU", "Val": du_val})
-            if sdi_items:
-                doi["SDI"] = sdi_items if len(sdi_items) > 1 else sdi_items[0]
-            if dai_items:
-                doi["DAI"] = dai_items if len(dai_items) > 1 else dai_items[0]
-            doi_list.append(doi)
-        return doi_list if len(doi_list) > 1 else (doi_list[0] if doi_list else [])
-
-    def _build_sdi_from_da_ref(self, da) -> dict[str, Any]:
-        item: dict[str, Any] = {"@name": da.name}
-        dai_items = []
-        sdi_items = []
-        for bda in da.sub_das:
-            if bda.sub_das:
-                sdi_items.append(self._build_sdi_from_da_ref(bda))
-            elif bda.name in self._STRUCT_DA_DEFAULT_BDAS:
-                fallback_dais = [{"@name": name} for name, _ in self._STRUCT_DA_DEFAULT_BDAS[bda.name]]
-                sdi_items.append(
+            du_da = next((da for da in do.das if da.name in ("dU", "du")), None)
+            if du_val and du_da is not None:
+                doi_list.append(
                     {
-                        "@name": bda.name,
-                        "DAI": fallback_dais if len(fallback_dais) > 1 else fallback_dais[0],
+                        "@name": do.name,
+                        "DAI": {"@name": du_da.name, "Val": du_val},
                     }
                 )
-            else:
-                dai_items.append({"@name": bda.name})
-        if sdi_items:
-            item["SDI"] = sdi_items if len(sdi_items) > 1 else sdi_items[0]
-        if dai_items:
-            item["DAI"] = dai_items if len(dai_items) > 1 else dai_items[0]
-        return item
-
-    def _build_sdi_from_da_path(self, da_path: str) -> dict[str, Any]:
-        parts = [part for part in da_path.split(".") if part]
-        if len(parts) < 2:
-            return {"@name": da_path}
-        if len(parts) == 2:
-            return {"@name": parts[0], "DAI": {"@name": parts[1]}}
-        return {"@name": parts[0], "SDI": self._build_sdi_from_da_path(".".join(parts[1:]))}
+        return doi_list if len(doi_list) > 1 else (doi_list[0] if doi_list else [])
 
     def _build_datasets(self, datasets, ld_inst: str, ln, discovered_lns) -> Any:
         # 构建 LN 索引: (lnClass, lnInst) → discovered LN

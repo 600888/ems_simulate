@@ -820,15 +820,12 @@ class TestIcdExporter:
         assert origin_by_name["orCat"] == {"@name": "orCat", "@bType": "Enum", "@type": "orCategory"}
         assert origin_by_name["orIdent"] == {"@name": "orIdent", "@bType": "Octet64"}
 
+        # Oper/origin belongs in the type templates.  With no instance value
+        # discovered, the LN must not contain empty DOI/SDI/DAI overrides.
         ln = doc["SCL"]["IED"]["AccessPoint"]["Server"]["LDevice"]["LN"]
-        oper_sdi = ln["DOI"]["SDI"]
-        assert oper_sdi["@name"] == "Oper"
-        origin_sdi = oper_sdi["SDI"]
-        assert origin_sdi["@name"] == "origin"
-        origin_dais = origin_sdi["DAI"]
-        assert [dai["@name"] for dai in origin_dais] == ["orCat", "orIdent"]
+        assert "DOI" not in ln
 
-    def test_build_dois_includes_status_dais(self):
+    def test_build_dois_emits_only_valued_description_dai(self):
         self.exporter._do_descriptions = {"LD0/GGIO1.Ind1": "Trip"}
         ln = LNModel(
             name="GGIO1",
@@ -856,10 +853,10 @@ class TestIcdExporter:
             dais = [dais]
         by_name = {dai["@name"]: dai for dai in dais}
 
-        assert set(by_name) == {"stVal", "q", "t", "dU"}
+        assert set(by_name) == {"dU"}
         assert by_name["dU"]["Val"] == "Trip"
 
-    def test_build_dois_uses_sdi_for_struct_da_path(self):
+    def test_build_dois_omits_empty_struct_da_path(self):
         ln = LNModel(
             name="GGIO1",
             ln_class="GGIO",
@@ -881,8 +878,7 @@ class TestIcdExporter:
 
         doi = self.exporter._build_dois(ln)
 
-        assert doi["SDI"]["@name"] == "mag"
-        assert doi["SDI"]["DAI"]["@name"] == "f"
+        assert doi == []
 
     def test_build_datasets_infers_fc_from_explicit_da_name(self):
         discovered_lns = (
