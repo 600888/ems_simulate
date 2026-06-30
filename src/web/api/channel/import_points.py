@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 
+from src.config.storage import get_storage_path
 from src.data.service.channel_service import ChannelService
 from src.enums.modbus_def import ProtocolType
 from src.tools.excel_point_importer import ExcelPointImporter
@@ -73,7 +74,11 @@ async def import_points(
     if not file.filename.endswith((".xlsx", ".xls")):
         raise ValidationError("请上传 Excel 文件 (.xlsx 或 .xls)")
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".xlsx",
+        dir=get_storage_path("point_table_cache_directory"),
+    ) as tmp:
         content = await file.read()
         tmp.write(content)
         tmp_path = tmp.name
@@ -131,7 +136,11 @@ async def preview_icd(
         raise ValidationError(f"请上传 ICD 文件 ({', '.join(valid_extensions)})")
 
     suffix = os.path.splitext(file.filename)[1] or ".icd"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=suffix,
+        dir=get_storage_path("iec61850_temp_directory"),
+    ) as tmp:
         content = await file.read()
         tmp.write(content)
         tmp_path = tmp.name
@@ -257,7 +266,11 @@ async def import_icd(
         raise ValidationError(f"请上传 ICD 文件 ({', '.join(valid_extensions)})")
 
     suffix = os.path.splitext(file.filename)[1] or ".icd"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=suffix,
+        dir=get_storage_path("iec61850_temp_directory"),
+    ) as tmp:
         content = await file.read()
         tmp.write(content)
         tmp_path = tmp.name

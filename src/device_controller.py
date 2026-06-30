@@ -16,7 +16,8 @@ from src.enums.modbus_def import ProtocolType, get_protocol_type_by_value
 sys.path.append("../")
 
 from src.config.config import Config
-from src.config.global_config import CONFIG_JSON_DIR, CSV_DIR
+from src.config.global_config import CONFIG_JSON_DIR
+from src.config.storage import get_storage_path
 from src.device.core.device import Device
 from src.log import log
 
@@ -241,7 +242,10 @@ class DeviceController:
                         path = device["csv_path"]
                         is_start = default_status == "start"
                         builder = GeneralDeviceBuilder()
-                        other_device_path = CSV_DIR + path
+                        other_device_path = os.path.join(
+                            get_storage_path("point_table_cache_directory"),
+                            path.lstrip("/\\"),
+                        )
                         other_device = builder.makeOtherDevice(device_id, other_device_path, protocol_type, is_start)
                         self.device_list.append(other_device)
                         self.device_map[other_device.name] = other_device

@@ -26,6 +26,7 @@ import tempfile
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import PlainTextResponse
 
+from src.config.storage import get_storage_path
 from src.web.api.channel.protocol_guards import require_iec61850_channel
 from src.web.api.exceptions import NotFoundError, ValidationError
 from src.web.api.schemas import BaseResponse
@@ -202,7 +203,11 @@ async def get_scl_raw_content(request: Request, filename: str = Query(...)):
 async def preview_scl_file(request: Request, file: UploadFile = File(...)):
     """预览 SCL 文件 (上传临时文件，解析后删除)"""
     suffix = os.path.splitext(file.filename)[1] or ".icd"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=suffix,
+        dir=get_storage_path("iec61850_temp_directory"),
+    ) as tmp:
         content = await file.read()
         tmp.write(content)
         tmp_path = tmp.name

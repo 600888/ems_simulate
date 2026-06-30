@@ -16,6 +16,7 @@ from src.web.api import (
     point_mapping_router,
     point_router,
     point_tree_router,
+    settings_router,
 )
 from src.web.api.exceptions import BizError
 from src.web.api.schemas import BaseResponse
@@ -72,9 +73,12 @@ def create_app():
     app.include_router(point_tree_router)
     app.include_router(device_group_router)
     app.include_router(scl_router)
+    app.include_router(settings_router)
 
-    # 初始化就绪状态
+    # 初始化应用状态
     app.state.initialized = False
+    app.state.scl_file_manager = None
+    app.state.scl_import_service = None
 
     return app
 

@@ -1,22 +1,163 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Brush, Iphone, User, Document, Link } from '@element-plus/icons-vue'
+import { Brush, Iphone, User, Document, Link, FolderOpened, Files, EditPen } from '@element-plus/icons-vue'
 import { zoomLevel, setZoom, currentLocale, setLocale, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '@/composables/useAppSettings'
 import type { LocaleType } from '@/i18n'
 import { ElMessage } from 'element-plus'
+import {
+  getStorageSettings,
+  updateStorageSettings,
+  type DirectoryStatus,
+  type StoragePathKey,
+  type StoragePaths,
+} from '@/api/settingsApi'
+import { isTauri } from '@/utils/tauri'
 
 const { t, locale } = useI18n()
 
-type MenuKey = 'appearance' | 'language' | 'contact'
+type MenuKey = 'appearance' | 'language' | 'storage' | 'contact'
 
 const activeMenu = ref<MenuKey>('appearance')
 
 const menuItems = computed(() => [
   { key: 'appearance' as MenuKey, icon: Brush, label: t('settings.appearance') },
   { key: 'language' as MenuKey, icon: Iphone, label: t('settings.region') },
+  { key: 'storage' as MenuKey, icon: Files, label: t('settings.storage') },
   { key: 'contact' as MenuKey, icon: User, label: t('settings.contact') },
 ])
+
+const emptyPaths = (): StoragePaths => ({
+  data_directory: '',
+  point_table_cache_directory: '',
+  iec61850_model_cache_directory: '',
+  iec61850_file_cache_directory: '',
+  iec61850_temp_directory: '',
+})
+
+const storagePaths = reactive<StoragePaths>(emptyPaths())
+const storageDefaults = ref<StoragePaths>(emptyPaths())
+const storageStatus = ref<Partial<Record<StoragePathKey, DirectoryStatus>>>({})
+const storageLoading = ref(false)
+const storageSaving = ref(false)
+const savedStoragePaths = ref('')
+
+const storageItems = computed(() => [
+  {
+    key: 'data_directory' as StoragePathKey,
+    label: t('settings.dataDirectory'),
+    description: t('settings.dataDirectoryHint'),
+  },
+  {
+    key: 'point_table_cache_directory' as StoragePathKey,
+    label: t('settings.pointTableCacheDirectory'),
+    description: t('settings.pointTableCacheDirectoryHint'),
+  },
+  {
+    key: 'iec61850_model_cache_directory' as StoragePathKey,
+    label: t('settings.iec61850ModelCacheDirectory'),
+    description: t('settings.iec61850ModelCacheDirectoryHint'),
+  },
+  {
+    key: 'iec61850_file_cache_directory' as StoragePathKey,
+    label: t('settings.iec61850FileCacheDirectory'),
+    description: t('settings.iec61850FileCacheDirectoryHint'),
+  },
+  {
+    key: 'iec61850_temp_directory' as StoragePathKey,
+    label: t('settings.iec61850TempDirectory'),
+    description: t('settings.iec61850TempDirectoryHint'),
+  },
+])
+
+const storageDirty = computed(() => JSON.stringify(storagePaths) !== savedStoragePaths.value)
+
+function pathIsVerified(key: StoragePathKey): boolean {
+  if (!storageStatus.value[key]?.writable || !savedStoragePaths.value) return false
+  const saved = JSON.parse(savedStoragePaths.value) as Partial<StoragePaths>
+  return storagePaths[key] === saved[key]
+}
+
+function applyStorageData(data: Awaited<ReturnType<typeof getStorageSettings>>) {
+  Object.assign(storagePaths, data.paths)
+  storageDefaults.value = { ...data.defaults }
+  storageStatus.value = data.status
+  savedStoragePaths.value = JSON.stringify(data.paths)
+}
+
+async function loadStorageSettings() {
+  storageLoading.value = true
+  try {
+    applyStorageData(await getStorageSettings())
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('settings.storageLoadFailed'))
+  } finally {
+    storageLoading.value = false
+  }
+}
+
+async function chooseDirectory(key: StoragePathKey) {
+  if (!isTauri()) {
+    ElMessage.info(t('settings.directoryPickerWebHint'))
+    return
+  }
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: storagePaths[key] || undefined,
+    })
+    if (typeof selected === 'string') {
+      storagePaths[key] = selected
+    }
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('settings.directoryPickerFailed'))
+  }
+}
+
+async function openDirectory(key: StoragePathKey) {
+  const path = storagePaths[key].trim()
+  if (!path) {
+    ElMessage.warning(t('settings.directoryRequired'))
+    return
+  }
+  if (!isTauri()) {
+    ElMessage.info(t('settings.directoryOpenWebHint'))
+    return
+  }
+  try {
+    const { open } = await import('@tauri-apps/plugin-shell')
+    await open(path)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('settings.directoryOpenFailed'))
+  }
+}
+
+function restoreStorageDefaults() {
+  Object.assign(storagePaths, storageDefaults.value)
+}
+
+async function saveStorageSettings() {
+  if (Object.values(storagePaths).some((path) => !path.trim())) {
+    ElMessage.warning(t('settings.directoryRequired'))
+    return
+  }
+  storageSaving.value = true
+  try {
+    const data = await updateStorageSettings({ ...storagePaths })
+    applyStorageData(data)
+    ElMessage.success(
+      data.restart_required ? t('settings.storageSavedRestart') : t('settings.storageSaved'),
+    )
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('settings.storageSaveFailed'))
+  } finally {
+    storageSaving.value = false
+  }
+}
+
+onMounted(loadStorageSettings)
 
 const localeOptions = computed<{ value: LocaleType; label: string }[]>(() => [
   { value: 'zh-CN', label: t('settings.zh') },
@@ -154,6 +295,60 @@ function copyText(text: string) {
         </div>
       </div>
 
+      <!-- 存储设置 -->
+      <div v-show="activeMenu === 'storage'" v-loading="storageLoading" class="settings-section storage-section">
+        <h3 class="section-title">{{ t('settings.storage') }}</h3>
+        <p class="storage-hint">{{ t('settings.storageHint') }}</p>
+        <div class="section-card storage-card">
+          <div v-for="item in storageItems" :key="item.key" class="storage-item">
+            <div class="storage-item-header">
+              <div>
+                <div class="setting-label">{{ item.label }}</div>
+                <div class="setting-desc">{{ item.description }}</div>
+              </div>
+              <el-tag
+                v-if="pathIsVerified(item.key)"
+                size="small"
+                type="success"
+                effect="plain"
+              >
+                {{ t('settings.directoryWritable') }}
+              </el-tag>
+            </div>
+            <el-input v-model="storagePaths[item.key]" :placeholder="t('settings.directoryPlaceholder')">
+              <template #append>
+                <el-button-group class="storage-path-actions">
+                  <el-button :icon="EditPen" @click="chooseDirectory(item.key)">
+                    {{ t('settings.modifyDirectory') }}
+                  </el-button>
+                  <el-button :icon="FolderOpened" @click="openDirectory(item.key)">
+                    {{ t('settings.openDirectory') }}
+                  </el-button>
+                </el-button-group>
+              </template>
+            </el-input>
+          </div>
+        </div>
+        <el-alert
+          :title="t('settings.storageRestartHint')"
+          type="info"
+          :closable="false"
+          show-icon
+          class="storage-alert"
+        />
+        <div class="storage-actions">
+          <el-button @click="restoreStorageDefaults">{{ t('settings.restoreDefaults') }}</el-button>
+          <el-button
+            type="primary"
+            :loading="storageSaving"
+            :disabled="!storageDirty"
+            @click="saveStorageSettings"
+          >
+            {{ t('settings.saveStorage') }}
+          </el-button>
+        </div>
+      </div>
+
       <!-- 联系作者 -->
       <div v-show="activeMenu === 'contact'" class="settings-section contact-section">
         <h3 class="section-title">{{ t('settings.contact') }}</h3>
@@ -202,14 +397,15 @@ function copyText(text: string) {
 <style lang="scss" scoped>
 .settings-container {
   display: flex;
-  height: 480px;
+  height: 600px;
+  max-height: calc(100vh - 120px);
   background-color: var(--bg-main);
   border-radius: 12px;
   overflow: hidden;
 }
 
 .settings-sidebar {
-  width: 200px;
+  width: 220px;
   flex-shrink: 0;
   background-color: var(--panel-bg);
   border-right: 1px solid var(--sidebar-border);
@@ -256,6 +452,59 @@ function copyText(text: string) {
 
 .settings-section {
   max-width: 520px;
+}
+
+.storage-section {
+  max-width: 100%;
+}
+
+.storage-hint {
+  margin: -10px 0 16px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.storage-card {
+  padding: 4px 20px;
+}
+
+.storage-item {
+  padding: 16px 0;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid var(--sidebar-border);
+  }
+}
+
+.storage-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.storage-path-actions {
+  display: flex;
+
+  :deep(.el-button) {
+    margin: 0;
+    border-top: 0;
+    border-bottom: 0;
+    border-radius: 0;
+  }
+}
+
+.storage-alert {
+  margin-top: 14px;
+}
+
+.storage-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
 }
 
 .section-title {

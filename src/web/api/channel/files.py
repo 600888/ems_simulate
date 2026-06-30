@@ -11,6 +11,7 @@ import tempfile
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+from src.config.storage import get_storage_path
 from src.data.service.channel_service import ChannelService
 from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import BaseResponse
@@ -197,7 +198,11 @@ async def upload_file(body: FileUploadRequest, request: Request):
         raise ValidationError("文件数据为空")
 
     # 写入临时文件
-    with tempfile.NamedTemporaryFile(delete=False, suffix="_upload") as tmp:
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix="_upload",
+        dir=get_storage_path("iec61850_temp_directory"),
+    ) as tmp:
         tmp.write(file_data)
         tmp_path = tmp.name
 

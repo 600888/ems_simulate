@@ -97,7 +97,8 @@ onMounted(async () => {
   <el-dialog
     v-model="settingsVisible"
     :title="$t('app.settings')"
-    width="680px"
+    width="900px"
+    top="4vh"
     :close-on-click-modal="true"
     class="settings-dialog"
   >
@@ -231,6 +232,8 @@ onMounted(async () => {
 <!-- 设置弹框：去除默认内边距 -->
 <style lang="scss">
 .settings-dialog {
+  max-width: calc(100vw - 32px);
+
   .el-dialog__body {
     padding: 0;
     overflow: hidden;

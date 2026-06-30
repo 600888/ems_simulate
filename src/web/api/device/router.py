@@ -6,6 +6,7 @@ from copy import deepcopy
 
 from fastapi import APIRouter, Request
 
+from src.config.storage import get_storage_path
 from src.data.dao.channel_dao import ChannelDao
 from src.device.core.device import Device
 from src.enums.modbus_def import ProtocolType
@@ -386,7 +387,10 @@ async def export_model(req: ExportModelRequest, request: Request):
         raise ValidationError(f"不支持的导出类型: {req.export_type}，支持: icd/json/xml/csv/tree", data=False)
 
     config = type_config[export_type]
-    tmp_dir = tempfile.mkdtemp(prefix="ems_export_")
+    tmp_dir = tempfile.mkdtemp(
+        prefix="ems_export_",
+        dir=get_storage_path("iec61850_temp_directory"),
+    )
     _temp_dirs.append(tmp_dir)  # atexit 安全网
 
     try:
