@@ -25,6 +25,8 @@ DA_PATH_TO_FRAME_TYPE = {
     "ctlVal": (2, IEC_TYPE_BOOLEAN),  # 遥控 (布尔型)
     "Oper.ctlVal": (2, IEC_TYPE_BOOLEAN),  # 遥控
     "setVal": (3, IEC_TYPE_FLOAT),  # 遥调
+    "setMag.f": (3, IEC_TYPE_FLOAT),  # ASG 浮点设定值
+    "setMag.i": (3, IEC_TYPE_INTEGER),  # ASG 整型设定值
 }
 
 # DA 第一层名称 -> (完整 DA 路径, frame_type, iec_type) 映射
@@ -44,6 +46,7 @@ DA_PATTERNS = {
     "Oper": ("Oper.ctlVal", 2, IEC_TYPE_BOOLEAN),  # SPC/DPC CDC: 安全操作控制
     # 遥调 (YT) - 设定值类 DA
     "setVal": ("setVal", 3, IEC_TYPE_FLOAT),  # APC/BSC/ISC CDC: 设定值
+    "setMag": ("setMag.f", 3, IEC_TYPE_FLOAT),  # ASG CDC: AnalogValue 结构，实际子属性可能为 f/i
     "wVal": ("wVal.f", 3, IEC_TYPE_FLOAT),  # 某些实现的设定值
 }
 
@@ -101,7 +104,6 @@ SKIP_DA_NAMES = frozenset(
         "subID",  # 替代品质/标识
         "subVal",
         "subEna",  # 替代值/使能, 结构元数据
-        "setMag",  # 设定值幅值, 结构体 DA 服务端不支持直接读取
         "dataNs",  # 数据命名空间
         "ctlModel",  # 控制模型配置
         "sboTimeout",  # SBO 超时配置

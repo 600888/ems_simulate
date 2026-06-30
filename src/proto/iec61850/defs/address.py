@@ -103,7 +103,7 @@ def infer_fc_from_address(address: str) -> str:
     # 再查主值 DA 表
     if top_da in DA_PATTERNS:
         frame_type = DA_PATTERNS[top_da][1]
-        fc_map = {0: "MX", 1: "ST", 2: "CO", 3: "CO"}
+        fc_map = {0: "MX", 1: "ST", 2: "CO", 3: "SP"}
         return fc_map.get(frame_type, "")
 
     return ""

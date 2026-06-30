@@ -151,7 +151,7 @@ class DataModelsPlugin:
                     full_path, frame_type, _ = DA_PATTERNS[da_name]
                     da_info["path"] = full_path
                     type_names = {0: "Float32", 1: "Boolean", 2: "Boolean", 3: "Float32"}
-                    fc_names = {0: "MX", 1: "ST", 2: "CO", 3: "CO"}
+                    fc_names = {0: "MX", 1: "ST", 2: "CO", 3: "SP"}
                     da_info["type"] = type_names.get(frame_type, "")
                     da_info["fc"] = fc_names.get(frame_type, "")
                 elif da_name in EXTRA_DA_INFO:
@@ -278,7 +278,7 @@ class DataModelsPlugin:
             for da_name in das:
                 if da_name in DA_PATTERNS:
                     da_path, frame_type, iec_type = DA_PATTERNS[da_name]
-                    fc_map = {0: "MX", 1: "ST", 2: "CO", 3: "CO"}
+                    fc_map = {0: "MX", 1: "ST", 2: "CO", 3: "SP"}
                     fc = fc_map.get(frame_type, "")
                     found.append((da_path, frame_type, fc, iec_type))
                 elif da_name in EXTRA_DA_INFO:

@@ -356,6 +356,13 @@ class ModelDiscoveryService:
             # 发现 DA
             das = self._discover_data_attributes(conn, do_ref, do_name, ln_name, frame_type, max_depth=max_depth)
 
+            # 某些厂商使用非标准 LN class（如 CTRL），无法仅靠 LN/DO 名称
+            # 推断 CDC。此时以在线发现到的主值 DA 结构为准。
+            # setMag 是 ASG 的结构化设定值，子属性可能是 f 或 i。
+            if any(da.name == "setMag" for da in das):
+                cdc = "ASG"
+                frame_type = 3
+
             do_refs.append(
                 DORef(
                     name=do_name,
@@ -931,7 +938,7 @@ class ModelDiscoveryService:
         """根据 DA 名称推断完整路径、FC 和类型"""
         if da_name in DA_PATTERNS:
             full_path, frame_type, iec_type = DA_PATTERNS[da_name]
-            fc_map = {0: "MX", 1: "ST", 2: "CO", 3: "CO"}
+            fc_map = {0: "MX", 1: "ST", 2: "CO", 3: "SP"}
             return DARef(
                 name=da_name,
                 path=full_path,
@@ -961,7 +968,7 @@ class ModelDiscoveryService:
         """根据 DA 名称和 DO 帧类型推断 FC"""
         if da_name in DA_PATTERNS:
             frame_type = DA_PATTERNS[da_name][1]
-            return {0: "MX", 1: "ST", 2: "CO", 3: "CO"}.get(frame_type, "")
+            return {0: "MX", 1: "ST", 2: "CO", 3: "SP"}.get(frame_type, "")
         if da_name in EXTRA_DA_INFO:
             return EXTRA_DA_INFO[da_name][1]
-        return {0: "MX", 1: "ST", 2: "CO", 3: "CO"}.get(do_frame_type, "")
+        return {0: "MX", 1: "ST", 2: "CO", 3: "SP"}.get(do_frame_type, "")

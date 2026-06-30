@@ -14,6 +14,8 @@ import os
 from pathlib import Path
 import shutil
 
+from src.config.storage import get_storage_path
+
 from ...log import log
 from .types import FileMetadata
 
@@ -39,9 +41,7 @@ class CacheManager:
     @staticmethod
     def _default_cache_dir() -> Path:
         """默认缓存目录"""
-        # 相对于项目根目录的 data/61850_cache/
-        workspace = Path.cwd()
-        return workspace / "data" / "61850_cache"
+        return Path(get_storage_path("iec61850_file_cache_directory"))
 
     @property
     def cache_dir(self) -> Path:

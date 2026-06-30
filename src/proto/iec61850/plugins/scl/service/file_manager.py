@@ -21,7 +21,7 @@ import re
 import shutil
 from typing import BinaryIO
 
-from src.config.env import data_path
+from src.config.storage import get_storage_path
 
 from ....log import log
 
@@ -110,8 +110,7 @@ class SclFileManager:
 
     def __init__(self, base_dir: str | None = None):
         if base_dir is None:
-            # 默认: 项目根目录/data/61850icd/
-            base_dir = os.path.join(data_path, "61850icd")
+            base_dir = get_storage_path("iec61850_model_cache_directory")
         self._base_dir = base_dir
         _ = os.makedirs(self._base_dir, exist_ok=True)
         # 确保 temp 子目录存在
@@ -318,7 +317,7 @@ class SclFileManager:
 
     def _get_device_dir(self) -> str:
         """获取设备 ICD 存储根目录"""
-        device_dir = os.path.join(data_path, "device")
+        device_dir = os.path.join(get_storage_path("data_directory"), "device")
         return device_dir
 
     def save_to_device_dir(

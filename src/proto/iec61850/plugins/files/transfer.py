@@ -255,9 +255,9 @@ class FileTransfer:
             # 不经过 filestore basepath 拼接。先落盘到临时文件再读回内存。
             # 注意: Windows 系统临时目录可能包含中文等 Unicode 字符，
             # libiec61850 的 C 层 fopen() 无法处理，需使用纯 ASCII 路径。
-            from pathlib import Path
+            from src.config.storage import get_storage_path
 
-            _tmp_dir = str(Path.cwd() / "data" / "_tmp")
+            _tmp_dir = get_storage_path("iec61850_temp_directory")
             os.makedirs(_tmp_dir, exist_ok=True)
             tmp_fd, tmp_path = tempfile.mkstemp(suffix=".iecdl", dir=_tmp_dir)
             os.close(tmp_fd)

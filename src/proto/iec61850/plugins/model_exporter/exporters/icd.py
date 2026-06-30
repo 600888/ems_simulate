@@ -81,6 +81,7 @@ class IcdExporter:
             ied_name = self._infer_ied_name(model)
 
         scl_dict = self._model_to_scl_dict(model, ied_name)
+        self._validate_scl_references(scl_dict)
         xml_str = xmltodict.unparse(scl_dict, pretty=pretty, indent="\t")
         # xmltodict 不自持自闭合标签，将空元素 <tag></tag> 转为 <tag/>
         xml_str = _RE_EMPTY_ELEMENT.sub(r"<\1\2/>", xml_str)
@@ -89,6 +90,119 @@ class IcdExporter:
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(xml_str)
         return output_path
+
+    @staticmethod
+    def _as_list(value: Any) -> list[Any]:
+        if value is None:
+            return []
+        return value if isinstance(value, list) else [value]
+
+    @classmethod
+    def _validate_scl_references(cls, scl_dict: dict[str, Any]) -> None:
+        """Reject an ICD whose report/data-set references cannot resolve.
+
+        The XML schema cannot detect an FCDA that names a missing DO/DA/BDA.
+        Such a file can be parsed successfully while reports using that data
+        set fail later. Validate the generated object graph before writing it.
+        """
+
+        scl = scl_dict.get("SCL", {})
+        templates = scl.get("DataTypeTemplates", {})
+        lnode_types = {item.get("@id", ""): item for item in cls._as_list(templates.get("LNodeType"))}
+        do_types = {item.get("@id", ""): item for item in cls._as_list(templates.get("DOType"))}
+        da_types = {item.get("@id", ""): item for item in cls._as_list(templates.get("DAType"))}
+
+        ied = scl.get("IED", {})
+        server = ied.get("AccessPoint", {}).get("Server", {})
+        ldevices = cls._as_list(server.get("LDevice"))
+        ld_by_inst = {ld.get("@inst", ""): ld for ld in ldevices}
+        issues: list[str] = []
+
+        def named_child(parent: dict[str, Any] | None, tag: str, name: str) -> dict[str, Any] | None:
+            if not parent:
+                return None
+            return next((item for item in cls._as_list(parent.get(tag)) if item.get("@name") == name), None)
+
+        def nodes_for(ld: dict[str, Any]) -> list[dict[str, Any]]:
+            return cls._as_list(ld.get("LN0")) + cls._as_list(ld.get("LN"))
+
+        for owner_ld in ldevices:
+            for owner_ln in nodes_for(owner_ld):
+                data_sets = cls._as_list(owner_ln.get("DataSet"))
+                data_set_names = {item.get("@name", "") for item in data_sets}
+
+                for report in cls._as_list(owner_ln.get("ReportControl")):
+                    dat_set = report.get("@datSet", "")
+                    if dat_set and dat_set not in data_set_names:
+                        issues.append(f"ReportControl {report.get('@name', '')} -> missing DataSet {dat_set}")
+
+                for data_set in data_sets:
+                    ds_name = data_set.get("@name", "")
+                    for fcda in cls._as_list(data_set.get("FCDA")):
+                        target_ld = ld_by_inst.get(fcda.get("@ldInst", ""))
+                        if target_ld is None:
+                            issues.append(f"DataSet {ds_name}: missing LDevice {fcda.get('@ldInst', '')}")
+                            continue
+
+                        target_ln = next(
+                            (
+                                node
+                                for node in nodes_for(target_ld)
+                                if node.get("@lnClass", "") == fcda.get("@lnClass", "")
+                                and node.get("@inst", "") == fcda.get("@lnInst", "")
+                                and node.get("@prefix", "") == fcda.get("@prefix", "")
+                            ),
+                            None,
+                        )
+                        ref_label = (
+                            f"{fcda.get('@ldInst', '')}/{fcda.get('@prefix', '')}"
+                            f"{fcda.get('@lnClass', '')}{fcda.get('@lnInst', '')}."
+                            f"{fcda.get('@doName', '')}"
+                        )
+                        if target_ln is None:
+                            issues.append(f"DataSet {ds_name}: missing LN for {ref_label}")
+                            continue
+
+                        lnode_type = lnode_types.get(target_ln.get("@lnType", ""))
+                        do_entry = named_child(lnode_type, "DO", fcda.get("@doName", ""))
+                        if do_entry is None:
+                            issues.append(f"DataSet {ds_name}: missing DO {ref_label}")
+                            continue
+
+                        da_path = fcda.get("@daName", "")
+                        if not da_path:
+                            continue
+                        parts = da_path.split(".")
+                        do_type = do_types.get(do_entry.get("@type", ""))
+                        da_entry = named_child(do_type, "DA", parts[0])
+                        if da_entry is None:
+                            issues.append(f"DataSet {ds_name}: missing DA {ref_label}.{da_path}")
+                            continue
+
+                        current = da_entry
+                        missing_bda = False
+                        for part in parts[1:]:
+                            da_type = da_types.get(current.get("@type", ""))
+                            current = named_child(da_type, "BDA", part)
+                            if current is None:
+                                issues.append(f"DataSet {ds_name}: missing BDA {ref_label}.{da_path}")
+                                missing_bda = True
+                                break
+                        if missing_bda:
+                            continue
+
+                        fcda_fc = fcda.get("@fc", "")
+                        template_fc = da_entry.get("@fc", "")
+                        if fcda_fc != template_fc:
+                            issues.append(
+                                f"DataSet {ds_name}: FC mismatch {ref_label}.{da_path} ({fcda_fc} != {template_fc})"
+                            )
+
+        if issues:
+            preview = "; ".join(issues[:10])
+            if len(issues) > 10:
+                preview += f"; ... total {len(issues)} issues"
+            raise ValueError(f"ICD reference validation failed: {preview}")
 
     def export_xml(
         self,
@@ -420,7 +534,9 @@ class IcdExporter:
                 do_refs = []
 
                 for do in ln.dos:
-                    cdc = self._infer_cdc_from_do(do.name, ln_class)
+                    # 在线发现得到的 CDC 优先；仅在缺失时才按 LN/DO 名称推断。
+                    # 这对厂商自定义 LN（如 CTRL 下的 ASG.setMag）尤其重要。
+                    cdc = do.cdc or self._infer_cdc_from_do(do.name, ln_class)
                     do_type_id = self._resolve_or_create_do_type(
                         do,
                         cdc,
