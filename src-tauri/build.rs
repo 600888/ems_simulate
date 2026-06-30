@@ -4,6 +4,7 @@ fn main() {
             "get_backend_url",
             "is_backend_ready",
             "restart_backend",
+            "open_directory",
         ]),
     ))
     .expect("failed to build Tauri application manifest")

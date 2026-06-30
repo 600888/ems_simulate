@@ -16,6 +16,7 @@
     "opener:allow-reveal-item-in-dir",
     "allow-get-backend-url",
     "allow-is-backend-ready",
-    "allow-restart-backend"
+    "allow-restart-backend",
+    "allow-open-directory"
   ]
 }

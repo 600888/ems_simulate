@@ -17,6 +17,7 @@
     "shell:default",
     "allow-get-backend-url",
     "allow-is-backend-ready",
-    "allow-restart-backend"
+    "allow-restart-backend",
+    "allow-open-directory"
   ]
 }

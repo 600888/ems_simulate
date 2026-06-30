@@ -567,6 +567,12 @@
           "markdownDescription": "Enables the is_backend_ready command without any pre-configured scope."
         },
         {
+          "description": "Enables the open_directory command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-directory",
+          "markdownDescription": "Enables the open_directory command without any pre-configured scope."
+        },
+        {
           "description": "Enables the restart_backend command without any pre-configured scope.",
           "type": "string",
           "const": "allow-restart-backend",
@@ -583,6 +589,12 @@
           "type": "string",
           "const": "deny-is-backend-ready",
           "markdownDescription": "Denies the is_backend_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_directory command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-directory",
+          "markdownDescription": "Denies the open_directory command without any pre-configured scope."
         },
         {
           "description": "Denies the restart_backend command without any pre-configured scope.",
