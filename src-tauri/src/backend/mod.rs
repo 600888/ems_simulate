@@ -15,11 +15,11 @@ fn evaluate_backend_status(
     was_ready: bool,
     consecutive_failures: u8,
 ) -> (bool, u8) {
-    if !process_alive {
-        return (false, 0);
-    }
     if health_ok {
         return (true, 0);
+    }
+    if !process_alive {
+        return (false, 0);
     }
     if !was_ready {
         return (false, consecutive_failures);
@@ -155,6 +155,11 @@ mod tests {
     #[test]
     fn successful_health_check_resets_failure_count() {
         assert_eq!(evaluate_backend_status(true, true, true, 2), (true, 0));
+    }
+
+    #[test]
+    fn healthy_endpoint_is_authoritative_when_process_handle_is_stale() {
+        assert_eq!(evaluate_backend_status(false, true, false, 0), (true, 0));
     }
 
     #[test]

@@ -35,6 +35,16 @@ async def get_storage_configuration():
     return BaseResponse(data=_storage_payload(settings.get()))
 
 
+@settings_router.delete("/storage/{field_name}/contents", response_model=BaseResponse)
+async def clear_storage_directory(field_name: str):
+    settings = get_storage_settings()
+    try:
+        directory = settings.clear_directory(field_name)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    return BaseResponse(data={"path": str(directory)}, message="目录数据已清空")
+
+
 @settings_router.put("/storage", response_model=BaseResponse)
 async def update_storage_configuration(body: StorageSettingsUpdate, request: Request):
     settings = get_storage_settings()

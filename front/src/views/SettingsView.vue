@@ -1,18 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Brush, Iphone, User, Document, Link, FolderOpened, Files, EditPen } from '@element-plus/icons-vue'
+import { Brush, Iphone, User, Document, Link, FolderOpened, Files, EditPen, Delete } from '@element-plus/icons-vue'
 import { zoomLevel, setZoom, currentLocale, setLocale, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '@/composables/useAppSettings'
 import type { LocaleType } from '@/i18n'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  clearStorageDirectory,
   getStorageSettings,
   updateStorageSettings,
   type DirectoryStatus,
   type StoragePathKey,
   type StoragePaths,
 } from '@/api/settingsApi'
-import { isTauri } from '@/utils/tauri'
+import { invoke, isTauri } from '@/utils/tauri'
 
 const { t, locale } = useI18n()
 
@@ -40,6 +41,7 @@ const storageDefaults = ref<StoragePaths>(emptyPaths())
 const storageStatus = ref<Partial<Record<StoragePathKey, DirectoryStatus>>>({})
 const storageLoading = ref(false)
 const storageSaving = ref(false)
+const clearingDirectory = ref<StoragePathKey | null>(null)
 const savedStoragePaths = ref('')
 
 const storageItems = computed(() => [
@@ -127,10 +129,44 @@ async function openDirectory(key: StoragePathKey) {
     return
   }
   try {
-    const { openPath } = await import('@tauri-apps/plugin-opener')
-    await openPath(path)
+    await invoke('open_directory', { path })
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : t('settings.directoryOpenFailed'))
+  }
+}
+
+async function clearDirectory(key: StoragePathKey) {
+  if (!pathIsVerified(key)) {
+    ElMessage.warning(t('settings.clearDirectorySaveFirst'))
+    return
+  }
+
+  const path = storagePaths[key]
+  try {
+    await ElMessageBox.confirm(
+      t('settings.clearDirectoryConfirm', { path }),
+      t('settings.clearDirectoryTitle'),
+      {
+        confirmButtonText: t('settings.clearDirectoryConfirmButton'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning',
+        customClass: 'clear-directory-message-box',
+        confirmButtonClass: 'clear-directory-confirm-button',
+      },
+    )
+  } catch {
+    return
+  }
+
+  clearingDirectory.value = key
+  try {
+    await clearStorageDirectory(key)
+    await loadStorageSettings()
+    ElMessage.success(t('settings.clearDirectorySuccess'))
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('settings.clearDirectoryFailed'))
+  } finally {
+    clearingDirectory.value = null
   }
 }
 
@@ -306,22 +342,45 @@ function copyText(text: string) {
                 <div class="setting-label">{{ item.label }}</div>
                 <div class="setting-desc">{{ item.description }}</div>
               </div>
-              <el-tag
-                v-if="pathIsVerified(item.key)"
-                size="small"
-                type="success"
-                effect="plain"
-              >
-                {{ t('settings.directoryWritable') }}
-              </el-tag>
+              <div class="storage-item-header-actions">
+                <el-tag
+                  v-if="pathIsVerified(item.key)"
+                  size="small"
+                  type="success"
+                  effect="plain"
+                >
+                  {{ t('settings.directoryWritable') }}
+                </el-tag>
+                <el-button
+                  class="clear-directory-button"
+                  :icon="Delete"
+                  :loading="clearingDirectory === item.key"
+                  :disabled="clearingDirectory !== null || !pathIsVerified(item.key)"
+                  @click="clearDirectory(item.key)"
+                >
+                  {{ t('settings.clearDirectory') }}
+                </el-button>
+              </div>
             </div>
-            <el-input v-model="storagePaths[item.key]" :placeholder="t('settings.directoryPlaceholder')">
+            <el-input
+              v-model="storagePaths[item.key]"
+              class="storage-path-input"
+              :placeholder="t('settings.directoryPlaceholder')"
+            >
               <template #append>
                 <el-button-group class="storage-path-actions">
-                  <el-button :icon="EditPen" @click="chooseDirectory(item.key)">
+                  <el-button
+                    class="storage-path-button storage-path-button--modify"
+                    :icon="EditPen"
+                    @click="chooseDirectory(item.key)"
+                  >
                     {{ t('settings.modifyDirectory') }}
                   </el-button>
-                  <el-button :icon="FolderOpened" @click="openDirectory(item.key)">
+                  <el-button
+                    class="storage-path-button storage-path-button--open"
+                    :icon="FolderOpened"
+                    @click="openDirectory(item.key)"
+                  >
                     {{ t('settings.openDirectory') }}
                   </el-button>
                 </el-button-group>
@@ -485,14 +544,117 @@ function copyText(text: string) {
   margin-bottom: 10px;
 }
 
-.storage-path-actions {
+.storage-item-header-actions {
   display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.clear-directory-button {
+  height: 28px;
+  padding: 0 10px;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.18s ease;
+
+  &:hover,
+  &:focus {
+    color: #ffffff;
+    background: linear-gradient(135deg, #f43f5e, #ef4444);
+    border-color: transparent;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.24);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+:global(.clear-directory-confirm-button) {
+  background: linear-gradient(135deg, #f43f5e, #ef4444) !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.24);
+}
+
+:global(.clear-directory-message-box .el-message-box__message p) {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.storage-path-input {
+  :deep(.el-input__wrapper) {
+    padding: 1px 14px;
+    border-radius: 10px 0 0 10px !important;
+    transition: box-shadow 0.2s ease;
+  }
+
+  :deep(.el-input-group__append) {
+    padding: 4px;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(14, 165, 233, 0.12));
+    border-radius: 0 10px 10px 0;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.18) inset;
+  }
+
+  &:hover :deep(.el-input__wrapper),
+  &:focus-within :deep(.el-input__wrapper) {
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.55) inset !important;
+  }
+}
+
+.storage-path-actions {
+  display: inline-flex;
+  gap: 4px;
+  vertical-align: middle;
 
   :deep(.el-button) {
     margin: 0;
-    border-top: 0;
-    border-bottom: 0;
-    border-radius: 0;
+    height: 32px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 7px !important;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+
+    &:hover {
+      transform: translateY(-1px);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+  }
+
+  :deep(.storage-path-button--modify) {
+    color: var(--color-primary);
+    background: rgba(59, 130, 246, 0.12);
+
+    &:hover,
+    &:focus {
+      color: #2563eb;
+      background: rgba(59, 130, 246, 0.2);
+      box-shadow: 0 3px 10px rgba(37, 99, 235, 0.14);
+    }
+  }
+
+  :deep(.storage-path-button--open) {
+    color: #ffffff;
+    background: linear-gradient(135deg, #3b82f6 0%, #0ea5e9 100%);
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.24);
+
+    &:hover,
+    &:focus {
+      color: #ffffff;
+      background: linear-gradient(135deg, #2563eb 0%, #0284c7 100%);
+      box-shadow: 0 6px 14px rgba(37, 99, 235, 0.3);
+    }
   }
 }
 

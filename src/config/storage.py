@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass
 import json
 import os
 from pathlib import Path
+import shutil
 import tempfile
 import threading
 from typing import ClassVar
@@ -55,7 +56,7 @@ class StorageSettings:
         data_dir = self.root_dir / "data"
         return StoragePaths(
             data_directory=str(data_dir),
-            point_table_cache_directory=str(self.root_dir / "config" / "point_csv"),
+            point_table_cache_directory=str(data_dir / "point_csv"),
             iec61850_model_cache_directory=str(data_dir / "61850icd"),
             iec61850_file_cache_directory=str(data_dir / "61850_cache"),
             iec61850_temp_directory=str(data_dir / "61850_temp"),
@@ -102,6 +103,33 @@ class StorageSettings:
             }
         return result
 
+    def clear_directory(self, field_name: str) -> Path:
+        """Delete all contents of a configured storage directory, keeping the directory itself."""
+        if field_name not in self.PATH_FIELDS:
+            raise ValueError(f"未知的存储目录配置: {field_name}")
+
+        with self._lock:
+            directory = Path(getattr(self._paths, field_name)).expanduser().resolve(strict=False)
+            self._ensure_safe_to_clear(directory)
+            directory.mkdir(parents=True, exist_ok=True)
+            if not directory.is_dir():
+                raise ValueError(f"路径不是目录: {directory}")
+
+            try:
+                for child in directory.iterdir():
+                    if child.is_symlink():
+                        child.unlink()
+                    elif hasattr(child, "is_junction") and child.is_junction():
+                        child.rmdir()
+                    elif child.is_dir():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+            except OSError as exc:
+                raise ValueError(f"清空目录失败: {directory} ({exc})") from exc
+
+            return directory
+
     def _load(self) -> StoragePaths:
         defaults = self.defaults().to_dict()
         try:
@@ -142,6 +170,20 @@ class StorageSettings:
         if not expanded.is_absolute():
             expanded = self.root_dir / expanded
         return expanded.resolve(strict=False)
+
+    def _ensure_safe_to_clear(self, directory: Path) -> None:
+        anchor = Path(directory.anchor).resolve(strict=False)
+        home = Path.home().resolve(strict=False)
+        dangerous_paths = {anchor, home, self.root_dir, self.config_file.parent}
+        if directory in dangerous_paths:
+            raise ValueError(f"拒绝清空危险目录: {directory}")
+
+        try:
+            self.config_file.relative_to(directory)
+        except ValueError:
+            pass
+        else:
+            raise ValueError(f"拒绝清空包含应用配置的目录: {directory}")
 
     @staticmethod
     def _ensure_writable_directory(path: Path, field_name: str) -> None:

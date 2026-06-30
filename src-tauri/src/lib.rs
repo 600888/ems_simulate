@@ -1,6 +1,58 @@
 mod backend;
 
+use std::path::PathBuf;
 use tauri::Manager;
+use tauri_plugin_opener::OpenerExt;
+
+fn resolve_directory(path: &str) -> Result<PathBuf, String> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err("目录不能为空".to_string());
+    }
+
+    let directory = PathBuf::from(path)
+        .canonicalize()
+        .map_err(|error| format!("目录不存在或不可访问: {path} ({error})"))?;
+    if !directory.is_dir() {
+        return Err(format!("路径不是目录: {}", directory.display()));
+    }
+
+    Ok(directory)
+}
+
+#[tauri::command]
+fn open_directory(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let directory = resolve_directory(&path)?;
+
+    app.opener()
+        .open_path(directory.to_string_lossy(), None::<&str>)
+        .map_err(|error| format!("打开目录失败: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_directory;
+
+    #[test]
+    fn directory_path_must_not_be_empty() {
+        assert!(resolve_directory("   ").is_err());
+    }
+
+    #[test]
+    fn existing_directory_is_canonicalized() {
+        let current = std::env::current_dir().unwrap();
+        assert_eq!(
+            resolve_directory(current.to_str().unwrap()).unwrap(),
+            current.canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn existing_file_is_rejected() {
+        let executable = std::env::current_exe().unwrap();
+        assert!(resolve_directory(executable.to_str().unwrap()).is_err());
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -48,6 +100,7 @@ pub fn run() {
             backend::get_backend_url,
             backend::is_backend_ready,
             backend::restart_backend,
+            open_directory,
         ])
         .build(tauri::generate_context!())
         .expect("启动 EMS Simulate 失败");

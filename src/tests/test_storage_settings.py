@@ -11,7 +11,7 @@ def test_storage_settings_defaults_are_root_relative(tmp_path: Path):
     paths = settings.get()
 
     assert paths.data_directory == str(tmp_path / "data")
-    assert paths.point_table_cache_directory == str(tmp_path / "config" / "point_csv")
+    assert paths.point_table_cache_directory == str(tmp_path / "data" / "point_csv")
     assert paths.iec61850_model_cache_directory == str(tmp_path / "data" / "61850icd")
     assert paths.iec61850_file_cache_directory == str(tmp_path / "data" / "61850_cache")
     assert paths.iec61850_temp_directory == str(tmp_path / "data" / "61850_temp")
@@ -43,3 +43,29 @@ def test_storage_settings_rejects_a_file_as_directory(tmp_path: Path):
 
     with pytest.raises(ValueError, match="目录不可写"):
         settings.update({"data_directory": str(invalid_path)})
+
+
+def test_clear_directory_removes_contents_but_keeps_directory(tmp_path: Path):
+    settings = StorageSettings(root_dir=tmp_path)
+    target = Path(settings.get().point_table_cache_directory)
+    nested = target / "nested"
+    nested.mkdir(parents=True)
+    (target / "points.csv").write_text("points", encoding="utf-8")
+    (nested / "cache.bin").write_bytes(b"cache")
+
+    cleared = settings.clear_directory("point_table_cache_directory")
+
+    assert cleared == target
+    assert target.is_dir()
+    assert list(target.iterdir()) == []
+
+
+def test_clear_directory_rejects_unknown_or_dangerous_paths(tmp_path: Path):
+    settings = StorageSettings(root_dir=tmp_path)
+
+    with pytest.raises(ValueError, match="未知的存储目录配置"):
+        settings.clear_directory("unknown")
+
+    settings.update({"data_directory": str(tmp_path)})
+    with pytest.raises(ValueError, match="拒绝清空危险目录"):
+        settings.clear_directory("data_directory")

@@ -31,3 +31,7 @@ export function getStorageSettings(): Promise<StorageSettingsData> {
 export function updateStorageSettings(paths: StoragePaths): Promise<StorageSettingsData> {
   return requestApi(STORAGE_SETTINGS_URL, 'PUT', paths)
 }
+
+export function clearStorageDirectory(key: StoragePathKey): Promise<{ path: string }> {
+  return requestApi(`${STORAGE_SETTINGS_URL}/${key}/contents`, 'DELETE', null)
+}

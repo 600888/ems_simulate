@@ -329,12 +329,6 @@ pub async fn wait_backend_ready(url: &str) -> bool {
 
 pub async fn is_backend_ready() -> Result<bool, String> {
     let process_alive = is_process_alive();
-    if !process_alive {
-        *BACKEND_READY.lock().map_err(|e| e.to_string())? = false;
-        *HEALTH_FAILURES.lock().map_err(|e| e.to_string())? = 0;
-        return Ok(false);
-    }
-
     let port = *BACKEND_PORT.lock().map_err(|e| e.to_string())?;
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(1))
@@ -348,7 +342,7 @@ pub async fn is_backend_ready() -> Result<bool, String> {
     let was_ready = *BACKEND_READY.lock().map_err(|e| e.to_string())?;
     let failures = *HEALTH_FAILURES.lock().map_err(|e| e.to_string())?;
     let (ready, next_failures) =
-        super::evaluate_backend_status(true, health_ok, was_ready, failures);
+        super::evaluate_backend_status(process_alive, health_ok, was_ready, failures);
 
     *BACKEND_READY.lock().map_err(|e| e.to_string())? = ready;
     *HEALTH_FAILURES.lock().map_err(|e| e.to_string())? = next_failures;

@@ -29,31 +29,38 @@ export async function invoke<T = any>(cmd: string, args?: Record<string, unknown
 
 /** 检查后端服务状态 */
 export async function checkBackendStatus(backendUrl?: string): Promise<boolean> {
-  // 桌面端由 Rust 同时检查受管进程和健康接口：进程退出立即失败，
-  // 进程仍在时连续三次健康探测失败才判定为卡死。
-  if (isTauri()) {
+  // 页面由后端自身提供时，当前 origin 才是实际端口（普通 MSI 可能因
+  // 8991 被占用而使用动态端口）。健康接口成功是服务运行的权威信号。
+  const isLocalHttpPage = ['http:', 'https:'].includes(window.location.protocol)
+    && ['127.0.0.1', 'localhost', '::1'].includes(window.location.hostname)
+  const baseUrl = backendUrl?.replace(/\/+$/, '')
+    || (isLocalHttpPage ? window.location.origin : 'http://127.0.0.1:8991')
+
+  const probeHealth = async (): Promise<boolean> => {
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 2000)
     try {
-      return await invoke<boolean>('is_backend_ready')
+      const resp = await fetch(`${baseUrl}/api/health`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+      return resp.ok
     } catch {
       return false
+    } finally {
+      window.clearTimeout(timeout)
     }
   }
 
-  // 优先获取后端实际 URL（Tauri 模式下端口可能非 8991）
-  let baseUrl = backendUrl || 'http://127.0.0.1:8991'
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 2000)
-  try {
-    const resp = await fetch(`${baseUrl}/api/health`, {
-      cache: 'no-store',
-      signal: controller.signal
-    })
-    return resp.ok
-  } catch {
-    return false
-  } finally {
-    window.clearTimeout(timeout)
-  }
+  if (!isTauri()) return probeHealth()
+
+  // 桌面端同时参考 HTTP 健康接口和 Rust 进程状态。任一确认服务正常
+  // 即显示运行中，避免过期进程句柄造成误报；连续失败保护仍由 Rust 负责。
+  const [healthOk, managedProcessOk] = await Promise.all([
+    probeHealth(),
+    invoke<boolean>('is_backend_ready').catch(() => false),
+  ])
+  return healthOk || managedProcessOk
 }
 
 /** 获取应用配置 */

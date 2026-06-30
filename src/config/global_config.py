@@ -14,7 +14,7 @@ else:
 LOG_DIR = os.path.join(ROOT_DIR, "log")
 
 # 配置文件目录
-CSV_DIR = os.path.join(ROOT_DIR, "config", "point_csv")
+CSV_DIR = os.path.join(ROOT_DIR, "data", "point_csv")
 CONFIG_DIR = os.path.join(ROOT_DIR, "config")
 CONFIG_JSON_DIR = os.path.join(ROOT_DIR, "config", "device_config")
 TEMPLATE_DIR = os.path.join(CONFIG_DIR, "template")

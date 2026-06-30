@@ -216,12 +216,7 @@ pub async fn wait_backend_ready() -> bool {
 }
 
 pub async fn is_backend_ready() -> bool {
-    if !is_process_alive() {
-        *MSIX_READY.lock().unwrap() = false;
-        *HEALTH_FAILURES.lock().unwrap() = 0;
-        return false;
-    }
-
+    let process_alive = is_process_alive();
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(1))
         .timeout(Duration::from_secs(2))
@@ -234,7 +229,7 @@ pub async fn is_backend_ready() -> bool {
     let was_ready = *MSIX_READY.lock().unwrap();
     let failures = *HEALTH_FAILURES.lock().unwrap();
     let (ready, next_failures) =
-        super::evaluate_backend_status(true, health_ok, was_ready, failures);
+        super::evaluate_backend_status(process_alive, health_ok, was_ready, failures);
 
     *MSIX_READY.lock().unwrap() = ready;
     *HEALTH_FAILURES.lock().unwrap() = next_failures;
