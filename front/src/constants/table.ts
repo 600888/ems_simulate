@@ -153,6 +153,16 @@ export function getIec104TagType(labelOrKey: string): string {
   return 'info';
 }
 
+// ===== MMS 类型标签颜色 =====
+
+export function getMmsTagType(mmsType: string): string {
+  if (mmsType === 'MMS_BOOLEAN') return 'success';
+  if (['MMS_FLOAT', 'MMS_INTEGER', 'MMS_UNSIGNED', 'MMS_BCD'].includes(mmsType)) return 'primary';
+  if (['MMS_UTC_TIME', 'MMS_BINARY_TIME', 'MMS_GENERALIZED_TIME'].includes(mmsType)) return 'warning';
+  if (['MMS_ARRAY', 'MMS_STRUCTURE', 'MMS_DATA_ACCESS_ERROR'].includes(mmsType)) return 'danger';
+  return 'info';
+}
+
 // ===== 提示文本 =====
 
 export const DECODE_CODE_TOOLTIP = '解析码说明: 16位(0x20/21/C0/C1), 32位整(0x40/41/D0/D1), 32位浮(0x42/D2), 64位(0x60/61/E0/E1)';

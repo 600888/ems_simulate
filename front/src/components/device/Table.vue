@@ -205,7 +205,7 @@
         :prop="header.toLowerCase()"
         :label="getHeaderLabel(header)"
         :min-width="addressFilteredWidthList[index]"
-        :show-overflow-tooltip="!['帧类型', 'IEC104类型'].includes(header)"
+        :show-overflow-tooltip="!['帧类型', 'IEC104类型', '测点类型'].includes(header)"
         :sortable="['功能码', '解析码'].includes(header) ? 'custom' : false"
         :filters="header === '帧类型' ? tagFilters : header === 'IEC104类型' ? iec104TypeFilters : undefined"
         :column-key="header"
@@ -241,6 +241,14 @@
             class="status-tag"
           >
             {{ locale === 'en-US' ? scope.row[header] : t(getIec104TypeLabelKey(scope.row[header])) }}
+          </el-tag>
+          <el-tag
+            v-else-if="isIec61850 && header === '测点类型' && scope.row[header]"
+            :type="getMmsTagType(scope.row[header])"
+            effect="light"
+            class="status-tag"
+          >
+            {{ scope.row[header] }}
           </el-tag>
           <div v-else-if="header === '状态'" class="status-cell">
             <template v-if="scope.row._isVirtualDa">
@@ -497,6 +505,7 @@ import {
   IEC104_TYPE_FILTERS,
   FRAME_TYPE_TAG_MAP,
   getIec104TagType,
+  getMmsTagType,
   DECODE_CODE_TOOLTIP,
   FUNC_CODE_TOOLTIP,
   CLIENT_PROTOCOL_NAMES,
