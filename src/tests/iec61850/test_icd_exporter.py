@@ -1103,6 +1103,27 @@ class TestIcdExporter:
             f"urcb max应为1，实际: {by_name['urcb']['RptEnabled']['@max']}"
         )
 
+    def test_report_control_consolidation_strips_only_last_two_digits(self):
+        """报告名称含业务编号时，只移除末尾两位实例编号。"""
+        rcb_list = tuple(
+            RCBRef(
+                name=f"rpPCSDATA{group}{instance:02d}",
+                ref=f"LD0/LLN0.rpPCSDATA{group}{instance:02d}",
+                rcb_type="BRCB",
+            )
+            for group in (1, 2)
+            for instance in range(1, 4)
+        )
+
+        result = self.exporter._build_report_controls(rcb_list)
+        if isinstance(result, dict):
+            result = [result]
+
+        by_name = {item["@name"]: item for item in result}
+        assert set(by_name) == {"rpPCSDATA1", "rpPCSDATA2"}
+        assert by_name["rpPCSDATA1"]["RptEnabled"]["@max"] == "3"
+        assert by_name["rpPCSDATA2"]["RptEnabled"]["@max"] == "3"
+
     def test_single_report_control_no_change(self):
         """验证单实例报告控制块的RptEnabled max=1"""
         rcb_list = (RCBRef(name="urcb01", ref="LD0/LLN0.urcb01", rcb_type="URCB"),)

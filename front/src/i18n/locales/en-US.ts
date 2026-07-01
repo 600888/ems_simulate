@@ -233,6 +233,8 @@ export default {
   },
   writeDialog: {
     title: "Write Value",
+    attributeName: "Attribute",
+    currentValue: "Current Value",
     on: "On / Open (1)",
     off: "Off / Close (0)",
     setValue: "Set Value",

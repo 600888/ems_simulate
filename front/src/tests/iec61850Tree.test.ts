@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import type { IEC61850DoNode } from '@/api/channelApi'
-import { resolveDoReadPointCode } from '@/utils/iec61850Tree'
+import { isControlObject, isControlValuePointCode, resolveDoControlPointCode, resolveDoReadPointCode } from '@/utils/iec61850Tree'
 
 function makeDo(overrides: Partial<IEC61850DoNode>): IEC61850DoNode {
   return {
@@ -66,5 +66,45 @@ describe('resolveDoReadPointCode', () => {
     })
 
     expect(resolveDoReadPointCode(node)).toBe('')
+  })
+})
+
+describe('isControlObject', () => {
+  it('detects nested FC=CO values', () => {
+    const node = makeDo({
+      frame_type: 2,
+      children: [makeDa('Oper', '', [
+        { bda_name: 'ctlVal', bda_path: 'Oper.ctlVal', fc: 'CO', point_code: 'GGIO1.Value1.Oper.ctlVal' },
+      ])],
+    })
+
+    expect(isControlObject(node)).toBe(true)
+  })
+
+  it('keeps setting values readable when they do not use FC=CO', () => {
+    const node = makeDo({ frame_type: 3, children: [{ ...makeDa('setMag.i', 'CTRL1.Value1.setMag.i'), fc: 'SP' }] })
+
+    expect(isControlObject(node)).toBe(false)
+  })
+})
+
+describe('mixed status/control objects', () => {
+  it('reads stVal but writes Oper.ctlVal', () => {
+    const node = makeDo({
+      do_name: 'StartConn',
+      frame_type: 1,
+      children: [
+        { ...makeDa('stVal', 'MMBS1.StartConn.stVal'), fc: 'ST' },
+        { ...makeDa('Oper', '', [
+          { bda_name: 'Check', bda_path: 'Oper.Check', fc: 'CO', point_code: 'MMBS1.StartConn.Oper.Check' },
+          { bda_name: 'ctlVal', bda_path: 'Oper.ctlVal', fc: 'CO', point_code: 'MMBS1.StartConn.Oper.ctlVal' },
+        ]), fc: 'CO' },
+      ],
+    })
+
+    expect(resolveDoReadPointCode(node)).toBe('MMBS1.StartConn.stVal')
+    expect(resolveDoControlPointCode(node)).toBe('MMBS1.StartConn.Oper.ctlVal')
+    expect(isControlValuePointCode('MMBS1.StartConn.Oper.Check')).toBe(false)
+    expect(isControlValuePointCode('MMBS1.StartConn.Oper.ctlVal')).toBe(true)
   })
 })

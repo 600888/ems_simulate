@@ -183,6 +183,52 @@ def _infer_fc_from_da(da_path: str, fallback_fc: str = "MX") -> str:
     return DA_NAME_FC_MAP.get(top_da, fallback_fc)
 
 
+_CONTROL_VALUE_SUFFIXES = (".Oper.ctlVal", ".SBOw.ctlVal", ".ctlVal")
+
+
+def _is_control_value_address(address: str) -> bool:
+    return str(address).endswith(_CONTROL_VALUE_SUFFIXES)
+
+
+def _resolve_control_write_code(device, point_code: str) -> str:
+    """Resolve a status-point code to the FC=CO point of the same DO.
+
+    A controllable DO commonly exposes both ``stVal`` (ST) and
+    ``Oper.ctlVal`` (CO). Older frontends submitted the displayed stVal code;
+    accept that request but execute the matching control entry.
+    """
+    point = device.point_manager.get_point_by_code(point_code)
+    if point is None:
+        return point_code
+    if getattr(point, "fc", "") == "CO" and _is_control_value_address(str(point.address)):
+        return point_code
+
+    requested_ref = _parse_iec61850_address(str(point.address))
+    if not requested_ref:
+        return point_code
+
+    candidates = []
+    for candidate in device.point_manager.get_all_points():
+        if getattr(candidate, "fc", "") != "CO" or not _is_control_value_address(str(candidate.address)):
+            continue
+        candidate_ref = _parse_iec61850_address(str(candidate.address))
+        if not candidate_ref:
+            continue
+        if all(candidate_ref[key] == requested_ref[key] for key in ("ld", "ln", "do_name")):
+            candidates.append(candidate)
+
+    if not candidates:
+        return ""
+
+    candidates.sort(
+        key=lambda candidate: (
+            not str(candidate.address).endswith(".Oper.ctlVal"),
+            not str(candidate.address).endswith(".SBOw.ctlVal"),
+        )
+    )
+    return str(candidates[0].code)
+
+
 def _get_cached_iec61850_model(device):
     """从 IEC61850 客户端处理器获取最近一次发现的完整 IedModel。"""
     protocol_handler = getattr(device, "protocol_handler", None)
@@ -313,9 +359,12 @@ def _build_iec61850_tree_from_model(
                     if not matched_point_name:
                         continue
 
+                is_control_object = any(da.fc == "CO" or any(bda.fc == "CO" for bda in da.sub_das) for da in do.das)
                 da_list: list[dict[str, Any]] = []
                 do_desc = do_description_index.get(do_ref, "")
                 for da in do.das:
+                    if is_control_object and da.name in ("q", "t"):
+                        continue
                     da_path = da.name if da.sub_das else da.path
                     da_addr = f"{do_ref}.{da.path}"
                     da_point = point_index.get(da_addr, {})
@@ -597,12 +646,22 @@ def _build_iec61850_tree(
         da_map = do_info["da_map"]
         top_names = do_info["da_top_names"]
         main_fc = do_info["fc"]
+        is_control_object = main_fc == "CO" or any(
+            da.get("fc") == "CO" or any(bda.get("fc") == "CO" for bda in da.get("children", []))
+            for da in da_map.values()
+        )
+
+        if is_control_object:
+            da_map.pop("q", None)
+            da_map.pop("t", None)
 
         # q/t 的 FC 根据主值类型推断 (遥测=MX, 遥信=ST)
         qt_fc = "ST" if main_fc == "ST" else "MX"
 
         for std_da in STANDARD_DAS_FOR_DO:
             da_name = std_da["name"]
+            if is_control_object and da_name in ("q", "t"):
+                continue
             if da_name in top_names or da_name in da_map:
                 continue  # 已存在
 
@@ -1381,6 +1440,10 @@ async def iec61850_read_single_point(
     if not body.point_code:
         raise ValidationError("测点编码不能为空")
 
+    point = device.point_manager.get_point_by_code(body.point_code)
+    if point is not None and getattr(point, "fc", "") == "CO":
+        raise ValidationError("控制测点不支持读取", data={"point_code": body.point_code})
+
     value = await device.read_single_point_async(body.point_code)
     if value is None:
         raise ValidationError("读取失败，请检查连接状态", data={"value": None, "point_code": body.point_code})
@@ -1434,10 +1497,16 @@ async def iec61850_write_single_point(
     if not body.point_code:
         raise ValidationError("测点编码不能为空")
 
-    success = await device.edit_point_data_async(body.point_code, body.point_value)
+    write_point_code = _resolve_control_write_code(device, body.point_code)
+    if not write_point_code:
+        raise ValidationError(
+            "未发现可写控制属性（应为 Oper.ctlVal、SBOw.ctlVal 或 ctlVal）",
+            data={"point_code": body.point_code},
+        )
+    success = await device.edit_point_data_async(write_point_code, body.point_value)
     if not success:
-        raise ValidationError("写入失败", data={"point_code": body.point_code})
-    return BaseResponse(message="写入成功", data={"point_code": body.point_code, "value": body.point_value})
+        raise ValidationError("写入失败", data={"point_code": write_point_code})
+    return BaseResponse(message="写入成功", data={"point_code": write_point_code, "value": body.point_value})
 
 
 @router.post("/iec61850-dataset-detail", response_model=BaseResponse)

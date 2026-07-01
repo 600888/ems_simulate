@@ -7,21 +7,13 @@
     :close-on-click-modal="false"
   >
     <el-form :model="form" label-width="80px">
-      <el-form-item :label="$t('table.pointCode')">
-        <el-input v-model="form.pointCode" disabled />
+      <el-form-item :label="$t('writeDialog.attributeName')">
+        <el-input v-model="form.attributeName" disabled />
       </el-form-item>
-      <el-form-item :label="$t('table.realValue')">
+      <el-form-item :label="$t('writeDialog.currentValue')">
         <el-input :model-value="String(form.currentValue)" disabled />
       </el-form-item>
-      <!-- 遥控 (YK): 合/分 -->
-      <el-form-item v-if="pointType === 2" :label="$t('common.operation')">
-        <el-radio-group v-model="form.writeValue">
-          <el-radio :label="1">{{ $t('writeDialog.on') }}</el-radio>
-          <el-radio :label="0">{{ $t('writeDialog.off') }}</el-radio>
-        </el-radio-group>
-      </el-form-item>
-      <!-- 其他类型: 自由输入 (数值/字符串) -->
-      <el-form-item v-else :label="$t('writeDialog.writeValue')">
+      <el-form-item :label="$t('writeDialog.writeValue')">
         <el-input
           v-model="form.writeValue"
           :placeholder="$t('writeDialog.inputPlaceholder')"
@@ -53,8 +45,8 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   channelId: { type: Number, required: true },
   pointCode: { type: String, default: '' },
+  attributeName: { type: String, default: '' },
   currentValue: { type: [Number, String], default: '' },
-  pointType: { type: Number, default: 0 },
 });
 
 const emit = defineEmits(['update:modelValue', 'success']);
@@ -67,6 +59,7 @@ const visible = computed({
 const loading = ref(false);
 const form = reactive({
   pointCode: '',
+  attributeName: '',
   currentValue: '' as string | number,
   writeValue: '' as string | number,
 });
@@ -74,8 +67,9 @@ const form = reactive({
 watch(() => props.modelValue, (val) => {
   if (val) {
     form.pointCode = props.pointCode;
+    form.attributeName = props.attributeName || props.pointCode;
     form.currentValue = props.currentValue;
-    form.writeValue = props.pointType === 2 ? 1 : String(props.currentValue ?? '');
+    form.writeValue = '';
   }
 }, { immediate: true });
 

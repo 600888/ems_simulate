@@ -52,6 +52,14 @@ class Iec61850Writer:
 
         addr_str = str(address)
         ref = self._build_ref(addr_str)
+        fc_name = fc or (self._registry.get_fc(addr_str) if self._registry else "")
+        if fc_name == "CO":
+            if self._write_control(ref, value, self._resolve_iec_type(addr_str)):
+                return True
+            if self._connection.reconnect_if_unhealthy(f"control {ref}"):
+                return self._write_control(ref, value, self._resolve_iec_type(addr_str))
+            return False
+
         fc_val = self._resolve_fc(addr_str, fc)
         iec_type = self._resolve_iec_type(addr_str)
 
@@ -61,6 +69,82 @@ class Iec61850Writer:
         if self._connection.reconnect_if_unhealthy(f"write {ref}"):
             return self._write_once(addr_str, ref, value, fc_val, iec_type)
         return False
+
+    @staticmethod
+    def _control_object_ref(ref: str) -> str:
+        """Convert a CO leaf reference to the owning control object reference."""
+        for suffix in (".Oper.ctlVal", ".SBOw.ctlVal", ".Cancel.ctlVal", ".ctlVal"):
+            if ref.endswith(suffix):
+                return ref[: -len(suffix)]
+        return ref
+
+    @staticmethod
+    def _new_control_value(control, value: Any, iec_type: str):
+        """Create the MMS value type required by the remote control object."""
+        ctl_type = iec61850.ControlObjectClient_getCtlValType(control)
+        if ctl_type == iec61850.MMS_BOOLEAN:
+            return iec61850.MmsValue_newBoolean(bool(value))
+        if ctl_type == iec61850.MMS_FLOAT:
+            return iec61850.MmsValue_newFloat(float(value))
+        if ctl_type == iec61850.MMS_INTEGER:
+            return iec61850.MmsValue_newIntegerFromInt32(int(value))
+        if ctl_type == iec61850.MMS_UNSIGNED:
+            return iec61850.MmsValue_newUnsignedFromUint32(int(value))
+
+        if iec_type == IEC_TYPE_BOOLEAN:
+            return iec61850.MmsValue_newBoolean(bool(value))
+        if iec_type == IEC_TYPE_FLOAT:
+            return iec61850.MmsValue_newFloat(float(value))
+        if iec_type == IEC_TYPE_INTEGER:
+            return iec61850.MmsValue_newIntegerFromInt32(int(value))
+        return None
+
+    def _write_control(self, ref: str, value: Any, iec_type: str) -> bool:
+        """Operate an IEC 61850 control object using its configured control model."""
+        conn = self._connection.connection
+        if not conn or not self._connection.is_connected:
+            return False
+
+        object_ref = self._control_object_ref(ref)
+        control = None
+        ctl_value = None
+        try:
+            control = iec61850.ControlObjectClient_create(object_ref, conn)
+            if not control:
+                log.error(f"创建 IEC61850 控制对象失败: ref={object_ref}")
+                return False
+
+            ctl_value = self._new_control_value(control, value, iec_type)
+            if ctl_value is None:
+                log.error(f"不支持的 IEC61850 控制值类型: ref={object_ref}, value={value!r}")
+                return False
+
+            control_model = iec61850.ControlObjectClient_getControlModel(control)
+            if control_model == iec61850.CONTROL_MODEL_STATUS_ONLY:
+                log.error(f"IEC61850 控制对象为只读状态模型: ref={object_ref}")
+                return False
+            if control_model == iec61850.CONTROL_MODEL_SBO_NORMAL:
+                if not iec61850.ControlObjectClient_select(control):
+                    log.error(f"IEC61850 控制对象选择失败: ref={object_ref}")
+                    return False
+            elif control_model == iec61850.CONTROL_MODEL_SBO_ENHANCED:
+                if not iec61850.ControlObjectClient_selectWithValue(control, ctl_value):
+                    log.error(f"IEC61850 控制对象带值选择失败: ref={object_ref}")
+                    return False
+
+            if not iec61850.ControlObjectClient_operate(control, ctl_value, 0):
+                error = iec61850.ControlObjectClient_getLastError(control)
+                log.error(f"IEC61850 控制操作失败: ref={object_ref}, error={error}")
+                return False
+            return True
+        except Exception as e:
+            log.error(f"IEC61850 控制操作异常: ref={object_ref}, error={e}")
+            return False
+        finally:
+            if ctl_value is not None:
+                iec61850.MmsValue_delete(ctl_value)
+            if control is not None:
+                iec61850.ControlObjectClient_destroy(control)
 
     def _write_once(self, address: str, ref: str, value: Any, fc_val, iec_type: str) -> bool:
         conn = self._connection.connection

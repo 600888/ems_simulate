@@ -975,11 +975,11 @@ class IcdExporter:
     def _strip_report_name_suffix(name: str) -> str:
         """去除报告名尾部数字后缀，获取基础名。
 
-        只剥离2位以上的数字后缀（如 "urcbAin01" → "urcbAin"），
+        只剥离末尾2位数字后缀（如 "urcbAin01" → "urcbAin"），
         避免误伤报告名本身末尾的个位数字。
         若去除后缀后为空或名本身无数字后缀，返回原值。
         """
-        stripped = re.sub(r"\d{2,}$", "", name)
+        stripped = re.sub(r"\d{2}$", "", name)
         return stripped if stripped else name
 
     def _build_report_controls(self, rcb_list) -> Any:

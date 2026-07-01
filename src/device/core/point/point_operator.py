@@ -101,7 +101,11 @@ class PointOperator:
         if not point:
             raise ValueError(f"未找到测点: {point_code}")
 
-        if isinstance(self._handler, ClientHandler) and isinstance(point, (Yc, Yx)):
+        if (
+            isinstance(self._handler, ClientHandler)
+            and isinstance(point, (Yc, Yx))
+            and getattr(point, "fc", "") != "CO"
+        ):
             # Modbus 协议: func_code=01(读线圈)/03(读保持寄存器) 的 Yc/Yx 允许客户端写入
             if not (self._device.protocol_type in _MODBUS_PROTOCOLS and getattr(point, "func_code", None) in (1, 3)):
                 raise ValueError("作为客户端时，只允许对遥控(Yk)和遥调(Yt)类测点进行写入操作")
@@ -147,10 +151,14 @@ class PointOperator:
         if not point:
             raise ValueError(f"未找到测点: {point_code}")
 
-        if isinstance(self._handler, ClientHandler) and isinstance(point, (Yc, Yx)):
+        if (
+            isinstance(self._handler, ClientHandler)
+            and isinstance(point, (Yc, Yx))
+            and getattr(point, "fc", "") != "CO"
+        ):
             # Modbus 协议: func_code=01(读线圈)/03(读保持寄存器) 的 Yc/Yx 允许客户端写入
             if not (self._device.protocol_type in _MODBUS_PROTOCOLS and getattr(point, "func_code", None) in (1, 3)):
-                raise SystemError("作为客户端时，只允许对遥控(Yk)和遥调(Yt)类测点进行操作")
+                raise ValueError("作为客户端时，只允许对遥控(Yk)和遥调(Yt)类测点进行操作")
 
         # 如果未指定来源，默认使用 MANUAL
         effective_source = source or ChangeSource.MANUAL

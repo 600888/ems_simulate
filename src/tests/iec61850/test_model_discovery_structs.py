@@ -67,6 +67,40 @@ def test_set_mag_integer_child_is_discovered_and_registered(monkeypatch):
     assert point["frame_type"] == 3
 
 
+def test_control_object_does_not_get_synthetic_quality_or_timestamp(monkeypatch):
+    """FC=CO objects must not expose synthetic q/t metadata."""
+
+    directories = {
+        "LD0/GGIO1.Pos": ["Oper"],
+        "LD0/GGIO1.Pos.Oper": ["Check", "Test", "ctlVal"],
+    }
+    fake_iec61850 = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IedConnection_getDataDirectory=lambda _conn, ref: (directories[ref], 0),
+    )
+    monkeypatch.setattr(discovery_module, "iec61850", fake_iec61850, raising=False)
+    monkeypatch.setattr(discovery_module, "get_list_from_linked_list", list)
+
+    service = ModelDiscoveryService()
+    das = service._discover_data_attributes(
+        object(),
+        "LD0/GGIO1.Pos",
+        "Pos",
+        "GGIO1",
+        2,
+    )
+
+    assert {da.name for da in das} == {"Oper", "dU"}
+    oper = next(da for da in das if da.name == "Oper")
+    assert oper.fc == "CO"
+    assert oper.path == "Oper.ctlVal"
+    assert [(child.name, child.fc) for child in oper.sub_das] == [
+        ("Check", "CO"),
+        ("Test", "CO"),
+        ("ctlVal", "CO"),
+    ]
+
+
 def test_set_mag_report_model_exports_resolvable_fcda(tmp_path):
     """The report FCDA, DOType and DAType must describe the same SP leaf."""
 

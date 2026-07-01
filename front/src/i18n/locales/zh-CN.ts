@@ -232,6 +232,8 @@ export default {
   },
   writeDialog: {
     title: "写入值",
+    attributeName: "属性名",
+    currentValue: "当前值",
     on: "合 / 开 (1)",
     off: "分 / 关 (0)",
     setValue: "设定值",

@@ -440,9 +440,14 @@ class ModelDiscoveryService:
             # 当动态发现了实际子 DA（如 mag 下有 i 而非 f），
             # 使用真实子 DA 的路径和类型覆盖硬编码的默认值
             if sub_das:
-                # 取第一个非元数据子 DA 作为主值路径
-                effective_da_path = f"{da_name}.{sub_das[0].name}"
-                effective_iec_type = sub_das[0].iec_type
+                # Oper/SBOw/Cancel 是控制命令结构，目录顺序经常以 Check/T
+                # 开头；其主值必须固定为 ctlVal，不能取第一个子属性。
+                preferred_sub_da = None
+                if da_name in ("Oper", "SBOw", "Cancel"):
+                    preferred_sub_da = next((sub_da for sub_da in sub_das if sub_da.name == "ctlVal"), None)
+                value_sub_da = preferred_sub_da or sub_das[0]
+                effective_da_path = f"{da_name}.{value_sub_da.name}"
+                effective_iec_type = value_sub_da.iec_type
             else:
                 effective_da_path = da_info.path
                 effective_iec_type = da_info.iec_type
@@ -457,10 +462,15 @@ class ModelDiscoveryService:
                 )
             )
 
-        # 默认硬编码创建 q/t/dU (IEC 61850 固有属性)
-        # 即使 MMS 调用失败，也确保每个 DO 都包含这些元数据 DA
+        # 默认硬编码创建 q/t/dU (IEC 61850 固有属性)。控制对象的
+        # Oper/SBOw 等 FC=CO 属性不具备可读的 q/t，不能为其伪造元数据。
+        is_control_object = any(da.fc == "CO" or any(sub_da.fc == "CO" for sub_da in da.sub_das) for da in da_refs)
+
+        # 即使 MMS 调用失败，也确保普通状态/测量 DO 包含这些元数据 DA
         # q 和 t 是结构化类型, 展开子 DA (如 q.validity, t.seconds) 以便 MMS 读取
         for da_name, da_path, da_fc, da_iec_type in self._DEFAULT_META_DAS:
+            if is_control_object and da_name in ("q", "t"):
+                continue
             meta_sub_das: tuple[DARef, ...] = ()
             if da_name in ("q", "t") and da_name in KNOWN_BDA_FALLBACK_ONLINE:
                 bda_refs: list[DARef] = []

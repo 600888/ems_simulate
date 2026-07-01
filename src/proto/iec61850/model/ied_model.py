@@ -379,6 +379,12 @@ class IedModel:
                 if frame_type < 0:
                     frame_type = 1
 
+            # 同一个 DO 可同时包含可读状态 stVal(ST) 和控制入口
+            # Oper.ctlVal(CO)。测点类别必须按 DA 自身的 FC 判定，不能沿用
+            # DO 从 stVal 推导出的遥信类别。
+            if fc == "CO":
+                frame_type = 3 if iec_type == IEC_TYPE_FLOAT else 2
+
             if frame_type < 0:
                 continue
 
@@ -396,9 +402,16 @@ class IedModel:
 
             # 展开 BDA (仅 origin.orCat/orIdent 等非元数据子属性)
             for bda in da.sub_das:
+                # 控制命令结构中的 Check/Test/T/ctlNum/origin 是 operate
+                # 请求的附加字段，不是可单独写入的测点。仅注册 ctlVal。
+                if da.name in ("Oper", "SBOw", "Cancel") and bda.name != "ctlVal":
+                    continue
                 bda_path = bda.path
                 bda_fc = bda.fc or fc
                 bda_iec_type = bda.iec_type
+                bda_frame_type = frame_type
+                if bda_fc == "CO":
+                    bda_frame_type = 3 if bda_iec_type == IEC_TYPE_FLOAT else 2
                 bda_ref = f"{do.ref}.{bda_path}"
                 bda_address = f"{ld.name}/{ln.name}.{do.name}.{bda_path}"
                 bda_code = f"{ln.name}.{do.name}.{bda_path}"
@@ -407,7 +420,7 @@ class IedModel:
                     "ref": bda_ref,
                     "fc": bda_fc,
                     "iec_type": bda_iec_type,
-                    "frame_type": frame_type,
+                    "frame_type": bda_frame_type,
                     "code": bda_code,
                 }
 

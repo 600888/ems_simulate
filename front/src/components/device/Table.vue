@@ -272,7 +272,7 @@
           <!-- DO 行: 读取 + 品质/时标按钮 (系统 DO 不支持，跳过) -->
           <div v-if="scope.row._isDoRow && !isSystemDo(scope.row._doName)" class="action-buttons">
             <el-button
-              v-if="isIec61850Client && scope.row['测点编码']"
+              v-if="isIec61850Client && scope.row['测点编码'] && !scope.row._isControlObject"
               type="primary"
               size="small"
               :icon="Download"
@@ -282,19 +282,28 @@
               {{ $t('table.read') }}
             </el-button>
             <el-button
-              v-if="isIec61850Client"
+              v-if="isIec61850Client && !scope.row._isControlObject"
               size="small"
               :icon="InfoFilled"
               @click="handleIec61850ReadMetadata(scope.row._doRef)"
             >
               {{ $t('table.metadata') }}
             </el-button>
+            <el-button
+              v-if="isIec61850Client && scope.row._isControlAction && scope.row['测点编码']"
+              type="success"
+              size="small"
+              :icon="Edit"
+              @click="handleIec61850WritePoint(scope.row)"
+            >
+              {{ $t('table.write') }}
+            </el-button>
           </div>
           <!-- DA 行: 读取/写入按钮 -->
           <div v-if="!scope.row._isDoRow && !scope.row._isVirtualDa && scope.row['测点编码']" class="action-buttons">
-            <!-- IEC61850 客户端: 读取 (所有行可读) -->
+            <!-- IEC61850 客户端: 仅普通数据属性可读，控制对象走写入操作 -->
             <el-button
-              v-if="isIec61850Client"
+              v-if="isIec61850Client && !scope.row._isControlObject"
               type="primary"
               size="small"
               :icon="Download"
@@ -315,7 +324,7 @@
             </el-button>
             <!-- IEC61850 客户端: 写入 (仅遥控/遥调，发送控制命令) -->
             <el-button
-              v-if="isIec61850Client && [PointType.YK, PointType.YT].includes(getPointType(scope.row['帧类型']))"
+              v-if="isIec61850Client && [PointType.YK, PointType.YT].includes(getPointType(scope.row['帧类型'])) && (!scope.row._isControlObject || scope.row._isControlAction)"
               type="success"
               size="small"
               :icon="Edit"
@@ -395,8 +404,8 @@
     v-model="iec61850WriteDialogVisible"
     :channelId="channelId!"
     :pointCode="iec61850WritePointData.code"
+    :attributeName="iec61850WritePointData.attributeName"
     :currentValue="iec61850WritePointData.value"
-    :pointType="iec61850WritePointData.type"
     @success="handleWriteSuccess"
   />
   <!-- IEC61850 品质/时标元数据弹窗 -->
@@ -478,7 +487,7 @@ import { getPointType, PointType, getIec104TypeLabelKey } from '@/types/point'
 import { readSinglePoint, deletePoint } from '@/api/pointApi'
 import { iec61850ReadPoint, iec61850ReadPointMetadata } from '@/api/channelApi'
 import type { IEC61850TreeDataResponse, Iec61850MetadataResponse } from '@/api/channelApi'
-import { resolveDoReadPointCode } from '@/utils/iec61850Tree'
+import { isControlObject, isControlValuePointCode, resolveDoControlPointCode, resolveDoReadPointCode } from '@/utils/iec61850Tree'
 import {
   INT_REGISTER_DECODE_LIST,
   LONG_REGISTER_DECODE_LIST,
@@ -819,20 +828,26 @@ const iec61850FlatRows = computed(() => {
       return '';
     };
     const doValue = getDoDisplayValue(doNode.children || []) || doNode.value || '';
-    // DO 行：使用模型实际返回的主值测点，兼容 mag.i、Oper.ctlVal 等路径。
-    const readPointCode = resolveDoReadPointCode(doNode);
+    const controlObject = isControlObject(doNode);
+    const controlFrameType = doNode.frame_type === PointType.YT ? PointType.YT : PointType.YK;
+    // 控制 DO 的显示值可来自 stVal，但写入必须提交 FC=CO 的 Oper.ctlVal。
+    const actionPointCode = controlObject
+      ? resolveDoControlPointCode(doNode)
+      : resolveDoReadPointCode(doNode);
     result.push({
       _isDoRow: true,
       _rowKey: `do-${doRef}`,
       _doName: doNode.do_name,
       _doRef: doRef,
       _fc: doNode.fc,
+      _isControlObject: controlObject,
+      _isControlAction: controlObject && isControlValuePointCode(actionPointCode),
       _daCount: doNode.children?.length || 0,
       _duName: doNode.du_name,
       '地址': doRef,
       '测点名称': doName,
-      '测点编码': readPointCode,
-      '帧类型': FRAME_TYPE_LABELS[doNode.frame_type] || '',
+      '测点编码': actionPointCode,
+      '帧类型': FRAME_TYPE_LABELS[controlObject ? controlFrameType : doNode.frame_type] || '',
       '真实值': doValue,
       '16进制地址': '',
       'FC': doNode.fc,
@@ -843,11 +858,14 @@ const iec61850FlatRows = computed(() => {
     if (!iec61850ExpandedDoKeys.value.includes(doRef)) continue;
 
     for (const daNode of (doNode.children || [])) {
+      const daFrameType = daNode.fc === 'CO' ? controlFrameType : doNode.frame_type;
       const daRow: any = {
         _isDaRow: true,
         _daPath: daNode.da_path,
         _daDisplayName: daNode.da_name,
         _fc: daNode.fc,
+        _isControlObject: controlObject,
+        _isControlAction: isControlValuePointCode(daNode.point_code || ''),
         _doRef: doRef,
         _isStructDa: daNode.is_struct,
         _bdaCount: daNode.children?.length || 0,
@@ -858,7 +876,7 @@ const iec61850FlatRows = computed(() => {
         '真实值': daNode.value || '',
         '16进制地址': '',
         'FC': daNode.fc,
-        '帧类型': FRAME_TYPE_LABELS[doNode.frame_type] || '',
+        '帧类型': FRAME_TYPE_LABELS[daFrameType] || '',
         '状态': daNode.status || '',
       };
       result.push(daRow);
@@ -866,6 +884,7 @@ const iec61850FlatRows = computed(() => {
       // 仅当结构体 DA 展开时才添加 BDA 行
       if (daNode.is_struct && iec61850ExpandedDaKeys.value.includes(`${doRef}.${daNode.da_path}`)) {
         for (const bdaNode of (daNode.children || [])) {
+          const bdaFrameType = bdaNode.fc === 'CO' ? controlFrameType : doNode.frame_type;
           result.push({
             _isBdaRow: true,
             _isDaRow: false,
@@ -873,6 +892,8 @@ const iec61850FlatRows = computed(() => {
             _bdaName: bdaNode.bda_name,
             _daPath: bdaNode.bda_path,
             _fc: bdaNode.fc,
+            _isControlObject: controlObject,
+            _isControlAction: isControlValuePointCode(bdaNode.point_code || ''),
             _doRef: doRef,
             '地址': `${doRef}.${bdaNode.bda_path}`,
             '测点名称': bdaNode.bda_name,
@@ -880,7 +901,7 @@ const iec61850FlatRows = computed(() => {
             '真实值': bdaNode.value || '',
             '16进制地址': '',
             'FC': bdaNode.fc,
-            '帧类型': '',
+            '帧类型': FRAME_TYPE_LABELS[bdaFrameType] || '',
             '状态': bdaNode.status || '',
           });
         }
@@ -1091,14 +1112,16 @@ const handleIec61850ReadPoint = async (pointCode: string) => {
 const iec61850WriteDialogVisible = ref(false);
 const iec61850WritePointData = reactive({
   code: '',
+  attributeName: '',
   value: '' as string | number,
-  type: 0,
 });
 
 const handleIec61850WritePoint = (row: any) => {
   iec61850WritePointData.code = row['测点编码'];
+  const codeParts = String(row['测点编码'] || '').split('.');
+  iec61850WritePointData.attributeName = row._daPath
+    || (codeParts.length > 2 ? codeParts.slice(2).join('.') : String(row['测点编码'] || ''));
   iec61850WritePointData.value = row['真实值'];
-  iec61850WritePointData.type = getPointType(row['帧类型']);
   iec61850WriteDialogVisible.value = true;
 };
 

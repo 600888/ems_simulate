@@ -8,6 +8,43 @@ const PRIMARY_DA_PATHS: Record<number, string[]> = {
 }
 
 const NON_VALUE_DA_NAMES = new Set(['q', 't', 'dU'])
+const CONTROL_DA_PATHS = ['Oper.ctlVal', 'SBOw.ctlVal', 'ctlVal']
+
+export function isControlValuePointCode(pointCode: string): boolean {
+  return CONTROL_DA_PATHS.some(path => pointCode === path || pointCode.endsWith(`.${path}`))
+}
+
+/** Control objects use IEC 61850 control services and are not directly readable. */
+export function isControlObject(doNode: IEC61850DoNode): boolean {
+  return (doNode.children || []).some(da =>
+    da.fc === 'CO' || (da.children || []).some(bda => bda.fc === 'CO')
+  )
+}
+
+/** Resolve the FC=CO point used to operate a control object. */
+export function resolveDoControlPointCode(doNode: IEC61850DoNode): string {
+  const candidates: Array<{ path: string; code: string; fc: string }> = []
+
+  for (const da of doNode.children || []) {
+    if (da.point_code) {
+      candidates.push({ path: da.da_path, code: da.point_code, fc: da.fc })
+    }
+    for (const bda of da.children || []) {
+      if (bda.point_code) {
+        candidates.push({ path: bda.bda_path, code: bda.point_code, fc: bda.fc })
+      }
+    }
+  }
+
+  for (const preferredPath of CONTROL_DA_PATHS) {
+    const match = candidates.find(candidate =>
+      candidate.fc === 'CO'
+      && (candidate.path === preferredPath || candidate.code.endsWith(`.${preferredPath}`))
+    )
+    if (match) return match.code
+  }
+  return ''
+}
 
 /**
  * Resolve the actual registered point behind a DO-level read button.
