@@ -24,6 +24,7 @@ class DARef:
     path: str = ""
     fc: str = ""
     iec_type: str = ""
+    mms_type: str = "MMS_UNKNOWN"
     sub_das: tuple[DARef, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
@@ -32,6 +33,7 @@ class DARef:
             "path": self.path,
             "fc": self.fc,
             "iecType": self.iec_type,
+            "mmsType": self.mms_type,
         }
         if self.sub_das:
             result["subDataAttributes"] = [bda.to_dict() for bda in self.sub_das]
@@ -43,6 +45,7 @@ class DARef:
             "path": self.path,
             "fc": self.fc,
             "iecType": self.iec_type,
+            "mmsType": self.mms_type,
         }
 
     @property
@@ -301,6 +304,7 @@ class IedModel:
                 "ref": f"{do.ref}.{da_path}",
                 "fc": "MX",
                 "iec_type": IEC_TYPE_FLOAT,
+                "mms_type": "MMS_FLOAT",
                 "frame_type": 0,
                 "code": addr,
             }
@@ -313,6 +317,7 @@ class IedModel:
                 "ref": f"{do.ref}.{da_path}",
                 "fc": "ST",
                 "iec_type": IEC_TYPE_BOOLEAN,
+                "mms_type": "MMS_BOOLEAN",
                 "frame_type": 1,
                 "code": addr,
             }
@@ -325,6 +330,7 @@ class IedModel:
                 "ref": f"{do.ref}.{da_path}",
                 "fc": "CO",
                 "iec_type": IEC_TYPE_BOOLEAN,
+                "mms_type": "MMS_BOOLEAN",
                 "frame_type": 2,
                 "code": addr,
             }
@@ -337,6 +343,7 @@ class IedModel:
                 "ref": f"{do.ref}.{da_path}",
                 "fc": "CO",
                 "iec_type": IEC_TYPE_FLOAT,
+                "mms_type": "MMS_FLOAT",
                 "frame_type": 3,
                 "code": addr,
             }
@@ -355,6 +362,10 @@ class IedModel:
             frame_type = do.frame_type
             fc = da.fc
             iec_type = da.iec_type
+            point_mms_type = da.mms_type
+            if da.sub_das:
+                value_bda = next((bda for bda in da.sub_das if bda.path == da.path), da.sub_das[0])
+                point_mms_type = value_bda.mms_type
 
             # ENC 类型 DO 的 stVal/ctlVal 是整型而非布尔
             if do.name in ENC_DO_DA_TYPE_OVERRIDE:
@@ -396,6 +407,7 @@ class IedModel:
                 "ref": ref,
                 "fc": fc,
                 "iec_type": iec_type,
+                "mms_type": point_mms_type,
                 "frame_type": frame_type,
                 "code": code,
             }
@@ -420,6 +432,7 @@ class IedModel:
                     "ref": bda_ref,
                     "fc": bda_fc,
                     "iec_type": bda_iec_type,
+                    "mms_type": bda.mms_type,
                     "frame_type": bda_frame_type,
                     "code": bda_code,
                 }

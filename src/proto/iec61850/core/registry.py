@@ -15,6 +15,7 @@ from ..defs.constants import (
     IEC_TYPE_FLOAT,
     IEC_TYPE_UNKNOWN,
 )
+from ..defs.mms_types import mms_type_from_iec_type
 from ..log import log
 
 
@@ -34,6 +35,8 @@ class PointRegistry:
         self._point_fc: dict[str, str] = {}
         # 地址 -> iec_type 的映射
         self._point_iec_type: dict[str, str] = {}
+        # 地址 -> 原生 MMS 类型的映射
+        self._point_mms_type: dict[str, str] = {}
         # 地址 -> 描述 (dU) 的映射
         self._point_name: dict[str, str] = {}
         # 发现的 GOOSE 控制块列表
@@ -71,6 +74,7 @@ class PointRegistry:
             # 简单地址模式：按 frame_type 推断
             iec_type = IEC_TYPE_FLOAT if frame_type == 0 or frame_type == 3 else IEC_TYPE_BOOLEAN
         self._point_iec_type[addr_str] = iec_type
+        self._point_mms_type[addr_str] = mms_type_from_iec_type(iec_type).value
 
         # 构建并存储 MMS 引用路径
         self._point_refs[addr_str] = self._build_ref(addr_str)
@@ -87,6 +91,10 @@ class PointRegistry:
     def get_iec_type(self, address) -> str:
         """获取测点的 iec_type"""
         return self._point_iec_type.get(str(address), "")
+
+    def get_mms_type(self, address) -> str:
+        """获取测点的原生 MMS 类型。"""
+        return self._point_mms_type.get(str(address), "")
 
     def get_name(self, address) -> str:
         """获取测点的描述 (dU)"""
@@ -111,6 +119,10 @@ class PointRegistry:
         """所有已注册的地址 -> iec_type 映射"""
         return self._point_iec_type
 
+    @property
+    def point_mms_type(self) -> dict[str, str]:
+        return self._point_mms_type
+
     def set_ref(self, address: str, ref: str) -> None:
         """直接设置地址的 MMS 引用路径"""
         self._point_refs[str(address)] = ref
@@ -122,6 +134,9 @@ class PointRegistry:
     def set_iec_type(self, address: str, iec_type: str) -> None:
         """直接设置地址的 iec_type"""
         self._point_iec_type[str(address)] = iec_type
+
+    def set_mms_type(self, address: str, mms_type: str) -> None:
+        self._point_mms_type[str(address)] = str(mms_type)
 
     def set_name(self, address: str, name: str) -> None:
         """直接设置地址的描述 (dU)"""
@@ -136,6 +151,7 @@ class PointRegistry:
         self._point_refs.clear()
         self._point_fc.clear()
         self._point_iec_type.clear()
+        self._point_mms_type.clear()
         self._point_name.clear()
         self._discovered_goose_items.clear()
         self._discovered_datasets.clear()

@@ -104,6 +104,7 @@ export interface IEC61850DaItem {
   path: string;
   fc: string;
   type: string;
+  mms_type?: string;
 }
 
 // ===== IEC 61850 树形数据类型 =====
@@ -113,6 +114,7 @@ export interface IEC61850BdaItem {
   bda_path: string;
   fc: string;
   point_code: string;
+  mms_type?: string;
   value: string;
   status: string;
   read_time?: string;
@@ -124,6 +126,7 @@ export interface IEC61850DaNode {
   fc: string;
   is_struct: boolean;
   point_code: string;
+  mms_type?: string;
   point_name: string;
   value: string;
   status: string;
@@ -139,6 +142,7 @@ export interface IEC61850DoNode {
   du_name: string;
   fc: string;
   frame_type: number;
+  mms_type?: string;
   value?: string;
   status?: string;
   children: IEC61850DaNode[];
@@ -424,7 +428,7 @@ export async function getIEC61850TreeData(
 export async function iec61850ReadPoint(
   channelId: number,
   pointCode: string,
-): Promise<{ value: number | null; point_code: string } | null> {
+): Promise<{ value: number | null; point_code: string; mms_type: string } | null> {
   try {
     return await requestApi(CHANNEL_API.IEC61850_READ_POINT, 'post', {
       channel_id: channelId,

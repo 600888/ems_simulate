@@ -1,25 +1,18 @@
-"""IEC 61850 数据读取器
+"""IEC 61850 readers dispatched by native MMS type."""
 
-使用策略模式，按 IecType 分派不同的读取方法。
-从 iec61850_client.py 的读取逻辑提取。
-"""
+from __future__ import annotations
 
 from typing import Any
 
 from ..defs.address import infer_fc_from_address, infer_iec_type_from_address
-from ..defs.constants import (
-    HAS_IEC61850,
-    IecType,
+from ..defs.constants import HAS_IEC61850
+from ..defs.mms_types import (
+    MmsType,
+    iec_type_from_mms_type,
+    mms_type_from_iec_type,
+    mms_type_from_native,
 )
 from ..log import log
-
-# 类型别名 (使用 IecType 枚举值作为策略键)
-IEC_TYPE_FLOAT = IecType.FLOAT
-IEC_TYPE_BOOLEAN = IecType.BOOLEAN
-IEC_TYPE_INTEGER = IecType.INTEGER
-IEC_TYPE_STRING = IecType.STRING
-IEC_TYPE_TIMESTAMP = IecType.TIMESTAMP
-IEC_TYPE_UNKNOWN = IecType.UNKNOWN
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
@@ -34,12 +27,69 @@ def _delete_mms_value(value) -> None:
         log.debug(f"释放读取 MmsValue 异常: {e}")
 
 
-class FloatReader:
-    """浮点值读取策略"""
+def _read_object_typed(conn, ref: str, fc_val) -> tuple[Any, MmsType]:
+    """Read once with readObject and convert according to the returned MMS type."""
+    raw_value = None
+    try:
+        result = iec61850.IedConnection_readObject(conn, ref, fc_val)
+        if isinstance(result, (list, tuple)):
+            raw_value = result[0] if result else None
+            error = result[1] if len(result) > 1 else 0
+        else:
+            raw_value = result
+            error = 0
+        if error != iec61850.IED_ERROR_OK or raw_value is None:
+            return None, MmsType.UNKNOWN
+        actual_type = mms_type_from_native(int(iec61850.MmsValue_getType(raw_value)), iec61850)
+        if actual_type in (MmsType.UNKNOWN, MmsType.DATA_ACCESS_ERROR):
+            return None, actual_type
+        value = _convert_mms_object(raw_value, actual_type)
+        return value, actual_type
+    except Exception as e:
+        log.debug(f"通用 MMS 读取失败: ref={ref}, error={e}")
+        return None, MmsType.UNKNOWN
+    finally:
+        _delete_mms_value(raw_value)
 
+
+def _convert_mms_object(value, mms_type: MmsType) -> Any:
+    """Convert one already-read MmsValue using its exact runtime type."""
+    if mms_type is MmsType.BOOLEAN:
+        return bool(iec61850.MmsValue_getBoolean(value))
+    if mms_type is MmsType.BIT_STRING:
+        return int(iec61850.MmsValue_getBitStringAsInteger(value))
+    if mms_type is MmsType.INTEGER:
+        return int(iec61850.MmsValue_toInt32(value))
+    if mms_type is MmsType.UNSIGNED:
+        return int(iec61850.MmsValue_toUint32(value))
+    if mms_type is MmsType.FLOAT:
+        return float(iec61850.MmsValue_toFloat(value))
+    if mms_type is MmsType.UTC_TIME:
+        return int(iec61850.MmsValue_getUtcTimeInMs(value))
+    if mms_type is MmsType.BINARY_TIME:
+        return int(iec61850.MmsValue_getBinaryTimeAsUtcMs(value))
+    if mms_type is MmsType.OCTET_STRING:
+        size = int(iec61850.MmsValue_getOctetStringSize(value))
+        return bytes(int(iec61850.MmsValue_getOctetStringOctet(value, index)) for index in range(size)).hex()
+    if mms_type in (MmsType.VISIBLE_STRING, MmsType.STRING, MmsType.GENERALIZED_TIME, MmsType.OBJ_ID):
+        return str(iec61850.MmsValue_toString(value) or "")
+    if mms_type is MmsType.BCD:
+        return int(iec61850.MmsValue_toInt32(value))
+    if mms_type in (MmsType.ARRAY, MmsType.STRUCTURE):
+        size = int(iec61850.MmsValue_getArraySize(value))
+        result = []
+        for index in range(size):
+            child = iec61850.MmsValue_getElement(value, index)
+            child_type = mms_type_from_native(int(iec61850.MmsValue_getType(child)), iec61850)
+            result.append(_convert_mms_object(child, child_type))
+        return result
+    return None
+
+
+class FloatReader:
     def read(self, conn, ref: str, fc_val) -> Any:
         try:
-            [value, error] = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
+            value, error = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
             if error == iec61850.IED_ERROR_OK:
                 return float(value)
             log.debug(f"读取浮点值失败: ref={ref}, error={error}")
@@ -48,371 +98,228 @@ class FloatReader:
         return None
 
     def read_batch(self, conn, items: list, results: dict) -> None:
-        for addr_str, ref, fc_val, _ in items:
-            try:
-                [value, error] = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
-                if error == iec61850.IED_ERROR_OK:
-                    results[addr_str] = float(value)
-                else:
-                    log.debug(f"批量读取浮点值失败: ref={ref}, error={error}")
-            except Exception as e:
-                log.debug(f"批量读取浮点值异常: ref={ref}, error={e}")
+        _read_batch_with_strategy(self, conn, items, results)
 
 
 class BooleanReader:
-    """布尔值读取策略 (失败时回退整数读取)"""
-
     def read(self, conn, ref: str, fc_val) -> Any:
         try:
-            [value, error] = iec61850.IedConnection_readBooleanValue(conn, ref, fc_val)
+            value, error = iec61850.IedConnection_readBooleanValue(conn, ref, fc_val)
             if error == iec61850.IED_ERROR_OK:
                 return bool(value)
-            # 布尔读取失败, 尝试通用对象读取提取整数值
-            obj_value = None
-            try:
-                [obj_value, obj_error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
-                if obj_error == iec61850.IED_ERROR_OK:
-                    vtype = iec61850.MmsValue_getType(obj_value)
-                    if vtype in (iec61850.MMS_INTEGER, iec61850.MMS_UNSIGNED):
-                        return int(iec61850.MmsValue_toInt32(obj_value))
-                    elif vtype == iec61850.MMS_FLOAT:
-                        return int(iec61850.MmsValue_toFloat(obj_value))
-                    elif vtype == iec61850.MMS_BOOLEAN:
-                        return bool(iec61850.MmsValue_getBoolean(obj_value))
-            except Exception:
-                pass
-            finally:
-                _delete_mms_value(obj_value)
             log.debug(f"读取布尔值失败: ref={ref}, error={error}")
         except Exception as e:
             log.debug(f"读取布尔值异常: ref={ref}, error={e}")
         return None
 
     def read_batch(self, conn, items: list, results: dict) -> None:
-        for addr_str, ref, fc_val, _ in items:
-            try:
-                [value, error] = iec61850.IedConnection_readBooleanValue(conn, ref, fc_val)
-                if error == iec61850.IED_ERROR_OK:
-                    results[addr_str] = bool(value)
-                    continue
-                # 布尔读取失败, 尝试通用对象读取提取整数值
-                obj_value = None
-                try:
-                    [obj_value, obj_error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
-                    if obj_error == iec61850.IED_ERROR_OK:
-                        vtype = iec61850.MmsValue_getType(obj_value)
-                        if vtype in (iec61850.MMS_INTEGER, iec61850.MMS_UNSIGNED):
-                            results[addr_str] = int(iec61850.MmsValue_toInt32(obj_value))
-                            continue
-                        elif vtype == iec61850.MMS_FLOAT:
-                            results[addr_str] = int(iec61850.MmsValue_toFloat(obj_value))
-                            continue
-                        elif vtype == iec61850.MMS_BOOLEAN:
-                            results[addr_str] = bool(iec61850.MmsValue_getBoolean(obj_value))
-                            continue
-                except Exception:
-                    pass
-                finally:
-                    _delete_mms_value(obj_value)
-                log.debug(f"批量读取布尔值失败: ref={ref}, error={error}")
-            except Exception as e:
-                log.debug(f"批量读取布尔值异常: ref={ref}, error={e}")
+        _read_batch_with_strategy(self, conn, items, results)
 
 
-class IntegerReader:
-    """整数值读取策略 (使用 readObject + MmsValue_toInt32 通用方案)"""
+class ObjectTypeReader:
+    """Single-read MMS object strategy with runtime type validation."""
+
+    def __init__(self, *accepted_types: MmsType):
+        self.accepted_types = frozenset(accepted_types)
+
+    def read_typed(self, conn, ref: str, fc_val) -> tuple[Any, MmsType]:
+        value, actual_type = _read_object_typed(conn, ref, fc_val)
+        if self.accepted_types and actual_type not in self.accepted_types:
+            log.debug(
+                f"MMS 类型不匹配: ref={ref}, expected={[item.value for item in self.accepted_types]}, "
+                f"actual={actual_type.value}"
+            )
+            return None, actual_type
+        return value, actual_type
 
     def read(self, conn, ref: str, fc_val) -> Any:
-        value = None
-        try:
-            # pyiec61850-ng 没有 IedConnection_readIntegerValue，
-            # 使用通用 readObject + MmsValue_toInt32 替代
-            [value, error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
-            if error == iec61850.IED_ERROR_OK:
-                value_type = iec61850.MmsValue_getType(value)
-                if value_type == iec61850.MMS_INTEGER:
-                    return int(iec61850.MmsValue_toInt32(value))
-                elif value_type == iec61850.MMS_UNSIGNED:
-                    return int(iec61850.MmsValue_toUint32(value))
-                elif value_type == iec61850.MMS_FLOAT:
-                    return int(iec61850.MmsValue_toFloat(value))
-                elif value_type == iec61850.MMS_BOOLEAN:
-                    return int(iec61850.MmsValue_getBoolean(value))
-                else:
-                    log.debug(f"整数 MMS 类型不匹配: ref={ref}, type={value_type}")
-                    return None
-            # 整数读取失败, 尝试浮点回退
-            try:
-                [f_value, f_error] = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
-                if f_error == iec61850.IED_ERROR_OK:
-                    return int(f_value)
-            except Exception:
-                pass
-            log.debug(f"读取整数值失败: ref={ref}, error={error}")
-        except Exception as e:
-            log.debug(f"读取整数值异常: ref={ref}, error={e}")
-        finally:
-            _delete_mms_value(value)
-        return None
+        return self.read_typed(conn, ref, fc_val)[0]
 
     def read_batch(self, conn, items: list, results: dict) -> None:
-        for addr_str, ref, fc_val, _ in items:
-            value = self.read(conn, ref, fc_val)
-            if value is not None:
-                results[addr_str] = value
+        _read_batch_with_strategy(self, conn, items, results)
 
 
-class StringReader:
-    """字符串值读取策略"""
-
-    def read(self, conn, ref: str, fc_val) -> Any:
-        try:
-            [value, error] = iec61850.IedConnection_readStringValue(conn, ref, fc_val)
-            if error == iec61850.IED_ERROR_OK:
-                return str(value).strip() if value else ""
-            log.debug(f"读取字符串值失败: ref={ref}, error={error}")
-        except Exception as e:
-            log.debug(f"读取字符串值异常: ref={ref}, error={e}")
-        return None
-
-    def read_batch(self, conn, items: list, results: dict) -> None:
-        for addr_str, ref, fc_val, _ in items:
-            try:
-                [value, error] = iec61850.IedConnection_readStringValue(conn, ref, fc_val)
-                if error == iec61850.IED_ERROR_OK:
-                    results[addr_str] = str(value).strip() if value else ""
-                else:
-                    log.debug(f"批量读取字符串值失败: ref={ref}, error={error}")
-            except Exception as e:
-                log.debug(f"批量读取字符串值异常: ref={ref}, error={e}")
+class IntegerReader(ObjectTypeReader):
+    def __init__(self):
+        super().__init__(MmsType.INTEGER)
 
 
-class TimestampReader:
-    """时标值读取策略"""
-
-    def read(self, conn, ref: str, fc_val) -> Any:
-        mms_value = None
-        try:
-            [mms_value, error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
-            if error != iec61850.IED_ERROR_OK or not mms_value:
-                return None
-            value_type = iec61850.MmsValue_getType(mms_value)
-            if value_type != getattr(iec61850, "MMS_UTC_TIME", None):
-                log.debug(f"时标 MMS 类型不匹配: ref={ref}, type={value_type}")
-                return None
-            return int(iec61850.MmsValue_getUtcTimeInMs(mms_value))
-        except Exception as e:
-            log.debug(f"读取时标值异常: ref={ref}, error={e}")
-        finally:
-            _delete_mms_value(mms_value)
-        log.debug(f"读取时标值失败: ref={ref}")
-        return None
-
-    def read_batch(self, conn, items: list, results: dict) -> None:
-        for addr_str, ref, fc_val, _ in items:
-            value = self.read(conn, ref, fc_val)
-            if value is not None:
-                results[addr_str] = value
+class UnsignedReader(ObjectTypeReader):
+    def __init__(self):
+        super().__init__(MmsType.UNSIGNED)
 
 
-class AutoDetectReader:
-    """自动探测读取策略 - 依次尝试浮点、布尔、整数、字符串"""
-
-    def read(self, conn, ref: str, fc_val) -> Any:
-        # 尝试浮点
-        try:
-            [value, error] = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
-            if error == iec61850.IED_ERROR_OK:
-                return float(value)
-        except Exception:
-            pass
-
-        # 尝试布尔
-        try:
-            [value, error] = iec61850.IedConnection_readBooleanValue(conn, ref, fc_val)
-            if error == iec61850.IED_ERROR_OK:
-                return bool(value)
-        except Exception:
-            pass
-
-        # 尝试整数 (使用通用 readObject 替代不存在的 readIntegerValue)
-        obj_value = None
-        try:
-            [obj_value, obj_error] = iec61850.IedConnection_readObject(conn, ref, fc_val)
-            if obj_error == iec61850.IED_ERROR_OK:
-                vtype = iec61850.MmsValue_getType(obj_value)
-                if vtype in (iec61850.MMS_INTEGER, iec61850.MMS_UNSIGNED):
-                    return int(iec61850.MmsValue_toInt32(obj_value))
-                elif vtype == iec61850.MMS_FLOAT:
-                    return int(iec61850.MmsValue_toFloat(obj_value))
-        except Exception:
-            pass
-        finally:
-            _delete_mms_value(obj_value)
-
-        # 尝试字符串
-        try:
-            [value, error] = iec61850.IedConnection_readStringValue(conn, ref, fc_val)
-            if error == iec61850.IED_ERROR_OK:
-                return str(value).strip() if value else ""
-        except Exception:
-            pass
-
-        log.error(f"自动探测读取失败: ref={ref}")
-        return None
-
-    def read_batch(self, conn, items: list, results: dict) -> None:
-        for addr_str, ref, fc_val, _ in items:
-            value = self.read(conn, ref, fc_val)
-            if value is not None:
-                results[addr_str] = value
+class BitStringReader(ObjectTypeReader):
+    def __init__(self):
+        super().__init__(MmsType.BIT_STRING)
 
 
-# 策略注册表
+class StringReader(ObjectTypeReader):
+    def __init__(self):
+        super().__init__(MmsType.VISIBLE_STRING, MmsType.STRING, MmsType.OCTET_STRING, MmsType.OBJ_ID)
+
+
+class TimestampReader(ObjectTypeReader):
+    def __init__(self):
+        super().__init__(MmsType.UTC_TIME, MmsType.BINARY_TIME, MmsType.GENERALIZED_TIME)
+
+
+class AutoDetectReader(ObjectTypeReader):
+    """Unknown-type strategy: exactly one readObject call, never a type cascade."""
+
+    def __init__(self):
+        super().__init__()
+
+
+def _read_batch_with_strategy(strategy, conn, items: list, results: dict) -> None:
+    for addr_str, ref, fc_val, _ in items:
+        value = strategy.read(conn, ref, fc_val)
+        if value is not None:
+            results[addr_str] = value
+
+
 READ_STRATEGIES = {
-    IEC_TYPE_FLOAT: FloatReader(),
-    IEC_TYPE_BOOLEAN: BooleanReader(),
-    IEC_TYPE_INTEGER: IntegerReader(),
-    IEC_TYPE_STRING: StringReader(),
-    IEC_TYPE_TIMESTAMP: TimestampReader(),
-    IEC_TYPE_UNKNOWN: AutoDetectReader(),
+    MmsType.FLOAT: FloatReader(),
+    MmsType.BOOLEAN: BooleanReader(),
+    MmsType.INTEGER: IntegerReader(),
+    MmsType.UNSIGNED: UnsignedReader(),
+    MmsType.BIT_STRING: BitStringReader(),
+    MmsType.VISIBLE_STRING: StringReader(),
+    MmsType.STRING: StringReader(),
+    MmsType.OCTET_STRING: StringReader(),
+    MmsType.OBJ_ID: StringReader(),
+    MmsType.UTC_TIME: TimestampReader(),
+    MmsType.BINARY_TIME: TimestampReader(),
+    MmsType.GENERALIZED_TIME: TimestampReader(),
+    MmsType.BCD: ObjectTypeReader(MmsType.BCD),
+    MmsType.ARRAY: ObjectTypeReader(MmsType.ARRAY),
+    MmsType.STRUCTURE: ObjectTypeReader(MmsType.STRUCTURE),
+    MmsType.DATA_ACCESS_ERROR: ObjectTypeReader(MmsType.DATA_ACCESS_ERROR),
+    MmsType.UNKNOWN: AutoDetectReader(),
 }
 
 
 class Iec61850Reader:
-    """数据读取器 (组合模式)
-
-    组合连接管理和策略分派，提供统一的读取接口。
-    """
+    """Resolve FC/MMS metadata and execute a single type-specific read strategy."""
 
     def __init__(self, connection, registry=None):
-        """
-        Args:
-            connection: Iec61850Connection 实例
-            registry: PointRegistry 实例 (可选，用于地址映射)
-        """
         self._connection = connection
         self._registry = registry
 
     def read(self, address: str, fc: str = "") -> Any:
-        """读取单个测点值
-
-        Args:
-            address: 测点地址
-            fc: 功能约束 (为空时自动推断)
-        """
         if not self._connection.ensure_connected():
             return None
 
         addr_str = str(address)
         ref = self._build_ref(addr_str)
         fc_val = self._resolve_fc(addr_str, fc)
-        iec_type = self._resolve_iec_type(addr_str)
+        mms_type = self._resolve_mms_type(addr_str)
 
-        value = self._read_once(addr_str, ref, fc_val, iec_type)
+        value = self._read_once(addr_str, ref, fc_val, mms_type)
         if value is not None:
             return value
-
         if self._connection.reconnect_if_unhealthy(f"read {ref}"):
-            value = self._read_once(addr_str, ref, fc_val, iec_type)
-        return value
+            return self._read_once(addr_str, ref, fc_val, mms_type)
+        return None
 
-    def _read_once(self, address: str, ref: str, fc_val, iec_type: str) -> Any:
-        strategy = READ_STRATEGIES.get(iec_type, READ_STRATEGIES[IEC_TYPE_UNKNOWN])
+    def _read_once(self, address: str, ref: str, fc_val, mms_type: MmsType) -> Any:
+        strategy = READ_STRATEGIES.get(mms_type, READ_STRATEGIES[MmsType.UNKNOWN])
         with self._connection.native_operation() as conn:
             if conn is None:
                 return None
             try:
+                if mms_type is MmsType.UNKNOWN and isinstance(strategy, AutoDetectReader):
+                    value, actual_type = strategy.read_typed(conn, ref, fc_val)
+                    if actual_type not in (MmsType.UNKNOWN, MmsType.DATA_ACCESS_ERROR):
+                        self._cache_runtime_type(address, actual_type)
+                    return value
                 return strategy.read(conn, ref, fc_val)
             except Exception as e:
                 log.error(f"IEC61850 读取异常: address={address}, ref={ref}, error={e}")
                 return None
 
     def read_batch(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[str, Any]:
-        """批量读取多个测点值
-
-        按 iec_type 分组批量读取。
-
-        Args:
-            addresses: 测点地址列表
-            fc_map: 地址 -> FC 的映射 (可选)
-        """
         if not addresses or not self._connection.ensure_connected():
             return {}
-
         groups = self._build_read_groups(addresses, fc_map)
         results = self._read_groups_once(groups)
         if len(results) == len(addresses):
             return results
-
         if self._connection.reconnect_if_unhealthy(f"batch read {len(addresses)} points, got {len(results)} values"):
             retry_results = self._read_groups_once(groups)
             if retry_results:
                 return retry_results
         return results
 
-    def _build_read_groups(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[str, list]:
-        groups: dict[str, list] = {}
-        for addr in addresses:
-            addr_str = str(addr)
+    def _build_read_groups(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[MmsType, list]:
+        groups: dict[MmsType, list] = {}
+        for address in addresses:
+            addr_str = str(address)
             ref = self._build_ref(addr_str)
-            fc = ""
-            if fc_map and addr_str in fc_map:
-                fc = fc_map[addr_str]
+            fc = fc_map.get(addr_str, "") if fc_map else ""
             fc_val = self._resolve_fc(addr_str, fc)
-            iec_type = self._resolve_iec_type(addr_str)
-
-            if iec_type not in groups:
-                groups[iec_type] = []
-            groups[iec_type].append((addr_str, ref, fc_val, iec_type))
+            mms_type = self._resolve_mms_type(addr_str)
+            groups.setdefault(mms_type, []).append((addr_str, ref, fc_val, mms_type))
         return groups
 
-    def _read_groups_once(self, groups: dict[str, list]) -> dict[str, Any]:
+    def _read_groups_once(self, groups: dict[MmsType, list]) -> dict[str, Any]:
         results: dict[str, Any] = {}
         with self._connection.native_operation() as conn:
             if conn is None:
                 return results
-            for iec_type, items in groups.items():
-                strategy = READ_STRATEGIES.get(iec_type, READ_STRATEGIES[IEC_TYPE_UNKNOWN])
-                strategy.read_batch(conn, items, results)
+            for mms_type, items in groups.items():
+                strategy = READ_STRATEGIES.get(mms_type, READ_STRATEGIES[MmsType.UNKNOWN])
+                if mms_type is MmsType.UNKNOWN and isinstance(strategy, AutoDetectReader):
+                    for address, ref, fc_val, _ in items:
+                        value, actual_type = strategy.read_typed(conn, ref, fc_val)
+                        if value is not None:
+                            results[address] = value
+                        if actual_type not in (MmsType.UNKNOWN, MmsType.DATA_ACCESS_ERROR):
+                            self._cache_runtime_type(address, actual_type)
+                else:
+                    strategy.read_batch(conn, items, results)
         return results
 
     def _build_ref(self, address: str) -> str:
-        """构建 MMS 引用路径"""
         if self._registry:
             ref = self._registry.get_ref(address)
             if ref:
                 return ref
-
         from ..defs.address import is_full_ref, parse_ref
 
         if is_full_ref(address):
             parsed = parse_ref(address)
             if parsed:
-                ld_inst = parsed[0]
-                rest = address.split("/", 1)[1]
-                return f"{self._connection.model_name}{ld_inst}/{rest}"
-
+                return f"{self._connection.model_name}{parsed[0]}/{address.split('/', 1)[1]}"
         safe_addr = str(address).replace(".", "_").replace("/", "_").replace("\\", "_").replace("-", "_")
-        iec_type = self._resolve_iec_type(address)
-        if iec_type == IEC_TYPE_FLOAT:
+        mms_type = self._resolve_mms_type(address)
+        if mms_type is MmsType.FLOAT:
             return f"{self._connection.model_name}{self._connection.ld_name}/MMXU1.MV_{safe_addr}.mag.f"
-        else:
-            return f"{self._connection.model_name}{self._connection.ld_name}/GGIO1.SPS_{safe_addr}.stVal"
+        return f"{self._connection.model_name}{self._connection.ld_name}/GGIO1.SPS_{safe_addr}.stVal"
 
     def _resolve_fc(self, address: str, fc: str = ""):
-        """解析 FC"""
         if not fc and self._registry:
             fc = self._registry.get_fc(address)
         if not fc:
             fc = infer_fc_from_address(address)
         return self._connection.get_fc_value(fc)
 
-    def _resolve_iec_type(self, address: str) -> str:
-        """解析 iec_type"""
-        iec_type = ""
+    def _resolve_mms_type(self, address: str) -> MmsType:
         if self._registry:
-            iec_type = self._registry.get_iec_type(address)
-        if iec_type == IEC_TYPE_UNKNOWN or not iec_type:
-            iec_type = infer_iec_type_from_address(address)
-        return iec_type
+            get_mms_type = getattr(self._registry, "get_mms_type", None)
+            raw_type = get_mms_type(address) if callable(get_mms_type) else ""
+            try:
+                return MmsType(raw_type)
+            except (TypeError, ValueError):
+                legacy_type = self._registry.get_iec_type(address)
+                if legacy_type:
+                    return mms_type_from_iec_type(legacy_type)
+        return mms_type_from_iec_type(infer_iec_type_from_address(address))
+
+    def _cache_runtime_type(self, address: str, mms_type: MmsType) -> None:
+        if not self._registry:
+            return
+        set_mms_type = getattr(self._registry, "set_mms_type", None)
+        if callable(set_mms_type):
+            set_mms_type(address, mms_type.value)
+        self._registry.set_iec_type(address, iec_type_from_mms_type(mms_type).value)

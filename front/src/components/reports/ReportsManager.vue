@@ -46,6 +46,16 @@
         />
         <p class="batch-progress-text">{{ batchProgressText }}</p>
       </div>
+      <template #footer>
+        <el-button
+          v-if="!batchProgressFinished"
+          type="danger"
+          :loading="batchCancelling"
+          @click="handleBatchCancel"
+        >
+          {{ t('report.batchCancel') }}
+        </el-button>
+      </template>
     </el-dialog>
 
     <main class="reports-body" v-loading="loading">
@@ -203,6 +213,9 @@ const batchProgressVisible = ref(false);
 const batchProgressPercent = ref(0);
 const batchProgressStatus = ref<'success' | 'exception' | ''>('');
 const batchProgressText = ref('');
+const batchCancelled = ref(false);
+const batchCancelling = ref(false);
+const batchProgressFinished = ref(false);
 
 const reportHistory = ref<ReportEntrySummary[]>([]);
 const reportDataTotal = ref(0);
@@ -399,12 +412,20 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function handleBatchCancel() {
+  batchCancelling.value = true;
+  batchCancelled.value = true;
+  batchCancelling.value = false;
+}
+
 async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps; optFields: OptFields }) {
   if (checkedRefs.value.length === 0) {
     ElMessage.warning(t('report.noRcbSelected'));
     return;
   }
   batchLoading.value = true;
+  batchCancelled.value = false;
+  batchProgressFinished.value = false;
   const refs = [...checkedRefs.value];
   const total = refs.length;
   let successCount = 0;
@@ -417,6 +438,17 @@ async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps
   batchProgressVisible.value = true;
 
   for (let i = 0; i < total; i++) {
+    // 检查是否已取消
+    if (batchCancelled.value) {
+      batchProgressFinished.value = true;
+      batchProgressStatus.value = 'exception';
+      batchProgressText.value = t('report.batchCancelled', {
+        current: successCount + failCount,
+        total,
+      });
+      break;
+    }
+
     const rcbRef = refs[i];
     try {
       const result = await applyConfig(
@@ -452,14 +484,24 @@ async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps
     }
   }
 
-  // 关闭进度对话框
-  await sleep(300);
-  batchProgressVisible.value = false;
-
-  if (failCount === 0) {
-    ElMessage.success(t('report.batchApplySuccess', { count: successCount }));
+  if (batchCancelled.value) {
+    // 用户取消：延迟后关闭弹窗
+    await sleep(500);
+    batchProgressVisible.value = false;
+    ElMessage.info(t('report.batchCancelled', {
+      current: successCount + failCount,
+      total,
+    }));
   } else {
-    ElMessage.warning(t('report.batchApplyPartial', { failed: failCount, total }));
+    // 正常完成：延迟后关闭弹窗
+    await sleep(300);
+    batchProgressVisible.value = false;
+
+    if (failCount === 0) {
+      ElMessage.success(t('report.batchApplySuccess', { count: successCount }));
+    } else {
+      ElMessage.warning(t('report.batchApplyPartial', { failed: failCount, total }));
+    }
   }
 
   if (payload.rptEna && selectedRcb.value) {

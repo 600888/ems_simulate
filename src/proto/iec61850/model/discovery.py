@@ -37,6 +37,7 @@ from ..defs.ln_classes import (
     YT_LN_CLASSES,
     YX_LN_CLASSES,
 )
+from ..defs.mms_types import MmsType, infer_mms_type_from_path, mms_type_from_native
 from ..log import log
 from .ied_model import (
     DARef,
@@ -173,6 +174,14 @@ class ModelDiscoveryService:
         #   SglMaxVolNo.mag → [i]（整型状态值）
         # 故使用完整引用路径（da_full_ref）而非 DA 名称作为缓存键。
         self._struct_sub_da_cache: dict[str, list[DARef]] = {}
+        self._type_probe_cache: dict[tuple[str, str], MmsType] = {}
+        self._type_probe_stats: dict[str, int] = {
+            "total": 0,
+            "runtime": 0,
+            "static": 0,
+            "unknown": 0,
+            "failed": 0,
+        }
 
     @property
     def model(self) -> IedModel | None:
@@ -216,6 +225,8 @@ class ModelDiscoveryService:
 
         log.info("开始 IEC 61850 统一模型发现...")
         start_time = time.time()
+        self._type_probe_cache.clear()
+        self._type_probe_stats = {"total": 0, "runtime": 0, "static": 0, "unknown": 0, "failed": 0}
 
         # 提取底层 IedConnection
         conn = self._resolve_connection(connection)
@@ -245,8 +256,53 @@ class ModelDiscoveryService:
         self._model_timestamp = time.time()
 
         elapsed = time.time() - start_time
-        log.info(f"统一模型发现完成, 耗时 {elapsed:.2f}s, {self._model.summary}")
+        log.info(f"统一模型发现完成, 耗时 {elapsed:.2f}s, {self._model.summary}, MMS类型统计={self._type_probe_stats}")
         return self._model
+
+    def _probe_mms_type(self, conn, ref: str, fc: str, fallback: MmsType) -> MmsType:
+        """Read one leaf once and cache its native MMS type."""
+        key = (ref, fc)
+        cached = self._type_probe_cache.get(key)
+        if cached is not None:
+            return cached
+
+        self._type_probe_stats["total"] += 1
+        if fc == "CO":
+            resolved = fallback
+            self._type_probe_stats["static" if resolved is not MmsType.UNKNOWN else "unknown"] += 1
+            self._type_probe_cache[key] = resolved
+            return resolved
+
+        value = None
+        try:
+            fc_value = getattr(iec61850, f"IEC61850_FC_{fc}", None)
+            if fc_value is None:
+                raise ValueError(f"unsupported FC: {fc}")
+            result = iec61850.IedConnection_readObject(conn, ref, fc_value)
+            if isinstance(result, (list, tuple)):
+                value = result[0] if result else None
+                error = result[1] if len(result) > 1 else 0
+            else:
+                value = result
+                error = 0
+            if error == iec61850.IED_ERROR_OK and value is not None:
+                resolved = mms_type_from_native(int(iec61850.MmsValue_getType(value)), iec61850)
+                if resolved not in (MmsType.UNKNOWN, MmsType.DATA_ACCESS_ERROR):
+                    self._type_probe_stats["runtime"] += 1
+                    self._type_probe_cache[key] = resolved
+                    return resolved
+        except Exception as e:
+            log.debug(f"MMS 类型探测失败: ref={ref}, fc={fc}, error={e}")
+        finally:
+            if value is not None:
+                with contextlib.suppress(Exception):
+                    iec61850.MmsValue_delete(value)
+
+        self._type_probe_stats["failed"] += 1
+        resolved = fallback
+        self._type_probe_stats["static" if resolved is not MmsType.UNKNOWN else "unknown"] += 1
+        self._type_probe_cache[key] = resolved
+        return resolved
 
     @staticmethod
     def _resolve_connection(connection: Any) -> Any:
@@ -448,9 +504,17 @@ class ModelDiscoveryService:
                 value_sub_da = preferred_sub_da or sub_das[0]
                 effective_da_path = f"{da_name}.{value_sub_da.name}"
                 effective_iec_type = value_sub_da.iec_type
+                mms_type = MmsType.STRUCTURE
             else:
                 effective_da_path = da_info.path
                 effective_iec_type = da_info.iec_type
+                fallback_mms_type = infer_mms_type_from_path(effective_da_path, effective_iec_type)
+                mms_type = self._probe_mms_type(
+                    conn,
+                    f"{do_ref}.{effective_da_path}",
+                    da_info.fc or self._infer_fc_from_da(da_name, do_frame_type),
+                    fallback_mms_type,
+                )
 
             da_refs.append(
                 DARef(
@@ -458,6 +522,7 @@ class ModelDiscoveryService:
                     path=effective_da_path,
                     fc=da_info.fc,
                     iec_type=effective_iec_type,
+                    mms_type=mms_type,
                     sub_das=sub_das,
                 )
             )
@@ -482,15 +547,23 @@ class ModelDiscoveryService:
                             path=f"{da_path}.{bda_name}",
                             fc=da_fc,
                             iec_type=bda_iec_type,
+                            mms_type=infer_mms_type_from_path(f"{da_path}.{bda_name}", bda_iec_type),
                         )
                     )
                 meta_sub_das = tuple(bda_refs)
+            meta_mms_type = self._probe_mms_type(
+                conn,
+                f"{do_ref}.{da_path}",
+                da_fc,
+                infer_mms_type_from_path(da_path, da_iec_type),
+            )
             da_refs.append(
                 DARef(
                     name=da_name,
                     path=da_path,
                     fc=da_fc,
                     iec_type=da_iec_type,
+                    mms_type=meta_mms_type,
                     sub_das=meta_sub_das,
                 )
             )
@@ -524,12 +597,15 @@ class ModelDiscoveryService:
                 if parent_name in KNOWN_BDA_FALLBACK_ONLINE:
                     bda_type_map = {"orCat": "integer", "orIdent": "unknown"}
                     for bda_name in KNOWN_BDA_FALLBACK_ONLINE[parent_name]:
+                        bda_iec_type = bda_type_map.get(bda_name, "unknown")
+                        bda_path = f"{path_prefix}{bda_name}"
                         sub_das.append(
                             DARef(
                                 name=bda_name,
-                                path=f"{path_prefix}{bda_name}",
+                                path=bda_path,
                                 fc=parent_fc,
-                                iec_type=bda_type_map.get(bda_name, "unknown"),
+                                iec_type=bda_iec_type,
+                                mms_type=infer_mms_type_from_path(bda_path, bda_iec_type),
                             )
                         )
                 return sub_das
@@ -537,12 +613,20 @@ class ModelDiscoveryService:
             bda_names = get_list_from_linked_list(bda_list)
             for bda_name in bda_names:
                 bda_type = BDA_TYPE_MAP.get(bda_name, "unknown")
+                bda_path = f"{path_prefix}{bda_name}"
+                bda_mms_type = self._probe_mms_type(
+                    conn,
+                    f"{parent_ref}.{bda_name}",
+                    parent_fc,
+                    infer_mms_type_from_path(bda_path, bda_type),
+                )
                 sub_das.append(
                     DARef(
                         name=bda_name,
-                        path=f"{path_prefix}{bda_name}",
+                        path=bda_path,
                         fc=parent_fc,
                         iec_type=bda_type,
+                        mms_type=bda_mms_type,
                     )
                 )
 
@@ -587,12 +671,20 @@ class ModelDiscoveryService:
                 sub_das: list[DARef] = []
                 base_path = da_info.path.split(".")[0]
                 for sub_name in sub_names:
+                    sub_path = f"{base_path}.{sub_name}"
+                    sub_iec_type = BDA_TYPE_MAP.get(sub_name, "unknown")
                     sub_das.append(
                         DARef(
                             name=sub_name,
-                            path=f"{base_path}.{sub_name}",
+                            path=sub_path,
                             fc=fc,
-                            iec_type=BDA_TYPE_MAP.get(sub_name, "unknown"),
+                            iec_type=sub_iec_type,
+                            mms_type=self._probe_mms_type(
+                                conn,
+                                f"{da_full_ref}.{sub_name}",
+                                fc,
+                                infer_mms_type_from_path(sub_path, sub_iec_type),
+                            ),
                         )
                     )
                 if sub_das:

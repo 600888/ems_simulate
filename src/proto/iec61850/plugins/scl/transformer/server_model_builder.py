@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from ....defs.mms_types import BTYPE_TO_MMS_TYPE, MmsType
 from ....model.ied_model import (
     DARef,
     DataSetRef,
@@ -184,6 +185,7 @@ class SclServerModelBuilder:
                             path=f"{da_def.name}.{bda_def.name}",
                             fc=bda_fc,
                             iec_type=bda_type_name,
+                            mms_type=BTYPE_TO_MMS_TYPE.get(bda_def.b_type, MmsType.UNKNOWN).value,
                             sub_das=sub_bda,
                         )
                     )
@@ -194,6 +196,7 @@ class SclServerModelBuilder:
             path=da_def.name,
             fc=da_def.fc,
             iec_type=iec_type,
+            mms_type=BTYPE_TO_MMS_TYPE.get(btype, MmsType.UNKNOWN).value,
             sub_das=sub_das,
         )
 

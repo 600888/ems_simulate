@@ -314,6 +314,7 @@ def _build_iec61850_tree_from_model(
     point_types: list[int] | None = None,
     *,
     include_unknown: bool = False,
+    registry=None,
 ) -> dict[str, Any]:
     """从完整 IedModel 构建 DO→DA→BDA 树，避免只显示已注册测点导致模型缺失。"""
     if category and category != "DataModel":
@@ -325,6 +326,15 @@ def _build_iec61850_tree_from_model(
     point_index = _build_point_display_index(all_points)
     do_description_index = _build_do_description_index(point_index)
     items: list[dict[str, Any]] = []
+
+    def resolved_mms_type(address: str, fallback: str = "MMS_UNKNOWN") -> str:
+        if registry is not None:
+            getter = getattr(registry, "get_mms_type", None)
+            if callable(getter):
+                cached = getter(address)
+                if cached:
+                    return str(cached)
+        return str(fallback or "MMS_UNKNOWN")
 
     priority_order = {
         "mag": 0,
@@ -389,6 +399,7 @@ def _build_iec61850_tree_from_model(
                                 "bda_path": bda.path,
                                 "fc": bda_point.get("fc") or bda.fc or da.fc,
                                 "point_code": bda_point.get("point_code", ""),
+                                "mms_type": resolved_mms_type(bda_addr, bda.mms_type),
                                 "value": bda_point.get("value", ""),
                                 "status": bda_point.get("status", ""),
                             }
@@ -403,6 +414,11 @@ def _build_iec61850_tree_from_model(
                             "fc": da_point.get("fc") or da.fc or _infer_fc_from_da(da_path),
                             "is_struct": bool(children),
                             "point_code": da_point.get("point_code", ""),
+                            "mms_type": (
+                                "MMS_STRUCTURE"
+                                if children and da.mms_type == "MMS_STRUCTURE"
+                                else resolved_mms_type(da_addr, da.mms_type)
+                            ),
                             "point_name": da_name,
                             "value": da_value,
                             "status": da_point.get("status", ""),
@@ -423,6 +439,19 @@ def _build_iec61850_tree_from_model(
                     do_status = "未知"
 
                 primary_fc = da_list[0]["fc"] if da_list else ""
+                primary_mms_type = "MMS_UNKNOWN"
+                for da_item in da_list:
+                    if not da_item.get("point_code"):
+                        continue
+                    if da_item.get("children"):
+                        value_child = next(
+                            (child for child in da_item["children"] if child.get("point_code")),
+                            da_item["children"][0],
+                        )
+                        primary_mms_type = value_child.get("mms_type", "MMS_UNKNOWN")
+                    else:
+                        primary_mms_type = da_item.get("mms_type", "MMS_UNKNOWN")
+                    break
                 items.append(
                     {
                         "do_name": do.name,
@@ -432,6 +461,7 @@ def _build_iec61850_tree_from_model(
                         "du_name": do_desc,
                         "fc": primary_fc,
                         "frame_type": do.frame_type,
+                        "mms_type": primary_mms_type,
                         "status": do_status,
                         "children": da_list,
                     }
@@ -796,6 +826,9 @@ async def get_iec61850_tree_data(
 
     model = _get_cached_iec61850_model(device)
     if model is not None and (not body.category or body.category == "DataModel"):
+        protocol_handler = getattr(device, "protocol_handler", None)
+        client = getattr(protocol_handler, "_client", None) if protocol_handler else None
+        registry = getattr(client, "_registry", None) if client else None
         tree_data = _build_iec61850_tree_from_model(
             model,
             all_points,
@@ -804,6 +837,7 @@ async def get_iec61850_tree_data(
             point_name=body.point_name,
             point_types=pt_filter,
             include_unknown=not bool(body.point_types),
+            registry=registry,
         )
     else:
         # DataSet 或无缓存模型时保持原有从 PointManager 反推树的逻辑
@@ -1447,7 +1481,16 @@ async def iec61850_read_single_point(
     value = await device.read_single_point_async(body.point_code)
     if value is None:
         raise ValidationError("读取失败，请检查连接状态", data={"value": None, "point_code": body.point_code})
-    return BaseResponse(message="读取成功", data={"value": value, "point_code": body.point_code})
+    mms_type = "MMS_UNKNOWN"
+    protocol_handler = getattr(device, "protocol_handler", None)
+    client = getattr(protocol_handler, "_client", None) if protocol_handler else None
+    registry = getattr(client, "_registry", None) if client else None
+    if registry is not None:
+        mms_type = registry.get_mms_type(str(point.address)) or mms_type
+    return BaseResponse(
+        message="读取成功",
+        data={"value": value, "point_code": body.point_code, "mms_type": mms_type},
+    )
 
 
 @router.post("/iec61850-read-metadata", response_model=BaseResponse)

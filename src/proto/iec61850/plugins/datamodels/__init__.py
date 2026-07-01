@@ -184,6 +184,7 @@ class DataModelsPlugin:
                         "name": name,
                         "fc": info.get("fc", ""),
                         "iec_type": info.get("iec_type", IEC_TYPE_UNKNOWN),
+                        "mms_type": info.get("mms_type", "MMS_UNKNOWN"),
                     }
                 )
             result.extend(self._registry.discovered_goose_items)
@@ -193,6 +194,8 @@ class DataModelsPlugin:
             code = self._extract_code_from_address(addr)
             fc = self._registry.get_fc(addr)
             iec_type = self._registry.get_iec_type(addr) or IEC_TYPE_UNKNOWN
+            get_mms_type = getattr(self._registry, "get_mms_type", None)
+            mms_type = get_mms_type(addr) if callable(get_mms_type) else "MMS_UNKNOWN"
             parsed = parse_ref(addr)
             name = self._registry.get_name(addr) or (parsed[2] if parsed else code)
             da_path = parsed[3] if parsed else ""
@@ -212,6 +215,7 @@ class DataModelsPlugin:
                     "name": name,
                     "fc": fc,
                     "iec_type": iec_type,
+                    "mms_type": mms_type or "MMS_UNKNOWN",
                 }
             )
         result.extend(self._registry.discovered_goose_items)

@@ -377,7 +377,7 @@ const fetchDeviceTable = async (name: string, sid: number, q: string, pi: number
       tableDataMap.value[sid] = { tableHeader: [], tableData: [], total: 0 };
     }
     tableDataMap.value[sid].tableHeader = [
-      "测点名称", "测点编码", "真实值", "状态",
+      "测点名称", "测点类型", "真实值", "状态",
     ];
     tableDataMap.value[sid].total = total.value;
     return;

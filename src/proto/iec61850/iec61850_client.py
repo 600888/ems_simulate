@@ -29,6 +29,7 @@ from .defs import (
     IecType,
     extract_ln_class,
 )
+from .defs.mms_types import MmsType
 from .log import log
 from .model import IedModel
 from .model.discovery import DiscoveryProgress, ModelDiscoveryService
@@ -395,6 +396,7 @@ class IEC61850Client:
                                 "path": da.name if da.sub_das else da.path,
                                 "fc": da.fc,
                                 "type": da.iec_type,
+                                "mms_type": da.mms_type,
                                 "children": [bda.to_flat_dict() for bda in da.sub_das],
                             }
                             for da in do.das
@@ -485,43 +487,43 @@ class IEC61850Client:
         """批量读取浮点值 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
 
-        READ_STRATEGIES[IecType.FLOAT].read_batch(self._conn.connection, items, results)
+        READ_STRATEGIES[MmsType.FLOAT].read_batch(self._conn.connection, items, results)
 
     def _read_booleans_batch(self, items, results):
         """批量读取布尔值 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
 
-        READ_STRATEGIES[IecType.BOOLEAN].read_batch(self._conn.connection, items, results)
+        READ_STRATEGIES[MmsType.BOOLEAN].read_batch(self._conn.connection, items, results)
 
     def _read_integers_batch(self, items, results):
         """批量读取整数值 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
 
-        READ_STRATEGIES[IecType.INTEGER].read_batch(self._conn.connection, items, results)
+        READ_STRATEGIES[MmsType.INTEGER].read_batch(self._conn.connection, items, results)
 
     def _read_strings_batch(self, items, results):
         """批量读取字符串值 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
 
-        READ_STRATEGIES[IecType.STRING].read_batch(self._conn.connection, items, results)
+        READ_STRATEGIES[MmsType.VISIBLE_STRING].read_batch(self._conn.connection, items, results)
 
     def _read_timestamps_batch(self, items, results):
         """批量读取时标值 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
 
-        READ_STRATEGIES[IecType.TIMESTAMP].read_batch(self._conn.connection, items, results)
+        READ_STRATEGIES[MmsType.UTC_TIME].read_batch(self._conn.connection, items, results)
 
     def _read_unknowns_batch(self, items, results):
         """批量自动探测读取 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
 
-        READ_STRATEGIES[IecType.UNKNOWN].read_batch(self._conn.connection, items, results)
+        READ_STRATEGIES[MmsType.UNKNOWN].read_batch(self._conn.connection, items, results)
 
     def _read_point_auto_detect(self, ref: str, fc_val) -> Any:
         """自动探测数据类型并读取值 (向后兼容, 委托给 core.reader)"""
         from .core.reader import READ_STRATEGIES
 
-        return READ_STRATEGIES[IecType.UNKNOWN].read(self._conn.connection, ref, fc_val)
+        return READ_STRATEGIES[MmsType.UNKNOWN].read(self._conn.connection, ref, fc_val)
 
     def _resolve_dataset_ref_with_ld_prefix(self, dataset_ref: str) -> str:
         """解析 DataSet 引用 LD 前缀 (向后兼容, 委托给 connection)"""

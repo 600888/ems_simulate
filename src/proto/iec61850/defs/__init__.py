@@ -56,6 +56,14 @@ from .ln_classes import (
     YT_LN_CLASSES,
     YX_LN_CLASSES,
 )
+from .mms_types import (
+    BTYPE_TO_MMS_TYPE,
+    MmsType,
+    iec_type_from_mms_type,
+    infer_mms_type_from_path,
+    mms_type_from_iec_type,
+    mms_type_from_native,
+)
 from .types import (
     OptFields,
     PointRef,
@@ -87,6 +95,12 @@ __all__ = [
     "IEC_TYPE_STRING",
     "IEC_TYPE_TIMESTAMP",
     "IEC_TYPE_UNKNOWN",
+    "MmsType",
+    "BTYPE_TO_MMS_TYPE",
+    "mms_type_from_native",
+    "mms_type_from_iec_type",
+    "iec_type_from_mms_type",
+    "infer_mms_type_from_path",
     # ln_classes
     "YC_LN_CLASSES",
     "YX_LN_CLASSES",

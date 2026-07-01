@@ -28,6 +28,13 @@ class ReportTreeBuilderTest(unittest.TestCase):
         self.assertEqual(parsed.do_ref, "LD0/GGIO1.Ind1")
         self.assertEqual(parsed.da_parts, ("q",))
 
+    def test_parse_dollar_ref_at_do_level(self):
+        parsed = parse_report_ref("PCS001MEAS/dcGGIO1$MX$AnIn1")
+
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.do_ref, "PCS001MEAS/dcGGIO1.AnIn1")
+        self.assertEqual(parsed.da_parts, ())
+
     def test_unmapped_data_i_fallback(self):
         entry = {
             "data_values": {"data[0]": True},

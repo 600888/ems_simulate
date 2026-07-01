@@ -498,7 +498,7 @@ def _parse_dollar_ref(raw_ref: str) -> ParsedReportRef | None:
         fc = path_tokens[0].upper()
         path_tokens = path_tokens[1:]
 
-    if not ln or len(path_tokens) < 2:
+    if not ln or len(path_tokens) < 1:
         return None
 
     return ParsedReportRef(
@@ -635,40 +635,16 @@ def _timestamp_ms(value: Any) -> int | None:
 def stringify_value(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
-    # 尝试将 pyiec61850 MmsValue SWIG 对象转换为 Python 原生类型
+    # Legacy cache entries can still contain a SWIG MmsValue. Use the runtime
+    # MMS type dispatcher rather than trying float/int/bool accessors in order.
     raw_str = str(value)
     if "<Swig Object" in raw_str:
         try:
-            from pyiec61850 import pyiec61850 as iec61850
+            from ...core.mms_value import mms_value_to_python
 
-            # 优先尝试 float 转换（最常见）
-            try:
-                return float(iec61850.MmsValue_toFloat(value))
-            except Exception:
-                pass
-            # 尝试 int 转换
-            try:
-                return int(iec61850.MmsValue_toInt32(value))
-            except Exception:
-                pass
-            # 尝试 boolean 转换
-            try:
-                return bool(iec61850.MmsValue_getBoolean(value))
-            except Exception:
-                pass
-            # 尝试 toString 获取可读字符串
-            try:
-                s = iec61850.MmsValue_toString(value)
-                if s and "<Swig Object" not in str(s):
-                    return str(s)
-            except Exception:
-                pass
-            # 尝试 getTypeString 获取类型提示
-            try:
-                type_str = iec61850.MmsValue_getTypeString(value)
-                return f"[{type_str}]"
-            except Exception:
-                pass
+            converted = mms_value_to_python(value)
+            if converted is not None:
+                return converted
         except Exception:
             pass
         return "[unresolved]"

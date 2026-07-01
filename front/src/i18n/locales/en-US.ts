@@ -695,26 +695,32 @@ export default {
     dataDirectory: "Data Directory",
     dataDirectoryHint: "Storage location for the database and persistent device files",
     pointTableCacheDirectory: "Point Table Cache",
-    pointTableCacheDirectoryHint: "Storage location for imported Excel/CSV point tables and cache files",
+    pointTableCacheDirectoryHint:
+      "Storage location for imported Excel/CSV point tables and cache files",
     iec61850ModelCacheDirectory: "IEC61850 Model Cache",
-    iec61850ModelCacheDirectoryHint: "Storage location for ICD, SCD, CID models and parsed cache files",
+    iec61850ModelCacheDirectoryHint:
+      "Storage location for ICD, SCD, CID models and parsed cache files",
     iec61850FileCacheDirectory: "IEC61850 File Cache",
     iec61850FileCacheDirectoryHint: "Local cache for files downloaded from remote IEDs",
     iec61850TempDirectory: "IEC61850 Temporary Directory",
-    iec61850TempDirectoryHint: "Temporary files used for IEC61850 upload, download, and model export",
+    iec61850TempDirectoryHint:
+      "Temporary files used for IEC61850 upload, download, and model export",
     directoryPlaceholder: "Enter or choose a directory",
     browse: "Browse",
     modifyDirectory: "Change",
     openDirectory: "Open",
     directoryWritable: "Writable",
     directoryRequired: "Directories cannot be empty",
-    directoryPickerWebHint: "Folder selection is unavailable in browser mode; enter the full path instead",
+    directoryPickerWebHint:
+      "Folder selection is unavailable in browser mode; enter the full path instead",
     directoryPickerFailed: "Failed to open the folder picker",
     directoryOpenWebHint: "Opening local folders is only available in the desktop app",
-    directoryOpenFailed: "Failed to open the folder; make sure it exists and is accessible",
+    directoryOpenFailed:
+      "Failed to open the folder; make sure it exists and is accessible",
     clearDirectory: "Clear Data",
     clearDirectoryTitle: "Clear Directory?",
-    clearDirectoryConfirm: "This will permanently delete all data in the following directory while keeping the directory itself:\n{path}\n\nThis action cannot be undone.",
+    clearDirectoryConfirm:
+      "This will permanently delete all data in the following directory while keeping the directory itself:\n{path}\n\nThis action cannot be undone.",
     clearDirectoryConfirmButton: "Clear Data",
     clearDirectorySaveFirst: "Save the directory settings before clearing data",
     clearDirectorySuccess: "Directory data cleared",
@@ -722,10 +728,12 @@ export default {
     restoreDefaults: "Restore Defaults",
     saveStorage: "Save Settings",
     storageSaved: "Storage settings saved",
-    storageSavedRestart: "Storage settings saved; restart to fully apply the data directory",
+    storageSavedRestart:
+      "Storage settings saved; restart to fully apply the data directory",
     storageLoadFailed: "Failed to load storage settings",
     storageSaveFailed: "Failed to save storage settings",
-    storageRestartHint: "Restart the app after changing the data directory. Existing files are not moved automatically. Other paths apply to newly created cache and temporary files.",
+    storageRestartHint:
+      "Restart the app after changing the data directory. Existing files are not moved automatically. Other paths apply to newly created cache and temporary files.",
     contact: "Contact Author",
     gitee: "Gitee Repository",
     github: "GitHub Repository",
@@ -927,6 +935,8 @@ export default {
     batchApplyProgress:
       "Completed {current}/{total} (success: {success}, failed: {fail})",
     batchProgressTitle: "Batch Apply Config",
+    batchCancel: "Cancel",
+    batchCancelled: "Cancelled, completed {current}/{total}",
     noRcbSelected: "Please select RCBs from the left tree first",
   },
 };

@@ -14,9 +14,11 @@ import time
 from typing import Any
 
 from ...core.mms_value import mms_value_to_python
-from ...defs.constants import HAS_IEC61850
+from ...defs.address import infer_iec_type_from_address
+from ...defs.constants import HAS_IEC61850, IEC_TYPE_UNKNOWN
 from ...defs.types import ReportDataEntry
 from ...log import log
+from .report_tree import parse_report_ref
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
@@ -32,6 +34,34 @@ _ROUND_ROBIN_INDEX: dict[str, int] = {}
 # 全局稳定递增 ID，用作环状缓冲区 entry_id
 _ENTRY_SEQUENCE: int = 0
 MAX_REPORT_VALUES_PER_ENTRY = 512
+
+
+def _select_report_value_ref(data_ref: str, dataset_ref: str) -> str:
+    """Prefer a more specific DataSet member ref over a DO-only report ref."""
+    if not data_ref:
+        return dataset_ref
+    if not dataset_ref:
+        return data_ref
+
+    report_parsed = parse_report_ref(data_ref)
+    dataset_parsed = parse_report_ref(dataset_ref)
+    if (
+        report_parsed is not None
+        and dataset_parsed is not None
+        and report_parsed.do_ref == dataset_parsed.do_ref
+        and len(dataset_parsed.da_parts) > len(report_parsed.da_parts)
+    ):
+        return dataset_ref
+    return data_ref
+
+
+def _infer_report_value_type(ref: str) -> str:
+    """Infer a scalar IEC type from dot or dollar-form report references."""
+    parsed = parse_report_ref(ref)
+    if parsed is None or not parsed.da_parts:
+        return IEC_TYPE_UNKNOWN
+    canonical_ref = f"{parsed.do_ref}.{'.'.join(parsed.da_parts)}"
+    return infer_iec_type_from_address(canonical_ref)
 
 
 def _get_next_entry_uid() -> int:
@@ -834,16 +864,15 @@ def _parse_client_report(report, rcb_ref: str, dataset_members: list[str] | None
 
                 # 优先使用数据引用 (DataReference) 作为键名
                 data_ref = _get_data_reference(report, i)
-                if data_ref:
-                    ref_key = data_ref
-                elif dataset_members and i < len(dataset_members):
-                    # 其次使用数据集成员引用
-                    ref_key = dataset_members[i]
+                dataset_ref = dataset_members[i] if dataset_members and i < len(dataset_members) else ""
+                if data_ref or dataset_ref:
+                    ref_key = _select_report_value_ref(data_ref, dataset_ref)
                 else:
                     # 最后回退到 data[i] 格式
                     ref_key = f"data[{i}]"
 
-                entry.data_values[ref_key] = mms_value_to_python(element)
+                iec_type = _infer_report_value_type(ref_key)
+                entry.data_values[ref_key] = mms_value_to_python(element, iec_type)
 
                 # 获取正确的 reason code
                 reason = _get_reason_for_inclusion(report, i)

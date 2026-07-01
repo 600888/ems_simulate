@@ -19,6 +19,7 @@ class PointRef:
     frame_type: int = 0  # 帧类型
     code: str = ""  # 短编码
     name: str = ""  # 测点名称
+    mms_type: str = "MMS_UNKNOWN"  # 原生 MMS 类型
 
 
 @dataclass

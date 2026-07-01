@@ -39,6 +39,9 @@ def build_registry_from_model(model: IedModel, registry: Any) -> list[dict[str, 
         registry.set_ref(address, info["ref"])
         registry.set_fc(address, info["fc"])
         registry.set_iec_type(address, info["iec_type"])
+        set_mms_type = getattr(registry, "set_mms_type", None)
+        if callable(set_mms_type):
+            set_mms_type(address, info.get("mms_type", "MMS_UNKNOWN"))
 
         point_entry: dict[str, Any] = {
             "address": address,
@@ -47,6 +50,7 @@ def build_registry_from_model(model: IedModel, registry: Any) -> list[dict[str, 
             "code": info.get("code", ""),
             "fc": info["fc"],
             "iec_type": info["iec_type"],
+            "mms_type": info.get("mms_type", "MMS_UNKNOWN"),
         }
         if "name" in info:
             registry.set_name(address, info["name"])

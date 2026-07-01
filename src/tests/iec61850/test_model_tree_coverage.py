@@ -38,7 +38,14 @@ def test_client_browse_children_prefers_cached_model():
     assert client.browse_logical_nodes("LD0") == ["LLN0"]
     assert client.browse_data_objects("LD0", "LLN0") == [{"name": "NamPlt", "frame_type": -1}]
     assert client.browse_data_attributes("LD0", "LLN0", "NamPlt") == [
-        {"name": "vendor", "path": "vendor", "fc": "DC", "type": "string", "children": []}
+        {
+            "name": "vendor",
+            "path": "vendor",
+            "fc": "DC",
+            "type": "string",
+            "mms_type": "MMS_UNKNOWN",
+            "children": [],
+        }
     ]
     client._conn.browse_logical_devices.assert_not_called()
 
