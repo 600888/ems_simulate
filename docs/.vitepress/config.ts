@@ -115,7 +115,8 @@ export default defineConfig({
                             items: [
                                 { text: '模块化重构计划', link: '/changelog/iec61850/02-iec61850-refactoring-plan' },
                                 { text: 'GOOSE 模块插件化重构', link: '/changelog/iec61850/06-goose-plugin-refactoring' },
-                                { text: '统一模型架构重构', link: '/changelog/iec61850/09-iec61850-unified-model-refactoring' }
+                                { text: '统一模型架构重构', link: '/changelog/iec61850/09-iec61850-unified-model-refactoring' },
+                                { text: '数据存储与协议流程整改', link: '/changelog/iec61850/18-iec61850-data-storage-optimization-plan' }
                             ]
                         },
                         {
@@ -147,7 +148,9 @@ export default defineConfig({
                             items: [
                                 { text: 'ICD 导出器修复', link: '/changelog/iec61850/14-iec61850-icd-exporter-fix' },
                                 { text: '报告回调崩溃与禁用逻辑修复', link: '/changelog/iec61850/15-iec61850-report-callback-crash-fix' },
-                                { text: '报告 GI 与 DataSet 读取修复', link: '/changelog/iec61850/16-iec61850-report-gi-dataset-read-fix' }
+                                { text: '报告 GI 与 DataSet 读取修复', link: '/changelog/iec61850/16-iec61850-report-gi-dataset-read-fix' },
+                                { text: '服务端总召唤与主动报告修复', link: '/changelog/iec61850/19-iec61850-server-gi-spontaneous-report-fix' },
+                                { text: '客户端模型发现进度修复', link: '/changelog/iec61850/20-iec61850-client-discovery-progress-fix' }
                             ]
                         }
                     ]
