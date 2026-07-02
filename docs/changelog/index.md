@@ -31,6 +31,7 @@
 | [文件下载服务模块](./iec61850/05-iec61850-file-download-module) | 文件下载服务 — 日期：2026-05-31 |
 | [前端 UI 设计](./iec61850/10-iec61850-frontend-ui-design) | 模型发现 Bug 修复 + UI 设计 — 日期：2026-06-02 |
 | [Reports 树形数据展示重构](./iec61850/17-iec61850-report-tree-ui-refactoring) | Reports 报告树形数据展示 + 前后端重构 + UI 优化 — 版本：1.0，日期：2026-06-24 |
+| [MMS 类型识别与标签样式优化](./iec61850/21-iec61850-mms-type-tag-ui) | 在线模型 MMS 类型补全 + 测点表格标签化与分类配色 — 版本：1.0，日期：2026-07-02 |
 
 ### 模型与发现
 

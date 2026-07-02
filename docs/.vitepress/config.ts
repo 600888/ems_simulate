@@ -127,7 +127,8 @@ export default defineConfig({
                                 { text: 'Reports 报告功能', link: '/changelog/iec61850/03-iec61850-reports-support' },
                                 { text: '文件下载服务模块', link: '/changelog/iec61850/05-iec61850-file-download-module' },
                                 { text: '前端 UI 设计', link: '/changelog/iec61850/10-iec61850-frontend-ui-design' },
-                                { text: 'Reports 树形数据展示重构', link: '/changelog/iec61850/17-iec61850-report-tree-ui-refactoring' }
+                                { text: 'Reports 树形数据展示重构', link: '/changelog/iec61850/17-iec61850-report-tree-ui-refactoring' },
+                                { text: 'MMS 类型识别与标签优化', link: '/changelog/iec61850/21-iec61850-mms-type-tag-ui' }
                             ]
                         },
                         {
