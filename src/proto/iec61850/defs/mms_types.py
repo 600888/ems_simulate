@@ -150,9 +150,15 @@ def infer_mms_type_from_path(path: str, iec_type: str | IecType = IecType.UNKNOW
         return MmsType.FLOAT
     if leaf == "i":
         return MmsType.INTEGER
+    if leaf in ("ctlVal", "Test"):
+        return MmsType.BOOLEAN
+    if leaf in ("ctlNum", "onDur", "offDur", "numPls"):
+        return MmsType.UNSIGNED
+    if leaf in ("origin", "pulseConfig"):
+        return MmsType.STRUCTURE
     if leaf in ("q", "subQ", "Check"):
         return MmsType.BIT_STRING
-    if leaf == "t":
+    if leaf in ("t", "T"):
         return MmsType.UTC_TIME
     if leaf in ("dU", "du", "d", "vendor", "swRev", "configRev", "lnNs", "dataNs"):
         return MmsType.VISIBLE_STRING

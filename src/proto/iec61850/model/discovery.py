@@ -177,6 +177,7 @@ class ModelDiscoveryService:
         self._type_probe_cache: dict[tuple[str, str], MmsType] = {}
         self._type_probe_stats: dict[str, int] = {
             "total": 0,
+            "spec": 0,
             "runtime": 0,
             "static": 0,
             "unknown": 0,
@@ -226,7 +227,7 @@ class ModelDiscoveryService:
         log.info("开始 IEC 61850 统一模型发现...")
         start_time = time.time()
         self._type_probe_cache.clear()
-        self._type_probe_stats = {"total": 0, "runtime": 0, "static": 0, "unknown": 0, "failed": 0}
+        self._type_probe_stats = {"total": 0, "spec": 0, "runtime": 0, "static": 0, "unknown": 0, "failed": 0}
 
         # 提取底层 IedConnection
         conn = self._resolve_connection(connection)
@@ -260,13 +261,24 @@ class ModelDiscoveryService:
         return self._model
 
     def _probe_mms_type(self, conn, ref: str, fc: str, fallback: MmsType) -> MmsType:
-        """Read one leaf once and cache its native MMS type."""
+        """Resolve and cache a native MMS type without unsafe control reads.
+
+        Variable specifications are queried first because they expose the wire
+        type without reading the value and therefore also work for FC=CO. Older
+        bindings that do not expose this API retain the runtime/static fallback.
+        """
         key = (ref, fc)
         cached = self._type_probe_cache.get(key)
         if cached is not None:
             return cached
 
         self._type_probe_stats["total"] += 1
+        specified_type = self._probe_variable_spec_type(conn, ref, fc)
+        if specified_type is not None:
+            self._type_probe_stats["spec"] += 1
+            self._type_probe_cache[key] = specified_type
+            return specified_type
+
         if fc == "CO":
             resolved = fallback
             self._type_probe_stats["static" if resolved is not MmsType.UNKNOWN else "unknown"] += 1
@@ -303,6 +315,78 @@ class ModelDiscoveryService:
         self._type_probe_stats["static" if resolved is not MmsType.UNKNOWN else "unknown"] += 1
         self._type_probe_cache[key] = resolved
         return resolved
+
+    def _probe_mms_type_across_fcs(self, conn, ref: str, preferred_fc: str) -> tuple[str, MmsType | None]:
+        """Resolve an unknown DA's FC and MMS type from variable specifications."""
+        candidates = (
+            preferred_fc,
+            "MX",
+            "ST",
+            "CO",
+            "CF",
+            "DC",
+            "SP",
+            "SG",
+            "SE",
+            "SV",
+            "EX",
+            "BL",
+            "OR",
+            "SR",
+            "US",
+            "MS",
+        )
+        seen: set[str] = set()
+        for fc in candidates:
+            if not fc or fc in seen:
+                continue
+            seen.add(fc)
+            key = (ref, fc)
+            cached = self._type_probe_cache.get(key)
+            if cached is not None:
+                return fc, cached
+            specified_type = self._probe_variable_spec_type(conn, ref, fc)
+            if specified_type is None:
+                continue
+            self._type_probe_stats["total"] += 1
+            self._type_probe_stats["spec"] += 1
+            self._type_probe_cache[key] = specified_type
+            return fc, specified_type
+        return preferred_fc, None
+
+    @staticmethod
+    def _probe_variable_spec_type(conn, ref: str, fc: str) -> MmsType | None:
+        """Query the server's MMS variable specification when supported."""
+        get_spec = getattr(iec61850, "IedConnection_getVariableSpecification", None)
+        get_type = getattr(iec61850, "MmsVariableSpecification_getType", None)
+        destroy_spec = getattr(iec61850, "MmsVariableSpecification_destroy", None)
+        fc_value = getattr(iec61850, f"IEC61850_FC_{fc}", None)
+        if not callable(get_spec) or not callable(get_type) or fc_value is None:
+            return None
+
+        spec = None
+        try:
+            result = get_spec(conn, ref, fc_value)
+            if isinstance(result, (list, tuple)):
+                spec = result[0] if result else None
+                error = result[1] if len(result) > 1 else 0
+            else:
+                spec = result
+                error = 0
+            if error != iec61850.IED_ERROR_OK or spec is None:
+                return None
+
+            resolved = mms_type_from_native(int(get_type(spec)), iec61850)
+            if resolved in (MmsType.UNKNOWN, MmsType.DATA_ACCESS_ERROR):
+                return None
+            return resolved
+        except Exception as e:
+            log.debug(f"MMS 变量类型规格读取失败: ref={ref}, fc={fc}, error={e}")
+            return None
+        finally:
+            if spec is not None and callable(destroy_spec):
+                with contextlib.suppress(Exception):
+                    destroy_spec(spec)
 
     @staticmethod
     def _resolve_connection(connection: Any) -> Any:
@@ -477,13 +561,27 @@ class ModelDiscoveryService:
 
             # 解析 DA 信息 (fc, iec_type, path)
             da_info = self._resolve_da_info(da_name, do_name, ln_name, do_frame_type)
+            da_fc = da_info.fc
+            specified_type = None
+            if not da_fc:
+                da_fc, specified_type = self._probe_mms_type_across_fcs(
+                    conn,
+                    da_full_ref,
+                    self._infer_fc_from_da(da_name, do_frame_type),
+                )
 
             # 递归发现 BDA (结构体 DA)
             sub_das: tuple[DARef, ...] = ()
             if da_name in STRUCT_DA_EXPAND_ONLINE and max_depth > 0:
-                fc = da_info.fc or self._infer_fc_from_da(da_name, do_frame_type)
                 sub_das = tuple(
-                    self._discover_sub_das(conn, da_full_ref, fc, f"{da_info.path}.", depth=1, max_depth=max_depth)
+                    self._discover_sub_das(
+                        conn,
+                        da_full_ref,
+                        da_fc,
+                        f"{da_info.path}.",
+                        depth=1,
+                        max_depth=max_depth,
+                    )
                 )
             elif "." in da_info.path and da_name not in SKIP_DA_NAMES and max_depth > 0:
                 # DA_PATTERNS 硬编码了子路径（如 mag→mag.f），但实际 IED
@@ -492,6 +590,19 @@ class ModelDiscoveryService:
                 actual_sub_das = self._discover_struct_sub_das(conn, da_full_ref, da_name, da_info, do_frame_type)
                 if actual_sub_das is not None:
                     sub_das = tuple(actual_sub_das)
+            elif specified_type is MmsType.STRUCTURE and max_depth > 0:
+                # 厂家自定义结构无需预置 DA 名称：变量类型规格确认其为
+                # structure 后，再从服务端目录递归发现子项。
+                sub_das = tuple(
+                    self._discover_sub_das(
+                        conn,
+                        da_full_ref,
+                        da_fc,
+                        f"{da_info.path}.",
+                        depth=1,
+                        max_depth=max_depth,
+                    )
+                )
 
             # 当动态发现了实际子 DA（如 mag 下有 i 而非 f），
             # 使用真实子 DA 的路径和类型覆盖硬编码的默认值
@@ -509,18 +620,15 @@ class ModelDiscoveryService:
                 effective_da_path = da_info.path
                 effective_iec_type = da_info.iec_type
                 fallback_mms_type = infer_mms_type_from_path(effective_da_path, effective_iec_type)
-                mms_type = self._probe_mms_type(
-                    conn,
-                    f"{do_ref}.{effective_da_path}",
-                    da_info.fc or self._infer_fc_from_da(da_name, do_frame_type),
-                    fallback_mms_type,
+                mms_type = specified_type or self._probe_mms_type(
+                    conn, f"{do_ref}.{effective_da_path}", da_fc, fallback_mms_type
                 )
 
             da_refs.append(
                 DARef(
                     name=da_name,
                     path=effective_da_path,
-                    fc=da_info.fc,
+                    fc=da_fc,
                     iec_type=effective_iec_type,
                     mms_type=mms_type,
                     sub_das=sub_das,
@@ -595,9 +703,8 @@ class ModelDiscoveryService:
                 # 回退: 使用已知 BDA
                 parent_name = parent_ref.split(".")[-1]
                 if parent_name in KNOWN_BDA_FALLBACK_ONLINE:
-                    bda_type_map = {"orCat": "integer", "orIdent": "unknown"}
                     for bda_name in KNOWN_BDA_FALLBACK_ONLINE[parent_name]:
-                        bda_iec_type = bda_type_map.get(bda_name, "unknown")
+                        bda_iec_type = BDA_TYPE_MAP.get(bda_name, "unknown")
                         bda_path = f"{path_prefix}{bda_name}"
                         sub_das.append(
                             DARef(

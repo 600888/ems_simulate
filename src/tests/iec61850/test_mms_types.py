@@ -7,6 +7,7 @@ from src.proto.iec61850.defs.mms_types import (
     BTYPE_TO_MMS_TYPE,
     MmsType,
     iec_type_from_mms_type,
+    infer_mms_type_from_path,
     mms_type_from_native,
 )
 from src.proto.iec61850.model import discovery as discovery_module
@@ -33,6 +34,22 @@ def test_mms_type_keeps_legacy_iec_type_compatibility():
     assert iec_type_from_mms_type(MmsType.UNSIGNED) is IecType.INTEGER
     assert iec_type_from_mms_type(MmsType.BIT_STRING) is IecType.INTEGER
     assert iec_type_from_mms_type(MmsType.UTC_TIME) is IecType.TIMESTAMP
+
+
+def test_control_and_pulse_config_paths_have_static_mms_types():
+    expected_types = {
+        "Oper.ctlVal": MmsType.BOOLEAN,
+        "Oper.origin": MmsType.STRUCTURE,
+        "Oper.ctlNum": MmsType.UNSIGNED,
+        "Oper.T": MmsType.UTC_TIME,
+        "Oper.Test": MmsType.BOOLEAN,
+        "Oper.Check": MmsType.BIT_STRING,
+        "pulseConfig": MmsType.STRUCTURE,
+        "pulseConfig.onDur": MmsType.UNSIGNED,
+    }
+
+    for path, expected in expected_types.items():
+        assert infer_mms_type_from_path(path) is expected
 
 
 class _FakeValue:
@@ -95,6 +112,117 @@ def test_discovery_probes_a_readable_leaf_once_and_skips_control(monkeypatch):
     assert first is second is MmsType.FLOAT
     assert control is MmsType.BOOLEAN
     assert calls == ["readObject", "delete"]
+
+
+def test_discovery_uses_generic_variable_spec_for_vendor_control_type(monkeypatch):
+    calls = []
+    spec = object()
+    fake = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IEC61850_FC_CO=1,
+        MMS_UNSIGNED=5,
+        IedConnection_getVariableSpecification=lambda *_args: (calls.append("getSpec") or spec, 0),
+        MmsVariableSpecification_getType=lambda item: 5 if item is spec else -1,
+        MmsVariableSpecification_destroy=lambda item: calls.append(("destroy", item)),
+        IedConnection_readObject=lambda *_args: calls.append("readObject"),
+    )
+    monkeypatch.setattr(discovery_module, "iec61850", fake, raising=False)
+    service = discovery_module.ModelDiscoveryService()
+
+    resolved = service._probe_mms_type(
+        object(),
+        "LD0/VENDOR1.CustomCommand.vendorSpecificCounter",
+        "CO",
+        MmsType.UNKNOWN,
+    )
+
+    assert resolved is MmsType.UNSIGNED
+    assert calls == ["getSpec", ("destroy", spec)]
+    assert service._type_probe_stats["spec"] == 1
+
+
+def test_online_discovery_resolves_vendor_structure_without_name_mapping(monkeypatch):
+    directories = {
+        "LD0/VENDOR1.Custom": ["vendorBlob"],
+        "LD0/VENDOR1.Custom.vendorBlob": ["counter", "enabled"],
+    }
+    type_by_ref_fc = {
+        ("LD0/VENDOR1.Custom.vendorBlob", "CF"): 1,
+        ("LD0/VENDOR1.Custom.vendorBlob.counter", "CF"): 5,
+        ("LD0/VENDOR1.Custom.vendorBlob.enabled", "CF"): 2,
+    }
+
+    def get_spec(_conn, ref, fc):
+        mms_type = type_by_ref_fc.get((ref, fc))
+        return ((ref, mms_type), 0) if mms_type is not None else (None, 1)
+
+    fake = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IEC61850_FC_CO="CO",
+        IEC61850_FC_CF="CF",
+        IEC61850_FC_MX="MX",
+        IEC61850_FC_ST="ST",
+        MMS_STRUCTURE=1,
+        MMS_BOOLEAN=2,
+        MMS_UNSIGNED=5,
+        IedConnection_getDataDirectory=lambda _conn, ref: (directories.get(ref, []), 0),
+        IedConnection_getVariableSpecification=get_spec,
+        MmsVariableSpecification_getType=lambda spec: spec[1],
+        MmsVariableSpecification_destroy=lambda _spec: None,
+    )
+    monkeypatch.setattr(discovery_module, "iec61850", fake, raising=False)
+    monkeypatch.setattr(discovery_module, "get_list_from_linked_list", list)
+
+    service = discovery_module.ModelDiscoveryService()
+    das = service._discover_data_attributes(object(), "LD0/VENDOR1.Custom", "Custom", "VENDOR1", 2)
+    vendor_blob = next(da for da in das if da.name == "vendorBlob")
+
+    assert vendor_blob.fc == "CF"
+    assert vendor_blob.mms_type is MmsType.STRUCTURE
+    assert {bda.name: bda.mms_type for bda in vendor_blob.sub_das} == {
+        "counter": MmsType.UNSIGNED,
+        "enabled": MmsType.BOOLEAN,
+    }
+
+
+def test_online_discovery_resolves_control_and_pulse_config_bda_types(monkeypatch):
+    directories = {
+        "LD0/CSWI1.Pos": ["Oper", "pulseConfig"],
+        "LD0/CSWI1.Pos.Oper": ["ctlVal", "origin", "ctlNum", "T", "Test", "Check"],
+        "LD0/CSWI1.Pos.pulseConfig": ["cmdQual", "onDur", "offDur", "numPls"],
+    }
+    fake = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IedConnection_getDataDirectory=lambda _conn, ref: (directories.get(ref, []), 0),
+    )
+    monkeypatch.setattr(discovery_module, "iec61850", fake, raising=False)
+    monkeypatch.setattr(discovery_module, "get_list_from_linked_list", list)
+
+    service = discovery_module.ModelDiscoveryService()
+    das = service._discover_data_attributes(object(), "LD0/CSWI1.Pos", "Pos", "CSWI1", 2)
+    by_name = {da.name: da for da in das}
+
+    oper = by_name["Oper"]
+    assert oper.fc == "CO"
+    assert oper.mms_type is MmsType.STRUCTURE
+    assert {bda.name: bda.mms_type for bda in oper.sub_das} == {
+        "ctlVal": MmsType.BOOLEAN,
+        "origin": MmsType.STRUCTURE,
+        "ctlNum": MmsType.UNSIGNED,
+        "T": MmsType.UTC_TIME,
+        "Test": MmsType.BOOLEAN,
+        "Check": MmsType.BIT_STRING,
+    }
+
+    pulse_config = by_name["pulseConfig"]
+    assert pulse_config.fc == "CF"
+    assert pulse_config.mms_type is MmsType.STRUCTURE
+    assert {bda.name: bda.mms_type for bda in pulse_config.sub_das} == {
+        "cmdQual": MmsType.INTEGER,
+        "onDur": MmsType.UNSIGNED,
+        "offDur": MmsType.UNSIGNED,
+        "numPls": MmsType.UNSIGNED,
+    }
 
 
 def test_tree_api_exposes_do_da_and_bda_mms_types():

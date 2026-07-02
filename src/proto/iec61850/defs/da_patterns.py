@@ -77,6 +77,7 @@ EXTRA_DA_INFO = {
     "SBOw": ("SBOw.ctlVal", "CO", IEC_TYPE_BOOLEAN),  # SBO 写入
     "Cancel": ("Cancel.ctlVal", "CO", IEC_TYPE_BOOLEAN),  # 取消
     "Oper": ("Oper.ctlVal", "CO", IEC_TYPE_BOOLEAN),  # 操作 (已在 DA_PATTERNS 中, 但这里补充 FC)
+    "pulseConfig": ("pulseConfig", "CF", IEC_TYPE_UNKNOWN),  # 脉冲配置结构
     "frVal": ("frVal", "ST", IEC_TYPE_INTEGER),  # 冻结值
     "frTm": ("frTm", "ST", IEC_TYPE_TIMESTAMP),  # 冻结时间
     "actVal": ("actVal", "ST", IEC_TYPE_INTEGER),  # BCR 实际值
@@ -134,8 +135,20 @@ BDA_TYPE_MAP = {
     "ClockNotSynchronized": IEC_TYPE_BOOLEAN,
     "TimeAccuracy": IEC_TYPE_INTEGER,
     # Origin 的 BDA
+    "origin": IEC_TYPE_UNKNOWN,  # Struct
     "orCat": IEC_TYPE_INTEGER,
     "orIdent": IEC_TYPE_UNKNOWN,  # Octet string
+    # 控制命令结构 (Oper/SBOw/Cancel) 的 BDA
+    "ctlVal": IEC_TYPE_BOOLEAN,
+    "ctlNum": IEC_TYPE_INTEGER,
+    "T": IEC_TYPE_TIMESTAMP,
+    "Test": IEC_TYPE_BOOLEAN,
+    "Check": IEC_TYPE_INTEGER,  # BitString
+    # PulseConfig 的 BDA
+    "cmdQual": IEC_TYPE_INTEGER,
+    "onDur": IEC_TYPE_INTEGER,
+    "offDur": IEC_TYPE_INTEGER,
+    "numPls": IEC_TYPE_INTEGER,
     # AnalogValue (mag/instMag) 的子 DA
     "f": IEC_TYPE_FLOAT,  # FLOAT32
     "i": IEC_TYPE_INTEGER,  # INTEGER32
@@ -143,11 +156,12 @@ BDA_TYPE_MAP = {
 
 # 需要递归展开子 BDA 的 struct DA 名称
 # q 和 t 展开为子测点 (如 q.validity, t.seconds 等), origin 展开为测点
-STRUCT_DA_EXPAND_ONLINE = {"origin", "q", "t"}
+STRUCT_DA_EXPAND_ONLINE = {"origin", "pulseConfig", "q", "t"}
 
 # 已知 struct DA 的硬编码 BDA 子节点 (当在线发现子 DA 失败时使用)
 KNOWN_BDA_FALLBACK_ONLINE = {
     "origin": ["orCat", "orIdent"],
+    "pulseConfig": ["cmdQual", "onDur", "offDur", "numPls"],
     # Quality (q) 的 BDA 子节点
     "q": ["validity", "detailQuality", "source", "operatorBlocked", "test"],
     # Timestamp (t) 的 BDA 子节点
