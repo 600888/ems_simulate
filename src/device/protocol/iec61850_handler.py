@@ -430,7 +430,10 @@ class IEC61850ClientHandler(ClientHandler):
             def on_discovery_progress(phase: str, current: int, total: int, message: str) -> None:
                 ratio = min(max(current / total, 0.0), 1.0) if total > 0 else 0.0
                 if phase == "discovering":
-                    percent = 20 + round(ratio * 50)
+                    percent = max(self._connect_progress, 20 + round(ratio * 50))
+                elif phase == "dataset_prefetch":
+                    # DataSet 预取发生在 LD 结构发现过程中，进度只前进不回退。
+                    percent = max(self._connect_progress, 55 + round(ratio * 10))
                 elif phase == "building":
                     percent = 75
                 else:

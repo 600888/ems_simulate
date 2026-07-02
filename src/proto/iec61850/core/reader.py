@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import Any, Protocol
 
 from ..defs.address import infer_fc_from_address, infer_iec_type_from_address
 from ..defs.constants import HAS_IEC61850
@@ -16,6 +17,17 @@ from ..log import log
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
+
+
+class DatasetBatchReader(Protocol):
+    """DataSets 插件实现的结构化批读接口。"""
+
+    def read_points_batch(
+        self,
+        addresses: Sequence[str],
+        fc_map: Mapping[str, str] | None,
+        fallback,
+    ) -> dict[str, Any]: ...
 
 
 def _delete_mms_value(value) -> None:
@@ -202,9 +214,14 @@ READ_STRATEGIES = {
 class Iec61850Reader:
     """Resolve FC/MMS metadata and execute a single type-specific read strategy."""
 
-    def __init__(self, connection, registry=None):
+    def __init__(self, connection, registry=None, dataset_reader: DatasetBatchReader | None = None):
         self._connection = connection
         self._registry = registry
+        self._dataset_reader = dataset_reader
+
+    def set_dataset_reader(self, dataset_reader: DatasetBatchReader | None) -> None:
+        """插件初始化完成后注入 DataSet 读取引擎。"""
+        self._dataset_reader = dataset_reader
 
     def read(self, address: str, fc: str = "") -> Any:
         if not self._connection.ensure_connected():
@@ -239,45 +256,52 @@ class Iec61850Reader:
                 return None
 
     def read_batch(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[str, Any]:
-        if not addresses or not self._connection.ensure_connected():
+        """DataSet 优先批读；无目录或单个成员失败时仅回退对应测点。"""
+        if not addresses:
             return {}
-        groups = self._build_read_groups(addresses, fc_map)
-        results = self._read_groups_once(groups)
+
+        if self._dataset_reader is not None:
+            return self._dataset_reader.read_points_batch(addresses, fc_map, self._read_fallback_once)
+
+        if not self._connection.ensure_connected():
+            return {}
+        results = self._read_fallback_once(addresses, fc_map)
         if len(results) == len(addresses):
             return results
         if self._connection.reconnect_if_unhealthy(f"batch read {len(addresses)} points, got {len(results)} values"):
-            retry_results = self._read_groups_once(groups)
-            if retry_results:
-                return retry_results
+            missing = [address for address in addresses if address not in results]
+            retry_results = self._read_fallback_once(missing, fc_map)
+            results.update(retry_results)
         return results
 
-    def _build_read_groups(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[MmsType, list]:
-        groups: dict[MmsType, list] = {}
-        for address in addresses:
-            addr_str = str(address)
-            ref = self._build_ref(addr_str)
-            fc = fc_map.get(addr_str, "") if fc_map else ""
-            fc_val = self._resolve_fc(addr_str, fc)
-            mms_type = self._resolve_mms_type(addr_str)
-            groups.setdefault(mms_type, []).append((addr_str, ref, fc_val, mms_type))
-        return groups
-
-    def _read_groups_once(self, groups: dict[MmsType, list]) -> dict[str, Any]:
+    def _read_fallback_once(
+        self,
+        addresses: Sequence[str],
+        fc_map: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """在同一个原生连接锁内，只读取未覆盖或批读失败的测点。"""
         results: dict[str, Any] = {}
+        unique_addresses = tuple(dict.fromkeys(str(address) for address in addresses))
         with self._connection.native_operation() as conn:
             if conn is None:
                 return results
-            for mms_type, items in groups.items():
+            for addr_str in unique_addresses:
+                ref = self._build_ref(addr_str)
+                fc = fc_map.get(addr_str, "") if fc_map else ""
+                fc_val = self._resolve_fc(addr_str, fc)
+                mms_type = self._resolve_mms_type(addr_str)
                 strategy = READ_STRATEGIES.get(mms_type, READ_STRATEGIES[MmsType.UNKNOWN])
-                if mms_type is MmsType.UNKNOWN and isinstance(strategy, AutoDetectReader):
-                    for address, ref, fc_val, _ in items:
+                try:
+                    if mms_type is MmsType.UNKNOWN and isinstance(strategy, AutoDetectReader):
                         value, actual_type = strategy.read_typed(conn, ref, fc_val)
-                        if value is not None:
-                            results[address] = value
                         if actual_type not in (MmsType.UNKNOWN, MmsType.DATA_ACCESS_ERROR):
-                            self._cache_runtime_type(address, actual_type)
-                else:
-                    strategy.read_batch(conn, items, results)
+                            self._cache_runtime_type(addr_str, actual_type)
+                    else:
+                        value = strategy.read(conn, ref, fc_val)
+                    if value is not None:
+                        results[addr_str] = value
+                except Exception as e:
+                    log.debug(f"IEC61850 fallback read failed: address={addr_str}, ref={ref}, error={e}")
         return results
 
     def _build_ref(self, address: str) -> str:

@@ -230,6 +230,10 @@ class Iec61850Connection:
         if not self.model_name:
             return self._resolve_dataset_ref_with_ld_prefix(dataset_ref)
         ld_part, rest = dataset_ref.split("/", 1)
+        # 在线发现返回的 LD 名称已经是远端 MMS domain，不能因为配置中的
+        # model_name 不准确而再次添加前缀。
+        if ld_part in self._discovered_lds:
+            return dataset_ref
         if ld_part.startswith(self.model_name):
             return dataset_ref
         return f"{self.model_name}{ld_part}/{rest}"

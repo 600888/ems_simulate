@@ -82,6 +82,7 @@ class IEC61850Client:
         self._plugins = PluginRegistry(auto_register=False)
         _register_builtin_plugins(self._plugins)
         self._plugins.initialize_all(self._conn, registry=self._registry, client=self)
+        self._reader.set_dataset_reader(self.datasets)
 
     # ===== 向后兼容属性: 委托给核心组件 =====
 
@@ -141,6 +142,8 @@ class IEC61850Client:
     def disconnect(self):
         """断开连接"""
         self._discovery.invalidate()
+        if self.datasets:
+            self.datasets.invalidate_catalog()
         self._conn.disconnect()
 
     @property
@@ -231,7 +234,10 @@ class IEC61850Client:
     @property
     def datasets(self) -> DataSetsPlugin | None:
         """获取 DataSets 插件"""
-        return cast(DataSetsPlugin | None, self._plugins.get("datasets"))
+        plugins = getattr(self, "_plugins", None)
+        if plugins is None:
+            return None
+        return cast(DataSetsPlugin | None, plugins.get("datasets"))
 
     @property
     def goose(self):
@@ -280,6 +286,8 @@ class IEC61850Client:
 
         # 从 IedModel 派生 PointRegistry
         discovered = build_registry_from_model(model, self._registry)
+        if self.datasets:
+            self.datasets.invalidate_catalog()
 
         # 补充 dU 描述名称 (与 DataModelsPlugin._read_du_description 一致)
         self._fill_du_names(discovered)
@@ -319,7 +327,20 @@ class IEC61850Client:
                 continue
             seen_dos.add(do_ref)
 
-            du_desc = self._read_du_description(do_ref)
+            # 如果 dU/d 已作为 FCDA 被 DataSet 预取，直接复用快照，
+            # 未覆盖时才保留原有 DC/CF 单点兼容读取。
+            du_desc = ""
+            discovery = getattr(self, "_discovery", None)
+            get_prefetched = getattr(discovery, "get_prefetched_value", None)
+            if callable(get_prefetched):
+                for da_name in ("dU", "d"):
+                    prefetched = get_prefetched(f"{do_ref}.{da_name}", "DC", "CF")
+                    if prefetched is not None:
+                        du_desc = str(prefetched).strip()
+                        if du_desc:
+                            break
+            if not du_desc:
+                du_desc = self._read_du_description(do_ref)
             if not du_desc:
                 continue
 
@@ -697,6 +718,8 @@ class IEC61850Client:
                 )
 
         self._registry.discovered_datasets = datasets
+        if self.datasets:
+            self.datasets.invalidate_catalog()
 
         # 6. 缓存 RCB 信息（供 UI 展示 Report 列表，不依赖 MMS 连接）
         rcbs: list[dict[str, Any]] = []
@@ -781,6 +804,8 @@ class IEC61850Client:
             if cached is not None:
                 log.info(f"远程模型缓存命中: {cache_key}")
                 discovered = build_registry_from_model(cached, self._registry)
+                if self.datasets:
+                    self.datasets.invalidate_catalog()
                 self._fill_du_names(discovered)
                 return True
 
@@ -796,6 +821,8 @@ class IEC61850Client:
             if progress:
                 progress("building", 0, 1, "正在构建测点索引")
             discovered = build_registry_from_model(model, self._registry)
+            if self.datasets:
+                self.datasets.invalidate_catalog()
             if progress:
                 progress("descriptions", 0, 1, "正在读取模型描述")
             # dU 是 DO 的在线描述值，不包含在目录发现结果中，需要在

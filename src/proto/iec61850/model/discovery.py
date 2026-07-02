@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import contextlib
 from contextlib import contextmanager
-from ctypes import c_bool
-import re
 import time
 from typing import Any, Protocol
 
@@ -39,6 +37,9 @@ from ..defs.ln_classes import (
 )
 from ..defs.mms_types import MmsType, infer_mms_type_from_path, mms_type_from_native
 from ..log import log
+from ..plugins.datasets.directory import browse_dataset_members
+from ..plugins.datasets.models import DatasetDescriptor, DatasetMember
+from ..plugins.datasets.transport import DatasetTransport
 from .ied_model import (
     DARef,
     DataSetRef,
@@ -175,8 +176,10 @@ class ModelDiscoveryService:
         # 故使用完整引用路径（da_full_ref）而非 DA 名称作为缓存键。
         self._struct_sub_da_cache: dict[str, list[DARef]] = {}
         self._type_probe_cache: dict[tuple[str, str], MmsType] = {}
+        self._dataset_value_cache: dict[tuple[str, str], Any] = {}
         self._type_probe_stats: dict[str, int] = {
             "total": 0,
+            "dataset": 0,
             "spec": 0,
             "runtime": 0,
             "static": 0,
@@ -197,6 +200,15 @@ class ModelDiscoveryService:
         """使缓存失效 (断开连接时调用)"""
         self._model = None
         self._model_timestamp = 0.0
+        self._dataset_value_cache.clear()
+
+    def get_prefetched_value(self, ref: str, *functional_constraints: str) -> Any:
+        """读取发现阶段 DataSet 快照；未命中时返回 None，不触发网络请求。"""
+        for fc in functional_constraints:
+            key = (str(ref), str(fc or "").upper())
+            if key in self._dataset_value_cache:
+                return self._dataset_value_cache[key]
+        return None
 
     def discover(
         self,
@@ -227,7 +239,16 @@ class ModelDiscoveryService:
         log.info("开始 IEC 61850 统一模型发现...")
         start_time = time.time()
         self._type_probe_cache.clear()
-        self._type_probe_stats = {"total": 0, "spec": 0, "runtime": 0, "static": 0, "unknown": 0, "failed": 0}
+        self._dataset_value_cache.clear()
+        self._type_probe_stats = {
+            "total": 0,
+            "dataset": 0,
+            "spec": 0,
+            "runtime": 0,
+            "static": 0,
+            "unknown": 0,
+            "failed": 0,
+        }
 
         # 提取底层 IedConnection
         conn = self._resolve_connection(connection)
@@ -242,6 +263,11 @@ class ModelDiscoveryService:
             self._model = IedModel()
             return self._model
 
+        # 保存服务端实际 MMS domain，后续 DataSet 引用构建以此为准，
+        # 避免错误的配置 model_name 被重复拼到完整 LD 名称前。
+        if hasattr(connection, "_discovered_lds"):
+            connection._discovered_lds = list(ld_names)
+
         host = getattr(connection, "ip", "")
         port = getattr(connection, "port", 102)
         builder = IedModelBuilder(host=host, port=port)
@@ -250,7 +276,15 @@ class ModelDiscoveryService:
         for i, ld_name in enumerate(ld_names):
             progress and progress("discovering", i, total_lds, f"发现 LD: {ld_name}")
             with self._error_guard(f"LD {ld_name}", on_error):
-                self._discover_ld(conn, builder, ld_name, max_depth=max_depth, on_error=on_error)
+                self._discover_ld(
+                    connection,
+                    conn,
+                    builder,
+                    ld_name,
+                    max_depth=max_depth,
+                    on_error=on_error,
+                    progress=progress,
+                )
             progress and progress("discovering", i + 1, total_lds, f"已发现 LD: {ld_name}")
 
         self._model = builder.build()
@@ -407,29 +441,51 @@ class ModelDiscoveryService:
 
     # ===== LD 发现 =====
 
-    def _discover_ld(self, conn, builder: IedModelBuilder, ld_name: str, *, max_depth: int, on_error: str) -> None:
-        """发现单个 LD 的完整模型"""
+    def _discover_ld(
+        self,
+        connection,
+        conn,
+        builder: IedModelBuilder,
+        ld_name: str,
+        *,
+        max_depth: int,
+        on_error: str,
+        progress: DiscoveryProgress | None = None,
+    ) -> None:
+        """分两阶段发现单个 LD：先建立 DataSet 类型快照，再遍历完整 DO/DA。"""
         ld_builder = builder.add_ld(ld_name, ld_name)
 
         ln_names: list[str] = []
         with self._error_guard(f"LN 列表 {ld_name}", on_error):
             ln_names = self._browse_logical_nodes(conn, ld_name)
 
+        logical_nodes: list[tuple[str, str, _LNBuilder]] = []
         for ln_name in ln_names:
             ln_ref = f"{ld_name}/{ln_name}"
             ln_class = extract_ln_class(ln_name) or ""
             ln_builder = ld_builder.add_ln(ln_name, ln_class, ln_ref)
+            logical_nodes.append((ln_name, ln_ref, ln_builder))
 
+        # 第一阶段先取 DataSet 目录和值快照。这样后续遍历 DA 时，已被
+        # FCDA 精确覆盖的叶子可直接命中类型缓存，不再逐点 readObject。
+        discovered_datasets: list[DataSetRef] = []
+        for ln_name, ln_ref, ln_builder in logical_nodes:
+            if ln_name != "LLN0" and self._skip_non_lln0:
+                continue
+            with self._error_guard(f"DataSet {ln_ref}", on_error):
+                datasets = self._discover_datasets(conn, ld_name, ln_ref)
+                discovered_datasets.extend(datasets)
+                for dataset in datasets:
+                    ln_builder.add_dataset(dataset)
+        self._prefetch_dataset_types(connection, discovered_datasets, progress)
+
+        # 第二阶段保留原有完整结构发现。DataSet 只能优化值/类型读取，
+        # 不能取代 LD/LN/DO/DA 的目录浏览。
+        for ln_name, ln_ref, ln_builder in logical_nodes:
             with self._error_guard(f"LN {ln_ref}", on_error):
                 # DO + DA
                 for do in self._discover_data_objects(conn, ld_name, ln_ref, ln_name, max_depth=max_depth):
                     ln_builder.add_do(do)
-
-                # DataSet — IEC 61850 实践中 DataSet 定义在 LLN0,
-                # 跳过非 LLN0 的 LN 可节省大量 MMS 调用
-                if ln_name == "LLN0" or not self._skip_non_lln0:
-                    for ds in self._discover_datasets(conn, ld_name, ln_ref):
-                        ln_builder.add_dataset(ds)
 
                 # RCB
                 for rcb in self._discover_rcbs(conn, ld_name, ln_ref):
@@ -439,6 +495,78 @@ class ModelDiscoveryService:
                 if ln_name == "LLN0" or not self._skip_non_lln0:
                     for gocb in self._discover_gocbs(conn, ld_name, ln_ref):
                         ln_builder.add_gocb(gocb)
+
+    def _prefetch_dataset_types(
+        self,
+        connection: Any,
+        datasets: list[DataSetRef],
+        progress: DiscoveryProgress | None = None,
+    ) -> None:
+        """批读 DataSet，将精确叶子 FCDA 的运行时 MMS 类型写入探测缓存。"""
+        if not datasets:
+            return
+
+        transport = DatasetTransport(connection, iec61850)
+        dataset_reads = 0
+        cached_types = 0
+        failed_members = 0
+        total_datasets = len(datasets)
+        for dataset_index, dataset in enumerate(datasets):
+            if progress:
+                progress(
+                    "dataset_prefetch",
+                    dataset_index,
+                    total_datasets,
+                    f"正在批读 DataSet 类型: {dataset.ref}",
+                )
+            members = tuple(
+                DatasetMember(
+                    index=index,
+                    ref=str(member.get("ref", "")),
+                    fc=str(member.get("fc", "") or ""),
+                    iec_type=str(member.get("iec_type", "unknown") or "unknown"),
+                    mms_type=str(member.get("mms_type", "MMS_UNKNOWN") or "MMS_UNKNOWN"),
+                    # 发现 IedModel 之前只能证明精确叶子成员；结构成员会因
+                    # 投影数量不匹配而安全跳过，待模型完成后由正式目录处理。
+                    leaf_refs=(str(member.get("ref", "")),),
+                )
+                for index, member in enumerate(dataset.members)
+                if member.get("ref")
+            )
+            if not members:
+                continue
+            result = transport.read(DatasetDescriptor(ref=dataset.ref, name=dataset.name, members=members))
+            dataset_reads += result.request_count
+            failed_members += len(result.errors)
+            member_fc = {member.ref: member.fc for member in members}
+            for ref, value in result.values:
+                fc = member_fc.get(ref, "")
+                if fc:
+                    self._dataset_value_cache[(ref, fc)] = value
+            for ref, raw_type in result.runtime_types:
+                try:
+                    mms_type = MmsType(raw_type)
+                except ValueError:
+                    continue
+                fc = member_fc.get(ref, "")
+                if not fc:
+                    continue
+                self._type_probe_cache[(ref, fc)] = mms_type
+                cached_types += 1
+
+        self._type_probe_stats["dataset"] += cached_types
+        if progress:
+            progress(
+                "dataset_prefetch",
+                total_datasets,
+                total_datasets,
+                f"DataSet 类型预取完成，命中 {cached_types} 个叶子",
+            )
+
+        log.info(
+            "模型发现 DataSet 类型预取完成: "
+            f"datasets={dataset_reads}, cached_types={cached_types}, failed_members={failed_members}"
+        )
 
     # ===== 底层 pyiec61850 调用 (唯一调用点) =====
 
@@ -796,7 +924,7 @@ class ModelDiscoveryService:
                     )
                 if sub_das:
                     self._struct_sub_da_cache[da_full_ref] = sub_das
-                    log.info(f"动态发现 struct DA '{da_full_ref}' 子结构: {[s.path for s in sub_das]}")
+                    # log.info(f"动态发现 struct DA '{da_full_ref}' 子结构: {[s.path for s in sub_das]}")
                     return sub_das
         except Exception as e:
             log.debug(f"动态发现 struct DA 子属性失败: {da_full_ref}, {e}")
@@ -844,92 +972,12 @@ class ModelDiscoveryService:
 
     @staticmethod
     def _discover_dataset_members(conn, ds_ref: str) -> list[dict[str, str]]:
-        """发现 DataSet 成员 (FCDA 条目)
-
-        优化:
-        - 合并 3 种属性提取方式为单次 getattr 链式兜底，消除内层循环
-        - 减少 C FFI 调用: 一次 getData 后直接提取所有属性
-        """
-        members = []
+        """发现 DataSet 成员，复用客户端 DataSet 目录解析实现。"""
         try:
-            mms_ref = ds_ref
-            # libIEC61850 签名: (connection, dataSetRef, isDeletable)
-            try_methods = [
-                lambda: iec61850.IedConnection_getDataSetDirectory(conn, mms_ref, None),
-                lambda: iec61850.IedConnection_getDataSetDirectory(conn, mms_ref, c_bool()),
-            ]
-
-            result = None
-            for try_fn in try_methods:
-                try:
-                    r = try_fn()
-                    if r is not None:
-                        result = r
-                        break
-                except Exception:
-                    continue
-
-            if result is None:
-                return members
-
-            s_data_set = result[0] if isinstance(result, (list, tuple)) else result
-            dir_error = result[1] if isinstance(result, (list, tuple)) else 0
-            if dir_error != iec61850.IED_ERROR_OK or s_data_set is None:
-                return members
-
-            fcdas = getattr(s_data_set, "fcdas", None) or s_data_set
-
-            it = fcdas
-            while it:
-                try:
-                    entry_data = iec61850.LinkedList_getData(it)
-                    if entry_data is not None:
-                        # 合并属性提取: getattr 链式兜底, 不抛异常
-                        ld_name = (
-                            getattr(entry_data, "logicalDeviceName", None)
-                            or getattr(entry_data, "ldName", None)
-                            or getattr(entry_data, "deviceName", None)
-                            or ""
-                        )
-                        var_name = (
-                            getattr(entry_data, "variableName", None) or getattr(entry_data, "varName", None) or ""
-                        )
-                        comp_name = getattr(entry_data, "componentName", None) or ""
-
-                        ref = ""
-                        if var_name:
-                            if comp_name:
-                                ref = f"{ld_name}/{var_name}.{comp_name}" if ld_name else f"{var_name}.{comp_name}"
-                            else:
-                                ref = f"{ld_name}/{var_name}" if ld_name else var_name
-
-                        if not ref:
-                            # 回退: 字符串提取
-                            raw = iec61850.toCharP(entry_data)
-                            if raw:
-                                ref = str(raw)
-                                # 清理 [FC] 后缀
-                                ref = re.sub(r"\[.*?\]", "", ref)
-
-                        if ref:
-                            fc = infer_fc_from_address(ref) or "MX"
-                            iec_type = infer_iec_type_from_address(ref) or "unknown"
-                            members.append({"ref": ref, "fc": fc, "iec_type": iec_type, "index": 0})
-                except Exception:
-                    pass
-
-                try:
-                    it = iec61850.LinkedList_getNext(it)
-                except Exception:
-                    break
-
-            with contextlib.suppress(Exception):
-                iec61850.LinkedList_destroy(fcdas)
-
-        except Exception:
-            log.debug(f"发现 DataSet 成员异常: {ds_ref}")
-
-        return members
+            return browse_dataset_members(iec61850, conn, ds_ref)
+        except Exception as e:
+            log.debug(f"发现 DataSet 成员异常: {ds_ref}, {e}")
+            return []
 
     def _discover_rcbs(self, conn, ld_name: str, ln_ref: str) -> list[RCBRef]:
         """发现 LN 下所有 RCB (含 datSet, intgPd 等详情)
