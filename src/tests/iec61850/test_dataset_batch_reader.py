@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 from src.device.protocol.iec61850_handler import IEC61850ClientHandler
 from src.enums.point_data import Yc
-from src.proto.iec61850.iec61850_client import IEC61850Client
-from src.proto.iec61850.model.discovery import ModelDiscoveryService
-from src.proto.iec61850.model.ied_model import DARef, DataSetRef, DORef, IedModel, LDModel, LNModel
+from src.proto.iec61850.core.connection import Iec61850Connection
+from src.proto.iec61850.model.discovery import IedModelBuilder, ModelDiscoveryService
+from src.proto.iec61850.model.ied_model import DARef, DORef, IedModel, LDModel, LNModel
 from src.proto.iec61850.plugins.datasets import DataSetsPlugin
 from src.proto.iec61850.plugins.datasets.catalog import (
     DatasetCatalog,
@@ -69,8 +69,33 @@ def test_catalog_projects_do_level_fcda_with_complete_model_order():
                                 name="TotW",
                                 ref="IEDLD0/MMXU1.TotW",
                                 das=(
-                                    DARef(name="mag", path="mag.f", fc="MX", iec_type="float"),
-                                    DARef(name="q", path="q", fc="MX", iec_type="integer"),
+                                    DARef(
+                                        name="mag",
+                                        path="mag",
+                                        fc="MX",
+                                        iec_type="float",
+                                        mms_type="MMS_STRUCTURE",
+                                        sub_das=(
+                                            DARef(
+                                                name="f",
+                                                path="mag.f",
+                                                fc="MX",
+                                                iec_type="float",
+                                                mms_type="MMS_FLOAT",
+                                            ),
+                                        ),
+                                    ),
+                                    DARef(
+                                        name="q",
+                                        path="q",
+                                        fc="MX",
+                                        iec_type="integer",
+                                        mms_type="MMS_BIT_STRING",
+                                        sub_das=(
+                                            DARef(name="validity", path="q.validity", fc="MX", iec_type="integer"),
+                                            DARef(name="source", path="q.source", fc="MX", iec_type="integer"),
+                                        ),
+                                    ),
                                     DARef(name="t", path="t", fc="MX", iec_type="timestamp"),
                                 ),
                             ),
@@ -128,6 +153,7 @@ class _FakeNative:
         self.values = _FakeValue(self.MMS_ARRAY, children=values)
         self.deleted_values = 0
         self.destroyed_errors = 0
+        self.spec_with_result = None
 
     @staticmethod
     def IedConnection_getMmsConnection(conn):
@@ -142,6 +168,7 @@ class _FakeNative:
         return error.value
 
     def MmsConnection_readNamedVariableListValues(self, *_args):
+        self.spec_with_result = _args[-1]
         return self.values
 
     @staticmethod
@@ -201,6 +228,7 @@ def test_transport_keeps_partial_success_and_releases_native_resources(monkeypat
     assert result.errors == (DatasetMemberError(1, "IEDLD0/X.B", "data access error"),)
     assert native.deleted_values == 1
     assert native.destroyed_errors == 1
+    assert native.spec_with_result is True
 
 
 def test_transport_rejects_structure_projection_mismatch(monkeypatch):
@@ -224,6 +252,49 @@ def test_transport_rejects_structure_projection_mismatch(monkeypatch):
     assert "projection mismatch" in result.errors[0].reason
     assert native.deleted_values == 1
     assert native.destroyed_errors == 1
+
+
+def test_transport_decodes_do_level_structure_using_wire_projection(monkeypatch):
+    """DO 级成员应按 mag 结构、q 位串、t 时标三个线元素正确映射。"""
+    from src.proto.iec61850.plugins.datasets import transport as transport_module
+
+    do_value = _FakeValue(
+        _FakeNative.MMS_STRUCTURE,
+        children=[
+            _FakeValue(
+                _FakeNative.MMS_STRUCTURE,
+                children=[_FakeValue(_FakeNative.MMS_FLOAT, 12.5)],
+            ),
+            _FakeValue(_FakeNative.MMS_BIT_STRING, 0),
+            _FakeValue(_FakeNative.MMS_UTC_TIME, 123456),
+        ],
+    )
+    native = _FakeNative([do_value])
+    monkeypatch.setattr(transport_module, "mms_value_to_python", lambda value, _iec_type: value.value)
+    dataset = DatasetDescriptor(
+        ref="IEDLD0/LLN0$ds",
+        members=(
+            DatasetMember(
+                0,
+                "IEDLD0/MMXU1.TotW",
+                "MX",
+                leaf_refs=(
+                    "IEDLD0/MMXU1.TotW.mag.f",
+                    "IEDLD0/MMXU1.TotW.q",
+                    "IEDLD0/MMXU1.TotW.t",
+                ),
+            ),
+        ),
+    )
+
+    result = DatasetTransport(_FakeConnection(), native).read(dataset)
+
+    assert result.value_map == {
+        "IEDLD0/MMXU1.TotW.mag.f": 12.5,
+        "IEDLD0/MMXU1.TotW.q": 0,
+        "IEDLD0/MMXU1.TotW.t": 123456,
+    }
+    assert result.errors == ()
 
 
 class _PluginConnection:
@@ -311,45 +382,57 @@ def test_plugin_uses_zero_single_reads_when_dataset_fully_covers_batch():
     assert plugin.read_points_batch(["a", "b"], None, forbidden_fallback) == {"a": 10.0, "b": 20.0}
 
 
-def test_model_discovery_prefetches_exact_dataset_member_types(monkeypatch):
-    """模型发现应先用 DataSet 填充精确 FCDA 类型缓存，供后续 DA 遍历复用。"""
-    from src.proto.iec61850.model import discovery as discovery_module
-
-    class FakeTransport:
-        """返回一个精确叶子类型的发现阶段传输替身。"""
-
-        def __init__(self, _connection, _native):
-            pass
-
-        @staticmethod
-        def read(dataset):
-            member = dataset.members[0]
-            return DatasetReadResult(
-                dataset_ref=dataset.ref,
-                values=((member.ref, 1.25),),
-                runtime_types=((member.ref, "MMS_FLOAT"),),
-                request_count=1,
-            )
-
-    monkeypatch.setattr(discovery_module, "DatasetTransport", FakeTransport)
-    service = ModelDiscoveryService()
+def test_plugin_reports_progress_after_each_dataset_read():
+    """批读进度必须在规划后按已完成的 DataSet 数量逐步上报。"""
+    plugin = DataSetsPlugin()
+    plugin._connection = _PluginConnection()
+    plugin._registry = _PluginRegistry()
+    plugin._client = SimpleNamespace(model=None)
+    plugin._transport = SimpleNamespace(
+        read=lambda dataset: DatasetReadResult(
+            dataset_ref=dataset.ref,
+            values=(("IEDLD0/X.A", 10.0), ("IEDLD0/X.B", 20.0)),
+            request_count=1,
+        )
+    )
     progress_events = []
-    dataset = DataSetRef(
-        name="dsMeas",
-        ref="IEDLD0/LLN0.dsMeas",
-        members=({"ref": "IEDLD0/MMXU1.TotW.mag.f", "fc": "MX", "iec_type": "float"},),
+
+    result = plugin.read_points_batch(
+        ["a", "b"],
+        None,
+        lambda *_args: {},
+        progress=lambda phase, current, total, message: progress_events.append((phase, current, total, message)),
     )
 
-    service._prefetch_dataset_types(
-        object(),
-        [dataset],
-        lambda phase, current, total, message: progress_events.append((phase, current, total, message)),
+    assert result == {"a": 10.0, "b": 20.0}
+    assert [(phase, current, total) for phase, current, total, _ in progress_events] == [
+        ("planning", 0, 1),
+        ("dataset", 1, 1),
+    ]
+    assert "DataSet 1/1" in progress_events[-1][3]
+
+
+def test_strict_dataset_read_never_falls_back_to_members(monkeypatch):
+    """软件 GI 使用的严格模式遇到成员错误时必须整次失败，不能逐点补读。"""
+    plugin = DataSetsPlugin()
+    plugin._connection = _PluginConnection()
+    plugin._registry = _PluginRegistry()
+    plugin._client = SimpleNamespace(model=None)
+    plugin._transport = SimpleNamespace(
+        read=lambda dataset: DatasetReadResult(
+            dataset_ref=dataset.ref,
+            member_values=(("IEDLD0/X.A", 10.0),),
+            errors=(DatasetMemberError(index=1, ref="IEDLD0/X.B", reason="access-error"),),
+            request_count=1,
+        )
+    )
+    monkeypatch.setattr(
+        plugin,
+        "_read_dataset_values_by_members",
+        lambda _ref: (_ for _ in ()).throw(AssertionError("严格模式禁止逐点回退")),
     )
 
-    assert service._type_probe_cache[("IEDLD0/MMXU1.TotW.mag.f", "MX")].value == "MMS_FLOAT"
-    assert service.get_prefetched_value("IEDLD0/MMXU1.TotW.mag.f", "MX") == 1.25
-    assert service._type_probe_stats["dataset"] == 1
-    assert progress_events[-1][:3] == ("dataset_prefetch", 1, 1)
+    assert plugin.read_dataset_values("IEDLD0/LLN0$ds", allow_member_fallback=False) == {}
 
 
 def test_connection_does_not_repeat_prefix_for_discovered_remote_ld():
@@ -358,28 +441,31 @@ def test_connection_does_not_repeat_prefix_for_discovered_remote_ld():
         model_name="WRONG",
         _discovered_lds=["REALIEDLD0"],
     )
-    from src.proto.iec61850.core.connection import Iec61850Connection
-
     assert Iec61850Connection.build_dataset_ref(connection, "REALIEDLD0/LLN0$ds") == "REALIEDLD0/LLN0$ds"
 
 
-def test_fill_du_names_reuses_dataset_snapshot_before_single_read():
-    """dU 已由 DataSet 预取时应直接复用，不再调用描述单点读取。"""
-    client = IEC61850Client.__new__(IEC61850Client)
-    client._registry = SimpleNamespace(set_name=lambda *_args: None)
-    client._discovery = SimpleNamespace(
-        get_prefetched_value=lambda ref, *_fcs: "总有功功率" if ref.endswith(".dU") else None
-    )
+def test_model_discovery_builds_complete_tree_before_dataset_catalog(monkeypatch):
+    """模型发现必须先完成全部 DO/DA 遍历，之后才能解释 DataSet 引用。"""
+    service = ModelDiscoveryService()
+    events = []
+    monkeypatch.setattr(service, "_browse_logical_nodes", lambda _conn, _ld: ["LLN0", "MMXU1"])
 
-    def unexpected_single_read(_ref):
-        raise AssertionError("DataSet 已命中 dU，不应再次单点读取")
+    def discover_data_objects(_conn, _ld, ln_ref, _ln_name, max_depth):
+        events.append(("model", ln_ref, max_depth))
+        return []
 
-    client._read_du_description = unexpected_single_read
-    discovered = [{"address": "LD0/MMXU1.TotW.mag.f"}]
+    def discover_datasets(_conn, _ld, ln_ref):
+        events.append(("dataset", ln_ref))
+        return []
 
-    client._fill_du_names(discovered)
+    monkeypatch.setattr(service, "_discover_data_objects", discover_data_objects)
+    monkeypatch.setattr(service, "_discover_datasets", discover_datasets)
+    monkeypatch.setattr(service, "_discover_rcbs", lambda *_args: [])
+    monkeypatch.setattr(service, "_discover_gocbs", lambda *_args: [])
 
-    assert discovered[0]["name"] == "总有功功率"
+    service._discover_ld(object(), IedModelBuilder("127.0.0.1", 102), "LD0", max_depth=10, on_error="abort")
+
+    assert [event[0] for event in events] == ["model", "model", "dataset"]
 
 
 def test_handler_keeps_point_code_mapping_and_yc_coefficient_conversion():
@@ -399,3 +485,31 @@ def test_handler_keeps_point_code_mapping_and_yc_coefficient_conversion():
     )
 
     assert handler.read_points_batch([point]) == {"total_power": 5}
+
+
+def test_handler_exposes_monotonic_dataset_read_progress():
+    """Handler 应把协议层 DataSet 进度转换为前端可轮询的 0-100 快照。"""
+    handler = IEC61850ClientHandler()
+    handler._is_running = True
+    snapshots = []
+
+    def read_points_batch(addresses, _fc_map, *, progress):
+        progress("planning", 0, 2, "计划读取 2 个 DataSet")
+        snapshots.append(handler.get_connect_progress())
+        progress("dataset", 1, 2, "已读取 DataSet 1/2")
+        snapshots.append(handler.get_connect_progress())
+        progress("dataset", 2, 2, "已读取 DataSet 2/2")
+        snapshots.append(handler.get_connect_progress())
+        return {addresses[0]: 12.0}
+
+    handler._client = SimpleNamespace(is_connected=True, read_points_batch=read_points_batch)
+    point = Yc(address="LD0/MMXU1.TotW.mag.f", code="total_power", fc="MX")
+
+    assert handler.read_points_batch([point], track_progress=True) == {"total_power": 12}
+    assert [snapshot["progress"] for snapshot in snapshots] == sorted(snapshot["progress"] for snapshot in snapshots)
+    assert snapshots[1]["progress"] < snapshots[2]["progress"] < 100
+    final = handler.get_connect_progress()
+    assert final["operation"] == "read"
+    assert final["phase"] == "done"
+    assert final["progress"] == 100
+    assert final["active"] is False

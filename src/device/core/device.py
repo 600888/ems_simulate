@@ -255,7 +255,7 @@ class Device:
         self.initProtocol()
 
     def get_iec61850_connect_progress(self) -> dict:
-        """获取 IEC61850 客户端连接进度
+        """获取 IEC61850 客户端连接、发现或 DataSet 批读进度。
 
         Returns:
             包含阶段、百分比、任务类型、活动状态和统一耗时的进度快照。

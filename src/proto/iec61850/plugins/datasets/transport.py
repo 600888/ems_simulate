@@ -52,11 +52,19 @@ class DatasetTransport:
                 mms_error,
                 domain_id,
                 item_id,
-                False,
+                # 部分 IED 在 False 时返回 object-constraint-conflict；
+                # True 要求响应携带访问规格，现场设备与标准服务均可解析。
+                True,
             )
             error_code = int(native.MmsError_getValue(mms_error))
             if error_code != 0:
-                return self._failure(dataset, f"MMS error {error_code}")
+                error_text = ""
+                to_string = getattr(native, "MmsError_toString", None)
+                if callable(to_string):
+                    with contextlib.suppress(Exception):
+                        error_text = str(to_string(error_code) or "")
+                detail = f" ({error_text})" if error_text else ""
+                return self._failure(dataset, f"MMS error {error_code}{detail}")
             if values_array is None:
                 return self._failure(dataset, "server returned no values")
 

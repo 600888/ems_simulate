@@ -229,14 +229,14 @@ export async function getAvgTime(deviceName: string): Promise<AvgTimeStats | nul
   }
 }
 
-// ===== IEC61850 连接进度 =====
+// ===== IEC61850 任务进度（兼容原连接进度接口） =====
 
 export interface IEC61850ConnectProgress {
-  phase: "idle" | "connecting" | "discovering" | "done" | "failed";
+  phase: "idle" | "connecting" | "discovering" | "reading" | "done" | "failed";
   progress: number;
   connecting: boolean;
   active?: boolean;
-  operation?: "idle" | "connect" | "discover";
+  operation?: "idle" | "connect" | "discover" | "read";
   operation_id?: number;
   elapsed_seconds?: number;
   message?: string;

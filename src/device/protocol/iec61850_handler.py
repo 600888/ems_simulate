@@ -251,6 +251,7 @@ class IEC61850ClientHandler(ClientHandler):
     PHASE_IDLE = "idle"  # 未开始
     PHASE_CONNECTING = "connecting"  # 正在连接服务器
     PHASE_DISCOVERING = "discovering"  # 正在发现模型
+    PHASE_READING = "reading"  # 正在按 DataSet 批量读取
     PHASE_DONE = "done"  # 连接完成
     PHASE_FAILED = "failed"  # 连接失败
 
@@ -262,8 +263,8 @@ class IEC61850ClientHandler(ClientHandler):
         self._connecting = False  # 是否正在连接中（防止重复启动）
         self._connect_phase = self.PHASE_IDLE  # 当前连接阶段
         self._connect_progress = 0  # 连接进度 0-100
-        self._progress_active = False  # 连接或发现任务是否仍在执行
-        self._progress_operation = "idle"  # idle/connect/discover
+        self._progress_active = False  # 连接、发现或批读任务是否仍在执行
+        self._progress_operation = "idle"  # idle/connect/discover/read
         self._progress_message = ""
         self._progress_started_at: float | None = None
         self._progress_elapsed_seconds = 0
@@ -430,10 +431,7 @@ class IEC61850ClientHandler(ClientHandler):
             def on_discovery_progress(phase: str, current: int, total: int, message: str) -> None:
                 ratio = min(max(current / total, 0.0), 1.0) if total > 0 else 0.0
                 if phase == "discovering":
-                    percent = max(self._connect_progress, 20 + round(ratio * 50))
-                elif phase == "dataset_prefetch":
-                    # DataSet 预取发生在 LD 结构发现过程中，进度只前进不回退。
-                    percent = max(self._connect_progress, 55 + round(ratio * 10))
+                    percent = 20 + round(ratio * 50)
                 elif phase == "building":
                     percent = 75
                 else:
@@ -499,7 +497,7 @@ class IEC61850ClientHandler(ClientHandler):
             return False
 
     def _begin_progress(self, operation: str, phase: str, progress: int, message: str) -> None:
-        """开始一轮连接或发现进度，重置计时和操作标识。"""
+        """开始一轮连接、发现或批读进度，重置计时和操作标识。"""
         self._progress_operation_id += 1
         self._progress_operation = operation
         self._progress_active = True
@@ -574,7 +572,7 @@ class IEC61850ClientHandler(ClientHandler):
 
         Returns:
             {"phase": str, "progress": int, "connecting": bool, "active": bool, ...}
-            phase: idle/connecting/discovering/done/failed
+            phase: idle/connecting/discovering/reading/done/failed
             progress: 0-100
             connecting: 是否正在连接中
         """
@@ -690,11 +688,17 @@ class IEC61850ClientHandler(ClientHandler):
 
         return False
 
-    def read_points_batch(self, points: Sequence[BasePoint]) -> dict[str, Any]:
+    def read_points_batch(
+        self,
+        points: Sequence[BasePoint],
+        *,
+        track_progress: bool = False,
+    ) -> dict[str, Any]:
         """批量读取测点值
 
-        利用 IEC61850Client 的 read_points_batch 按 iec_type 分组读取，
-        减少类型判断开销，连接断开时快速失败。
+        优先按远端 DataSet 批量读取，并保持 point.code 映射和遥测系数换算。
+        ``track_progress`` 用于 HTTP 批读场景，把每个 DataSet 的完成情况写入
+        统一进度快照，供前端在请求执行期间轮询。
 
         Args:
             points: 测点列表
@@ -705,38 +709,72 @@ class IEC61850ClientHandler(ClientHandler):
         if not self._client or not self.is_running:
             return {}
 
-        # 构建地址列表和 FC 映射
-        addresses = []
-        fc_map = {}
-        addr_to_code = {}  # address -> point.code (用于结果映射)
-        point_map = {}  # address -> point (用于系数换算)
+        # 连接/发现任务正在运行时不覆盖它们的进度；批读本身仍可按原逻辑执行。
+        owns_progress = track_progress and not self._progress_active
+        if owns_progress:
+            self._begin_progress("read", self.PHASE_READING, 1, "正在规划 DataSet 批量读取")
 
-        for point in points:
-            addr = str(point.address)
-            addresses.append(addr)
-            fc = getattr(point, "fc", "") or ""
-            if fc:
-                fc_map[addr] = fc
-            addr_to_code[addr] = point.code
-            point_map[addr] = point
-
-        # 批量读取
-        raw_results = self._client.read_points_batch(addresses, fc_map)
-
-        # 系数换算 (遥测点需反向换算)
-        results: dict[str, Any] = {}
-        for addr, value in raw_results.items():
-            point = point_map.get(addr)
-            code = addr_to_code.get(addr, addr)
-            if point and isinstance(point, Yc):
-                try:
-                    results[code] = int((value - point.add_coe) / point.mul_coe)
-                except (ZeroDivisionError, TypeError):
-                    results[code] = value
+        def on_read_progress(phase: str, current: int, total: int, message: str) -> None:
+            """把协议层分段进度映射到稳定、单调递增的前端百分比。"""
+            if not owns_progress:
+                return
+            safe_total = max(int(total), 1)
+            ratio = min(max(int(current), 0), safe_total) / safe_total
+            if phase == "planning":
+                percent = 3
+            elif phase in {"dataset", "retry"}:
+                percent = 5 + round(ratio * 85)
+            elif phase == "fallback":
+                percent = 90 + round(ratio * 9)
             else:
-                results[code] = value
+                percent = self._connect_progress
+            # 重连重规划可能重新从第一个 DataSet 开始，进度条不能倒退。
+            percent = max(self._connect_progress, min(percent, 99))
+            self._update_progress(self.PHASE_READING, percent, message)
 
-        return results
+        try:
+            # 构建地址列表和 FC 映射。
+            addresses = []
+            fc_map = {}
+            addr_to_code = {}  # address -> point.code (用于结果映射)
+            point_map = {}  # address -> point (用于系数换算)
+
+            for point in points:
+                addr = str(point.address)
+                addresses.append(addr)
+                fc = getattr(point, "fc", "") or ""
+                if fc:
+                    fc_map[addr] = fc
+                addr_to_code[addr] = point.code
+                point_map[addr] = point
+
+            # 非进度场景不传新关键字，兼容外部测试替身和旧客户端适配器。
+            if owns_progress:
+                raw_results = self._client.read_points_batch(addresses, fc_map, progress=on_read_progress)
+            else:
+                raw_results = self._client.read_points_batch(addresses, fc_map)
+
+            # 系数换算（遥测点需反向换算）。
+            results: dict[str, Any] = {}
+            for addr, value in raw_results.items():
+                point = point_map.get(addr)
+                code = addr_to_code.get(addr, addr)
+                if point and isinstance(point, Yc):
+                    try:
+                        results[code] = int((value - point.add_coe) / point.mul_coe)
+                    except (ZeroDivisionError, TypeError):
+                        results[code] = value
+                else:
+                    results[code] = value
+
+            if owns_progress:
+                failed = max(len(points) - len(results), 0)
+                self._finish_progress(True, f"DataSet 批量读取完成：成功 {len(results)}，失败 {failed}")
+            return results
+        except Exception as exc:
+            if owns_progress:
+                self._finish_progress(False, f"DataSet 批量读取失败：{exc}")
+            raise
 
     async def read_value_async(self, point: BasePoint) -> Any:
         """异步读取测点值"""

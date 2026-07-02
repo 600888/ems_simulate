@@ -627,7 +627,11 @@ class ReportsPlugin:
         return self._trigger_urcb_software_gi(rcb_ref)
 
     def _trigger_urcb_software_gi(self, rcb_ref: str) -> bool:
-        """Synthesize a URCB GI report by reading its DataSet into the report cache."""
+        """通过一次 DataSet 批读生成 URCB 软件 GI，并写入报告缓存。
+
+        软件 GI 必须保持批量语义：NamedVariableList 读取失败时直接返回失败，
+        不允许退化为逐成员 ``readObject``，避免大 DataSet 触发大量 MMS 请求。
+        """
         ReportCallbackHandler.mark_pending_gi(rcb_ref)
         detail = self._rcb_detail_cache.get(rcb_ref) or {}
         data_set_ref = str(detail.get("data_set_ref") or "")
@@ -651,7 +655,7 @@ class ReportsPlugin:
             return False
 
         try:
-            values = datasets.read_dataset_values(data_set_ref)
+            values = datasets.read_dataset_values(data_set_ref, allow_member_fallback=False)
         except Exception as e:
             log.warning(f"URCB 软件 GI 读取 DataSet 异常: ref={rcb_ref}, ds={data_set_ref}, {e}")
             return False

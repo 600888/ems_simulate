@@ -4,6 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from src.proto.iec61850.plugins.datamodels import builder as builder_module
+from src.proto.iec61850.plugins.reports import ReportsPlugin
+from src.proto.iec61850.plugins.reports import callback as report_callback_module
 from src.proto.iec61850.plugins.reports import manager as report_manager_module
 from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
 
@@ -69,3 +71,32 @@ def test_standard_value_attributes_get_report_trigger_fallback(monkeypatch):
     assert builder_module.IedModelBuilder._infer_da_trigger_options(["mag", "f"]) == 0x01
     assert builder_module.IedModelBuilder._infer_da_trigger_options(["q"]) == 0x02
     assert builder_module.IedModelBuilder._infer_da_trigger_options(["t"]) == 0
+
+
+def test_urcb_software_gi_uses_strict_dataset_batch_read(monkeypatch):
+    """软件 GI 只能批读完整 DataSet，禁止失败后退化成逐点读取。"""
+    calls = []
+    datasets = SimpleNamespace(
+        read_dataset_values=lambda dataset_ref, *, allow_member_fallback: (
+            calls.append((dataset_ref, allow_member_fallback)) or {"IEDLD0/MMXU1.TotW.mag.f": 10.0}
+        )
+    )
+    plugin = ReportsPlugin()
+    plugin._client = SimpleNamespace(datasets=datasets)
+    plugin._rcb_detail_cache["IEDLD0/LLN0.RP.urcb01"] = {
+        "data_set_ref": "IEDLD0/LLN0$dsMeas",
+        "rpt_id": "urcb01",
+        "conf_rev": 1,
+    }
+    cached_entries = []
+    monkeypatch.setattr(report_callback_module.ReportCallbackHandler, "mark_pending_gi", lambda _ref: None)
+    monkeypatch.setattr(
+        report_callback_module.ReportCallbackHandler,
+        "append_cache_entry",
+        lambda _ref, entry: cached_entries.append(entry) or True,
+    )
+
+    assert plugin._trigger_urcb_software_gi("IEDLD0/LLN0.RP.urcb01") is True
+    assert calls == [("IEDLD0/LLN0$dsMeas", False)]
+    assert cached_entries[0].data_values == {"IEDLD0/MMXU1.TotW.mag.f": 10.0}
+    assert cached_entries[0].reason_codes == {"IEDLD0/MMXU1.TotW.mag.f": "gi"}

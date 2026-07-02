@@ -147,7 +147,7 @@ async def stop_device(req: DeviceStopRequest, request: Request):
 
 @device_router.post("/iec61850-connect-progress", response_model=BaseResponse)
 async def get_iec61850_connect_progress(req: DeviceInfoRequest, request: Request):
-    """获取 IEC61850 客户端连接进度"""
+    """获取 IEC61850 客户端连接、发现或 DataSet 批读进度。"""
     device = _get_device(req.device_name, request)
     progress = device.get_iec61850_connect_progress()
     return BaseResponse(data=progress)

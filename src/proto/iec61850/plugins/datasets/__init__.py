@@ -26,6 +26,7 @@ else:
 
 
 FallbackReader = Callable[[Sequence[str], Mapping[str, str] | None], dict[str, Any]]
+ProgressCallback = Callable[[str, int, int, str], None]
 
 
 class DataSetsPlugin:
@@ -193,6 +194,7 @@ class DataSetsPlugin:
         addresses: Sequence[str],
         fc_map: Mapping[str, str] | None,
         fallback: FallbackReader,
+        progress: ProgressCallback | None = None,
     ) -> dict[str, Any]:
         """按计划批读 DataSet，并且只对未返回的测点执行单点回退。"""
         requested = tuple(dict.fromkeys(str(address) for address in addresses))
@@ -202,7 +204,9 @@ class DataSetsPlugin:
         started = time.perf_counter()
         catalog = self._get_catalog()
         plan = DatasetReadPlanner(catalog).plan(requested)
-        results, request_count = self._execute_plan(plan.datasets, catalog)
+        dataset_total = len(plan.datasets)
+        self._emit_progress(progress, "planning", 0, max(dataset_total, 1), f"计划读取 {dataset_total} 个 DataSet")
+        results, request_count = self._execute_plan(plan.datasets, catalog, progress=progress)
         selected_dataset_count = len(plan.datasets)
 
         missing = tuple(address for address in requested if address not in results)
@@ -212,7 +216,12 @@ class DataSetsPlugin:
             self.invalidate_catalog()
             catalog = self._get_catalog()
             retry_plan = DatasetReadPlanner(catalog).plan(missing)
-            retry_results, retry_count = self._execute_plan(retry_plan.datasets, catalog)
+            retry_results, retry_count = self._execute_plan(
+                retry_plan.datasets,
+                catalog,
+                progress=progress,
+                phase="retry",
+            )
             selected_dataset_count += len(retry_plan.datasets)
             results.update(retry_results)
             request_count += retry_count
@@ -220,8 +229,16 @@ class DataSetsPlugin:
 
         fallback_count = len(missing)
         if missing:
+            self._emit_progress(
+                progress,
+                "fallback",
+                0,
+                1,
+                f"DataSet 未覆盖或读取失败，回退读取 {fallback_count} 个测点",
+            )
             missing_fc = {address: fc_map[address] for address in missing if fc_map and address in fc_map}
             results.update(fallback(missing, missing_fc))
+            self._emit_progress(progress, "fallback", 1, 1, f"回退读取完成，共 {fallback_count} 个测点")
 
         failed = sum(1 for address in requested if address not in results)
         elapsed_ms = (time.perf_counter() - started) * 1000
@@ -248,13 +265,17 @@ class DataSetsPlugin:
         self,
         datasets: Sequence[DatasetDescriptor],
         catalog: DatasetCatalog,
+        *,
+        progress: ProgressCallback | None = None,
+        phase: str = "dataset",
     ) -> tuple[dict[str, Any], int]:
         """每个选中 DataSet 只请求一次，合并成功值并缓存运行时类型。"""
         results: dict[str, Any] = {}
         request_count = 0
         if self._transport is None:
             return results, request_count
-        for dataset in datasets:
+        total = len(datasets)
+        for index, dataset in enumerate(datasets, start=1):
             read_result = self._transport.read(dataset)
             request_count += read_result.request_count
             for ref, value in read_result.values:
@@ -262,11 +283,37 @@ class DataSetsPlugin:
                     results[address] = value
             self._cache_runtime_types(read_result, catalog)
             if read_result.errors:
+                reason_counts: dict[str, int] = {}
+                for error in read_result.errors:
+                    reason_counts[error.reason] = reason_counts.get(error.reason, 0) + 1
                 log.debug(
                     f"DataSet partial read: ref={dataset.ref}, values={len(read_result.values)}, "
-                    f"errors={len(read_result.errors)}"
+                    f"errors={len(read_result.errors)}, reasons={reason_counts}"
                 )
+            self._emit_progress(
+                progress,
+                phase,
+                index,
+                total,
+                f"已读取 DataSet {index}/{total}: {dataset.name or dataset.ref}",
+            )
         return results, request_count
+
+    @staticmethod
+    def _emit_progress(
+        progress: ProgressCallback | None,
+        phase: str,
+        current: int,
+        total: int,
+        message: str,
+    ) -> None:
+        """进度回调不得影响协议读取；UI 断开或回调异常时静默继续。"""
+        if progress is None:
+            return
+        try:
+            progress(phase, current, total, message)
+        except Exception as exc:
+            log.debug(f"DataSet 读取进度回调失败: {exc}")
 
     def _cache_runtime_types(self, result: DatasetReadResult, catalog: DatasetCatalog) -> None:
         """把 DataSet 返回的真实 MMS 类型回写测点注册表。"""
@@ -277,8 +324,13 @@ class DataSetsPlugin:
                 self._registry.set_mms_type(address, mms_type)
                 self._registry.set_iec_type(address, iec_type_from_mms_type(mms_type).value)
 
-    def read_dataset_values(self, dataset_ref: str) -> dict[str, Any]:
-        """读取完整 DataSet，同时保持历史 ``{FCDA引用: 值}`` 返回结构。"""
+    def read_dataset_values(
+        self,
+        dataset_ref: str,
+        *,
+        allow_member_fallback: bool = True,
+    ) -> dict[str, Any]:
+        """读取完整 DataSet；严格模式失败时不执行逐成员兼容回退。"""
         if not self._connection or not self._connection.ensure_connected():
             return {}
         catalog = self._get_catalog()
@@ -296,12 +348,20 @@ class DataSetsPlugin:
             )
             descriptor = descriptor_catalog.datasets[0] if descriptor_catalog.datasets else None
         if descriptor is None or self._transport is None:
-            return self._read_dataset_values_by_members(dataset_ref)
+            return self._read_dataset_values_by_members(dataset_ref) if allow_member_fallback else {}
 
         result = self._transport.read(descriptor)
-        if result.member_values:
+        if result.member_values and (allow_member_fallback or not result.errors):
             return result.member_value_map
-        return self._read_dataset_values_by_members(dataset_ref)
+        if result.errors:
+            reason_counts: dict[str, int] = {}
+            for error in result.errors:
+                reason_counts[error.reason] = reason_counts.get(error.reason, 0) + 1
+            log.warning(
+                f"DataSet 批量读取未完整成功: ref={dataset_ref}, values={len(result.member_values)}, "
+                f"errors={len(result.errors)}, reasons={reason_counts}"
+            )
+        return self._read_dataset_values_by_members(dataset_ref) if allow_member_fallback else {}
 
     def _read_dataset_values_by_members(self, dataset_ref: str) -> dict[str, Any]:
         """仅在原生 DataSet 请求失败时使用的逐成员兼容回退。"""

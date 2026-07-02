@@ -7,6 +7,7 @@ IEC 61850 MMS 客户端封装 (门面模式)
 v3.0 变更: 集成 ModelDiscoveryService，连接时一次发现 → IedModel 缓存 → 多处消费。
 """
 
+from collections.abc import Callable
 from typing import Any, cast
 
 from src.proto.iec61850.plugins.datamodels import DataModelsPlugin
@@ -162,9 +163,14 @@ class IEC61850Client:
         """读取测点值 (委托给 Iec61850Reader)"""
         return self._reader.read(address, fc)
 
-    def read_points_batch(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[str, Any]:
+    def read_points_batch(
+        self,
+        addresses: list[str],
+        fc_map: dict[str, str] | None = None,
+        progress: Callable[[str, int, int, str], None] | None = None,
+    ) -> dict[str, Any]:
         """批量读取多个测点值 (委托给 Iec61850Reader)"""
-        return self._reader.read_batch(addresses, fc_map)
+        return self._reader.read_batch(addresses, fc_map, progress)
 
     def read_metadata(self, address: str, *, fc: str = "") -> MetadataInfo:
         """按需读取测点的品质(q)与时标(t)元数据
@@ -327,20 +333,7 @@ class IEC61850Client:
                 continue
             seen_dos.add(do_ref)
 
-            # 如果 dU/d 已作为 FCDA 被 DataSet 预取，直接复用快照，
-            # 未覆盖时才保留原有 DC/CF 单点兼容读取。
-            du_desc = ""
-            discovery = getattr(self, "_discovery", None)
-            get_prefetched = getattr(discovery, "get_prefetched_value", None)
-            if callable(get_prefetched):
-                for da_name in ("dU", "d"):
-                    prefetched = get_prefetched(f"{do_ref}.{da_name}", "DC", "CF")
-                    if prefetched is not None:
-                        du_desc = str(prefetched).strip()
-                        if du_desc:
-                            break
-            if not du_desc:
-                du_desc = self._read_du_description(do_ref)
+            du_desc = self._read_du_description(do_ref)
             if not du_desc:
                 continue
 

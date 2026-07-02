@@ -150,17 +150,49 @@ class DatasetCatalog:
 
     @staticmethod
     def _model_leaf_index(model: Any, model_name: str) -> tuple[tuple[str, str], ...]:
-        """按 IedModel 原始顺序收集全部 DA/BDA 叶子，供结构值投影。"""
+        """按 MMS 线结构顺序收集叶子，避免把品质位展示节点误当成多个值。"""
         if model is None:
             return ()
         leaves: list[tuple[str, str]] = []
         try:
-            for _, _, data_object, data_attribute in model.iter_da_leaves():
-                ref = normalize_point_ref(f"{data_object.ref}.{data_attribute.path}", model_name)
-                leaves.append((ref, str(data_attribute.fc or "").upper()))
+            for _, _, data_object in model.iter_dos():
+                for data_attribute in data_object.das:
+                    leaves.extend(
+                        DatasetCatalog._wire_leaves(
+                            data_object.ref,
+                            data_attribute,
+                            str(data_attribute.fc or "").upper(),
+                            model_name,
+                        )
+                    )
         except Exception:
             return ()
         return tuple(leaves)
+
+    @staticmethod
+    def _wire_leaves(
+        do_ref: str,
+        data_attribute: Any,
+        inherited_fc: str,
+        model_name: str,
+    ) -> list[tuple[str, str]]:
+        """依据原生 MMS 类型递归；只有真实 STRUCTURE/ARRAY 才展开子属性。"""
+        fc = str(getattr(data_attribute, "fc", "") or inherited_fc).upper()
+        mms_type = str(getattr(data_attribute, "mms_type", "MMS_UNKNOWN") or "MMS_UNKNOWN")
+        sub_attributes = tuple(getattr(data_attribute, "sub_das", ()) or ())
+
+        # q 等 BIT STRING 在 UI 模型中会展开 validity/source 等位字段，
+        # 但 MMS 线上仍是一个标量，必须以 mms_type 而不是 sub_das 判定。
+        is_wire_aggregate = mms_type in {"MMS_ARRAY", "MMS_STRUCTURE"}
+        if is_wire_aggregate and sub_attributes:
+            leaves: list[tuple[str, str]] = []
+            for child in sub_attributes:
+                leaves.extend(DatasetCatalog._wire_leaves(do_ref, child, fc, model_name))
+            return leaves
+
+        path = str(getattr(data_attribute, "path", "") or getattr(data_attribute, "name", ""))
+        ref = normalize_point_ref(f"{do_ref}.{path}", model_name)
+        return [(ref, fc)] if path else []
 
     @staticmethod
     def _project_member(

@@ -1,5 +1,6 @@
 """通道管理 - IEC 61850 相关路由"""
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -1156,8 +1157,13 @@ async def iec61850_read_points(
     source = ChangeSource.CLIENT_READ if has_batch else ChangeSource.INTERNAL
 
     if has_batch:
-        # 批量读取模式: 一次性读取所有测点
-        batch_results = protocol_handler.read_points_batch(all_points)
+        # 原生 MMS 调用是同步阻塞操作。放入工作线程后，事件循环才能同时
+        # 响应前端的进度轮询；Handler 会按完成的 DataSet 更新进度快照。
+        batch_results = await asyncio.to_thread(
+            protocol_handler.read_points_batch,
+            all_points,
+            track_progress=True,
+        )
 
         for point in all_points:
             value = batch_results.get(point.code)
@@ -1173,8 +1179,6 @@ async def iec61850_read_points(
         # 回退模式: 逐点读取 (服务端或旧版客户端)
         for point in all_points:
             try:
-                import asyncio
-
                 if body.interval_ms > 0:
                     await asyncio.sleep(body.interval_ms / 1000.0)
 

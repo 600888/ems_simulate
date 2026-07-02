@@ -11,7 +11,7 @@ export const isAutoRefreshPaused = ref(false)
 import { ElMessage } from 'element-plus';
 import {
   getAutoReadStatus, startAutoRead, stopAutoRead, manualRead,
-  getDeviceInfo, getDeviceTable,
+  getDeviceInfo, getDeviceTable, getIEC61850ConnectProgress,
 } from '@/api/deviceApi';
 import { getIEC61850TableData, iec61850ReadPoints } from '@/api/channelApi';
 import { readSinglePoint } from '@/api/pointApi';
@@ -56,7 +56,7 @@ export function useAutoRead(options: AutoReadOptions) {
   const readProgress = ref(0);
   const progressMessage = ref('');
 
-  const readInterval = ref(100);
+  const readInterval = ref(10);
   const intervalOptions = ref([
     { label: '10ms', value: 10 },
     { label: '50ms', value: 50 },
@@ -271,20 +271,46 @@ export function useAutoRead(options: AutoReadOptions) {
   const handleBatchRead = async () => {
     progressMessage.value = '正在批量读取寄存器...';
     try {
-      if (isIec61850Filtered() && channelId.value !== null) {
-        progressMessage.value = '正在读取 IEC61850 测点...';
-        const result = await iec61850ReadPoints(
+      if (isIec61850Protocol(String(protocolType.value)) && channelId.value !== null) {
+        progressMessage.value = '正在规划 IEC61850 DataSet 批量读取...';
+        readProgress.value = 1;
+
+        // 先发起批读，再并行轮询 Handler 的进度快照。后端把阻塞的 MMS
+        // 调用放在线程中执行，因此每完成一个 DataSet 都能及时刷新到界面。
+        const readPromise = iec61850ReadPoints(
           channelId.value, iec61850Category.value, iec61850Item.value, readInterval.value,
         );
-        if (result) {
-          successCount.value = result.success;
-          failCount.value = result.fail;
-          progressMessage.value = `批量读取完成 (成功: ${result.success}, 失败: ${result.fail})`;
-          ElMessage.success(`批量读取完成，成功 ${result.success} 个，失败 ${result.fail} 个`);
-        } else {
-          readProgress.value = 100;
-          progressMessage.value = '批量读取完成';
-          ElMessage.success('批量读取完成');
+        let polling = false;
+        const pollReadProgress = async () => {
+          if (polling) return;
+          polling = true;
+          try {
+            const snapshot = await getIEC61850ConnectProgress(routeName.value);
+            if (snapshot?.operation === 'read') {
+              // 网络响应可能乱序，始终保持进度单调递增。
+              readProgress.value = Math.max(readProgress.value, Math.min(snapshot.progress, 99));
+              if (snapshot.message) progressMessage.value = snapshot.message;
+            }
+          } finally {
+            polling = false;
+          }
+        };
+        const progressTimer = window.setInterval(() => { void pollReadProgress(); }, 100);
+        void pollReadProgress();
+
+        try {
+          const result = await readPromise;
+          if (result) {
+            successCount.value = result.success;
+            failCount.value = result.fail;
+            progressMessage.value = `批量读取完成 (成功: ${result.success}, 失败: ${result.fail})`;
+            ElMessage.success(`批量读取完成，成功 ${result.success} 个，失败 ${result.fail} 个`);
+          } else {
+            progressMessage.value = '批量读取完成';
+            ElMessage.success('批量读取完成');
+          }
+        } finally {
+          window.clearInterval(progressTimer);
         }
         await fetchDeviceTable(routeName.value, currentSlaveId.value, searchQuery.value[currentSlaveId.value] || '', pageIndex.value, pageSize.value);
         readProgress.value = 100;

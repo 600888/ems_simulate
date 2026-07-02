@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol
 
 from ..defs.address import infer_fc_from_address, infer_iec_type_from_address
@@ -27,6 +27,7 @@ class DatasetBatchReader(Protocol):
         addresses: Sequence[str],
         fc_map: Mapping[str, str] | None,
         fallback,
+        progress: Callable[[str, int, int, str], None] | None = None,
     ) -> dict[str, Any]: ...
 
 
@@ -255,13 +256,23 @@ class Iec61850Reader:
                 log.error(f"IEC61850 读取异常: address={address}, ref={ref}, error={e}")
                 return None
 
-    def read_batch(self, addresses: list[str], fc_map: dict[str, str] | None = None) -> dict[str, Any]:
+    def read_batch(
+        self,
+        addresses: list[str],
+        fc_map: dict[str, str] | None = None,
+        progress: Callable[[str, int, int, str], None] | None = None,
+    ) -> dict[str, Any]:
         """DataSet 优先批读；无目录或单个成员失败时仅回退对应测点。"""
         if not addresses:
             return {}
 
         if self._dataset_reader is not None:
-            return self._dataset_reader.read_points_batch(addresses, fc_map, self._read_fallback_once)
+            return self._dataset_reader.read_points_batch(
+                addresses,
+                fc_map,
+                self._read_fallback_once,
+                progress=progress,
+            )
 
         if not self._connection.ensure_connected():
             return {}
