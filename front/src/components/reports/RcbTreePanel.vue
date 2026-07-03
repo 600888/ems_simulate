@@ -31,7 +31,7 @@
       :show-checkbox="showCheckbox"
       :check-strictly="false"
       @node-click="handleNodeClick"
-      @check-change="handleCheckChange"
+      @check="handleCheck"
     >
       <template #default="{ node, data }">
         <span class="rcb-tree-node">
@@ -82,6 +82,7 @@ const treeRef = ref<InstanceType<typeof ElTree> | null>(null);
 const treeProps = { children: 'children', label: 'label' };
 
 const rcbRefs = computed<string[]>(() => props.rcbs.map((r) => r.ref));
+const rcbRefSet = computed(() => new Set(rcbRefs.value));
 
 const selectAllModel = computed(() =>
   (props.checkedRefs || []).length === rcbRefs.value.length && rcbRefs.value.length > 0,
@@ -121,20 +122,16 @@ const treeData = computed<RcbTreeNode[]>(() => {
   }));
 });
 
-// Sync tree checked state when checkedRefs changes from parent (e.g. after loading new RCBs)
+// Sync checked state only when it actually came from outside the tree. Element Plus
+// emits `check-change` once for every affected node, so using that event here made a
+// select-all operation repeatedly scan and write back the entire selection.
 watch(
-  () => props.checkedRefs,
-  (newRefs) => {
-    if (!treeRef.value) return;
+  [() => props.checkedRefs, rcbRefs],
+  ([newRefs]) => {
     nextTick(() => {
-      if (newRefs && newRefs.length > 0) {
-        treeRef.value?.setCheckedKeys([...newRefs]);
-      } else {
-        treeRef.value?.setCheckedKeys([]);
-      }
+      syncTreeCheckedRefs(newRefs || []);
     });
   },
-  { deep: true },
 );
 
 watch(searchText, (value) => {
@@ -159,24 +156,47 @@ function handleNodeClick(data: RcbTreeNode) {
   if (rcb) emit('select', rcb);
 }
 
-function handleCheckChange() {
+interface TreeCheckState {
+  checkedKeys: Array<string | number>;
+}
+
+function getRcbKeys(keys: Array<string | number>): string[] {
+  return keys
+    .map(String)
+    .filter((key) => rcbRefSet.value.has(key));
+}
+
+function hasSameCheckedRefs(refs: string[]): boolean {
+  if (!treeRef.value) return false;
+  const currentRefs = getRcbKeys(treeRef.value.getCheckedKeys(false) as Array<string | number>);
+  if (currentRefs.length !== refs.length) return false;
+  const expected = new Set(refs);
+  return currentRefs.every((key) => expected.has(key));
+}
+
+function syncTreeCheckedRefs(refs: string[]) {
   if (!treeRef.value) return;
-  // getCheckedKeys returns all checked node keys (including parent LD/LN nodes)
-  const allKeys = treeRef.value.getCheckedKeys(false) as string[];
-  // Filter to only RCB leaf refs
-  const rcbKeys = allKeys.filter((key) => !key.startsWith('ld-') && !key.startsWith('ln-'));
+  const validRefs = refs.filter((key) => rcbRefSet.value.has(key));
+  if (hasSameCheckedRefs(validRefs)) return;
+
+  if (validRefs.length === rcbRefs.value.length && validRefs.length > 0) {
+    // Checking top-level nodes avoids Element Plus' quadratic leaf-key lookup.
+    treeRef.value.setCheckedKeys(treeData.value.map((node) => node.ref));
+  } else {
+    treeRef.value.setCheckedKeys(validRefs);
+  }
+}
+
+function handleCheck(_data: RcbTreeNode, state: TreeCheckState) {
+  // The `check` event fires once per user action, after the cascade is complete.
+  const rcbKeys = getRcbKeys(state.checkedKeys);
   emit('update:checkedRefs', rcbKeys);
 }
 
 function handleSelectAllChange(value: boolean) {
-  if (!treeRef.value) return;
-  if (value) {
-    treeRef.value.setCheckedKeys([...rcbRefs.value]);
-    emit('update:checkedRefs', [...rcbRefs.value]);
-  } else {
-    treeRef.value.setCheckedKeys([]);
-    emit('update:checkedRefs', []);
-  }
+  const refs = value ? [...rcbRefs.value] : [];
+  syncTreeCheckedRefs(refs);
+  emit('update:checkedRefs', refs);
 }
 </script>
 
