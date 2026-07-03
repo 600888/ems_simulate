@@ -60,6 +60,8 @@ export const DEVICE_API = {
   IEC61850_LOAD_MODEL: '/api/devices/iec61850/load_model',
   IEC61850_IMPORT_MODEL: '/api/devices/iec61850/import_model',
   IEC61850_DISCOVER_MODEL: '/api/devices/iec61850/discover-model',
+  IEC61850_MODEL_CACHE_STATUS: '/api/devices/iec61850/model-cache-status',
+  IEC61850_LOAD_MODEL_FROM_CACHE: '/api/devices/iec61850/load-model-from-cache',
   EXPORT_MODEL: '/api/devices/export-model',
   ADD_SLAVE: '/api/devices/add-slave',
   DELETE_SLAVE: '/api/devices/delete-slave',

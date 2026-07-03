@@ -308,6 +308,34 @@ export async function discoverIEC61850Model(
   }
 }
 
+export async function checkIEC61850ModelCache(
+  deviceName: string
+): Promise<{ cache_exists: boolean; cache_key: string }> {
+  try {
+    const data = await requestApi(DEVICE_API.IEC61850_MODEL_CACHE_STATUS, "post", {
+      device_name: deviceName,
+    });
+    return data;
+  } catch (error) {
+    console.error("Error checking IEC61850 model cache:", error);
+    return { cache_exists: false, cache_key: "" };
+  }
+}
+
+export async function loadIEC61850ModelFromCache(
+  deviceName: string
+): Promise<boolean> {
+  try {
+    const data = await requestApi(DEVICE_API.IEC61850_LOAD_MODEL_FROM_CACHE, "post", {
+      device_name: deviceName,
+    });
+    return data;
+  } catch (error) {
+    console.error("Error loading IEC61850 model from cache:", error);
+    throw error;
+  }
+}
+
 // ===== IEC 61850 模型导出 =====
 
 export type ExportModelType = "icd" | "json" | "xml" | "csv" | "tree";

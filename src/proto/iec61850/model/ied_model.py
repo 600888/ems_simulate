@@ -39,6 +39,18 @@ class DARef:
             result["subDataAttributes"] = [bda.to_dict() for bda in self.sub_das]
         return result
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DARef:
+        sub_das = tuple(cls.from_dict(sd) for sd in data.get("subDataAttributes", []))
+        return cls(
+            name=data.get("name", ""),
+            path=data.get("path", ""),
+            fc=data.get("fc", ""),
+            iec_type=data.get("iecType", ""),
+            mms_type=data.get("mmsType", "MMS_UNKNOWN"),
+            sub_das=sub_das,
+        )
+
     def to_flat_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
@@ -78,6 +90,17 @@ class DORef:
             "frameType": self.frame_type,
             "dataAttributes": [da.to_dict() for da in self.das],
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DORef:
+        das = tuple(DARef.from_dict(da) for da in data.get("dataAttributes", []))
+        return cls(
+            name=data.get("name", ""),
+            ref=data.get("ref", ""),
+            cdc=data.get("cdc", ""),
+            frame_type=data.get("frameType", -1),
+            das=das,
+        )
 
     @property
     def primary_da(self) -> DARef | None:
@@ -131,6 +154,16 @@ class DataSetRef:
             "members": list(self.members),
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DataSetRef:
+        members = tuple(dict(m) if isinstance(m, dict) else {"name": m} for m in data.get("members", []))
+        return cls(
+            name=data.get("name", ""),
+            ref=data.get("ref", ""),
+            is_deletable=data.get("isDeletable", False),
+            members=members,
+        )
+
 
 @dataclass(slots=True, frozen=True)
 class RCBRef:
@@ -150,6 +183,16 @@ class RCBRef:
             result["intgPd"] = self.intg_pd
         return result
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RCBRef:
+        return cls(
+            name=data.get("name", ""),
+            ref=data.get("ref", ""),
+            rcb_type=data.get("type", ""),
+            dat_set=data.get("datSet", ""),
+            intg_pd=data.get("intgPd", 0),
+        )
+
 
 @dataclass(slots=True, frozen=True)
 class GoCBRef:
@@ -165,6 +208,18 @@ class GoCBRef:
 
     def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "ref": self.ref}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GoCBRef:
+        return cls(
+            name=data.get("name", ""),
+            ref=data.get("ref", ""),
+            go_cb_ref=data.get("go_cb_ref", ""),
+            go_id=data.get("go_id", ""),
+            app_id=data.get("app_id"),
+            data_set_ref=data.get("data_set_ref", ""),
+            conf_rev=data.get("conf_rev", 0),
+        )
 
 
 @dataclass(slots=True, frozen=True)
@@ -195,6 +250,22 @@ class LNModel:
             result["gooseControlBlocks"] = [gocb.to_dict() for gocb in self.gocb_list]
         return result
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LNModel:
+        dos = tuple(DORef.from_dict(do) for do in data.get("dataObjects", []))
+        datasets = tuple(DataSetRef.from_dict(ds) for ds in data.get("dataSets", []))
+        rcb_list = tuple(RCBRef.from_dict(rcb) for rcb in data.get("reportControlBlocks", []))
+        gocb_list = tuple(GoCBRef.from_dict(gocb) for gocb in data.get("gooseControlBlocks", []))
+        return cls(
+            name=data.get("name", ""),
+            ln_class=data.get("lnClass", ""),
+            ref=data.get("ref", ""),
+            dos=dos,
+            datasets=datasets,
+            rcb_list=rcb_list,
+            gocb_list=gocb_list,
+        )
+
 
 @dataclass(slots=True, frozen=True)
 class LDModel:
@@ -210,6 +281,15 @@ class LDModel:
             "inst": self.inst,
             "logicalNodes": [ln.to_dict() for ln in self.lns],
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LDModel:
+        lns = tuple(LNModel.from_dict(ln) for ln in data.get("logicalNodes", []))
+        return cls(
+            name=data.get("name", ""),
+            inst=data.get("inst", ""),
+            lns=lns,
+        )
 
 
 @dataclass(slots=True, frozen=True)
@@ -239,13 +319,30 @@ class IedModel:
     # ===== 序列化 =====
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "host": self.host,
             "port": self.port,
             "discover_time": self.discover_time,
             "logicalDevices": [ld.to_dict() for ld in self.lds],
             "summary": self.summary,
         }
+        # 序列化预计算的扁平测点映射，避免从文件恢复时懒加载重新计算
+        if self._point_refs:
+            result["_point_refs"] = self._point_refs
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> IedModel:
+        lds = tuple(LDModel.from_dict(ld) for ld in data.get("logicalDevices", []))
+        # 使用文件中的预计算测点映射，避免从 LD 重新计算
+        point_refs = data["_point_refs"]
+        return cls(
+            host=data.get("host", ""),
+            port=data.get("port", 102),
+            discover_time=data.get("discover_time", ""),
+            lds=lds,
+            _point_refs=point_refs,
+        )
 
     # ===== 统计摘要 =====
 

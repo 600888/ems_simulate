@@ -414,6 +414,35 @@ class Device:
         if added_count > 0:
             self.log.info(f"IEC61850 ICD 模型加载: 已注册 {added_count} 个测点到 PointManager")
 
+    def check_iec61850_model_cache(self) -> dict:
+        """检查当前设备是否有可用的远程模型缓存
+
+        Returns:
+            {"cache_exists": bool, "cache_key": str}
+        """
+        if self.protocol_type != ProtocolType.Iec61850Client:
+            return {"cache_exists": False, "cache_key": ""}
+        if not self.protocol_handler:
+            return {"cache_exists": False, "cache_key": ""}
+        if isinstance(self.protocol_handler, IEC61850ClientHandler):
+            return self.protocol_handler.check_model_cache()
+        return {"cache_exists": False, "cache_key": ""}
+
+    def iec61850_load_model_from_cache(self) -> bool:
+        """从缓存加载 IEC61850 模型（不进行 MMS 在线发现）
+
+        Returns:
+            缓存命中且加载成功返回 True
+        """
+        if self.protocol_type != ProtocolType.Iec61850Client:
+            return False
+        if not self.protocol_handler:
+            return False
+        self._clear_iec61850_cache()
+        if isinstance(self.protocol_handler, IEC61850ClientHandler):
+            return self.protocol_handler.load_model_from_cache()
+        return False
+
     def iec61850_remote_discover_model(self) -> bool:
         """远程发现 IEC61850 模型（需要 MMS 连接）
 

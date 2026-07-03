@@ -242,6 +242,8 @@ import {
   getIEC61850ConnectProgress,
   loadIEC61850Model,
   discoverIEC61850Model,
+  checkIEC61850ModelCache,
+  loadIEC61850ModelFromCache,
 } from "@/api/deviceApi";
 import type { IEC61850ConnectProgress } from "@/api/deviceApi";
 import { triggerSidebarRefresh } from "@/composables";
@@ -254,7 +256,7 @@ import {
   Refresh,
   Search,
 } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 const route = useRoute();
 const { t } = useI18n();
@@ -656,6 +658,56 @@ const handleImportModel = () => {
 };
 
 const handleDiscoverModel = async () => {
+  // 1. 先检查是否有可用的模型缓存
+  let useCache = false;
+  try {
+    const cacheInfo = await checkIEC61850ModelCache(routeName.value);
+    if (cacheInfo?.cache_exists) {
+      // 缓存存在，询问用户是否使用缓存还是重新发现
+      const action = await ElMessageBox.confirm(
+        t("device.cacheExistsMessage"),
+        t("device.cacheExistsTitle"),
+        {
+          confirmButtonText: t("device.useCache"),
+          cancelButtonText: t("device.redoDiscovery"),
+          distinguishCancelAndClose: true,
+          type: "info",
+          roundButton: true,
+        }
+      ).catch((action: string | null) => action);
+
+      if (action === "confirm") {
+        useCache = true;
+      }
+    }
+  } catch (e) {
+    // 检查缓存出错时静默处理，继续正常的发现流程
+    console.warn("检查模型缓存失败，将继续在线发现", e);
+  }
+
+  if (useCache) {
+    // 2. 使用缓存加载
+    modelDiscovering.value = true;
+    try {
+      const success = await loadIEC61850ModelFromCache(routeName.value);
+      if (success) {
+        modelLoaded.value = true;
+        ElMessage.success(t("device.modelLoadSuccess") + ` (${t("device.fromCache")})`);
+        await slaveRef.value?.reloadDatas();
+        triggerSidebarRefresh(routeName.value);
+      } else {
+        ElMessage.error(t("device.modelLoadFailed"));
+      }
+    } catch (error) {
+      console.error(error);
+      ElMessage.error(t("device.modelLoadFailed"));
+    } finally {
+      modelDiscovering.value = false;
+    }
+    return;
+  }
+
+  // 3. 重新发现（MMS 在线遍历）
   modelDiscovering.value = true;
   startIec61850ProgressPolling("discover");
   // 先让初始进度真正绘制一帧，避免极快任务在浏览器首次渲染前就结束。

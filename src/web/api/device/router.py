@@ -209,6 +209,37 @@ async def load_iec61850_model(req: DeviceInfoRequest, request: Request):
     )
 
 
+@device_router.post("/iec61850/model-cache-status", response_model=BaseResponse)
+async def check_iec61850_model_cache(req: DeviceInfoRequest, request: Request):
+    """检查 IEC61850 远程模型缓存是否存在
+
+    在点击"发现模型"前调用，如果缓存已存在，前端可提示用户
+    选择使用缓存或重新发现。
+
+    Args:
+        req: {device_name}
+    """
+    device = _get_device(req.device_name, request)
+    cache_info = await asyncio.to_thread(device.check_iec61850_model_cache)
+    return BaseResponse(data=cache_info)
+
+
+@device_router.post("/iec61850/load-model-from-cache", response_model=BaseResponse)
+async def load_iec61850_model_from_cache(req: DeviceInfoRequest, request: Request):
+    """从缓存加载 IEC61850 模型（不进行 MMS 在线发现）
+
+    仅在模型缓存存在时有效，直接从 ModelCache 恢复 IedModel 和 PointRegistry。
+
+    Args:
+        req: {device_name}
+    """
+    device = _get_device(req.device_name, request)
+    success = await asyncio.to_thread(device.iec61850_load_model_from_cache)
+    if not success:
+        raise OperationError("IEC61850 模型缓存不存在或已过期!", data=False)
+    return BaseResponse(message="IEC61850 模型从缓存加载成功!", data=True)
+
+
 @device_router.post("/iec61850/discover-model", response_model=BaseResponse)
 async def discover_iec61850_model(req: DeviceInfoRequest, request: Request):
     """远程发现 IEC61850 模型（通过 MMS 在线遍历）

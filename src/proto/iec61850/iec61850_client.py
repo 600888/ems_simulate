@@ -764,6 +764,74 @@ class IEC61850Client:
             "yt_points": self._last_import_result.points.yt_points,
         }
 
+    def check_model_cache(self) -> dict:
+        """检查当前设备是否有可用的模型缓存
+
+        Returns:
+            {"cache_exists": bool, "cache_key": str} 字典
+        """
+        from .model import ModelCache
+
+        cache_key = f"{self.ip}:{self.port}"
+        cache = ModelCache.instance()
+        return {
+            "cache_exists": cache.has(cache_key),
+            "cache_key": cache_key,
+        }
+
+    def load_model_from_cache(self) -> bool:
+        """从缓存加载模型（不进行 MMS 在线发现）
+
+        Returns:
+            缓存命中且加载成功返回 True
+        """
+        from .model import ModelCache
+        from .model.registry_bridge import build_registry_from_model
+
+        cache_key = f"{self.ip}:{self.port}"
+        cache = ModelCache.instance()
+
+        cached = cache.get(cache_key)
+        if cached is None:
+            log.warning(f"模型缓存未命中: {cache_key}")
+            return False
+
+        log.info(f"从缓存加载模型: {cache_key}")
+
+        # 将缓存模型同步到 _discovery，确保 get_discovered_points() 能正确读取
+        self._discovery._model = cached
+
+        # build_registry_from_model 会重建：
+        #   - PointRegistry (address → ref/fc/iec_type/mms_type)
+        #   - registry.discovered_goose_items
+        #   - registry.discovered_datasets
+        discovered = build_registry_from_model(cached, self._registry)
+
+        if self.datasets:
+            self.datasets.invalidate_catalog()
+
+        # 填充 dU 描述名称（可能无 MMS 连接，失败时静默跳过）
+        try:
+            if self._conn.is_connected:
+                self._fill_du_names(discovered)
+            else:
+                log.info("从缓存加载模型: 无 MMS 连接，跳过 dU 名称读取")
+        except Exception as e:
+            log.warning(f"从缓存加载模型: 读取 dU 名称失败（已跳过）: {e}")
+
+        return True
+
+    def _update_model_point_names(self, model: "IedModel", discovered: list[dict[str, Any]]) -> None:
+        """将 dU 名称写回模型的 _point_refs，确保缓存文件包含名称"""
+        point_refs = getattr(model, "_point_refs", None)
+        if not point_refs:
+            return
+        for point in discovered:
+            addr = point.get("address", "")
+            name = point.get("name", "")
+            if addr and name and addr in point_refs:
+                point_refs[addr]["name"] = name
+
     def remote_discover_model(
         self,
         force_refresh: bool = True,
@@ -771,7 +839,7 @@ class IEC61850Client:
     ) -> bool:
         """远程发现模型（通过 MMS 在线遍历）
 
-        用户主动点击“发现模型”时默认强制在线遍历，避免同一 IP:端口
+        用户主动点击"发现模型"时默认强制在线遍历，避免同一 IP:端口
         换了 IED/模型后仍命中上一份缓存。
 
         Args:
@@ -810,7 +878,6 @@ class IEC61850Client:
         # 3. 在线发现
         model = self._discovery.discover(self._conn, progress=progress)
         if model is not None:
-            cache.set(cache_key, model)
             if progress:
                 progress("building", 0, 1, "正在构建测点索引")
             discovered = build_registry_from_model(model, self._registry)
@@ -821,6 +888,9 @@ class IEC61850Client:
             # dU 是 DO 的在线描述值，不包含在目录发现结果中，需要在
             # PointRegistry 建好后按 DO 补读并写回各测点名称。
             self._fill_du_names(discovered)
+            # 将 dU 名称写回模型的 _point_refs，确保缓存文件包含名称
+            self._update_model_point_names(model, discovered)
+            cache.set(cache_key, model)
             if progress:
                 progress("descriptions", 1, 1, "模型描述读取完成")
             log.info(f"远程模型发现完成并已缓存: {cache_key}")

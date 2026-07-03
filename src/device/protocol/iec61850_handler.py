@@ -390,6 +390,55 @@ class IEC61850ClientHandler(ClientHandler):
         if self._client:
             self._client._last_import_result = None
 
+    def check_model_cache(self) -> dict:
+        """检查当前设备是否有可用的远程模型缓存
+
+        Returns:
+            {"cache_exists": bool, "cache_key": str}
+        """
+        if not self._client:
+            return {"cache_exists": False, "cache_key": ""}
+        return self._client.check_model_cache()
+
+    def load_model_from_cache(self) -> bool:
+        """从缓存加载模型（不进行 MMS 在线发现）
+
+        与 remote_discover_model() 同步:
+        - 重建 _discovered_goose_items、_discovered_datasets
+        - 通知 _on_points_discovered 注册测点
+        - RCB 需要 MMS 连接单独发现，缓存加载时不重建
+
+        Returns:
+            缓存命中且加载成功返回 True
+        """
+        if not self._client:
+            return False
+        success = self._client.load_model_from_cache()
+        if not success:
+            return False
+
+        # 同步 GOOSE 控制块
+        self._discovered_goose_items.clear()
+        self._discovered_goose_items.extend(self._client._discovered_goose_items)
+
+        # 同步 DataSet 列表
+        self._discovered_datasets.clear()
+        if hasattr(self._client, "get_discovered_datasets"):
+            self._discovered_datasets.extend(self._client.get_discovered_datasets())
+
+        # 通知上层注册测点
+        if self._on_points_discovered:
+            try:
+                discovered = self._client.get_discovered_points()
+                if discovered:
+                    self._on_points_discovered(discovered)
+            except Exception as e:
+                if self._log:
+                    self._log.error(f"从缓存加载模型: 注册测点时出错: {e}")
+
+        self._model_loaded = True
+        return True
+
     def remote_discover_model(self) -> bool:
         """远程发现模型（通过 MMS 在线遍历）
 
