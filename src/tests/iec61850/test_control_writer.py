@@ -28,6 +28,25 @@ class _Connection:
         return False
 
 
+class _SetMagRegistry:
+    def get_ref(self, _address):
+        return "LD0/CTRL1.CtrlBlockPower.setMag.i"
+
+    def get_fc(self, _address):
+        return "SP"
+
+    def get_iec_type(self, _address):
+        return "integer"
+
+    def get_mms_type(self, _address):
+        return "MMS_INTEGER"
+
+
+class _SetMagConnection(_Connection):
+    def get_fc_value(self, fc):
+        return f"FC_{fc}"
+
+
 def _fake_control_api(control_model):
     calls = []
     api = SimpleNamespace(
@@ -74,3 +93,34 @@ def test_sbo_control_selects_before_operate(monkeypatch):
 
     assert Iec61850Writer(_Connection(), _Registry()).write("Pos", 0, "CO") is True
     assert calls.index(("select",)) < calls.index(("operate", 0))
+
+
+def test_set_mag_integer_uses_sp_and_native_integer_writer(monkeypatch):
+    calls = []
+    api = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IedConnection_writeInt32Value=lambda _conn, ref, fc, value: calls.append(("write_int32", ref, fc, value)) or 0,
+    )
+    monkeypatch.setattr(writer_module, "iec61850", api, raising=False)
+
+    writer = Iec61850Writer(_SetMagConnection(), _SetMagRegistry())
+
+    assert writer.write("LD0/CTRL1.CtrlBlockPower.setMag.i", "42") is True
+    assert calls == [("write_int32", "LD0/CTRL1.CtrlBlockPower.setMag.i", "FC_SP", 42)]
+
+
+def test_boolean_string_false_is_not_coerced_to_true(monkeypatch):
+    calls = []
+    api = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IedConnection_writeBooleanValue=lambda _conn, ref, fc, value: (
+            calls.append(("write_boolean", ref, fc, value)) or 0
+        ),
+    )
+    monkeypatch.setattr(writer_module, "iec61850", api, raising=False)
+    registry = _SetMagRegistry()
+    registry.get_iec_type = lambda _address: "boolean"
+    registry.get_mms_type = lambda _address: "MMS_BOOLEAN"
+
+    assert Iec61850Writer(_SetMagConnection(), registry).write("SubEna", "false", "SV") is True
+    assert calls == [("write_boolean", "LD0/CTRL1.CtrlBlockPower.setMag.i", "FC_SV", False)]

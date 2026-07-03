@@ -273,3 +273,18 @@ def test_control_auxiliary_code_is_redirected_to_ctl_val():
     device = Mock(point_manager=point_manager)
 
     assert _resolve_control_write_code(device, check.code) == control.code
+
+
+def test_set_mag_sp_code_is_preserved_for_direct_write():
+    set_mag = BasePoint(
+        address="LD0/CTRL1.CtrlBlockPower.setMag.i",
+        code="CTRL1.CtrlBlockPower.setMag.i",
+        frame_type=3,
+        fc="SP",
+    )
+    point_manager = Mock()
+    point_manager.get_point_by_code.return_value = set_mag
+    device = Mock(point_manager=point_manager)
+
+    assert _resolve_control_write_code(device, set_mag.code) == set_mag.code
+    point_manager.get_all_points.assert_not_called()

@@ -12,9 +12,9 @@ from ..defs.constants import (
     IEC_TYPE_BOOLEAN,
     IEC_TYPE_FLOAT,
     IEC_TYPE_INTEGER,
-    IEC_TYPE_STRING,
     IEC_TYPE_UNKNOWN,
 )
+from ..defs.mms_types import MmsType, mms_type_from_iec_type
 from ..log import log
 
 if HAS_IEC61850:
@@ -62,12 +62,13 @@ class Iec61850Writer:
 
         fc_val = self._resolve_fc(addr_str, fc)
         iec_type = self._resolve_iec_type(addr_str)
+        mms_type = self._resolve_mms_type(addr_str, iec_type)
 
-        if self._write_once(addr_str, ref, value, fc_val, iec_type):
+        if self._write_once(addr_str, ref, value, fc_val, mms_type):
             return True
 
         if self._connection.reconnect_if_unhealthy(f"write {ref}"):
-            return self._write_once(addr_str, ref, value, fc_val, iec_type)
+            return self._write_once(addr_str, ref, value, fc_val, mms_type)
         return False
 
     @staticmethod
@@ -83,20 +84,22 @@ class Iec61850Writer:
         """Create the MMS value type required by the remote control object."""
         ctl_type = iec61850.ControlObjectClient_getCtlValType(control)
         if ctl_type == iec61850.MMS_BOOLEAN:
-            return iec61850.MmsValue_newBoolean(bool(value))
+            return iec61850.MmsValue_newBoolean(Iec61850Writer._to_bool(value))
         if ctl_type == iec61850.MMS_FLOAT:
             return iec61850.MmsValue_newFloat(float(value))
         if ctl_type == iec61850.MMS_INTEGER:
-            return iec61850.MmsValue_newIntegerFromInt32(int(value))
+            return iec61850.MmsValue_newIntegerFromInt32(Iec61850Writer._to_int(value))
         if ctl_type == iec61850.MMS_UNSIGNED:
-            return iec61850.MmsValue_newUnsignedFromUint32(int(value))
+            return iec61850.MmsValue_newUnsignedFromUint32(Iec61850Writer._to_int(value))
+        if ctl_type == getattr(iec61850, "MMS_BIT_STRING", None):
+            return Iec61850Writer._new_bit_string(value, 2)
 
         if iec_type == IEC_TYPE_BOOLEAN:
-            return iec61850.MmsValue_newBoolean(bool(value))
+            return iec61850.MmsValue_newBoolean(Iec61850Writer._to_bool(value))
         if iec_type == IEC_TYPE_FLOAT:
             return iec61850.MmsValue_newFloat(float(value))
         if iec_type == IEC_TYPE_INTEGER:
-            return iec61850.MmsValue_newIntegerFromInt32(int(value))
+            return iec61850.MmsValue_newIntegerFromInt32(Iec61850Writer._to_int(value))
         return None
 
     def _write_control(self, ref: str, value: Any, iec_type: str) -> bool:
@@ -146,46 +149,115 @@ class Iec61850Writer:
             if control is not None:
                 iec61850.ControlObjectClient_destroy(control)
 
-    def _write_once(self, address: str, ref: str, value: Any, fc_val, iec_type: str) -> bool:
+    def _write_once(
+        self,
+        address: str,
+        ref: str,
+        value: Any,
+        fc_val,
+        mms_type: MmsType,
+    ) -> bool:
         conn = self._connection.connection
         if not conn or not self._connection.is_connected:
             return False
 
         try:
-            if iec_type == IEC_TYPE_FLOAT:
+            if mms_type is MmsType.FLOAT:
                 error = iec61850.IedConnection_writeFloatValue(conn, ref, fc_val, float(value))
                 return error == iec61850.IED_ERROR_OK
 
-            if iec_type == IEC_TYPE_BOOLEAN:
-                error = iec61850.IedConnection_writeBooleanValue(conn, ref, fc_val, bool(value))
+            if mms_type is MmsType.BOOLEAN:
+                error = iec61850.IedConnection_writeBooleanValue(conn, ref, fc_val, self._to_bool(value))
                 return error == iec61850.IED_ERROR_OK
 
-            if iec_type == IEC_TYPE_INTEGER:
-                error = iec61850.IedConnection_writeIntegerValue(conn, ref, fc_val, int(value))
+            if mms_type is MmsType.INTEGER:
+                error = iec61850.IedConnection_writeInt32Value(conn, ref, fc_val, self._to_int(value))
                 return error == iec61850.IED_ERROR_OK
 
-            if iec_type == IEC_TYPE_STRING:
-                error = iec61850.IedConnection_writeStringValue(conn, ref, fc_val, str(value))
+            if mms_type is MmsType.UNSIGNED:
+                error = iec61850.IedConnection_writeUnsigned32Value(conn, ref, fc_val, self._to_int(value))
                 return error == iec61850.IED_ERROR_OK
 
-            if isinstance(value, float):
-                error = iec61850.IedConnection_writeFloatValue(conn, ref, fc_val, float(value))
-                return error == iec61850.IED_ERROR_OK
-            if isinstance(value, bool):
-                error = iec61850.IedConnection_writeBooleanValue(conn, ref, fc_val, bool(value))
-                return error == iec61850.IED_ERROR_OK
-            if isinstance(value, int):
-                error = iec61850.IedConnection_writeIntegerValue(conn, ref, fc_val, int(value))
-                return error == iec61850.IED_ERROR_OK
-            if isinstance(value, str):
-                error = iec61850.IedConnection_writeStringValue(conn, ref, fc_val, str(value))
+            if mms_type is MmsType.VISIBLE_STRING:
+                error = iec61850.IedConnection_writeVisibleStringValue(conn, ref, fc_val, str(value))
                 return error == iec61850.IED_ERROR_OK
 
-            log.error(f"不支持写入的数据类型: ref={ref}, value_type={type(value)}")
-            return False
+            mms_value = self._new_mms_value(address, value, mms_type)
+            if mms_value is None:
+                log.error(f"不支持写入的 MMS 类型: ref={ref}, mms_type={mms_type.value}")
+                return False
+            try:
+                error = iec61850.IedConnection_writeObject(conn, ref, fc_val, mms_value)
+                return error == iec61850.IED_ERROR_OK
+            finally:
+                iec61850.MmsValue_delete(mms_value)
         except Exception as e:
-            log.error(f"IEC61850 写入异常: address={address}, ref={ref}, error={e}")
+            log.error(f"IEC61850 写入异常: address={address}, ref={ref}, mms_type={mms_type.value}, error={e}")
             return False
+
+    @staticmethod
+    def _to_bool(value: Any) -> bool:
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "on", "yes"}:
+                return True
+            if normalized in {"0", "false", "off", "no"}:
+                return False
+            raise ValueError(f"无效布尔值: {value!r}")
+        return bool(value)
+
+    @staticmethod
+    def _to_int(value: Any) -> int:
+        if isinstance(value, str):
+            return int(value.strip(), 0)
+        return int(value)
+
+    @staticmethod
+    def _new_bit_string(value: Any, bit_size: int):
+        result = iec61850.MmsValue_newBitString(max(bit_size, 1))
+        iec61850.MmsValue_setBitStringFromInteger(result, Iec61850Writer._to_int(value))
+        return result
+
+    @staticmethod
+    def _bit_string_size(address: str, value: Any) -> int:
+        leaf = str(address).split(".")[-1]
+        if leaf in {"Check", "ctlVal"}:
+            return 2
+        if leaf in {"q", "subQ"}:
+            return 13
+        return max(Iec61850Writer._to_int(value).bit_length(), 1)
+
+    @staticmethod
+    def _octets(value: Any) -> bytes:
+        if isinstance(value, bytes):
+            return value
+        text = str(value).strip()
+        if text.lower().startswith("0x"):
+            text = text[2:]
+        compact = text.replace(" ", "").replace(":", "").replace("-", "")
+        if len(compact) % 2:
+            compact = f"0{compact}"
+        return bytes.fromhex(compact)
+
+    @classmethod
+    def _new_mms_value(cls, address: str, value: Any, mms_type: MmsType):
+        if mms_type is MmsType.BIT_STRING:
+            return cls._new_bit_string(value, cls._bit_string_size(address, value))
+        if mms_type is MmsType.OCTET_STRING:
+            octets = cls._octets(value)
+            result = iec61850.MmsValue_newOctetString(len(octets), len(octets))
+            for index, octet in enumerate(octets):
+                iec61850.MmsValue_setOctetStringOctet(result, index, octet)
+            return result
+        if mms_type is MmsType.STRING:
+            return iec61850.MmsValue_newMmsString(str(value))
+        if mms_type is MmsType.UTC_TIME:
+            return iec61850.MmsValue_newUtcTimeByMsTime(cls._to_int(value))
+        if mms_type is MmsType.BINARY_TIME:
+            result = iec61850.MmsValue_newBinaryTime(False)
+            iec61850.MmsValue_setBinaryTime(result, cls._to_int(value))
+            return result
+        return None
 
     def _build_ref(self, address: str) -> str:
         """构建 MMS 引用路径"""
@@ -226,3 +298,17 @@ class Iec61850Writer:
         if iec_type == IEC_TYPE_UNKNOWN or not iec_type:
             iec_type = infer_iec_type_from_address(address)
         return iec_type
+
+    def _resolve_mms_type(self, address: str, iec_type: str) -> MmsType:
+        mms_type = ""
+        if self._registry:
+            get_mms_type = getattr(self._registry, "get_mms_type", None)
+            if callable(get_mms_type):
+                mms_type = get_mms_type(address)
+        try:
+            resolved = MmsType(mms_type)
+        except (TypeError, ValueError):
+            resolved = MmsType.UNKNOWN
+        if resolved is MmsType.UNKNOWN:
+            resolved = mms_type_from_iec_type(iec_type)
+        return resolved

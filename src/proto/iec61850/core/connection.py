@@ -211,17 +211,14 @@ class Iec61850Connection:
 
     def get_fc_value(self, fc: str):
         """将 FC 字符串转换为 pyiec61850 常量值"""
-        from ..defs.constants import FC_CO, FC_DC, FC_ST
-
         if not fc or not HAS_IEC61850:
             return FC_MX
-        fc_map = {
-            "MX": FC_MX,
-            "ST": FC_ST,
-            "CO": FC_CO,
-            "DC": FC_DC if FC_DC is not None else 3,
-        }
-        return fc_map.get(fc, FC_MX)
+        from pyiec61850 import pyiec61850 as iec61850
+
+        # pyiec61850 exposes every functional constraint with the same suffix
+        # as the IEC name (SP/SE/SV/CF/SG/...); use that complete mapping rather
+        # than silently treating unknown writable FCs as MX.
+        return getattr(iec61850, f"IEC61850_FC_{str(fc).upper()}", FC_MX)
 
     def build_dataset_ref(self, dataset_ref: str) -> str:
         """构建 MMS DataSet 引用，确保包含 model_name 前缀"""

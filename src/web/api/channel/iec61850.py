@@ -185,6 +185,7 @@ def _infer_fc_from_da(da_path: str, fallback_fc: str = "MX") -> str:
 
 
 _CONTROL_VALUE_SUFFIXES = (".Oper.ctlVal", ".SBOw.ctlVal", ".ctlVal")
+_DIRECT_MMS_WRITE_FCS = frozenset({"SP", "SE", "SV", "CF", "DC", "SG", "BL", "EX"})
 
 
 def _is_control_value_address(address: str) -> bool:
@@ -192,16 +193,21 @@ def _is_control_value_address(address: str) -> bool:
 
 
 def _resolve_control_write_code(device, point_code: str) -> str:
-    """Resolve a status-point code to the FC=CO point of the same DO.
+    """Resolve FC=CO writes while preserving directly writable DA points.
 
     A controllable DO commonly exposes both ``stVal`` (ST) and
     ``Oper.ctlVal`` (CO). Older frontends submitted the displayed stVal code;
-    accept that request but execute the matching control entry.
+    accept that request but execute the matching control entry. Set-point and
+    configuration attributes such as ``setMag`` (SP/SE) are direct MMS writes
+    and must not be redirected to a control object.
     """
     point = device.point_manager.get_point_by_code(point_code)
     if point is None:
         return point_code
-    if getattr(point, "fc", "") == "CO" and _is_control_value_address(str(point.address)):
+    point_fc = str(getattr(point, "fc", "") or "").upper()
+    if point_fc in _DIRECT_MMS_WRITE_FCS:
+        return point_code
+    if point_fc == "CO" and _is_control_value_address(str(point.address)):
         return point_code
 
     requested_ref = _parse_iec61850_address(str(point.address))
@@ -1547,7 +1553,7 @@ async def iec61850_write_single_point(
     write_point_code = _resolve_control_write_code(device, body.point_code)
     if not write_point_code:
         raise ValidationError(
-            "未发现可写控制属性（应为 Oper.ctlVal、SBOw.ctlVal 或 ctlVal）",
+            "未发现可写属性（控制对象应包含 Oper.ctlVal、SBOw.ctlVal 或 ctlVal）",
             data={"point_code": body.point_code},
         )
     success = await device.edit_point_data_async(write_point_code, body.point_value)
