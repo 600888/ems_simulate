@@ -917,6 +917,8 @@ export default {
     history: "报告历史",
     treeName: "名称",
     selectAll: "全选",
+    selectByInstance: "按实例选择",
+    reportInstance: "第 {index} 个（{count} 项）",
     selectedCount: "已选 {count} 项",
     applyToSelected: "应用到选中 ({count})",
     batchMode: "批量操作",

@@ -9,13 +9,31 @@
         :prefix-icon="Search"
       />
       <div class="rcb-select-actions" v-if="showCheckbox">
-        <el-checkbox
-          :model-value="selectAllModel"
-          :indeterminate="isIndeterminate"
-          @change="handleSelectAllChange"
-        >
-          {{ t('report.selectAll') }}
-        </el-checkbox>
+        <div class="rcb-selection-controls">
+          <el-checkbox
+            :model-value="selectAllModel"
+            :indeterminate="isIndeterminate"
+            @change="handleSelectAllChange"
+          >
+            {{ t('report.selectAll') }}
+          </el-checkbox>
+          <el-select
+            v-if="instanceOptions.length > 1"
+            :model-value="selectedInstanceIndex"
+            :placeholder="t('report.selectByInstance')"
+            clearable
+            size="small"
+            class="rcb-instance-select"
+            @change="handleInstanceSelect"
+          >
+            <el-option
+              v-for="option in instanceOptions"
+              :key="option.index"
+              :label="t('report.reportInstance', { index: option.index, count: option.refs.length })"
+              :value="option.index"
+            />
+          </el-select>
+        </div>
         <span class="selected-count">{{ t('report.selectedCount', { count: (props.checkedRefs || []).length }) }}</span>
       </div>
     </div>
@@ -160,18 +178,84 @@ interface TreeCheckState {
   checkedKeys: Array<string | number>;
 }
 
+interface RcbInstanceOption {
+  index: number;
+  refs: string[];
+}
+
+interface RcbInstanceCandidate {
+  rcb: RcbInfo;
+  candidateIndex: number;
+  candidateGroup: string;
+  hasInstanceSuffix: boolean;
+  matchesReportId: boolean;
+}
+
+function getReportIdName(rptId: string): string {
+  const parts = rptId.split(/[.$/]/).filter(Boolean);
+  return parts[parts.length - 1] || '';
+}
+
+const instanceOptions = computed<RcbInstanceOption[]>(() => {
+  const candidates: RcbInstanceCandidate[] = props.rcbs.map((rcb) => {
+    const suffixMatch = rcb.name.match(/^(.*?)(\d{2})$/);
+    const baseName = suffixMatch?.[1] || rcb.name;
+    const candidateIndex = suffixMatch ? Number(suffixMatch[2]) : 1;
+    const candidateGroup = [rcb.ld, rcb.ln, rcb.rcb_type, baseName].join('\u0000');
+    return {
+      rcb,
+      candidateIndex,
+      candidateGroup,
+      hasInstanceSuffix: !!suffixMatch && candidateIndex > 0,
+      matchesReportId: !!suffixMatch && getReportIdName(rcb.rpt_id || '') === baseName,
+    };
+  });
+
+  const candidateGroupSizes = new Map<string, number>();
+  for (const candidate of candidates) {
+    candidateGroupSizes.set(
+      candidate.candidateGroup,
+      (candidateGroupSizes.get(candidate.candidateGroup) || 0) + 1,
+    );
+  }
+
+  const refsByIndex = new Map<number, string[]>();
+  for (const candidate of candidates) {
+    const isExpandedInstance = candidate.hasInstanceSuffix
+      && (candidate.matchesReportId || (candidateGroupSizes.get(candidate.candidateGroup) || 0) > 1);
+    const index = isExpandedInstance ? candidate.candidateIndex : 1;
+    const refs = refsByIndex.get(index) || [];
+    refs.push(candidate.rcb.ref);
+    refsByIndex.set(index, refs);
+  }
+
+  return Array.from(refsByIndex.entries())
+    .sort(([left], [right]) => left - right)
+    .map(([index, refs]) => ({ index, refs }));
+});
+
+const selectedInstanceIndex = computed<number | undefined>(() => {
+  const checkedRefs = props.checkedRefs || [];
+  if (checkedRefs.length === 0) return undefined;
+  return instanceOptions.value.find((option) => isSameRefSelection(option.refs, checkedRefs))?.index;
+});
+
 function getRcbKeys(keys: Array<string | number>): string[] {
   return keys
     .map(String)
     .filter((key) => rcbRefSet.value.has(key));
 }
 
+function isSameRefSelection(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((ref) => rightSet.has(ref));
+}
+
 function hasSameCheckedRefs(refs: string[]): boolean {
   if (!treeRef.value) return false;
   const currentRefs = getRcbKeys(treeRef.value.getCheckedKeys(false) as Array<string | number>);
-  if (currentRefs.length !== refs.length) return false;
-  const expected = new Set(refs);
-  return currentRefs.every((key) => expected.has(key));
+  return isSameRefSelection(currentRefs, refs);
 }
 
 function syncTreeCheckedRefs(refs: string[]) {
@@ -198,6 +282,12 @@ function handleSelectAllChange(value: boolean) {
   syncTreeCheckedRefs(refs);
   emit('update:checkedRefs', refs);
 }
+
+function handleInstanceSelect(index?: number) {
+  const refs = instanceOptions.value.find((option) => option.index === index)?.refs || [];
+  syncTreeCheckedRefs(refs);
+  emit('update:checkedRefs', [...refs]);
+}
 </script>
 
 <style scoped lang="scss">
@@ -223,6 +313,7 @@ function handleSelectAllChange(value: boolean) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 0 2px;
 
   .el-checkbox {
@@ -238,9 +329,21 @@ function handleSelectAllChange(value: boolean) {
   }
 }
 
+.rcb-selection-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rcb-instance-select {
+  width: 138px;
+}
+
 .selected-count {
   color: #5d6876;
   font-size: 12px;
+  flex: 0 0 auto;
 }
 
 .rcb-tree-node {

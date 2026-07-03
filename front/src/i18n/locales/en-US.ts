@@ -930,6 +930,8 @@ export default {
       'Report is enabled, attributes cannot be modified. Please uncheck "Enable Report" and click "Apply Config" to disable first, then set attributes.',
     autoRefresh: "Auto Refresh",
     selectAll: "Select All",
+    selectByInstance: "Select instance",
+    reportInstance: "Instance {index} ({count})",
     selectedCount: "{count} selected",
     applyToSelected: "Apply to Selected ({count})",
     batchMode: "Batch Operation",

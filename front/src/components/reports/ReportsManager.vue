@@ -234,6 +234,7 @@ const REFRESH_INTERVAL_OPTIONS = [
   { value: 10000, label: '10s' },
 ];
 let reportPollTimer: ReturnType<typeof setTimeout> | null = null;
+let stateRequestId = 0;
 let latestRequestId = 0;
 let historyRequestId = 0;
 let selectedTreeRequestId = 0;
@@ -262,11 +263,13 @@ watch([selectedRcb, autoRefresh, pollInterval, detailTab], () => {
 
 function startReportPolling() {
   stopReportPolling();
-  const isReportTab = detailTab.value === 'latest' || detailTab.value === 'data';
-  if (!reportPollingActive || !autoRefresh.value || !selectedRcb.value || !props.channelId || !isReportTab) return;
+  if (!reportPollingActive || !autoRefresh.value || !selectedRcb.value || !props.channelId) return;
   reportPollTimer = setTimeout(async () => {
-    await refreshVisibleReportData(false);
-    startReportPolling();
+    try {
+      await refreshVisibleReportData(false);
+    } finally {
+      startReportPolling();
+    }
   }, pollInterval.value);
 }
 
@@ -289,6 +292,7 @@ async function loadRcbs() {
       const nextRcb = rcbs.value.find((rcb) => rcb.ref === previousRef) || rcbs.value[0];
       if (nextRcb.ref !== previousRef) resetReportData();
       selectedRcb.value = nextRcb;
+      void loadReportState();
     } else {
       selectedRcb.value = null;
       resetReportData();
@@ -299,6 +303,20 @@ async function loadRcbs() {
     loading.value = false;
     rcbRequestInFlight = false;
   }
+}
+
+async function loadReportState() {
+  if (!selectedRcb.value || !props.channelId) return;
+  const requestId = ++stateRequestId;
+  const requestedChannelId = props.channelId;
+  const requestedRcbRef = selectedRcb.value.ref;
+  const state = await getReportState(requestedChannelId, requestedRcbRef);
+  if (
+    requestId !== stateRequestId
+    || props.channelId !== requestedChannelId
+    || selectedRcb.value?.ref !== requestedRcbRef
+  ) return;
+  reportDataTotal.value = state.total;
 }
 
 async function loadLatestReportData(showLoading = true) {
@@ -349,14 +367,22 @@ async function loadReportHistory(showLoading = true) {
 }
 
 async function refreshVisibleReportData(showLoading = true) {
-  if (detailTab.value === 'latest') await loadLatestReportData(showLoading);
-  if (detailTab.value === 'data') await loadReportHistory(showLoading);
+  if (detailTab.value === 'latest') {
+    await Promise.all([loadReportState(), loadLatestReportData(showLoading)]);
+    return;
+  }
+  if (detailTab.value === 'data') {
+    await loadReportHistory(showLoading);
+    return;
+  }
+  await loadReportState();
 }
 
 function onRcbSelect(rcb: RcbInfo) {
   selectedRcb.value = rcb;
   detailTab.value = 'attributes';
   resetReportData();
+  void loadReportState();
 }
 
 async function handleHistorySelect(row: { entry_key: string }) {
@@ -566,6 +592,7 @@ function resetReportState() {
 }
 
 function resetReportData() {
+  stateRequestId++;
   latestRequestId++;
   historyRequestId++;
   selectedTreeRequestId++;
