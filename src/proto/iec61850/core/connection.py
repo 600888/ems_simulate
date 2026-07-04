@@ -184,12 +184,8 @@ class Iec61850Connection:
             log.info(f"重连尝试 {attempt + 1}/{max_retries}, 等待 {wait:.1f}s...")
             time.sleep(wait)
 
-            # 重建底层连接前先清理报告回调，避免旧 C 回调继续持有失效连接。
-            with contextlib.suppress(Exception):
-                from ..plugins.reports.callback import ReportCallbackHandler
-
-                ReportCallbackHandler.shutdown_all(self)
-
+            # 报告连接由 ReportsPlugin 在重连前完成禁用和回调排空；
+            # 普通数据连接不能清理进程内其他 association 的报告回调。
             self.disconnect()
             if self.connect(auto_discover=True, discover_callback=discover_callback):
                 log.info(f"重连成功: {self.ip}:{self.port}")

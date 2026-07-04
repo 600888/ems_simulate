@@ -40,6 +40,7 @@ class ReportsPlugin:
 
     def __init__(self):
         self._connection = None
+        self._browse_connection = None
         self._registry = None
         self._client = None
         self._initialized = False
@@ -62,7 +63,8 @@ class ReportsPlugin:
             connection: Iec61850Connection 实例
             **kwargs: 支持 registry 参数
         """
-        self._connection = connection
+        self._browse_connection = connection
+        self._connection = kwargs.get("report_connection") or connection
         self._registry = kwargs.get("registry")
         self._client = kwargs.get("client")
         self._initialized = True
@@ -71,13 +73,43 @@ class ReportsPlugin:
     def shutdown(self) -> None:
         """关闭插件，注销所有活跃报告回调"""
         if self._initialized:
-            ReportCallbackHandler.shutdown_all(self._connection)
+            self.prepare_disconnect()
         self._connection = None
+        self._browse_connection = None
         self._registry = None
         self._client = None
         self._rcb_detail_cache.clear()
         self._initialized = False
         log.info("Reports 插件已关闭")
+
+    def _ensure_connection(self) -> bool:
+        """按需恢复独立报告 association。"""
+        if self._connection and self._connection.is_connected:
+            return True
+        ensure = getattr(self._client, "_ensure_report_connection", None) if self._client else None
+        return bool(callable(ensure) and ensure())
+
+    def prepare_disconnect(self) -> None:
+        """先停止报告上送并排空回调，再允许销毁底层连接。"""
+        if not self._connection:
+            return
+
+        active = ReportCallbackHandler.get_active_rcbs(self._connection)
+        if self._connection.is_connected:
+            for item in active:
+                rcb_ref = str(item.get("rcb_ref") or "")
+                if not rcb_ref:
+                    continue
+                with contextlib.suppress(Exception):
+                    self._set_rpt_ena_raw(rcb_ref, False)
+            # 让接收线程处理禁用响应之前已经到达的最后一批报告；sleep
+            # 会释放 GIL，等待中的 SWIG director 因而可以进入并退出。
+            if active:
+                time.sleep(0.1)
+
+        ReportCallbackHandler.wait_for_idle(self._connection, timeout=3.0)
+        ReportCallbackHandler.shutdown_all(self._connection)
+        self._rcb_detail_cache.clear()
 
     # ==================== RCB 发现 ====================
 
@@ -93,11 +125,12 @@ class ReportsPlugin:
         Returns:
             RCB 信息字典列表
         """
-        if not self._connection or not self._connection.is_connected:
+        if not self._ensure_connection():
             log.warning("discover_rcbs: 连接不可用")
             return []
 
-        conn = self._connection.connection
+        browse_connection = self._browse_connection or self._connection
+        conn = browse_connection.connection if browse_connection else None
         if not conn:
             return []
 
@@ -107,7 +140,7 @@ class ReportsPlugin:
             log.debug(f"discover_rcbs: 按指定 LD 过滤: {ld}")
         else:
             try:
-                ld_list = self._connection.browse_logical_devices()
+                ld_list = browse_connection.browse_logical_devices()
                 log.debug(f"discover_rcbs: 发现 {len(ld_list)} 个逻辑设备: {ld_list}")
             except Exception as e:
                 log.error(f"discover_rcbs 获取 LD 列表失败: {e}")
@@ -360,6 +393,9 @@ class ReportsPlugin:
         这种情况下清理旧报告回调并重建连接后重试一次，等价于用户手动重启客户端。
         """
         with self._operation_lock:
+            if not self._ensure_connection():
+                log.warning(f"应用报告配置失败: 独立报告连接不可用, ref={rcb_ref}")
+                return False
             if self._apply_config_once(rcb_ref, rpt_ena, trg_ops, opt_fields, on_report):
                 return True
 
@@ -406,7 +442,7 @@ class ReportsPlugin:
 
         log.warning(f"报告配置失败，尝试重建 IEC61850 客户端连接后重试: {rcb_ref}")
         try:
-            ReportCallbackHandler.shutdown_all(self._connection)
+            self.prepare_disconnect()
         except Exception as e:
             log.debug(f"报告重连前清理回调失败 (非致命): {rcb_ref}, {e}")
 
@@ -618,7 +654,7 @@ class ReportsPlugin:
 
     def trigger_gi(self, rcb_ref: str) -> bool:
         """触发通用查询 (GI)，立即生成一次完整报告"""
-        if not self._connection or not self._connection.is_connected:
+        if not self._ensure_connection():
             return False
 
         rcb_type = self._infer_rcb_type(rcb_ref)
@@ -727,7 +763,7 @@ class ReportsPlugin:
         Returns:
             活跃报告信息列表
         """
-        return ReportCallbackHandler.get_active_rcbs()
+        return ReportCallbackHandler.get_active_rcbs(self._connection)
 
     def is_active(self, rcb_ref: str) -> bool:
         """检查指定 RCB 是否处于活跃状态"""
@@ -742,7 +778,7 @@ class ReportsPlugin:
         Returns:
             RCB 详细信息字典，失败返回 None
         """
-        if not self._connection or not self._connection.is_connected:
+        if not self._ensure_connection():
             return None
 
         rcb_type = self._infer_rcb_type(rcb_ref)
@@ -786,9 +822,10 @@ class ReportsPlugin:
         使用 IedConnection_getLogicalDeviceDirectory 获取 LN 列表，
         正确处理错误码和返回值。
         """
-        if not self._connection or not self._connection.connection:
+        browse_connection = self._browse_connection or self._connection
+        if not browse_connection or not browse_connection.connection:
             return []
-        conn = self._connection.connection
+        conn = browse_connection.connection
         try:
             result = iec61850.IedConnection_getLogicalDeviceDirectory(conn, ld)
             if isinstance(result, (list, tuple)):

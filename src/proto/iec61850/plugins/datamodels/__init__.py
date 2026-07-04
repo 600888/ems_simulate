@@ -100,7 +100,10 @@ class DataModelsPlugin:
         if not self._connection or not self._connection.is_connected:
             return []
         try:
-            result = iec61850.IedConnection_getLogicalDeviceDirectory(self._connection.connection, ld)
+            with self._connection.native_operation() as conn:
+                if conn is None:
+                    return []
+                result = iec61850.IedConnection_getLogicalDeviceDirectory(conn, ld)
             ln_list = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
             if error != iec61850.IED_ERROR_OK:
@@ -117,7 +120,10 @@ class DataModelsPlugin:
             return []
         ln_ref = f"{ld}/{ln}"
         try:
-            result = iec61850.IedConnection_getLogicalNodeDirectory(self._connection.connection, ln_ref, 0)
+            with self._connection.native_operation() as conn:
+                if conn is None:
+                    return []
+                result = iec61850.IedConnection_getLogicalNodeDirectory(conn, ln_ref, 0)
             do_list = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
             if error != iec61850.IED_ERROR_OK or do_list is None:
@@ -138,7 +144,10 @@ class DataModelsPlugin:
             return []
         do_ref = f"{ld}/{ln}.{do_name}"
         try:
-            result = iec61850.IedConnection_getDataDirectory(self._connection.connection, do_ref)
+            with self._connection.native_operation() as conn:
+                if conn is None:
+                    return []
+                result = iec61850.IedConnection_getDataDirectory(conn, do_ref)
             da_list = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
             if error != iec61850.IED_ERROR_OK or da_list is None:
@@ -272,7 +281,10 @@ class DataModelsPlugin:
     def _discover_da_paths(self, do_ref: str) -> list[tuple[str, int, str, str]]:
         """通过查询服务器模型发现 DO 下的 DA 路径"""
         try:
-            result = iec61850.IedConnection_getDataDirectory(self._connection.connection, do_ref)
+            with self._connection.native_operation() as conn:
+                if conn is None:
+                    return []
+                result = iec61850.IedConnection_getDataDirectory(conn, do_ref)
             da_list = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
             if error != iec61850.IED_ERROR_OK or da_list is None:
@@ -308,7 +320,10 @@ class DataModelsPlugin:
     ) -> list[tuple[str, int, str, str]]:
         """递归发现结构体 DA 的子 BDA 路径"""
         try:
-            result = iec61850.IedConnection_getDataDirectory(self._connection.connection, parent_ref)
+            with self._connection.native_operation() as conn:
+                if conn is None:
+                    return []
+                result = iec61850.IedConnection_getDataDirectory(conn, parent_ref)
             da_list = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
             if error == iec61850.IED_ERROR_OK and da_list is not None:
@@ -349,9 +364,10 @@ class DataModelsPlugin:
             ("d", iec61850.IEC61850_FC_CF),
         ):
             try:
-                [value, error] = iec61850.IedConnection_readStringValue(
-                    self._connection.connection, f"{do_ref}.{da_name}", fc
-                )
+                with self._connection.native_operation() as conn:
+                    if conn is None:
+                        return ""
+                    [value, error] = iec61850.IedConnection_readStringValue(conn, f"{do_ref}.{da_name}", fc)
                 if error == iec61850.IED_ERROR_OK and value:
                     return str(value).strip()
             except Exception:

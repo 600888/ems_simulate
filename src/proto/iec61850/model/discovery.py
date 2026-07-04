@@ -16,6 +16,7 @@ import time
 from typing import Any, Protocol
 
 from ..core.linked_list import get_list_from_linked_list
+from ..core.native_calls import call_gil_safe
 from ..defs import HAS_IEC61850, AcsiClass
 from ..defs.address import extract_ln_class, infer_fc_from_address, infer_iec_type_from_address
 from ..defs.da_patterns import (
@@ -307,7 +308,7 @@ class ModelDiscoveryService:
             fc_value = getattr(iec61850, f"IEC61850_FC_{fc}", None)
             if fc_value is None:
                 raise ValueError(f"unsupported FC: {fc}")
-            result = iec61850.IedConnection_readObject(conn, ref, fc_value)
+            result = call_gil_safe(iec61850, "IedConnection_readObject", conn, ref, fc_value)
             if isinstance(result, (list, tuple)):
                 value = result[0] if result else None
                 error = result[1] if len(result) > 1 else 0
@@ -932,7 +933,7 @@ class ModelDiscoveryService:
         try:
             rcb = iec61850.ClientReportControlBlock_create(nref)
             if rcb is not None:
-                result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
+                result = call_gil_safe(iec61850, "IedConnection_getRCBValues", conn, nref, rcb)
                 err = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if err == iec61850.IED_ERROR_OK:
                     dat_set = ""

@@ -8,6 +8,7 @@ BRCB 与 URCB 的主要区别:
 import contextlib
 import datetime
 
+from ...core.native_calls import call_gil_safe
 from ...defs.constants import HAS_IEC61850
 from ...defs.types import OptFields, RCBInfo, TrgOps
 from ...log import log
@@ -122,7 +123,9 @@ class BrcbHandler:
                 return None
 
             try:
-                result = iec61850.IedConnection_getRCBValues(conn, BrcbHandler._normalize_ref(rcb_ref), rcb)
+                result = call_gil_safe(
+                    iec61850, "IedConnection_getRCBValues", conn, BrcbHandler._normalize_ref(rcb_ref), rcb
+                )
                 error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if error != iec61850.IED_ERROR_OK:
@@ -170,7 +173,7 @@ class BrcbHandler:
 
             try:
                 # 先读取当前值
-                result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
+                result = call_gil_safe(iec61850, "IedConnection_getRCBValues", conn, nref, rcb)
                 error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if error != iec61850.IED_ERROR_OK:
                     log.warning(f"设置 BRCB RptEna 前读取失败: ref={rcb_ref}, error={error}")
@@ -221,7 +224,7 @@ class BrcbHandler:
                     changes |= BrcbHandler.RCB_OPT_FLDS
 
                 # 写回服务器
-                result = iec61850.IedConnection_setRCBValues(conn, rcb, changes, True)
+                result = call_gil_safe(iec61850, "IedConnection_setRCBValues", conn, rcb, changes, True)
                 set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:
@@ -272,7 +275,7 @@ class BrcbHandler:
             try:
                 iec61850.ClientReportControlBlock_setGI(rcb, True)
                 log.info(f"BRCB GI 写入开始: ref={rcb_ref}, nref={nref}")
-                result = iec61850.IedConnection_setRCBValues(conn, rcb, BrcbHandler.RCB_GI, True)
+                result = call_gil_safe(iec61850, "IedConnection_setRCBValues", conn, rcb, BrcbHandler.RCB_GI, True)
                 set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:
@@ -305,7 +308,7 @@ class BrcbHandler:
 
             try:
                 iec61850.ClientReportControlBlock_setRptEna(rcb, False)
-                result = iec61850.IedConnection_setRCBValues(conn, rcb, BrcbHandler.RCB_RPT_ENA, True)
+                result = call_gil_safe(iec61850, "IedConnection_setRCBValues", conn, rcb, BrcbHandler.RCB_RPT_ENA, True)
                 set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:
@@ -337,13 +340,15 @@ class BrcbHandler:
                 return False
 
             try:
-                result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
+                result = call_gil_safe(iec61850, "IedConnection_getRCBValues", conn, nref, rcb)
                 error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if error != iec61850.IED_ERROR_OK:
                     return False
 
                 iec61850.ClientReportControlBlock_setPurgeBuf(rcb, True)
-                result = iec61850.IedConnection_setRCBValues(conn, rcb, BrcbHandler.RCB_PURGE_BUF, True)
+                result = call_gil_safe(
+                    iec61850, "IedConnection_setRCBValues", conn, rcb, BrcbHandler.RCB_PURGE_BUF, True
+                )
                 set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:

@@ -14,6 +14,7 @@ from ..defs.mms_types import (
     mms_type_from_native,
 )
 from ..log import log
+from .native_calls import call_gil_safe
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
@@ -44,7 +45,7 @@ def _read_object_typed(conn, ref: str, fc_val) -> tuple[Any, MmsType]:
     """Read once with readObject and convert according to the returned MMS type."""
     raw_value = None
     try:
-        result = iec61850.IedConnection_readObject(conn, ref, fc_val)
+        result = call_gil_safe(iec61850, "IedConnection_readObject", conn, ref, fc_val)
         if isinstance(result, (list, tuple)):
             raw_value = result[0] if result else None
             error = result[1] if len(result) > 1 else 0

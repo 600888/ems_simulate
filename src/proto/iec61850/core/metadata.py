@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from ..defs.constants import HAS_IEC61850
 from ..log import log
+from .native_calls import call_gil_safe
 
 if TYPE_CHECKING:
     from .connection import Iec61850Connection
@@ -196,7 +197,7 @@ class MetadataReader:
                 mms_value = None
                 try:
                     fc_val = connection.get_fc_value(fc_name)
-                    result = iec61850.IedConnection_readObject(conn, ref, fc_val)
+                    result = call_gil_safe(iec61850, "IedConnection_readObject", conn, ref, fc_val)
                     mms_value = result[0] if isinstance(result, (list, tuple)) else result
                     error = result[1] if isinstance(result, (list, tuple)) and len(result) > 1 else 0
 
@@ -239,7 +240,8 @@ class MetadataReader:
                 mms_value = None
                 try:
                     fc_val = connection.get_fc_value(fc_name)
-                    result = iec61850.IedConnection_readObject(conn, ref, fc_val)
+                    # 使用线程安全的 IedConnection_readObject 方法
+                    result = call_gil_safe(iec61850, "IedConnection_readObject", conn, ref, fc_val)
                     mms_value = result[0] if isinstance(result, (list, tuple)) else result
                     error = result[1] if isinstance(result, (list, tuple)) and len(result) > 1 else 0
 

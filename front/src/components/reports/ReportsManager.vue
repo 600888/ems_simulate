@@ -53,7 +53,7 @@
           :loading="batchCancelling"
           @click="handleBatchCancel"
         >
-          {{ t('report.batchCancel') }}
+          {{ t("report.batchCancel") }}
         </el-button>
       </template>
     </el-dialog>

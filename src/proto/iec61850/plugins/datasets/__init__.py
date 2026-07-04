@@ -10,6 +10,7 @@ from typing import Any
 
 from ...core.linked_list import get_list_from_linked_list
 from ...core.mms_value import mms_value_to_python
+from ...core.native_calls import call_gil_safe
 from ...defs.address import infer_fc_from_address, infer_iec_type_from_address
 from ...defs.constants import HAS_IEC61850, IEC_TYPE_UNKNOWN
 from ...defs.mms_types import iec_type_from_mms_type
@@ -380,7 +381,9 @@ class DataSetsPlugin:
                 iec_type = str(member.get("iec_type", "") or infer_iec_type_from_address(ref) or IEC_TYPE_UNKNOWN)
                 mms_value = None
                 try:
-                    result = iec61850.IedConnection_readObject(
+                    result = call_gil_safe(
+                        iec61850,
+                        "IedConnection_readObject",
                         conn,
                         self._connection.build_dataset_ref(normalize_point_ref(ref)),
                         self._connection.get_fc_value(fc),

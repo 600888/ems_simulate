@@ -28,6 +28,8 @@ if HAS_IEC61850:
 # C 回调无法绑定到实例方法，需通过静态函数 + 全局字典分发
 _CALLBACK_REGISTRY: dict[str, "_CallbackInfo"] = {}
 _CALLBACK_LOCK = threading.Lock()
+_CALLBACK_IDLE = threading.Condition(_CALLBACK_LOCK)
+_ACTIVE_CALLBACKS: dict[int, int] = {}
 _PENDING_GI_ROUTES: dict[str, tuple[set[str], float]] = {}
 # 常规报告 round-robin 分发计数器: rpt_id -> 当前索引
 _ROUND_ROBIN_INDEX: dict[str, int] = {}
@@ -76,6 +78,7 @@ class _CallbackInfo:
     """回调注册信息"""
 
     rcb_ref: str
+    connection: Any = None  # owning Iec61850Connection
     handler: Any = None  # _PyRCBHandler 实例 (保持引用防 GC)
     subscriber: Any = None  # RCBSubscriber 实例 (保持引用防 GC)
     on_report: Callable | None = None  # Python 回调函数
@@ -314,7 +317,11 @@ class ReportCallbackHandler:
         if rpt_id:
             with _CALLBACK_LOCK:
                 for existing_ref, existing_info in list(_CALLBACK_REGISTRY.items()):
-                    if existing_info.rpt_id == rpt_id and existing_ref != rcb_ref:
+                    if (
+                        existing_info.connection is connection
+                        and existing_info.rpt_id == rpt_id
+                        and existing_ref != rcb_ref
+                    ):
                         stale_rcb_ref = existing_ref
                         break
 
@@ -336,6 +343,7 @@ class ReportCallbackHandler:
 
                     _CALLBACK_REGISTRY[rcb_ref] = _CallbackInfo(
                         rcb_ref=rcb_ref,
+                        connection=connection,
                         handler=stale_info.handler,
                         subscriber=stale_info.subscriber,
                         on_report=on_report,
@@ -356,7 +364,7 @@ class ReportCallbackHandler:
                         f"请检查 IED 的 RCB 配置中是否设置了 RptId。rcb_ref={rcb_ref}"
                     )
 
-                handler = _PyRCBHandler(rcb_ref)
+                handler = _PyRCBHandler(rcb_ref, connection)
                 subscriber = iec61850.RCBSubscriber()
                 subscriber.setIedConnection(conn)
                 subscriber.setRcbReference(nref)
@@ -378,6 +386,7 @@ class ReportCallbackHandler:
 
                 _CALLBACK_REGISTRY[rcb_ref] = _CallbackInfo(
                     rcb_ref=rcb_ref,
+                    connection=connection,
                     handler=handler,
                     subscriber=subscriber,
                     on_report=on_report,
@@ -574,7 +583,7 @@ class ReportCallbackHandler:
             log.debug(log_message)
 
     @staticmethod
-    def get_active_rcbs() -> list[dict[str, Any]]:
+    def get_active_rcbs(connection=None) -> list[dict[str, Any]]:
         """获取所有活跃回调信息"""
         with _CALLBACK_LOCK:
             return [
@@ -584,7 +593,22 @@ class ReportCallbackHandler:
                     "cache_size": len(info.data_cache),
                 }
                 for info in _CALLBACK_REGISTRY.values()
+                if connection is None or info.connection is connection
             ]
+
+    @staticmethod
+    def wait_for_idle(connection, timeout: float = 3.0) -> bool:
+        """等待指定 association 上已经进入 Python 的报告回调完成。"""
+        key = id(connection)
+        deadline = time.monotonic() + max(timeout, 0.0)
+        with _CALLBACK_IDLE:
+            while _ACTIVE_CALLBACKS.get(key, 0) > 0:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    log.warning(f"等待报告回调排空超时: connection={key}")
+                    return False
+                _CALLBACK_IDLE.wait(remaining)
+        return True
 
     @staticmethod
     def shutdown_all(connection) -> None:
@@ -597,9 +621,9 @@ class ReportCallbackHandler:
         """
         conn = connection.connection if connection else None
 
-        # 1. 锁内取出所有 rcb_ref 并清空注册表
+        # 1. 只清理属于当前 association 的回调，避免影响其他客户端。
         with _CALLBACK_LOCK:
-            refs = list(_CALLBACK_REGISTRY.keys())
+            refs = [ref for ref, info in _CALLBACK_REGISTRY.items() if info.connection is connection]
             infos = [_CALLBACK_REGISTRY.pop(ref) for ref in refs]
 
         # 2. 锁外逐个清理
@@ -759,13 +783,16 @@ if HAS_IEC61850:
     class _PyRCBHandler(iec61850.RCBHandler):
         """SWIG director 子类, C++ 收到报告时回调 trigger()"""
 
-        def __init__(self, rcb_ref: str):
+        def __init__(self, rcb_ref: str, connection=None):
             super().__init__()
             self._rcb_ref = rcb_ref
+            self._connection_key = id(connection)
 
         def trigger(self):
             """C 接收线程回调: 在线程内完成解析"""
             log.info(f"RCBHandler.trigger 被调用: rcb_ref={self._rcb_ref}")
+            with _CALLBACK_IDLE:
+                _ACTIVE_CALLBACKS[self._connection_key] = _ACTIVE_CALLBACKS.get(self._connection_key, 0) + 1
             try:
                 cr = self._client_report
                 log.info(f"RCBHandler.trigger report: rcb_ref={self._rcb_ref}, report={cr}")
@@ -773,10 +800,18 @@ if HAS_IEC61850:
                 _dispatch_report(self._rcb_ref, cr)
             except Exception as e:
                 log.error(f"RCBHandler.trigger 异常: {self._rcb_ref}, {e}", exc_info=True)
+            finally:
+                with _CALLBACK_IDLE:
+                    remaining = _ACTIVE_CALLBACKS.get(self._connection_key, 1) - 1
+                    if remaining > 0:
+                        _ACTIVE_CALLBACKS[self._connection_key] = remaining
+                    else:
+                        _ACTIVE_CALLBACKS.pop(self._connection_key, None)
+                    _CALLBACK_IDLE.notify_all()
 else:
 
     class _PyRCBHandler:  # 占位, 不会被使用
-        def __init__(self, rcb_ref: str):
+        def __init__(self, rcb_ref: str, connection=None):
             self._rcb_ref = rcb_ref
 
 

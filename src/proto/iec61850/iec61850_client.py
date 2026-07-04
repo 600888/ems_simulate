@@ -8,6 +8,7 @@ v3.0 变更: 集成 ModelDiscoveryService，连接时一次发现 → IedModel �
 """
 
 from collections.abc import Callable
+import contextlib
 from typing import Any, cast
 
 from src.proto.iec61850.plugins.datamodels import DataModelsPlugin
@@ -67,6 +68,9 @@ class IEC61850Client:
 
         # ===== 组合核心组件 =====
         self._conn = Iec61850Connection(ip, port, model_name, ld_name)
+        # 报告回调运行在 libIEC61850 的接收线程中。使用独立 association，
+        # 避免 DataModel/DataSet 同步读取占用另一条连接时阻塞报告回调。
+        self._report_conn = Iec61850Connection(ip, port, model_name, ld_name)
         self._registry = PointRegistry(model_name, ld_name)
         self._reader = Iec61850Reader(self._conn, self._registry)
         self._writer = Iec61850Writer(self._conn, self._registry)
@@ -82,7 +86,12 @@ class IEC61850Client:
         # ===== 插件系统 =====
         self._plugins = PluginRegistry(auto_register=False)
         _register_builtin_plugins(self._plugins)
-        self._plugins.initialize_all(self._conn, registry=self._registry, client=self)
+        self._plugins.initialize_all(
+            self._conn,
+            registry=self._registry,
+            client=self,
+            report_connection=self._report_conn,
+        )
         self._reader.set_dataset_reader(self.datasets)
 
     # ===== 向后兼容属性: 委托给核心组件 =====
@@ -135,17 +144,34 @@ class IEC61850Client:
 
     def connect(self, auto_discover: bool = True) -> bool:
         """连接到 IEC 61850 服务器"""
-        return self._conn.connect(
+        connected = self._conn.connect(
             auto_discover=auto_discover,
             discover_callback=self.discover_model if auto_discover else None,
         )
+        if connected and not self._ensure_report_connection():
+            # 报告通道可按需再次连接；不影响主通道的模型和测点读写。
+            log.warning("IEC 61850 主连接成功，但独立报告连接暂未建立")
+        return connected
 
     def disconnect(self):
         """断开连接"""
         self._discovery.invalidate()
         if self.datasets:
             self.datasets.invalidate_catalog()
+        reports = self.reports
+        if reports:
+            reports.prepare_disconnect()
+        self._report_conn.disconnect()
         self._conn.disconnect()
+
+    def _ensure_report_connection(self) -> bool:
+        """确保独立报告 association 可用，并同步主连接的模型前缀信息。"""
+        self._report_conn.model_name = self._conn.model_name
+        self._report_conn.ld_name = self._conn.ld_name
+        self._report_conn._discovered_lds = list(self._conn._discovered_lds)
+        if self._report_conn.is_connected:
+            return True
+        return self._report_conn.connect(auto_discover=False)
 
     @property
     def is_connected(self) -> bool:
@@ -288,7 +314,17 @@ class IEC61850Client:
             return []
 
         # 统一发现: 一次遍历，构建并缓存 IedModel
-        model = self._discovery.discover(self._conn)
+        # 整次在线发现都占用主连接生命周期锁，禁止中途 stop/reconnect
+        # 销毁同一个原生 IedConnection。
+        operation = self._conn.native_operation()
+        guard = operation if hasattr(operation, "__enter__") else contextlib.nullcontext(self._conn.connection)
+        with guard as conn:
+            if conn is None:
+                return []
+            model = self._discovery.discover(self._conn)
+        report_conn = getattr(self, "_report_conn", None)
+        if report_conn is not None:
+            report_conn._discovered_lds = list(self._conn._discovered_lds)
 
         # 从 IedModel 派生 PointRegistry
         discovered = build_registry_from_model(model, self._registry)
@@ -876,7 +912,15 @@ class IEC61850Client:
             return False
 
         # 3. 在线发现
-        model = self._discovery.discover(self._conn, progress=progress)
+        operation = self._conn.native_operation()
+        guard = operation if hasattr(operation, "__enter__") else contextlib.nullcontext(self._conn.connection)
+        with guard as conn:
+            if conn is None:
+                return False
+            model = self._discovery.discover(self._conn, progress=progress)
+        report_conn = getattr(self, "_report_conn", None)
+        if report_conn is not None:
+            report_conn._discovered_lds = list(self._conn._discovered_lds)
         if model is not None:
             if progress:
                 progress("building", 0, 1, "正在构建测点索引")

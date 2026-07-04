@@ -9,6 +9,7 @@ URCB 与 BRCB 的区别:
 import contextlib
 
 from ...core.mms_value import mms_value_to_python
+from ...core.native_calls import call_gil_safe
 from ...defs.constants import HAS_IEC61850
 from ...defs.types import OptFields, RCBInfo, TrgOps
 from ...log import log
@@ -204,7 +205,7 @@ class UrcbHandler:
                     continue
 
                 try:
-                    result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
+                    result = call_gil_safe(iec61850, "IedConnection_getRCBValues", conn, nref, rcb)
                     error = UrcbHandler._extract_error(result)
                     if error != iec61850.IED_ERROR_OK:
                         last_error = error
@@ -249,7 +250,7 @@ class UrcbHandler:
                     continue
 
                 try:
-                    result = iec61850.IedConnection_getRCBValues(conn, nref, rcb)
+                    result = call_gil_safe(iec61850, "IedConnection_getRCBValues", conn, nref, rcb)
                     error = UrcbHandler._extract_error(result)
                     if error != iec61850.IED_ERROR_OK:
                         last_error = error
@@ -314,7 +315,7 @@ class UrcbHandler:
                         iec61850.ClientReportControlBlock_setIntgPd(rcb, intg_period)
                         changes |= UrcbHandler.RCB_INTG_PD
 
-                    result = iec61850.IedConnection_setRCBValues(conn, rcb, changes, True)
+                    result = call_gil_safe(iec61850, "IedConnection_setRCBValues", conn, rcb, changes, True)
                     set_error = UrcbHandler._extract_error(result)
                     if set_error != iec61850.IED_ERROR_OK:
                         last_error = set_error
@@ -354,7 +355,9 @@ class UrcbHandler:
 
                 try:
                     iec61850.ClientReportControlBlock_setRptEna(rcb, False)
-                    result = iec61850.IedConnection_setRCBValues(conn, rcb, UrcbHandler.RCB_RPT_ENA, True)
+                    result = call_gil_safe(
+                        iec61850, "IedConnection_setRCBValues", conn, rcb, UrcbHandler.RCB_RPT_ENA, True
+                    )
                     set_error = UrcbHandler._extract_error(result)
                     if set_error != iec61850.IED_ERROR_OK:
                         last_error = set_error
