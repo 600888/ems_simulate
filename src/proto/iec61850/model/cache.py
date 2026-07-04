@@ -30,8 +30,6 @@ class CacheEntry:
     """缓存条目"""
 
     model: IedModel
-    timestamp: float
-    ttl_seconds: float = 1800.0  # 默认 30 分钟
 
 
 # 文件缓存默认目录（当无法从 StorageSettings 获取时的回退）
@@ -65,7 +63,7 @@ class ModelCache:
         - key: 模型唯一标识 (ip:port)
         - value: IedModel 不可变对象
         - 容量: 最近最多使用 (LRU), 最大 32 个模型
-        - 过期: 默认 30 分钟无访问自动过期（文件和内存同步）
+        - 有效期: 不自动过期，已发现的模型持续保存在本地，直到显式清除或刷新
         - 持久化: 每次 set() 同时保存到 JSON 文件，
                   get() 内存未命中时自动尝试从文件恢复
         - 淘汰: 内存淘汰不会删除文件缓存
@@ -80,7 +78,6 @@ class ModelCache:
     _lock = threading.Lock()
 
     MAX_SIZE = 32
-    TTL_SECONDS = 1800.0  # 30 分钟
 
     def __init__(self):
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
@@ -119,7 +116,7 @@ class ModelCache:
     # ===== 内存缓存操作 =====
 
     def has(self, key: str) -> bool:
-        """检查缓存是否存在且未过期（不消耗缓存条目）
+        """检查本地缓存是否存在（不消耗缓存条目）
 
         同时检查内存和文件缓存。
 
@@ -127,28 +124,18 @@ class ModelCache:
             key: 缓存键
 
         Returns:
-            缓存存在且未过期时返回 True
+            缓存存在时返回 True
         """
         with self._cache_lock:
-            entry = self._cache.get(key)
-            if entry is not None:
-                if time.time() - entry.timestamp > entry.ttl_seconds:
-                    del self._cache[key]
-                else:
-                    # 内存缓存存在且未过期
-                    return True
+            if key in self._cache:
+                return True
 
         # 内存未命中，检查文件缓存
         file_path = self._file_path(key)
         if file_path.is_file():
             try:
-                data = json.loads(file_path.read_text(encoding="utf-8"))
-                cached_at = data.get("_cached_at", 0)
-                if time.time() - cached_at <= self.TTL_SECONDS:
-                    return True
-                else:
-                    # 文件过期，删除
-                    file_path.unlink(missing_ok=True)
+                json.loads(file_path.read_text(encoding="utf-8"))
+                return True
             except Exception:
                 pass
 
@@ -160,17 +147,13 @@ class ModelCache:
         内存未命中时自动尝试从磁盘文件恢复。
 
         Returns:
-            缓存命中且未过期时返回 IedModel，否则返回 None
+            缓存命中时返回 IedModel，否则返回 None
         """
         with self._cache_lock:
             entry = self._cache.get(key)
             if entry is not None:
-                if time.time() - entry.timestamp > entry.ttl_seconds:
-                    del self._cache[key]
-                    log.debug(f"模型缓存已过期: {key}")
-                else:
-                    self._cache.move_to_end(key)
-                    return entry.model
+                self._cache.move_to_end(key)
+                return entry.model
 
         # 内存未命中，尝试从文件恢复
         model = self._load_from_file(key)
@@ -182,28 +165,18 @@ class ModelCache:
 
         return None
 
-    def set(
-        self,
-        key: str,
-        model: IedModel,
-        ttl_seconds: float | None = None,
-    ) -> None:
+    def set(self, key: str, model: IedModel) -> None:
         """写入缓存（内存 + 文件）
 
         Args:
             key: 缓存键
             model: IedModel 对象
-            ttl_seconds: 自定义过期时间（秒），默认使用 TTL_SECONDS
         """
         with self._cache_lock:
             if key in self._cache:
                 self._cache.move_to_end(key)
 
-            self._cache[key] = CacheEntry(
-                model=model,
-                timestamp=time.time(),
-                ttl_seconds=ttl_seconds or self.TTL_SECONDS,
-            )
+            self._cache[key] = CacheEntry(model=model)
 
             # LRU 淘汰: 超出最大容量时移除最久未使用的条目
             while len(self._cache) > self.MAX_SIZE:
@@ -255,12 +228,6 @@ class ModelCache:
             return None
         try:
             data = json.loads(file_path.read_text(encoding="utf-8"))
-            # TTL 检查
-            cached_at = data.get("_cached_at", 0)
-            if time.time() - cached_at > self.TTL_SECONDS:
-                log.debug(f"文件缓存已过期: {file_path}")
-                file_path.unlink(missing_ok=True)
-                return None
             model = IedModelCls.from_dict(data)
             log.debug(f"从文件恢复模型缓存成功: {file_path}")
             return model
@@ -310,18 +277,10 @@ class ModelCache:
         """获取缓存统计信息（内存 + 文件）"""
         stats = {}
         with self._cache_lock:
-            now = time.time()
-            active_entries = 0
-            expired_entries = 0
-            for entry in self._cache.values():
-                if now - entry.timestamp <= entry.ttl_seconds:
-                    active_entries += 1
-                else:
-                    expired_entries += 1
             stats = {
                 "total_entries": len(self._cache),
-                "active_entries": active_entries,
-                "expired_entries": expired_entries,
+                "active_entries": len(self._cache),
+                "expired_entries": 0,
                 "max_size": self.MAX_SIZE,
                 "keys": list(self._cache.keys()),
             }

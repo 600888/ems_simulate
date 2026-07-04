@@ -236,7 +236,7 @@ async def load_iec61850_model_from_cache(req: DeviceInfoRequest, request: Reques
     device = _get_device(req.device_name, request)
     success = await asyncio.to_thread(device.iec61850_load_model_from_cache)
     if not success:
-        raise OperationError("IEC61850 模型缓存不存在或已过期!", data=False)
+        raise OperationError("IEC61850 模型缓存不存在或无法读取!", data=False)
     return BaseResponse(message="IEC61850 模型从缓存加载成功!", data=True)
 
 
