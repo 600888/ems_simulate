@@ -154,8 +154,11 @@ class IEC61850Client:
         return connected
 
     def disconnect(self):
-        """断开连接"""
-        self._discovery.invalidate()
+        """断开连接（仅关闭 MMS 连接，保留模型缓存）
+
+        模型缓存保留在内存和文件缓存中，断开连接不会清除它们。
+        如需清除缓存，请调用 clear_cache() 接口。
+        """
         if self.datasets:
             self.datasets.invalidate_catalog()
         reports = self.reports

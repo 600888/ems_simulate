@@ -59,14 +59,26 @@ def build_registry_from_model(model: IedModel, registry: Any) -> list[dict[str, 
         discovered_points.append(point_entry)
 
     # 填充 GOOSE 控制块
-    for goose_item in model.goose_items:
-        discovered_points.append(goose_item)
-        registry.discovered_goose_items.append(goose_item)
-        log.info(
-            f"发现 GOOSE 控制块: {goose_item['go_cb_ref']}, "
-            f"appID=0x{(goose_item.get('app_id') or 0):04X}, "
-            f"ds={goose_item.get('data_set_ref', '')}"
-        )
+    for ld in model.lds:
+        for ln in ld.lns:
+            for gocb in ln.gocb_list:
+                goose_item = {
+                    "_type": "goose",
+                    "go_cb_ref": gocb.go_cb_ref or gocb.ref,
+                    "go_id": gocb.go_id,
+                    "app_id": gocb.app_id,
+                    "data_set_ref": gocb.data_set_ref,
+                    "conf_rev": gocb.conf_rev,
+                    "name": gocb.name,
+                    "ld_inst": ld.name,
+                }
+                discovered_points.append(goose_item)
+                registry.discovered_goose_items.append(goose_item)
+                log.info(
+                    f"发现 GOOSE 控制块: {goose_item['go_cb_ref']}, "
+                    f"appID=0x{(goose_item.get('app_id') or 0):04X}, "
+                    f"ds={goose_item.get('data_set_ref', '')}"
+                )
 
     # 填充 DataSet 列表
     datasets = []

@@ -534,29 +534,6 @@ class IedModel:
                     "code": bda_code,
                 }
 
-    # ===== GOOSE 控制块信息 (兼容旧格式) =====
-
-    @property
-    def goose_items(self) -> list[dict[str, Any]]:
-        """GOOSE 控制块列表 — 兼容旧 discovered_goose_items 格式"""
-        items = []
-        for ld in self.lds:
-            for ln in ld.lns:
-                for gocb in ln.gocb_list:
-                    items.append(
-                        {
-                            "_type": "goose",
-                            "go_cb_ref": gocb.go_cb_ref or gocb.ref,
-                            "go_id": gocb.go_id,
-                            "app_id": gocb.app_id,
-                            "data_set_ref": gocb.data_set_ref,
-                            "conf_rev": gocb.conf_rev,
-                            "name": gocb.name,
-                            "ld_inst": ld.name,
-                        }
-                    )
-        return items
-
     # ===== 遍历工具 =====
 
     def iter_dos(self) -> Iterator[tuple[LDModel, LNModel, DORef]]:

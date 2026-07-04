@@ -86,6 +86,8 @@ export function useAutoRead(options: AutoReadOptions) {
 
   const readInterval = ref(10);
   const intervalOptions = ref([
+    { label: "1ms", value: 1 },
+    { label: "5ms", value: 5 },
     { label: "10ms", value: 10 },
     { label: "50ms", value: 50 },
     { label: "100ms", value: 100 },

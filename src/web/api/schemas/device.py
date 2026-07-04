@@ -26,7 +26,7 @@ class DeviceTableRequest(BaseModel):
     slave_id: int
     point_name: str | None = None
     page_index: int | None = Field(1, ge=1, description="当前页码")
-    page_size: int | None = Field(10, ge=1, le=500, description="每页条数")
+    page_size: int | None = Field(10, ge=1, description="每页条数")
     point_types: list[int] | None = None  # 为空表示全部
     order_by: str | None = None
     order_direction: str | None = None

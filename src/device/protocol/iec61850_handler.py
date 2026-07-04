@@ -416,8 +416,8 @@ class IEC61850ClientHandler(ClientHandler):
 
         与 remote_discover_model() 同步:
         - 重建 _discovered_goose_items、_discovered_datasets
+        - 重建 _discovered_rcbs（从 IedModel.rcb_list 提取）
         - 通知 _on_points_discovered 注册测点
-        - RCB 需要 MMS 连接单独发现，缓存加载时不重建
 
         Returns:
             缓存命中且加载成功返回 True
@@ -436,6 +436,31 @@ class IEC61850ClientHandler(ClientHandler):
         self._discovered_datasets.clear()
         if hasattr(self._client, "get_discovered_datasets"):
             self._discovered_datasets.extend(self._client.get_discovered_datasets())
+
+        # 从缓存模型重建报告控制块列表（避免 Reports 侧边栏消失）
+        self._discovered_rcbs.clear()
+        try:
+            cached_model = getattr(self._client, "_discovery", None)
+            model = cached_model._model if cached_model and hasattr(cached_model, "_model") else None
+            if model:
+                for ld in model.lds:
+                    for ln in ld.lns:
+                        for rcb in ln.rcb_list:
+                            self._discovered_rcbs.append(
+                                {
+                                    "ref": rcb.ref,
+                                    "name": rcb.name,
+                                    "rcb_type": rcb.rcb_type,
+                                    "ld": ld.name,
+                                    "ln": ln.name,
+                                    "data_set_ref": rcb.dat_set,
+                                    "intg_period": rcb.intg_pd,
+                                    "rpt_ena": False,
+                                }
+                            )
+        except Exception as e:
+            if self._log:
+                self._log.warning(f"从缓存模型重建 RCB 列表失败: {e}")
 
         # 通知上层注册测点
         if self._on_points_discovered:
@@ -656,7 +681,11 @@ class IEC61850ClientHandler(ClientHandler):
         }
 
     def disconnect(self) -> None:
-        """断开连接"""
+        """断开连接（仅关闭 MMS 连接，保留模型缓存）
+
+        断开连接不会清除模型缓存、测点列表、GOOSE 控制块、
+        DataSet 列表和报告控制块。如需清除，请调用 clear_cache()。
+        """
         self._connecting = False
         self._progress_active = False
         self._progress_operation = "idle"
@@ -665,8 +694,6 @@ class IEC61850ClientHandler(ClientHandler):
         self._progress_message = ""
         self._connect_phase = self.PHASE_IDLE
         self._connect_progress = 0
-        self._discovered_goose_items = []
-        self._discovered_datasets = []
         if self._client:
             self._client.disconnect()
         self._is_running = False
