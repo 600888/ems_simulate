@@ -25,7 +25,9 @@ echo ">>> 开始构建 ${APP_NAME} v${VERSION}..."
 # 2. 构建前端
 echo ">>> 构建前端..."
 cd front
-npm install
+if [ ! -d "node_modules" ]; then
+    npm install
+fi
 npm run build:fast
 cd ..
 
@@ -43,6 +45,10 @@ mkdir -p "${INSTALL_DIR}"
 mkdir -p "${DEB_DIR}/usr/bin"
 # 复制 debian 下的所有内容到构建目录
 cp -r debian/* "${DEB_DIR}/"
+
+# 同步版本号到 debian/DEBIAN/control
+echo ">>> 同步版本号到 control 文件..."
+sed -i "s/^Version:.*/Version: ${VERSION}/" "${DEB_DIR}/DEBIAN/control"
 
 # 4. 构建后端 (PyInstaller)
 echo ">>> 构建后端 (PyInstaller)..."
@@ -65,11 +71,17 @@ pyinstaller --noconfirm --onedir --name "${APP_NAME//-/_}" --clean \
     --hidden-import="uvicorn.loops" \
     --hidden-import="openpyxl" \
     --hidden-import="uvicorn.loops.auto" \
+    --hidden-import="uvicorn.loops.asyncio" \
     --hidden-import="uvicorn.protocols" \
     --hidden-import="uvicorn.protocols.http" \
     --hidden-import="uvicorn.protocols.http.auto" \
     --hidden-import="uvicorn.lifespan" \
     --hidden-import="uvicorn.lifespan.on" \
+    --hidden-import="pymodbus" \
+    --hidden-import="fastapi" \
+    --hidden-import="sqlalchemy" \
+    --hidden-import="pydantic" \
+    --hidden-import="loguru" \
     start_back_end.py
 
 # 5. 组装内容
@@ -80,17 +92,17 @@ cp -r "build/dist/${APP_NAME//-/_}/"* "$INSTALL_DIR/"
 # 创建 /usr/bin 下的软链接
 ln -sf "../share/${APP_NAME}/ems_simulate" "${DEB_DIR}/usr/bin/${APP_NAME}"
 
-# 权限设置和 Control 更新在后面...
 # 更新 Control 文件中的 Installed-Size
-# INSTALLED_SIZE=$(du -s "$INSTALL_DIR" | cut -f1)
-# echo "Installed-Size: $INSTALLED_SIZE" >> "${DEB_DIR}/DEBIAN/control"
+INSTALLED_SIZE=$(du -s "$INSTALL_DIR" | cut -f1)
+sed -i "/^Installed-Size:/d" "${DEB_DIR}/DEBIAN/control" 2>/dev/null || true
+echo "Installed-Size: $INSTALLED_SIZE" >> "${DEB_DIR}/DEBIAN/control"
 
-# 5. 设置权限
+# 6. 设置权限
 chmod 755 "${DEB_DIR}/DEBIAN/postinst" 2>/dev/null || true
 chmod 755 "${DEB_DIR}/DEBIAN/prerm" 2>/dev/null || true
 chmod 755 "${DEB_DIR}/DEBIAN/postrm" 2>/dev/null || true
 
-# 6. 生成 .deb
+# 7. 生成 .deb
 echo ">>> 生成 .deb 文件..."
 mkdir -p build/dist_deb
 dpkg-deb --build "$DEB_DIR" "build/dist_deb/${APP_NAME}_${VERSION}_amd64.deb"

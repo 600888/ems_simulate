@@ -1,4 +1,4 @@
-name: Build Windows
+name: Build and Release
 
 on:
   push:
@@ -13,62 +13,92 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: windows-2022
-    timeout-minutes: 120
-
+  # ============================================================
+  # Job 1: Version — 从 tag 提取版本号，供下游 job 使用
+  # ============================================================
+  version:
+    runs-on: ubuntu-latest
     outputs:
-      release_tag: ${{ steps.version.outputs.release_tag }}
-      release_version: ${{ steps.version.outputs.release_version }}
+      release_tag: ${{ steps.extract.outputs.release_tag }}
+      release_version: ${{ steps.extract.outputs.release_version }}
+
+    steps:
+      - name: Extract version from tag
+        id: extract
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag must match vMAJOR.MINOR.PATCH, got: $tag"
+            exit 1
+          fi
+          version="${tag#v}"
+          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release_version=$version" >> "$GITHUB_OUTPUT"
+          echo "Tag: $tag, Version: $version"
+
+  # ============================================================
+  # Job 2: Build — Matrix 并行构建 3 个平台
+  # ============================================================
+  build:
+    needs: version
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows
+            os: windows-2022
+            build_script: .\scripts\build_tauri_windows.ps1
+            venv_activate: .venv\Scripts\Activate.ps1
+            needs_rust: true
+            needs_tauri_deps: false
+
+          - target: linux-web
+            os: ubuntu-22.04
+            build_script: ./scripts/build_web_deb.sh
+            venv_activate: source .venv/bin/activate
+            needs_rust: false
+            needs_tauri_deps: false
+
+          - target: linux-tauri
+            os: ubuntu-22.04
+            build_script: ./scripts/build_tauri_linux.sh
+            venv_activate: source .venv/bin/activate
+            needs_rust: true
+            needs_tauri_deps: true
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare release version from tag
-        id: version
+      # --- 版本同步（平台相关） ---
+      - name: Sync release version to build metadata (Windows)
+        if: matrix.target == 'windows'
         shell: pwsh
         run: |
-          if ("${{ github.ref_type }}" -ne "tag") {
-            Write-Error "This release workflow must be triggered by a version tag, for example v1.4.1."
-            exit 1
-          }
-
-          $tag = "${{ github.ref_name }}".Trim()
-          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
-            Write-Error "Release tag must match vMAJOR.MINOR.PATCH, for example v1.4.1. Got: $tag"
-            exit 1
-          }
-
-          $version = $tag.Substring(1)
-
-          "release_version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "release_tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          Write-Host "Release tag: $tag"
-          Write-Host "Release version: $version"
-
-      - name: Sync release version to build metadata
-        shell: pwsh
-        run: |
-          $version = "${{ steps.version.outputs.release_version }}"
+          $version = "${{ needs.version.outputs.release_version }}"
           $path = "pyproject.toml"
           $content = Get-Content -Path $path -Raw -Encoding UTF8
           $pattern = '(?m)^version\s*=\s*"[^"]+"'
-
           if (-not [regex]::IsMatch($content, $pattern)) {
             Write-Error "Cannot find version line in pyproject.toml"
             exit 1
           }
-
           $newContent = [regex]::Replace($content, $pattern, "version = `"$version`"", 1)
           Set-Content -Path $path -Value $newContent -Encoding UTF8
-
           python scripts/sync_version.py
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Version sync failed"
-            exit 1
-          }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
+      - name: Sync release version to build metadata (Linux)
+        if: matrix.target != 'windows'
+        run: |
+          version="${{ needs.version.outputs.release_version }}"
+          sed -i 's/^version = ".*"/version = "'"$version"'"/' pyproject.toml
+          python3 scripts/sync_version.py
+
+      # --- 通用环境配置 ---
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -85,34 +115,72 @@ jobs:
       - name: Install Python build dependencies
         run: uv sync --extra build
 
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> src-tauri/target
-
       - name: Install frontend dependencies
         working-directory: front
         run: npm ci
 
-      - name: Build Windows application (Tauri + Sidecar)
-        shell: pwsh
-        run: |
-          .venv\Scripts\Activate.ps1
-          .\scripts\build_tauri_windows.ps1
+      # --- Rust 缓存（仅需要 Rust 的平台） ---
+      - name: Setup Rust cache
+        if: matrix.needs_rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> src-tauri/target
 
-      - name: Upload build artifacts
+      # --- Tauri 系统依赖（仅 linux-tauri） ---
+      - name: Install Tauri system dependencies
+        if: matrix.needs_tauri_deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      # --- 构建 ---
+      - name: Build ${{ matrix.target }}
+        run: |
+          ${{ matrix.venv_activate }}
+          ${{ matrix.build_script }}
+
+      # --- 产物上传 ---
+      - name: Upload build artifacts (Windows)
+        if: matrix.target == 'windows'
         uses: actions/upload-artifact@v4
         with:
-          name: ems-simulate-windows-${{ steps.version.outputs.release_tag }}
+          name: ems-simulate-windows-${{ needs.version.outputs.release_tag }}
           path: |
             src-tauri/target/release/ems-simulate.exe
             src-tauri/target/release/bundle/
           compression-level: 0
           if-no-files-found: error
 
+      - name: Upload build artifacts (Linux Web)
+        if: matrix.target == 'linux-web'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ems-simulate-linux-web-${{ needs.version.outputs.release_tag }}
+          path: build/dist_deb/*.deb
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload build artifacts (Linux Tauri)
+        if: matrix.target == 'linux-tauri'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ems-simulate-linux-tauri-${{ needs.version.outputs.release_tag }}
+          path: |
+            src-tauri/target/release/bundle/deb/
+            src-tauri/target/release/bundle/appimage/
+          compression-level: 0
+          if-no-files-found: error
+
+  # ============================================================
+  # Job 3: Release — 收集所有平台产物并发布到 GitHub Release
+  # ============================================================
   release:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [version, build]
     timeout-minutes: 30
 
     steps:
@@ -127,7 +195,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          current_tag="${{ needs.build.outputs.release_tag }}"
+          current_tag="${{ needs.version.outputs.release_tag }}"
           git fetch --tags --force
 
           previous_tag="$(git tag --sort=-version:refname | grep -E '^v[0-9]+(\.[0-9]+){1,2}$' | grep -vFx "$current_tag" | head -n 1 || true)"
@@ -302,10 +370,10 @@ jobs:
 
           printf 'notes_file=%s\n' "$notes_file" >> "$GITHUB_OUTPUT"
 
-      - name: Download build artifacts
+      - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: ems-simulate-windows-*
+          pattern: ems-simulate-*
           path: release-assets
           merge-multiple: true
 
@@ -313,7 +381,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const tag = '${{ needs.build.outputs.release_tag }}';
+            const tag = '${{ needs.version.outputs.release_tag }}';
             try {
               const { data: release } = await github.rest.repos.getReleaseByTag({
                 owner: context.repo.owner,
@@ -321,7 +389,6 @@ jobs:
                 tag: tag,
               });
               if (release) {
-                // Delete all existing assets first
                 for (const asset of release.assets) {
                   await github.rest.repos.deleteReleaseAsset({
                     owner: context.repo.owner,
@@ -330,7 +397,6 @@ jobs:
                   });
                   console.log(`Deleted asset: ${asset.name}`);
                 }
-                // Delete the release itself
                 await github.rest.repos.deleteRelease({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
@@ -349,15 +415,15 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.build.outputs.release_tag }}
-          name: EMS Simulate ${{ needs.build.outputs.release_tag }}
+          tag_name: ${{ needs.version.outputs.release_tag }}
+          name: EMS Simulate ${{ needs.version.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           make_latest: true
           body_path: ${{ steps.changelog.outputs.notes_file }}
-          files: release-assets/**/*.msi
-          fail_on_unmatched_files: true
+          files: release-assets/**
+          fail_on_unmatched_files: false
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

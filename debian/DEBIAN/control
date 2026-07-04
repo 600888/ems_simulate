@@ -6,4 +6,4 @@ Architecture: amd64
 Maintainer: Chen Dongyu <1755696012@qq.com>
 Description: EMS Simulate - Energy Management System Simulator
  A simulation software for EMS devices including PCS, BMS, and Meters.
- Supports Modbus TCP/RTU, IEC104, and DLT645 protocols.
+ Supports Modbus TCP/RTU, IEC 104, IEC 61850 (GOOSE/Reports/SCL), and DL/T645 protocols.
