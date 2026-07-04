@@ -147,6 +147,8 @@ export default defineConfig({
                             text: 'Bug 修复',
                             collapsed: false,
                             items: [
+                                { text: '报告与 DataModel 并发崩溃修复', link: '/changelog/iec61850/23-iec61850-report-datamodel-concurrency-crash-fix' },
+                                { text: 'DataSet 批读进度与软件 GI 修复', link: '/changelog/iec61850/22-iec61850-dataset-batch-read-progress-gi-fix' },
                                 { text: 'ICD 导出器修复', link: '/changelog/iec61850/14-iec61850-icd-exporter-fix' },
                                 { text: '报告回调崩溃与禁用逻辑修复', link: '/changelog/iec61850/15-iec61850-report-callback-crash-fix' },
                                 { text: '报告 GI 与 DataSet 读取修复', link: '/changelog/iec61850/16-iec61850-report-gi-dataset-read-fix' },
