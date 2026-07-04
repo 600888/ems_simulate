@@ -125,7 +125,7 @@ class DORef:
             from ..defs.da_patterns import DA_PATTERNS
 
             if self.cdc in DA_PATTERNS:
-                target_path = DA_PATTERNS[self.cdc].get("da_path", "")
+                target_path = DA_PATTERNS[self.cdc][0]
             else:
                 target_path = ""
 

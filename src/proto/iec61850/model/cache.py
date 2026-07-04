@@ -257,7 +257,7 @@ class ModelCache:
     def _clear_all_files(self) -> None:
         """清空缓存目录下所有模型缓存文件"""
         try:
-            if self._cache_dir.is_dir():
+            if self._cache_dir and not self._cache_dir.is_dir():
                 count = 0
                 for f in self._cache_dir.iterdir():
                     if f.suffix == ".json" and f.name.endswith("_model.json"):
@@ -292,7 +292,7 @@ class ModelCache:
         # 文件缓存统计
         try:
             file_count = 0
-            if self._cache_dir.is_dir():
+            if self._cache_dir and not self._cache_dir.is_dir():
                 for f in self._cache_dir.iterdir():
                     if f.suffix == ".json" and f.name.endswith("_model.json"):
                         file_count += 1

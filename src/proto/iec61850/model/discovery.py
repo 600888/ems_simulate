@@ -934,9 +934,13 @@ class ModelDiscoveryService:
 
                 is_deletable = False
                 try:
-                    is_deletable = bool(iec61850.IedConnection_isDataSetEditable(conn, ds_ref))
+                    from ctypes import c_bool
+
+                    is_deletable_obj = c_bool()
+                    iec61850.IedConnection_getDataSetDirectory(conn, ds_ref, is_deletable_obj)
+                    is_deletable = bool(is_deletable_obj.value)
                 except Exception:
-                    pass
+                    log.error(f"发现 DataSet {ds_ref} 是否可删除失败")
 
                 members = self._discover_dataset_members(conn, ds_ref)
                 datasets.append(
