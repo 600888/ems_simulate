@@ -45,6 +45,10 @@ VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' "$SCRIPT_DIR/../pyproject.toml")
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 TAURI_DIR="${PROJECT_ROOT}/src-tauri"
 BUILD_DIR="${PROJECT_ROOT}/build"
+BINARIES_DIR="${TAURI_DIR}/binaries"
+# 获取 Rust 目标平台三元组，用于 Tauri sidecar 命名
+RUST_TARGET_TRIPLE=$(rustc -vV | grep "^host:" | awk '{print $2}')
+BE_SIDECAR_BINARY="${BINARIES_DIR}/ems_simulate_backend-${RUST_TARGET_TRIPLE}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -82,7 +86,7 @@ cd "$PROJECT_ROOT"
 
 # Sync version to tauri.conf.json, Cargo.toml, package.json, etc.
 WriteStep "同步版本号到配置文件..."
-python3 "$SCRIPT_DIR/sync_version.py"
+python "$SCRIPT_DIR/sync_version.py"
 WriteOk "版本号已同步"
 
 # Check prerequisites
@@ -117,7 +121,7 @@ if $ICONS_UP_TO_DATE; then
     WriteSkip "Tauri 图标已是最新"
 else
     WriteStep "生成 Tauri 图标..."
-    python3 scripts/generate_tauri_icons.py
+    python scripts/generate_tauri_icons.py
     WriteOk "Tauri 图标已生成"
 fi
 
@@ -151,12 +155,9 @@ if [ -n "$BE_PROCESS_PID" ]; then
     WriteOk "后端进程已停止"
 fi
 
-# Build Python backend with PyInstaller
-BACKEND_BINARY_DIR="${TAURI_DIR}/ems_simulate_backend"
-
+# 构建 Python 后端（Tauri sidecar 单文件模式，与 Windows 对齐）
 if ! $SKIP_BACKEND; then
     # 检查后端是否已是最新
-    BE_TARGET="${BACKEND_BINARY_DIR}/ems_simulate_backend"
     BE_SOURCES=(
         "${PROJECT_ROOT}/start_back_end.py"
         "${PROJECT_ROOT}/src"
@@ -165,10 +166,10 @@ if ! $SKIP_BACKEND; then
     )
 
     BE_UP_TO_DATE=false
-    if [ -f "$BE_TARGET" ]; then
+    if [ -f "$BE_SIDECAR_BINARY" ]; then
         BE_UP_TO_DATE=true
         for src in "${BE_SOURCES[@]}"; do
-            if ! IsUpToDate "$BE_TARGET" "$src"; then
+            if ! IsUpToDate "$BE_SIDECAR_BINARY" "$src"; then
                 BE_UP_TO_DATE=false
                 break
             fi
@@ -178,14 +179,17 @@ if ! $SKIP_BACKEND; then
     if $BE_UP_TO_DATE; then
         WriteSkip "Python 后端已是最新"
     else
-        WriteStep "构建 Python 后端 (PyInstaller --onedir)..."
-        mkdir -p "$BACKEND_BINARY_DIR"
+        WriteStep "构建 Python 后端 (PyInstaller --onefile for Tauri Sidecar)..."
+
+        # 清理旧 sidecar 目录
+        rm -rf "$BINARIES_DIR"
+        mkdir -p "$BINARIES_DIR"
         mkdir -p "$BUILD_DIR"
 
-        pyinstaller --noconfirm --onedir \
+        pyinstaller --noconfirm --onefile \
             --name "ems_simulate_backend" \
             --clean \
-            --distpath "${BUILD_DIR}/dist" \
+            --distpath "$BINARIES_DIR" \
             --workpath "${BUILD_DIR}/build_pyinstaller_tauri" \
             --specpath "$BUILD_DIR" \
             --add-data "${PROJECT_ROOT}/config.ini:." \
@@ -207,29 +211,35 @@ if ! $SKIP_BACKEND; then
             --hidden-import="loguru" \
             start_back_end.py
 
-        # Copy PyInstaller output to Tauri resources
-        PYINSTALLER_OUTPUT="${BUILD_DIR}/dist/ems_simulate_backend"
-        if [ -d "$PYINSTALLER_OUTPUT" ]; then
-            cp -r "$PYINSTALLER_OUTPUT"/* "$BACKEND_BINARY_DIR/"
-            # Fix permissions
-            chmod +x "${BACKEND_BINARY_DIR}/ems_simulate_backend" 2>/dev/null || true
+        # PyInstaller --onefile 直接输出到 distpath，需重命名为 sidecar 格式
+        PYINSTALLER_OUTPUT="${BINARIES_DIR}/ems_simulate_backend"
+        if [ -f "$PYINSTALLER_OUTPUT" ]; then
+            mv "$PYINSTALLER_OUTPUT" "$BE_SIDECAR_BINARY"
+            chmod +x "$BE_SIDECAR_BINARY"
+            WriteOk "Python 后端已打包: ${BE_SIDECAR_BINARY}"
+        else
+            WriteErr "PyInstaller 输出未找到: $PYINSTALLER_OUTPUT"
         fi
-        WriteOk "Python 后端已打包"
     fi
 else
     WriteSkip "Python 后端构建 (已通过 --skip-backend 跳过)"
 fi
 
-# Build Tauri desktop app
+# 清理旧的 onedir 构建产物（如果存在）
+if [ -d "${TAURI_DIR}/ems_simulate_backend" ]; then
+    rm -rf "${TAURI_DIR}/ems_simulate_backend"
+    WriteOk "已清理旧的 onedir 构建产物"
+fi
+
+# 构建 Tauri 桌面应用
 TAURI_EXE="${TAURI_DIR}/target/release/ems-simulate"
 TAURI_SRC="${TAURI_DIR}/src"
 TAURI_CARGO="${TAURI_DIR}/Cargo.toml"
-BE_TARGET="${BACKEND_BINARY_DIR}/ems_simulate_backend"
 
 TAURI_UP_TO_DATE=false
 if [ -f "$TAURI_EXE" ]; then
     TAURI_UP_TO_DATE=true
-    for ref in "$TAURI_SRC" "$TAURI_CARGO" "$BE_TARGET"; do
+    for ref in "$TAURI_SRC" "$TAURI_CARGO" "$BE_SIDECAR_BINARY"; do
         if ! IsUpToDate "$TAURI_EXE" "$ref"; then
             TAURI_UP_TO_DATE=false
             break
@@ -247,6 +257,11 @@ else
     if ! cargo tauri --version &>/dev/null; then
         echo "安装 Tauri CLI..."
         cargo install tauri-cli --version "^2"
+    fi
+
+    # Sidecar 二进制必须在构建前到位
+    if [ ! -f "$BE_SIDECAR_BINARY" ]; then
+        WriteErr "Sidecar 二进制未找到: ${BE_SIDECAR_BINARY}。请先运行 --skip-backend 构建后端。"
     fi
 
     echo "运行: cargo tauri build"

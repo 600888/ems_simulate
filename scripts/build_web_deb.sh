@@ -17,7 +17,7 @@ cd "$SCRIPT_DIR/.."
 
 # 同步版本号到 tauri.conf.json 和 package.json
 echo ">>> 同步版本号到配置文件..."
-python3 "$SCRIPT_DIR/sync_version.py"
+python "$SCRIPT_DIR/sync_version.py"
 
 echo ">>> 开始构建 ${APP_NAME} v${VERSION}..."
 

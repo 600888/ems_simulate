@@ -73,31 +73,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- 版本同步（平台相关） ---
-      - name: Sync release version to build metadata (Windows)
-        if: matrix.target == 'windows'
-        shell: pwsh
-        run: |
-          $version = "${{ needs.version.outputs.release_version }}"
-          $path = "pyproject.toml"
-          $content = Get-Content -Path $path -Raw -Encoding UTF8
-          $pattern = '(?m)^version\s*=\s*"[^"]+"'
-          if (-not [regex]::IsMatch($content, $pattern)) {
-            Write-Error "Cannot find version line in pyproject.toml"
-            exit 1
-          }
-          $newContent = [regex]::Replace($content, $pattern, "version = `"$version`"", 1)
-          Set-Content -Path $path -Value $newContent -Encoding UTF8
-          python scripts/sync_version.py
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-
-      - name: Sync release version to build metadata (Linux)
-        if: matrix.target != 'windows'
-        run: |
-          version="${{ needs.version.outputs.release_version }}"
-          sed -i 's/^version = ".*"/version = "'"$version"'"/' pyproject.toml
-          python3 scripts/sync_version.py
-
       # --- 通用环境配置 ---
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -119,6 +94,32 @@ jobs:
         working-directory: front
         run: npm ci
 
+      # --- 版本同步（需在 Python 环境就绪后执行） ---
+      - name: Sync release version to build metadata (Windows)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $version = "${{ needs.version.outputs.release_version }}"
+          $path = "pyproject.toml"
+          $content = Get-Content -Path $path -Raw -Encoding UTF8
+          $pattern = '(?m)^version\s*=\s*"[^"]+"'
+          if (-not [regex]::IsMatch($content, $pattern)) {
+            Write-Error "Cannot find version line in pyproject.toml"
+            exit 1
+          }
+          $newContent = [regex]::Replace($content, $pattern, "version = `"$version`"", 1)
+          Set-Content -Path $path -Value $newContent -Encoding UTF8
+          python scripts/sync_version.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Sync release version to build metadata (Linux)
+        if: matrix.target != 'windows'
+        run: |
+          version="${{ needs.version.outputs.release_version }}"
+          sed -i "s/^version = \".*\"/version = \"${version}\"/" pyproject.toml
+          source .venv/bin/activate
+          python scripts/sync_version.py
+
       # --- Rust 缓存（仅需要 Rust 的平台） ---
       - name: Setup Rust cache
         if: matrix.needs_rust
@@ -138,6 +139,10 @@ jobs:
             librsvg2-dev
 
       # --- 构建 ---
+      - name: Make build scripts executable (Linux)
+        if: matrix.target != 'windows'
+        run: chmod +x scripts/*.sh
+
       - name: Build ${{ matrix.target }}
         run: |
           ${{ matrix.venv_activate }}
