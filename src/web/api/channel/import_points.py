@@ -5,6 +5,7 @@ ICD/SCD/CID 文件统一导入:
 - GOOSE 配置 (Publisher/Subscriber)
 """
 
+import asyncio
 import os
 import tempfile
 from typing import Any
@@ -156,7 +157,7 @@ async def preview_icd(
             from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
 
             service = SclImportService()
-            result = service.preview_file(tmp_path)
+            result = await asyncio.to_thread(service.preview_file, tmp_path)
             yc_count = len(result.points.yc_points)
             yx_count = len(result.points.yx_points)
             yk_count = len(result.points.yk_points)
@@ -167,7 +168,7 @@ async def preview_icd(
             from src.tools.icd_point_importer import IcdPointImporter
 
             importer = IcdPointImporter(channel_id=0)  # preview 不需要 channel_id
-            yc_count, yx_count, yk_count, yt_count = importer.preview_from_icd(tmp_path)
+            yc_count, yx_count, yk_count, yt_count = await asyncio.to_thread(importer.preview_from_icd, tmp_path)
 
         # ===== 2. GOOSE 配置预览 =====
         goose_data: dict[str, Any] = {}
@@ -216,7 +217,7 @@ async def preview_icd(
             else:
                 from src.tools.icd_goose_importer import import_goose_from_icd
 
-                goose_result = import_goose_from_icd(tmp_path, interface=interface)
+                goose_result = await asyncio.to_thread(import_goose_from_icd, tmp_path, interface=interface)
                 goose_data = goose_result
         except Exception as e:
             log.warning(f"预览 ICD GOOSE 配置失败 (不影响 MMS 预览): {e}")
@@ -284,8 +285,8 @@ async def import_icd(
         from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
 
         service = SclImportService()
-        scl_result = service.import_file(tmp_path)
-        scl_data = scl_result.to_dict()
+        scl_result = await asyncio.to_thread(service.import_file, tmp_path)
+        scl_data = await asyncio.to_thread(scl_result.to_dict)
 
         # 提取 IED 名称并更新通道配置
         ied_name = scl_result.ied_name or ""
@@ -388,7 +389,7 @@ async def import_icd(
 
         try:
             # 从 scl_result 提取 GOOSE 配置和 DO 描述（复用已解析的结果）
-            scl_data = scl_result.to_dict()
+            scl_data = await asyncio.to_thread(scl_result.to_dict)
             goose_data = dict(scl_data.get("goose", {}))
             goose_data["pure_datasets"] = scl_result.goose.pure_datasets
             goose_data["report_controls"] = scl_data.get("report_controls", [])
@@ -483,7 +484,7 @@ async def import_icd(
                     )
                     # register_default_rcbs=False: 跳过 brcb01/brcb02 默认 RCB，
                     # ICD 文件中的 ReportControl 已在 2ab 步骤注册
-                    iec61850_server.start(register_default_rcbs=False)
+                    await asyncio.to_thread(iec61850_server.start, register_default_rcbs=False)
                     if iec61850_server.is_running:
                         log.info("MMS 服务器启动完成，DataSet 和 GoCB 已生效")
                     else:

@@ -1,8 +1,9 @@
 """Regression tests for IEC 61850 connection/discovery progress snapshots."""
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from src.device.protocol.iec61850_handler import IEC61850ClientHandler
+from src.proto.iec61850.model.discovery import ModelDiscoveryService
 
 
 def _make_handler(client: Mock) -> IEC61850ClientHandler:
@@ -65,3 +66,14 @@ def test_second_progress_task_is_rejected_while_discovery_is_active():
     assert handler.remote_discover_model() is False
     assert handler.get_connect_progress()["progress"] == 30
     client.remote_discover_model.assert_not_called()
+
+
+def test_variable_spec_probe_uses_circuit_breaker_after_repeated_failures():
+    discovery = ModelDiscoveryService()
+
+    with patch.object(discovery, "_query_variable_spec_type", return_value=None) as query:
+        for index in range(discovery._variable_spec_failure_limit + 5):
+            assert discovery._probe_variable_spec_type(object(), f"LD0/LLN0.Do{index}.stVal", "ST") is None
+
+    assert discovery._variable_spec_disabled is True
+    assert query.call_count == discovery._variable_spec_failure_limit

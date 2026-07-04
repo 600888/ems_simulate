@@ -1,4 +1,8 @@
-// import { getDeviceList, getDeviceInfo } from '@/api/deviceApi';
+import {
+  HTTP_TIMEOUT,
+  HTTP_TIMEOUT_LONG,
+  HTTP_TIMEOUT_MODEL_DISCOVERY,
+} from "@/constants";
 
 // describe('getDeviceList', () => {
 //     it('getDeviceList', async () => {
@@ -6,6 +10,14 @@
 //         console.log(deviceList);
 //     });
 // });
+
+describe("device API timeout policy", () => {
+  it("keeps long-running model discovery isolated from normal API timeouts", () => {
+    expect(HTTP_TIMEOUT).toBe(5000);
+    expect(HTTP_TIMEOUT_LONG).toBe(60000);
+    expect(HTTP_TIMEOUT_MODEL_DISCOVERY).toBeGreaterThan(HTTP_TIMEOUT_LONG);
+  });
+});
 
 // describe('getDeviceInfo', () => {
 //     it('getDeviceInfo', async () => {

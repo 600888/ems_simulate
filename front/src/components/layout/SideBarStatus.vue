@@ -46,6 +46,8 @@ const isHealthy = ref(false);
 const restarting = ref(false);
 const checking = ref(false);
 let timer: ReturnType<typeof setInterval> | null = null;
+let consecutiveFailures = 0;
+const FAILURE_THRESHOLD = 3;
 
 const statusClass = computed(() => ({
   healthy: isHealthy.value,
@@ -62,9 +64,20 @@ const doHealthCheck = async () => {
   checking.value = true;
   try {
     const ok = await checkBackendStatus();
-    isHealthy.value = ok;
+    if (ok) {
+      consecutiveFailures = 0;
+      isHealthy.value = true;
+    } else {
+      consecutiveFailures++;
+      if (consecutiveFailures >= FAILURE_THRESHOLD) {
+        isHealthy.value = false;
+      }
+    }
   } catch {
-    isHealthy.value = false;
+    consecutiveFailures++;
+    if (consecutiveFailures >= FAILURE_THRESHOLD) {
+      isHealthy.value = false;
+    }
   } finally {
     checking.value = false;
   }
@@ -84,6 +97,7 @@ const handleRestart = async () => {
     // Rust 已等待健康检查成功；前端再确认一次，确保状态栏与实际服务一致。
     const ok = await checkBackendStatus();
     isHealthy.value = ok;
+    consecutiveFailures = ok ? 0 : FAILURE_THRESHOLD;
     if (ok) {
       ElMessage.success(t("sidebar.restartSuccess"));
     } else {

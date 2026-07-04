@@ -164,7 +164,7 @@ async def import_iec61850_model(req: IEC61850ImportModelRequest, request: Reques
         req: {device_name, icd_path}
     """
     device = _get_device(req.device_name, request)
-    success = device.load_iec61850_model(req.icd_path)
+    success = await asyncio.to_thread(device.load_iec61850_model, req.icd_path)
     if not success:
         raise OperationError("IEC61850 模型导入失败!", data=False)
     return BaseResponse(message="IEC61850 模型导入成功!", data=True)
@@ -200,7 +200,7 @@ async def load_iec61850_model(req: DeviceInfoRequest, request: Request):
     if not os.path.exists(icd_path):
         raise OperationError(f"ICD 文件不存在: {icd_path}，请重新导入模型!", data=False)
 
-    success = device.load_iec61850_model(icd_path)
+    success = await asyncio.to_thread(device.load_iec61850_model, icd_path)
     if not success:
         raise OperationError("IEC61850 模型加载失败!", data=False)
     return BaseResponse(

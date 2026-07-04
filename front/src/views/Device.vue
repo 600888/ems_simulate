@@ -247,6 +247,7 @@ import {
 } from "@/api/deviceApi";
 import type { IEC61850ConnectProgress } from "@/api/deviceApi";
 import { triggerSidebarRefresh } from "@/composables";
+import { acquireAutoRefreshPause } from "@/composables/autoRefreshGate";
 import IcdImportUpload from "@/components/common/IcdImportUpload.vue";
 import {
   CaretRight,
@@ -257,6 +258,7 @@ import {
   Search,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { HTTP_TIMEOUT_MODEL_DISCOVERY } from "@/constants";
 
 const route = useRoute();
 const { t } = useI18n();
@@ -280,6 +282,17 @@ const showMessageDialog = ref<boolean>(false);
 const showExportDialog = ref<boolean>(false);
 const slaveRef = ref<any>(null);
 const icdImportUploadRef = ref<InstanceType<typeof IcdImportUpload>>();
+const modelPauseReleases = new Set<() => void>();
+
+const acquireModelPause = (reason: string): (() => void) => {
+  const releaseGate = acquireAutoRefreshPause(reason);
+  const release = () => {
+    releaseGate();
+    modelPauseReleases.delete(release);
+  };
+  modelPauseReleases.add(release);
+  return release;
+};
 
 // 设备状态文字：使用 computed 确保语言切换时自动刷新
 const deviceStatusStr = computed(() => {
@@ -610,6 +623,7 @@ const startFunction = async () => {
 
 // IEC61850 模型加载：从数据库加载
 const handleLoadModelFromDb = async () => {
+  const releaseAutoRefreshPause = acquireModelPause("iec61850-model-load");
   isModelProcessing.value = true;
   modelLoading.value = true;
   modelImportElapsed.value = 0;
@@ -633,6 +647,7 @@ const handleLoadModelFromDb = async () => {
     console.error(error);
     // 后端返回的错误消息已由全局拦截器处理
   } finally {
+    releaseAutoRefreshPause();
     isModelProcessing.value = false;
     modelLoading.value = false;
     if (modelImportElapsedTimer) {
@@ -685,6 +700,8 @@ const handleDiscoverModel = async () => {
     console.warn("检查模型缓存失败，将继续在线发现", e);
   }
 
+  const releaseAutoRefreshPause = acquireModelPause("iec61850-model-discovery");
+
   if (useCache) {
     // 2. 使用缓存加载
     modelDiscovering.value = true;
@@ -702,6 +719,7 @@ const handleDiscoverModel = async () => {
       console.error(error);
       ElMessage.error(t("device.modelLoadFailed"));
     } finally {
+      releaseAutoRefreshPause();
       modelDiscovering.value = false;
     }
     return;
@@ -714,7 +732,7 @@ const handleDiscoverModel = async () => {
   await nextTick();
   await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
   try {
-    const success = await discoverIEC61850Model(routeName.value, 120000);
+    const success = await discoverIEC61850Model(routeName.value, HTTP_TIMEOUT_MODEL_DISCOVERY);
     if (success) {
       iec61850ConnectProgress.value = {
         phase: "done",
@@ -745,19 +763,25 @@ const handleDiscoverModel = async () => {
     await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
     modelDiscovering.value = false;
     stopIec61850ProgressPolling();
+    releaseAutoRefreshPause();
   }
 };
+
+let releaseModelImportPause: (() => void) | null = null;
 
 const stopModelImportProgress = () => {
   if (modelImportElapsedTimer) {
     clearInterval(modelImportElapsedTimer);
     modelImportElapsedTimer = null;
   }
+  releaseModelImportPause?.();
+  releaseModelImportPause = null;
   modelImporting.value = false;
 };
 
 const onIcdImportStart = () => {
   stopModelImportProgress();
+  releaseModelImportPause = acquireModelPause("iec61850-model-import");
   modelImporting.value = true;
   modelImportElapsed.value = 0;
   modelImportElapsedTimer = window.setInterval(() => {
@@ -781,6 +805,7 @@ const onIcdImportError = () => {
 
 // 状态轮询定时器
 let statusPollTimer: number | null = null;
+let statusPollInFlight = false;
 const STATUS_POLL_INTERVAL = 1000; // 1秒轮询一次
 
 // 连接状态防抖：避免因连接状态抖动（如客户端重连过程中反复连接成功又断开）导致不停弹窗
@@ -792,6 +817,8 @@ let prevServerStatus: boolean | null = null; // 上一次轮询的连接状态�
 
 // 仅获取状态（不更新其他信息，减少开销）
 const fetchDeviceStatus = async () => {
+  if (statusPollInFlight) return;
+  statusPollInFlight = true;
   try {
     const info = await getDeviceInfo(routeName.value);
     const serverStatus = info.get("server_status");
@@ -862,6 +889,8 @@ const fetchDeviceStatus = async () => {
     }
   } catch (error) {
     /* 静默处理轮询错误 */
+  } finally {
+    statusPollInFlight = false;
   }
 };
 
@@ -895,6 +924,7 @@ onUnmounted(() => {
   stopStatusPolling();
   stopIec61850ProgressPolling();
   stopModelImportProgress();
+  for (const release of [...modelPauseReleases]) release();
 });
 
 watch(

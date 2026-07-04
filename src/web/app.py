@@ -103,6 +103,8 @@ async def health_check():
         "version": "1.0.0",
         "service": "EMS Simulate Backend",
         "timestamp": None,
+        "busy": False,
+        "active_operations": [],
     }
     try:
         from datetime import datetime
@@ -118,6 +120,30 @@ async def health_check():
         health_data["database"] = Config.db_type
     except Exception:
         health_data["database"] = "unknown"
+
+    # Busy is a healthy state. Expose long-running IEC61850 work separately so
+    # clients and diagnostics do not confuse load with process failure.
+    controller = getattr(app.state, "device_controller", None)
+    if controller is not None:
+        for device in tuple(getattr(controller, "device_list", ())):
+            get_progress = getattr(device, "get_iec61850_connect_progress", None)
+            if not callable(get_progress):
+                continue
+            try:
+                progress = get_progress()
+            except Exception:
+                continue
+            if progress and progress.get("active"):
+                health_data["active_operations"].append(
+                    {
+                        "device": getattr(device, "name", ""),
+                        "operation": progress.get("operation", ""),
+                        "elapsed_seconds": progress.get("elapsed_seconds", 0),
+                    }
+                )
+        health_data["busy"] = bool(health_data["active_operations"])
+        if health_data["busy"]:
+            health_data["status"] = "busy"
 
     if not initialized:
         return JSONResponse(

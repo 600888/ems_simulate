@@ -5,11 +5,49 @@
 """
 
 import contextlib
+from dataclasses import dataclass
+import os
 import threading
 import time
 
 from ..defs.constants import FC_MX, HAS_IEC61850
 from ..log import log
+
+
+def _positive_timeout_from_env(name: str, default: int) -> int:
+    """Read a positive millisecond timeout without making startup fragile."""
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError:
+        log.warning(f"忽略无效超时配置 {name}={raw_value!r}，使用默认值 {default}ms")
+        return default
+    if value <= 0:
+        log.warning(f"忽略非正超时配置 {name}={raw_value!r}，使用默认值 {default}ms")
+        return default
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850Timeouts:
+    """Timeout policy for one MMS association.
+
+    Connect timeout only protects association establishment. Request timeout is
+    equally important because discovery performs many synchronous directory and
+    value requests; leaving it implicit can stall an entire discovery phase.
+    """
+
+    connect_ms: int = 3000
+    request_ms: int = 3000
+
+    @classmethod
+    def from_env(cls) -> "Iec61850Timeouts":
+        return cls(
+            connect_ms=_positive_timeout_from_env("EMS_IEC61850_CONNECT_TIMEOUT_MS", 3000),
+            request_ms=_positive_timeout_from_env("EMS_IEC61850_REQUEST_TIMEOUT_MS", 3000),
+        )
 
 
 class Iec61850Connection:
@@ -22,7 +60,15 @@ class Iec61850Connection:
     - LD 列表缓存
     """
 
-    def __init__(self, ip: str, port: int, model_name: str = "", ld_name: str = "GenericLD"):
+    def __init__(
+        self,
+        ip: str,
+        port: int,
+        model_name: str = "",
+        ld_name: str = "GenericLD",
+        *,
+        timeouts: Iec61850Timeouts | None = None,
+    ):
         if not HAS_IEC61850:
             raise RuntimeError("pyiec61850 未安装，无法创建 IEC 61850 连接")
 
@@ -30,6 +76,7 @@ class Iec61850Connection:
         self.port = port
         self.model_name = model_name
         self.ld_name = ld_name
+        self.timeouts = timeouts or Iec61850Timeouts.from_env()
 
         self._connection = None
         self._is_connected = False
@@ -72,8 +119,10 @@ class Iec61850Connection:
 
             try:
                 self._connection = iec61850.IedConnection_create()
-                # 设置连接超时 3000ms（默认 TCP 超时 20-30s 太长）
-                iec61850.IedConnection_setConnectTimeout(self._connection, 3000)
+                # 连接和请求是两套独立超时。发现阶段的大量同步 MMS 请求
+                # 必须显式受控，避免单个异常节点让整个任务长期停滞。
+                iec61850.IedConnection_setConnectTimeout(self._connection, self.timeouts.connect_ms)
+                iec61850.IedConnection_setRequestTimeout(self._connection, self.timeouts.request_ms)
                 result = iec61850.IedConnection_connect(self._connection, self.ip, self.port)
 
                 error = result

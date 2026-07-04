@@ -183,6 +183,12 @@ class ModelDiscoveryService:
             "unknown": 0,
             "failed": 0,
         }
+        # Some IEDs expose the API but reject every variable-specification
+        # request. Stop probing after a sustained failure streak instead of
+        # paying one extra MMS round trip for every DA in a large model.
+        self._variable_spec_failure_limit = 32
+        self._variable_spec_failures = 0
+        self._variable_spec_disabled = False
 
     @property
     def model(self) -> IedModel | None:
@@ -235,6 +241,8 @@ class ModelDiscoveryService:
             "unknown": 0,
             "failed": 0,
         }
+        self._variable_spec_failures = 0
+        self._variable_spec_disabled = False
 
         # 提取底层 IedConnection
         conn = self._resolve_connection(connection)
@@ -260,7 +268,14 @@ class ModelDiscoveryService:
 
         total_lds = len(ld_names)
         for i, ld_name in enumerate(ld_names):
-            progress and progress("discovering", i, total_lds, f"发现 LD: {ld_name}")
+            progress and progress("discovering", i * 1000, total_lds * 1000, f"发现 LD: {ld_name}")
+
+            def update_ld_progress(fraction: float, message: str, *, ld_index: int = i) -> None:
+                if progress is None:
+                    return
+                completed = ld_index * 1000 + round(min(max(fraction, 0.0), 1.0) * 1000)
+                progress("discovering", completed, total_lds * 1000, message)
+
             with self._error_guard(f"LD {ld_name}", on_error):
                 self._discover_ld(
                     conn,
@@ -268,8 +283,14 @@ class ModelDiscoveryService:
                     ld_name,
                     max_depth=max_depth,
                     on_error=on_error,
+                    progress=update_ld_progress,
                 )
-            progress and progress("discovering", i + 1, total_lds, f"已发现 LD: {ld_name}")
+            progress and progress(
+                "discovering",
+                (i + 1) * 1000,
+                total_lds * 1000,
+                f"已发现 LD: {ld_name}",
+            )
 
         self._model = builder.build()
         self._model_timestamp = time.time()
@@ -372,8 +393,25 @@ class ModelDiscoveryService:
             return fc, specified_type
         return preferred_fc, None
 
+    def _probe_variable_spec_type(self, conn, ref: str, fc: str) -> MmsType | None:
+        if self._variable_spec_disabled:
+            return None
+
+        resolved = self._query_variable_spec_type(conn, ref, fc)
+        if resolved is not None:
+            self._variable_spec_failures = 0
+            return resolved
+
+        self._variable_spec_failures += 1
+        if self._variable_spec_failures >= self._variable_spec_failure_limit:
+            self._variable_spec_disabled = True
+            log.info(
+                f"连续变量规格探测失败，当前发现任务将改用运行时/静态类型推断 (failures={self._variable_spec_failures})"
+            )
+        return None
+
     @staticmethod
-    def _probe_variable_spec_type(conn, ref: str, fc: str) -> MmsType | None:
+    def _query_variable_spec_type(conn, ref: str, fc: str) -> MmsType | None:
         """Query the server's MMS variable specification when supported."""
         get_spec = getattr(iec61850, "IedConnection_getVariableSpecification", None)
         get_type = getattr(iec61850, "MmsVariableSpecification_getType", None)
@@ -418,6 +456,9 @@ class ModelDiscoveryService:
         """节点发现错误守卫 — Context Manager 模式"""
         try:
             yield
+        except TimeoutError:
+            # Operation deadlines are control flow, not a skippable node error.
+            raise
         except Exception as e:
             log.warning(f"发现 {ref} 时出错: {e}")
             if on_error == "abort":
@@ -433,6 +474,7 @@ class ModelDiscoveryService:
         *,
         max_depth: int,
         on_error: str,
+        progress=None,
     ) -> None:
         """分两阶段发现单个 LD：先构建完整模型，再解析 DataSet 等引用资源。"""
         ld_builder = builder.add_ld(ld_name, ld_name)
@@ -450,9 +492,34 @@ class ModelDiscoveryService:
 
         # 第一阶段只发现完整 LD/LN/DO/DA 模型。DataSet 是模型引用的子集，
         # 不能反向定义数据类型，也不能作为模型发现的数据源。
-        for ln_name, ln_ref, ln_builder in logical_nodes:
+        logical_node_count = max(len(logical_nodes), 1)
+        for ln_index, (ln_name, ln_ref, ln_builder) in enumerate(logical_nodes):
             with self._error_guard(f"LN {ln_ref}", on_error):
-                for do in self._discover_data_objects(conn, ld_name, ln_ref, ln_name, max_depth=max_depth):
+
+                def update_do_progress(
+                    current: int,
+                    total: int,
+                    do_name: str,
+                    *,
+                    current_ln_index: int = ln_index,
+                    current_ln_ref: str = ln_ref,
+                ) -> None:
+                    if progress is None:
+                        return
+                    ln_fraction = current / total if total > 0 else 1.0
+                    fraction = (current_ln_index + ln_fraction) / logical_node_count
+                    progress(fraction, f"发现 DO: {current_ln_ref}.{do_name} ({current}/{total})")
+
+                discover_args = (conn, ld_name, ln_ref, ln_name)
+                if progress is None:
+                    discovered_objects = self._discover_data_objects(*discover_args, max_depth=max_depth)
+                else:
+                    discovered_objects = self._discover_data_objects(
+                        *discover_args,
+                        max_depth=max_depth,
+                        progress=update_do_progress,
+                    )
+                for do in discovered_objects:
                     ln_builder.add_do(do)
 
         # 第二阶段在模型已经存在的前提下解析 DataSet/RCB/GoCB。
@@ -504,7 +571,15 @@ class ModelDiscoveryService:
             log.warning(f"获取逻辑节点列表异常: {ld_name}, {e}")
             return []
 
-    def _discover_data_objects(self, conn, ld_name: str, ln_ref: str, ln_name: str, max_depth: int) -> list[DORef]:
+    def _discover_data_objects(
+        self,
+        conn,
+        ld_name: str,
+        ln_ref: str,
+        ln_name: str,
+        max_depth: int,
+        progress=None,
+    ) -> list[DORef]:
         """发现 LN 下所有 DO 及其 DA/BDA"""
         do_refs = []
 
@@ -521,7 +596,8 @@ class ModelDiscoveryService:
             log.warning(f"获取数据对象列表异常: {ln_ref}, {e}")
             return []
 
-        for do_name in do_names:
+        total_dos = len(do_names)
+        for do_index, do_name in enumerate(do_names, start=1):
             do_ref = f"{ln_ref}.{do_name}"
             cdc, frame_type = self._infer_cdc_and_frame_type(do_name, ln_name)
 
@@ -544,6 +620,8 @@ class ModelDiscoveryService:
                     das=tuple(das),
                 )
             )
+            if progress is not None:
+                progress(do_index, total_dos, do_name)
 
         return do_refs
 

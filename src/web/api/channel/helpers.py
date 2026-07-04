@@ -1,5 +1,6 @@
 """通道模块 - 公共辅助函数"""
 
+import asyncio
 import os
 from typing import Any
 
@@ -77,7 +78,7 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
     """
     await device_controller.remove_device_by_id(channel_id)
 
-    channel = ChannelService.get_channel_by_id(channel_id)
+    channel = await asyncio.to_thread(ChannelService.get_channel_by_id, channel_id)
     if not channel:
         raise NotFoundError(f"通道 {channel_id} 不存在")
 
@@ -87,7 +88,6 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
     port = channel.get("port", Config.DEFAULT_PORT)
     ip = channel.get("ip", Config.DEFAULT_IP)
 
-    builder = get_device_builder(channel_id, channel_code)
     conn_type = channel.get("conn_type", 1)
 
     log.info(
@@ -96,30 +96,35 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         f"IP: {ip}, Port: {port}"
     )
 
-    configure_builder_network(builder, conn_type, channel_protocol_type, ip, port, channel)
+    def build_device():
+        """Build and hydrate a device away from the ASGI event loop."""
+        builder = get_device_builder(channel_id, channel_code)
+        configure_builder_network(builder, conn_type, channel_protocol_type, ip, port, channel)
 
-    new_device = builder.makeGeneralDevice(
-        device_id=channel_id,
-        device_name=device_name,
-        protocol_type=channel_protocol_type,
-        is_start=is_start,
-    )
-    new_device.name = device_name
+        device = builder.makeGeneralDevice(
+            device_id=channel_id,
+            device_name=device_name,
+            protocol_type=channel_protocol_type,
+            is_start=is_start,
+        )
+        if device is None:
+            raise RuntimeError(f"无法为协议 {channel_protocol_type} 创建设备 {device_name}")
+        device.name = device_name
 
-    # IEC61850: 如果有 ICD 文件路径，自动加载模型
-    if channel_protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client):
-        icd_path = channel.get("icd_path")
-        if icd_path:
-            try:
-                if os.path.exists(icd_path):
+        if channel_protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client):
+            icd_path = channel.get("icd_path")
+            if icd_path and os.path.exists(icd_path):
+                try:
                     if scl_result is not None:
-                        # 复用提前解析的结果，避免二次解析
-                        new_device.load_iec61850_model(icd_path, scl_result=scl_result)
+                        device.load_iec61850_model(icd_path, scl_result=scl_result)
                     else:
-                        new_device.load_iec61850_model(icd_path)
+                        device.load_iec61850_model(icd_path)
                     log.info(f"重新加载设备时已自动加载 ICD 模型: {icd_path}")
-            except Exception as load_err:
-                log.warning(f"重新加载设备时自动加载 ICD 模型失败: {load_err}")
+                except Exception as load_err:
+                    log.warning(f"重新加载设备时自动加载 ICD 模型失败: {load_err}")
+        return device
+
+    new_device = await asyncio.to_thread(build_device)
 
     if is_start and is_client_protocol(channel_protocol_type):
         if channel_protocol_type == ProtocolType.Iec61850Client:

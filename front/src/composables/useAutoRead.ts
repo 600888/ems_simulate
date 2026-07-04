@@ -5,9 +5,7 @@
  */
 
 import { ref, computed, onActivated, onDeactivated, onUnmounted } from "vue";
-
-// ===== 全局暂停标志：文件导入时暂停自动轮询 =====
-export const isAutoRefreshPaused = ref(false);
+import { isAutoRefreshPaused } from "@/composables/autoRefreshGate";
 import { ElMessage } from "element-plus";
 import {
   getAutoReadStatus,
@@ -78,6 +76,7 @@ export function useAutoRead(options: AutoReadOptions) {
 
   const isAutoRead = ref(false);
   const timer = ref<any>(null);
+  let refreshInFlight = false;
   const isReading = ref(false);
   const cancelRead = ref(false);
   const successCount = ref(0);
@@ -124,17 +123,23 @@ export function useAutoRead(options: AutoReadOptions) {
 
   const startAutoRefresh = () => {
     if (timer.value) return;
-    timer.value = setInterval(() => {
+    const refresh = async () => {
       // 导入文件时暂停轮询，避免干扰上传和超时
-      if (isAutoRefreshPaused.value) return;
-      fetchDeviceTable(
-        routeName.value,
-        currentSlaveId.value,
-        searchQuery.value[currentSlaveId.value] || "",
-        pageIndex.value,
-        pageSize.value
-      );
-    }, TABLE_REFRESH_INTERVAL);
+      if (isAutoRefreshPaused.value || refreshInFlight) return;
+      refreshInFlight = true;
+      try {
+        await fetchDeviceTable(
+          routeName.value,
+          currentSlaveId.value,
+          searchQuery.value[currentSlaveId.value] || "",
+          pageIndex.value,
+          pageSize.value
+        );
+      } finally {
+        refreshInFlight = false;
+      }
+    };
+    timer.value = setInterval(() => void refresh(), TABLE_REFRESH_INTERVAL);
   };
 
   const stopAutoRefresh = () => {

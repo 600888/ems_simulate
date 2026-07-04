@@ -29,8 +29,12 @@ def test_discovered_model_cache_does_not_expire_after_thirty_minutes(tmp_path):
     reader.set_cache_dir(tmp_path)
 
     assert reader.has(key) is True
+    persisted_before_read = cache_file.read_bytes()
+    modified_before_read = cache_file.stat().st_mtime_ns
     restored = reader.get(key)
     assert restored is not None
     assert restored.host == model.host
     assert restored._point_refs == model._point_refs
     assert cache_file.exists()
+    assert cache_file.read_bytes() == persisted_before_read
+    assert cache_file.stat().st_mtime_ns == modified_before_read

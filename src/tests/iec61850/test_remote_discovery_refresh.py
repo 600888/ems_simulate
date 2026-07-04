@@ -47,7 +47,7 @@ def test_remote_discovery_forces_online_refresh_and_replaces_registry():
     client._discovery.discover.assert_called_once_with(client._conn, progress=None)
     cache.set.assert_called_once_with("127.0.0.1:102", fresh_model)
     build_registry.assert_called_once_with(fresh_model, client._registry)
-    client._fill_du_names.assert_called_once_with(discovered)
+    client._fill_du_names.assert_called_once_with(discovered, progress=None)
 
 
 def test_remote_discovery_can_reuse_cache_for_internal_callers():

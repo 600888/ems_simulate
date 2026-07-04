@@ -3,13 +3,24 @@ IEC 61850 协议处理器
 支持 IEC 61850 MMS 服务端和客户端
 """
 
+import asyncio
 from collections.abc import Sequence
+import os
 import time
 from typing import Any
 
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.enums.point_data import Yc, Yk, Yt, Yx
 from src.enums.points.base_point import BasePoint
+
+
+def _discovery_timeout_seconds() -> int:
+    raw_value = os.getenv("EMS_IEC61850_DISCOVERY_TIMEOUT_SECONDS", "600")
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return 600
+    return value if value > 0 else 600
 
 
 class IEC61850ServerHandler(ServerHandler):
@@ -77,7 +88,7 @@ class IEC61850ServerHandler(ServerHandler):
                 return False
 
             # 模型已加载，启动 MMS 服务
-            self._server.start_device()
+            await asyncio.to_thread(self._server.start_device)
             self._is_running = self._server.is_running
             return self._is_running
         except Exception as e:
@@ -124,7 +135,7 @@ class IEC61850ServerHandler(ServerHandler):
         """停止 IEC 61850 服务器"""
         try:
             if self._server:
-                self._server.stop()
+                await asyncio.to_thread(self._server.stop)
                 self._is_running = False
                 return True
             return False
@@ -477,7 +488,12 @@ class IEC61850ClientHandler(ClientHandler):
             if self._log:
                 self._log.info("开始远程发现模型...")
 
+            discovery_timeout = _discovery_timeout_seconds()
+            discovery_deadline = time.monotonic() + discovery_timeout
+
             def on_discovery_progress(phase: str, current: int, total: int, message: str) -> None:
+                if time.monotonic() >= discovery_deadline:
+                    raise TimeoutError(f"IEC61850 模型发现超过 {discovery_timeout} 秒，任务已终止")
                 ratio = min(max(current / total, 0.0), 1.0) if total > 0 else 0.0
                 if phase == "discovering":
                     percent = 20 + round(ratio * 50)

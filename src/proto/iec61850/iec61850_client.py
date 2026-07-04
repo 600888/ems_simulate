@@ -336,7 +336,11 @@ class IEC61850Client:
 
         return discovered
 
-    def _fill_du_names(self, discovered: list[dict[str, Any]]) -> None:
+    def _fill_du_names(
+        self,
+        discovered: list[dict[str, Any]],
+        progress: DiscoveryProgress | None = None,
+    ) -> None:
         """为发现的测点补充 dU 描述名称
 
         优化: 先构建 do_ref → [point] 索引, 避免 O(N²) 嵌套遍历。
@@ -355,6 +359,7 @@ class IEC61850Client:
                 do_point_index.setdefault(key, []).append(p)
 
         seen_dos: set[str] = set()
+        do_refs: list[str] = []
         for point in discovered:
             address = point.get("address", "")
             parsed = parse_ref(address)
@@ -368,16 +373,19 @@ class IEC61850Client:
             if do_ref in seen_dos:
                 continue
             seen_dos.add(do_ref)
+            do_refs.append(do_ref)
 
+        total_dos = len(do_refs)
+        for index, do_ref in enumerate(do_refs, start=1):
             du_desc = self._read_du_description(do_ref)
-            if not du_desc:
-                continue
-
-            # O(1) 索引查找取代 O(N) 内层遍历
-            for p in do_point_index.get(do_ref, []):
-                p_addr = p.get("address", "")
-                p["name"] = du_desc
-                self._registry.set_name(p_addr, du_desc)
+            if du_desc:
+                # O(1) 索引查找取代 O(N) 内层遍历
+                for p in do_point_index.get(do_ref, []):
+                    p_addr = p.get("address", "")
+                    p["name"] = du_desc
+                    self._registry.set_name(p_addr, du_desc)
+            if progress is not None:
+                progress("descriptions", index, total_dos, f"读取模型描述: {do_ref} ({index}/{total_dos})")
 
     @property
     def model(self) -> IedModel | None:
@@ -931,7 +939,7 @@ class IEC61850Client:
                 progress("descriptions", 0, 1, "正在读取模型描述")
             # dU 是 DO 的在线描述值，不包含在目录发现结果中，需要在
             # PointRegistry 建好后按 DO 补读并写回各测点名称。
-            self._fill_du_names(discovered)
+            self._fill_du_names(discovered, progress=progress)
             # 将 dU 名称写回模型的 _point_refs，确保缓存文件包含名称
             self._update_model_point_names(model, discovered)
             cache.set(cache_key, model)

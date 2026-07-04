@@ -81,12 +81,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getSclFileList, previewSclFile, importSclFile } from '@/api/sclApi'
 import type { SclFileInfo, SclPreviewData, SclImportResult } from '@/api/sclApi'
 import { getChannelList } from '@/api/channelApi'
-import { isAutoRefreshPaused } from '@/composables/useAutoRead'
+import { acquireAutoRefreshPause } from '@/composables/autoRefreshGate'
 import SclImportStepFile from './SclImportStepFile.vue'
 import SclImportStepPreview from './SclImportStepPreview.vue'
 import SclImportStepOptions from './SclImportStepOptions.vue'
@@ -107,6 +107,7 @@ const importing = ref(false)
 const importResult = ref<SclImportResult | null>(null)
 const importProgress = ref(0)
 const importLogs = ref<string[]>([])
+let releaseAutoRefreshPause: (() => void) | null = null
 
 const canNext = computed(() => {
   if (currentStep.value === 0) return !!selectedFile.value
@@ -116,6 +117,11 @@ const canNext = computed(() => {
 
 onMounted(async () => {
   fileList.value = await getSclFileList()
+})
+
+onUnmounted(() => {
+  releaseAutoRefreshPause?.()
+  releaseAutoRefreshPause = null
 })
 
 async function nextStep() {
@@ -143,7 +149,8 @@ async function startImport() {
   importLogs.value = []
   currentStep.value = 3
   // 暂停后台自动轮询，避免干扰导入
-  isAutoRefreshPaused.value = true
+  releaseAutoRefreshPause?.()
+  releaseAutoRefreshPause = acquireAutoRefreshPause('scl-import')
 
   const opts = optionsRef.value
   if (!opts) {
@@ -191,7 +198,8 @@ async function startImport() {
 }
 
 async function resumeAndExit() {
-  isAutoRefreshPaused.value = false
+  releaseAutoRefreshPause?.()
+  releaseAutoRefreshPause = null
   importing.value = false
 }
 

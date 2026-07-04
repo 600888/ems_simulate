@@ -322,8 +322,10 @@ def _build_iec61850_tree_from_model(
     *,
     include_unknown: bool = False,
     registry=None,
+    offset: int = 0,
+    limit: int | None = None,
 ) -> dict[str, Any]:
-    """从完整 IedModel 构建 DO→DA→BDA 树，避免只显示已注册测点导致模型缺失。"""
+    """Build a filtered model tree while materializing only the requested page."""
     if category and category != "DataModel":
         return {"items": [], "total": 0}
 
@@ -332,7 +334,17 @@ def _build_iec61850_tree_from_model(
 
     point_index = _build_point_display_index(all_points)
     do_description_index = _build_do_description_index(point_index)
+    point_names_by_do: dict[str, list[str]] = {}
+    for address, info in point_index.items():
+        parsed = _parse_iec61850_address(address)
+        if parsed:
+            do_key = f"{parsed['ld']}/{parsed['ln']}.{parsed['do_name']}"
+            point_names_by_do.setdefault(do_key, []).append(str(info.get("point_name", "")))
+
     items: list[dict[str, Any]] = []
+    total = 0
+    normalized_offset = max(offset, 0)
+    normalized_limit = None if limit is None else max(limit, 0)
 
     def resolved_mms_type(address: str, fallback: str = "MMS_UNKNOWN") -> str:
         if registry is not None:
@@ -367,18 +379,23 @@ def _build_iec61850_tree_from_model(
                 if do.frame_type not in point_types and not (include_unknown and do.frame_type < 0):
                     continue
                 do_ref = do.ref
+                do_desc = do_description_index.get(do_ref, "")
                 if point_name and point_name not in do.name and point_name not in do_ref:
-                    matched_point_name = any(
-                        point_name in info.get("point_name", "")
-                        for addr, info in point_index.items()
-                        if addr.startswith(f"{do_ref}.")
+                    matched_point_name = point_name in do_desc or any(
+                        point_name in name for name in point_names_by_do.get(do_ref, ())
                     )
                     if not matched_point_name:
                         continue
 
+                item_index = total
+                total += 1
+                if item_index < normalized_offset:
+                    continue
+                if normalized_limit is not None and len(items) >= normalized_limit:
+                    continue
+
                 is_control_object = any(da.fc == "CO" or any(bda.fc == "CO" for bda in da.sub_das) for da in do.das)
                 da_list: list[dict[str, Any]] = []
-                do_desc = do_description_index.get(do_ref, "")
                 for da in do.das:
                     if is_control_object and da.name in ("q", "t"):
                         continue
@@ -474,7 +491,7 @@ def _build_iec61850_tree_from_model(
                     }
                 )
 
-    return {"items": items, "total": len(items)}
+    return {"items": items, "total": total}
 
 
 def _build_iec61850_tree(
@@ -836,6 +853,7 @@ async def get_iec61850_tree_data(
         protocol_handler = getattr(device, "protocol_handler", None)
         client = getattr(protocol_handler, "_client", None) if protocol_handler else None
         registry = getattr(client, "_registry", None) if client else None
+        start = (body.page_index - 1) * body.page_size
         tree_data = _build_iec61850_tree_from_model(
             model,
             all_points,
@@ -845,7 +863,10 @@ async def get_iec61850_tree_data(
             point_types=pt_filter,
             include_unknown=not bool(body.point_types),
             registry=registry,
+            offset=start,
+            limit=body.page_size,
         )
+        paged_items = tree_data["items"]
     else:
         # DataSet 或无缓存模型时保持原有从 PointManager 反推树的逻辑
         tree_data = _build_iec61850_tree(
@@ -856,13 +877,11 @@ async def get_iec61850_tree_data(
             point_types=pt_filter,
             device=device,
         )
+        start = (body.page_index - 1) * body.page_size
+        end = start + body.page_size
+        paged_items = tree_data["items"][start:end]
 
-    # DO 级分页
-    all_items = tree_data["items"]
     total = tree_data["total"]
-    start = (body.page_index - 1) * body.page_size
-    end = start + body.page_size
-    paged_items = all_items[start:end]
 
     return BaseResponse(
         message="获取 IEC61850 树形数据成功",

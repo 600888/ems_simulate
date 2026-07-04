@@ -87,6 +87,30 @@ def test_tree_data_from_model_keeps_non_point_model_nodes():
     assert tree["items"][0]["children"][0]["da_path"] == "vendor"
 
 
+def test_tree_data_materializes_only_requested_page_but_keeps_full_total():
+    dos = tuple(
+        DORef(
+            name=f"Point{index}",
+            ref=f"LD0/LLN0.Point{index}",
+            frame_type=0,
+            das=(DARef(name="mag", path="mag.f", fc="MX", iec_type="float"),),
+        )
+        for index in range(3)
+    )
+    model = IedModel(lds=(LDModel(name="LD0", lns=(LNModel(name="LLN0", ref="LD0/LLN0", dos=dos),)),))
+
+    tree = _build_iec61850_tree_from_model(
+        model,
+        [],
+        category="DataModel",
+        offset=1,
+        limit=1,
+    )
+
+    assert tree["total"] == 3
+    assert [item["do_ref"] for item in tree["items"]] == ["LD0/LLN0.Point1"]
+
+
 def test_tree_data_from_model_restores_du_from_discovered_point_name():
     model = IedModel(
         lds=(

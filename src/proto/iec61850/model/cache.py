@@ -159,8 +159,9 @@ class ModelCache:
         model = self._load_from_file(key)
         if model is not None:
             log.info(f"从文件恢复模型缓存: {key}")
-            # 重新写入内存缓存
-            self.set(key, model)
+            # 仅恢复到内存。磁盘文件已经是数据源，再调用 set() 会把大型
+            # JSON 完整序列化并覆盖一次，既增加加载延迟也制造无意义写放大。
+            self._remember(key, model)
             return model
 
         return None
@@ -172,19 +173,22 @@ class ModelCache:
             key: 缓存键
             model: IedModel 对象
         """
+        self._remember(key, model)
+
+        # 同步写入文件（在锁外执行以避免阻塞其他缓存操作）
+        self._save_to_file(key, model)
+
+    def _remember(self, key: str, model: IedModel) -> None:
+        """Insert a model into the in-memory LRU without touching persistence."""
         with self._cache_lock:
             if key in self._cache:
                 self._cache.move_to_end(key)
 
             self._cache[key] = CacheEntry(model=model)
 
-            # LRU 淘汰: 超出最大容量时移除最久未使用的条目
             while len(self._cache) > self.MAX_SIZE:
                 evicted_key, _ = self._cache.popitem(last=False)
                 log.debug(f"模型缓存淘汰: {evicted_key}")
-
-        # 同步写入文件（在锁外执行以避免阻塞其他缓存操作）
-        self._save_to_file(key, model)
 
     def invalidate(self, key: str) -> None:
         """清除指定缓存（内存 + 文件）"""
