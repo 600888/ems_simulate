@@ -1,19 +1,11 @@
 """IcdExporter 单元测试 — 验证关键修复逻辑"""
 
-import os
-import sys
-
 import pytest
 import xmltodict
 
-# 添加 src 目录到 sys.path
-_src_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "src"))
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
-
-from proto.iec61850.defs.constants import IecType
-from proto.iec61850.model.ied_model import DARef, DataSetRef, DORef, IedModel, LDModel, LNModel, RCBRef
-from proto.iec61850.plugins.model_exporter.exporters.icd import (
+from src.proto.iec61850.defs.constants import IecType
+from src.proto.iec61850.model.ied_model import DARef, DataSetRef, DORef, IedModel, LDModel, LNModel, RCBRef
+from src.proto.iec61850.plugins.model_exporter.exporters.icd import (
     IcdExporter,
     _next_da_type_id,
     _next_do_type_id,

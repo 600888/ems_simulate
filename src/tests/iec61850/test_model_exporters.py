@@ -8,9 +8,9 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from proto.iec61850.model import DARef, DORef, IedModel, LDModel, LNModel
-from proto.iec61850.plugins.model_exporter import ModelExporterPlugin
-from proto.iec61850.plugins.model_exporter.exporters import get_exporter
+from src.proto.iec61850.model import DARef, DORef, IedModel, LDModel, LNModel
+from src.proto.iec61850.plugins.model_exporter import ModelExporterPlugin
+from src.proto.iec61850.plugins.model_exporter.exporters import get_exporter
 
 
 @pytest.fixture
