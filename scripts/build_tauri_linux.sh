@@ -5,7 +5,7 @@
 # 前提条件:
 #   1. 安装 Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 #   2. 安装 Tauri 系统依赖:
-#      sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+#      sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libgdk-pixbuf2.0-dev libpango1.0-dev libatk1.0-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf pkg-config build-essential
 #   3. 安装 Tauri CLI: cargo install tauri-cli --version "^2"
 #   4. 安装 Node.js (>=18)
 #   5. 安装 Python 3.11+
@@ -41,7 +41,7 @@ fi
 APP_NAME="ems-simulate"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 从 pyproject.toml 读取版本号（单一真相源）
-VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' "$SCRIPT_DIR/../pyproject.toml")
+VERSION=$(grep -oP '^version\s*=\s*"\K[^"]+' "$SCRIPT_DIR/../pyproject.toml")
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 TAURI_DIR="${PROJECT_ROOT}/src-tauri"
 BUILD_DIR="${PROJECT_ROOT}/build"
@@ -194,6 +194,7 @@ if ! $SKIP_BACKEND; then
             --specpath "$BUILD_DIR" \
             --add-data "${PROJECT_ROOT}/config.ini:." \
             --add-data "${PROJECT_ROOT}/www:www" \
+            --add-data "${PROJECT_ROOT}/data:data" \
             --hidden-import="uvicorn.logging" \
             --hidden-import="uvicorn.loops" \
             --hidden-import="openpyxl" \

@@ -5,7 +5,7 @@ set -e
 APP_NAME="ems-simulate"
 # 从 pyproject.toml 读取版本号（单一真相源）
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' "$SCRIPT_DIR/../pyproject.toml")
+VERSION=$(grep -oP '^version\s*=\s*"\K[^"]+' "$SCRIPT_DIR/../pyproject.toml")
 BUILD_DIR="build/build_deb"
 OUTPUT_DIR="dist"
 DEB_DIR="${BUILD_DIR}/${APP_NAME}_${VERSION}_amd64"
@@ -48,7 +48,7 @@ cp -r debian/* "${DEB_DIR}/"
 
 # 同步版本号到 debian/DEBIAN/control
 echo ">>> 同步版本号到 control 文件..."
-sed -i "s/^Version:.*/Version: ${VERSION}/" "${DEB_DIR}/DEBIAN/control"
+sed -i "s|^Version:.*|Version: ${VERSION}|" "${DEB_DIR}/DEBIAN/control"
 
 # 4. 构建后端 (PyInstaller)
 echo ">>> 构建后端 (PyInstaller)..."
@@ -59,7 +59,7 @@ echo ">>> 构建后端 (PyInstaller)..."
 PROJECT_ROOT=$(pwd)
 
 echo "Installing Python dependencies..."
-pip install .
+pip install ".[build]"
 
 pyinstaller --noconfirm --onedir --name "${APP_NAME//-/_}" --clean \
     --distpath "build/dist" \
@@ -67,6 +67,7 @@ pyinstaller --noconfirm --onedir --name "${APP_NAME//-/_}" --clean \
     --specpath "build" \
     --add-data "${PROJECT_ROOT}/config.ini:." \
     --add-data "${PROJECT_ROOT}/www:www" \
+    --add-data "${PROJECT_ROOT}/data:data" \
     --hidden-import="uvicorn.logging" \
     --hidden-import="uvicorn.loops" \
     --hidden-import="openpyxl" \

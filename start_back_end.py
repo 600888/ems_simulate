@@ -49,6 +49,13 @@ def _prepare_runtime_root(root_dir: Path) -> None:
     if not config_target.exists() and config_source.exists():
         config_target.write_bytes(config_source.read_bytes())
 
+    # 首次运行时复制初始数据库
+    db_target = root_dir / "data" / "ems.db"
+    if not db_target.exists():
+        db_source = _bundled_path("data/ems.db")
+        if db_source.exists():
+            db_target.write_bytes(db_source.read_bytes())
+
 
 if __name__ == "__main__":
     args = _parse_args()
