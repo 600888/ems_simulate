@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-from ctypes import c_bool
 from typing import Any
 
 from ...defs.address import infer_fc_from_address, infer_iec_type_from_address
@@ -13,18 +12,14 @@ from .catalog import normalize_point_ref, strip_fc_suffix
 
 
 def browse_dataset_members(native: Any, conn: Any, dataset_ref: str) -> list[dict[str, Any]]:
-    """兼容不同 SWIG 签名，读取并规范化一个 DataSet 的成员目录。"""
-    result = None
-    for invoke in (
-        lambda: native.IedConnection_getDataSetDirectory(conn, dataset_ref, None),
-        lambda: native.IedConnection_getDataSetDirectory(conn, dataset_ref, c_bool()),
-    ):
-        try:
-            result = invoke()
-            if result is not None:
-                break
-        except Exception:
-            continue
+    """读取并规范化一个 DataSet 的成员目录。"""
+    # pyiec61850-ng 的 isDeletable 仍是原生 bool* 参数，且没有导出可用的
+    # SWIG bool 指针构造器。官方 C API 允许在不需要该属性时传 NULL。
+    # ctypes.c_bool 与 SWIG 指针不兼容，传入它只会在每个 DataSet 上抛出异常。
+    try:
+        result = native.IedConnection_getDataSetDirectory(conn, dataset_ref, None)
+    except Exception:
+        return []
     if result is None:
         return []
 

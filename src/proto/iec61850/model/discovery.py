@@ -932,22 +932,16 @@ class ModelDiscoveryService:
             for ds_name in ds_names:
                 ds_ref = f"{ln_ref}.{ds_name}"
 
-                is_deletable = False
-                try:
-                    from ctypes import c_bool
-
-                    is_deletable_obj = c_bool()
-                    iec61850.IedConnection_getDataSetDirectory(conn, ds_ref, is_deletable_obj)
-                    is_deletable = bool(is_deletable_obj.value)
-                except Exception:
-                    log.error(f"发现 DataSet {ds_ref} 是否可删除失败")
-
+                # pyiec61850-ng 将 bool* 保留为 SWIG 指针参数，ctypes.c_bool
+                # 并不能作为该输出参数传入。目录解析会用 None 读取同一
+                # DataSet 的成员；这里保守地按不可删除处理，避免重复请求
+                # 以及每个 DataSet 一条的伪失败日志。
                 members = self._discover_dataset_members(conn, ds_ref)
                 datasets.append(
                     DataSetRef(
                         name=ds_name,
                         ref=ds_ref,
-                        is_deletable=is_deletable,
+                        is_deletable=False,
                         members=tuple(members),
                     )
                 )

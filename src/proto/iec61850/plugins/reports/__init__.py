@@ -166,7 +166,7 @@ class ReportsPlugin:
                 log.debug(f"discover_rcbs: LD={ld_name} 下未发现逻辑节点")
                 continue
 
-            log.debug(f"discover_rcbs: LD={ld_name}, 发现 {len(ln_list)} 个逻辑节点: {ln_list}")
+            # log.debug(f"discover_rcbs: LD={ld_name}, 发现 {len(ln_list)} 个逻辑节点: {ln_list}")
 
             for ln_name in ln_list:
                 ln_ref = f"{ld_name}/{ln_name}"
@@ -209,7 +209,7 @@ class ReportsPlugin:
                 if not rcb_name_list:
                     continue
 
-                log.debug(f"ACSI目录法: {ln_ref} 下发现 {len(rcb_name_list)} 个 {_rcb_type}")
+                # log.debug(f"ACSI目录法: {ln_ref} 下发现 {len(rcb_name_list)} 个 {_rcb_type}")
 
                 for rcb_name in rcb_name_list:
                     rcb_ref = f"{ln_ref}.{rcb_name}"
@@ -262,9 +262,6 @@ class ReportsPlugin:
 
         if raw_names and not valid_names:
             log.debug(f"ACSI目录法 {rcb_type} {ln_ref}: 原始 {len(raw_names)} 个全部过滤")
-        elif valid_names:
-            log.debug(f"ACSI目录法 {rcb_type} {ln_ref}: 提取 {len(valid_names)}/{len(raw_names)} 个合法名")
-
         return valid_names
 
     def _get_rcb_info(self, rcb_ref: str, rcb_type: str, ld_name: str, ln_name: str) -> dict[str, Any]:
@@ -893,7 +890,7 @@ class ReportsPlugin:
 
             if ln_raw:
                 ln_list = get_list_from_linked_list(ln_raw)
-                log.debug(f"LD={ld} 下发现 LN: {ln_list}")
+                # log.debug(f"LD={ld} 下发现 LN: {ln_list}")
                 return ln_list
         except Exception as e:
             log.debug(f"浏览 LN 失败: {ld}, {e}")
