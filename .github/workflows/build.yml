@@ -71,21 +71,21 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # --- 通用环境配置 ---
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
 
       - name: Install Python build dependencies
         run: uv sync --extra build
@@ -142,6 +142,7 @@ jobs:
             librsvg2-dev \
             libssl-dev \
             patchelf \
+            squashfs-tools \
             pkg-config \
             build-essential
 
@@ -158,7 +159,7 @@ jobs:
       # --- 产物上传 ---
       - name: Upload build artifacts (Windows)
         if: matrix.target == 'windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ems-simulate-windows-${{ needs.version.outputs.release_tag }}
           path: |
@@ -169,21 +170,28 @@ jobs:
 
       - name: Upload build artifacts (Linux Web)
         if: matrix.target == 'linux-web'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ems-simulate-linux-web-${{ needs.version.outputs.release_tag }}
           path: build/dist_deb/*.deb
           compression-level: 0
           if-no-files-found: error
 
-      - name: Upload build artifacts (Linux Tauri)
+      - name: Upload build artifacts (Linux Tauri DEB)
         if: matrix.target == 'linux-tauri'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: ems-simulate-linux-tauri-${{ needs.version.outputs.release_tag }}
-          path: |
-            src-tauri/target/release/bundle/deb/
-            src-tauri/target/release/bundle/appimage/
+          name: ems-simulate-linux-tauri-deb-${{ needs.version.outputs.release_tag }}
+          path: src-tauri/target/release/bundle/deb/
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload build artifacts (Linux AppImage)
+        if: matrix.target == 'linux-tauri'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ems-simulate-linux-appimage-${{ needs.version.outputs.release_tag }}
+          path: src-tauri/target/release/bundle/appimage/
           compression-level: 0
           if-no-files-found: error
 
@@ -197,7 +205,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -383,14 +391,14 @@ jobs:
           printf 'notes_file=%s\n' "$notes_file" >> "$GITHUB_OUTPUT"
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: ems-simulate-*
           path: release-assets
           merge-multiple: true
 
       - name: Delete existing release (if any) to avoid stale assets
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const tag = '${{ needs.version.outputs.release_tag }}';
@@ -401,31 +409,23 @@ jobs:
                 tag: tag,
               });
               if (release) {
-                for (const asset of release.assets) {
-                  await github.rest.repos.deleteReleaseAsset({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    asset_id: asset.id,
-                  });
-                  console.log(`Deleted asset: ${asset.name}`);
-                }
                 await github.rest.repos.deleteRelease({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   release_id: release.id,
                 });
-                console.log(`Deleted existing release: ${tag}`);
+                console.log(`Deleted existing release and its assets: ${tag}`);
               }
             } catch (err) {
               if (err.status === 404) {
-                console.log(`No existing release found for tag: ${tag}`);
+                console.log(`Release already absent for tag: ${tag}`);
               } else {
                 throw err;
               }
             }
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.version.outputs.release_tag }}
           name: EMS Simulate ${{ needs.version.outputs.release_tag }}

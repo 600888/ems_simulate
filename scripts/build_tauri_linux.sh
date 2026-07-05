@@ -5,7 +5,7 @@
 # 前提条件:
 #   1. 安装 Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 #   2. 安装 Tauri 系统依赖:
-#      sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libgdk-pixbuf2.0-dev libpango1.0-dev libatk1.0-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf pkg-config build-essential
+#      sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libgdk-pixbuf2.0-dev libpango1.0-dev libatk1.0-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf pkg-config build-essential squashfs-tools
 #   3. 安装 Tauri CLI: cargo install tauri-cli --version "^2"
 #   4. 安装 Node.js (>=18)
 #   5. 安装 Python 3.11+
@@ -100,6 +100,11 @@ if ! command -v node &>/dev/null; then
     WriteErr "未找到 Node.js"
 fi
 WriteOk "Node.js: $(node --version)"
+
+if ! command -v mksquashfs &>/dev/null; then
+    WriteErr "未找到 mksquashfs，请安装 squashfs-tools"
+fi
+WriteOk "mksquashfs: $(mksquashfs -version 2>&1 | head -n 1)"
 
 # Generate Tauri icons (skip if already up-to-date)
 ICON_SOURCE="${PROJECT_ROOT}/resources/icon.png"
@@ -255,16 +260,84 @@ fi
 # 删除旧副本，防止增量构建误打包上一次的 sidecar。
 rm -f "${TAURI_DIR}/target/release/ems_simulate_backend"
 
-# linuxdeploy 默认会 strip AppDir 中的 ELF。PyInstaller --onefile 在 ELF
-# 尾部附加了 Python 归档，strip 可能导致 linuxdeploy 失败或破坏后端。
-export NO_STRIP=1
-
 # 分开构建便于定位故障；AppImage 失败时，已经成功的 deb 仍然清晰可见。
 echo "运行: cargo tauri build --bundles deb --verbose"
 cargo tauri build --bundles deb --verbose
 
-echo "运行: NO_STRIP=1 cargo tauri build --bundles appimage --verbose"
+# linuxdeploy 会 strip AppDir 中的所有 ELF。PyInstaller --onefile 在 ELF 尾部
+# 附加了 Python 归档，不能直接参与 strip；但全局 NO_STRIP=1 又会让 WebKitGTK、
+# GTK 等所有运行库保留符号，导致 AppImage 体积膨胀到数百 MB。
+#
+# AppImage 构建时先用同名 shell 占位 sidecar，让 linuxdeploy 正常裁剪其他 ELF；
+# 生成后再解包 AppImage、注入真实 sidecar，并重建 SquashFS。
+mkdir -p "$BUILD_DIR"
+SIDECAR_BACKUP=$(mktemp "${BUILD_DIR}/ems-sidecar.XXXXXX")
+mv "$BE_SIDECAR_BINARY" "$SIDECAR_BACKUP"
+
+restore_sidecar() {
+    if [ -f "$SIDECAR_BACKUP" ]; then
+        mv -f "$SIDECAR_BACKUP" "$BE_SIDECAR_BINARY"
+        chmod +x "$BE_SIDECAR_BINARY"
+    fi
+}
+trap restore_sidecar EXIT
+
+printf '%s\n' '#!/bin/sh' 'echo "EMS backend sidecar placeholder must be replaced during AppImage packaging" >&2' 'exit 127' > "$BE_SIDECAR_BINARY"
+chmod +x "$BE_SIDECAR_BINARY"
+rm -f "${TAURI_DIR}/target/release/ems_simulate_backend"
+rm -rf "${TAURI_DIR}/target/release/bundle/appimage"
+
+echo "运行: cargo tauri build --bundles appimage --verbose"
 cargo tauri build --bundles appimage --verbose
+
+restore_sidecar
+trap - EXIT
+rm -f "${TAURI_DIR}/target/release/ems_simulate_backend"
+
+shopt -s nullglob
+APPIMAGE_FILES=("${TAURI_DIR}/target/release/bundle/appimage/"*.AppImage)
+shopt -u nullglob
+if [ "${#APPIMAGE_FILES[@]}" -ne 1 ]; then
+    WriteErr "预期生成 1 个 AppImage，实际找到 ${#APPIMAGE_FILES[@]} 个"
+fi
+APPIMAGE_PATH="${APPIMAGE_FILES[0]}"
+APPIMAGE_REPACK_DIR=$(mktemp -d "${BUILD_DIR}/appimage-repack.XXXXXX")
+
+cleanup_appimage_repack() {
+    rm -rf "$APPIMAGE_REPACK_DIR"
+}
+trap cleanup_appimage_repack EXIT
+
+WriteStep "重新封装 AppImage（注入未被 strip 的 Python sidecar）..."
+(
+    cd "$APPIMAGE_REPACK_DIR"
+    "$APPIMAGE_PATH" --appimage-extract >/dev/null
+)
+
+mapfile -d '' PACKAGED_SIDECARS < <(find "$APPIMAGE_REPACK_DIR/squashfs-root" -type f -name 'ems_simulate_backend' -print0)
+if [ "${#PACKAGED_SIDECARS[@]}" -ne 1 ]; then
+    WriteErr "AppImage 中预期找到 1 个 sidecar，实际找到 ${#PACKAGED_SIDECARS[@]} 个"
+fi
+install -m 755 "$BE_SIDECAR_BINARY" "${PACKAGED_SIDECARS[0]}"
+
+APPIMAGE_OFFSET=$("$APPIMAGE_PATH" --appimage-offset)
+if ! [[ "$APPIMAGE_OFFSET" =~ ^[0-9]+$ ]] || [ "$APPIMAGE_OFFSET" -le 0 ]; then
+    WriteErr "无法读取 AppImage runtime offset: $APPIMAGE_OFFSET"
+fi
+
+head -c "$APPIMAGE_OFFSET" "$APPIMAGE_PATH" > "$APPIMAGE_REPACK_DIR/runtime"
+mksquashfs "$APPIMAGE_REPACK_DIR/squashfs-root" "$APPIMAGE_REPACK_DIR/filesystem.squashfs" \
+    -noappend \
+    -comp zstd \
+    -Xcompression-level 19 \
+    -b 1M >/dev/null
+cat "$APPIMAGE_REPACK_DIR/runtime" "$APPIMAGE_REPACK_DIR/filesystem.squashfs" > "$APPIMAGE_REPACK_DIR/repacked.AppImage"
+chmod +x "$APPIMAGE_REPACK_DIR/repacked.AppImage"
+mv -f "$APPIMAGE_REPACK_DIR/repacked.AppImage" "$APPIMAGE_PATH"
+
+cleanup_appimage_repack
+trap - EXIT
+WriteOk "AppImage 已重新封装: $APPIMAGE_PATH ($(du -h "$APPIMAGE_PATH" | cut -f1))"
 
 cd "$PROJECT_ROOT"
 
