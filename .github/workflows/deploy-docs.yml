@@ -1,11 +1,10 @@
 name: Deploy VitePress Documentation
 
 on:
-  # 当主分支有推送时触发
+  # 仅在打 tag 时触发
   push:
-    branches: [main, master]
-  # 允许手动触发
-  workflow_dispatch:
+    tags:
+      - "v*"
 
 jobs:
   build-and-deploy:
