@@ -210,6 +210,7 @@ class ReportManager:
             "time_of_entry": "",
             "owner": "",
             "resv": False,
+            "resv_tms": 0,
             "trg_ops": effective_trg_ops,
             "opt_fields": opt_fields
             or {

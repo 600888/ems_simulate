@@ -15,7 +15,7 @@
             :indeterminate="isIndeterminate"
             @change="handleSelectAllChange"
           >
-            {{ t('report.selectAll') }}
+            {{ t("report.selectAll") }}
           </el-checkbox>
           <el-select
             v-if="instanceOptions.length > 1"
@@ -29,12 +29,19 @@
             <el-option
               v-for="option in instanceOptions"
               :key="option.index"
-              :label="t('report.reportInstance', { index: option.index, count: option.refs.length })"
+              :label="
+                t('report.reportInstance', {
+                  index: option.index,
+                  count: option.refs.length,
+                })
+              "
               :value="option.index"
             />
           </el-select>
         </div>
-        <span class="selected-count">{{ t('report.selectedCount', { count: (props.checkedRefs || []).length }) }}</span>
+        <span class="selected-count">{{
+          t("report.selectedCount", { count: (props.checkedRefs || []).length })
+        }}</span>
       </div>
     </div>
     <el-tree
@@ -59,7 +66,14 @@
           <span class="rcb-label" :class="{ 'is-enabled': data.rpt_ena }">
             {{ node.label }}
           </span>
-          <span v-if="data.rpt_ena" class="rcb-status-dot" />
+          <el-icon
+            v-if="data.isRcb && data.locked"
+            class="rcb-lock-icon"
+            :title="t('report.lockedByOtherClient')"
+          >
+            <Lock />
+          </el-icon>
+          <span v-else-if="data.rpt_ena" class="rcb-status-dot" />
         </span>
       </template>
     </el-tree>
@@ -67,11 +81,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
-import { useI18n } from 'vue-i18n';
-import { Search } from '@element-plus/icons-vue';
-import type { ElTree } from 'element-plus';
-import type { RcbInfo } from '@/api/reportApi';
+import { computed, nextTick, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import { Lock, Search } from "@element-plus/icons-vue";
+import type { ElTree } from "element-plus";
+import type { RcbInfo } from "@/api/reportApi";
 
 interface RcbTreeNode {
   ref: string;
@@ -80,6 +94,7 @@ interface RcbTreeNode {
   isRcb?: boolean;
   rcb_type?: string;
   rpt_ena?: boolean;
+  locked?: boolean;
 }
 
 const props = defineProps<{
@@ -90,20 +105,21 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'select', rcb: RcbInfo): void;
-  (e: 'update:checkedRefs', refs: string[]): void;
+  (e: "select", rcb: RcbInfo): void;
+  (e: "update:checkedRefs", refs: string[]): void;
 }>();
 
 const { t } = useI18n();
-const searchText = ref('');
+const searchText = ref("");
 const treeRef = ref<InstanceType<typeof ElTree> | null>(null);
-const treeProps = { children: 'children', label: 'label' };
+const treeProps = { children: "children", label: "label" };
 
 const rcbRefs = computed<string[]>(() => props.rcbs.map((r) => r.ref));
 const rcbRefSet = computed(() => new Set(rcbRefs.value));
 
-const selectAllModel = computed(() =>
-  (props.checkedRefs || []).length === rcbRefs.value.length && rcbRefs.value.length > 0,
+const selectAllModel = computed(
+  () =>
+    (props.checkedRefs || []).length === rcbRefs.value.length && rcbRefs.value.length > 0
 );
 
 const isIndeterminate = computed(() => {
@@ -115,8 +131,8 @@ const treeData = computed<RcbTreeNode[]>(() => {
   const ldMap = new Map<string, Map<string, RcbTreeNode[]>>();
 
   for (const rcb of props.rcbs) {
-    const ldName = rcb.ld || 'Unknown';
-    const lnName = rcb.ln || 'LLN0';
+    const ldName = rcb.ld || "Unknown";
+    const lnName = rcb.ln || "LLN0";
     if (!ldMap.has(ldName)) ldMap.set(ldName, new Map());
     const lnMap = ldMap.get(ldName)!;
     if (!lnMap.has(lnName)) lnMap.set(lnName, []);
@@ -126,6 +142,7 @@ const treeData = computed<RcbTreeNode[]>(() => {
       isRcb: true,
       rcb_type: rcb.rcb_type,
       rpt_ena: rcb.rpt_ena,
+      locked: rcb.locked,
     });
   }
 
@@ -143,14 +160,11 @@ const treeData = computed<RcbTreeNode[]>(() => {
 // Sync checked state only when it actually came from outside the tree. Element Plus
 // emits `check-change` once for every affected node, so using that event here made a
 // select-all operation repeatedly scan and write back the entire selection.
-watch(
-  [() => props.checkedRefs, rcbRefs],
-  ([newRefs]) => {
-    nextTick(() => {
-      syncTreeCheckedRefs(newRefs || []);
-    });
-  },
-);
+watch([() => props.checkedRefs, rcbRefs], ([newRefs]) => {
+  nextTick(() => {
+    syncTreeCheckedRefs(newRefs || []);
+  });
+});
 
 watch(searchText, (value) => {
   treeRef.value?.filter(value);
@@ -160,7 +174,7 @@ watch(
   () => props.selectedRef,
   (value) => {
     if (value) treeRef.value?.setCurrentKey(value);
-  },
+  }
 );
 
 function filterNode(value: string, data: RcbTreeNode): boolean {
@@ -171,7 +185,7 @@ function filterNode(value: string, data: RcbTreeNode): boolean {
 function handleNodeClick(data: RcbTreeNode) {
   if (!data.isRcb) return;
   const rcb = props.rcbs.find((item) => item.ref === data.ref);
-  if (rcb) emit('select', rcb);
+  if (rcb) emit("select", rcb);
 }
 
 interface TreeCheckState {
@@ -193,7 +207,7 @@ interface RcbInstanceCandidate {
 
 function getReportIdName(rptId: string): string {
   const parts = rptId.split(/[.$/]/).filter(Boolean);
-  return parts[parts.length - 1] || '';
+  return parts[parts.length - 1] || "";
 }
 
 const instanceOptions = computed<RcbInstanceOption[]>(() => {
@@ -201,13 +215,13 @@ const instanceOptions = computed<RcbInstanceOption[]>(() => {
     const suffixMatch = rcb.name.match(/^(.*?)(\d{2})$/);
     const baseName = suffixMatch?.[1] || rcb.name;
     const candidateIndex = suffixMatch ? Number(suffixMatch[2]) : 1;
-    const candidateGroup = [rcb.ld, rcb.ln, rcb.rcb_type, baseName].join('\u0000');
+    const candidateGroup = [rcb.ld, rcb.ln, rcb.rcb_type, baseName].join("\u0000");
     return {
       rcb,
       candidateIndex,
       candidateGroup,
       hasInstanceSuffix: !!suffixMatch && candidateIndex > 0,
-      matchesReportId: !!suffixMatch && getReportIdName(rcb.rpt_id || '') === baseName,
+      matchesReportId: !!suffixMatch && getReportIdName(rcb.rpt_id || "") === baseName,
     };
   });
 
@@ -215,14 +229,16 @@ const instanceOptions = computed<RcbInstanceOption[]>(() => {
   for (const candidate of candidates) {
     candidateGroupSizes.set(
       candidate.candidateGroup,
-      (candidateGroupSizes.get(candidate.candidateGroup) || 0) + 1,
+      (candidateGroupSizes.get(candidate.candidateGroup) || 0) + 1
     );
   }
 
   const refsByIndex = new Map<number, string[]>();
   for (const candidate of candidates) {
-    const isExpandedInstance = candidate.hasInstanceSuffix
-      && (candidate.matchesReportId || (candidateGroupSizes.get(candidate.candidateGroup) || 0) > 1);
+    const isExpandedInstance =
+      candidate.hasInstanceSuffix &&
+      (candidate.matchesReportId ||
+        (candidateGroupSizes.get(candidate.candidateGroup) || 0) > 1);
     const index = isExpandedInstance ? candidate.candidateIndex : 1;
     const refs = refsByIndex.get(index) || [];
     refs.push(candidate.rcb.ref);
@@ -237,13 +253,13 @@ const instanceOptions = computed<RcbInstanceOption[]>(() => {
 const selectedInstanceIndex = computed<number | undefined>(() => {
   const checkedRefs = props.checkedRefs || [];
   if (checkedRefs.length === 0) return undefined;
-  return instanceOptions.value.find((option) => isSameRefSelection(option.refs, checkedRefs))?.index;
+  return instanceOptions.value.find((option) =>
+    isSameRefSelection(option.refs, checkedRefs)
+  )?.index;
 });
 
 function getRcbKeys(keys: Array<string | number>): string[] {
-  return keys
-    .map(String)
-    .filter((key) => rcbRefSet.value.has(key));
+  return keys.map(String).filter((key) => rcbRefSet.value.has(key));
 }
 
 function isSameRefSelection(left: string[], right: string[]): boolean {
@@ -254,7 +270,9 @@ function isSameRefSelection(left: string[], right: string[]): boolean {
 
 function hasSameCheckedRefs(refs: string[]): boolean {
   if (!treeRef.value) return false;
-  const currentRefs = getRcbKeys(treeRef.value.getCheckedKeys(false) as Array<string | number>);
+  const currentRefs = getRcbKeys(
+    treeRef.value.getCheckedKeys(false) as Array<string | number>
+  );
   return isSameRefSelection(currentRefs, refs);
 }
 
@@ -274,19 +292,19 @@ function syncTreeCheckedRefs(refs: string[]) {
 function handleCheck(_data: RcbTreeNode, state: TreeCheckState) {
   // The `check` event fires once per user action, after the cascade is complete.
   const rcbKeys = getRcbKeys(state.checkedKeys);
-  emit('update:checkedRefs', rcbKeys);
+  emit("update:checkedRefs", rcbKeys);
 }
 
 function handleSelectAllChange(value: boolean) {
   const refs = value ? [...rcbRefs.value] : [];
   syncTreeCheckedRefs(refs);
-  emit('update:checkedRefs', refs);
+  emit("update:checkedRefs", refs);
 }
 
 function handleInstanceSelect(index?: number) {
   const refs = instanceOptions.value.find((option) => option.index === index)?.refs || [];
   syncTreeCheckedRefs(refs);
-  emit('update:checkedRefs', [...refs]);
+  emit("update:checkedRefs", [...refs]);
 }
 </script>
 
@@ -364,6 +382,12 @@ function handleInstanceSelect(index?: number) {
   font-weight: 600;
 }
 
+.rcb-lock-icon {
+  color: #d48806;
+  font-size: 16px;
+  flex: 0 0 auto;
+}
+
 .rcb-type-badge {
   display: inline-flex;
   align-items: center;
@@ -382,11 +406,22 @@ function handleInstanceSelect(index?: number) {
 }
 
 .rcb-status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #2f9e44;
+  width: 16px;
+  height: 16px;
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &::before {
+    content: "";
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #2f9e44;
+    flex: 0 0 auto;
+  }
 }
 
 // 强制树节点复选框保持方形，防止全局样式干扰

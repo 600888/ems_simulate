@@ -239,6 +239,7 @@ let latestRequestId = 0;
 let historyRequestId = 0;
 let selectedTreeRequestId = 0;
 let rcbRequestInFlight = false;
+let rcbStatusRequestInFlight = false;
 let latestKnownUid: number | null = null;
 let historyKnownUid: number | null = null;
 let reportPollingActive = true;
@@ -257,7 +258,7 @@ watch(detailTab, (tab) => {
   if (tab === 'data') void loadReportHistory(true);
 });
 
-watch([selectedRcb, autoRefresh, pollInterval, detailTab], () => {
+watch([() => selectedRcb.value?.ref, autoRefresh, pollInterval, detailTab], () => {
   startReportPolling();
 });
 
@@ -366,16 +367,35 @@ async function loadReportHistory(showLoading = true) {
   }
 }
 
+async function refreshAllRcbStates() {
+  if (!props.channelId || rcbRequestInFlight || rcbStatusRequestInFlight) return;
+  rcbStatusRequestInFlight = true;
+  const requestedChannelId = props.channelId;
+  const selectedRef = selectedRcb.value?.ref;
+  try {
+    const latestRcbs = await listRcbs(requestedChannelId);
+    if (props.channelId !== requestedChannelId) return;
+    // 后台轮询遇到瞬时读取失败时保留现有树，避免整棵 RCB 树闪空。
+    if (latestRcbs.length === 0 && rcbs.value.length > 0) return;
+    rcbs.value = latestRcbs;
+    if (selectedRef) {
+      selectedRcb.value = latestRcbs.find((rcb) => rcb.ref === selectedRef) || null;
+    }
+  } finally {
+    rcbStatusRequestInFlight = false;
+  }
+}
+
 async function refreshVisibleReportData(showLoading = true) {
   if (detailTab.value === 'latest') {
-    await Promise.all([loadReportState(), loadLatestReportData(showLoading)]);
+    await Promise.all([refreshAllRcbStates(), loadReportState(), loadLatestReportData(showLoading)]);
     return;
   }
   if (detailTab.value === 'data') {
-    await loadReportHistory(showLoading);
+    await Promise.all([refreshAllRcbStates(), loadReportHistory(showLoading)]);
     return;
   }
-  await loadReportState();
+  await Promise.all([refreshAllRcbStates(), loadReportState()]);
 }
 
 function onRcbSelect(rcb: RcbInfo) {

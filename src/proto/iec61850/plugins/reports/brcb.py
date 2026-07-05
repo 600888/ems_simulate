@@ -8,6 +8,7 @@ BRCB 与 URCB 的主要区别:
 import contextlib
 import datetime
 
+from ...core.mms_value import mms_value_to_python
 from ...core.native_calls import call_gil_safe
 from ...defs.constants import HAS_IEC61850
 from ...defs.types import OptFields, RCBInfo, TrgOps
@@ -443,5 +444,17 @@ class BrcbHandler:
         # sq_num
         with contextlib.suppress(Exception):
             info.sq_num = int(iec61850.ClientReportControlBlock_getSqNum(rcb))
+
+        # Edition 2 BRCB 的 Owner 标识当前预留客户端。
+        try:
+            owner_val = iec61850.ClientReportControlBlock_getOwner(rcb)
+            if owner_val:
+                info.owner = str(mms_value_to_python(owner_val))
+        except Exception:
+            pass
+
+        # BRCB 使用 ResvTms；正数和 -1（永久预留）都表示已被预留。
+        with contextlib.suppress(Exception):
+            info.resv_tms = int(iec61850.ClientReportControlBlock_getResvTms(rcb))
 
         return info

@@ -93,6 +93,10 @@ def _server_rcbs_to_discovery_format(report_manager: Any) -> list:
 
         # purge_buf: 仅 BRCB 有意义
         purge_buf_val = rcb.get("purge_buf", False) if rcb_type == "BRCB" else False
+        resv_val = bool(rcb.get("resv", False))
+        resv_tms_val = int(rcb.get("resv_tms", 0) or 0)
+        reserved_val = bool(resv_val or resv_tms_val != 0)
+        rpt_ena_val = bool(rcb.get("rpt_ena", False))
 
         rcbs.append(
             {
@@ -102,7 +106,7 @@ def _server_rcbs_to_discovery_format(report_manager: Any) -> list:
                 "ld": ld_inst,
                 "ln": ln_name,
                 "rpt_id": rcb.get("rpt_id", ""),
-                "rpt_ena": rcb.get("rpt_ena", False),
+                "rpt_ena": rpt_ena_val,
                 "data_set_ref": rcb.get("data_set_ref", ""),
                 "conf_rev": rcb.get("conf_rev", 1),
                 "buf_time": rcb.get("buf_time", 0),
@@ -112,7 +116,10 @@ def _server_rcbs_to_discovery_format(report_manager: Any) -> list:
                 "entry_id": entry_id_val,
                 "time_of_entry": time_of_entry_val,
                 "owner": rcb.get("owner", ""),
-                "resv": rcb.get("resv", False),
+                "resv": resv_val,
+                "resv_tms": resv_tms_val,
+                "reserved": reserved_val,
+                "locked": bool(reserved_val or rpt_ena_val),
                 "trg_ops": {
                     "dchg": trg.get("dchg", True),
                     "qchg": trg.get("qchg", False),
@@ -167,6 +174,10 @@ def _discover_rcbs(reports: Any, channel_id: int = 0, handler: Any = None) -> li
     if handler is not None and hasattr(handler, "get_discovered_rcbs"):
         cached = handler.get_discovered_rcbs()
         if cached:
+            if hasattr(reports, "refresh_rcb_states"):
+                cached = reports.refresh_rcb_states(cached)
+                if hasattr(handler, "set_discovered_rcbs"):
+                    handler.set_discovered_rcbs(cached)
             return cached
     rcbs = reports.discover_rcbs()
     # 现场发现成功则回写缓存，供后续及侧边栏结构接口复用
@@ -191,6 +202,17 @@ def _refresh_single_rcb(reports: Any, rcb_ref: str, channel_id: int, request: Re
                 if rcb.get("ref") == rcb_ref or rcb.get("name") == rcb_ref.split(".")[-1]:
                     return rcb
             return None
+
+        # 优先走只刷新易变状态的安全路径；使用主浏览连接，避免与报告回调竞争。
+        handler = _get_client_handler(channel_id, request)
+        if handler and hasattr(reports, "refresh_rcb_states"):
+            cached = handler.get_discovered_rcbs()
+            current = next((item for item in cached if item.get("ref") == rcb_ref), None)
+            if current is not None:
+                refreshed = reports.refresh_rcb_states([current])
+                if refreshed:
+                    handler.update_discovered_rcb(rcb_ref, refreshed[0])
+                    return refreshed[0]
 
         # 客户端模式: 重新读取单个 RCB 详情
         detail = reports.get_rcb_detail(rcb_ref=rcb_ref)

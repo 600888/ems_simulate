@@ -316,6 +316,9 @@ class ReportsPlugin:
                         info.time_of_entry = detail.time_of_entry
                     if detail.purge_buf:
                         info.purge_buf = detail.purge_buf
+                    if detail.owner:
+                        info.owner = detail.owner
+                    info.resv_tms = detail.resv_tms
                 elif rcb_type == "URCB":
                     if detail.owner:
                         info.owner = detail.owner
@@ -348,6 +351,7 @@ class ReportsPlugin:
             "time_of_entry": info.time_of_entry,
             "owner": info.owner,
             "resv": info.resv,
+            "resv_tms": info.resv_tms,
             "trg_ops": {
                 "dchg": info.trg_ops.dchg,
                 "qchg": info.trg_ops.qchg,
@@ -367,7 +371,55 @@ class ReportsPlugin:
             },
             "active": ReportCallbackHandler.is_active(info.ref),
         }
+        result["reserved"] = bool(info.resv or info.resv_tms != 0)
+        # 兼容未实现 Owner/ResvTms 的旧版 IED：非本客户端订阅且 RptEna
+        # 已置位时，该实例同样无法使用，应显示为被其他客户端锁定。
+        result["locked"] = bool(not result["active"] and (result["reserved"] or info.rpt_ena))
         return result
+
+    def refresh_rcb_states(self, rcbs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """刷新已发现 RCB 的实时使能和预留状态。
+
+        RCB 的目录与配置继续使用缓存；易变化的 RptEna/Resv/ResvTms/Owner
+        每次请求列表时从 IED 读取。状态读取使用主浏览连接，避免与报告回调连接竞争。
+        """
+        connection = self._browse_connection or self._connection
+        if not connection or not connection.is_connected:
+            return list(rcbs)
+
+        refreshed: list[dict[str, Any]] = []
+        for cached in rcbs:
+            item = dict(cached)
+            rcb_ref = str(item.get("ref") or "")
+            rcb_type = str(item.get("rcb_type") or self._infer_rcb_type(rcb_ref))
+            try:
+                operation = (
+                    connection.native_operation()
+                    if hasattr(connection, "native_operation")
+                    else contextlib.nullcontext()
+                )
+                with operation:
+                    if rcb_type == "URCB":
+                        detail = UrcbHandler.get_rcb_values(connection, rcb_ref)
+                    else:
+                        detail = BrcbHandler.get_rcb_values(connection, rcb_ref)
+                if detail is not None:
+                    active = ReportCallbackHandler.is_active(rcb_ref)
+                    reserved = bool(detail.resv or detail.resv_tms != 0)
+                    item.update(
+                        rpt_ena=detail.rpt_ena,
+                        owner=detail.owner,
+                        resv=detail.resv,
+                        resv_tms=detail.resv_tms,
+                        reserved=reserved,
+                        active=active,
+                        locked=bool(not active and (reserved or detail.rpt_ena)),
+                    )
+                    self._rcb_detail_cache[rcb_ref] = item
+            except Exception as e:
+                log.debug(f"刷新 RCB 占用状态失败: ref={rcb_ref}, {e}")
+            refreshed.append(item)
+        return refreshed
 
     # ==================== 报告配置应用 ====================
 

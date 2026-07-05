@@ -875,6 +875,8 @@ export default {
     purgeBuf: "清除缓冲",
     owner: "所有者",
     resv: "保留状态",
+    resvTms: "保留时间",
+    lockedByOtherClient: "已被其他客户端占用",
     trgOps: "触发选项",
     dchg: "数据变化",
     qchg: "品质变化",

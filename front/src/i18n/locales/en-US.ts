@@ -890,6 +890,8 @@ export default {
     purgeBuf: "Purge Buffer",
     owner: "Owner",
     resv: "Reservation",
+    resvTms: "Reservation Time",
+    lockedByOtherClient: "Reserved by another client",
     trgOps: "Trigger Options",
     dchg: "Data Change",
     qchg: "Quality Change",

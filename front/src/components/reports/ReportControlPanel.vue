@@ -11,8 +11,8 @@
             {{ rcb.rcb_type }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item :label="t('report.ref')" :span="2">
-          <span class="ref-text" :title="rcb.ref">{{ rcb.ref || "-" }}</span>
+        <el-descriptions-item :label="`${t('report.ref')} (Ref)`">
+          {{ rcb.ref || "-" }}
         </el-descriptions-item>
         <el-descriptions-item :label="`${t('report.rptId')} (RptID)`">
           {{ rcb.rpt_id || "-" }}
@@ -23,13 +23,13 @@
         <el-descriptions-item :label="`${t('report.confRev')} (ConfRev)`">
           {{ rcb.conf_rev }}
         </el-descriptions-item>
-        <el-descriptions-item :label="`${t('report.sqNum')} (SqNum)`">
-          {{ rcb.sq_num ?? "-" }}
-        </el-descriptions-item>
         <el-descriptions-item :label="`${t('report.rptEna')} (RptEna)`">
           <el-tag :type="rcb.rpt_ena ? 'success' : 'danger'" size="small">
             {{ rcb.rpt_ena ? t("report.enabled") : t("report.disabled") }}
           </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item :label="`${t('report.sqNum')} (SqNum)`">
+          {{ rcb.sq_num ?? "-" }}
         </el-descriptions-item>
         <el-descriptions-item :label="`${t('report.bufTime')} (BufTm)`">
           {{ rcb.buf_time }} ms
@@ -49,17 +49,20 @@
         >
           {{ rcb.time_of_entry || "-" }}
         </el-descriptions-item>
-        <el-descriptions-item
-          v-if="rcb.rcb_type === 'URCB'"
-          :label="`${t('report.owner')} (Owner)`"
-        >
-          {{ rcb.owner || "-" }}
+        <el-descriptions-item :label="`${t('report.owner')} (Owner)`">
+          {{ formatOwner(rcb.owner) }}
         </el-descriptions-item>
         <el-descriptions-item
           v-if="rcb.rcb_type === 'URCB'"
           :label="`${t('report.resv')} (Resv)`"
         >
           {{ rcb.resv ? "True" : "False" }}
+        </el-descriptions-item>
+        <el-descriptions-item
+          v-if="rcb.rcb_type === 'BRCB'"
+          :label="`${t('report.resvTms')} (ResvTms)`"
+        >
+          {{ rcb.resv_tms }}
         </el-descriptions-item>
       </el-descriptions>
 
@@ -185,10 +188,28 @@ const optFieldOptions = computed(() => [
 ]);
 
 watch(
-  () => props.rcb,
+  // 实时状态刷新会替换 RCB 对象，但不能覆盖用户正在编辑的配置。
+  // 仅在真正切换到另一个报告实例时初始化表单。
+  () => props.rcb?.ref,
   () => syncModels(),
   { immediate: true }
 );
+
+function formatOwner(owner: string): string {
+  if (!owner) return "-";
+  // 7f000001 → 127.0.0.1 (x'7F000001')
+  const hex = owner.replace(/^0x/i, "").toUpperCase();
+  if (/^[0-9A-F]{8}$/.test(hex)) {
+    const ip = [
+      parseInt(hex.substring(0, 2), 16),
+      parseInt(hex.substring(2, 4), 16),
+      parseInt(hex.substring(4, 6), 16),
+      parseInt(hex.substring(6, 8), 16),
+    ].join(".");
+    return `${ip} (x'${hex}')`;
+  }
+  return owner;
+}
 
 function syncModels() {
   if (!props.rcb) {
@@ -237,12 +258,9 @@ function handleApply() {
 <style scoped lang="scss">
 .report-control-panel {
   min-height: 0;
-}
-
-.ref-text {
-  font-family: Consolas, Monaco, monospace;
-  font-size: 12px;
-  word-break: break-all;
+  :deep(.el-descriptions__table) {
+    table-layout: fixed;
+  }
 }
 
 .control-section {

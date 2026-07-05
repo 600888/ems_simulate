@@ -44,6 +44,9 @@ export interface RcbInfo {
   time_of_entry: string | number | null;
   owner: string;
   resv: boolean;
+  resv_tms: number;
+  reserved: boolean;
+  locked: boolean;
   trg_ops: TrgOps;
   opt_fields: OptFields;
   active: boolean;

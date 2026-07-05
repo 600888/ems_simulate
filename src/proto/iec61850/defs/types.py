@@ -85,8 +85,9 @@ class RCBInfo:
     entry_id: bytes | None = None  # 入口 ID, 仅 BRCB
     time_of_entry: str = ""  # 入口时间 (格式化字符串), 仅 BRCB
     sq_num: int = 0  # 顺序号 (Sequence Number)
-    owner: str = ""  # 所有者 (Owner), 仅 URCB
+    owner: str = ""  # 当前预留客户端 (Owner)
     resv: bool = False  # 保留状态 (Resv), 仅 URCB
+    resv_tms: int = 0  # BRCB 保留时间 (ResvTms)，0 表示未保留
     trg_ops: TrgOps = field(default_factory=TrgOps)
     opt_fields: OptFields = field(default_factory=OptFields)
 
