@@ -2,7 +2,7 @@
 set -e
 
 # 配置
-APP_NAME="ems-simulate"
+APP_NAME="ems-simulate-web"
 # 从 pyproject.toml 读取版本号（单一真相源）
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 VERSION=$(grep -oP '^version\s*=\s*"\K[^"]+' "$SCRIPT_DIR/../pyproject.toml")
@@ -87,11 +87,11 @@ pyinstaller --noconfirm --onedir --name "${APP_NAME//-/_}" --clean \
 
 # 5. 组装内容
 echo ">>> 组装 Debian 包..."
-# 复制 PyInstaller 生成的内容到 /usr/share/ems-simulate
+# 复制 PyInstaller 生成的内容到 /usr/share/ems-simulate-web
 cp -r "build/dist/${APP_NAME//-/_}/"* "$INSTALL_DIR/"
 
 # 创建 /usr/bin 下的软链接
-ln -sf "../share/${APP_NAME}/ems_simulate" "${DEB_DIR}/usr/bin/${APP_NAME}"
+ln -sf "../share/${APP_NAME}/${APP_NAME//-/_}" "${DEB_DIR}/usr/bin/${APP_NAME}"
 
 # 更新 Control 文件中的 Installed-Size
 INSTALLED_SIZE=$(du -s "$INSTALL_DIR" | cut -f1)

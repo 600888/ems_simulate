@@ -1,0 +1,15 @@
+[Unit]
+Description=EMS Simulate Web Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+# PyInstaller onedir 安装目录
+WorkingDirectory=/usr/share/ems-simulate-web
+ExecStart=/usr/share/ems-simulate-web/ems_simulate_web
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

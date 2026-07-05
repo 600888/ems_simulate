@@ -3,7 +3,7 @@ set -e
 
 # 在卸载前运行
 
-APP_NAME="ems-simulate"
+APP_NAME="ems-simulate-web"
 SERVICE_NAME="${APP_NAME}.service"
 BIN_LINK="/usr/bin/${APP_NAME}"
 

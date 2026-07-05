@@ -3,7 +3,7 @@ set -e
 
 # 在卸载后运行
 
-APP_NAME="ems-simulate"
+APP_NAME="ems-simulate-web"
 INSTALL_DIR="/usr/share/${APP_NAME}"
 
 case "$1" in
