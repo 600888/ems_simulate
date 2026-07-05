@@ -10,7 +10,7 @@
 #   4. 安装 Node.js (>=18)
 #   5. 安装 Python 3.11+
 
-set -e
+set -Eeuo pipefail
 
 # 解析命令行参数
 SKIP_BUILD=false
@@ -232,44 +232,41 @@ if [ -d "${TAURI_DIR}/ems_simulate_backend" ]; then
     WriteOk "已清理旧的 onedir 构建产物"
 fi
 
-# 构建 Tauri 桌面应用
-TAURI_EXE="${TAURI_DIR}/target/release/ems-simulate"
-TAURI_SRC="${TAURI_DIR}/src"
-TAURI_CARGO="${TAURI_DIR}/Cargo.toml"
+# 构建 Tauri 桌面应用。这里不能仅根据主程序时间戳跳过：上一次可能已经
+# 编译出主程序，但在 linuxdeploy 阶段失败，安装包仍然是不完整的。
+WriteStep "构建 Tauri 桌面应用..."
+cd "$TAURI_DIR"
 
-TAURI_UP_TO_DATE=false
-if [ -f "$TAURI_EXE" ]; then
-    TAURI_UP_TO_DATE=true
-    for ref in "$TAURI_SRC" "$TAURI_CARGO" "$BE_SIDECAR_BINARY"; do
-        if ! IsUpToDate "$TAURI_EXE" "$ref"; then
-            TAURI_UP_TO_DATE=false
-            break
-        fi
-    done
+# Install Tauri CLI if needed
+if ! cargo tauri --version &>/dev/null; then
+    echo "安装 Tauri CLI..."
+    cargo install tauri-cli --version "^2"
 fi
 
-if $TAURI_UP_TO_DATE; then
-    WriteSkip "Tauri 构建已是最新"
-else
-    WriteStep "构建 Tauri 桌面应用..."
-    cd "$TAURI_DIR"
-
-    # Install Tauri CLI if needed
-    if ! cargo tauri --version &>/dev/null; then
-        echo "安装 Tauri CLI..."
-        cargo install tauri-cli --version "^2"
-    fi
-
-    # Sidecar 二进制必须在构建前到位
-    if [ ! -f "$BE_SIDECAR_BINARY" ]; then
-        WriteErr "Sidecar 二进制未找到: ${BE_SIDECAR_BINARY}。请先运行 --skip-backend 构建后端。"
-    fi
-
-    echo "运行: cargo tauri build"
-    cargo tauri build
-
-    cd "$PROJECT_ROOT"
+# Sidecar 二进制必须在构建前到位且可执行。
+if [ ! -f "$BE_SIDECAR_BINARY" ]; then
+    WriteErr "Sidecar 二进制未找到: ${BE_SIDECAR_BINARY}。请去掉 --skip-backend 后重新构建。"
 fi
+if [ ! -x "$BE_SIDECAR_BINARY" ]; then
+    chmod +x "$BE_SIDECAR_BINARY"
+fi
+
+# Tauri 会把 externalBin 复制到 target/release 并去掉 target triple。
+# 删除旧副本，防止增量构建误打包上一次的 sidecar。
+rm -f "${TAURI_DIR}/target/release/ems_simulate_backend"
+
+# linuxdeploy 默认会 strip AppDir 中的 ELF。PyInstaller --onefile 在 ELF
+# 尾部附加了 Python 归档，strip 可能导致 linuxdeploy 失败或破坏后端。
+export NO_STRIP=1
+
+# 分开构建便于定位故障；AppImage 失败时，已经成功的 deb 仍然清晰可见。
+echo "运行: cargo tauri build --bundles deb --verbose"
+cargo tauri build --bundles deb --verbose
+
+echo "运行: NO_STRIP=1 cargo tauri build --bundles appimage --verbose"
+cargo tauri build --bundles appimage --verbose
+
+cd "$PROJECT_ROOT"
 
 echo ""
 echo -e "${CYAN}========================================${NC}"

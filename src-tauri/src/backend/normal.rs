@@ -6,7 +6,9 @@ use std::time::Duration;
 use std::os::windows::process::CommandExt;
 
 use tauri::AppHandle;
-use tauri_plugin_shell::process::CommandChild;
+#[cfg(not(target_os = "windows"))]
+use tauri::Manager;
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 // ── 全局状态 ──
@@ -135,16 +137,26 @@ fn msi_data_dir(
         .unwrap_or_else(|| std::path::PathBuf::from("."))
 }
 
-fn ensure_data_dir() -> String {
-    // 普通 MSI 使用主程序所在目录作为运行数据根目录。安装到任意自定义
-    // 位置后，数据库与缓存仍会跟随实际安装位置，例如 INSTALLDIR/data。
+fn ensure_data_dir(_app: &AppHandle) -> Result<String, String> {
+    // Windows MSI 保留原有行为：数据跟随用户选择的安装目录。
+    #[cfg(target_os = "windows")]
     let dir = msi_data_dir(std::env::current_exe().ok(), std::env::current_dir().ok());
 
+    // Linux 的 /usr/bin 和 AppImage 临时挂载目录都不可写，运行数据必须放到
+    // XDG_DATA_HOME（通常为 ~/.local/share/<bundle identifier>）。
+    #[cfg(not(target_os = "windows"))]
+    let dir = _app
+        .path()
+        .app_local_data_dir()
+        .map_err(|error| format!("无法解析应用数据目录: {error}"))?;
+
     for sub in &["", "data", "config", "upload", "plan", "log"] {
-        let _ = std::fs::create_dir_all(dir.join(sub));
+        let path = dir.join(sub);
+        std::fs::create_dir_all(&path)
+            .map_err(|error| format!("无法创建运行目录 {}: {error}", path.display()))?;
     }
 
-    dir.to_string_lossy().to_string()
+    Ok(dir.to_string_lossy().to_string())
 }
 
 fn find_project_root() -> Option<std::path::PathBuf> {
@@ -176,13 +188,32 @@ fn try_spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String>
         .shell()
         .sidecar("ems_simulate_backend")
         .map_err(|e| format!("无法定位后端 sidecar: {e}"))?;
-    let data_dir = ensure_data_dir();
+    let data_dir = ensure_data_dir(app)?;
 
-    let (_, child) = sidecar_cmd
+    let (mut events, child) = sidecar_cmd
         .args(["--port", &port.to_string()])
         .env("EMS_ROOT_DIR", &data_dir)
         .spawn()
         .map_err(|e| format!("后端 sidecar 启动失败: {e}"))?;
+
+    // 持续消费输出通道；既避免 sidecar 输出无人读取，也让 Linux 启动失败时
+    // 能在终端/journal 中看到 PyInstaller 或 Python 的真实错误。
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = events.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    eprintln!("[EMS backend] {}", String::from_utf8_lossy(&line));
+                }
+                CommandEvent::Stderr(line) => {
+                    eprintln!("[EMS backend error] {}", String::from_utf8_lossy(&line));
+                }
+                CommandEvent::Error(error) => {
+                    eprintln!("[EMS backend error] {error}");
+                }
+                _ => {}
+            }
+        }
+    });
 
     eprintln!("[EMS] sidecar started, port={port}, data={data_dir}");
     Ok(child)
