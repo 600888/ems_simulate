@@ -311,6 +311,16 @@ async def manual_read(req: ManualReadRequest, request: Request):
     return BaseResponse(message="手动读取成功!", data=stats)
 
 
+@device_router.post("/iec104-interrogation", response_model=BaseResponse)
+async def iec104_interrogation(req: DeviceInfoRequest, request: Request):
+    """触发 IEC104 总召唤(C_IC_NA_1)，刷新所有测点数据"""
+    device = _get_device(req.device_name, request)
+    success = await device.send_iec104_interrogation()
+    if not success:
+        raise OperationError("总召唤失败，请检查设备是否已连接且为 IEC104 客户端", data=False)
+    return BaseResponse(message="总召唤已触发，数据同步中!", data=True)
+
+
 # ===== 报文捕获 =====
 
 

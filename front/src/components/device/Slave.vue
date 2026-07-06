@@ -1,27 +1,36 @@
 <template>
   <div class="slave-container">
-    <el-tabs 
-      v-model="activeName" 
-      class="modern-tabs" 
-      @tab-click="handleClick" 
+    <el-tabs
+      v-model="activeName"
+      class="modern-tabs"
+      @tab-click="handleClick"
       :before-leave="beforeLeave"
       @tab-remove="handleTabRemove"
     >
-      <el-tab-pane
-        v-for="slave in slaveIdList"
-        :key="slave"
-        :name="slave.toString()"
-      >
+      <el-tab-pane v-for="slave in slaveIdList" :key="slave" :name="slave.toString()">
         <template #label>
           <span class="custom-tab-label">
-            <span>{{ isIec61850 ? $t('common.data') : `${$t('point.slave')} ${slave}` }}</span>
+            <span>{{
+              isIec61850 ? $t("common.data") : `${$t("point.slave")} ${slave}`
+            }}</span>
             <span v-if="!isIec61850" @click.stop>
-              <el-dropdown trigger="click" @command="handleCommand($event, slave)" class="tab-dropdown">
+              <el-dropdown
+                trigger="click"
+                @command="handleCommand($event, slave)"
+                class="tab-dropdown"
+              >
                 <el-icon class="more-btn"><MoreFilled /></el-icon>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item command="edit">{{ $t('common.edit') }}</el-dropdown-item>
-                    <el-dropdown-item command="delete" divided style="color: var(--el-color-danger)">{{ $t('common.delete') }}</el-dropdown-item>
+                    <el-dropdown-item command="edit">{{
+                      $t("common.edit")
+                    }}</el-dropdown-item>
+                    <el-dropdown-item
+                      command="delete"
+                      divided
+                      style="color: var(--el-color-danger)"
+                      >{{ $t("common.delete") }}</el-dropdown-item
+                    >
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -42,15 +51,23 @@
                 <el-icon><Search /></el-icon>
               </template>
             </el-input>
-            <el-button type="primary" class="modern-btn search-btn" @click="handleSearch(slave)">
-              {{ $t('common.search') }}
+            <el-button
+              type="primary"
+              class="modern-btn search-btn"
+              @click="handleSearch(slave)"
+            >
+              {{ $t("common.search") }}
             </el-button>
             <template v-if="!(isIec61850 && iec61850Category === 'DataSets')">
               <el-button class="modern-btn reset-btn" @click="resetPoint" :icon="Refresh">
-                {{ $t('slave.resetPointValue') }}
+                {{ $t("slave.resetPointValue") }}
               </el-button>
-              <el-button class="modern-btn add-btn" @click="showAddPointDialog = true" :icon="Plus">
-                {{ $t('point.add') }}
+              <el-button
+                class="modern-btn add-btn"
+                @click="showAddPointDialog = true"
+                :icon="Plus"
+              >
+                {{ $t("point.add") }}
               </el-button>
               <el-popconfirm
                 :title="$t('slave.clearConfirm')"
@@ -60,26 +77,32 @@
               >
                 <template #reference>
                   <el-button class="modern-btn clear-btn" type="danger" :icon="Delete">
-                    {{ $t('slave.clearPoints') }}
+                    {{ $t("slave.clearPoints") }}
                   </el-button>
                 </template>
               </el-popconfirm>
             </template>
-            <template v-if="!(isIec61850 && iec61850Category === 'DataSets') && needsAutoReadControls">
+            <template
+              v-if="
+                !(isIec61850 && iec61850Category === 'DataSets') && needsAutoReadControls
+              "
+            >
               <div class="auto-read-control">
-                <span class="auto-read-label">{{ $t('slave.autoRead') }}</span>
+                <span class="auto-read-label">{{ $t("slave.autoRead") }}</span>
                 <el-switch
                   v-model="isAutoRead"
                   @change="handleAutoReadChange"
                   active-color="#3b82f6"
                   inactive-color="#94a3b8"
                 />
-                
+
                 <el-divider direction="vertical" />
-                
+
                 <!-- 读取模式选择 (始终显示) -->
-                <el-tooltip 
-                  :content="readMode === 'batch' ? $t('slave.batchRead') : $t('slave.singleRead')"
+                <el-tooltip
+                  :content="
+                    readMode === 'batch' ? $t('slave.batchRead') : $t('slave.singleRead')
+                  "
                   placement="top"
                 >
                   <el-segmented
@@ -91,24 +114,24 @@
                 </el-tooltip>
 
                 <!-- 间隔设置 (批量和逐点都支持，始终显示) -->
-                <span class="auto-read-label">{{ $t('slave.interval') }}</span>
+                <span class="auto-read-label">{{ $t("slave.interval") }}</span>
                 <el-select
                   v-model="readInterval"
                   :placeholder="$t('slave.interval')"
                   allow-create
                   filterable
                   default-first-option
-                  style="width: 90px;"
+                  style="width: 90px"
                   @change="handleIntervalChange"
                   size="normal"
                 >
                   <el-option
                     v-for="item in intervalOptions"
                     :key="item.value"
-                      :label="item.label"
-                      :value="item.value"
-                    />
-                  </el-select>
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
 
                 <!-- 手动读取/取消按钮 (仅在非自动读取时显示) -->
                 <el-button
@@ -120,13 +143,43 @@
                   :icon="isReading ? CircleCloseFilled : Download"
                   :loading="isReading && readMode === 'batch'"
                 >
-                  {{ isReading ? $t('common.cancel') : (readMode === 'batch' ? $t('common.batchRead') : $t('common.singleRead')) }}
+                  {{
+                    isReading
+                      ? $t("common.cancel")
+                      : readMode === "batch"
+                      ? $t("common.batchRead")
+                      : $t("common.singleRead")
+                  }}
                 </el-button>
 
                 <!-- 自动读取时显示当前模式 -->
                 <el-tag v-if="isAutoRead" type="info" size="small" effect="plain">
-                  {{ readMode === 'batch' ? $t('slave.batchAutoReading') : $t('slave.singleAutoReading') }}
+                  {{
+                    readMode === "batch"
+                      ? $t("slave.batchAutoReading")
+                      : $t("slave.singleAutoReading")
+                  }}
                 </el-tag>
+              </div>
+            </template>
+            <!-- IEC104 总召唤按钮 -->
+            <template v-if="isIec104Client">
+              <div class="auto-read-control">
+                <el-button
+                  type="primary"
+                  class="modern-btn"
+                  @click="handleInterrogation"
+                  :icon="Download"
+                  :loading="interrogating"
+                >
+                  触发总召唤
+                </el-button>
+                <el-tooltip
+                  content="发送C_IC_NA_1请求，服务端返回所有测点最新值"
+                  placement="top"
+                >
+                  <el-icon class="info-icon"><InfoFilled /></el-icon>
+                </el-tooltip>
               </div>
             </template>
           </div>
@@ -137,13 +190,19 @@
           <div class="progress-info">
             <span class="progress-text">{{ progressMessage }}</span>
             <div class="progress-stats">
-              <span class="stat-success">{{ $t('common.successCount', { count: successCount }) }}</span>
-              <span class="stat-fail">{{ $t('common.failCount', { count: failCount }) }}</span>
-              <span class="progress-percentage">{{ $t('common.progress', { pct: readProgress }) }}</span>
+              <span class="stat-success">{{
+                $t("common.successCount", { count: successCount })
+              }}</span>
+              <span class="stat-fail">{{
+                $t("common.failCount", { count: failCount })
+              }}</span>
+              <span class="progress-percentage">{{
+                $t("common.progress", { pct: readProgress })
+              }}</span>
             </div>
           </div>
-          <el-progress 
-            :percentage="readProgress" 
+          <el-progress
+            :percentage="readProgress"
             :format="formatProgress"
             :stroke-width="10"
             color="#3b82f6"
@@ -174,18 +233,18 @@
           @refresh="handleTableRefresh"
         />
       </el-tab-pane>
-      
+
       <!-- 添加从机按钮（作为特殊 tab，IEC61850 不需要） -->
       <el-tab-pane v-if="!isIec61850" name="add" :closable="false">
         <template #label>
           <span class="add-slave-tab">
             <el-icon><Plus /></el-icon>
-            {{ $t('slave.addSlave') }}
+            {{ $t("slave.addSlave") }}
           </span>
         </template>
       </el-tab-pane>
     </el-tabs>
-    
+
     <!-- 添加测点对话框 -->
     <AddPointDialog
       v-model="showAddPointDialog"
@@ -195,7 +254,7 @@
       :protocolType="String(protocolType)"
       @success="handlePointAdded"
     />
-    
+
     <!-- 添加从机对话框（IEC61850 不需要） -->
     <AddSlaveDialog
       v-if="!isIec61850"
@@ -222,14 +281,14 @@ import { ref, onMounted, watch, computed } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox, type TabsPaneContext } from "element-plus";
-import { Search, Refresh, Download, Plus, Delete, CircleCloseFilled, MoreFilled } from "@element-plus/icons-vue";
-import { getSlaveIdList, getDeviceTable, getDeviceInfo, deleteSlave } from "@/api/deviceApi";
+import { Search, Refresh, Download, Plus, Delete, CircleCloseFilled, MoreFilled, InfoFilled } from "@element-plus/icons-vue";
+import { getSlaveIdList, getDeviceTable, getDeviceInfo, deleteSlave, iec104Interrogation } from "@/api/deviceApi";
 import { instance } from "@/api/http";
 import { getIEC61850TreeData } from "@/api/channelApi";
 import type { IEC61850TreeDataResponse } from "@/api/channelApi";
 import { clearPoints, resetPointData } from "@/api/pointApi";
 import { useAutoRead } from "@/composables";
-import { isIec61850Protocol } from "@/constants/protocol";
+import { isIec61850Protocol, isIec104Protocol } from "@/constants/protocol";
 import { TABLE_HEADERS } from "@/constants/table";
 import DeviceTable from "./Table.vue";
 import AddPointDialog from "./AddPointDialog.vue";
@@ -271,6 +330,29 @@ const isIec61850 = computed(() => {
 const isIec61850Filtered = computed(() => {
   return isIec61850.value && channelId.value !== null && !!iec61850Category.value;
 });
+
+// IEC104 客户端判断
+const isIec104Client = computed(() => {
+  const protocolStr = String(protocolType.value);
+  return isIec104Protocol(protocolStr) && protocolStr === 'Iec104Client';
+});
+
+// 总召唤按钮状态
+const interrogating = ref(false);
+const handleInterrogation = async () => {
+  interrogating.value = true;
+  try {
+    await iec104Interrogation(routeName.value);
+    ElMessage.success('总召唤已触发，数据同步完成');
+    // 刷新表格
+    handleSearch(currentSlaveId.value);
+  } catch (e: any) {
+    ElMessage.error(e?.message || '总召唤失败');
+  } finally {
+    interrogating.value = false;
+  }
+};
+
 const showAddPointDialog = ref<boolean>(false);
 const showAddSlaveDialog = ref<boolean>(false);
 const showEditSlaveDialog = ref<boolean>(false);
@@ -285,12 +367,12 @@ const pointTypes = computed<number[]>(() => {
   return [];
 });
 
-const handlePageIndexChange = (idx: number) => { 
-  pageIndex.value = idx; 
+const handlePageIndexChange = (idx: number) => {
+  pageIndex.value = idx;
   handleSearch(currentSlaveId.value);
 };
-const handlePageSizeChange = (size: number) => { 
-  pageSize.value = size; 
+const handlePageSizeChange = (size: number) => {
+  pageSize.value = size;
   handleSearch(currentSlaveId.value);
 };
 const handleFilterChange = (filters: Record<string, any>) => {
@@ -321,7 +403,7 @@ const fetchSlaveList = async () => {
       channelId.value = deviceInfo.get("channel_id") ?? null;
     }
   } catch (e) { console.warn("设备信息获取失败"); }
-  
+
   // IEC61850 协议不需要从机列表，使用默认值
   if (isIec61850.value) {
     slaveIdList.value = [1];
@@ -389,13 +471,13 @@ const fetchDeviceTable = async (name: string, sid: number, q: string, pi: number
     if (!tableDataMap.value[sid]) {
       tableDataMap.value[sid] = { tableHeader: [], tableData: [], total: 0 };
     }
-    
+
     tableDataMap.value[sid] = {
       tableHeader: TABLE_HEADERS as string[],
       tableData: data.get("table_data"),
       total: data.get("total"),
     };
-    
+
     // 如果是当前显示的从机，同时更新全局 total 以防万一（但我们将主要改为从 map 中取值）
     if (sid === currentSlaveId.value) {
       total.value = data.get("total");
@@ -428,9 +510,9 @@ const handleClick = (tab: TabsPaneContext) => {
     if (activeName.value === "add") {
         showAddSlaveDialog.value = true;
     }
-    return; 
+    return;
   }
-  
+
   if (tab.index !== undefined) {
     currentSlaveId.value = slaveIdList.value[parseInt(tab.index)];
     fetchDeviceTable(routeName.value, currentSlaveId.value, "", pageIndex.value, pageSize.value);
@@ -471,13 +553,13 @@ const handleDeleteSlave = async (slaveId: number) => {
     const success = await deleteSlave(routeName.value, slaveId);
     if (success) {
       ElMessage.success(t('slave.deleteSuccess', { id: slaveId }));
-      
+
       // 标记为内部切换，防止触发 beforeLeave 的弹窗
       isInternalSwitch.value = true;
 
       // 重新加载从机列表
       await fetchSlaveList();
-      
+
       // 切换到第一个可用的从机，或添加页
       if (slaveIdList.value.length > 0) {
         // 如果删除的是当前选中的，切换到第一个
@@ -485,15 +567,15 @@ const handleDeleteSlave = async (slaveId: number) => {
         currentSlaveId.value = slaveIdList.value[0];
         // 刷新新的从机数据
         await fetchDeviceTable(
-          routeName.value, 
-          currentSlaveId.value, 
-          searchQuery.value[currentSlaveId.value] || "", 
-          1, 
+          routeName.value,
+          currentSlaveId.value,
+          searchQuery.value[currentSlaveId.value] || "",
+          1,
           pageSize.value
         );
       } else {
         activeName.value = "add";
-        currentSlaveId.value = 1; 
+        currentSlaveId.value = 1;
       }
 
       // 恢复标志位 (使用 setTimeout 确保在 Vue 更新周期之后)
@@ -509,7 +591,7 @@ const handleDeleteSlave = async (slaveId: number) => {
 
 const handleTabRemove = (tabName: string | number) => {
   const slaveId = Number(tabName);
-  
+
   ElMessageBox.confirm(
     t('slave.deleteConfirm', { id: slaveId }),
     t('common.warning'),
@@ -543,10 +625,10 @@ const handleSlaveEdited = async (newSlaveId: number) => {
     activeName.value = newSlaveId.toString();
     currentSlaveId.value = newSlaveId;
     await fetchDeviceTable(
-        routeName.value, 
-        currentSlaveId.value, 
-        searchQuery.value[currentSlaveId.value] || "", 
-        1, 
+        routeName.value,
+        currentSlaveId.value,
+        searchQuery.value[currentSlaveId.value] || "",
+        1,
         pageSize.value
     );
   }
@@ -610,7 +692,7 @@ watch(() => route.fullPath, async () => {
       if (routeName.value !== route.params.deviceName) {
           stopAutoRefresh();
           routeName.value = route.params.deviceName as string;
-          pageIndex.value = 1; 
+          pageIndex.value = 1;
           pageSize.value = 10;
           isAutoRead.value = false;
           await fetchSlaveList();
@@ -635,7 +717,7 @@ onMounted(async () => {
   await fetchSlaveList();
   // 获取当前自动读取状态
   await fetchAutoReadStatus();
-  
+
   // 连接 WebSocket
   // connectWebSocket();
 });
@@ -659,10 +741,10 @@ const connectWebSocket = () => {
     // 替换 http/https 为 ws/wss
     const wsBase = baseURL.replace(/^http/, 'ws');
     // 去除末尾斜杠
-    const wsUrl = `${wsBase.replace(/\/$/, '')}/device/ws/${routeName.value}`; 
-    
+    const wsUrl = `${wsBase.replace(/\/$/, '')}/device/ws/${routeName.value}`;
+
     console.log("Connecting to WebSocket:", wsUrl); // Debug log
-    
+
     websocket = new WebSocket(wsUrl);
 
     websocket.onopen = () => {
@@ -679,11 +761,11 @@ const connectWebSocket = () => {
             if (data.type === 'progress') {
                 readProgress.value = data.progress;
                 progressMessage.value = data.message;
-                
+
                 // 实时刷新表格数据
                 // 收到进度更新说明有新数据被读取，立即刷新当前显示的表格
                 handleSearch(currentSlaveId.value);
-                
+
                 if (data.progress >= 100) {
                     setTimeout(() => {
                         readProgress.value = 0;
@@ -704,7 +786,7 @@ const connectWebSocket = () => {
             connectWebSocket();
         }, 3000);
     };
-    
+
     websocket.onerror = (err) => {
          console.error("WebSocket error:", err);
          websocket?.close();
@@ -744,7 +826,7 @@ defineExpose({
   gap: 4px;
   color: #8b5cf6;
   font-weight: 600;
-  
+
   .el-icon {
     font-size: 14px;
   }
@@ -754,17 +836,19 @@ defineExpose({
   :deep(.el-tabs__header) {
     margin-bottom: 24px;
     border: none !important;
-    
+
     .el-tabs__nav-wrap {
-      &::after { display: none !important; }
+      &::after {
+        display: none !important;
+      }
     }
-    
+
     .el-tabs__nav {
       border: none !important;
       display: flex;
       gap: 12px;
     }
-    
+
     .el-tabs__item {
       /* 定义确定无疑的四边线 */
       border-top: 1.5px solid var(--sidebar-border) !important;
@@ -782,12 +866,13 @@ defineExpose({
       box-sizing: border-box;
       box-shadow: none !important;
       outline: none !important;
-      
+
       /* 清除可能干扰的伪元素 */
-      &::before, &::after {
+      &::before,
+      &::after {
         display: none !important;
       }
-      
+
       &.is-active {
         background: var(--color-primary) !important;
         color: white !important;
@@ -800,7 +885,7 @@ defineExpose({
         /* 移除上移动画，避免上边线被遮挡 */
         transform: none;
       }
-      
+
       &:hover:not(.is-active) {
         color: var(--color-primary);
         border-top: 1.5px solid var(--color-primary) !important;
@@ -814,7 +899,7 @@ defineExpose({
         box-shadow: none !important;
       }
     }
-    
+
     .el-tabs__active-bar {
       display: none !important;
     }
@@ -831,7 +916,7 @@ defineExpose({
     margin-left: 8px; /* More space */
     display: flex;
     align-items: center; /* Vertical center */
-    
+
     .more-btn {
       font-size: 20px; /* Larger icon */
       color: var(--text-secondary);
@@ -843,7 +928,7 @@ defineExpose({
       align-items: center;
       justify-content: center;
       transition: all 0.2s;
-      
+
       &:hover {
         background-color: rgba(0, 0, 0, 0.05);
         color: var(--color-primary);
@@ -872,41 +957,61 @@ defineExpose({
   border-radius: 8px;
   font-weight: 600;
   transition: all 0.3s;
-  
-  &.search-btn { padding: 0 20px; }
+
+  &.search-btn {
+    padding: 0 20px;
+  }
   &.reset-btn {
     background-color: var(--color-warning);
     color: white;
     border: none;
-    &:hover { background-color: #d97706; transform: translateY(-1px); }
+    &:hover {
+      background-color: #d97706;
+      transform: translateY(-1px);
+    }
   }
   &.manual-read-btn {
     background-color: var(--color-success, #10b981);
     color: white;
     border: none;
     padding: 0 16px;
-    &:hover { background-color: #059669; transform: translateY(-1px); }
+    &:hover {
+      background-color: #059669;
+      transform: translateY(-1px);
+    }
   }
   &.cancel-read-btn {
     background-color: var(--el-color-danger, #f56c6c);
     color: white;
     border: none;
     padding: 0 16px;
-    &:hover { background-color: #f78989; transform: translateY(-1px); }
+    &:hover {
+      background-color: #f78989;
+      transform: translateY(-1px);
+    }
   }
   &.add-btn {
     background-color: #6366f1;
     color: white;
     border: none;
-    &:hover { background-color: #4f46e5; transform: translateY(-1px); }
+    &:hover {
+      background-color: #4f46e5;
+      transform: translateY(-1px);
+    }
   }
   &.add-slave-btn {
     background-color: #8b5cf6;
     color: white;
     border: none;
-    &:hover { background-color: #7c3aed; transform: translateY(-1px); }
+    &:hover {
+      background-color: #7c3aed;
+      transform: translateY(-1px);
+    }
   }
-  &:hover { transform: translateY(-1px); opacity: 0.9; }
+  &:hover {
+    transform: translateY(-1px);
+    opacity: 0.9;
+  }
 }
 
 .auto-read-control {
@@ -919,20 +1024,30 @@ defineExpose({
   height: 34px;
 }
 
+.info-icon {
+  font-size: 16px;
+  color: var(--text-secondary, #94a3b8);
+  cursor: help;
+  transition: color 0.2s;
+  &:hover {
+    color: var(--color-primary, #3b82f6);
+  }
+}
+
 .manual-read-section {
   display: flex;
   align-items: center;
   gap: 10px;
-  
+
   .el-divider--vertical {
     height: 20px;
     margin: 0 4px;
   }
-  
+
   :deep(.el-segmented) {
     --el-segmented-item-selected-bg-color: var(--color-primary);
     --el-segmented-item-selected-color: #fff;
-    
+
     .el-segmented__item {
       padding: 0 12px;
       font-size: 12px;

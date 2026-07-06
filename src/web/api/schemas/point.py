@@ -38,6 +38,7 @@ class PointInfoRequest(BaseModel):
     device_name: str
     point_code: str
     slave_id: int | None = Field(None, description="从机 ID，不同从站编码相同时用于精确定位测点")
+    active_read: bool = Field(False, description="是否主动读取（IEC104 时发送网络请求，而非读缓存）")
 
 
 class PointLimitGetRequest(BaseModel):

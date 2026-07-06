@@ -115,7 +115,7 @@ class IEC104Client:
 
     def read_point(self, io_address: int, frame_type: int = 0) -> float | None:
         """
-        读取指定IOA的监控点值
+        读取指定IOA的监控点值（仅读取本地缓存，不发送网络请求）
         :param io_address: 信息对象地址(IOA)
         :param frame_type: 帧类型，0-遥测，1-遥信，2-遥控，3-遥调
         :return: 监控点值（Python float），失败返回None
@@ -136,6 +136,64 @@ class IEC104Client:
             return None
         except Exception as e:
             log.error(f"读取监控点值失败: {e}")
+            return None
+
+    def send_interrogation(self) -> bool:
+        """
+        发送总召唤命令(C_IC_NA_1)，请求服务端发送所有点的最新值
+
+        c104 库会在收到响应后自动更新本地缓存的 point.value，
+        之后通过 read_point() 即可获取最新值。
+
+        :return: 是否成功发送
+        """
+        if not self.is_connected:
+            log.error("未连接到服务器，无法发送总召唤")
+            return False
+
+        try:
+            # interrogation() 接受 common_address(int) 而非 station 对象
+            common_addr = self.station.common_address
+            self.connection.interrogation(common_address=common_addr)
+            log.info(f"已发送总召唤命令(C_IC_NA_1)，站地址: {common_addr}")
+            return True
+        except Exception as e:
+            log.error(f"发送总召唤失败: {e}")
+            return False
+
+    def active_read_point(self, io_address: int) -> float | None:
+        """
+        主动读取指定监控点的最新值（发送C_RD_NA_1请求）
+
+        与 read_point() 不同，此方法会向服务器发送网络请求获取最新值，
+        而非读取本地缓存。如果 c104.Point 不直接支持 .read()，
+        则通过总召唤刷新整个站的数据后退回该点的最新值。
+
+        :param io_address: 信息对象地址(IOA)
+        :return: 监控点值（Python float），失败返回None
+        """
+        if not self.is_connected:
+            log.error("未连接到服务器，无法主动读取数据")
+            return None
+
+        try:
+            point = self.station.get_point(io_address=io_address)
+            if point is None:
+                log.error(f"IOA {io_address} 未找到对应的点")
+                return None
+
+            # 使用 Point.read() 发送 C_RD_NA_1（单点读取）
+            success = point.read()
+            if not success:
+                log.warning(f"单点读取命令发送失败（IOA: {io_address}），尝试总召唤刷新")
+                self.send_interrogation()
+                time.sleep(0.3)
+            else:
+                # 等待短暂时间让服务端响应
+                time.sleep(0.15)
+            return float(point.value)
+        except Exception as e:
+            log.error(f"主动读取监控点值失败: {e}")
             return None
 
     def write_point(self, io_address: int, value, frame_type: int = 0) -> bool:

@@ -161,9 +161,16 @@ async def edit_iec104_metadata(req: Iec104MetadataEditRequest, request: Request)
 
 @point_router.post("/read-single", response_model=BaseResponse)
 async def read_single_point(req: PointInfoRequest, request: Request):
-    """读取单个测点值"""
+    """读取单个测点值
+
+    当 active_read=True 且协议为 IEC104 客户端时，会发送网络请求
+    （C_RD_NA_1 或总召唤）获取最新值；否则读取本地缓存。
+    """
     device = _get_device(req.device_name, request)
-    value = await device.read_single_point_async(req.point_code, slave_id=req.slave_id)
+    if req.active_read:
+        value = await device.active_read_single_point_async(req.point_code, slave_id=req.slave_id)
+    else:
+        value = await device.read_single_point_async(req.point_code, slave_id=req.slave_id)
     if value is None:
         raise ValidationError("读取失败，请检查连接状态", data=None)
     return BaseResponse(message="读取成功!", data={"value": value})

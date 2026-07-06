@@ -706,8 +706,44 @@ class Device:
         return self.point_operator.read_single_point(point_code, slave_id)
 
     async def read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | None:
-        """异步读取单个测点的值"""
+        """异步读取单个测点的值（读取本地缓存，不发送网络请求）"""
         return await self.point_operator.read_single_point_async(point_code, slave_id)
+
+    async def active_read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | None:
+        """主动读取单个测点的值（发送网络请求获取最新值）"""
+        return await self.point_operator.active_read_single_point_async(point_code, slave_id)
+
+    async def send_iec104_interrogation(self) -> bool:
+        """发送 IEC104 总召唤命令(C_IC_NA_1)
+
+        触发后服务端会发送所有点的最新值，c104 库自动更新本地缓存，
+        然后同步到应用层测点。
+
+        Returns:
+            bool: 是否成功发送
+        """
+        from src.device.protocol.iec104_handler import IEC104ClientHandler
+
+        if not isinstance(self.protocol_handler, IEC104ClientHandler):
+            self.log.error("仅 IEC104 客户端支持总召唤")
+            return False
+
+        if not self.protocol_handler.is_running:
+            self.log.error("IEC104 客户端未连接")
+            return False
+
+        # 发送总召唤
+        result = await self.protocol_handler.send_interrogation()
+        if result:
+            # 等待总召唤响应到达
+            import asyncio
+
+            await asyncio.sleep(0.5)
+            # 同步所有从机的缓存值到应用层测点
+            for slave_id in self.slave_id_list:
+                self._sync_iec104_client_values(slave_id)
+            self.log.info("总召唤完成，已同步所有从机数据")
+        return result
 
     async def read_point_metadata_async(self, point_code: str, slave_id: int | None = None) -> dict:
         """异步读取测点的品质(q)与时标(t)元数据"""

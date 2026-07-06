@@ -419,8 +419,72 @@ class IEC104ClientHandler(ClientHandler):
         return False
 
     async def read_value_async(self, point: BasePoint) -> Any:
-        """异步读取测点值"""
+        """异步读取测点值（读取本地缓存，不发送网络请求）"""
         return self.read_value(point)
+
+    async def send_interrogation(self) -> bool:
+        """发送总召唤命令(C_IC_NA_1)到服务器，刷新所有点的缓存值
+
+        发送后需等待服务器响应，c104 库会自动更新本地缓存。
+        之后可通过 read_value() 获取最新值。
+
+        Returns:
+            bool: 是否成功发送
+        """
+        if not self._client or not self.is_running:
+            return False
+        return self._client.send_interrogation()
+
+    async def active_read_value_async(self, point: BasePoint) -> Any:
+        """主动读取测点值（发送C_RD_NA_1网络请求获取最新值）
+
+        与 read_value()/read_value_async() 不同，此方法会向服务器
+        发送网络请求获取最新值，而非读取本地缓存。
+        对于遥测点(Yc)，返回的值会通过 mul_coe/add_coe 换算为内部存储值。
+
+        Args:
+            point: 测点对象
+
+        Returns:
+            Any: 读取成功返回测点值，失败返回None
+        """
+        if not self._client or not self.is_running:
+            self._log.error("IEC104 客户端未连接")
+            return None
+
+        # 调用客户端的主动读取方法（发送网络请求）
+        c104_value = self._client.active_read_point(io_address=int(point.address))
+
+        # 同步品质描述符
+        try:
+            c104_point = self._client.station.get_point(io_address=int(point.address))
+            if c104_point and hasattr(c104_point, "quality") and c104_point.quality is not None:
+                from src.enums.points.iec104_quality import decode_quality_from_c104
+
+                qd = decode_quality_from_c104(c104_point, point.frame_type)
+                point.iec_quality = qd
+        except Exception:
+            pass
+
+        if c104_value is None:
+            self._log.error("IEC104 客户端主动读取测点值失败")
+            return None
+
+        # 同 read_value() 一样的系数换算逻辑
+        if isinstance(point, Yc):
+            decoded_val = decode_iec104_value(c104_value, point.iec_type_id)
+            try:
+                internal_value = (decoded_val - point.add_coe) / point.mul_coe
+                from src.enums.modbus_register import Decode
+
+                info = Decode.get_info(point.decode)
+                if info.is_float:
+                    return float(internal_value)
+                return int(round(internal_value))
+            except (ZeroDivisionError, TypeError):
+                self._log.error(f"IEC104 客户端主动读取测点值失败，系数计算失败，地址: {point.address}")
+                return None
+        return c104_value
 
     async def write_value_async(self, point: BasePoint, value: Any) -> bool:
         """异步写入测点值"""

@@ -957,7 +957,9 @@ const isModbusWriteable = (row: any) => {
 const handleReadPoint = async (pointCode: string) => {
   readingPoints[pointCode] = true;
   try {
-    const value = await readSinglePoint(deviceName.value, pointCode);
+    // IEC104 客户端使用主动读取（发送网络请求），其他协议使用缓存读取
+    const useActiveRead = isClientDevice.value && String(props.protocolType) === 'Iec104Client';
+    const value = await readSinglePoint(deviceName.value, pointCode, undefined, useActiveRead);
     if (value !== null) {
       ElMessage.success(t('table.readSuccess', { value }));
       emit('refresh');

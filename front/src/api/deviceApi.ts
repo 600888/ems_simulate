@@ -188,6 +188,18 @@ export async function manualRead(deviceName: string, interval: number = 0): Prom
   }
 }
 
+export async function iec104Interrogation(deviceName: string): Promise<boolean> {
+  try {
+    const data = await requestApi(DEVICE_API.IEC104_INTERROGATION, "post", {
+      device_name: deviceName,
+    });
+    return data;
+  } catch (error) {
+    console.error("Error sending IEC104 interrogation:", error);
+    throw error;
+  }
+}
+
 // ===== 报文捕获 =====
 export async function getMessages(
   deviceName: string,

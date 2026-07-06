@@ -149,10 +149,10 @@ export async function editIec104Metadata(deviceName: string, pointCode: string, 
   }
 }
 
-export async function readSinglePoint(deviceName: string, pointCode: string, slaveId?: number): Promise<number | null> {
+export async function readSinglePoint(deviceName: string, pointCode: string, slaveId?: number, activeRead: boolean = false): Promise<number | null> {
   try {
     const data = await requestApi(POINT_API.READ_SINGLE, 'post', {
-      device_name: deviceName, point_code: pointCode, slave_id: slaveId,
+      device_name: deviceName, point_code: pointCode, slave_id: slaveId, active_read: activeRead,
     });
     return data?.value ?? null;
   } catch (error) {

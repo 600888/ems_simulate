@@ -66,6 +66,7 @@ export const DEVICE_API = {
   ADD_SLAVE: '/api/devices/add-slave',
   DELETE_SLAVE: '/api/devices/delete-slave',
   EDIT_SLAVE: '/api/devices/edit-slave',
+  IEC104_INTERROGATION: '/api/devices/iec104-interrogation',
 } as const;
 
 // ===== 设备组相关 =====

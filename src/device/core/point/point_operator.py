@@ -219,7 +219,7 @@ class PointOperator:
             raise ValueError(f"读取测点 {point_code} 失败: {e}") from e
 
     async def read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | None:
-        """异步读取单个测点的值
+        """异步读取单个测点的值（读取本地缓存，不发送网络请求）
 
         Args:
             point_code: 测点编码
@@ -249,6 +249,52 @@ class PointOperator:
                 self._log.info(f"异步读取测点 {point_code} 失败: {value}")
         except Exception as e:
             self._log.error(f"异步读取测点 {point_code} 失败: {e}")
+            point.is_valid = False
+
+        return None
+
+    async def active_read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | None:
+        """主动读取单个测点的值（发送网络请求获取最新值）
+
+        与 read_single_point_async() 不同，此方法会向远程服务器发送
+        网络请求（如 IEC104 的 C_RD_NA_1 或总召唤），而非仅读取本地缓存。
+
+        Args:
+            point_code: 测点编码
+            slave_id: 从机 ID，不同从站编码相同时用于精确定位测点
+
+        Returns:
+            Optional[float]: 读取成功返回值，失败返回None
+        """
+        from src.device.protocol.iec104_handler import IEC104ClientHandler
+
+        point = self._pm.get_point_by_code(point_code, slave_id)
+        if not point:
+            self._log.error(f"{self._device.name} 未找到测点: {point_code}")
+            return None
+
+        if not self._handler:
+            return None
+
+        try:
+            # IEC104 客户端使用专门的主动读取方法（发送 C_RD_NA_1 或总召唤）
+            if isinstance(self._handler, IEC104ClientHandler):
+                value = await self._handler.active_read_value_async(point)
+            else:
+                # 其他协议回退到普通异步读取
+                value = await self._handler.read_value_async(point)
+
+            if value is not None:
+                with track_change(ChangeSource.CLIENT_READ, f"主动单点读取 {point_code}", self._get_client_info()):
+                    point.value = value
+                point.is_valid = True
+                self._log.info(f"主动读取测点 {point_code} 成功: {value}")
+                return float(point.value) if getattr(point, "bit", None) is not None else point.real_value
+            else:
+                point.is_valid = False
+                self._log.info(f"主动读取测点 {point_code} 失败")
+        except Exception as e:
+            self._log.error(f"主动读取测点 {point_code} 失败: {e}")
             point.is_valid = False
 
         return None
