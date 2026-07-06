@@ -1,8 +1,10 @@
 """Regression tests for IEC 61850 connection/discovery progress snapshots."""
 
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from src.device.protocol.iec61850_handler import IEC61850ClientHandler
+from src.proto.iec61850.model import discovery as discovery_module
 from src.proto.iec61850.model.discovery import ModelDiscoveryService
 
 
@@ -77,3 +79,39 @@ def test_variable_spec_probe_uses_circuit_breaker_after_repeated_failures():
 
     assert discovery._variable_spec_disabled is True
     assert query.call_count == discovery._variable_spec_failure_limit
+
+
+def test_discovery_invalidation_clears_cold_start_caches():
+    discovery = ModelDiscoveryService()
+    discovery._model = Mock()
+    discovery._model_timestamp = 123.0
+    discovery._struct_sub_da_cache["LD0/MMXU1.TotW.mag"] = []
+    discovery._type_probe_cache[("LD0/MMXU1.TotW.mag.f", "MX")] = Mock()
+    discovery._variable_spec_failures = 5
+    discovery._variable_spec_disabled = True
+
+    discovery.invalidate()
+
+    assert discovery._model is None
+    assert discovery._model_timestamp == 0.0
+    assert discovery._struct_sub_da_cache == {}
+    assert discovery._type_probe_cache == {}
+    assert discovery._variable_spec_failures == 0
+    assert discovery._variable_spec_disabled is False
+
+
+def test_logical_device_discovery_prefers_gil_releasing_wrapper(monkeypatch):
+    calls = []
+    fake_iec61850 = SimpleNamespace(
+        IED_ERROR_OK=0,
+        pyWrap_IedConnection_getLogicalDeviceList=lambda conn: calls.append(("safe", conn)) or (["LD0"], 0),
+        IedConnection_getLogicalDeviceList=lambda _conn: (_ for _ in ()).throw(
+            AssertionError("raw blocking call must not be selected when wrapper exists")
+        ),
+    )
+    monkeypatch.setattr(discovery_module, "iec61850", fake_iec61850, raising=False)
+    monkeypatch.setattr(discovery_module, "get_list_from_linked_list", list)
+    conn = object()
+
+    assert ModelDiscoveryService._browse_logical_devices(conn) == ["LD0"]
+    assert calls == [("safe", conn)]

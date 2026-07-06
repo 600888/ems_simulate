@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 from typing import Any
 
+from ...core.native_calls import call_gil_safe
 from ...defs.address import infer_fc_from_address, infer_iec_type_from_address
 from ...defs.constants import IEC_TYPE_UNKNOWN
 from ...log import log
@@ -17,7 +18,7 @@ def browse_dataset_members(native: Any, conn: Any, dataset_ref: str) -> list[dic
     # SWIG bool 指针构造器。官方 C API 允许在不需要该属性时传 NULL。
     # ctypes.c_bool 与 SWIG 指针不兼容，传入它只会在每个 DataSet 上抛出异常。
     try:
-        result = native.IedConnection_getDataSetDirectory(conn, dataset_ref, None)
+        result = call_gil_safe(native, "IedConnection_getDataSetDirectory", conn, dataset_ref, None)
     except Exception:
         return []
     if result is None:

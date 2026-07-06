@@ -452,7 +452,7 @@ async function handleApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps; opt
   }
 }
 
-const BATCH_DELAY_MS = 50; // 每个 RCB 操作间的延迟
+const BATCH_DELAY_MS = 10; // 每个 RCB 操作间的延迟
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

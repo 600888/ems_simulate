@@ -200,9 +200,13 @@ class ModelDiscoveryService:
         return self._model is not None
 
     def invalidate(self) -> None:
-        """使缓存失效 (断开连接时调用)"""
+        """清除完整发现状态，确保下一次发现与首次发现走同一路径。"""
         self._model = None
         self._model_timestamp = 0.0
+        self._struct_sub_da_cache.clear()
+        self._type_probe_cache.clear()
+        self._variable_spec_failures = 0
+        self._variable_spec_disabled = False
 
     def discover(
         self,
@@ -232,6 +236,9 @@ class ModelDiscoveryService:
 
         log.info("开始 IEC 61850 统一模型发现...")
         start_time = time.time()
+        # discover() 也可能在未显式 invalidate() 的新任务中被调用；冷启动
+        # 与强制重新发现必须使用相同的在线遍历状态。
+        self._struct_sub_da_cache.clear()
         self._type_probe_cache.clear()
         self._type_probe_stats = {
             "total": 0,
@@ -422,7 +429,13 @@ class ModelDiscoveryService:
 
         spec = None
         try:
-            result = get_spec(conn, ref, fc_value)
+            result = call_gil_safe(
+                iec61850,
+                "IedConnection_getVariableSpecification",
+                conn,
+                ref,
+                fc_value,
+            )
             if isinstance(result, (list, tuple)):
                 spec = result[0] if result else None
                 error = result[1] if len(result) > 1 else 0
@@ -493,6 +506,7 @@ class ModelDiscoveryService:
         # 第一阶段只发现完整 LD/LN/DO/DA 模型。DataSet 是模型引用的子集，
         # 不能反向定义数据类型，也不能作为模型发现的数据源。
         logical_node_count = max(len(logical_nodes), 1)
+        object_phase_weight = 0.85
         for ln_index, (ln_name, ln_ref, ln_builder) in enumerate(logical_nodes):
             with self._error_guard(f"LN {ln_ref}", on_error):
 
@@ -507,7 +521,7 @@ class ModelDiscoveryService:
                     if progress is None:
                         return
                     ln_fraction = current / total if total > 0 else 1.0
-                    fraction = (current_ln_index + ln_fraction) / logical_node_count
+                    fraction = ((current_ln_index + ln_fraction) / logical_node_count) * object_phase_weight
                     progress(fraction, f"发现 DO: {current_ln_ref}.{do_name} ({current}/{total})")
 
                 discover_args = (conn, ld_name, ln_ref, ln_name)
@@ -524,7 +538,7 @@ class ModelDiscoveryService:
 
         # 第二阶段在模型已经存在的前提下解析 DataSet/RCB/GoCB。
         # DataSet 成员后续必须回到完整模型中校验，读取阶段才允许使用。
-        for ln_name, ln_ref, ln_builder in logical_nodes:
+        for resource_index, (ln_name, ln_ref, ln_builder) in enumerate(logical_nodes, start=1):
             with self._error_guard(f"资源 {ln_ref}", on_error):
                 if ln_name == "LLN0" or not self._skip_non_lln0:
                     for dataset in self._discover_datasets(conn, ld_name, ln_ref):
@@ -538,13 +552,22 @@ class ModelDiscoveryService:
                 if ln_name == "LLN0" or not self._skip_non_lln0:
                     for gocb in self._discover_gocbs(conn, ld_name, ln_ref):
                         ln_builder.add_gocb(gocb)
+            if progress is not None:
+                resource_fraction = resource_index / logical_node_count
+                progress(
+                    object_phase_weight + resource_fraction * (1.0 - object_phase_weight),
+                    f"发现资源: {ln_ref} ({resource_index}/{len(logical_nodes)})",
+                )
+
+        if progress is not None and not logical_nodes:
+            progress(1.0, f"逻辑设备无可发现节点: {ld_name}")
 
     # ===== 底层 pyiec61850 调用 (唯一调用点) =====
 
     @staticmethod
     def _browse_logical_devices(conn) -> list[str]:
         try:
-            result = iec61850.IedConnection_getLogicalDeviceList(conn)
+            result = call_gil_safe(iec61850, "IedConnection_getLogicalDeviceList", conn)
             if isinstance(result, (list, tuple)) and len(result) >= 2:
                 ld_list, error = result[0], result[1]
                 if error != iec61850.IED_ERROR_OK:
@@ -559,7 +582,7 @@ class ModelDiscoveryService:
     @staticmethod
     def _browse_logical_nodes(conn, ld_name: str) -> list[str]:
         try:
-            result = iec61850.IedConnection_getLogicalDeviceDirectory(conn, ld_name)
+            result = call_gil_safe(iec61850, "IedConnection_getLogicalDeviceDirectory", conn, ld_name)
             if isinstance(result, (list, tuple)) and len(result) >= 2:
                 ln_list, error = result[0], result[1]
                 if error != iec61850.IED_ERROR_OK:
@@ -584,7 +607,13 @@ class ModelDiscoveryService:
         do_refs = []
 
         try:
-            result = iec61850.IedConnection_getLogicalNodeDirectory(conn, ln_ref, AcsiClass.DATA_OBJECT)
+            result = call_gil_safe(
+                iec61850,
+                "IedConnection_getLogicalNodeDirectory",
+                conn,
+                ln_ref,
+                AcsiClass.DATA_OBJECT,
+            )
             if isinstance(result, (list, tuple)) and len(result) >= 2:
                 do_list, error = result[0], result[1]
                 if error != iec61850.IED_ERROR_OK:
@@ -600,6 +629,11 @@ class ModelDiscoveryService:
         for do_index, do_name in enumerate(do_names, start=1):
             do_ref = f"{ln_ref}.{do_name}"
             cdc, frame_type = self._infer_cdc_and_frame_type(do_name, ln_name)
+
+            if progress is not None:
+                # 在可能耗时较长的 DA/BDA 遍历前先发布半步进度，避免
+                # 首个大型 DO 期间进度看起来完全停住。
+                progress(do_index * 2 - 1, total_dos * 2, do_name)
 
             # 发现 DA
             das = self._discover_data_attributes(conn, do_ref, do_name, ln_name, frame_type, max_depth=max_depth)
@@ -650,7 +684,7 @@ class ModelDiscoveryService:
         da_refs = []
 
         try:
-            result = iec61850.IedConnection_getDataDirectory(conn, do_ref)
+            result = call_gil_safe(iec61850, "IedConnection_getDataDirectory", conn, do_ref)
             if isinstance(result, (list, tuple)) and len(result) >= 2:
                 da_list, error = result[0], result[1]
                 if error != iec61850.IED_ERROR_OK:
@@ -805,7 +839,7 @@ class ModelDiscoveryService:
 
         sub_das = []
         try:
-            result = iec61850.IedConnection_getDataDirectory(conn, parent_ref)
+            result = call_gil_safe(iec61850, "IedConnection_getDataDirectory", conn, parent_ref)
             bda_list = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
 
@@ -879,7 +913,7 @@ class ModelDiscoveryService:
 
         fc = da_info.fc or self._infer_fc_from_da(da_name, do_frame_type)
         try:
-            result = iec61850.IedConnection_getDataDirectory(conn, da_full_ref)
+            result = call_gil_safe(iec61850, "IedConnection_getDataDirectory", conn, da_full_ref)
             sub_list = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
 
@@ -920,7 +954,13 @@ class ModelDiscoveryService:
         datasets = []
 
         try:
-            result = iec61850.IedConnection_getLogicalNodeDirectory(conn, ln_ref, AcsiClass.DATA_SET)
+            result = call_gil_safe(
+                iec61850,
+                "IedConnection_getLogicalNodeDirectory",
+                conn,
+                ln_ref,
+                AcsiClass.DATA_SET,
+            )
             ds_list = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
 
@@ -971,7 +1011,13 @@ class ModelDiscoveryService:
             (AcsiClass.BRCB, "BRCB", "BR"),
         ]:
             try:
-                result = iec61850.IedConnection_getLogicalNodeDirectory(conn, ln_ref, acsi_val)
+                result = call_gil_safe(
+                    iec61850,
+                    "IedConnection_getLogicalNodeDirectory",
+                    conn,
+                    ln_ref,
+                    acsi_val,
+                )
                 rcb_list = result[0] if isinstance(result, (list, tuple)) else result
                 error = result[1] if isinstance(result, (list, tuple)) else 0
 
@@ -1046,7 +1092,13 @@ class ModelDiscoveryService:
         gocbs = []
 
         try:
-            result = iec61850.IedConnection_getLogicalNodeDirectory(conn, ln_ref, AcsiClass.GOOSE)
+            result = call_gil_safe(
+                iec61850,
+                "IedConnection_getLogicalNodeDirectory",
+                conn,
+                ln_ref,
+                AcsiClass.GOOSE,
+            )
             gocb_list = result[0] if isinstance(result, (list, tuple)) else result
             error = result[1] if isinstance(result, (list, tuple)) else 0
 
@@ -1075,7 +1127,7 @@ class ModelDiscoveryService:
         try:
             gocb = iec61850.ClientGooseControlBlock_create(gocb_ref)
             if gocb is not None:
-                result = iec61850.IedConnection_getGoCBValues(conn, gocb_ref, gocb)
+                result = call_gil_safe(iec61850, "IedConnection_getGoCBValues", conn, gocb_ref, gocb)
                 err = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if err != iec61850.IED_ERROR_OK:
                     log.warning(f"getGoCBValues 失败: ref={gocb_ref}, err={err}")

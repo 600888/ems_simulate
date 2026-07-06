@@ -428,7 +428,9 @@ const modelProgressText = computed(() => {
   if (!iec61850ConnectProgress.value) {
     return `${t("device.preparing")} 0% (${iec61850Elapsed.value}s)`;
   }
-  return `${iec61850PhaseText.value} ${Math.round(modelProgressPercent.value)}% (${iec61850Elapsed.value}s)`;
+  return `${iec61850PhaseText.value} ${Math.round(modelProgressPercent.value)}% (${
+    iec61850Elapsed.value
+  }s)`;
 });
 
 let iec61850ProgressTimer: number | null = null;
@@ -443,7 +445,9 @@ const startIec61850ProgressPolling = (
   const runId = ++iec61850ProgressRunId;
   const initialActive = initialProgress?.active ?? initialProgress?.connecting ?? false;
   let observedCurrentDiscovery = mode === "discover" && initialActive;
-  let observedOperationId = observedCurrentDiscovery ? initialProgress?.operation_id : undefined;
+  let observedOperationId = observedCurrentDiscovery
+    ? initialProgress?.operation_id
+    : undefined;
   let pollInFlight = false;
   iec61850ProgressMode = mode;
   iec61850Connecting.value = true;
@@ -493,7 +497,10 @@ const startIec61850ProgressPolling = (
         }
         iec61850ConnectProgress.value = progress;
         if (progress.elapsed_seconds !== undefined) {
-          iec61850Elapsed.value = Math.max(iec61850Elapsed.value, progress.elapsed_seconds);
+          iec61850Elapsed.value = Math.max(
+            iec61850Elapsed.value,
+            progress.elapsed_seconds
+          );
         }
         if (progress.phase === "done" || progress.phase === "failed") {
           stopIec61850ProgressPolling();
@@ -727,12 +734,20 @@ const handleDiscoverModel = async () => {
 
   // 3. 重新发现（MMS 在线遍历）
   modelDiscovering.value = true;
-  startIec61850ProgressPolling("discover");
   // 先让初始进度真正绘制一帧，避免极快任务在浏览器首次渲染前就结束。
   await nextTick();
   await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+  // 先发起发现请求，让后端先开始跟踪进度（避免首次轮询的竞态条件）
+  const discoverPromise = discoverIEC61850Model(
+    routeName.value,
+    HTTP_TIMEOUT_MODEL_DISCOVERY
+  );
+  // 等后端 _begin_progress 执行完毕，确保首次轮询能通过守卫
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+  // 启动进度轮询（此时后端已 active，首次轮询即可通过守卫）
+  startIec61850ProgressPolling("discover");
   try {
-    const success = await discoverIEC61850Model(routeName.value, HTTP_TIMEOUT_MODEL_DISCOVERY);
+    const success = await discoverPromise;
     if (success) {
       iec61850ConnectProgress.value = {
         phase: "done",
