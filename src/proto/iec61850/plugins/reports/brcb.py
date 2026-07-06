@@ -144,6 +144,50 @@ class BrcbHandler:
             return None
 
     @staticmethod
+    def set_rpt_id(connection, rcb_ref: str, rpt_id: str) -> bool:
+        """Write a unique RptId to one disabled BRCB instance."""
+        if not HAS_IEC61850 or not rpt_id:
+            return False
+        conn = connection.connection
+        if not conn:
+            return False
+
+        nref = BrcbHandler._normalize_ref(rcb_ref)
+        rcb = BrcbHandler._create_rcb_block(nref)
+        if not rcb:
+            return False
+
+        try:
+            result = call_gil_safe(iec61850, "IedConnection_getRCBValues", conn, nref, rcb)
+            error = BrcbHandler._extract_error(result)
+            if error != iec61850.IED_ERROR_OK:
+                log.warning(f"设置 BRCB RptId 前读取失败: ref={rcb_ref}, error={error}")
+                return False
+
+            iec61850.ClientReportControlBlock_setRptId(rcb, rpt_id)
+            result = call_gil_safe(
+                iec61850,
+                "IedConnection_setRCBValues",
+                conn,
+                rcb,
+                BrcbHandler.RCB_RPT_ID,
+                True,
+            )
+            error = BrcbHandler._extract_error(result)
+            if error != iec61850.IED_ERROR_OK:
+                log.warning(f"设置 BRCB RptId 失败: ref={rcb_ref}, rpt_id={rpt_id!r}, error={error}")
+                return False
+
+            log.info(f"BRCB RptId 已更新: ref={rcb_ref}, rpt_id={rpt_id!r}")
+            return True
+        except Exception as e:
+            log.error(f"设置 BRCB RptId 异常: ref={rcb_ref}, rpt_id={rpt_id!r}, {e}")
+            return False
+        finally:
+            with contextlib.suppress(Exception):
+                iec61850.ClientReportControlBlock_destroy(rcb)
+
+    @staticmethod
     def set_rpt_ena(
         connection, rcb_ref: str, enable: bool, trg_ops: TrgOps | None = None, opt_fields: OptFields | None = None
     ) -> bool:

@@ -103,7 +103,14 @@ class SclReportTransformer:
             rcb_name = f"{rc.name}{instance_idx:02d}"
         else:
             rcb_name = rc.name
-        rpt_id = rc.rpt_id
+        # libIEC61850 uses RptId as the report routing key. Each expanded RCB
+        # instance needs a distinct value, otherwise all reports are delivered
+        # to the first subscriber and cannot be attributed correctly.
+        base_rpt_id = rc.rpt_id or rc.name
+        if instance_count > 1:
+            rpt_id = f"{base_rpt_id}{instance_idx:02d}"
+        else:
+            rpt_id = base_rpt_id
         data_set_ref = f"{ld.inst}/{ln.ln_name}${rc.dat_set}" if rc.dat_set else ""
 
         # 解析 DataSet 条目

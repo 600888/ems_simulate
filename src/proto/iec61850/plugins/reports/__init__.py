@@ -605,14 +605,29 @@ class ReportsPlugin:
             except Exception as e:
                 log.warning(f"_enable_report: 从缓存读取 RptId 失败: {rcb_ref}, {e}")
 
-        # 如果 RptId 仍为空，记录严重警告
+        # RptEnabled 展开的实例常常仍返回 SCL 中的基础 RptId。使能前将
+        # 实例名尾部编号写入远端 RCB，确保设备上送值和本地订阅值一致。
+        unique_rpt_id = self._derive_instance_rpt_id(rcb_ref, rpt_id)
+        if unique_rpt_id != rpt_id:
+            if rcb_type == "BRCB":
+                rpt_id_updated = BrcbHandler.set_rpt_id(self._connection, rcb_ref, unique_rpt_id)
+            else:
+                rpt_id_updated = UrcbHandler.set_rpt_id(self._connection, rcb_ref, unique_rpt_id)
+
+            if not rpt_id_updated:
+                log.error(
+                    f"_enable_report: 无法为 RCB 写入唯一 RptId: ref={rcb_ref}, old={rpt_id!r}, new={unique_rpt_id!r}"
+                )
+                return False
+
+            rpt_id = unique_rpt_id
+            cached_detail = self._rcb_detail_cache.get(rcb_ref)
+            if cached_detail is not None:
+                cached_detail["rpt_id"] = rpt_id
+
         if not rpt_id:
-            log.warning(
-                f"_enable_report: RptId 为空！"
-                f"部分 libIEC61850 版本中空 RptId 会导致报告回调无法被触发。"
-                f"请检查 IED 的 RCB ({rcb_ref}) 是否配置了 RptId。"
-                f"rcb_type={rcb_type}"
-            )
+            log.error(f"_enable_report: RptId 为空且无法生成唯一值: ref={rcb_ref}, rcb_type={rcb_type}")
+            return False
 
         # 查询数据集成员引用列表，用于报告数据解析时将 data[i] 映射为具体引用
         dataset_members: list[str] = []
@@ -657,6 +672,23 @@ class ReportsPlugin:
 
         log.info(f"report enabled: {rcb_ref}")
         return True
+
+    @staticmethod
+    def _derive_instance_rpt_id(rcb_ref: str, rpt_id: str) -> str:
+        """Derive the runtime RptId from an RptEnabled instance name."""
+        normalized_ref = (rcb_ref or "").replace("$", ".")
+        rcb_name = normalized_ref.rsplit(".", 1)[-1]
+        if not rcb_name:
+            return rpt_id
+
+        suffix_match = re.search(r"(\d{2})$", rcb_name)
+        if not rpt_id:
+            return rcb_name
+        if not suffix_match:
+            return rpt_id
+
+        suffix = suffix_match.group(1)
+        return rpt_id if rpt_id.endswith(suffix) else f"{rpt_id}{suffix}"
 
     def _disable_report(self, rcb_ref: str) -> bool:
         """Disable a report and remove its callback subscription."""

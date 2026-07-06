@@ -35,6 +35,7 @@ class ReportManager:
         self.model_name = model_name
         self._rcb_list: list[dict[str, Any]] = []
         self._rcb_registered_keys: set[tuple[str, str, str]] = set()  # (ld_inst, ln_name, name) O(1) 去重
+        self._registered_rpt_ids: set[str] = set()
         self._model_changed: bool = False
         # IedServer 运行时引用（start() 后注入）
         self._ied_server = None
@@ -144,9 +145,6 @@ class ReportManager:
             log.warning(f"register_rcb [{name}]: 模型未初始化")
             return False
 
-        if not rpt_id:
-            rpt_id = name
-
         # 去重：检查是否已注册过同名 RCB（同一 ld_inst + ln_name + name）
         rcb_key = (ld_inst, ln_name, name)
         if rcb_key in self._rcb_registered_keys:
@@ -164,6 +162,11 @@ class ReportManager:
         if not ln_node:
             log.warning(f"无法注册 RCB: LN 未找到 (ld_inst={ld_inst}, ln_name={ln_name})")
             return False
+
+        requested_rpt_id = rpt_id or name
+        rpt_id = self._make_unique_rpt_id(requested_rpt_id)
+        if rpt_id != requested_rpt_id:
+            log.warning(f"RCB [{name}] 的 RptId [{requested_rpt_id}] 已被占用，自动调整为 [{rpt_id}]")
 
         buffered = rcb_type == "BRCB"
         # 仿真服务端始终支持客户端发起的 GI。厂家 ICD 中经常省略 gi 属性，
@@ -227,6 +230,20 @@ class ReportManager:
         self._rcb_list.append(rcb_info)
         self._model_changed = True
         return api_success
+
+    def _make_unique_rpt_id(self, requested_rpt_id: str) -> str:
+        """返回并预留当前服务模型中唯一的 RptId。"""
+        if requested_rpt_id not in self._registered_rpt_ids:
+            self._registered_rpt_ids.add(requested_rpt_id)
+            return requested_rpt_id
+
+        instance_idx = 2
+        while True:
+            candidate = f"{requested_rpt_id}{instance_idx:02d}"
+            if candidate not in self._registered_rpt_ids:
+                self._registered_rpt_ids.add(candidate)
+                return candidate
+            instance_idx += 1
 
     def _try_api_create(
         self,

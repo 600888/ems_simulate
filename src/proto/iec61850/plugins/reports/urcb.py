@@ -226,6 +226,55 @@ class UrcbHandler:
             return None
 
     @staticmethod
+    def set_rpt_id(connection, rcb_ref: str, rpt_id: str) -> bool:
+        """Write a unique RptId to one disabled URCB instance.
+
+        Unlike other URCB operations this deliberately has no base-name
+        fallback: writing the base RCB would make sibling instances share the
+        same RptId again.
+        """
+        if not HAS_IEC61850 or not rpt_id:
+            return False
+        conn = connection.connection
+        if not conn:
+            return False
+
+        nref = UrcbHandler._normalize_ref(rcb_ref)
+        rcb = UrcbHandler._create_rcb_block(nref)
+        if not rcb:
+            return False
+
+        try:
+            result = call_gil_safe(iec61850, "IedConnection_getRCBValues", conn, nref, rcb)
+            error = UrcbHandler._extract_error(result)
+            if error != iec61850.IED_ERROR_OK:
+                log.warning(f"设置 URCB RptId 前读取失败: ref={rcb_ref}, error={error}")
+                return False
+
+            iec61850.ClientReportControlBlock_setRptId(rcb, rpt_id)
+            result = call_gil_safe(
+                iec61850,
+                "IedConnection_setRCBValues",
+                conn,
+                rcb,
+                UrcbHandler.RCB_RPT_ID,
+                True,
+            )
+            error = UrcbHandler._extract_error(result)
+            if error != iec61850.IED_ERROR_OK:
+                log.warning(f"设置 URCB RptId 失败: ref={rcb_ref}, rpt_id={rpt_id!r}, error={error}")
+                return False
+
+            log.info(f"URCB RptId 已更新: ref={rcb_ref}, rpt_id={rpt_id!r}")
+            return True
+        except Exception as e:
+            log.error(f"设置 URCB RptId 异常: ref={rcb_ref}, rpt_id={rpt_id!r}, {e}")
+            return False
+        finally:
+            with contextlib.suppress(Exception):
+                iec61850.ClientReportControlBlock_destroy(rcb)
+
+    @staticmethod
     def set_rpt_ena(
         connection,
         rcb_ref: str,
