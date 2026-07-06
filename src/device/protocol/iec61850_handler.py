@@ -752,8 +752,15 @@ class IEC61850ClientHandler(ClientHandler):
         return meta.to_dict()
 
     def write_value(self, point: BasePoint, value: Any) -> bool:
-        """写入测点值（发送命令）"""
-        if not self._client or not self.is_running:
+        """写入测点值（发送命令）
+
+        底层 Iec61850Writer.write() 已内置断线重连逻辑，
+        因此此处不拦截 is_running 检查，让 writer 自行处理重连。
+        """
+        if not self._client:
+            return False
+        # 连接尚未就绪（后台线程仍在连接中），不能写入
+        if self._connecting:
             return False
 
         real_to_send = value

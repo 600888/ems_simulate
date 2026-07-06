@@ -164,22 +164,42 @@ class Iec61850Writer:
         try:
             if mms_type is MmsType.FLOAT:
                 error = iec61850.IedConnection_writeFloatValue(conn, ref, fc_val, float(value))
+                if isinstance(error, (list, tuple)):
+                    error = error[1]
+                if error != iec61850.IED_ERROR_OK:
+                    log.error(f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=FLOAT, error={error}")
                 return error == iec61850.IED_ERROR_OK
 
             if mms_type is MmsType.BOOLEAN:
                 error = iec61850.IedConnection_writeBooleanValue(conn, ref, fc_val, self._to_bool(value))
+                if isinstance(error, (list, tuple)):
+                    error = error[1]
+                if error != iec61850.IED_ERROR_OK:
+                    log.error(f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=BOOLEAN, error={error}")
                 return error == iec61850.IED_ERROR_OK
 
             if mms_type is MmsType.INTEGER:
                 error = iec61850.IedConnection_writeInt32Value(conn, ref, fc_val, self._to_int(value))
+                if isinstance(error, (list, tuple)):
+                    error = error[1]
+                if error != iec61850.IED_ERROR_OK:
+                    log.error(f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=INTEGER, error={error}")
                 return error == iec61850.IED_ERROR_OK
 
             if mms_type is MmsType.UNSIGNED:
                 error = iec61850.IedConnection_writeUnsigned32Value(conn, ref, fc_val, self._to_int(value))
+                if isinstance(error, (list, tuple)):
+                    error = error[1]
+                if error != iec61850.IED_ERROR_OK:
+                    log.error(f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=UNSIGNED, error={error}")
                 return error == iec61850.IED_ERROR_OK
 
             if mms_type is MmsType.VISIBLE_STRING:
                 error = iec61850.IedConnection_writeVisibleStringValue(conn, ref, fc_val, str(value))
+                if isinstance(error, (list, tuple)):
+                    error = error[1]
+                if error != iec61850.IED_ERROR_OK:
+                    log.error(f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=VISIBLE_STRING, error={error}")
                 return error == iec61850.IED_ERROR_OK
 
             mms_value = self._new_mms_value(address, value, mms_type)
@@ -188,6 +208,12 @@ class Iec61850Writer:
                 return False
             try:
                 error = iec61850.IedConnection_writeObject(conn, ref, fc_val, mms_value)
+                if isinstance(error, (list, tuple)):
+                    error = error[1]
+                if error != iec61850.IED_ERROR_OK:
+                    log.error(
+                        f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type={mms_type.value}, error={error}"
+                    )
                 return error == iec61850.IED_ERROR_OK
             finally:
                 iec61850.MmsValue_delete(mms_value)
