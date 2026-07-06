@@ -175,6 +175,32 @@ export default {
     reportsManagement: "Reports Management",
     filesExplorer: "Files Explorer",
   },
+  log: {
+    viewer: "System Logs",
+    time: "Time",
+    content: "Content",
+    empty: "No log data available",
+    total: "{count} entries total",
+    autoRefresh: "Auto Refresh",
+    search: "Search logs...",
+    levelCol: "Level",
+    levelFilter: {
+      all: "All Levels",
+    },
+    module: {
+      all: "All Modules",
+      system: "System",
+      web: "Web Service",
+      database: "Database",
+      iec61850: "IEC61850",
+      iec104: "IEC104",
+      simulator: "Simulator",
+    },
+    device: {
+      all: "All Devices",
+    },
+    deviceList: "Devices",
+  },
   addDevice: {
     titleEdit: "Edit Device",
     titleAdd: "Add Device",

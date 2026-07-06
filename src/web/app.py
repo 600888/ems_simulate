@@ -19,6 +19,7 @@ from src.web.api import (
     settings_router,
 )
 from src.web.api.exceptions import BizError
+from src.web.api.log_router import log_router
 from src.web.api.schemas import BaseResponse
 from src.web.api.schemas.response_codes import DEFAULT_MESSAGES, Code
 from src.web.api.scl.router import router as scl_router
@@ -74,6 +75,7 @@ def create_app():
     app.include_router(device_group_router)
     app.include_router(scl_router)
     app.include_router(settings_router)
+    app.include_router(log_router)
 
     # 初始化应用状态
     app.state.initialized = False

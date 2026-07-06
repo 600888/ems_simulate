@@ -21,6 +21,9 @@ export const instance = axios.create({
 // 错误消息去重：避免后端阻塞时多个请求同时超时导致不停弹窗
 let lastErrorMessage = '';
 let lastErrorTime = 0;
+// 最多同时显示 3 条错误消息
+const MAX_ERROR_COUNT = 3;
+const activeErrorMessages: { close: () => void }[] = [];
 
 function showErrorOnce(message: string) {
   const now = Date.now();
@@ -29,7 +32,20 @@ function showErrorOnce(message: string) {
   }
   lastErrorMessage = message;
   lastErrorTime = now;
-  ElMessage.error(message);
+  // 超过上限时关闭最早的一条
+  if (activeErrorMessages.length >= MAX_ERROR_COUNT) {
+    const oldest = activeErrorMessages.shift();
+    oldest?.close();
+  }
+  const msg = ElMessage.error(message);
+  activeErrorMessages.push(msg);
+  // 消息关闭时从数组中移除
+  const origClose = msg.close.bind(msg);
+  msg.close = () => {
+    const idx = activeErrorMessages.indexOf(msg);
+    if (idx !== -1) activeErrorMessages.splice(idx, 1);
+    origClose();
+  };
 }
 
 export function getApiErrorMessage(error: unknown, fallback = '请求失败'): string {

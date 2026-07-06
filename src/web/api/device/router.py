@@ -27,6 +27,7 @@ from src.web.api.schemas import (
     SlaveDeleteRequest,
     SlaveEditRequest,
 )
+from src.web.log import log
 
 # from src.web.ws.manager import manager  # TODO: WebSocket 模块尚未实现
 
@@ -38,6 +39,7 @@ def _get_device(device_name: str, request: Request) -> Device:
     try:
         return request.app.state.device_controller.device_map[device_name]
     except KeyError as exc:
+        log.warning(f"设备 {device_name} 不存在")
         raise NotFoundError(f"设备 {device_name} 不存在") from exc
 
 
@@ -131,6 +133,7 @@ async def start_device(req: DeviceStartRequest, request: Request):
     device = _get_device(req.device_name, request)
     success = await device.start()
     if not success:
+        log.error(f"设备 {req.device_name} 启动失败 (连接被拒绝或超时)")
         raise OperationError("设备启动失败! (连接被拒绝或超时)", data=False)
     return BaseResponse(message="设备启动成功!", data=True)
 
@@ -141,6 +144,7 @@ async def stop_device(req: DeviceStopRequest, request: Request):
     device = _get_device(req.device_name, request)
     success = await device.stop()
     if not success:
+        log.error(f"设备 {req.device_name} 停止失败")
         raise OperationError("设备停止失败!", data=False)
     return BaseResponse(message="设备停止成功!", data=True)
 
@@ -166,6 +170,7 @@ async def import_iec61850_model(req: IEC61850ImportModelRequest, request: Reques
     device = _get_device(req.device_name, request)
     success = await asyncio.to_thread(device.load_iec61850_model, req.icd_path)
     if not success:
+        log.error(f"设备 {req.device_name} IEC61850 模型导入失败: {req.icd_path}")
         raise OperationError("IEC61850 模型导入失败!", data=False)
     return BaseResponse(message="IEC61850 模型导入成功!", data=True)
 
@@ -191,17 +196,21 @@ async def load_iec61850_model(req: DeviceInfoRequest, request: Request):
     channel = next((c for c in channels if c.get("name") == req.device_name), None)
 
     if not channel:
-        raise NotFoundError(f"设备 {req.device_name} 的通道配置不存在")
+        log.warning(f"设备 {req.device_name} 的通道配置不存在")
+        raise NotFoundError(f"设备 {req.device_name} 的通道通道配置不存在")
 
     icd_path = channel.get("icd_path")
     if not icd_path:
+        log.warning(f"设备 {req.device_name} 未存储 ICD 模型路径")
         raise OperationError("数据库中未存储 ICD 模型路径，请先导入模型!", data=False)
 
     if not os.path.exists(icd_path):
+        log.error(f"设备 {req.device_name} 的 ICD 文件不存在: {icd_path}")
         raise OperationError(f"ICD 文件不存在: {icd_path}，请重新导入模型!", data=False)
 
     success = await asyncio.to_thread(device.load_iec61850_model, icd_path)
     if not success:
+        log.error(f"设备 {req.device_name} IEC61850 模型加载失败: {icd_path}")
         raise OperationError("IEC61850 模型加载失败!", data=False)
     return BaseResponse(
         message=f"IEC61850 模型加载成功! 路径: {icd_path}",
@@ -236,6 +245,7 @@ async def load_iec61850_model_from_cache(req: DeviceInfoRequest, request: Reques
     device = _get_device(req.device_name, request)
     success = await asyncio.to_thread(device.iec61850_load_model_from_cache)
     if not success:
+        log.warning(f"设备 {req.device_name} IEC61850 模型缓存不存在或无法读取")
         raise OperationError("IEC61850 模型缓存不存在或无法读取!", data=False)
     return BaseResponse(message="IEC61850 模型从缓存加载成功!", data=True)
 
@@ -253,6 +263,7 @@ async def discover_iec61850_model(req: DeviceInfoRequest, request: Request):
     device = _get_device(req.device_name, request)
     success = await asyncio.to_thread(device.iec61850_remote_discover_model)
     if not success:
+        log.error(f"设备 {req.device_name} IEC61850 远程模型发现失败")
         raise OperationError("IEC61850 远程模型发现失败!", data=False)
     return BaseResponse(message="IEC61850 远程模型发现成功!", data=True)
 
@@ -274,6 +285,7 @@ async def start_auto_read(req: DeviceInfoRequest, request: Request):
     device = _get_device(req.device_name, request)
     success = device.start_auto_read()
     if not success:
+        log.warning(f"设备 {req.device_name} 自动读取已在运行中")
         raise ValidationError("自动读取已在运行中!", data=False)
     return BaseResponse(message="启动自动读取成功!", data=True)
 
@@ -335,6 +347,7 @@ async def add_slave(req: SlaveAddRequest, request: Request):
     device = _get_device(req.device_name, request)
     success = device.add_slave_dynamic(req.slave_id)
     if not success:
+        log.warning(f"设备 {req.device_name} 添加从机失败: slave_id={req.slave_id}")
         raise ValidationError("添加从机失败，请检查从机地址是否有效或已存在!", data=False)
     return BaseResponse(message="添加从机成功!", data=True)
 
@@ -345,6 +358,7 @@ async def delete_slave(req: SlaveDeleteRequest, request: Request):
     device = _get_device(req.device_name, request)
     success = device.delete_slave_dynamic(req.slave_id)
     if not success:
+        log.warning(f"设备 {req.device_name} 删除从机失败: slave_id={req.slave_id}")
         raise OperationError("删除从机失败!", data=False)
     return BaseResponse(message="删除从机成功!", data=True)
 
@@ -355,6 +369,7 @@ async def edit_slave(req: SlaveEditRequest, request: Request):
     device = _get_device(req.device_name, request)
     success = device.edit_slave_dynamic(req.old_slave_id, req.new_slave_id)
     if not success:
+        log.warning(f"设备 {req.device_name} 编辑从机失败: {req.old_slave_id} -> {req.new_slave_id}")
         raise ValidationError("编辑从机失败，请检查新从机地址是否有效或已存在!", data=False)
     return BaseResponse(message="编辑从机成功!", data=True)
 
@@ -391,17 +406,17 @@ async def export_model(req: ExportModelRequest, request: Request):
     from fastapi.responses import FileResponse
     from starlette.background import BackgroundTask
 
-    from src.web.log import log
-
     device = _get_device(req.device_name, request)
 
     # 仅支持 IEC 61850 客户端设备
     if device.protocol_type != ProtocolType.Iec61850Client:
+        log.warning(f"设备 {req.device_name} 导出模型失败: 仅支持 IEC 61850 客户端, 当前类型={device.protocol_type}")
         raise ValidationError("仅支持 IEC 61850 客户端设备导出模型!", data=False)
 
     # 检查客户端是否已连接
     client = device.client
     if not client or not client.is_connected:
+        log.warning(f"设备 {req.device_name} 导出模型失败: 客户端未连接")
         raise ValidationError("IEC 61850 客户端未连接，请先启动设备!", data=False)
 
     # 导出类型映射
@@ -415,6 +430,7 @@ async def export_model(req: ExportModelRequest, request: Request):
     }
 
     if export_type not in type_config:
+        log.warning(f"设备 {req.device_name} 导出模型失败: 不支持的导出类型 {req.export_type}")
         raise ValidationError(f"不支持的导出类型: {req.export_type}，支持: icd/json/xml/csv/tree", data=False)
 
     config = type_config[export_type]
@@ -448,6 +464,7 @@ async def export_model(req: ExportModelRequest, request: Request):
             background=BackgroundTask(_cleanup),
         )
     except RuntimeError as e:
+        log.error(f"设备 {req.device_name} 导出模型失败 (模型未缓存): {e}")
         # IedModel 未缓存
         if tmp_dir in _temp_dirs:
             _temp_dirs.remove(tmp_dir)
@@ -458,5 +475,5 @@ async def export_model(req: ExportModelRequest, request: Request):
         if tmp_dir in _temp_dirs:
             _temp_dirs.remove(tmp_dir)
         shutil.rmtree(tmp_dir, ignore_errors=True)
-        log.error(f"导出模型失败: {e}")
+        log.error(f"设备 {req.device_name} 导出模型失败: {e}")
         raise OperationError(f"导出模型失败: {e}", data=False) from e

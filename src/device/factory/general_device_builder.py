@@ -237,6 +237,7 @@ class GeneralDeviceBuilder:
         self.setDeviceName(name=self.device_name)
         # IEC61850 测点来自 ICD 模型文件，不从数据库导入
         self.initIec61850Server()
+        self.general_device.initLog()
         self.general_device.setSpecialDataPointValues()
         return self.general_device
 
@@ -247,5 +248,6 @@ class GeneralDeviceBuilder:
         self.setDeviceName(name=self.device_name)
         # IEC61850 测点来自 ICD 模型文件或 MMS 在线发现，不从数据库导入
         self.initIec61850Client()
+        self.general_device.initLog()
         self.general_device.setSpecialDataPointValues()
         return self.general_device

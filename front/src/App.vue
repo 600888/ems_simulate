@@ -1,19 +1,24 @@
-<script setup>
+<script setup lang="ts">
 import Sidebar from "./views/SideBar.vue";
 import AppHeader from "@/components/header/AppHeader.vue";
 import TagsView from "@/components/layout/TagsView.vue";
 import SettingsView from "@/views/SettingsView.vue";
+import LogViewerDialog from "@/components/logs/LogViewerDialog.vue";
 import { currentTheme } from "@/utils/theme";
 import { sidebarOverlayMode, closeSidebarOverlay } from "@/components/header/isCollapse";
 import { isTauri, onCloseRequested } from "@/utils/tauri";
-import { ref, watch, onMounted } from "vue";
+import { ref, watch, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { currentLocale, setLocale } from "@/composables/useAppSettings";
 import { visitedViews } from "@/store/tagsView";
+import { getLogErrorCount, resetLogErrorCount } from "@/api/logApi";
 
 const isClosing = ref(false);
 const settingsVisible = ref(false);
+const logVisible = ref(false);
+const logErrorCount = ref(0);
+let errorCountTimer: number | null = null;
 
 // 应用持久化的语言设置
 const { locale: i18nLocale, t } = useI18n();
@@ -31,6 +36,12 @@ const openSettings = () => {
   settingsVisible.value = true;
 };
 
+const openLogs = () => {
+  logErrorCount.value = 0;
+  resetLogErrorCount();
+  logVisible.value = true;
+};
+
 onMounted(async () => {
   if (isTauri()) {
     await onCloseRequested(() => {
@@ -42,13 +53,33 @@ onMounted(async () => {
   // 注意：需要等待 router.isReady() 确保路由已解析，避免 hash 路由下 path 暂时为 '/'
   await router.isReady();
   const currentPath = router.currentRoute.value.path;
-  if ((currentPath === '/' || currentPath === '') && visitedViews.value.length > 0) {
+  if ((currentPath === "/" || currentPath === "") && visitedViews.value.length > 0) {
     const lastView = visitedViews.value[visitedViews.value.length - 1];
     if (lastView.path) {
       router.push(lastView.path);
     }
   }
+
+  // 轮询错误日志数量
+  await fetchLogErrorCount();
+  errorCountTimer = setInterval(fetchLogErrorCount, 1000);
 });
+
+onUnmounted(() => {
+  if (errorCountTimer) {
+    clearInterval(errorCountTimer);
+    errorCountTimer = null;
+  }
+});
+
+async function fetchLogErrorCount() {
+  try {
+    const res = await getLogErrorCount();
+    logErrorCount.value = res.error_count || 0;
+  } catch {
+    // 静默失败
+  }
+}
 </script>
 
 <template>
@@ -58,7 +89,7 @@ onMounted(async () => {
       <div v-if="isClosing" class="closing-overlay">
         <div class="closing-content">
           <div class="closing-spinner"></div>
-          <div class="closing-text">{{ $t('app.closing') }}</div>
+          <div class="closing-text">{{ $t("app.closing") }}</div>
         </div>
       </div>
     </Transition>
@@ -71,7 +102,11 @@ onMounted(async () => {
         @click="closeSidebarOverlay"
       ></div>
       <el-container direction="vertical">
-        <AppHeader @open-settings="openSettings" />
+        <AppHeader
+          @open-settings="openSettings"
+          @open-logs="openLogs"
+          :log-error-count="logErrorCount"
+        />
         <!-- 标签页 -->
         <TagsView />
         <el-main class="main-content">
@@ -84,9 +119,7 @@ onMounted(async () => {
               </router-view>
             </div>
             <!-- 全局底部版权 -->
-            <footer class="app-footer">
-              Copyright © 2026 CDY
-            </footer>
+            <footer class="app-footer">Copyright © 2026 CDY</footer>
           </el-scrollbar>
         </el-main>
       </el-container>
@@ -104,6 +137,9 @@ onMounted(async () => {
   >
     <SettingsView />
   </el-dialog>
+
+  <!-- 日志查看器 -->
+  <LogViewerDialog v-model:visible="logVisible" />
 </template>
 
 <style lang="scss">
@@ -212,7 +248,9 @@ onMounted(async () => {
 }
 
 @keyframes closing-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .close-fade-enter-active {

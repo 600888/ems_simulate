@@ -174,6 +174,32 @@ export default {
     reportsManagement: "报告管理",
     filesExplorer: "文件浏览",
   },
+  log: {
+    viewer: "系统日志",
+    time: "时间",
+    content: "内容",
+    empty: "暂无日志数据",
+    total: "共 {count} 条日志",
+    autoRefresh: "自动刷新",
+    search: "搜索日志",
+    levelCol: "等级",
+    levelFilter: {
+      all: "全部等级",
+    },
+    module: {
+      all: "全部模块",
+      system: "系统",
+      web: "Web服务",
+      database: "数据库",
+      iec61850: "IEC61850",
+      iec104: "IEC104",
+      simulator: "模拟器",
+    },
+    device: {
+      all: "全部设备",
+    },
+    deviceList: "设备列表",
+  },
   addDevice: {
     titleEdit: "编辑设备",
     titleAdd: "添加设备",

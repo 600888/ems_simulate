@@ -11,7 +11,7 @@
       </el-breadcrumb-item>
     </el-breadcrumb>
     <div class="breadcrumb-divider"></div>
-    
+
     <div class="link-container">
       <!-- Language Switch -->
       <el-icon
@@ -20,7 +20,7 @@
         :title="currentLocale === 'zh-CN' ? 'Switch to English' : '切换到中文'"
         @click="toggleLang"
       >
-        <span class="lang-text">{{ currentLocale === 'zh-CN' ? 'EN' : '中' }}</span>
+        <span class="lang-text">{{ currentLocale === "zh-CN" ? "EN" : "中" }}</span>
       </el-icon>
 
       <!-- SCL Management -->
@@ -29,9 +29,30 @@
       </router-link>
 
       <!-- GOOSE Management -->
-      <router-link to="/goose" class="icon-link goose-link" :title="t('header.gooseManagement')">
+      <router-link
+        to="/goose"
+        class="icon-link goose-link"
+        :title="t('header.gooseManagement')"
+      >
         <el-icon :size="24" color="var(--text-secondary)"><Connection /></el-icon>
       </router-link>
+
+      <!-- Log Viewer Button -->
+      <el-badge
+        :value="logErrorCount"
+        :hidden="logErrorCount <= 0"
+        :max="999"
+        class="log-badge"
+      >
+        <el-icon
+          :size="24"
+          class="icon-link clickable log-btn"
+          :title="t('log.viewer')"
+          @click="emit('open-logs')"
+        >
+          <Document />
+        </el-icon>
+      </el-badge>
 
       <!-- Settings Button -->
       <el-icon
@@ -49,27 +70,43 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { Expand, Fold, Connection, Setting, Files } from "@element-plus/icons-vue";
+import {
+  Expand,
+  Fold,
+  Connection,
+  Setting,
+  Files,
+  Document,
+} from "@element-plus/icons-vue";
 import { useRoute } from "vue-router";
 import { isCollapse, sidebarOverlayMode } from "./isCollapse";
 import { currentLocale, setLocale } from "@/composables/useAppSettings";
-import type { LocaleType } from '@/i18n'
+import type { LocaleType } from "@/i18n";
 
-const { t, locale } = useI18n()
-const emit = defineEmits(['open-settings'])
+const { t, locale } = useI18n();
+const emit = defineEmits(["open-settings", "open-logs"]);
+
+const props = withDefaults(
+  defineProps<{
+    logErrorCount?: number;
+  }>(),
+  {
+    logErrorCount: 0,
+  }
+);
 
 function toggleLang() {
-  const newLocale: LocaleType = currentLocale.value === 'zh-CN' ? 'en-US' : 'zh-CN'
-  setLocale(newLocale)
-  locale.value = newLocale
+  const newLocale: LocaleType = currentLocale.value === "zh-CN" ? "en-US" : "zh-CN";
+  setLocale(newLocale);
+  locale.value = newLocale;
 }
 
 const route = useRoute();
 const breadList = ref<any[]>([]);
 
 const openSettings = () => {
-  emit('open-settings')
-}
+  emit("open-settings");
+};
 
 const setCollapse = (val: boolean) => {
   // small 断点 (< 1200px): 切换 overlay 弹出模式
@@ -83,27 +120,21 @@ const setCollapse = (val: boolean) => {
 
 // 过滤有效路由并生成面包屑
 const updateBreadcrumb = () => {
-  if (route.name === 'device-detail' || route.path.startsWith('/device/')) {
+  if (route.name === "device-detail" || route.path.startsWith("/device/")) {
     const deviceName = route.params.deviceName;
     breadList.value = [
-      { path: route.path, meta: { title: deviceName || t('header.deviceDetail') } }
+      { path: route.path, meta: { title: deviceName || t("header.deviceDetail") } },
     ];
-  } else if (route.path.startsWith('/goose')) {
+  } else if (route.path.startsWith("/goose")) {
+    breadList.value = [{ path: "/goose", meta: { title: t("header.gooseManagement") } }];
+  } else if (route.path.startsWith("/reports")) {
     breadList.value = [
-      { path: '/goose', meta: { title: t('header.gooseManagement') } }
+      { path: "/reports", meta: { title: t("header.reportsManagement") } },
     ];
-  } else if (route.path.startsWith('/reports')) {
-    breadList.value = [
-      { path: '/reports', meta: { title: t('header.reportsManagement') } }
-    ];
-  } else if (route.path.startsWith('/files')) {
-    breadList.value = [
-      { path: '/files', meta: { title: t('header.filesExplorer') } }
-    ];
-  } else if (route.path.startsWith('/scl')) {
-    breadList.value = [
-      { path: '/scl/manager', meta: { title: t('scl.title') } }
-    ];
+  } else if (route.path.startsWith("/files")) {
+    breadList.value = [{ path: "/files", meta: { title: t("header.filesExplorer") } }];
+  } else if (route.path.startsWith("/scl")) {
+    breadList.value = [{ path: "/scl/manager", meta: { title: t("scl.title") } }];
   } else {
     breadList.value = route.matched.filter((item) => item.meta?.title);
   }
@@ -122,7 +153,7 @@ watch(() => route.path, updateBreadcrumb, { immediate: true });
   border-bottom: 1px solid var(--sidebar-border);
   transition: all 0.3s;
 
-  @include bp.respond-to('medium-down') {
+  @include bp.respond-to("medium-down") {
     padding: 0 10px;
 
     .el-breadcrumb {
@@ -134,21 +165,21 @@ watch(() => route.path, updateBreadcrumb, { immediate: true });
     }
   }
 
-  @include bp.respond-to('small') {
+  @include bp.respond-to("small") {
     padding: 0 8px;
 
     .el-breadcrumb {
       font-size: 12px;
     }
   }
-  
+
   .collapse-icon {
     font-size: 20px;
     margin-right: 20px;
     color: var(--text-secondary);
     cursor: pointer;
     transition: color 0.3s;
-    
+
     &:hover {
       color: var(--color-primary);
     }
@@ -167,14 +198,14 @@ watch(() => route.path, updateBreadcrumb, { immediate: true });
     color: var(--text-secondary);
     transition: all 0.3s;
     text-decoration: none;
-    
+
     &:hover {
       opacity: 0.8;
-      
+
       path {
         fill: var(--color-primary);
       }
-      
+
       .el-icon {
         color: var(--color-primary);
       }
@@ -183,6 +214,22 @@ watch(() => route.path, updateBreadcrumb, { immediate: true });
 
   .clickable {
     cursor: pointer;
+  }
+
+  .log-btn {
+    position: relative;
+
+    &:hover {
+      .el-icon {
+        color: var(--color-primary) !important;
+      }
+    }
+  }
+
+  .log-badge {
+    :deep(.el-badge__content) {
+      z-index: 1;
+    }
   }
 
   .lang-text {
@@ -197,7 +244,7 @@ watch(() => route.path, updateBreadcrumb, { immediate: true });
     position: relative;
 
     &::after {
-      content: '';
+      content: "";
       position: absolute;
       bottom: -2px;
       left: 50%;
@@ -221,12 +268,12 @@ watch(() => route.path, updateBreadcrumb, { immediate: true });
     color: var(--text-secondary) !important;
     font-weight: 500;
     transition: color 0.3s;
-    
+
     &.is-link:hover {
       color: var(--color-primary) !important;
     }
   }
-  
+
   :deep(.el-breadcrumb__item:last-child .el-breadcrumb__inner) {
     color: var(--text-primary) !important;
     font-weight: 600;
