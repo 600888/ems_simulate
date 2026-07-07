@@ -446,6 +446,28 @@ class IEC61850ClientHandler(ClientHandler):
                 for ld in model.lds:
                     for ln in ld.lns:
                         for rcb in ln.rcb_list:
+                            # 将 RCBRef 中的 TrgOps/OptFields 位图转为前端 dict 格式
+                            trg_map = {
+                                "dchg": bool(rcb.trg_ops & 0x01),
+                                "qchg": bool(rcb.trg_ops & 0x02),
+                                "dupd": bool(rcb.trg_ops & 0x04),
+                                "period": bool(rcb.trg_ops & 0x08),
+                                "gi": bool(rcb.trg_ops & 0x10),
+                            }
+                            opt_map = {
+                                "seq_num": bool(rcb.opt_fields & 0x01),
+                                "time_stamp": bool(rcb.opt_fields & 0x02),
+                                "reason_code": bool(rcb.opt_fields & 0x04),
+                                "data_set": bool(rcb.opt_fields & 0x08),
+                                "data_ref": bool(rcb.opt_fields & 0x10),
+                                "buf_ovfl": bool(rcb.opt_fields & 0x20),
+                                "entry_id": bool(rcb.opt_fields & 0x40),
+                                "config_ref": bool(rcb.opt_fields & 0x80),
+                            }
+                            # 构建完整 DataSet 引用路径（MMS 格式: LD/LN.dataset）
+                            ds_ref = rcb.dat_set
+                            if ds_ref and "/" not in ds_ref and ld.name:
+                                ds_ref = f"{ld.name}/{ln.name}.{ds_ref}"
                             self._discovered_rcbs.append(
                                 {
                                     "ref": rcb.ref,
@@ -453,9 +475,11 @@ class IEC61850ClientHandler(ClientHandler):
                                     "rcb_type": rcb.rcb_type,
                                     "ld": ld.name,
                                     "ln": ln.name,
-                                    "data_set_ref": rcb.dat_set,
+                                    "data_set_ref": ds_ref,
                                     "intg_period": rcb.intg_pd,
                                     "rpt_ena": False,
+                                    "trg_ops": trg_map,
+                                    "opt_fields": opt_map,
                                 }
                             )
         except Exception as e:

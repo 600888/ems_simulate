@@ -1026,7 +1026,9 @@ class ModelDiscoveryService:
 
                 rcb_names = get_list_from_linked_list(rcb_list)
                 for rcb_name in rcb_names:
-                    dat_set, intg_pd = self._read_rcb_detail(conn, ld_name, ln_ref, rcb_name, fc_seg)
+                    dat_set, intg_pd, trg_ops_bitmap, opt_fields_bitmap = self._read_rcb_detail(
+                        conn, ld_name, ln_ref, rcb_name, fc_seg
+                    )
                     rcbs.append(
                         RCBRef(
                             name=rcb_name,
@@ -1034,20 +1036,24 @@ class ModelDiscoveryService:
                             rcb_type=type_name,
                             dat_set=dat_set,
                             intg_pd=intg_pd,
+                            trg_ops=trg_ops_bitmap,
+                            opt_fields=opt_fields_bitmap,
                         )
                     )
             except Exception:
                 pass
         return rcbs
 
-    def _read_rcb_detail(self, conn, ld_name: str, ln_ref: str, rcb_name: str, fc_seg: str) -> tuple[str, int]:
-        """读取 RCB 的 datSet 和 intgPd 属性
+    def _read_rcb_detail(
+        self, conn, ld_name: str, ln_ref: str, rcb_name: str, fc_seg: str
+    ) -> tuple[str, int, int, int]:
+        """读取 RCB 的 datSet、intgPd、TrgOps、OptFields 属性
 
         使用完整参考路径(含 FC 段)读取 RCB 值。
         失败时静默返回空值，不阻断发现流程。
 
         Returns:
-            (dat_set, intg_pd) 二元组
+            (dat_set, intg_pd, trg_ops_bitmap, opt_fields_bitmap) 四元组
         """
         ln_name = ln_ref.split("/", 1)[-1] if "/" in ln_ref else ln_ref
         nref = f"{ld_name}/{ln_name}.{fc_seg}.{rcb_name}"
@@ -1078,14 +1084,26 @@ class ModelDiscoveryService:
                     except Exception:
                         pass
 
-                    return (dat_set, intg_pd)
+                    trg_ops = 0x11  # 默认 dchg=True, gi=True
+                    try:
+                        trg_ops = int(iec61850.ClientReportControlBlock_getTrgOps(rcb) or 0)
+                    except Exception:
+                        pass
+
+                    opt_fields = 0x4F  # 默认最常用组合
+                    try:
+                        opt_fields = int(iec61850.ClientReportControlBlock_getOptFlds(rcb) or 0)
+                    except Exception:
+                        pass
+
+                    return (dat_set, intg_pd, trg_ops, opt_fields)
         except Exception:
             pass
         finally:
             if rcb is not None:
                 with contextlib.suppress(Exception):
                     iec61850.ClientReportControlBlock_destroy(rcb)
-        return ("", 0)
+        return ("", 0, 0x11, 0x4F)
 
     def _discover_gocbs(self, conn, ld_name: str, ln_ref: str) -> list[GoCBRef]:
         """发现 LN 下所有 GoCB (含完整信息)"""

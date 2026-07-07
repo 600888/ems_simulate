@@ -228,12 +228,47 @@ class SclServerModelBuilder:
     def _build_rcb(rc, ld_inst: str, ln_name: str) -> RCBRef:
         """构建 RCBRef"""
         rcb_type = "BRCB" if rc.buffered else "URCB"
+        # 将 SclTrgOps/SclOptFields 转为位图
+        trg = rc.trg_ops
+        trg_ops_bitmap = 0
+        if trg.dchg:
+            trg_ops_bitmap |= 0x01
+        if trg.qchg:
+            trg_ops_bitmap |= 0x02
+        if trg.dupd:
+            trg_ops_bitmap |= 0x04
+        if trg.period:
+            trg_ops_bitmap |= 0x08
+        if trg.gi:
+            trg_ops_bitmap |= 0x10
+
+        opt = rc.opt_fields
+        opt_fields_bitmap = 0
+        if opt.seq_num:
+            opt_fields_bitmap |= 0x01
+        if opt.time_stamp:
+            opt_fields_bitmap |= 0x02
+        if opt.reason_code:
+            opt_fields_bitmap |= 0x04
+        if opt.data_set:
+            opt_fields_bitmap |= 0x08
+        if opt.data_ref:
+            opt_fields_bitmap |= 0x10
+        if opt.buf_ovfl:
+            opt_fields_bitmap |= 0x20
+        if opt.entry_id:
+            opt_fields_bitmap |= 0x40
+        if opt.config_ref:
+            opt_fields_bitmap |= 0x80
+
         return RCBRef(
             name=rc.name,
             ref=f"{ld_inst}/{ln_name}.{rc.name}",
             rcb_type=rcb_type,
             dat_set=rc.dat_set,
             intg_pd=rc.intg_period,
+            trg_ops=trg_ops_bitmap,
+            opt_fields=opt_fields_bitmap,
         )
 
     @staticmethod

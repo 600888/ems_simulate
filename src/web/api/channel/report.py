@@ -277,6 +277,28 @@ def _mark_rcb_disabled(channel_id: int, rcb_ref: str, request: Request) -> dict[
     return None
 
 
+def _mark_rcb_enabled(channel_id: int, rcb_ref: str, request: Request) -> dict[str, Any] | None:
+    """使能报告后直接从缓存更新 rpt_ena=True
+
+    与 _mark_rcb_disabled 对称，不依赖 MMS 读取，
+    避免读 RCB 与报告回调竞争导致的 C 层崩溃。
+
+    Returns:
+        更新后的 RCB 字典，失败返回 None
+    """
+    handler = _get_client_handler(channel_id, request)
+    if not handler or not hasattr(handler, "get_discovered_rcbs"):
+        return None
+
+    for rcb in handler.get_discovered_rcbs():
+        if rcb.get("ref") == rcb_ref:
+            rcb["rpt_ena"] = True
+            if hasattr(handler, "update_discovered_rcb"):
+                handler.update_discovered_rcb(rcb_ref, rcb)
+            return rcb
+    return None
+
+
 def _select_report_entry(
     data: list[dict[str, Any]], entry_key: str | None, latest: bool
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -344,8 +366,10 @@ async def apply_report_config(body: RcbApplyConfigRequest, request: Request):
         raise OperationError(f"报告{action}失败", data={"success": False})
 
     if body.rpt_ena:
-        # 使能成功: 读取单个 RCB 最新状态并更新缓存
-        updated = _refresh_single_rcb(reports, body.rcb_ref, body.channel_id, request)
+        # 使能成功: 先直接更新缓存 rpt_ena=True（不依赖 MMS 避免竞争）
+        updated = _mark_rcb_enabled(body.channel_id, body.rcb_ref, request)
+        # 再最佳努力从 IED 刷新完整实时状态（MMS 失败不影响缓存一致性）
+        _refresh_single_rcb(reports, body.rcb_ref, body.channel_id, request)
     else:
         # 禁用成功: 不立即调用 get_rcb_detail (可能触发 C 层竞争崩溃)
         # 直接从缓存更新 rpt_ena=False

@@ -174,6 +174,15 @@ class RCBRef:
     rcb_type: str = ""  # "URCB" / "BRCB"
     dat_set: str = ""  # 引用的 DataSet 名称
     intg_pd: int = 0  # 完整性周期(毫秒), URCB 专用
+    # TrgOps 位图: bit0=dchg(0x01), bit1=qchg(0x02), bit2=dupd(0x04),
+    #              bit3=period(0x08), bit4=gi(0x10)
+    # 默认值 0x11 = dchg=True, gi=True
+    trg_ops: int = 0x11
+    # OptFields 位图: bit0=seq_num(0x01), bit1=time_stamp(0x02), bit2=reason_code(0x04),
+    #                 bit3=data_set(0x08), bit4=data_ref(0x10), bit5=buf_ovfl(0x20),
+    #                 bit6=entry_id(0x40), bit7=config_ref(0x80)
+    # 默认值 0x4F = seq_num, time_stamp, reason_code, data_set, entry_id
+    opt_fields: int = 0x4F
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {"name": self.name, "ref": self.ref, "type": self.rcb_type}
@@ -181,6 +190,9 @@ class RCBRef:
             result["datSet"] = self.dat_set
         if self.intg_pd:
             result["intgPd"] = self.intg_pd
+        # 始终序列化位图，确保缓存加载时能恢复
+        result["trgOps"] = self.trg_ops
+        result["optFields"] = self.opt_fields
         return result
 
     @classmethod
@@ -191,6 +203,8 @@ class RCBRef:
             rcb_type=data.get("type", ""),
             dat_set=data.get("datSet", ""),
             intg_pd=data.get("intgPd", 0),
+            trg_ops=data.get("trgOps", 0x11),
+            opt_fields=data.get("optFields", 0x4F),
         )
 
 

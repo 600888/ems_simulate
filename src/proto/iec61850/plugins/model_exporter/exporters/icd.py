@@ -1009,15 +1009,22 @@ class IcdExporter:
                 # 如果有intgPd(完整性周期)，则加入ReportControl的属性中(仅URCB)
                 if rcb.intg_pd:
                     item["@intgPd"] = str(rcb.intg_pd)
-                item["TrgOps"] = {"@dchg": "true", "@qchg": "false", "@dupd": "false", "@period": "false"}
+                item["TrgOps"] = {
+                    "@dchg": "true" if rcb.trg_ops & 0x01 else "false",
+                    "@qchg": "true" if rcb.trg_ops & 0x02 else "false",
+                    "@dupd": "true" if rcb.trg_ops & 0x04 else "false",
+                    "@period": "true" if rcb.trg_ops & 0x08 else "false",
+                    "@gi": "true" if rcb.trg_ops & 0x10 else "false",
+                }
                 item["OptFields"] = {
-                    "@seqNum": "false",
-                    "@timeStamp": "false",
-                    "@dataSet": "false",
-                    "@reasonCode": "false",
-                    "@dataRef": "false",
-                    "@entryID": "false",
-                    "@configRef": "false",
+                    "@seqNum": "true" if rcb.opt_fields & 0x01 else "false",
+                    "@timeStamp": "true" if rcb.opt_fields & 0x02 else "false",
+                    "@reasonCode": "true" if rcb.opt_fields & 0x04 else "false",
+                    "@dataSet": "true" if rcb.opt_fields & 0x08 else "false",
+                    "@dataRef": "true" if rcb.opt_fields & 0x10 else "false",
+                    "@bufOvfl": "true" if rcb.opt_fields & 0x20 else "false",
+                    "@entryID": "true" if rcb.opt_fields & 0x40 else "false",
+                    "@configRef": "true" if rcb.opt_fields & 0x80 else "false",
                 }
                 item["RptEnabled"] = {"@max": "1"}
                 item["_count"] = 1

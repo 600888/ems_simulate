@@ -11,6 +11,8 @@ import threading
 import time
 from typing import Any, Optional
 
+from src.proto.iec61850.core import Iec61850Connection
+
 from ...core.linked_list import get_list_from_linked_list
 from ...defs.constants import HAS_IEC61850, AcsiClass
 from ...defs.types import OptFields, RCBInfo, ReportDataEntry, TrgOps
@@ -411,6 +413,8 @@ class ReportsPlugin:
                         reserved=reserved,
                         active=active,
                         locked=bool(not active and (reserved or detail.rpt_ena)),
+                        data_set_ref=detail.data_set_ref or item.get("data_set_ref", ""),
+                        intg_period=detail.intg_period or item.get("intg_period", 0),
                     )
                     self._rcb_detail_cache[rcb_ref] = item
             except Exception as e:
@@ -472,6 +476,11 @@ class ReportsPlugin:
 
         if rpt_ena != current_rpt_ena:
             if rpt_ena:
+                # 使能前先写入 TrgOps/OptFields（RptEna=False 时才能修改这些属性）
+                if trg_ops is not None or opt_fields is not None:
+                    config_ok = self._set_config(rcb_ref, trg_ops, opt_fields)
+                    if not config_ok:
+                        log.warning(f"使能前设置 TrgOps/OptFields 失败, 继续尝试使能: {rcb_ref}")
                 return self._enable_report(rcb_ref, on_report=on_report)
             return self._disable_report(rcb_ref)
 
@@ -750,17 +759,26 @@ class ReportsPlugin:
         不允许退化为逐成员 ``readObject``，避免大 DataSet 触发大量 MMS 请求。
         """
         ReportCallbackHandler.mark_pending_gi(rcb_ref)
-        detail = self._rcb_detail_cache.get(rcb_ref) or {}
-        data_set_ref = str(detail.get("data_set_ref") or "")
-        rpt_id = str(detail.get("rpt_id") or "")
-        conf_rev = int(detail.get("conf_rev") or 1)
 
-        if not data_set_ref:
-            fresh = self.get_rcb_detail(rcb_ref) or {}
+        # 强制从 IED 获取最新 data_set_ref，覆盖缓存/SCL 中的差异。
+        # 在线发现模式从 ClientReportControlBlock_getDataSetReference 获取
+        # 纯 DataSet 名（无 LN$ 前缀），而 SCL 缓存可能拼入 LN 前缀，导致
+        # MMS readNamedVariableListValues 找不到对象（MMS error 81）。
+        fresh = None
+        try:
+            fresh = self.get_rcb_detail(rcb_ref)
+        except Exception as e:
+            log.debug(f"get_rcb_detail exception: {rcb_ref}, {e}")
+
+        if fresh:
             self._rcb_detail_cache[rcb_ref] = fresh
-            data_set_ref = str(fresh.get("data_set_ref") or "")
-            rpt_id = rpt_id or str(fresh.get("rpt_id") or "")
-            conf_rev = int(fresh.get("conf_rev") or conf_rev or 1)
+        else:
+            fresh = {}
+
+        data_set_ref = str((fresh or self._rcb_detail_cache.get(rcb_ref) or {}).get("data_set_ref") or "")
+        log.info(f"URCB GI 调试: rcb_ref={rcb_ref}, fresh_from_ied=bool({bool(fresh)}), data_set_ref={data_set_ref!r}")
+        rpt_id = str((fresh or {}).get("rpt_id") or self._rcb_detail_cache.get(rcb_ref, {}).get("rpt_id") or "")
+        conf_rev = int((fresh or {}).get("conf_rev") or self._rcb_detail_cache.get(rcb_ref, {}).get("conf_rev") or 1)
 
         if not data_set_ref:
             log.warning(f"URCB 软件 GI 失败: RCB 未绑定 DataSet, ref={rcb_ref}")
