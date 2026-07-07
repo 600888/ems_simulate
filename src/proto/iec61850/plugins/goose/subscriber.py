@@ -10,12 +10,27 @@ import threading
 import time
 from typing import Any
 
+from pyiec61850 import pyiec61850 as iec61850
+
 from ...defs.constants import HAS_IEC61850
 from ...log import log
 from .types import GooseState, GooseSubscriptionInfo, MmsType, ReceiverConfig
 
-if HAS_IEC61850:
-    from pyiec61850 import pyiec61850 as iec61850
+
+class _PyGooseHandler(iec61850.GooseHandler):
+    """GooseHandler SWIG director 子类，将 C++ trigger() 回调转发到 Python"""
+
+    def __init__(self, receiver: GooseReceiver):
+        super().__init__()
+        self._receiver = receiver
+
+    def trigger(self):
+        """C++ 层收到 GOOSE 报文时调用"""
+        try:
+            subscriber = self._libiec61850_goose_subscriber
+            self._receiver._on_goose_message(subscriber)
+        except Exception as e:
+            log.error(f"GOOSE handler 异常: {e}")
 
 
 class _DataSetParser:
@@ -106,6 +121,11 @@ class GooseReceiver:
 
         # 底层
         self._receiver: Any = None
+        self._subscriber_handles: list[Any] = []
+
+        # SWIG director handler (防止 GC)
+        self._goose_handlers: list[Any] = []
+        self._goose_subscriber_py_list: list[Any] = []
 
         # 状态监控
         self._monitor_stop = threading.Event()
@@ -175,7 +195,7 @@ class GooseReceiver:
 
     # ===== 报文处理 =====
 
-    def _on_goose_message(self, subscriber: Any, parameter: Any = None) -> None:
+    def _on_goose_message(self, subscriber: Any) -> None:
         """GOOSE 报文接收回调 (底层 C 回调的 Python 包装)"""
         try:
             go_cb_ref = iec61850.GooseSubscriber_getGoCbRef(subscriber) or ""
@@ -230,8 +250,9 @@ class GooseReceiver:
             # 添加所有订阅者
             with self._lock:
                 for go_cb_ref, sub in self._subscriptions.items():
-                    data_set_ref = sub.data_set_ref if sub.data_set_ref else None
-                    subscriber = iec61850.GooseSubscriber_create(go_cb_ref, data_set_ref)
+                    # v1.6.1.0+ dataSetValues 必须非 NULL，使用空数组
+                    empty_ds = iec61850.MmsValue_createEmptyArray(0)
+                    subscriber = iec61850.GooseSubscriber_create(go_cb_ref, empty_ds)
                     if not subscriber:
                         log.warning(f"GooseSubscriber_create 失败: {go_cb_ref}")
                         continue
@@ -241,9 +262,19 @@ class GooseReceiver:
                     if sub.dst_mac:
                         iec61850.GooseSubscriber_setDstMac(subscriber, sub.dst_mac)
 
-                    iec61850.GooseSubscriber_setListener(subscriber, self._on_goose_message, None)
+                    # 使用 SWIG director 机制设置 Python 回调
+                    # (GooseSubscriber_setListener 在 pyiec61850-ng 中不可用)
+                    goose_handler = _PyGooseHandler(self)
+                    goose_subscriber_py = iec61850.GooseSubscriberForPython()
+                    goose_subscriber_py.setLibiec61850GooseSubscriber(subscriber)
+                    goose_subscriber_py.setEventHandler(goose_handler)
+                    goose_subscriber_py.subscribe()
+
+                    self._goose_handlers.append(goose_handler)
+                    self._goose_subscriber_py_list.append(goose_subscriber_py)
 
                     iec61850.GooseReceiver_addSubscriber(self._receiver, subscriber)
+                    self._subscriber_handles.append(subscriber)
 
             # 启动接收线程
             iec61850.GooseReceiver_start(self._receiver)
@@ -259,6 +290,9 @@ class GooseReceiver:
         except Exception as e:
             log.error(f"GOOSE Receiver 启动失败: {e}")
             self._is_running = False
+            self._subscriber_handles.clear()
+            self._goose_handlers.clear()
+            self._goose_subscriber_py_list.clear()
             return False
 
     def stop(self) -> None:
@@ -269,6 +303,13 @@ class GooseReceiver:
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=2.0)
 
+        # 先切断 SWIG director 链接，再销毁 C++ 对象
+        for py_sub in self._goose_subscriber_py_list:
+            try:
+                py_sub.deleteEventHandler()
+            except Exception:
+                pass
+
         if self._receiver:
             try:
                 iec61850.GooseReceiver_stop(self._receiver)
@@ -276,6 +317,14 @@ class GooseReceiver:
             except Exception as e:
                 log.error(f"GOOSE Receiver 停止异常: {e}")
             self._receiver = None
+        self._subscriber_handles.clear()
+
+        # 防止 SWIG 对已释放的 C++ handler 调用析构函数
+        for handler in self._goose_handlers:
+            if hasattr(handler, "thisown"):
+                handler.thisown = 0
+        self._goose_handlers.clear()
+        self._goose_subscriber_py_list.clear()
 
         # 清理订阅状态
         with self._lock:

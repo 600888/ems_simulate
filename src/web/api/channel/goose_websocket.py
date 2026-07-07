@@ -89,6 +89,7 @@ class WebSocketSessionManager:
         self._capture_instance: Any | None = None
         self._capture_callback_registered = False
         self._capture_started = False
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     # ---- 连接管理 ----
 
@@ -96,6 +97,7 @@ class WebSocketSessionManager:
         """接受并注册一个新的 WebSocket 连接"""
         try:
             await ws.accept()
+            self._loop = asyncio.get_running_loop()
             with self._lock:
                 self._connections.add(ws)
             log.info(f"GOOSE WebSocket 客户端已连接, 当前连接数: {len(self._connections)}")
@@ -145,16 +147,18 @@ class WebSocketSessionManager:
         将广播任务调度到主事件循环中执行。
         """
         try:
-            loop = _get_event_loop()
+            loop = self._loop or _get_event_loop()
             if loop is None or loop.is_closed():
                 log.warning("事件循环不可用，跳过 GOOSE 报文推送")
                 return
+
+            packet_data = packet_dict.to_dict() if hasattr(packet_dict, "to_dict") else packet_dict
 
             asyncio.run_coroutine_threadsafe(
                 self.broadcast(
                     {
                         "type": MsgType.PACKET,
-                        "data": packet_dict,
+                        "data": packet_data,
                     }
                 ),
                 loop,
@@ -221,10 +225,9 @@ class WebSocketSessionManager:
             capture.set_app_id_filter(filter_app_id)
 
         # 注册回调 — 用于实时推送（只需注册一次）
-        if not self._capture_callback_registered:
-            capture.set_callback(self._on_packet_captured)
-            self._capture_callback_registered = True
-            self._capture_instance = capture
+        capture.set_callback(self._on_packet_captured)
+        self._capture_callback_registered = True
+        self._capture_instance = capture
 
         success = capture.start()
         if success:
@@ -267,6 +270,7 @@ class WebSocketSessionManager:
                 capture.signal_stop()
 
         self._capture_started = False
+        self._capture_callback_registered = False
         log.info("WebSocket 停止 GOOSE 抓包")
         await self.send_to(
             ws,

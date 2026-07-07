@@ -387,6 +387,7 @@ class GooseCaptureEngine:
         self._lock = threading.Lock()
         self._capture_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        self._started_event = threading.Event()
         self._is_running = False
         self._packet_count = 0
 
@@ -421,6 +422,7 @@ class GooseCaptureEngine:
             return True
 
         self._stop_event.clear()
+        self._started_event.clear()
         self._capture_thread = threading.Thread(
             target=self._capture_loop,
             daemon=True,
@@ -428,7 +430,7 @@ class GooseCaptureEngine:
         self._capture_thread.start()
 
         # 等待线程启动
-        self._stop_event.wait(0.5)
+        self._started_event.wait(0.5)
         if not self._is_running:
             if self._capture_thread.is_alive():
                 self._stop_event.set()
@@ -513,6 +515,9 @@ class GooseCaptureEngine:
 
     def _capture_loop(self) -> None:
         """捕获主循环"""
+        if platform.system().lower() == "windows" and self._capture_loop_scapy():
+            return
+
         sock = None
         try:
             sock = _RawSocketProvider.create(self.interface)
@@ -521,7 +526,7 @@ class GooseCaptureEngine:
                 return
 
             self._is_running = True
-            self._stop_event.set()  # 通知 start() 线程启动成功
+            self._started_event.set()  # 通知 start() 线程启动成功
 
             while not self._stop_event.is_set():
                 try:
@@ -540,10 +545,38 @@ class GooseCaptureEngine:
             log.error(f"捕获循环异常: {e}")
         finally:
             self._is_running = False
+            self._started_event.set()
             self._stop_event.set()
             if sock:
                 with contextlib.suppress(Exception):
                     sock.close()
+
+    def _capture_loop_scapy(self) -> bool:
+        """Capture Ethernet frames on Windows via Scapy/Npcap."""
+        try:
+            from scapy.all import sniff
+        except ImportError:
+            log.error("Windows GOOSE 抓包需要安装 Scapy/Npcap，原始 IP socket 无法捕获 EtherType 0x88B8")
+            return False
+
+        try:
+            self._is_running = True
+            self._started_event.set()
+
+            while not self._stop_event.is_set():
+                sniff(
+                    iface=self.interface or None,
+                    prn=lambda pkt: self._process_packet(bytes(pkt)),
+                    store=False,
+                    timeout=1.0,
+                )
+            return True
+        except Exception as e:
+            log.error(f"Windows Scapy/Npcap GOOSE 抓包失败: {e}")
+            return False
+        finally:
+            self._is_running = False
+            self._started_event.set()
 
     def _process_packet(self, raw_data: bytes) -> None:
         """处理捕获的原始数据包"""
