@@ -164,6 +164,13 @@ class ReportManager:
             return False
 
         requested_rpt_id = rpt_id or name
+        # 当 name 携带数字后缀（如 "rpRack1CellTemp03"）而 rpt_id 是
+        # 其不包含后缀的前缀（如 "rpRack1CellTemp"）时，使用 name 作为
+        # 请求的 RptId，确保 RCB 路由键与其名称后缀一致且全局唯一。
+        if rpt_id and name != rpt_id and name.startswith(rpt_id):
+            suffix = name[len(rpt_id) :]
+            if suffix and suffix.isdigit():
+                requested_rpt_id = name
         rpt_id = self._make_unique_rpt_id(requested_rpt_id)
         if rpt_id != requested_rpt_id:
             log.warning(f"RCB [{name}] 的 RptId [{requested_rpt_id}] 已被占用，自动调整为 [{rpt_id}]")

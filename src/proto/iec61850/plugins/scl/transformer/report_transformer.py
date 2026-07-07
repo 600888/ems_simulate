@@ -111,6 +111,13 @@ class SclReportTransformer:
             rpt_id = f"{base_rpt_id}{instance_idx:02d}"
         else:
             rpt_id = base_rpt_id
+            # 当 name 带数字后缀（如 "rpRack1CellTemp03"）而 rpt_id 是其
+            # 前缀（如 "rpRack1CellTemp"）时，name 的后缀需要继承到 rpt_id，
+            # 保证每个 RCB 的 RptId 唯一。
+            if rc.rpt_id and rc.name.startswith(rc.rpt_id) and rc.name != rc.rpt_id:
+                suffix = rc.name[len(rc.rpt_id) :]
+                if suffix:
+                    rpt_id = f"{rpt_id}{suffix}"
         data_set_ref = f"{ld.inst}/{ln.ln_name}${rc.dat_set}" if rc.dat_set else ""
 
         # 解析 DataSet 条目

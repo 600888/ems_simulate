@@ -624,8 +624,6 @@ def _dispatch_report(rcb_ref: str, report) -> None:
     接收线程完成，而接收线程持锁解析报告时 C 层对象可能已被销毁，
     导致段错误崩溃。
     """
-    log.info(f"_dispatch_report 进入: rcb_ref={rcb_ref}, report={report}")
-
     # 1. 锁内快速检查是否已注册，取出 dataset_members 和 on_report 回调
     with _CALLBACK_LOCK:
         info = _CALLBACK_REGISTRY.get(rcb_ref)
@@ -643,11 +641,6 @@ def _dispatch_report(rcb_ref: str, report) -> None:
     if entry is None:
         log.warning(f"_dispatch_report: 解析报告失败返回 None, rcb_ref={rcb_ref}")
         return
-
-    log.info(
-        f"_dispatch_report: 解析成功, rcb_ref={rcb_ref}, "
-        f"seq_num={entry.seq_num}, data_values_count={len(entry.data_values)}"
-    )
 
     # 3. 锁内写入缓存
     with _CALLBACK_LOCK:
@@ -668,7 +661,7 @@ def _dispatch_report(rcb_ref: str, report) -> None:
                     on_report = info.on_report
                 written += 1
             if written > 0:
-                log.info(f"_dispatch_report: GI 报告已写入 {written} 个 RCB 实例, rpt_id={entry.rpt_id!r}")
+                log.debug(f"_dispatch_report: GI 报告已写入 {written} 个 RCB 实例, rpt_id={entry.rpt_id!r}")
         else:
             # 常规报告只写入触发当前回调的 RCB 实例，禁止按 RptId 再分发。
             target_info = _CALLBACK_REGISTRY.get(rcb_ref)
@@ -677,9 +670,6 @@ def _dispatch_report(rcb_ref: str, report) -> None:
                     entry.uid = _get_next_entry_uid()
                 target_info.data_cache.append(entry)
                 on_report = target_info.on_report
-                log.info(
-                    f"_dispatch_report: 常规报告已写入, rcb_ref={rcb_ref}, cache_size={len(target_info.data_cache)}"
-                )
             else:
                 log.warning(f"_dispatch_report: rcb_ref={rcb_ref} 已被注销")
 

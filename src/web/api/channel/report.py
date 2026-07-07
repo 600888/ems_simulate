@@ -162,6 +162,22 @@ def _get_client_handler(channel_id: int, request: Request) -> Any | None:
     return None
 
 
+def _fix_rpt_id_suffix(rcb: dict) -> dict:
+    """修复 RCB 的 rpt_id 缺失 name 数字后缀的问题
+
+    当远端 IED 的多个 RCB 共享相同 rptID（如 "rpRack1CellTemp"）
+    而 name 带有数字后缀（如 "rpRack1CellTemp01"）时，将 name 的
+    数字后缀继承到 rpt_id，确保前端能区分不同 RCB 的路由键。
+    """
+    name = rcb.get("name", "")
+    rpt_id = rcb.get("rpt_id", "")
+    if rpt_id and name != rpt_id and name.startswith(rpt_id):
+        suffix = name[len(rpt_id) :]
+        if suffix and suffix.isdigit():
+            rcb["rpt_id"] = name
+    return rcb
+
+
 def _discover_rcbs(reports: Any, channel_id: int = 0, handler: Any = None) -> list:
     """统一获取 RCB 列表，兼容客户端和服务端模式
 
@@ -169,7 +185,10 @@ def _discover_rcbs(reports: Any, channel_id: int = 0, handler: Any = None) -> li
     服务端模式: 直接从本地 ReportManager 获取
     """
     if _is_server_mode(reports):
-        return _server_rcbs_to_discovery_format(reports)
+        rcbs = _server_rcbs_to_discovery_format(reports)
+        for rcb in rcbs:
+            _fix_rpt_id_suffix(rcb)
+        return rcbs
 
     if handler is not None and hasattr(handler, "get_discovered_rcbs"):
         cached = handler.get_discovered_rcbs()
@@ -178,11 +197,15 @@ def _discover_rcbs(reports: Any, channel_id: int = 0, handler: Any = None) -> li
                 cached = reports.refresh_rcb_states(cached)
                 if hasattr(handler, "set_discovered_rcbs"):
                     handler.set_discovered_rcbs(cached)
+            for rcb in cached:
+                _fix_rpt_id_suffix(rcb)
             return cached
     rcbs = reports.discover_rcbs()
     # 现场发现成功则回写缓存，供后续及侧边栏结构接口复用
     if rcbs and handler is not None and hasattr(handler, "set_discovered_rcbs"):
         handler.set_discovered_rcbs(rcbs)
+    for rcb in rcbs:
+        _fix_rpt_id_suffix(rcb)
     return rcbs
 
 
@@ -200,6 +223,7 @@ def _refresh_single_rcb(reports: Any, rcb_ref: str, channel_id: int, request: Re
             rcbs = _server_rcbs_to_discovery_format(reports)
             for rcb in rcbs:
                 if rcb.get("ref") == rcb_ref or rcb.get("name") == rcb_ref.split(".")[-1]:
+                    _fix_rpt_id_suffix(rcb)
                     return rcb
             return None
 
@@ -212,6 +236,7 @@ def _refresh_single_rcb(reports: Any, rcb_ref: str, channel_id: int, request: Re
                 refreshed = reports.refresh_rcb_states([current])
                 if refreshed:
                     handler.update_discovered_rcb(rcb_ref, refreshed[0])
+                    _fix_rpt_id_suffix(refreshed[0])
                     return refreshed[0]
 
         # 客户端模式: 重新读取单个 RCB 详情
@@ -223,6 +248,7 @@ def _refresh_single_rcb(reports: Any, rcb_ref: str, channel_id: int, request: Re
         handler = _get_client_handler(channel_id, request)
         if handler:
             handler.update_discovered_rcb(rcb_ref, detail)
+        _fix_rpt_id_suffix(detail)
         return detail
     except Exception as e:
         log.warning(f"刷新单个 RCB 状态失败: ref={rcb_ref}, {e}")
@@ -541,12 +567,14 @@ async def get_rcb_detail(body: RcbDetailRequest, request: Request):
         rcbs = _server_rcbs_to_discovery_format(reports)
         for rcb in rcbs:
             if rcb.get("ref") == body.rcb_ref or rcb.get("name") == body.rcb_ref.split(".")[-1]:
+                _fix_rpt_id_suffix(rcb)
                 return BaseResponse(message="获取 RCB 详情成功", data=rcb)
         raise NotFoundError("RCB 未找到")
     else:
         detail = reports.get_rcb_detail(rcb_ref=body.rcb_ref)
         if not detail:
             raise NotFoundError("RCB 未找到")
+        _fix_rpt_id_suffix(detail)
         return BaseResponse(message="获取 RCB 详情成功", data=detail)
 
 
