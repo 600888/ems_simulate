@@ -80,7 +80,7 @@
         </el-select>
       </el-form-item>
 
-      <el-form-item :label="$t('point.decodeCode')" prop="decode_code">
+      <el-form-item v-if="!isIec104" :label="$t('point.decodeCode')" prop="decode_code">
         <el-select v-model="formData.decode_code" :placeholder="$t('point.selectDecodeCode')" style="width: 100%">
           <el-option-group :label="$t('decode.bit8')">
             <el-option label="0x10 - Byte (unsigned)" value="0x10" />

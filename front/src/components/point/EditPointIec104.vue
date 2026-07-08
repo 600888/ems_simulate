@@ -8,11 +8,18 @@
       <el-row :gutter="20">
         <el-col :span="24">
           <el-form-item label="ASDU类型" class="form-item">
-            <el-select v-model="iec104Form.iec_type_id" placeholder="选择ASDU类型" style="width: 100%" clearable>
+            <el-select
+              v-model="iec104Form.iec_type_id"
+              placeholder="选择ASDU类型"
+              style="width: 100%"
+              clearable
+            >
               <el-option
                 v-for="item in availableIec104Types"
                 :key="item.type_id"
-                :label="locale === 'en-US' ? item.type_id : `${t(item.label)} (${item.type_id})`"
+                :label="
+                  locale === 'en-US' ? item.type_id : `${t(item.label)} (${item.type_id})`
+                "
                 :value="item.type_id"
               />
             </el-select>
@@ -23,11 +30,31 @@
         <el-col :span="24">
           <el-form-item label="品质描述符" class="form-item">
             <div class="quality-flags">
-              <el-checkbox v-model="qualityFlags.ov" :disabled="!isIec104Server || !canOverflow" label="溢出(OV)" />
-              <el-checkbox v-model="qualityFlags.bl" :disabled="!isIec104Server" label="闭锁(BL)" />
-              <el-checkbox v-model="qualityFlags.sb" :disabled="!isIec104Server" label="取代(SB)" />
-              <el-checkbox v-model="qualityFlags.nt" :disabled="!isIec104Server" label="不刷新(NT)" />
-              <el-checkbox v-model="qualityFlags.iv" :disabled="!isIec104Server" label="无效(IV)" />
+              <el-checkbox
+                v-model="qualityFlags.ov"
+                :disabled="!isIec104Server || !canOverflow"
+                label="溢出(OV)"
+              />
+              <el-checkbox
+                v-model="qualityFlags.bl"
+                :disabled="!isIec104Server"
+                label="闭锁(BL)"
+              />
+              <el-checkbox
+                v-model="qualityFlags.sb"
+                :disabled="!isIec104Server"
+                label="取代(SB)"
+              />
+              <el-checkbox
+                v-model="qualityFlags.nt"
+                :disabled="!isIec104Server"
+                label="不刷新(NT)"
+              />
+              <el-checkbox
+                v-model="qualityFlags.iv"
+                :disabled="!isIec104Server"
+                label="无效(IV)"
+              />
               <span v-if="!isIec104Server" class="readonly-hint">（客户端只读）</span>
             </div>
           </el-form-item>
@@ -42,11 +69,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue';
-import { useI18n } from 'vue-i18n';
-import { ElMessage } from 'element-plus';
-import { getPointInfo, editIec104Metadata } from '@/api/pointApi';
-import { IEC104_TYPES_BY_FRAME_TYPE, decodeIec104Quality, encodeIec104Quality, supportsQuality as supportsQualityFlag, supportsOverflow } from '@/types/point';
+import { ref, reactive, computed, watch, onBeforeUnmount } from "vue";
+import { useI18n } from "vue-i18n";
+import { ElMessage } from "element-plus";
+import { getPointInfo, editIec104Metadata } from "@/api/pointApi";
+import {
+  IEC104_TYPES_BY_FRAME_TYPE,
+  decodeIec104Quality,
+  encodeIec104Quality,
+  supportsQuality as supportsQualityFlag,
+  supportsOverflow,
+} from "@/types/point";
 
 const { t, locale } = useI18n();
 
@@ -58,17 +91,17 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  active: true
+  active: true,
 });
-const emit = defineEmits(['update-success']);
+const emit = defineEmits(["update-success"]);
 
 const isIec104 = computed(() => {
-  const pt = props.protocolType || '';
-  return pt === 'Iec104Client' || pt === 'Iec104Server';
+  const pt = props.protocolType || "";
+  return pt === "Iec104Client" || pt === "Iec104Server";
 });
 
 const isIec104Server = computed(() => {
-  return props.protocolType === 'Iec104Server';
+  return props.protocolType === "Iec104Server";
 });
 
 const iec104Form = reactive({
@@ -106,7 +139,7 @@ const loadIec104Info = async () => {
       qualityFlags.iv = qd.iv;
     }
   } catch (error) {
-    console.error('加载IEC104信息失败:', error);
+    console.error("加载IEC104信息失败:", error);
   }
 };
 
@@ -121,11 +154,11 @@ const saveIec104Metadata = async () => {
       iec_quality: iecQuality,
     });
     if (result) {
-      ElMessage.success('IEC104属性已更新');
-      emit('update-success');
+      ElMessage.success("IEC104属性已更新");
+      emit("update-success");
     }
   } catch (error: any) {
-    console.error('更新IEC104属性失败:', error);
+    console.error("更新IEC104属性失败:", error);
   }
 };
 
@@ -172,14 +205,18 @@ onBeforeUnmount(() => {
   stopRefresh();
 });
 
-watch(() => props.active, (newVal) => {
-  if (newVal && isIec104.value) {
-    loadIec104Info();
-    startRefresh();
-  } else {
-    stopRefresh();
-  }
-}, { immediate: true });
+watch(
+  () => props.active,
+  (newVal) => {
+    if (newVal && isIec104.value) {
+      loadIec104Info();
+      startRefresh();
+    } else {
+      stopRefresh();
+    }
+  },
+  { immediate: true }
+);
 
 watch([() => props.deviceName, () => props.pointCode], () => {
   if (props.deviceName && props.pointCode && props.active && isIec104.value) {

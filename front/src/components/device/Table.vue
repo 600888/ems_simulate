@@ -58,6 +58,7 @@
                     :deviceName="deviceName"
                     :pointCode="scope.row['测点编码']"
                     :active="activeName === '测点编辑'"
+                    :protocolType="String(protocolType)"
                     @update-success="(newCode) => handleMetadataUpdate(newCode, scope.row['测点编码'])"
                   />
                   <EditPointIec104
@@ -124,6 +125,7 @@
               :active-text="$t('table.hex')"
               :inactive-text="$t('table.dec')"
               class="address-switch"
+              @click.stop
             />
           </div>
         </template>

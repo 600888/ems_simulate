@@ -23,7 +23,7 @@
             <el-input v-model="metadataForm.reg_addr" />
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :span="12" v-if="!isIec104">
           <el-form-item :label="$t('editMetadata.decodeCode')" class="form-item">
             <el-select v-model="metadataForm.decode_code" :placeholder="$t('editMetadata.selectDecodeCode')">
               <el-option-group label="8位字符">
@@ -68,7 +68,7 @@
         </el-col>
       </el-row>
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :span="12" v-if="!isIec104">
           <el-form-item :label="$t('table.funcCode')" class="form-item">
             <el-input v-model.number="metadataForm.func_code" type="number" />
           </el-form-item>
@@ -110,12 +110,20 @@ interface Props {
   deviceName: string;
   pointCode: string;
   active?: boolean;
+  protocolType?: string;
 }
 
 const { t } = useI18n()
 
 const props = withDefaults(defineProps<Props>(), {
-  active: true
+  active: true,
+  protocolType: '',
+});
+
+// 判断是否为 IEC104 协议
+const isIec104 = computed(() => {
+  const pt = props.protocolType || '';
+  return pt === 'Iec104Client' || pt === 'Iec104Server';
 });
 const emit = defineEmits(['update-success']);
 
