@@ -953,11 +953,12 @@ export default {
     exitBatchMode: "退出批量",
     batchApplySuccess: "已成功应用到 {count} 个 RCB",
     batchApplyPartial: "部分应用失败 ({failed}/{total})",
-    batchApplyInProgress: "正在配置第 {current}/{total} 个...",
+    batchApplyInProgress: "正在批量配置中，请稍候...",
     batchApplyProgress: "已完成 {current}/{total}（成功: {success}，失败: {fail}）",
     batchProgressTitle: "批量应用配置",
     batchCancel: "取消",
     batchCancelled: "已取消，已完成 {current}/{total}",
+    batchApplyResult: "成功 {success} 个，失败 {fail} 个",
     noRcbSelected: "请先在左侧勾选要应用的 RCB",
   },
 };

@@ -1047,7 +1047,8 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
                 # 优先用连接时缓存的 RCB，避免首屏现场探测导致空白
                 rcbs = protocol_handler.get_discovered_rcbs()
                 client = getattr(protocol_handler, "_client", None)
-                if not rcbs and client and hasattr(client, "reports") and client.reports:
+                # 只在设备已连接时才尝试现场发现，避免只读接口静默触发 MMS 连接
+                if not rcbs and protocol_handler._is_running and client and client.reports:
                     rcbs = client.reports.discover_rcbs()
                     # 现场发现成功则回写缓存，供 /reports 页面复用
                     if rcbs:

@@ -163,6 +163,7 @@ export const GOOSE_API = {
 export const REPORT_API = {
   LIST: '/api/channels/iec61850/reports/list',
   APPLY: '/api/channels/iec61850/reports/apply',
+  BATCH_APPLY: '/api/channels/iec61850/reports/batch-apply',
   GI: '/api/channels/iec61850/reports/gi',
   DATA: '/api/channels/iec61850/reports/data',
   STATE: '/api/channels/iec61850/reports/state',

@@ -165,6 +165,35 @@ export async function applyConfig(
   return { success: result?.success === true, rcb: result?.rcb };
 }
 
+export interface BatchApplyResult {
+  success: boolean;
+  success_count: number;
+  fail_count: number;
+  fail_details: { rcb_ref: string; reason: string }[];
+}
+
+export async function batchApplyConfig(
+  channelId: number,
+  rcbRefs: string[],
+  rptEna: boolean,
+  trgOps?: Partial<TrgOps>,
+  optFields?: Partial<OptFields>
+): Promise<BatchApplyResult> {
+  const result = await requestApi(REPORT_API.BATCH_APPLY, "post", {
+    channel_id: channelId,
+    items: rcbRefs.map((ref) => ({ rcb_ref: ref })),
+    rpt_ena: rptEna,
+    trg_ops: trgOps,
+    opt_fields: optFields,
+  });
+  return {
+    success: result?.success === true,
+    success_count: result?.success_count ?? 0,
+    fail_count: result?.fail_count ?? 0,
+    fail_details: result?.fail_details ?? [],
+  };
+}
+
 export async function triggerGi(channelId: number, rcbRef: string): Promise<boolean> {
   const result = await requestApi(REPORT_API.GI, "post", {
     channel_id: channelId,

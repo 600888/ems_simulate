@@ -34,26 +34,27 @@
       :close-on-click-modal="false"
       :close-on-press-escape="false"
       :show-close="false"
-      width="420px"
+      :width="batchFailDetails.length > 0 ? '520px' : '380px'"
       destroy-on-close
     >
       <div class="batch-progress-body">
-        <el-progress
-          :percentage="batchProgressPercent"
-          :status="batchProgressStatus"
-          :stroke-width="16"
-          :text-inside="true"
-        />
         <p class="batch-progress-text">{{ batchProgressText }}</p>
+
+        <!-- 失败详情列表 -->
+        <div v-if="batchFailDetails.length > 0" class="batch-fail-list">
+          <div class="batch-fail-header">{{ t("report.batchFailTitle") }}</div>
+          <div v-for="(item, idx) in batchFailDetails" :key="idx" class="batch-fail-item">
+            <span class="batch-fail-ref">{{ item.rcb_ref }}</span>
+            <span class="batch-fail-reason">{{ item.reason }}</span>
+          </div>
+        </div>
       </div>
       <template #footer>
-        <el-button
-          v-if="!batchProgressFinished"
-          type="danger"
-          :loading="batchCancelling"
-          @click="handleBatchCancel"
-        >
+        <el-button v-if="!batchProgressFinished" type="danger" @click="handleBatchCancel">
           {{ t("report.batchCancel") }}
+        </el-button>
+        <el-button v-else type="primary" @click="batchProgressVisible = false">
+          {{ t("common.close") }}
         </el-button>
       </template>
     </el-dialog>
@@ -165,12 +166,14 @@ import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import {
   applyConfig,
+  batchApplyConfig,
   getLatestReport,
   getReportDataTree,
   getReportHistory,
   getReportState,
   listRcbs,
   triggerGi,
+  type BatchApplyResult,
   type OptFields,
   type RcbInfo,
   type ReportEntrySummary,
@@ -210,12 +213,9 @@ watch(batchMode, (val) => {
 
 // 批量操作进度
 const batchProgressVisible = ref(false);
-const batchProgressPercent = ref(0);
-const batchProgressStatus = ref<'success' | 'exception' | ''>('');
 const batchProgressText = ref('');
-const batchCancelled = ref(false);
-const batchCancelling = ref(false);
 const batchProgressFinished = ref(false);
+const batchFailDetails = ref<{ rcb_ref: string; reason: string }[]>([]);
 
 const reportHistory = ref<ReportEntrySummary[]>([]);
 const reportDataTotal = ref(0);
@@ -452,16 +452,13 @@ async function handleApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps; opt
   }
 }
 
-const BATCH_DELAY_MS = 50; // 每个 RCB 操作间的延迟
-
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function handleBatchCancel() {
-  batchCancelling.value = true;
-  batchCancelled.value = true;
-  batchCancelling.value = false;
+  batchProgressVisible.value = false;
+  batchLoading.value = false;
 }
 
 async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps; optFields: OptFields }) {
@@ -470,84 +467,44 @@ async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps
     return;
   }
   batchLoading.value = true;
-  batchCancelled.value = false;
   batchProgressFinished.value = false;
   const refs = [...checkedRefs.value];
   const total = refs.length;
-  let successCount = 0;
-  let failCount = 0;
 
   // 打开进度对话框
-  batchProgressPercent.value = 0;
-  batchProgressStatus.value = '';
-  batchProgressText.value = t('report.batchApplyInProgress', { current: 0, total });
+  batchProgressText.value = t('report.batchApplyInProgress');
   batchProgressVisible.value = true;
 
-  for (let i = 0; i < total; i++) {
-    // 检查是否已取消
-    if (batchCancelled.value) {
-      batchProgressFinished.value = true;
-      batchProgressStatus.value = 'exception';
-      batchProgressText.value = t('report.batchCancelled', {
-        current: successCount + failCount,
-        total,
-      });
-      break;
-    }
+  try {
+    const result: BatchApplyResult = await batchApplyConfig(
+      props.channelId,
+      refs,
+      payload.rptEna,
+      payload.trgOps,
+      payload.optFields,
+    );
 
-    const rcbRef = refs[i];
-    try {
-      const result = await applyConfig(
-        props.channelId,
-        rcbRef,
-        payload.rptEna,
-        payload.trgOps,
-        payload.optFields,
-      );
-      if (result.success) {
-        successCount++;
-        if (result.rcb) updateRcbInList(result.rcb);
-      } else {
-        failCount++;
-      }
-    } catch {
-      failCount++;
-    }
-
-    // 更新进度
-    const done = i + 1;
-    batchProgressPercent.value = Math.round((done / total) * 100);
-    batchProgressText.value = t('report.batchApplyProgress', {
-      current: done,
-      total,
-      success: successCount,
-      fail: failCount,
+    batchProgressFinished.value = true;
+    batchProgressText.value = t('report.batchApplyResult', {
+      success: result.success_count,
+      fail: result.fail_count,
     });
 
-    // 每个操作间加延迟
-    if (i < total - 1) {
-      await sleep(BATCH_DELAY_MS);
-    }
-  }
+    // 刷新已更新的 RCB 状态
+    await loadRcbs();
 
-  if (batchCancelled.value) {
-    // 用户取消：延迟后关闭弹窗
-    await sleep(500);
-    batchProgressVisible.value = false;
-    ElMessage.info(t('report.batchCancelled', {
-      current: successCount + failCount,
-      total,
-    }));
-  } else {
-    // 正常完成：延迟后关闭弹窗
-    await sleep(300);
-    batchProgressVisible.value = false;
-
-    if (failCount === 0) {
-      ElMessage.success(t('report.batchApplySuccess', { count: successCount }));
+    if (result.fail_count === 0) {
+      ElMessage.success(t('report.batchApplySuccess', { count: result.success_count }));
     } else {
-      ElMessage.warning(t('report.batchApplyPartial', { failed: failCount, total }));
+      ElMessage.warning(t('report.batchApplyPartial', {
+        failed: result.fail_count,
+        total,
+      }));
     }
+  } catch {
+    batchProgressFinished.value = true;
+    batchProgressText.value = t('report.batchApplyResult', { success: 0, fail: total });
+    ElMessage.error(t('report.batchApplyPartial', { failed: total, total }));
   }
 
   if (payload.rptEna && selectedRcb.value) {

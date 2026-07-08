@@ -966,12 +966,13 @@ export default {
     exitBatchMode: "Exit Batch",
     batchApplySuccess: "Successfully applied to {count} RCBs",
     batchApplyPartial: "Partial failure ({failed}/{total})",
-    batchApplyInProgress: "Configuring {current}/{total}...",
+    batchApplyInProgress: "Batch applying config, please wait...",
     batchApplyProgress:
       "Completed {current}/{total} (success: {success}, failed: {fail})",
     batchProgressTitle: "Batch Apply Config",
     batchCancel: "Cancel",
     batchCancelled: "Cancelled, completed {current}/{total}",
+    batchApplyResult: "Success: {success}, Failed: {fail}",
     noRcbSelected: "Please select RCBs from the left tree first",
   },
 };

@@ -14,6 +14,7 @@ from src.web.api.exceptions import NotFoundError, OperationError, ValidationErro
 from src.web.api.schemas import BaseResponse
 from src.web.api.schemas.report import (
     RcbApplyConfigRequest,
+    RcbBatchApplyConfigRequest,
     RcbDetailRequest,
     RcbGiRequest,
     RcbListRequest,
@@ -375,6 +376,55 @@ async def apply_report_config(body: RcbApplyConfigRequest, request: Request):
         # 直接从缓存更新 rpt_ena=False
         updated = _mark_rcb_disabled(body.channel_id, body.rcb_ref, request)
     return BaseResponse(message="报告配置应用成功", data={"success": True, "rcb": updated})
+
+
+@router.post("/iec61850/reports/batch-apply", response_model=BaseResponse)
+async def batch_apply_report_config(body: RcbBatchApplyConfigRequest, request: Request):
+    """批量应用报告配置"""
+    reports = _get_reports_plugin(body.channel_id, request)
+
+    if _is_server_mode(reports):
+        raise ValidationError("服务端模式不支持远程配置操作", data={"success": False})
+
+    loop = asyncio.get_event_loop()
+    success_count = 0
+    fail_count = 0
+    fail_details: list[dict] = []
+
+    for item in body.items:
+        try:
+            ok = await loop.run_in_executor(
+                None,
+                lambda r=item.rcb_ref: reports.apply_config(
+                    rcb_ref=r,
+                    rpt_ena=body.rpt_ena,
+                    trg_ops=body.trg_ops,
+                    opt_fields=body.opt_fields,
+                ),
+            )
+            if ok:
+                success_count += 1
+                if body.rpt_ena:
+                    _mark_rcb_enabled(body.channel_id, item.rcb_ref, request)
+                    _refresh_single_rcb(reports, item.rcb_ref, body.channel_id, request)
+                else:
+                    _mark_rcb_disabled(body.channel_id, item.rcb_ref, request)
+            else:
+                fail_count += 1
+                fail_details.append({"rcb_ref": item.rcb_ref, "reason": "操作失败"})
+        except Exception as e:
+            fail_count += 1
+            fail_details.append({"rcb_ref": item.rcb_ref, "reason": str(e)})
+
+    return BaseResponse(
+        message=f"批量应用完成: 成功 {success_count} 个, 失败 {fail_count} 个",
+        data={
+            "success": fail_count == 0,
+            "success_count": success_count,
+            "fail_count": fail_count,
+            "fail_details": fail_details,
+        },
+    )
 
 
 @router.post("/iec61850/reports/gi", response_model=BaseResponse)

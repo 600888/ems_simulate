@@ -17,6 +17,18 @@ class RcbApplyConfigRequest(BaseModel):
     opt_fields: dict[str, bool] | None = Field(None, description="可选字段")
 
 
+class RcbBatchApplyConfigItem(BaseModel):
+    rcb_ref: str = Field(..., description="RCB 引用路径")
+
+
+class RcbBatchApplyConfigRequest(BaseModel):
+    channel_id: int = Field(..., description="通道ID")
+    items: list[RcbBatchApplyConfigItem] = Field(..., description="要批量应用的 RCB 列表")
+    rpt_ena: bool = Field(..., description="报告使能目标状态")
+    trg_ops: dict[str, bool] | None = Field(None, description="触发选项")
+    opt_fields: dict[str, bool] | None = Field(None, description="可选字段")
+
+
 class RcbGiRequest(BaseModel):
     channel_id: int = Field(..., description="通道ID")
     rcb_ref: str = Field(..., description="RCB 引用路径")
