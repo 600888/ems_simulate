@@ -49,6 +49,7 @@ class ReportsPlugin:
         self._rcb_detail_cache: dict[str, dict[str, Any]] = {}
         self._rcb_type_map: dict[str, str] = {}  # ref -> "BRCB"/"URCB", 发现时填充
         self._operation_lock = threading.RLock()
+        self._my_rpt_ids: dict[str, str] = {}  # ref -> 本客户端设置的 rpt_id
 
     @property
     def name(self) -> str:
@@ -81,6 +82,7 @@ class ReportsPlugin:
         self._registry = None
         self._client = None
         self._rcb_detail_cache.clear()
+        self._my_rpt_ids.clear()
         self._initialized = False
         log.info("Reports 插件已关闭")
 
@@ -373,7 +375,11 @@ class ReportsPlugin:
         result["reserved"] = bool(info.resv or info.resv_tms != 0)
         # 兼容未实现 Owner/ResvTms 的旧版 IED：非本客户端订阅且 RptEna
         # 已置位时，该实例同样无法使用，应显示为被其他客户端锁定。
-        result["locked"] = bool(not result["active"] and (result["reserved"] or info.rpt_ena))
+        # 用 rpt_id 区分：若 rpt_id 匹配本客户端写入的值，说明是自己使能后的
+        # 残留状态，不应视为其他客户端加锁。
+        my_rpt_id = self._my_rpt_ids.get(info.ref)
+        locked_by_other = result["reserved"] or (info.rpt_ena and info.rpt_id != my_rpt_id)
+        result["locked"] = bool(not result["active"] and locked_by_other)
         return result
 
     def refresh_rcb_states(self, rcbs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -405,14 +411,17 @@ class ReportsPlugin:
                 if detail is not None:
                     active = ReportCallbackHandler.is_active(rcb_ref)
                     reserved = bool(detail.resv or detail.resv_tms != 0)
+                    my_rpt_id = self._my_rpt_ids.get(rcb_ref)
+                    locked_by_other = reserved or (detail.rpt_ena and detail.rpt_id != my_rpt_id)
                     item.update(
                         rpt_ena=detail.rpt_ena,
                         owner=detail.owner,
                         resv=detail.resv,
                         resv_tms=detail.resv_tms,
+                        rpt_id=detail.rpt_id,
                         reserved=reserved,
                         active=active,
-                        locked=bool(not active and (reserved or detail.rpt_ena)),
+                        locked=bool(not active and locked_by_other),
                         data_set_ref=detail.data_set_ref or item.get("data_set_ref", ""),
                         intg_period=detail.intg_period or item.get("intg_period", 0),
                     )
@@ -634,6 +643,9 @@ class ReportsPlugin:
             if cached_detail is not None:
                 cached_detail["rpt_id"] = rpt_id
 
+        # 记录本客户端设置的 rpt_id，用于 locked 判断时区分是否为其他客户端使能
+        self._my_rpt_ids[rcb_ref] = rpt_id
+
         if not rpt_id:
             log.error(f"_enable_report: RptId 为空且无法生成唯一值: ref={rcb_ref}, rcb_type={rcb_type}")
             return False
@@ -667,6 +679,7 @@ class ReportsPlugin:
         )
         if not callback_ok:
             log.warning(f"install report callback failed: {rcb_ref}")
+            self._my_rpt_ids.pop(rcb_ref, None)
             return False
 
         if rcb_type == "BRCB":
@@ -677,6 +690,7 @@ class ReportsPlugin:
         if not success:
             log.warning(f"set RptEna=True failed: {rcb_ref}")
             ReportCallbackHandler.uninstall(self._connection, rcb_ref)
+            self._my_rpt_ids.pop(rcb_ref, None)
             return False
 
         log.info(f"report enabled: {rcb_ref}")
@@ -722,6 +736,7 @@ class ReportsPlugin:
         except Exception as e:
             log.error(f"uninstall report callback failed: {rcb_ref}, {e}")
 
+        self._my_rpt_ids.pop(rcb_ref, None)
         log.info(f"report disabled: {rcb_ref}")
         return True
 
