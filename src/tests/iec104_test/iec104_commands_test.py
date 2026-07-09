@@ -20,14 +20,14 @@ class _ServerCtx:
     """管理 IEC104 服务端的生命周期"""
 
     def __init__(self, port: int = SERVER_PORT):
-        self.server = IEC104Server(ip="127.0.0.1", port=port, common_address=COMMON_ADDR)
+        self.server = IEC104Server(ip="127.0.0.1", port=port)
         self.server.start()
 
     def add_cmd_point(self, io_address: int, point_type: c104.Type):
-        self.server.add_command_point(io_address=io_address, point_type=point_type)
+        self.server.add_command_point(io_address=io_address, point_type=point_type, common_address=COMMON_ADDR)
 
     def get_point_value(self, io_address: int, frame_type: int):
-        return self.server.get_point_value(io_address=io_address, frame_type=frame_type)
+        return self.server.get_point_value(io_address=io_address, frame_type=frame_type, common_address=COMMON_ADDR)
 
     def stop(self):
         self.server.stop()
@@ -37,16 +37,18 @@ class _ClientCtx:
     """管理 IEC104 客户端的生命周期"""
 
     def __init__(self, port: int = SERVER_PORT):
-        self.client = IEC104Client(ip="127.0.0.1", port=port, common_address=COMMON_ADDR)
+        self.client = IEC104Client(ip="127.0.0.1", port=port)
 
     async def connect(self):
         return await self.client.connect()
 
     def add_point(self, io_address: int, point_type: c104.Type):
-        return self.client.add_point(io_address=io_address, point_type=point_type)
+        return self.client.add_point(io_address=io_address, point_type=point_type, common_address=COMMON_ADDR)
 
     def write_point(self, io_address: int, value, frame_type: int = 0) -> bool:
-        return self.client.write_point(io_address=io_address, value=value, frame_type=frame_type)
+        return self.client.write_point(
+            io_address=io_address, value=value, frame_type=frame_type, common_address=COMMON_ADDR
+        )
 
     def disconnect(self):
         self.client.disconnect()
@@ -180,7 +182,7 @@ class TestIEC104Commands(unittest.TestCase):
         IOA = 501
         svr, cli = self._make_pair(IOA, c104.Type.C_SE_NB_1)
         try:
-            point = cli.client.station.get_point(IOA)
+            point = cli.client.stations.get(COMMON_ADDR).get_point(IOA)
             self.assertIsNotNone(point, "客户端未找到点")
             point.info = c104.ScaledCmd(target=c104.Int16(100), qualifier=c104.UInt7(0))
             ret = point.transmit(cause=c104.Cot.ACTIVATION)

@@ -1,4 +1,10 @@
-import random
+"""
+IEC104 服务端实现
+
+基于 c104 库，支持多 Station（多从站/多公共地址）。
+每个从站（slave_id）映射为一个独立的 common_address 的 c104.Station。
+"""
+
 from typing import Any
 
 import c104
@@ -9,27 +15,28 @@ from src.proto.iec104.log import log
 
 
 class IEC104Server:
-    def __init__(self, ip="0.0.0.0", port=2404, common_address=1):
+    def __init__(self, ip="0.0.0.0", port=2404):
         """
         初始化IEC 104服务器
         :param ip: 服务器监听IP地址，默认0.0.0.0表示监听所有接口
         :param port: 服务器监听端口，默认2404是IEC 104标准端口
-        :param common_address: 站地址，默认1
         """
         self.ip = ip
         self.port = port
         # 创建c104服务器实例
         self.server = c104.Server(ip=ip, port=port)
-        # 添加一个站
-        self.station = self.server.add_station(common_address=common_address)
+        # 多 Station 支持：common_address -> c104.Station
+        self.stations: dict[int, c104.Station] = {}
         # 存储所有监控点的列表
         self.points: list[c104.Point] = []
         # 存储所有命令点的列表
-        self.commands = []
+        self.commands: list[c104.Point] = []
         # 关联测点map
         self.related_point_map = {}
         # 命令接收后的应用层回调（由 handler 注册，用于同步应用层 BasePoint）
         self._on_command_received_callback = None
+        # IOA → common_address 映射，用于命令回调反查站地址
+        self._ioa_to_ca: dict[int, int] = {}
         # 设置默认回调函数
         self._setup_callbacks()
 
@@ -68,140 +75,143 @@ class IEC104Server:
         # 初始化通用命令接收处理函数
         self._on_command_received = self._default_command_handler
 
-    def add_monitoring_point(self, io_address, point_type=c104.Type.M_ME_NC_1, report_ms=1000):
+    def get_station(self, common_address: int) -> c104.Station:
+        """获取或创建指定公共地址的 Station
+
+        Args:
+            common_address: 公共地址（对应从站 slave_id）
+
+        Returns:
+            c104.Station 对象
         """
-        添加一个监控点到站
+        if common_address not in self.stations:
+            self.stations[common_address] = self.server.add_station(common_address=common_address)
+        return self.stations[common_address]
+
+    def add_monitoring_point(
+        self,
+        io_address: int,
+        point_type: c104.Type = c104.Type.M_ME_NC_1,
+        report_ms: int = 1000,
+        common_address: int = 1,
+    ) -> c104.Point | None:
+        """
+        添加一个监控点到指定站
         :param io_address: 信息对象地址(IOA)
         :param point_type: 点类型，默认是归一化值测量量(M_ME_NC_1)
         :param report_ms: 自动上报间隔(毫秒)
+        :param common_address: 站地址（对应从站 slave_id）
         :return: 创建的监控点对象
         """
+        station = self.get_station(common_address)
         # 创建监控点
-        point = self.station.add_point(io_address=io_address, type=point_type, report_ms=report_ms)
+        point = station.add_point(io_address=io_address, type=point_type, report_ms=report_ms)
         if point:
-            # # 设置自动传输前的回调
-            # point.on_before_auto_transmit(callable=self._before_auto_transmit)
-            # # 设置读取前的回调
-            # point.on_before_read(callable=self._before_read)
-            # 添加到监控点列表
             self.points.append(point)
+            self._ioa_to_ca[io_address] = common_address
         return point
 
-    def add_command_point(self, io_address, point_type=c104.Type.C_RC_TA_1, related_point_ioa=None):
+    def add_command_point(
+        self,
+        io_address: int,
+        point_type: c104.Type = c104.Type.C_RC_TA_1,
+        related_point_ioa: int | None = None,
+        common_address: int = 1,
+    ) -> c104.Point | None:
         """
-        添加一个命令点到站
+        添加一个命令点到指定站
         :param io_address: 信息对象地址(IOA)
         :param point_type: 点类型，默认是调节步命令(C_RC_TA_1)
         :param related_point_ioa: 关联的监控点IOA
+        :param common_address: 站地址（对应从站 slave_id）
         :return: 创建的命令点对象
         """
+        station = self.get_station(common_address)
         # 创建命令点
-        command = self.station.add_point(io_address=io_address, type=point_type)
+        command = station.add_point(io_address=io_address, type=point_type)
         # 注册命令接收回调（c104 接收到命令后自动更新 point.value，然后触发此回调）
         command.on_receive(callable=self._on_command_received)
         # 添加到命令点列表
         self.commands.append(command)
+        self._ioa_to_ca[io_address] = common_address
         return command
 
-    def get_point_value(self, io_address: int, frame_type: int = 0) -> float:
+    def get_point_value(self, io_address: int, frame_type: int = 0, common_address: int = 1) -> float:
         """
-        获取指定IOA的监控点值
+        获取指定站中指定IOA的监控点值
         :param io_address: 信息对象地址(IOA)
         :param frame_type: 帧类型
+        :param common_address: 站地址（对应从站 slave_id）
         :return: 监控点值（Python float）
         """
+        station = self.stations.get(common_address)
+        if not station:
+            return 0
         try:
-            # 如果是遥测或者遥信
-            if frame_type == 0 or frame_type == 1:
-                for point in self.points:
-                    if point.io_address == io_address:
-                        point = self.station.get_point(io_address=io_address)
-                        if point:
-                            # c104 库对不同类型返回不同值对象，float() 统一转换
-                            return float(point.value)
-            elif frame_type == 2 or frame_type == 3:  # 遥控或者遥调
-                for command in self.commands:
-                    if command.io_address == io_address:
-                        command = self.station.get_point(io_address=io_address)
-                        if command:
-                            if frame_type == 2:
-                                return bool(command.value)
-                            else:
-                                return float(command.value)
+            point = station.get_point(io_address=io_address)
+            if point:
+                # 遥控点(2)返回 bool，其余返回 float
+                if frame_type == 2:
+                    return bool(point.value)
+                return float(point.value)
             return 0
         except Exception as e:
             log.info(f"获取监控点值失败: {e}")
             raise e
 
-    def set_point_value(self, io_address: int, value, frame_type: int = 0) -> None:
+    def set_point_value(self, io_address: int, value, frame_type: int = 0, common_address: int = 1) -> None:
         """
-        设置指定IOA的监控点值
+        设置指定站中指定IOA的监控点值
         :param io_address: 信息对象地址(IOA)
         :param value: 要设置的值（c104 原生类型，如 NormalizedFloat、Int16、float、bool）
         :param frame_type: 帧类型，默认遥测
+        :param common_address: 站地址（对应从站 slave_id）
         """
+        station = self.stations.get(common_address)
+        if not station:
+            return
         try:
-            # 如果是遥测或者遥信
-            if frame_type == 0 or frame_type == 1:
-                for point in self.points:
-                    if point.io_address == io_address:
-                        point = self.station.get_point(io_address=io_address)
-                        if point:
-                            point.value = value
-            elif frame_type == 2 or frame_type == 3:  # 遥控或者遥调
-                for command in self.commands:
-                    if command.io_address == io_address:
-                        command = self.station.get_point(io_address=io_address)
-                        if command:
-                            command.value = value
+            point = station.get_point(io_address=io_address)
+            if point:
+                point.value = value
         except Exception as e:
             log.info(f"设置监控点值失败: {e}")
             raise e
 
-    def set_point_quality(self, io_address: int, quality: int, frame_type: int = 0) -> None:
+    def set_point_quality(self, io_address: int, quality: int, frame_type: int = 0, common_address: int = 1) -> None:
         """
-        设置指定IOA的品质描述符
+        设置指定站中指定IOA的品质描述符
         :param io_address: 信息对象地址(IOA)
         :param quality: 品质描述符整数值 (位标志: OV=0x01 BL=0x02 SB=0x04 NT=0x08 IV=0x10)
         :param frame_type: 帧类型，默认遥测
+        :param common_address: 站地址（对应从站 slave_id）
         """
+        station = self.stations.get(common_address)
+        if not station:
+            return
         try:
-            if frame_type == 0 or frame_type == 1:
-                for point in self.points:
-                    if point.io_address == io_address:
-                        point = self.station.get_point(io_address=io_address)
-                        if point and hasattr(point, "quality"):
-                            point.quality = Quality(value=quality)
-            elif frame_type == 2 or frame_type == 3:
-                for command in self.commands:
-                    if command.io_address == io_address:
-                        command = self.station.get_point(io_address=io_address)
-                        if command and hasattr(command, "quality"):
-                            command.quality = Quality(value=quality)
+            point = station.get_point(io_address=io_address)
+            if point and hasattr(point, "quality"):
+                point.quality = Quality(value=quality)
         except Exception as e:
             log.error(f"设置监控点品质失败: {e}")
             raise
 
-    def get_point_quality(self, io_address: int, frame_type: int = 0) -> int:
+    def get_point_quality(self, io_address: int, frame_type: int = 0, common_address: int = 1) -> int:
         """
-        获取指定IOA的品质描述符
+        获取指定站中指定IOA的品质描述符
         :param io_address: 信息对象地址(IOA)
         :param frame_type: 帧类型
+        :param common_address: 站地址（对应从站 slave_id）
         :return: 品质描述符整数值
         """
+        station = self.stations.get(common_address)
+        if not station:
+            return 0
         try:
-            if frame_type == 0 or frame_type == 1:
-                for point in self.points:
-                    if point.io_address == io_address:
-                        point = self.station.get_point(io_address=io_address)
-                        if point and hasattr(point, "quality"):
-                            return int(point.quality)
-            elif frame_type == 2 or frame_type == 3:
-                for command in self.commands:
-                    if command.io_address == io_address:
-                        command = self.station.get_point(io_address=io_address)
-                        if command and hasattr(command, "quality"):
-                            return int(command.quality)
+            point = station.get_point(io_address=io_address)
+            if point and hasattr(point, "quality"):
+                return int(point.quality)
             return 0
         except Exception as e:
             log.error(f"获取监控点品质失败: {e}")
@@ -261,122 +271,51 @@ class IEC104Server:
         :return: 响应状态(SUCCESS/FAILURE)
         """
         log.info(f"收到命令 - IOA: {point.io_address}, 类型: {point.type}, 值: {point.value}")
-        # 通知应用层回调（如果有注册），传递 IOA、值和帧类型
+        # 查找 IOA 对应的站地址
+        common_address = self._ioa_to_ca.get(point.io_address, 1)
+        # 通知应用层回调（如果有注册），传递 IOA、值、帧类型和站地址
         if self._on_command_received_callback:
             try:
-                self._on_command_received_callback(point.io_address, point.value, point.type)
+                self._on_command_received_callback(
+                    point.io_address,
+                    point.value,
+                    point.type,
+                    common_address,
+                )
             except Exception as e:
                 log.error(f"命令接收回调执行失败: {e}")
         return c104.ResponseState.SUCCESS
-
-    def _default_step_command_handler(
-        self,
-        point: c104.Point,
-        previous_info: c104.Information,
-        message: c104.IncomingMessage,
-    ) -> c104.ResponseState:
-        """
-        默认的步进命令处理函数
-        :param point: 命令点对象
-        :param previous_info: 前一个信息对象
-        :param message: 接收到的消息
-        :return: 响应状态(SUCCESS/FAILURE)
-        """
-        log.info(
-            f"{point.type} 收到步进命令, IOA: {point.io_address}, "
-            f"消息: {message}, 前值: {previous_info}, 真实值: {point.info}"
-        )
-
-        if point.value == c104.Step.LOWER:
-            # 处理降低命令
-            return c104.ResponseState.SUCCESS
-
-        if point.value == c104.Step.HIGHER:
-            # 处理升高命令
-            return c104.ResponseState.SUCCESS
-
-        return c104.ResponseState.FAILURE
-
-    def _default_before_auto_transmit(self, point: c104.Point) -> None:
-        """
-        默认的自动传输前回调函数
-        :param point: 监控点对象
-        """
-        # 生成随机值模拟数据变化
-        point.value = random.random() * 100
-        log.info(f"{point.type} 自动上报前更新值, IOA: {point.io_address}, 新值: {point.value}")
-
-    def _default_before_read(self, point: c104.Point) -> None:
-        """
-        默认的读取前回调函数
-        :param point: 监控点对象
-        """
-        if point in self.related_point_map:
-            related_point: c104.Point = self.related_point_map[point]
-            if related_point:
-                related_point.value = point.value
-
-    def set_step_command_handler(self, handler):
-        """
-        设置自定义步进命令处理函数
-        :param handler: 自定义处理函数
-        """
-        self._on_step_command = handler
-        # 更新所有命令点的回调函数
-        for cmd in self.commands:
-            cmd.on_receive(callable=self._on_step_command)
-
-    def set_before_auto_transmit_handler(self, handler):
-        """
-        设置自定义自动传输前回调函数
-        :param handler: 自定义处理函数
-        """
-        self._before_auto_transmit = handler
-        # 更新所有监控点的回调函数
-        for point in self.points:
-            point.on_before_auto_transmit(callable=self._before_auto_transmit)
-
-    def set_before_read_handler(self, handler):
-        """
-        设置自定义读取前回调函数
-        :param handler: 自定义处理函数
-        """
-        self._before_read = handler
-        # 更新所有监控点的回调函数
-        for point, _ in self.related_point_map:
-            point.on_before_read(callable=self._before_read)
 
     def set_on_command_callback(self, callback):
         """
         设置命令接收通知回调
         当服务端收到客户端的遥控/遥调命令时，会调用此回调通知应用层。
-        :param callback: 回调函数，签名 callback(io_address, value, point_type)
+        :param callback: 回调函数，签名 callback(io_address, value, point_type, common_address)
         """
         self._on_command_received_callback = callback
 
     # 绑定关联测点
-    def bind_related_point(self, io_address: int, related_io_address: int):
+    def bind_related_point(self, io_address: int, related_io_address: int, common_address: int = 1):
         """
         绑定遥调点到遥测点上面
-        :param yc_point: 遥调点对象
+        :param io_address: 遥调点IOA
+        :param related_io_address: 遥测点IOA
+        :param common_address: 站地址（对应从站 slave_id）
         """
-        a_point = None
-        b_point = None
-        for command in self.commands:
-            if command.io_address == io_address:
-                command = self.station.get_point(io_address=io_address)
-                if command:
-                    a_point = command
-                    log.info("找到测点A")
-        for point in self.points:
-            if point.io_address == related_io_address:
-                point = self.station.get_point(io_address=related_io_address)
-                if point:
-                    b_point = point
-                    log.info("找到测点B")
+        station = self.stations.get(common_address)
+        if not station:
+            log.error(f"绑定104关联测点失败，未找到站地址 {common_address}")
+            return
+        a_point = station.get_point(io_address=io_address)
+        b_point = station.get_point(io_address=related_io_address)
+        if a_point:
+            log.info(f"找到测点A (IOA={io_address})")
+        if b_point:
+            log.info(f"找到测点B (IOA={related_io_address})")
         if a_point and b_point:
             self.related_point_map[a_point] = b_point
-            a_point.on_before_read(callable=self._before_read)
+            if hasattr(self, "_before_read"):
+                a_point.on_before_read(callable=self._before_read)
             log.info(f"绑定成功, {a_point.io_address} 关联 {b_point.io_address}")
         else:
             log.error("绑定104关联测点失败")
@@ -387,11 +326,11 @@ if __name__ == "__main__":
 
     async def main():
         # 创建服务器实例
-        server = IEC104Server(ip="0.0.0.0", port=2404, common_address=1)
+        server = IEC104Server(ip="0.0.0.0", port=2404)
 
-        # 添加监控点(IOA=11)和命令点(IOA=12)
-        server.add_monitoring_point(io_address=11)
-        server.add_command_point(io_address=12)
+        # 添加监控点(IOA=11)和命令点(IOA=12)到站地址1
+        server.add_monitoring_point(io_address=11, common_address=1)
+        server.add_command_point(io_address=12, common_address=1)
 
         # 启动服务器并运行主循环
         server.start()

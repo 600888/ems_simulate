@@ -104,7 +104,7 @@ class YtService:
             iec_type_id = item.get("iec_type_id")
             iec_quality = item.get("iec_quality", 0)
             return Yt(
-                rtu_addr=1,
+                rtu_addr=item["rtu_addr"],
                 address=address,
                 name=item["name"],
                 code=item["code"],
@@ -123,7 +123,7 @@ class YtService:
             # 优先使用数据库中的 FC, 仅在未存储时推断
             fc = item.get("fc") or _infer_iec61850_fc(address, 3)
             return Yt(
-                rtu_addr=1,
+                rtu_addr=item["rtu_addr"],
                 address=address,
                 name=item["name"],
                 code=item["code"],
@@ -138,7 +138,7 @@ class YtService:
 
         elif protocol_type in [ProtocolType.Dlt645Server, ProtocolType.Dlt645Client]:
             return Yt(
-                rtu_addr=1,
+                rtu_addr=item["rtu_addr"],
                 address=transform(process_hex_address(item["reg_addr"])),
                 func_code=int(item["func_code"]) if item.get("func_code") else 6,
                 name=item["name"],

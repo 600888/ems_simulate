@@ -134,19 +134,23 @@ class SimulationController:
         """执行单个点的模拟逻辑"""
         point_simulator.simulate()
         try:
-            if isinstance(point_simulator.point, Yc):
+            point = point_simulator.point
+            slave_id = int(point.rtu_addr) if hasattr(point, "rtu_addr") and point.rtu_addr else None
+            if isinstance(point, Yc):
                 self.device.editPointData(
-                    point_simulator.point.code,
-                    point_simulator.point.real_value,
+                    point.code,
+                    point.real_value,
                     source=ChangeSource.SIMULATION,
-                    detail=f"自动模拟 {point_simulator.point.code}",
+                    detail=f"自动模拟 {point.code}",
+                    slave_id=slave_id,
                 )
             else:
                 self.device.editPointData(
-                    point_simulator.point.code,
-                    point_simulator.point.value,
+                    point.code,
+                    point.value,
                     source=ChangeSource.SIMULATION,
-                    detail=f"自动模拟 {point_simulator.point.code}",
+                    detail=f"自动模拟 {point.code}",
+                    slave_id=slave_id,
                 )
         except ValueError:
             # 忽略模拟超出范围异常，避免停止后续测点的模拟

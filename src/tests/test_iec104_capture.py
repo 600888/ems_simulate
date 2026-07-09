@@ -16,14 +16,14 @@ async def test_capture():
     print("Starting IEC104 Capture Test...")
 
     # 1. Start Server
-    server = IEC104Server(ip="127.0.0.1", port=2499, common_address=1)
+    server = IEC104Server(ip="127.0.0.1", port=2499)
     # Add a point to monitor
-    server.add_monitoring_point(io_address=11)
+    server.add_monitoring_point(io_address=11, common_address=1)
     server.start()
     print("Server started on port 2499")
 
     # 2. Start Client
-    client = IEC104Client(ip="127.0.0.1", port=2499, common_address=1)
+    client = IEC104Client(ip="127.0.0.1", port=2499)
     print("Connecting client...")
 
     if await client.connect():

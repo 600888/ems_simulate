@@ -1,3 +1,10 @@
+"""
+IEC104 客户端实现
+
+基于 c104 库，支持多 Station（多从站/多公共地址）。
+每个从站（slave_id）映射为一个独立的 common_address 的 c104.Station。
+"""
+
 import asyncio
 from collections.abc import Callable
 import time
@@ -10,24 +17,22 @@ from src.proto.iec104.log import log
 
 
 class IEC104Client:
-    def __init__(self, ip: str = "127.0.0.1", port: int = 2404, common_address: int = 1):
+    def __init__(self, ip: str = "127.0.0.1", port: int = 2404):
         """
         初始化IEC 104客户端
         :param ip: 服务器IP地址，默认127.0.0.1
         :param port: 服务器端口，默认2404
-        :param common_address: 站地址，默认1
         """
         self.ip = ip
         self.port = port
-        self.common_address = common_address
         self.client = c104.Client()
         self.connection: c104.Connection = self.client.add_connection(
             ip=self.ip,
             port=self.port,
             init=c104.Init.INTERROGATION,  # 连接时触发全召唤
         )
-        # 添加从站
-        self.station: c104.Station = self.connection.add_station(common_address=self.common_address)
+        # 多 Station 支持：common_address -> c104.Station
+        self.stations: dict[int, c104.Station] = {}
         self.points: list[c104.Point] = []
         self._on_data_received: Callable | None = None
         self._on_command_response: Callable | None = None
@@ -100,51 +105,73 @@ class IEC104Client:
         """检查是否已连接"""
         return self.connection is not None and self.connection.is_connected
 
-    def add_point(self, io_address: int, point_type: c104.Type = c104.Type.M_ME_NC_1):
+    def get_station(self, common_address: int) -> c104.Station:
+        """获取或创建指定公共地址的 Station
+
+        Args:
+            common_address: 公共地址（对应从站 slave_id）
+
+        Returns:
+            c104.Station 对象
         """
-        添加一个监控点
+        if common_address not in self.stations:
+            self.stations[common_address] = self.connection.add_station(common_address=common_address)
+        return self.stations[common_address]
+
+    def add_point(
+        self,
+        io_address: int,
+        point_type: c104.Type = c104.Type.M_ME_NC_1,
+        common_address: int = 1,
+    ) -> c104.Point | None:
+        """
+        添加一个监控点到指定站
         :param io_address: 信息对象地址(IOA)
         :param point_type: 点类型，默认是归一化值测量量(M_ME_NC_1)
+        :param common_address: 站地址（对应从站 slave_id）
         :return: 创建的监控点对象
         """
+        station = self.get_station(common_address)
         # 创建监控点
-        point = self.station.add_point(io_address=io_address, type=point_type)
+        point = station.add_point(io_address=io_address, type=point_type)
         if point:
             self.points.append(point)
         return point
 
-    def read_point(self, io_address: int, frame_type: int = 0) -> float | None:
+    def read_point(self, io_address: int, frame_type: int = 0, common_address: int = 1) -> float | None:
         """
-        读取指定IOA的监控点值（仅读取本地缓存，不发送网络请求）
+        读取指定站中指定IOA的监控点值（仅读取本地缓存，不发送网络请求）
         :param io_address: 信息对象地址(IOA)
         :param frame_type: 帧类型，0-遥测，1-遥信，2-遥控，3-遥调
+        :param common_address: 站地址（对应从站 slave_id）
         :return: 监控点值（Python float），失败返回None
         """
         if not self.is_connected:
             log.error("未连接到服务器，无法读取数据")
             return None
 
+        station = self.stations.get(common_address)
+        if not station:
+            log.error(f"未找到站地址 {common_address}")
+            return None
+
         try:
-            point = self.station.get_point(io_address=io_address)
+            point = station.get_point(io_address=io_address)
             if point:
-                # c104 库对不同类型返回不同的值对象：
-                # - NormalizedFloat: float() 返回 -1~+1 范围的浮点数
-                # - Int16: float() 返回标度值
-                # - float: 直接返回浮点数
-                # 统一使用 float() 转换，c104 库已内部完成解码
                 return float(point.value)
             return None
         except Exception as e:
             log.error(f"读取监控点值失败: {e}")
             return None
 
-    def send_interrogation(self) -> bool:
+    def send_interrogation(self, common_address: int | None = None) -> bool:
         """
         发送总召唤命令(C_IC_NA_1)，请求服务端发送所有点的最新值
 
         c104 库会在收到响应后自动更新本地缓存的 point.value，
         之后通过 read_point() 即可获取最新值。
 
+        :param common_address: 站地址，为 None 时向所有已注册的站发送总召唤
         :return: 是否成功发送
         """
         if not self.is_connected:
@@ -152,32 +179,42 @@ class IEC104Client:
             return False
 
         try:
-            # interrogation() 接受 common_address(int) 而非 station 对象
-            common_addr = self.station.common_address
-            self.connection.interrogation(common_address=common_addr)
-            log.info(f"已发送总召唤命令(C_IC_NA_1)，站地址: {common_addr}")
+            if common_address is not None:
+                # 向指定站发送总召唤
+                self.connection.interrogation(common_address=common_address)
+                log.info(f"已发送总召唤命令(C_IC_NA_1)，站地址: {common_address}")
+            else:
+                # 向所有站发送总召唤
+                for ca in self.stations:
+                    self.connection.interrogation(common_address=ca)
+                    log.info(f"已发送总召唤命令(C_IC_NA_1)，站地址: {ca}")
             return True
         except Exception as e:
             log.error(f"发送总召唤失败: {e}")
             return False
 
-    def active_read_point(self, io_address: int) -> float | None:
+    def active_read_point(self, io_address: int, common_address: int = 1) -> float | None:
         """
-        主动读取指定监控点的最新值（发送C_RD_NA_1请求）
+        主动读取指定站中指定监控点的最新值（发送C_RD_NA_1请求）
 
         与 read_point() 不同，此方法会向服务器发送网络请求获取最新值，
-        而非读取本地缓存。如果 c104.Point 不直接支持 .read()，
-        则通过总召唤刷新整个站的数据后退回该点的最新值。
+        而非读取本地缓存。
 
         :param io_address: 信息对象地址(IOA)
+        :param common_address: 站地址（对应从站 slave_id）
         :return: 监控点值（Python float），失败返回None
         """
         if not self.is_connected:
             log.error("未连接到服务器，无法主动读取数据")
             return None
 
+        station = self.stations.get(common_address)
+        if not station:
+            log.error(f"未找到站地址 {common_address}")
+            return None
+
         try:
-            point = self.station.get_point(io_address=io_address)
+            point = station.get_point(io_address=io_address)
             if point is None:
                 log.error(f"IOA {io_address} 未找到对应的点")
                 return None
@@ -186,7 +223,7 @@ class IEC104Client:
             success = point.read()
             if not success:
                 log.warning(f"单点读取命令发送失败（IOA: {io_address}），尝试总召唤刷新")
-                self.send_interrogation()
+                self.send_interrogation(common_address=common_address)
                 time.sleep(0.3)
             else:
                 # 等待短暂时间让服务端响应
@@ -196,9 +233,9 @@ class IEC104Client:
             log.error(f"主动读取监控点值失败: {e}")
             return None
 
-    def write_point(self, io_address: int, value, frame_type: int = 0) -> bool:
+    def write_point(self, io_address: int, value, frame_type: int = 0, common_address: int = 1) -> bool:
         """
-        写入指定IOA的监控点值（发送遥控/遥调命令）
+        写入指定站中指定IOA的监控点值（发送遥控/遥调命令）
 
         c104 库要求对命令类型使用特定的 Info 对象：
         - 单点遥控(C_SC_*): point.info = SingleCmd(state, qualifier)
@@ -209,6 +246,7 @@ class IEC104Client:
         :param io_address: 信息对象地址(IOA)
         :param value: 要写入的值
         :param frame_type: 帧类型，0-遥测，1-遥信，2-遥控，3-遥调
+        :param common_address: 站地址（对应从站 slave_id）
         :return: 是否写入成功
         """
         if not self.is_connected:
@@ -219,8 +257,13 @@ class IEC104Client:
             log.error("遥测和遥信帧类型不支持写入")
             raise Exception("遥测和遥信帧类型不支持写入")
 
+        station = self.stations.get(common_address)
+        if not station:
+            log.error(f"未找到站地址 {common_address}")
+            return False
+
         try:
-            point = self.station.get_point(io_address=io_address)
+            point = station.get_point(io_address=io_address)
             if not point:
                 log.error(f"IOA {io_address} 未找到对应的点")
                 return False
@@ -233,7 +276,8 @@ class IEC104Client:
             elif pt_type in (c104.Type.C_DC_NA_1, c104.Type.C_DC_TA_1):
                 # 双点遥控: 使用 DoubleCmd
                 point.info = c104.DoubleCmd(
-                    state=c104.Double.ON if bool(value) else c104.Double.OFF, qualifier=c104.Qoc.LONG_PULSE
+                    state=c104.Double.ON if bool(value) else c104.Double.OFF,
+                    qualifier=c104.Qoc.LONG_PULSE,
                 )
             elif pt_type in (c104.Type.C_SE_NA_1, c104.Type.C_SE_TA_1):
                 # 设定值-归一化: 使用 NormalizedFloat
@@ -261,19 +305,25 @@ class IEC104Client:
             log.error(f"写入监控点值失败: {e}")
             return False
 
-    def send_command(self, io_address: int, command: c104.Step) -> bool:
+    def send_command(self, io_address: int, command: c104.Step, common_address: int = 1) -> bool:
         """
         发送步进命令
         :param io_address: 命令点IOA
         :param command: 命令类型(c104.Step.LOWER/c104.Step.HIGHER)
+        :param common_address: 站地址（对应从站 slave_id）
         :return: 是否发送成功
         """
         if not self.is_connected:
             log.error("未连接到服务器，无法发送命令")
             return False
 
+        station = self.stations.get(common_address)
+        if not station:
+            log.error(f"未找到站地址 {common_address}")
+            return False
+
         try:
-            point = self.station.get_point(io_address=io_address)
+            point = station.get_point(io_address=io_address)
             if point and isinstance(point, c104.Point):
                 point.value = command
                 # 必须调用 transmit() 才能实际发送命令报文
@@ -287,37 +337,25 @@ class IEC104Client:
             log.error(f"发送命令失败: {e}")
             return False
 
-    # def set_data_received_callback(self, callback: Callable):
-    #     """
-    #     设置数据接收回调函数
-    #     :param callback: 回调函数，格式应为 func(point: c104.Point)
-    #     """
-    #     self._on_data_received = callback
-    #     if self.connection:
-    #         self.station.on_data_received(callable=self._on_data_received)
-
-    # def set_command_response_callback(self, callback: Callable):
-    #     """
-    #     设置命令响应回调函数
-    #     :param callback: 回调函数，格式应为 func(point: c104.Point, response: c104.ResponseState)
-    #     """
-    #     self._on_command_response = callback
-    #     if self.connection:
-    #         self.connection.on_command_response(callable=self._on_command_response)
-
-    def subscribe(self, io_address: int, report_interval_ms: int = 1000) -> bool:
+    def subscribe(self, io_address: int, report_interval_ms: int = 1000, common_address: int = 1) -> bool:
         """
         订阅监控点变化
         :param io_address: 信息对象地址(IOA)
         :param report_interval_ms: 上报间隔(毫秒)
+        :param common_address: 站地址（对应从站 slave_id）
         :return: 是否订阅成功
         """
         if not self.is_connected:
             log.error("未连接到服务器，无法订阅")
             return False
 
+        station = self.stations.get(common_address)
+        if not station:
+            log.error(f"未找到站地址 {common_address}")
+            return False
+
         try:
-            point: c104.Point = self.station.get_point(io_address=io_address)
+            point: c104.Point = station.get_point(io_address=io_address)
             if point:
                 point.report_ms = report_interval_ms
                 return True
@@ -326,43 +364,23 @@ class IEC104Client:
             log.error(f"订阅监控点失败: {e}")
             return False
 
-    # def unsubscribe(self, io_address: int) -> bool:
-    #     """
-    #     取消订阅监控点
-    #     :param io_address: 信息对象地址(IOA)
-    #     :return: 是否取消成功
-    #     """
-    #     if not self.is_connected():
-    #         log.error("未连接到服务器，无法取消订阅")
-    #         return False
-
-    #     try:
-    #         point = self.connection.get_point(io_address=io_address)
-    #         if point:
-    #             point.report_ms = 0  # 设置为0表示不自动上报
-    #             return True
-    #         return False
-    #     except Exception as e:
-    #         log.error(f"取消订阅监控点失败: {e}")
-    #         return False
-
 
 if __name__ == "__main__":
     import asyncio
 
     async def main():
         # 示例用法
-        client = IEC104Client(ip="10.8.0.102", port=2404, common_address=1)
+        client = IEC104Client(ip="10.8.0.102", port=2404)
 
         # 设置回调函数
         def on_data_received(point):
             print(f"收到数据更新 - IOA: {point.io_address}, 值: {point.value}")
 
         if await client.connect():
-            client.station.add_point(io_address=16385, type=c104.Type.M_ME_NC_1)
+            client.add_point(io_address=16385, point_type=c104.Type.M_ME_NC_1, common_address=1)
             while True:
-                # 读取遥测点(IOA=1)
-                value = client.read_point(io_address=16385, frame_type=0)
+                # 读取遥测点(IOA=16385)
+                value = client.read_point(io_address=16385, frame_type=0, common_address=1)
                 print(f"IOA 16385 的值为: {value}")
                 # 保持连接一段时间
                 await asyncio.sleep(1)

@@ -94,7 +94,7 @@ class YkService:
             iec_type_id = item.get("iec_type_id")
             iec_quality = item.get("iec_quality", 0)
             return Yk(
-                rtu_addr=1,
+                rtu_addr=item["rtu_addr"],
                 address=address,
                 bit=None,
                 name=item["name"],
@@ -111,7 +111,7 @@ class YkService:
             # 优先使用数据库中的 FC, 仅在未存储时推断
             fc = item.get("fc") or _infer_iec61850_fc(address, 2)
             return Yk(
-                rtu_addr=1,
+                rtu_addr=item["rtu_addr"],
                 address=address,
                 bit=None,
                 name=item["name"],
@@ -124,7 +124,7 @@ class YkService:
 
         elif protocol_type in [ProtocolType.Dlt645Server, ProtocolType.Dlt645Client]:
             return Yk(
-                rtu_addr=1,
+                rtu_addr=item["rtu_addr"],
                 address=transform(process_hex_address(item["reg_addr"])),
                 bit=item.get("bit"),
                 func_code=item["func_code"] if item.get("func_code") else 5,

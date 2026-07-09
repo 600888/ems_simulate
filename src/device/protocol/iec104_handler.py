@@ -1,6 +1,7 @@
 """
 IEC104 协议处理器
 支持 IEC104 服务端和客户端
+支持多 Station（多从站/多公共地址）
 """
 
 from typing import Any
@@ -43,8 +44,8 @@ class IEC104ServerHandler(ServerHandler):
         super().__init__()
         self._server = None
         self._log = log
-        # 命令点 IOA → BasePoint 映射，用于收到客户端命令后更新应用层点值
-        self._command_point_map: dict[int, BasePoint] = {}
+        # 命令点 (common_address, IOA) → BasePoint 映射，用于收到客户端命令后更新应用层点值
+        self._command_point_map: dict[tuple[int, int], BasePoint] = {}
 
     def initialize(self, config: dict[str, Any]) -> None:
         """初始化 IEC104 服务器
@@ -53,16 +54,20 @@ class IEC104ServerHandler(ServerHandler):
             config: 配置字典，包含:
                 - ip: 监听 IP（默认 0.0.0.0）
                 - port: 监听端口（默认 2404）
-                - common_address: 站地址（默认 1）
+                - slave_id_list: 从机 ID 列表，每个从机映射为一个独立的 Station
         """
         from src.proto.iec104.iec104server import IEC104Server
 
         self._config = config
         ip = config.get("ip", Config.DEFAULT_IP)
         port = config.get("port", Config.IEC104_DEFAULT_PORT)
-        common_address = config.get("common_address", 1)
 
-        self._server: IEC104Server = IEC104Server(ip=ip, port=port, common_address=common_address)
+        self._server: IEC104Server = IEC104Server(ip=ip, port=port)
+
+        # 预创建所有从站对应的 Station（common_address = slave_id）
+        slave_id_list = config.get("slave_id_list", [])
+        for slave_id in slave_id_list:
+            self._server.get_station(common_address=int(slave_id))
 
     async def start(self) -> bool:
         """启动 IEC104 服务器"""
@@ -93,7 +98,12 @@ class IEC104ServerHandler(ServerHandler):
     def read_value(self, point: BasePoint) -> Any:
         """读取测点值"""
         if self._server:
-            return self._server.get_point_value(io_address=int(point.address), frame_type=point.frame_type)
+            common_address = int(point.rtu_addr) if point.rtu_addr else 1
+            return self._server.get_point_value(
+                io_address=int(point.address),
+                frame_type=point.frame_type,
+                common_address=common_address,
+            )
         return 0
 
     def write_value(self, point: BasePoint, value: Any) -> bool:
@@ -107,6 +117,8 @@ class IEC104ServerHandler(ServerHandler):
         同时写入品质描述符（OV/BL/SB/NT/IV）。
         """
         if self._server:
+            common_address = int(point.rtu_addr) if point.rtu_addr else 1
+
             # 获取要写入的物理值
             if isinstance(point, (Yc, Yt)):
                 real_value = point.real_value
@@ -116,6 +128,7 @@ class IEC104ServerHandler(ServerHandler):
                     io_address=int(point.address),
                     value=bool(point.value),
                     frame_type=point.frame_type,
+                    common_address=common_address,
                 )
                 # 写入品质描述符
                 if supports_quality(point.frame_type):
@@ -124,6 +137,7 @@ class IEC104ServerHandler(ServerHandler):
                         io_address=int(point.address),
                         quality=quality_int,
                         frame_type=point.frame_type,
+                        common_address=common_address,
                     )
                 return True
             else:
@@ -136,6 +150,7 @@ class IEC104ServerHandler(ServerHandler):
                 io_address=int(point.address),
                 value=encoded_value,
                 frame_type=point.frame_type,
+                common_address=common_address,
             )
             # 写入品质描述符
             if supports_quality(point.frame_type):
@@ -144,6 +159,7 @@ class IEC104ServerHandler(ServerHandler):
                     io_address=int(point.address),
                     quality=quality_int,
                     frame_type=point.frame_type,
+                    common_address=common_address,
                 )
             return True
         return False
@@ -157,32 +173,38 @@ class IEC104ServerHandler(ServerHandler):
         return self.write_value(point, value)
 
     def add_points(self, points: list[BasePoint]) -> None:
-        """添加测点到 IEC104 服务器"""
+        """添加测点到 IEC104 服务器
+
+        根据每个测点的 rtu_addr（从机地址）将测点路由到对应的 Station。
+        """
         if not self._server:
             return
 
         for point in points:
             frame_type = point.frame_type
             point_type = _resolve_c104_type(point)
+            common_address = int(point.rtu_addr) if point.rtu_addr else 1
 
             if frame_type in (0, 1):  # 遥测/遥信 → 监控点
                 self._server.add_monitoring_point(
                     io_address=point.address,
                     point_type=point_type,
                     report_ms=1000,  # 自动上报间隔 1 秒
+                    common_address=common_address,
                 )
             elif frame_type in (2, 3):  # 遥控/遥调 → 命令点
                 self._server.add_command_point(
                     io_address=point.address,
                     point_type=point_type,
+                    common_address=common_address,
                 )
-                # 建立 IOA → BasePoint 映射，用于命令接收后同步更新应用层值
-                self._command_point_map[int(point.address)] = point
+                # 建立 (common_address, IOA) → BasePoint 映射，用于命令接收后同步更新应用层值
+                self._command_point_map[(common_address, int(point.address))] = point
 
         # 注册命令接收回调（每次 add_points 时更新）
         self._server.set_on_command_callback(self._on_command_received)
 
-    def _on_command_received(self, io_address: int, value, point_type) -> None:
+    def _on_command_received(self, io_address: int, value, point_type, common_address: int = 1) -> None:
         """
         当服务端收到客户端发送的遥控/遥调命令时，同步更新应用层测点值。
 
@@ -190,11 +212,12 @@ class IEC104ServerHandler(ServerHandler):
             io_address: 信息对象地址(IOA)
             value: 接收到的命令值（c104 原生类型）
             point_type: c104 点类型
+            common_address: 站地址（对应从站 slave_id）
         """
-        point = self._command_point_map.get(io_address)
+        point = self._command_point_map.get((common_address, io_address))
         if point is None:
             if self._log:
-                self._log.warning(f"收到IOA {io_address} 的命令，但未找到对应的应用层测点")
+                self._log.warning(f"收到站 {common_address} IOA {io_address} 的命令，但未找到对应的应用层测点")
             return
 
         try:
@@ -210,7 +233,9 @@ class IEC104ServerHandler(ServerHandler):
             # 通过 set_real_value 更新（会触发 value setter 和变更追踪）
             if point.set_real_value(new_value):
                 if self._log:
-                    self._log.info(f"服务端收到命令并更新测点 {point.code}(IOA={io_address}): {new_value}")
+                    self._log.info(
+                        f"服务端收到命令并更新测点 {point.code}(站={common_address}, IOA={io_address}): {new_value}"
+                    )
             else:
                 if self._log:
                     self._log.warning(f"服务端收到命令但测点 {point.code} 值 {new_value} 超出允许范围")
@@ -221,13 +246,13 @@ class IEC104ServerHandler(ServerHandler):
     def get_value_by_address(self, func_code: int, slave_id: int, address: int) -> Any:
         """根据地址获取值"""
         if self._server:
-            return self._server.get_point_value(io_address=address, frame_type=0)
+            return self._server.get_point_value(io_address=address, frame_type=0, common_address=slave_id)
         return 0
 
     def set_value_by_address(self, func_code: int, slave_id: int, address: int, value: Any) -> None:
         """根据地址设置值"""
         if self._server:
-            self._server.set_point_value(io_address=address, value=value, frame_type=0)
+            self._server.set_point_value(io_address=address, value=value, frame_type=0, common_address=slave_id)
 
     @property
     def server(self):
@@ -267,16 +292,20 @@ class IEC104ClientHandler(ClientHandler):
             config: 配置字典，包含:
                 - ip: 服务器 IP
                 - port: 服务器端口（默认 2404）
-                - common_address: 站地址（默认 1）
+                - slave_id_list: 从机 ID 列表，每个从机映射为一个独立的 Station
         """
         from src.proto.iec104.iec104client import IEC104Client
 
         self._config = config
         ip = config.get("ip", "127.0.0.1")
         port = config.get("port", Config.IEC104_DEFAULT_PORT)
-        common_address = config.get("common_address", 1)
 
-        self._client = IEC104Client(ip=ip, port=port, common_address=common_address)
+        self._client = IEC104Client(ip=ip, port=port)
+
+        # 预创建所有从站对应的 Station（common_address = slave_id）
+        slave_id_list = config.get("slave_id_list", [])
+        for slave_id in slave_id_list:
+            self._client.get_station(common_address=int(slave_id))
 
     async def start(self) -> bool:
         """启动客户端（连接服务器）"""
@@ -312,7 +341,6 @@ class IEC104ClientHandler(ClientHandler):
 
         重写父类方法，实时检测连接状态。
         当服务端主动断开时，这个属性能反映真实状态。
-        注意：不再缓存断开状态到 _is_running，避免连接恢复后仍然无法读取数据。
         """
         if not self._is_running:
             return False
@@ -324,12 +352,24 @@ class IEC104ClientHandler(ClientHandler):
         if hasattr(self._client, "is_connected") and not self._client.is_connected:
             return False
 
-        # 实时检查 c104 station 的连接状态
-        if hasattr(self._client, "station") and self._client.station:
-            if hasattr(self._client.station, "is_connected") and not self._client.station.is_connected:
-                return False
+        # 实时检查所有 c104 station 的连接状态
+        if hasattr(self._client, "stations") and self._client.stations:
+            for _ca, station in self._client.stations.items():
+                if hasattr(station, "is_connected") and not station.is_connected:
+                    return False
 
         return True
+
+    def _get_station_for_point(self, point: BasePoint) -> int:
+        """获取测点对应的站地址（common_address）
+
+        Args:
+            point: 测点对象
+
+        Returns:
+            common_address（即 slave_id）
+        """
+        return int(point.rtu_addr) if point.rtu_addr else 1
 
     def read_value(self, point: BasePoint) -> Any:
         """读取测点值
@@ -344,33 +384,40 @@ class IEC104ClientHandler(ClientHandler):
         """
         # 检查客户端是否已连接（使用 is_running 属性实时检测）
         if not self._client or not self.is_running:
-            self._log.error("IEC104 客户端未连接")
+            if self._log:
+                self._log.error("IEC104 客户端未连接")
             return None
+
+        common_address = self._get_station_for_point(point)
 
         # IEC104 客户端通过 read_point 获取值
         # c104 库已内部完成类型解码，float() 即可得到物理值
-        c104_value = self._client.read_point(io_address=int(point.address), frame_type=point.frame_type)
+        c104_value = self._client.read_point(
+            io_address=int(point.address),
+            frame_type=point.frame_type,
+            common_address=common_address,
+        )
 
         # 同步品质描述符（c104.Point.quality 在服务端上报时自动更新）
-        # c104 库的品质位编码与应用层不同，需要转换
         try:
-            c104_point = self._client.station.get_point(io_address=int(point.address))
-            if c104_point and hasattr(c104_point, "quality") and c104_point.quality is not None:
-                from src.enums.points.iec104_quality import decode_quality_from_c104
+            station = self._client.stations.get(common_address)
+            if station:
+                c104_point = station.get_point(io_address=int(point.address))
+                if c104_point and hasattr(c104_point, "quality") and c104_point.quality is not None:
+                    from src.enums.points.iec104_quality import decode_quality_from_c104
 
-                qd = decode_quality_from_c104(c104_point, point.frame_type)
-                point.iec_quality = qd
+                    qd = decode_quality_from_c104(c104_point, point.frame_type)
+                    point.iec_quality = qd
         except Exception:
             pass
 
         if c104_value is None:
-            self._log.error("IEC104 客户端读取测点值失败")
+            if self._log:
+                self._log.error(f"IEC104 客户端读取测点值失败 (站={common_address}, IOA={point.address})")
             return None
 
         # 对于遥测点，c104 返回的值是协议层物理值
         # 需要通过 mul_coe/add_coe 反向换算为内部存储值
-        # 使得: real_value = value * mul_coe + add_coe = c104_value
-        # 即: value = (c104_value - add_coe) / mul_coe
         if isinstance(point, Yc):
             decoded_val = decode_iec104_value(c104_value, point.iec_type_id)
             try:
@@ -384,7 +431,8 @@ class IEC104ClientHandler(ClientHandler):
                     return float(internal_value)
                 return int(round(internal_value))
             except (ZeroDivisionError, TypeError):
-                self._log.error(f"IEC104 客户端读取测点值失败，系数计算失败，地址: {point.address}")
+                if self._log:
+                    self._log.error(f"IEC104 客户端读取测点值失败，系数计算失败，地址: {point.address}")
                 return None
         return c104_value
 
@@ -399,6 +447,8 @@ class IEC104ClientHandler(ClientHandler):
         if not self._client or not self.is_running:
             return False
 
+        common_address = self._get_station_for_point(point)
+
         # 客户端写入：将内部原始值换算为物理值发送给外部设备
         try:
             if isinstance(point, (Yc, Yt)):
@@ -406,14 +456,21 @@ class IEC104ClientHandler(ClientHandler):
                 # 根据 IEC104 类型编码值（返回 c104 原生类型）
                 encoded_value = encode_iec104_value(real_to_send, point.iec_type_id)
                 return self._client.write_point(
-                    io_address=int(point.address), value=encoded_value, frame_type=point.frame_type
+                    io_address=int(point.address),
+                    value=encoded_value,
+                    frame_type=point.frame_type,
+                    common_address=common_address,
                 )
             elif isinstance(point, (Yx, Yk)):
                 return self._client.write_point(
-                    io_address=int(point.address), value=bool(value), frame_type=point.frame_type
+                    io_address=int(point.address),
+                    value=bool(value),
+                    frame_type=point.frame_type,
+                    common_address=common_address,
                 )
         except Exception as e:
-            self._log.error(f"IEC104 客户端写入失败: {e}")
+            if self._log:
+                self._log.error(f"IEC104 客户端写入失败: {e}")
             return False
 
         return False
@@ -433,14 +490,14 @@ class IEC104ClientHandler(ClientHandler):
         """
         if not self._client or not self.is_running:
             return False
-        return self._client.send_interrogation()
+        # 向所有站发送总召唤
+        return self._client.send_interrogation(common_address=None)
 
     async def active_read_value_async(self, point: BasePoint) -> Any:
         """主动读取测点值（发送C_RD_NA_1网络请求获取最新值）
 
         与 read_value()/read_value_async() 不同，此方法会向服务器
         发送网络请求获取最新值，而非读取本地缓存。
-        对于遥测点(Yc)，返回的值会通过 mul_coe/add_coe 换算为内部存储值。
 
         Args:
             point: 测点对象
@@ -449,25 +506,34 @@ class IEC104ClientHandler(ClientHandler):
             Any: 读取成功返回测点值，失败返回None
         """
         if not self._client or not self.is_running:
-            self._log.error("IEC104 客户端未连接")
+            if self._log:
+                self._log.error("IEC104 客户端未连接")
             return None
 
+        common_address = self._get_station_for_point(point)
+
         # 调用客户端的主动读取方法（发送网络请求）
-        c104_value = self._client.active_read_point(io_address=int(point.address))
+        c104_value = self._client.active_read_point(
+            io_address=int(point.address),
+            common_address=common_address,
+        )
 
         # 同步品质描述符
         try:
-            c104_point = self._client.station.get_point(io_address=int(point.address))
-            if c104_point and hasattr(c104_point, "quality") and c104_point.quality is not None:
-                from src.enums.points.iec104_quality import decode_quality_from_c104
+            station = self._client.stations.get(common_address)
+            if station:
+                c104_point = station.get_point(io_address=int(point.address))
+                if c104_point and hasattr(c104_point, "quality") and c104_point.quality is not None:
+                    from src.enums.points.iec104_quality import decode_quality_from_c104
 
-                qd = decode_quality_from_c104(c104_point, point.frame_type)
-                point.iec_quality = qd
+                    qd = decode_quality_from_c104(c104_point, point.frame_type)
+                    point.iec_quality = qd
         except Exception:
             pass
 
         if c104_value is None:
-            self._log.error("IEC104 客户端主动读取测点值失败")
+            if self._log:
+                self._log.error("IEC104 客户端主动读取测点值失败")
             return None
 
         # 同 read_value() 一样的系数换算逻辑
@@ -482,7 +548,8 @@ class IEC104ClientHandler(ClientHandler):
                     return float(internal_value)
                 return int(round(internal_value))
             except (ZeroDivisionError, TypeError):
-                self._log.error(f"IEC104 客户端主动读取测点值失败，系数计算失败，地址: {point.address}")
+                if self._log:
+                    self._log.error(f"IEC104 客户端主动读取测点值失败，系数计算失败，地址: {point.address}")
                 return None
         return c104_value
 
@@ -491,15 +558,20 @@ class IEC104ClientHandler(ClientHandler):
         return self.write_value(point, value)
 
     def add_points(self, points: list[BasePoint]) -> None:
-        """添加测点到 IEC104 客户端"""
+        """添加测点到 IEC104 客户端
+
+        根据每个测点的 rtu_addr（从机地址）将测点路由到对应的 Station。
+        """
         if not self._client:
             return
 
         for point in points:
             point_type = _resolve_c104_type(point)
+            common_address = int(point.rtu_addr) if point.rtu_addr else 1
             self._client.add_point(
                 io_address=int(point.address),
                 point_type=point_type,
+                common_address=common_address,
             )
 
     @property

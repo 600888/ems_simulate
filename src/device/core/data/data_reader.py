@@ -459,8 +459,15 @@ class DataReader:
                 return
 
             client = self._handler._client
-            if not client or not client.station:
-                self._log.error("Client or station is not available")
+            if not client:
+                self._log.error("Client is not available")
+                return
+
+            # 根据 slave_id 获取对应的 Station
+            common_address = int(slave_id)
+            station = client.stations.get(common_address)
+            if not station:
+                self._log.error(f"Station with common_address {common_address} not found")
                 return
 
             # 获取该从机下的所有测点 (yc, yx, yt, yk)
@@ -470,9 +477,9 @@ class DataReader:
             for point in all_points:
                 try:
                     # 直接从 c104.Point 对象读取值（服务端上报时自动更新）
-                    c104_point = client.station.get_point(io_address=point.address)
+                    c104_point = station.get_point(io_address=point.address)
                     if c104_point is None:
-                        self._log.error(f"Point {point.code} not found in client")
+                        self._log.error(f"Point {point.code} not found in client station {common_address}")
                         continue
 
                     # 同步品质描述符（c104.Point.quality 在服务端上报时自动更新）
