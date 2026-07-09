@@ -41,6 +41,7 @@ class ExcelPointImporter:
         "add_coe",  # 加系数
         "max_limit",  # 上限值
         "min_limit",  # 下限值
+        "iec104_type",  # 104ASDU类型
     ]
 
     # 遥信表头
@@ -53,6 +54,7 @@ class ExcelPointImporter:
         "decode_code",  # 解析码
         "bit",  # 位偏移
         "reverse",  # 是否反转
+        "iec104_type",  # 104ASDU类型
     ]
 
     # 遥控表头
@@ -66,6 +68,7 @@ class ExcelPointImporter:
         "bit",  # 位偏移
         "command_type",  # 命令类型
         "related_yx_code",  # 关联遥信编码
+        "iec104_type",  # 104ASDU类型
     ]
 
     # 遥调表头
@@ -81,6 +84,7 @@ class ExcelPointImporter:
         "max_limit",  # 上限值
         "min_limit",  # 下限值
         "related_yc_code",  # 关联遥测编码
+        "iec104_type",  # 104ASDU类型
     ]
 
     def __init__(self, channel_id: int):
@@ -173,6 +177,9 @@ class ExcelPointImporter:
                     min_limit=float(row[9])
                     if len(row) > 9 and row[9] is not None and str(row[9]).strip() != ""
                     else calc_min,
+                    iec_type_id=str(row[10]).strip()
+                    if len(row) > 10 and row[10] is not None and str(row[10]).strip() != ""
+                    else None,
                 )
                 session.add(point)
                 self.yc_count += 1
@@ -194,6 +201,9 @@ class ExcelPointImporter:
                     decode_code=str(row[5]) if row[5] else "0x20",
                     bit=int(row[6]) if row[6] else None,
                     reverse=bool(row[7]) if len(row) > 7 and row[7] else False,
+                    iec_type_id=str(row[8]).strip()
+                    if len(row) > 8 and row[8] is not None and str(row[8]).strip() != ""
+                    else None,
                 )
                 session.add(point)
                 self.yx_count += 1
@@ -216,6 +226,9 @@ class ExcelPointImporter:
                     bit=int(row[6]) if row[6] else None,
                     command_type=int(row[7]) if len(row) > 7 and row[7] else 0,
                     # related_yx_id 需要后续通过 code 查找
+                    iec_type_id=str(row[9]).strip()
+                    if len(row) > 9 and row[9] is not None and str(row[9]).strip() != ""
+                    else None,
                 )
                 session.add(point)
                 self.yk_count += 1
@@ -249,6 +262,9 @@ class ExcelPointImporter:
                     if len(row) > 9 and row[9] is not None and str(row[9]).strip() != ""
                     else calc_min,
                     # related_yc_id 需要后续通过 code 查找
+                    iec_type_id=str(row[11]).strip()
+                    if len(row) > 11 and row[11] is not None and str(row[11]).strip() != ""
+                    else None,
                 )
                 session.add(point)
                 self.yt_count += 1
@@ -266,17 +282,42 @@ def create_excel_template(file_path: str) -> None:
     ws_yc = wb.active
     ws_yc.title = "遥测"
     ws_yc.append(
-        ["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "乘系数", "加系数", "上限值", "下限值"]
+        [
+            "测点编码",
+            "测点名称",
+            "从机地址",
+            "寄存器地址",
+            "功能码",
+            "解析码",
+            "乘系数",
+            "加系数",
+            "上限值",
+            "下限值",
+            "104ASDU类型",
+        ]
     )
 
     # 遥信 sheet
     ws_yx = wb.create_sheet("遥信")
-    ws_yx.append(["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "位偏移", "是否反转"])
+    ws_yx.append(
+        ["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "位偏移", "是否反转", "104ASDU类型"]
+    )
 
     # 遥控 sheet
     ws_yk = wb.create_sheet("遥控")
     ws_yk.append(
-        ["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "位偏移", "命令类型", "关联遥信编码"]
+        [
+            "测点编码",
+            "测点名称",
+            "从机地址",
+            "寄存器地址",
+            "功能码",
+            "解析码",
+            "位偏移",
+            "命令类型",
+            "关联遥信编码",
+            "104ASDU类型",
+        ]
     )
 
     # 遥调 sheet
@@ -294,6 +335,7 @@ def create_excel_template(file_path: str) -> None:
             "上限值",
             "下限值",
             "关联遥测编码",
+            "104ASDU类型",
         ]
     )
 
@@ -315,7 +357,19 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
     ws_yc = wb.active
     ws_yc.title = "遥测"
     ws_yc.append(
-        ["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "乘系数", "加系数", "上限值", "下限值"]
+        [
+            "测点编码",
+            "测点名称",
+            "从机地址",
+            "寄存器地址",
+            "功能码",
+            "解析码",
+            "乘系数",
+            "加系数",
+            "上限值",
+            "下限值",
+            "104ASDU类型",
+        ]
     )
 
     if protocol == "modbus":
@@ -329,10 +383,10 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
         ]
     elif protocol == "iec104":
         sample_yc = [
-            ["PCS_DC_V", "直流母线电压", 1, "16385", 0, "", 0.1, 0, 1000, 0],
-            ["PCS_DC_I", "直流母线电流", 1, "16386", 0, "", 0.1, 0, 500, -500],
-            ["PCS_AC_P", "交流有功功率", 1, "16387", 0, "", 0.1, 0, 1000, -1000],
-            ["BMS_SOC", "电池SOC", 1, "16388", 0, "", 0.1, 0, 100, 0],
+            ["PCS_DC_V", "直流母线电压", 1, "16385", 0, "", 0.1, 0, 1000, 0, "M_ME_NC_1"],
+            ["PCS_DC_I", "直流母线电流", 1, "16386", 0, "", 0.1, 0, 500, -500, "M_ME_NC_1"],
+            ["PCS_AC_P", "交流有功功率", 1, "16387", 0, "", 0.1, 0, 1000, -1000, "M_ME_NC_1"],
+            ["BMS_SOC", "电池SOC", 1, "16388", 0, "", 0.1, 0, 100, 0, "M_ME_NC_1"],
         ]
     else:  # dlt645
         sample_yc = [
@@ -347,7 +401,9 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
 
     # ===== 遥信 sheet =====
     ws_yx = wb.create_sheet("遥信")
-    ws_yx.append(["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "位偏移", "是否反转"])
+    ws_yx.append(
+        ["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "位偏移", "是否反转", "104ASDU类型"]
+    )
 
     if protocol == "modbus":
         sample_yx = [
@@ -359,9 +415,9 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
         ]
     elif protocol == "iec104":
         sample_yx = [
-            ["PCS_RUN", "PCS运行状态", 1, "1", 0, "", 0, 0],
-            ["PCS_FAULT", "PCS故障", 1, "2", 0, "", 0, 0],
-            ["BMS_RUN", "BMS运行状态", 1, "3", 0, "", 0, 0],
+            ["PCS_RUN", "PCS运行状态", 1, "1", 0, "", 0, 0, "M_SP_NA_1"],
+            ["PCS_FAULT", "PCS故障", 1, "2", 0, "", 0, 0, "M_SP_NA_1"],
+            ["BMS_RUN", "BMS运行状态", 1, "3", 0, "", 0, 0, "M_SP_NA_1"],
         ]
     else:
         sample_yx = []
@@ -372,7 +428,18 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
     # ===== 遥控 sheet =====
     ws_yk = wb.create_sheet("遥控")
     ws_yk.append(
-        ["测点编码", "测点名称", "从机地址", "寄存器地址", "功能码", "解析码", "位偏移", "命令类型", "关联遥信编码"]
+        [
+            "测点编码",
+            "测点名称",
+            "从机地址",
+            "寄存器地址",
+            "功能码",
+            "解析码",
+            "位偏移",
+            "命令类型",
+            "关联遥信编码",
+            "104ASDU类型",
+        ]
     )
 
     if protocol == "modbus":
@@ -383,8 +450,8 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
         ]
     elif protocol == "iec104":
         sample_yk = [
-            ["PCS_START", "PCS启动", 1, "1", 0, "", 0, 0, "PCS_RUN"],
-            ["PCS_STOP", "PCS停止", 1, "2", 0, "", 0, 0, "PCS_RUN"],
+            ["PCS_START", "PCS启动", 1, "1", 0, "", 0, 0, "PCS_RUN", "C_SC_NA_1"],
+            ["PCS_STOP", "PCS停止", 1, "2", 0, "", 0, 0, "PCS_RUN", "C_SC_NA_1"],
         ]
     else:
         sample_yk = []
@@ -407,6 +474,7 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
             "上限值",
             "下限值",
             "关联遥测编码",
+            "104ASDU类型",
         ]
     )
 
@@ -419,8 +487,8 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
         ]
     elif protocol == "iec104":
         sample_yt = [
-            ["PCS_P_SET", "有功功率设定", 1, "1", 0, "", 0.1, 0, 1000, -1000, "PCS_AC_P"],
-            ["PCS_Q_SET", "无功功率设定", 1, "2", 0, "", 0.1, 0, 500, -500, ""],
+            ["PCS_P_SET", "有功功率设定", 1, "1", 0, "", 0.1, 0, 1000, -1000, "PCS_AC_P", "C_SE_NC_1"],
+            ["PCS_Q_SET", "无功功率设定", 1, "2", 0, "", 0.1, 0, 500, -500, "", "C_SE_NC_1"],
         ]
     else:
         sample_yt = []

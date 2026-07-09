@@ -129,6 +129,9 @@ class IEC104Server:
         station = self.get_station(common_address)
         # 创建命令点
         command = station.add_point(io_address=io_address, type=point_type)
+        if not command:
+            log.warning(f"创建命令点失败: IOA={io_address}, type={point_type}, common_address={common_address}")
+            return None
         # 注册命令接收回调（c104 接收到命令后自动更新 point.value，然后触发此回调）
         command.on_receive(callable=self._on_command_received)
         # 添加到命令点列表

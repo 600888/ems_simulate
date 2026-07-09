@@ -155,6 +155,8 @@ fn ensure_data_dir(_app: &AppHandle) -> Result<String, String> {
         std::fs::create_dir_all(&path)
             .map_err(|error| format!("无法创建运行目录 {}: {error}", path.display()))?;
     }
+    std::fs::create_dir_all(dir.join("data/point_csv"))
+        .map_err(|error| format!("无法创建运行目录 data/point_csv: {error}"))?;
 
     Ok(dir.to_string_lossy().to_string())
 }

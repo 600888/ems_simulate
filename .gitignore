@@ -177,4 +177,5 @@ dist_msix
 # Windows environment variable literal (防止工具错误展开)
 %SystemDrive%/
 
-data/
+data/*
+!data/point_csv/

@@ -193,11 +193,18 @@ class IEC104ServerHandler(ServerHandler):
                     common_address=common_address,
                 )
             elif frame_type in (2, 3):  # 遥控/遥调 → 命令点
-                self._server.add_command_point(
+                cmd_point = self._server.add_command_point(
                     io_address=point.address,
                     point_type=point_type,
                     common_address=common_address,
                 )
+                if cmd_point is None:
+                    if self._log:
+                        self._log.warning(
+                            f"添加命令点失败: code={point.code}, address={point.address}, "
+                            f"type={point_type}, common_address={common_address}"
+                        )
+                    continue
                 # 建立 (common_address, IOA) → BasePoint 映射，用于命令接收后同步更新应用层值
                 self._command_point_map[(common_address, int(point.address))] = point
 

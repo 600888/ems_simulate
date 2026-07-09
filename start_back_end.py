@@ -43,6 +43,7 @@ def _prepare_runtime_root(root_dir: Path) -> None:
     root_dir.mkdir(parents=True, exist_ok=True)
     for sub in ("data", "log", "config", "upload", "plan"):
         (root_dir / sub).mkdir(parents=True, exist_ok=True)
+    (root_dir / "data" / "point_csv").mkdir(parents=True, exist_ok=True)
 
     config_target = root_dir / "config.ini"
     config_source = _bundled_path("config.ini")
