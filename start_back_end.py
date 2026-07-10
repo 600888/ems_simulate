@@ -57,6 +57,14 @@ def _prepare_runtime_root(root_dir: Path) -> None:
         if db_source.exists():
             db_target.write_bytes(db_source.read_bytes())
 
+    # 首次运行时复制样本点表文件
+    point_csv_target = root_dir / "data" / "point_csv"
+    point_csv_source = _bundled_path("data/point_csv")
+    if point_csv_source.is_dir() and not any(point_csv_target.iterdir()):
+        for f in point_csv_source.iterdir():
+            if f.is_file():
+                (point_csv_target / f.name).write_bytes(f.read_bytes())
+
 
 if __name__ == "__main__":
     args = _parse_args()
