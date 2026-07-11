@@ -130,7 +130,7 @@ class BrcbHandler:
                 error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if error != iec61850.IED_ERROR_OK:
-                    log.warning(f"获取 BRCB 值失败: ref={rcb_ref}, error={error}")
+                    log.debug(f"获取 BRCB 值失败: ref={rcb_ref}, error={error}")
                     return None
 
                 # 提取属性值

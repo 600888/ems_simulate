@@ -336,6 +336,7 @@ class SclHeader:
     version: str = ""
     revision: str = ""
     tool_id: str = ""
+    name_structure: str = ""  # "IEDName" 或 ""，影响 LD 实例名的组织方式
 
 
 @dataclass(slots=True)
@@ -370,12 +371,18 @@ class SclDocument:
 
     def get_gse_address(self, ied_name: str, ld_inst: str, cb_name: str) -> SclGSE | None:
         """查找 GSE 通信地址"""
+        # nameStructure="IEDName" 时 ld_inst 可能已含 IED 名称前缀（如
+        # KG_BAMSSTCK01），而 GSE ldInst 在 ICD Communication 节中存储的
+        # 是原始短名（STCK01），需要同时尝试两种匹配。
+        candidates = [ld_inst]
+        if self.header.name_structure == "IEDName" and ld_inst.startswith(ied_name):
+            candidates.append(ld_inst[len(ied_name) :])
         for sub_net in self.communication.sub_networks:
             for conn_ap in sub_net.connected_aps:
                 if conn_ap.ied_name != ied_name:
                     continue
                 for gse in conn_ap.gses:
-                    if gse.ld_inst == ld_inst and gse.cb_name == cb_name:
+                    if gse.cb_name == cb_name and gse.ld_inst in candidates:
                         return gse
         return None
 

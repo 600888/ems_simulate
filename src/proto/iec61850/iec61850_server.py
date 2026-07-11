@@ -939,7 +939,17 @@ class IEC61850Server:
         for address, ref in self._point_refs.items():
             # ref 格式: "{IEDName}{LD_inst}/{LN_name}.{DO_name}.{DA_path}"
             # FCDA entry name 需要: "{LD_inst}/{LN_name}.{DO_name}.{DA_path}" (不含 IEDName)
-            if ref.startswith(ied_prefix):
+            # 当 nameStructure="IEDName" 时 LD 已含 IEDName 前缀，此时 ref 的
+            # LD 部分即是 MMS 模型中完整的 LD 名，无需剥离前缀。
+            if "/" in ref:
+                ref_ld = ref.split("/")[0]
+                if ref_ld in self._ld_map:
+                    fcda_name = ref  # 已在 ld_map 中，说明 LD 名不含前缀
+                elif ref.startswith(ied_prefix):
+                    fcda_name = ref[len(ied_prefix) :]
+                else:
+                    fcda_name = ref
+            elif ref.startswith(ied_prefix):
                 fcda_name = ref[len(ied_prefix) :]
             else:
                 fcda_name = ref

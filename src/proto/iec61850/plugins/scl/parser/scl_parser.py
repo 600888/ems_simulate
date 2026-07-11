@@ -75,6 +75,8 @@ class SclParser:
 
     def __init__(self):
         self._ns = NamespaceHelper()
+        self._name_structure: str = ""
+        self._ied_name: str = ""
 
     def parse_file(self, file_path: str) -> SclDocument:
         """解析 SCL 文件（iterparse 增量模式）
@@ -172,11 +174,13 @@ class SclParser:
     # ===== Header =====
 
     def _parse_header(self, elem: ET.Element) -> SclHeader:
+        self._name_structure = elem.get("nameStructure", "")
         return SclHeader(
             id=elem.get("id", ""),
             version=elem.get("version", ""),
             revision=elem.get("revision", ""),
             tool_id=elem.get("toolID", ""),
+            name_structure=self._name_structure,
         )
 
     # ===== Communication =====
@@ -397,12 +401,13 @@ class SclParser:
     # ===== IED =====
 
     def _parse_ied(self, elem: ET.Element) -> SclIED:
+        self._ied_name = elem.get("name", "")
         access_points = []
         for ap_elem in self._ns.findall(elem, "AccessPoint"):
             access_points.append(self._parse_access_point(ap_elem))
 
         return SclIED(
-            name=elem.get("name", ""),
+            name=self._ied_name,
             desc=elem.get("desc", ""),
             manufacturer=elem.get("manufacturer", ""),
             config_revision=elem.get("configRevision", ""),
@@ -431,6 +436,11 @@ class SclParser:
         lns = []
 
         ld_inst = elem.get("inst", "")
+        # IEC 61850-6: nameStructure="IEDName" 时，MMS 逻辑设备名由
+        # IED 名称 + LDevice.inst 拼接而成（如 IED=KG_BAMS, inst=STCK01
+        # → MMS LD 名 = KG_BAMSSTCK01）。
+        if self._ied_name and self._name_structure == "IEDName" and not ld_inst.startswith(self._ied_name):
+            ld_inst = f"{self._ied_name}{ld_inst}"
 
         ln0_elem = self._ns.find(elem, "LN0")
         if ln0_elem is not None:
@@ -502,6 +512,9 @@ class SclParser:
             da_name = STRUCT_DA_TO_FULL_PATH.get(da_name, da_name)
             # 部分 ICD 文件的 FCDA 省略 ldInst，需从父 LDevice 继承
             fcda_ld_inst = fcda_elem.get("ldInst", "") or ld_inst
+            # nameStructure="IEDName" 时 FCDA ldInst 也需要 IEDName 前缀
+            if self._ied_name and self._name_structure == "IEDName" and not fcda_ld_inst.startswith(self._ied_name):
+                fcda_ld_inst = f"{self._ied_name}{fcda_ld_inst}"
             members.append(
                 SclFCDA(
                     ld_inst=fcda_ld_inst,

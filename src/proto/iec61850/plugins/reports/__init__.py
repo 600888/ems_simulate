@@ -393,6 +393,8 @@ class ReportsPlugin:
             return list(rcbs)
 
         refreshed: list[dict[str, Any]] = []
+        success_count = 0
+        fail_count = 0
         for cached in rcbs:
             item = dict(cached)
             rcb_ref = str(item.get("ref") or "")
@@ -409,6 +411,7 @@ class ReportsPlugin:
                     else:
                         detail = BrcbHandler.get_rcb_values(connection, rcb_ref)
                 if detail is not None:
+                    success_count += 1
                     active = ReportCallbackHandler.is_active(rcb_ref)
                     reserved = bool(detail.resv or detail.resv_tms != 0)
                     my_rpt_id = self._my_rpt_ids.get(rcb_ref)
@@ -426,9 +429,20 @@ class ReportsPlugin:
                         intg_period=detail.intg_period or item.get("intg_period", 0),
                     )
                     self._rcb_detail_cache[rcb_ref] = item
+                else:
+                    fail_count += 1
             except Exception as e:
+                fail_count += 1
                 log.debug(f"刷新 RCB 占用状态失败: ref={rcb_ref}, {e}")
             refreshed.append(item)
+        total = len(rcbs)
+        if fail_count > 0 and fail_count >= total // 2:
+            log.warning(
+                f"刷新 RCB 状态: {success_count}/{total} 成功, {fail_count}/{total} 失败 "
+                f"(远程 IED 可能未配置这些报告控制块)"
+            )
+        elif fail_count > 0:
+            log.info(f"刷新 RCB 状态: {success_count}/{total} 成功, {fail_count}/{total} 失败")
         return refreshed
 
     # ==================== 报告配置应用 ====================

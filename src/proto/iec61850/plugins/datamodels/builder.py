@@ -374,7 +374,11 @@ class IedModelBuilder:
                     self._keep_alive.append(sub_obj)
                     parent = sub_obj
 
-        ref = f"{self.model_name}{ld_inst}/{ln_name}.{do_name}.{da_path}"
+        # nameStructure="IEDName" 时 ld_inst 已包含 model_name 前缀，避免双拼
+        if ld_inst.startswith(self.model_name):
+            ref = f"{ld_inst}/{ln_name}.{do_name}.{da_path}"
+        else:
+            ref = f"{self.model_name}{ld_inst}/{ln_name}.{do_name}.{da_path}"
         self._point_refs[addr_str] = ref
         self._point_fc[addr_str] = fc
         if normalized_iec_type and normalized_iec_type != "unknown":

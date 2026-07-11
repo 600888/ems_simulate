@@ -15,6 +15,13 @@ class SimulationController:
         self._stop_event = threading.Event()  # 线程停止信号
 
     def add_point(self, point: Yc | Yx, simulate_method: SimulateMethod, step: int):
+        # IEC61850 标准元数据 DA（品质 q、时标 t、描述 dU）不参与模拟
+        from src.enums.modbus_def import ProtocolType
+
+        if self.device.protocol_type in (ProtocolType.Iec61850Server,):
+            addr = str(point.hex_address)
+            if addr.endswith(".q") or addr.endswith(".t") or addr.endswith(".dU"):
+                return
         self.points[point] = PointSimulator(point, simulate_method, step)
 
     def set_all_point_simulate_method(self, simulate_method: SimulateMethod):

@@ -125,7 +125,7 @@ class PointOperator:
                     raise ValueError(f"测点 {point_code} 写入失败: {e}") from e
                 if not result:
                     raise ValueError(f"测点 {point_code} 协议写入失败，请检查配置或物理连接")
-                self._log.debug(f"测点 {point_code} 写入成功: {real_value}")
+                # self._log.debug(f"测点 {point_code} 写入成功: {real_value}")
                 return result
             else:
                 raise SystemError(f"测点 {point_code} 协议处理器未配置，无法写入")
@@ -544,7 +544,7 @@ class PointOperator:
 
             # 2. 批量转换为内存对象
             for db_point in db_points:
-                point: BasePoint
+                point: BasePoint | None = None
                 slave_id = db_point.get("rtu_addr", 1)
 
                 if frame_type == 0:
@@ -559,7 +559,8 @@ class PointOperator:
                     return False
 
                 # 3. 添加到测点管理器
-                self._pm.add_point(slave_id, point)
+                if point:
+                    self._pm.add_point(slave_id, point)
 
                 # 4. 添加到模拟控制器
                 self._device.simulation_controller.add_point(point, SimulateMethod.Random, 1)

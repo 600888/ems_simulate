@@ -219,7 +219,7 @@ class UrcbHandler:
                     with contextlib.suppress(Exception):
                         iec61850.ClientReportControlBlock_destroy(rcb)
 
-            log.warning(f"获取 URCB 值失败: ref={rcb_ref}, error={last_error}")
+            log.debug(f"获取 URCB 值失败: ref={rcb_ref}, error={last_error}")
             return None
         except Exception as e:
             log.error(f"获取 URCB 值异常: {rcb_ref}, {e}")

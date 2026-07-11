@@ -63,7 +63,7 @@ class PointManager:
             self.yx_dict[slave_id].append(point)
 
         # 更新索引 - 使用复合键避免不同从站同编码覆盖
-        if point.code:
+        if point and point.code:
             composite_key = f"{slave_id}:{point.code}"
             self.code_map[composite_key] = point
             # 同时维护 slave_code_index（支持不同从站使用相同编码）
