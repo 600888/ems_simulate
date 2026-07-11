@@ -51,7 +51,7 @@ CDC_VALUE_DA_PATH: dict[str, str] = {
     "SPC": "ctlVal",
     "DPC": "ctlVal",
     "APC": "setVal",
-    "INC": "setVal",
+    "INC": "stVal",
     "ASG": "setMag.f",
     "ING": "setVal",
     "SPG": "setVal",

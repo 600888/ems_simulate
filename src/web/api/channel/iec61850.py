@@ -559,16 +559,37 @@ def _build_iec61850_tree(
     if category and category != "DataModel":
         return {"items": [], "total": 0}
 
-    # 获取 mms_type 映射（服务端：从 ICD 模型获取）
+    # 获取 mms_type 映射
+    # 服务端：从 IedModelBuilder._point_mms_type 获取
+    # 客户端：从 PointRegistry.get_mms_type 逐个获取（ICD 导入时已缓存）
     _point_mms_type_map: dict[str, str] = {}
+    _client_mms_getter = None
     if device:
         try:
             handler = getattr(device, "protocol_handler", None)
             server = getattr(handler, "_server", None) if handler else None
             if server is not None:
                 _point_mms_type_map = server._point_mms_type
+            else:
+                # 客户端路径：从 PointRegistry 获取
+                client = getattr(handler, "_client", None) if handler else None
+                registry = getattr(client, "_registry", None) if client else None
+                if registry is not None:
+                    getter = getattr(registry, "get_mms_type", None)
+                    if callable(getter):
+                        _client_mms_getter = getter
         except Exception:
             pass
+
+    def _resolve_mms_type(address: str) -> str:
+        """获取地址的 mms_type，优先服务端映射，其次客户端 registry"""
+        mms_type = _point_mms_type_map.get(address, "")
+        if not mms_type and _client_mms_getter is not None:
+            try:
+                mms_type = _client_mms_getter(address) or ""
+            except Exception:
+                pass
+        return mms_type
 
     # 1. 收集所有测点, 构建 DO 分组
 
@@ -680,7 +701,7 @@ def _build_iec61850_tree(
                         "point_code": bda_point_code,
                         "value": value,
                         "status": status,
-                        "mms_type": _point_mms_type_map.get(address, ""),
+                        "mms_type": _resolve_mms_type(address),
                     }
                 )
         else:
@@ -696,7 +717,7 @@ def _build_iec61850_tree(
                     "point_name": str(point.name),
                     "value": value,
                     "status": status,
-                    "mms_type": _point_mms_type_map.get(address, ""),
+                    "mms_type": _resolve_mms_type(address),
                     "children": [],
                 }
             else:
