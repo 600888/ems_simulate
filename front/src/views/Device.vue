@@ -247,7 +247,10 @@ import {
 } from "@/api/deviceApi";
 import type { IEC61850ConnectProgress } from "@/api/deviceApi";
 import { triggerSidebarRefresh } from "@/composables";
-import { acquireAutoRefreshPause } from "@/composables/autoRefreshGate";
+import {
+  acquireAutoRefreshPause,
+  isAutoRefreshPaused,
+} from "@/composables/autoRefreshGate";
 import IcdImportUpload from "@/components/common/IcdImportUpload.vue";
 import {
   CaretRight,
@@ -833,6 +836,8 @@ let prevServerStatus: boolean | null = null; // 上一次轮询的连接状态�
 // 仅获取状态（不更新其他信息，减少开销）
 const fetchDeviceStatus = async () => {
   if (statusPollInFlight) return;
+  // 导入 ICD 文件期间暂停轮询，避免设备重建设置 404 导致弹窗误报断连
+  if (isAutoRefreshPaused.value) return;
   statusPollInFlight = true;
   try {
     const info = await getDeviceInfo(routeName.value);

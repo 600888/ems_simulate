@@ -74,6 +74,9 @@ class PointSimulator:
                 # 随机模拟，在限制范围内随机生成值
                 min_value_limit = max(self.point.min_value_limit, -100000)
                 max_value_limit = min(self.point.max_value_limit, 100000)
+                # 限制范围未设置（min==max==0），使用默认范围 [0, 1000]
+                if min_value_limit >= max_value_limit:
+                    min_value_limit, max_value_limit = 0, 1000
                 value = random.uniform(min_value_limit, max_value_limit)
                 self.point.set_real_value(value)
 

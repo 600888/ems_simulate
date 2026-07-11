@@ -125,7 +125,7 @@ class PointOperator:
                     raise ValueError(f"测点 {point_code} 写入失败: {e}") from e
                 if not result:
                     raise ValueError(f"测点 {point_code} 协议写入失败，请检查配置或物理连接")
-                self._log.info(f"测点 {point_code} 写入成功: {real_value}")
+                self._log.debug(f"测点 {point_code} 写入成功: {real_value}")
                 return result
             else:
                 raise SystemError(f"测点 {point_code} 协议处理器未配置，无法写入")

@@ -99,6 +99,13 @@ BTYPE_TO_MMS_TYPE: dict[str, MmsType] = {
     "VisString255": MmsType.VISIBLE_STRING,
 }
 
+_NORMALIZED_BTYPE_TO_MMS_TYPE = {key.upper(): value for key, value in BTYPE_TO_MMS_TYPE.items()}
+
+
+def mms_type_from_btype(btype: str) -> MmsType:
+    """Map an SCL ``bType`` value to the corresponding native MMS type."""
+    return _NORMALIZED_BTYPE_TO_MMS_TYPE.get(str(btype or "").strip().upper(), MmsType.UNKNOWN)
+
 
 MMS_TO_IEC_TYPE: dict[MmsType, IecType] = {
     MmsType.FLOAT: IecType.FLOAT,

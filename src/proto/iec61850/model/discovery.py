@@ -186,7 +186,7 @@ class ModelDiscoveryService:
         # Some IEDs expose the API but reject every variable-specification
         # request. Stop probing after a sustained failure streak instead of
         # paying one extra MMS round trip for every DA in a large model.
-        self._variable_spec_failure_limit = 32
+        self._variable_spec_failure_limit = 20000
         self._variable_spec_failures = 0
         self._variable_spec_disabled = False
 

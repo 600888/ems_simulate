@@ -729,7 +729,8 @@ class ReportsPlugin:
             log.error(f"disable report failed: {rcb_ref}, {e}")
             return False
 
-        time.sleep(0.1)
+        time.sleep(0.05)
+        ReportCallbackHandler.wait_for_idle(self._connection, timeout=3.0)
 
         try:
             ReportCallbackHandler.uninstall(self._connection, rcb_ref)
@@ -759,13 +760,14 @@ class ReportsPlugin:
 
     def trigger_gi(self, rcb_ref: str) -> bool:
         """触发通用查询 (GI)，立即生成一次完整报告"""
-        if not self._ensure_connection():
-            return False
+        with self._operation_lock:
+            if not self._ensure_connection():
+                return False
 
-        rcb_type = self._infer_rcb_type(rcb_ref)
-        if rcb_type == "BRCB":
-            return BrcbHandler.trigger_gi(self._connection, rcb_ref)
-        return self._trigger_urcb_software_gi(rcb_ref)
+            rcb_type = self._infer_rcb_type(rcb_ref)
+            if rcb_type == "BRCB":
+                return BrcbHandler.trigger_gi(self._connection, rcb_ref)
+            return self._trigger_urcb_software_gi(rcb_ref)
 
     def _trigger_urcb_software_gi(self, rcb_ref: str) -> bool:
         """通过一次 DataSet 批读生成 URCB 软件 GI，并写入报告缓存。
@@ -892,21 +894,22 @@ class ReportsPlugin:
         Returns:
             RCB 详细信息字典，失败返回 None
         """
-        if not self._ensure_connection():
-            return None
+        with self._operation_lock:
+            if not self._ensure_connection():
+                return None
 
-        rcb_type = self._infer_rcb_type(rcb_ref)
+            rcb_type = self._infer_rcb_type(rcb_ref)
 
-        rcb_ref.split(".")[-1] if "." in rcb_ref else rcb_ref
-        ld_name = ""
-        ln_name = ""
-        if rcb_ref and "/" in rcb_ref:
-            parts = rcb_ref.split("/", 1)
-            ld_name = parts[0]
-            ln_part = parts[1].split(".")[0] if "." in parts[1] else parts[1]
-            ln_name = ln_part
+            rcb_ref.split(".")[-1] if "." in rcb_ref else rcb_ref
+            ld_name = ""
+            ln_name = ""
+            if rcb_ref and "/" in rcb_ref:
+                parts = rcb_ref.split("/", 1)
+                ld_name = parts[0]
+                ln_part = parts[1].split(".")[0] if "." in parts[1] else parts[1]
+                ln_name = ln_part
 
-        return self._get_rcb_info(rcb_ref, rcb_type, ld_name, ln_name)
+            return self._get_rcb_info(rcb_ref, rcb_type, ld_name, ln_name)
 
     # ==================== 内部辅助 ====================
 

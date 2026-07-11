@@ -626,7 +626,8 @@ class IEC61850Client:
         for point in result.points.yc_points:
             self._registry.set_ref(point.reg_addr, point.reg_addr)
             self._registry.set_fc(point.reg_addr, point.fc)
-            self._registry.set_iec_type(point.reg_addr, "float")
+            self._registry.set_iec_type(point.reg_addr, getattr(point, "iec_type", "") or "float")
+            self._registry.set_mms_type(point.reg_addr, getattr(point, "mms_type", "") or "MMS_FLOAT")
             if point.name:
                 self._registry.set_name(point.reg_addr, point.name)
             point_count += 1
@@ -634,7 +635,8 @@ class IEC61850Client:
         for point in result.points.yx_points:
             self._registry.set_ref(point.reg_addr, point.reg_addr)
             self._registry.set_fc(point.reg_addr, point.fc)
-            self._registry.set_iec_type(point.reg_addr, "boolean")
+            self._registry.set_iec_type(point.reg_addr, getattr(point, "iec_type", "") or "boolean")
+            self._registry.set_mms_type(point.reg_addr, getattr(point, "mms_type", "") or "MMS_BOOLEAN")
             if point.name:
                 self._registry.set_name(point.reg_addr, point.name)
             point_count += 1
@@ -642,7 +644,8 @@ class IEC61850Client:
         for point in result.points.yk_points:
             self._registry.set_ref(point.reg_addr, point.reg_addr)
             self._registry.set_fc(point.reg_addr, point.fc)
-            self._registry.set_iec_type(point.reg_addr, "boolean")
+            self._registry.set_iec_type(point.reg_addr, getattr(point, "iec_type", "") or "boolean")
+            self._registry.set_mms_type(point.reg_addr, getattr(point, "mms_type", "") or "MMS_BOOLEAN")
             if point.name:
                 self._registry.set_name(point.reg_addr, point.name)
             point_count += 1
@@ -650,7 +653,8 @@ class IEC61850Client:
         for point in result.points.yt_points:
             self._registry.set_ref(point.reg_addr, point.reg_addr)
             self._registry.set_fc(point.reg_addr, point.fc)
-            self._registry.set_iec_type(point.reg_addr, "float")
+            self._registry.set_iec_type(point.reg_addr, getattr(point, "iec_type", "") or "float")
+            self._registry.set_mms_type(point.reg_addr, getattr(point, "mms_type", "") or "MMS_FLOAT")
             if point.name:
                 self._registry.set_name(point.reg_addr, point.name)
             point_count += 1

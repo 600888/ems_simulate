@@ -14,6 +14,7 @@ import time
 from typing import Any
 
 from ...core.mms_value import mms_value_to_python
+from ...core.native_calls import call_gil_safe
 from ...defs.address import infer_iec_type_from_address
 from ...defs.constants import HAS_IEC61850, IEC_TYPE_UNKNOWN
 from ...defs.types import ReportDataEntry
@@ -271,81 +272,117 @@ class ReportCallbackHandler:
             log.warning(f"安装报告回调失败: 连接不可用, ref={rcb_ref}")
             return False
 
-        # 如果已注册，先注销
-        # 注意：不能在锁内调用 uninstall，因为 uninstall 需要在锁外调用 C 层注销
+        # 如果已注册，先注销。不能在 _CALLBACK_LOCK 内调用 C 层订阅接口；
+        # 其他报告的接收线程可能正要进入 _dispatch_report 获取同一把锁。
         with _CALLBACK_LOCK:
-            already_registered = rcb_ref in _CALLBACK_REGISTRY
-        if already_registered:
-            ReportCallbackHandler.uninstall(connection, rcb_ref)
+            registered_key, _ = _find_registered_info(rcb_ref)
+        if registered_key:
+            ReportCallbackHandler.uninstall(connection, registered_key)
+
+        nref = _normalize_ref(rcb_ref, rcb_type)
+        effective_rpt_id = rpt_id or ""
+        log.info(f"安装报告回调: rcb_ref={rcb_ref}, mms_ref={nref}, rpt_id={rpt_id!r}, rcb_type={rcb_type}")
 
         with _CALLBACK_LOCK:
-            try:
-                nref = _normalize_ref(rcb_ref, rcb_type)
-                log.info(f"安装报告回调: rcb_ref={rcb_ref}, mms_ref={nref}, rpt_id={rpt_id!r}, rcb_type={rcb_type}")
+            if effective_rpt_id:
+                duplicate_ref = next(
+                    (
+                        existing_ref
+                        for existing_ref, existing_info in _CALLBACK_REGISTRY.items()
+                        if existing_info.connection is connection
+                        and existing_info.rpt_id == effective_rpt_id
+                        and existing_ref != rcb_ref
+                    ),
+                    None,
+                )
+                if duplicate_ref:
+                    log.error(
+                        f"安装报告回调失败: RptId 必须唯一, rpt_id={effective_rpt_id!r}, "
+                        f"existing={duplicate_ref}, new={rcb_ref}"
+                    )
+                    return False
 
-                if rpt_id:
+        # 警告：RptId 为空时，部分版本的 libIEC61850 RCBSubscriber
+        if not effective_rpt_id:
+            log.warning(
+                f"RptId 为空，报告回调可能无法匹配服务器推送的报告！"
+                f"请检查 IED 的 RCB 配置中是否设置了 RptId。rcb_ref={rcb_ref}"
+            )
+
+        try:
+            handler = _PyRCBHandler(rcb_ref, connection)
+            subscriber = iec61850.RCBSubscriber()
+            subscriber.setIedConnection(conn)
+            subscriber.setRcbReference(nref)
+            subscriber.setRcbRptId(effective_rpt_id)
+            subscriber.setEventHandler(handler)
+
+            log.debug(f"RCBSubscriber.subscribe() 调用: ref={nref}, rpt_id={effective_rpt_id!r}")
+            subscribe_ok = subscriber.subscribe()
+            if not subscribe_ok:
+                log.warning(
+                    f"RCBSubscriber.subscribe() 返回失败: ref={nref}, rpt_id={effective_rpt_id!r}, rcb_ref={rcb_ref}"
+                )
+                with contextlib.suppress(Exception):
+                    subscriber.deleteEventHandler()
+                return False
+
+            log.info(f"RCBSubscriber.subscribe() 成功: ref={nref}, rpt_id={effective_rpt_id!r}")
+
+            should_cleanup = False
+            cleanup_reason = ""
+            with _CALLBACK_LOCK:
+                existing_key, _ = _find_registered_info(rcb_ref)
+                duplicate_ref = None
+                if effective_rpt_id:
                     duplicate_ref = next(
                         (
                             existing_ref
                             for existing_ref, existing_info in _CALLBACK_REGISTRY.items()
                             if existing_info.connection is connection
-                            and existing_info.rpt_id == rpt_id
+                            and existing_info.rpt_id == effective_rpt_id
                             and existing_ref != rcb_ref
                         ),
                         None,
                     )
-                    if duplicate_ref:
-                        log.error(
-                            f"安装报告回调失败: RptId 必须唯一, rpt_id={rpt_id!r}, "
-                            f"existing={duplicate_ref}, new={rcb_ref}"
-                        )
-                        return False
 
-                # 警告：RptId 为空时，部分版本的 libIEC61850 RCBSubscriber
-                effective_rpt_id = rpt_id or ""
-                if not effective_rpt_id:
-                    log.warning(
-                        f"RptId 为空，报告回调可能无法匹配服务器推送的报告！"
-                        f"请检查 IED 的 RCB 配置中是否设置了 RptId。rcb_ref={rcb_ref}"
+                if existing_key:
+                    should_cleanup = True
+                    cleanup_reason = f"RCB 已被注册: existing={existing_key}, new={rcb_ref}"
+                elif duplicate_ref:
+                    should_cleanup = True
+                    cleanup_reason = (
+                        f"RptId 必须唯一, rpt_id={effective_rpt_id!r}, existing={duplicate_ref}, new={rcb_ref}"
+                    )
+                else:
+                    _CALLBACK_REGISTRY[rcb_ref] = _CallbackInfo(
+                        rcb_ref=rcb_ref,
+                        connection=connection,
+                        handler=handler,
+                        subscriber=subscriber,
+                        on_report=on_report,
+                        max_cache=max_cache,
+                        enabled_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        mms_ref=nref,
+                        rpt_id=effective_rpt_id,
+                        dataset_members=dataset_members or [],
                     )
 
-                handler = _PyRCBHandler(rcb_ref, connection)
-                subscriber = iec61850.RCBSubscriber()
-                subscriber.setIedConnection(conn)
-                subscriber.setRcbReference(nref)
-                subscriber.setRcbRptId(effective_rpt_id)
-                subscriber.setEventHandler(handler)
-
-                log.debug(f"RCBSubscriber.subscribe() 调用: ref={nref}, rpt_id={effective_rpt_id!r}")
-                subscribe_ok = subscriber.subscribe()
-                if not subscribe_ok:
-                    log.warning(
-                        f"RCBSubscriber.subscribe() 返回失败: ref={nref}, rpt_id={effective_rpt_id!r}, "
-                        f"rcb_ref={rcb_ref}"
-                    )
-                    with contextlib.suppress(Exception):
-                        subscriber.deleteEventHandler()
-                    return False
-
-                log.info(f"RCBSubscriber.subscribe() 成功: ref={nref}, rpt_id={effective_rpt_id!r}")
-
-                _CALLBACK_REGISTRY[rcb_ref] = _CallbackInfo(
-                    rcb_ref=rcb_ref,
-                    connection=connection,
-                    handler=handler,
-                    subscriber=subscriber,
-                    on_report=on_report,
-                    max_cache=max_cache,
-                    enabled_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    mms_ref=nref,
-                    rpt_id=effective_rpt_id,
-                    dataset_members=dataset_members or [],
-                )
-                log.info(f"报告回调已安装: {rcb_ref} (mms_ref={nref}, rpt_id={effective_rpt_id!r})")
-                return True
-            except Exception as e:
-                log.error(f"安装报告回调异常: {rcb_ref}, {e}", exc_info=True)
+            if should_cleanup:
+                log.error(f"安装报告回调失败: {cleanup_reason}")
+                with contextlib.suppress(Exception):
+                    handler.close()
+                with contextlib.suppress(Exception):
+                    subscriber.deleteEventHandler()
+                with contextlib.suppress(Exception):
+                    call_gil_safe(iec61850, "IedConnection_uninstallReportHandler", conn, nref)
                 return False
+
+            log.info(f"报告回调已安装: {rcb_ref} (mms_ref={nref}, rpt_id={effective_rpt_id!r})")
+            return True
+        except Exception as e:
+            log.error(f"安装报告回调异常: {rcb_ref}, {e}", exc_info=True)
+            return False
 
     @staticmethod
     def uninstall(connection, rcb_ref: str) -> bool:
@@ -379,6 +416,12 @@ class ReportCallbackHandler:
         handler = info.handler
         nref = info.mms_ref or _normalize_ref(rcb_ref)
 
+        if handler is not None and hasattr(handler, "close"):
+            with contextlib.suppress(Exception):
+                handler.close()
+
+        ReportCallbackHandler.wait_for_idle(connection, timeout=3.0)
+
         # 2. 锁外断开 SWIG director 链接 (C++ 不再回调 Python)
         if subscriber is not None:
             try:
@@ -386,9 +429,11 @@ class ReportCallbackHandler:
             except Exception as e:
                 log.debug(f"deleteEventHandler 异常 (非致命): {rcb_ref}, {e}")
 
+        ReportCallbackHandler.wait_for_idle(connection, timeout=1.0)
+
         # 3. 按 rcbReference 注销 C++ 侧订阅记录 (确保可重新订阅)
         try:
-            iec61850.IedConnection_uninstallReportHandler(conn, nref)
+            call_gil_safe(iec61850, "IedConnection_uninstallReportHandler", conn, nref)
         except Exception as e:
             log.debug(f"uninstallReportHandler 异常 (非致命): {rcb_ref}, {e}")
 
@@ -559,14 +604,24 @@ class ReportCallbackHandler:
         for ref, info in zip(refs, infos, strict=True):
             subscriber = info.subscriber
             handler = info.handler
+            if handler is not None and hasattr(handler, "close"):
+                with contextlib.suppress(Exception):
+                    handler.close()
+            ReportCallbackHandler.wait_for_idle(connection, timeout=3.0)
             if subscriber is not None:
                 try:
                     subscriber.deleteEventHandler()
                 except Exception:
                     pass
+            ReportCallbackHandler.wait_for_idle(connection, timeout=1.0)
             if conn is not None:
                 try:
-                    iec61850.IedConnection_uninstallReportHandler(conn, info.mms_ref or _normalize_ref(ref))
+                    call_gil_safe(
+                        iec61850,
+                        "IedConnection_uninstallReportHandler",
+                        conn,
+                        info.mms_ref or _normalize_ref(ref),
+                    )
                 except Exception:
                     pass
             # 防止 SWIG 重复析构
@@ -690,6 +745,10 @@ if HAS_IEC61850:
             super().__init__()
             self._rcb_ref = rcb_ref
             self._connection_key = id(connection)
+            self._closing = False
+
+        def close(self):
+            self._closing = True
 
         def trigger(self):
             """C 接收线程回调: 在线程内完成解析"""
@@ -697,6 +756,9 @@ if HAS_IEC61850:
             with _CALLBACK_IDLE:
                 _ACTIVE_CALLBACKS[self._connection_key] = _ACTIVE_CALLBACKS.get(self._connection_key, 0) + 1
             try:
+                if self._closing:
+                    log.debug(f"RCBHandler.trigger ignored during close: rcb_ref={self._rcb_ref}")
+                    return
                 cr = self._client_report
                 log.info(f"RCBHandler.trigger report: rcb_ref={self._rcb_ref}, report={cr}")
                 # 在 trigger 返回前完成解析 (C 层在 trigger 返回后可能释放 report)

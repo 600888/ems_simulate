@@ -209,6 +209,9 @@ def _resolve_control_write_code(device, point_code: str) -> str:
         return point_code
     if point_fc == "CO" and _is_control_value_address(str(point.address)):
         return point_code
+    # 非 CO 的数据点（ST、MX 等），直接使用原测点编码，不需要控制解析
+    if point_fc and point_fc != "CO":
+        return point_code
 
     requested_ref = _parse_iec61850_address(str(point.address))
     if not requested_ref:
@@ -556,6 +559,17 @@ def _build_iec61850_tree(
     if category and category != "DataModel":
         return {"items": [], "total": 0}
 
+    # 获取 mms_type 映射（服务端：从 ICD 模型获取）
+    _point_mms_type_map: dict[str, str] = {}
+    if device:
+        try:
+            handler = getattr(device, "protocol_handler", None)
+            server = getattr(handler, "_server", None) if handler else None
+            if server is not None:
+                _point_mms_type_map = server._point_mms_type
+        except Exception:
+            pass
+
     # 1. 收集所有测点, 构建 DO 分组
 
     do_map: dict[str, dict[str, Any]] = {}  # do_ref → {do_info, children_map}
@@ -648,6 +662,7 @@ def _build_iec61850_tree(
                     "point_name": top_da,
                     "value": "",
                     "status": "",
+                    "mms_type": "",
                     "children": [],
                 }
 
@@ -656,14 +671,16 @@ def _build_iec61850_tree(
             # 检查是否已有同名 BDA
             existing_bda_names = {b.get("bda_name") for b in parent_da["children"]}
             if bda_name not in existing_bda_names:
+                bda_point_code = str(point.code)
                 parent_da["children"].append(
                     {
                         "bda_name": bda_name,
                         "bda_path": da_path,
                         "fc": point_fc or parent_da["fc"],
-                        "point_code": str(point.code),
+                        "point_code": bda_point_code,
                         "value": value,
                         "status": status,
+                        "mms_type": _point_mms_type_map.get(address, ""),
                     }
                 )
         else:
@@ -679,6 +696,7 @@ def _build_iec61850_tree(
                     "point_name": str(point.name),
                     "value": value,
                     "status": status,
+                    "mms_type": _point_mms_type_map.get(address, ""),
                     "children": [],
                 }
             else:
@@ -741,6 +759,7 @@ def _build_iec61850_tree(
                 "point_name": dU_name,
                 "value": dU_value,
                 "status": "",
+                "mms_type": "",
                 "children": [
                     {
                         "bda_name": bda,
@@ -749,6 +768,7 @@ def _build_iec61850_tree(
                         "point_code": "",
                         "value": "",
                         "status": "",
+                        "mms_type": "",
                     }
                     for bda in bda_list
                 ],
@@ -770,6 +790,7 @@ def _build_iec61850_tree(
                             "point_code": "",
                             "value": "",
                             "status": "",
+                            "mms_type": "",
                         }
                     )
 
@@ -811,6 +832,19 @@ def _build_iec61850_tree(
         else:
             do_status = "未知"
 
+        # DO 级 mms_type: 取第一个有点码且非空的 DA 子节点的 mms_type
+        do_mms_type = ""
+        for da in da_list:
+            if da.get("point_code") and da.get("mms_type"):
+                do_mms_type = da["mms_type"]
+                break
+            for bda in da.get("children", []):
+                if bda.get("point_code") and bda.get("mms_type"):
+                    do_mms_type = bda["mms_type"]
+                    break
+            if do_mms_type:
+                break
+
         items.append(
             {
                 "do_name": do_info["do_name"],
@@ -821,6 +855,7 @@ def _build_iec61850_tree(
                 "fc": do_info["fc"],
                 "frame_type": do_info["frame_type"],
                 "status": do_status,
+                "mms_type": do_mms_type,
                 "children": da_list,
             }
         )

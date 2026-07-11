@@ -152,6 +152,13 @@ BTYPE_TO_IEC_TYPE: dict[str, str] = {
     "Struct": "struct",
 }
 
+_NORMALIZED_BTYPE_TO_IEC_TYPE = {key.upper(): value for key, value in BTYPE_TO_IEC_TYPE.items()}
+
+
+def iec_type_from_btype(btype: str) -> str:
+    """Map an SCL bType value to the internal IEC type name."""
+    return _NORMALIZED_BTYPE_TO_IEC_TYPE.get(str(btype or "").strip().upper(), "unknown")
+
 
 # ===== FC 到 IEC 类型推断 =====
 

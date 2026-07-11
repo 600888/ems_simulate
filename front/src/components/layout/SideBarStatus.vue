@@ -36,6 +36,7 @@ import { Refresh } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { isTauri, checkBackendStatus, restartBackend } from "@/utils/tauri";
 import { useI18n } from "vue-i18n";
+import { isAutoRefreshPaused } from "@/composables/autoRefreshGate";
 
 const props = defineProps<{
   isCollapse: boolean;
@@ -61,6 +62,8 @@ const statusText = computed(() => {
 
 const doHealthCheck = async () => {
   if (checking.value) return;
+  // 导入文件期间跳过健康检查，避免控制台刷满连接错误
+  if (isAutoRefreshPaused.value) return;
   checking.value = true;
   try {
     const ok = await checkBackendStatus();

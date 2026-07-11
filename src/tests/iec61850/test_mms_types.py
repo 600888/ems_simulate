@@ -8,10 +8,13 @@ from src.proto.iec61850.defs.mms_types import (
     MmsType,
     iec_type_from_mms_type,
     infer_mms_type_from_path,
+    mms_type_from_btype,
     mms_type_from_native,
 )
 from src.proto.iec61850.model import discovery as discovery_module
 from src.proto.iec61850.model.ied_model import DARef, DORef, IedModel, LDModel, LNModel
+from src.proto.iec61850.plugins.scl.parser.scl_parser import SclParser
+from src.proto.iec61850.plugins.scl.transformer.point_transformer import SclPointTransformer
 from src.web.api.channel.iec61850 import _build_iec61850_tree_from_model
 
 
@@ -28,6 +31,51 @@ def test_scl_btypes_preserve_wire_level_distinctions():
     assert BTYPE_TO_MMS_TYPE["VisString255"] is MmsType.VISIBLE_STRING
     assert BTYPE_TO_MMS_TYPE["Octet64"] is MmsType.OCTET_STRING
     assert BTYPE_TO_MMS_TYPE["Struct"] is MmsType.STRUCTURE
+
+
+def test_scl_btype_lookup_is_case_insensitive():
+    assert mms_type_from_btype("struct") is MmsType.STRUCTURE
+    assert mms_type_from_btype("TIMESTAMP") is MmsType.UTC_TIME
+    assert mms_type_from_btype("visstring255") is MmsType.VISIBLE_STRING
+
+
+def test_scl_point_transformer_carries_mms_types_from_icd_templates():
+    doc = SclParser().parse_string(
+        """
+        <SCL>
+          <IED name="IED1">
+            <AccessPoint name="AP1">
+              <Server>
+                <LDevice inst="LD0">
+                  <LN0 lnClass="LLN0" lnType="LLN0Type" />
+                  <LN lnClass="MMXU" inst="1" lnType="MMXUType" />
+                </LDevice>
+              </Server>
+            </AccessPoint>
+          </IED>
+          <DataTypeTemplates>
+            <LNodeType id="LLN0Type" lnClass="LLN0" />
+            <LNodeType id="MMXUType" lnClass="MMXU">
+              <DO name="TotW" type="MVType" />
+            </LNodeType>
+            <DOType id="MVType" cdc="MV">
+              <DA name="mag" fc="MX" bType="struct" type="AnalogueValue" dchg="true" />
+              <DA name="q" fc="MX" bType="QUALITY" qchg="true" />
+            </DOType>
+            <DAType id="AnalogueValue">
+              <BDA name="f" bType="float32" />
+            </DAType>
+          </DataTypeTemplates>
+        </SCL>
+        """
+    )
+
+    result = SclPointTransformer(doc).transform()
+    by_da = {point.da_name: point for point in result.yc_points}
+
+    assert by_da["mag.f"].mms_type == MmsType.FLOAT
+    assert by_da["mag.f"].iec_type == "float"
+    assert by_da["q"].mms_type == MmsType.BIT_STRING
 
 
 def test_mms_type_keeps_legacy_iec_type_compatibility():

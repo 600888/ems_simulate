@@ -27,6 +27,8 @@ class PointData:
     cdc: str = ""
     da_name: str = ""
     fc: str = ""
+    iec_type: str = "unknown"
+    mms_type: str = "MMS_UNKNOWN"
     dchg: bool = False
     qchg: bool = False
     dupd: bool = False
@@ -104,7 +106,11 @@ class SclPointTransformer:
             main_da_path = self._resolver.get_value_da_path(do_def.type_id, cdc)
             if main_da_path:
                 fc = CDC_DEFAULT_FC.get(cdc, "")
-                main_da = next((item for item in all_das if item["path"] == main_da_path), {})
+                matching_main_das = [item for item in all_das if item["path"] == main_da_path]
+                main_da = next(
+                    (item for item in matching_main_das if str(item.get("bType") or "").upper() != "STRUCT"),
+                    matching_main_das[0] if matching_main_das else {},
+                )
                 point = PointData(
                     code=f"{ld.inst}_{ln.ln_name}_{do_def.name}_{main_da_path.replace('.', '_')}",
                     name=do_desc,
@@ -112,6 +118,8 @@ class SclPointTransformer:
                     cdc=cdc,
                     da_name=main_da_path,
                     fc=str(main_da.get("fc") or fc),
+                    iec_type=str(main_da.get("iecType") or "unknown"),
+                    mms_type=str(main_da.get("mmsType") or "MMS_UNKNOWN"),
                     dchg=bool(main_da.get("dchg", False)),
                     qchg=bool(main_da.get("qchg", False)),
                     dupd=bool(main_da.get("dupd", False)),
@@ -142,6 +150,8 @@ class SclPointTransformer:
                     cdc=cdc,
                     da_name=da_path,
                     fc=da_fc,
+                    iec_type=str(da_info.get("iecType") or "unknown"),
+                    mms_type=str(da_info.get("mmsType") or "MMS_UNKNOWN"),
                     dchg=bool(da_info.get("dchg", False)),
                     qchg=bool(da_info.get("qchg", False)),
                     dupd=bool(da_info.get("dupd", False)),

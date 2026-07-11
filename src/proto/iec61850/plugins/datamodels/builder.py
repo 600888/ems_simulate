@@ -9,6 +9,7 @@ from typing import Any
 from ...defs.address import is_full_ref, parse_ref, split_ln_name
 from ...defs.constants import FC_CO, FC_MX, FC_ST, HAS_IEC61850
 from ...defs.ln_classes import YC_LN_CLASSES, YK_LN_CLASSES, YT_LN_CLASSES, YX_LN_CLASSES
+from ...defs.mms_types import infer_mms_type_from_path, mms_type_from_iec_type
 from ...log import log
 
 if HAS_IEC61850:
@@ -56,6 +57,7 @@ class IedModelBuilder:
         self._point_attrs: dict[str, Any] = {}
         self._point_fc: dict[str, str] = {}
         self._point_iec_type: dict[str, str] = {}
+        self._point_mms_type: dict[str, str] = {}
 
         # 标准 DA 列表 (用于服务器启动后初始化默认值)
         self._standard_bda_list: list[tuple] = []
@@ -83,6 +85,10 @@ class IedModelBuilder:
     @property
     def point_iec_type(self) -> dict[str, str]:
         return self._point_iec_type
+
+    @property
+    def point_mms_type(self) -> dict[str, str]:
+        return self._point_mms_type
 
     @property
     def ld_map(self) -> dict[str, Any]:
@@ -200,6 +206,7 @@ class IedModelBuilder:
             self._point_attrs[addr_str] = da
             self._point_fc[addr_str] = "MX"
             self._point_iec_type[addr_str] = "float"
+            self._point_mms_type[addr_str] = "MMS_FLOAT"
             self._keep_alive.extend([do_name, da])
 
         elif frame_type == 1:  # 遥信
@@ -224,6 +231,7 @@ class IedModelBuilder:
             self._point_attrs[addr_str] = da
             self._point_fc[addr_str] = "ST"
             self._point_iec_type[addr_str] = "boolean"
+            self._point_mms_type[addr_str] = "MMS_BOOLEAN"
             self._keep_alive.extend([do_name, da])
 
         elif frame_type == 2:  # 遥控
@@ -241,6 +249,7 @@ class IedModelBuilder:
             self._point_attrs[addr_str] = da
             self._point_fc[addr_str] = "CO"
             self._point_iec_type[addr_str] = "boolean"
+            self._point_mms_type[addr_str] = "MMS_BOOLEAN"
             self._keep_alive.extend([do_name, da])
 
         elif frame_type == 3:  # 遥调
@@ -258,6 +267,7 @@ class IedModelBuilder:
             self._point_attrs[addr_str] = da
             self._point_fc[addr_str] = "CO"
             self._point_iec_type[addr_str] = "float"
+            self._point_mms_type[addr_str] = "MMS_FLOAT"
             self._keep_alive.extend([do_name, da])
 
         if ref:
@@ -273,6 +283,8 @@ class IedModelBuilder:
         frame_type: int,
         fc: str = "",
         *,
+        iec_type_name: str = "",
+        mms_type: str = "",
         dchg: bool = False,
         qchg: bool = False,
         dupd: bool = False,
@@ -318,7 +330,11 @@ class IedModelBuilder:
         if fc_const is None:
             fc_const = FC_MX
 
-        iec_type = self._infer_iec_type(frame_type, da_parts)
+        normalized_iec_type = str(iec_type_name or "").strip()
+        if normalized_iec_type and normalized_iec_type != "unknown":
+            iec_type = self._infer_iec_type_from_str(normalized_iec_type, da_parts)
+        else:
+            iec_type = self._infer_iec_type(frame_type, da_parts)
         trigger_options = self._build_trigger_options(dchg=dchg, qchg=qchg, dupd=dupd)
         if trigger_options == 0:
             # 部分厂家 ICD 仅在 ReportControl.TrgOps 声明 dchg/qchg，DA 本身
@@ -361,8 +377,18 @@ class IedModelBuilder:
         ref = f"{self.model_name}{ld_inst}/{ln_name}.{do_name}.{da_path}"
         self._point_refs[addr_str] = ref
         self._point_fc[addr_str] = fc
-        iec_type_str = self._infer_iec_type_str(da_parts)
+        if normalized_iec_type and normalized_iec_type != "unknown":
+            iec_type_str = normalized_iec_type
+        else:
+            iec_type_str = self._infer_iec_type_str(da_parts)
         self._point_iec_type[addr_str] = iec_type_str
+        resolved_mms_type = str(mms_type or "").strip()
+        if not resolved_mms_type or resolved_mms_type == "MMS_UNKNOWN":
+            inferred_mms_type = infer_mms_type_from_path(da_path, iec_type_str)
+            if inferred_mms_type.value == "MMS_UNKNOWN":
+                inferred_mms_type = mms_type_from_iec_type(iec_type_str)
+            resolved_mms_type = inferred_mms_type.value
+        self._point_mms_type[addr_str] = resolved_mms_type
 
         leaf_key = f"{ld_inst}/{ln_name}.{do_name}.{da_path}"
         leaf_da = self._da_map.get(leaf_key)

@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from ....defs.mms_types import BTYPE_TO_MMS_TYPE, MmsType
+from ....defs.mms_types import mms_type_from_btype
 from ....model.ied_model import (
     DARef,
     DataSetRef,
@@ -27,8 +27,8 @@ from ....model.ied_model import (
     RCBRef,
 )
 from ..model.enums import (
-    BTYPE_TO_IEC_TYPE,
     CDC_CATEGORY_MAP,
+    iec_type_from_btype,
 )
 from ..model.scl_document import (
     SclDA,
@@ -166,16 +166,16 @@ class SclServerModelBuilder:
 
         # 解析 iec_type
         btype = da_def.b_type
-        iec_type = BTYPE_TO_IEC_TYPE.get(btype, "unknown")
+        iec_type = iec_type_from_btype(btype)
 
         # 结构体 DA: 展开 BDA 为 sub_das
         sub_das = ()
-        if btype == "Struct" and da_def.type_id:
+        if str(btype or "").upper() == "STRUCT" and da_def.type_id:
             da_type = self._doc.get_da_type(da_def.type_id)
             if da_type:
                 sub_das_list = []
                 for bda_def in da_type.bdas:
-                    bda_type_name = BTYPE_TO_IEC_TYPE.get(bda_def.b_type, "unknown")
+                    bda_type_name = iec_type_from_btype(bda_def.b_type)
                     sub_bda = ()
                     # 嵌套 Struct BDA 不展开 (保持叶子路径)
                     bda_fc = bda_def.fc or da_def.fc
@@ -185,7 +185,7 @@ class SclServerModelBuilder:
                             path=f"{da_def.name}.{bda_def.name}",
                             fc=bda_fc,
                             iec_type=bda_type_name,
-                            mms_type=BTYPE_TO_MMS_TYPE.get(bda_def.b_type, MmsType.UNKNOWN).value,
+                            mms_type=mms_type_from_btype(bda_def.b_type).value,
                             sub_das=sub_bda,
                         )
                     )
@@ -196,7 +196,7 @@ class SclServerModelBuilder:
             path=da_def.name,
             fc=da_def.fc,
             iec_type=iec_type,
-            mms_type=BTYPE_TO_MMS_TYPE.get(btype, MmsType.UNKNOWN).value,
+            mms_type=mms_type_from_btype(btype).value,
             sub_das=sub_das,
         )
 

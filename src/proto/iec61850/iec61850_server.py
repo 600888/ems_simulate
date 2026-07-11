@@ -126,6 +126,10 @@ class IEC61850Server:
         return self._builder.point_iec_type
 
     @property
+    def _point_mms_type(self) -> dict[str, str]:
+        return self._builder.point_mms_type
+
+    @property
     def _standard_bda_list(self) -> list[tuple]:
         return self._builder.standard_bda_list
 
@@ -368,6 +372,8 @@ class IEC61850Server:
                     point.reg_addr,
                     frame_type,
                     getattr(point, "fc", "") or default_fc,
+                    iec_type_name=getattr(point, "iec_type", ""),
+                    mms_type=getattr(point, "mms_type", ""),
                     dchg=bool(getattr(point, "dchg", False)),
                     qchg=bool(getattr(point, "qchg", False)),
                     dupd=bool(getattr(point, "dupd", False)),
@@ -939,7 +945,8 @@ class IEC61850Server:
                 fcda_name = ref
             fc = self._point_fc.get(address, "MX")
             iec_type = self._point_iec_type.get(address, "unknown")
-            entries.append({"name": fcda_name, "fc": fc, "iec_type": iec_type})
+            mms_type = self._point_mms_type.get(address, "MMS_UNKNOWN")
+            entries.append({"name": fcda_name, "fc": fc, "iec_type": iec_type, "mms_type": mms_type})
         return entries
 
     def _register_default_rcbs(self):

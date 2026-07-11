@@ -289,6 +289,7 @@ import type { IEC61850TreeDataResponse } from "@/api/channelApi";
 import { clearPoints, resetPointData } from "@/api/pointApi";
 import { useAutoRead } from "@/composables";
 import { isIec61850Protocol, isIec104Protocol } from "@/constants/protocol";
+import { isAutoRefreshPaused } from "@/composables/autoRefreshGate";
 import { TABLE_HEADERS } from "@/constants/table";
 import DeviceTable from "./Table.vue";
 import AddPointDialog from "./AddPointDialog.vue";
@@ -393,6 +394,8 @@ const handleSortChange = ({ prop, order }: { prop: string, order: string | null 
 const handleTableRefresh = () => handleSearch(currentSlaveId.value);
 
 const fetchSlaveList = async () => {
+  // 导入 ICD 文件期间暂停刷新，避免 404 错误
+  if (isAutoRefreshPaused.value) return;
   try {
     const deviceInfo = await getDeviceInfo(routeName.value);
     if (deviceInfo) {
@@ -422,6 +425,8 @@ const fetchSlaveList = async () => {
 };
 
 const fetchDeviceTable = async (name: string, sid: number, q: string, pi: number, ps: number) => {
+  // 导入 ICD 文件期间暂停刷新，避免 404 错误
+  if (isAutoRefreshPaused.value) return;
   // IEC61850 使用新的树形接口
   if (isIec61850.value && channelId.value !== null) {
     // DataSets 分类: 使用 tree-data 接口（Table.vue 的 displayData 只认 iec61850TreeData）

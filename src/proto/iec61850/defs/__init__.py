@@ -61,6 +61,7 @@ from .mms_types import (
     MmsType,
     iec_type_from_mms_type,
     infer_mms_type_from_path,
+    mms_type_from_btype,
     mms_type_from_iec_type,
     mms_type_from_native,
 )
@@ -98,6 +99,7 @@ __all__ = [
     "MmsType",
     "BTYPE_TO_MMS_TYPE",
     "mms_type_from_native",
+    "mms_type_from_btype",
     "mms_type_from_iec_type",
     "iec_type_from_mms_type",
     "infer_mms_type_from_path",
