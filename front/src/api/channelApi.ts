@@ -221,14 +221,14 @@ export async function importIcdPoints(
   channelId: number,
   file: File,
   interfaceName: string = 'eth0',
-  autoCreateGoose: boolean = false,
+  gooseImportMode: 'model_only' | 'local_publish' | 'remote_subscribe' | 'both' = 'model_only',
 ): Promise<PointImportResult> {
   try {
     const formData = new FormData();
     formData.append('channel_id', channelId.toString());
     formData.append('file', file);
     formData.append('interface', interfaceName);
-    formData.append('auto_create_goose', autoCreateGoose.toString());
+    formData.append('goose_import_mode', gooseImportMode);
     const response = await instance.post(CHANNEL_API.IMPORT_ICD, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 60000,

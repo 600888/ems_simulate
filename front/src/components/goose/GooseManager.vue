@@ -111,7 +111,7 @@
       </el-tab-pane>
 
       <!-- 已发现的远端控制块 -->
-      <el-tab-pane :label="$t('goose.discovered')" name="discovered">
+      <el-tab-pane :label="`${$t('goose.discovered')} (${discovered.length})`" name="discovered">
         <div class="tab-header">
           <el-button
             type="primary"
@@ -148,15 +148,16 @@
             show-overflow-tooltip
           />
           <el-table-column prop="conf_rev" label="confRev" width="90" align="center" />
-          <el-table-column :label="$t('common.operation')" width="160" fixed="right">
+          <el-table-column label="发现状态" width="120" align="center">
             <template #default="{ row }">
-              <el-button
-                type="primary"
-                size="small"
-                @click="createPublisherFromDiscovered(row)"
+              <el-tooltip
+                :content="row.discovery_error || ''"
+                :disabled="!row.discovery_error"
               >
-                {{ $t("goose.newPublisher") }}
-              </el-button>
+                <el-tag :type="row.detail_status === 'partial' ? 'warning' : 'success'" size="small">
+                  {{ row.detail_status === "partial" ? "部分信息" : "完整" }}
+                </el-tag>
+              </el-tooltip>
             </template>
           </el-table-column>
         </el-table>
@@ -912,6 +913,9 @@ async function refreshDiscovered() {
 
 async function refreshAll() {
   await Promise.all([refreshPublishers(), refreshReceivers(), refreshDiscovered()]);
+  if (!publishers.value.length && !receivers.value.length && discovered.value.length) {
+    activeTab.value = "discovered";
+  }
 }
 
 // channelId 变化时只刷新当前设备；导入必须由用户显式确认。
@@ -923,26 +927,6 @@ watch(
   },
   { immediate: true }
 );
-
-/** 基于发现的控制块快速创建 Publisher */
-function createPublisherFromDiscovered(item: DiscoveredGooseItem) {
-  configEditingId.value = null;
-  Object.assign(publisherForm, {
-    interface: networkInterfaces.value[0]?.id || "",
-    go_cb_ref: item.go_cb_ref,
-    go_id: item.go_id || "",
-    data_set_ref: item.data_set_ref || "",
-    dst_mac: "",
-    app_id: item.app_id ?? 0x0001,
-    conf_rev: item.conf_rev || 1,
-    time_allowed_to_live: 1000,
-    vlan_id: 0,
-    vlan_prio: 4,
-    simulation: true,
-    entries: [],
-  });
-  createPublisherVisible.value = true;
-}
 
 // ===== Publisher 操作 =====
 function showCreatePublisherDialog() {

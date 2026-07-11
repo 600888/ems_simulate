@@ -147,7 +147,7 @@ watch(
   async () => {
     selectedKey.value = '';
     history.value = [];
-    await loadBlocks();
+    await Promise.all([loadBlocks(), loadNetworkInterfaces()]);
   },
   { immediate: true },
 );
@@ -157,19 +157,27 @@ async function loadBlocks(showLoading = true) {
   if (!props.channelId) return;
   if (showLoading) loading.value = true;
   try {
-    [publishers.value, receivers.value, networkInterfaces.value] = await Promise.all([
+    [publishers.value, receivers.value] = await Promise.all([
       getGoosePublishers(props.channelId),
       getGooseReceivers(props.channelId),
-      getGooseNetworkInterfaces(),
     ]);
-    networkInterfaces.value = networkInterfaces.value.filter(
-      (item) => item.is_up && !item.is_loopback && item.supports_raw_ethernet,
-    );
     if (selectedKey.value && !selected.value) selectedKey.value = '';
     if (activeTab.value === 'history' && selected.value?.kind === 'subscriber') await loadHistory();
   } finally {
     loading.value = false;
     schedule();
+  }
+}
+
+// 网卡列表只需首次加载一次，不参与轮询
+async function loadNetworkInterfaces() {
+  try {
+    const list = await getGooseNetworkInterfaces();
+    networkInterfaces.value = list.filter(
+      (item) => item.is_up && !item.is_loopback && item.supports_raw_ethernet,
+    );
+  } catch {
+    // 静默失败，不影响主流程
   }
 }
 

@@ -14,6 +14,8 @@ from typing import Any
 
 from pyiec61850 import pyiec61850 as iec61850
 
+from src.common.mac_address import normalize_mac_address
+
 from ...defs.constants import HAS_IEC61850
 from ...log import log
 from .types import GooseState, GooseSubscriptionInfo, MmsType, ReceiverConfig
@@ -223,6 +225,8 @@ class GooseReceiver:
             }
             for key, value in changes.items():
                 if key in allowed:
+                    if key == "dst_mac":
+                        value = normalize_mac_address(value)
                     setattr(sub, key, value)
             if new_ref != current_go_cb_ref:
                 sub.go_cb_ref = new_ref

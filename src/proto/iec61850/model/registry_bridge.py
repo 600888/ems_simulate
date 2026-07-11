@@ -71,6 +71,10 @@ def build_registry_from_model(model: IedModel, registry: Any) -> list[dict[str, 
                     "conf_rev": gocb.conf_rev,
                     "name": gocb.name,
                     "ld_inst": ld.name,
+                    "detail_status": gocb.detail_status,
+                    "discovery_error_code": gocb.discovery_error_code,
+                    "discovery_error": gocb.discovery_error,
+                    "attempted_refs": list(gocb.attempted_refs),
                 }
                 discovered_points.append(goose_item)
                 registry.discovered_goose_items.append(goose_item)

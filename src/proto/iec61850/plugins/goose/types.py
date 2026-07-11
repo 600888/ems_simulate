@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum
 from typing import Any
 
+from src.common.mac_address import format_mac_address, normalize_mac_address
+
 # ===== 枚举类型 =====
 
 
@@ -104,6 +106,9 @@ class GooseSubscriptionInfo:
     message_count: int = 0
     last_change: float = 0.0
 
+    def __post_init__(self) -> None:
+        self.dst_mac = normalize_mac_address(self.dst_mac)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "go_cb_ref": self.go_cb_ref,
@@ -125,7 +130,7 @@ class GooseSubscriptionInfo:
             "ld_inst": self.ld_inst,
             "ln_name": self.ln_name,
             "dataset_entries": self.dataset_entries,
-            "dst_mac": ":".join(f"{b:02X}" for b in self.dst_mac) if self.dst_mac else "",
+            "dst_mac": format_mac_address(self.dst_mac),
             "data_values": self.data_values,
             "message_count": self.message_count,
             "last_change": self.last_change,

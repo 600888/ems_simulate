@@ -186,7 +186,7 @@ class ModelDiscoveryService:
         # Some IEDs expose the API but reject every variable-specification
         # request. Stop probing after a sustained failure streak instead of
         # paying one extra MMS round trip for every DA in a large model.
-        self._variable_spec_failure_limit = 20000
+        self._variable_spec_failure_limit = 32
         self._variable_spec_failures = 0
         self._variable_spec_disabled = False
 
@@ -1143,25 +1143,48 @@ class ModelDiscoveryService:
         dat_set = ""
         conf_rev = 0
         go_id = ""
+        detail_status = "partial"
+        last_error_code = None
+        last_error_name = ""
 
-        # libiec61850 的 getGoCBValues 要求引用含 FC 段 .GO.
-        gocb_ref = f"{ld_name}/LLN0.GO.{cb_name}"
+        # IedConnection_getGoCBValues 接受 IEC 61850-7-2 ACSI 对象引用，
+        # 官方格式是 LD/LN.GoCBName。部分设备/旧绑定仅接受带 .GO. 的
+        # MMS 兼容形式，因此按标准格式优先、兼容格式回退。
+        base_ref = f"{ln_ref}.{cb_name}"
+        compatibility_ref = f"{ln_ref}.GO.{cb_name}"
+        candidate_refs = tuple(dict.fromkeys((base_ref, compatibility_ref)))
         gocb = None
-        try:
-            gocb = iec61850.ClientGooseControlBlock_create(gocb_ref)
-            if gocb is not None:
-                result = call_gil_safe(iec61850, "IedConnection_getGoCBValues", conn, gocb_ref, gocb)
+        for candidate_ref in candidate_refs:
+            try:
+                candidate = iec61850.ClientGooseControlBlock_create(candidate_ref)
+                if candidate is None:
+                    last_error_name = "ClientGooseControlBlock_create returned null"
+                    continue
+                result = call_gil_safe(
+                    iec61850,
+                    "IedConnection_getGoCBValues",
+                    conn,
+                    candidate_ref,
+                    candidate,
+                )
                 err = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
-                if err != iec61850.IED_ERROR_OK:
-                    log.warning(f"getGoCBValues 失败: ref={gocb_ref}, err={err}")
-                    with contextlib.suppress(Exception):
-                        iec61850.ClientGooseControlBlock_destroy(gocb)
-                    gocb = None
-            else:
-                log.warning(f"ClientGooseControlBlock_create 失败: ref={gocb_ref}")
-        except Exception as e:
-            log.warning(f"getGoCBValues 异常: ref={gocb_ref}, {type(e).__name__}: {e}")
-            gocb = None
+                if err == iec61850.IED_ERROR_OK:
+                    gocb = candidate
+                    detail_status = "complete"
+                    break
+                last_error_code = int(err) if err is not None else None
+                last_error_name = self._ied_error_name(err)
+                with contextlib.suppress(Exception):
+                    iec61850.ClientGooseControlBlock_destroy(candidate)
+            except Exception as e:
+                last_error_name = f"{type(e).__name__}: {e}"
+
+        if gocb is None:
+            log.warning(
+                "getGoCBValues 失败，保留部分发现结果: "
+                f"cb={base_ref}, refs={list(candidate_refs)}, "
+                f"err={last_error_code}({last_error_name or 'unknown'})"
+            )
 
         if gocb is not None:
             try:
@@ -1185,16 +1208,37 @@ class ModelDiscoveryService:
             with contextlib.suppress(Exception):
                 iec61850.ClientGooseControlBlock_destroy(gocb)
 
-        go_cb_ref = f"{ld_name}/LLN0$GO${cb_name}"
+        go_cb_ref = f"{ln_ref}$GO${cb_name}"
         return GoCBRef(
             name=cb_name,
-            ref=f"{ln_ref}.{cb_name}",
+            ref=base_ref,
             go_cb_ref=go_cb_ref,
             go_id=go_id,
             app_id=app_id,
             data_set_ref=dat_set,
             conf_rev=conf_rev,
+            detail_status=detail_status,
+            discovery_error_code=last_error_code if detail_status == "partial" else None,
+            discovery_error=last_error_name if detail_status == "partial" else "",
+            attempted_refs=candidate_refs,
         )
+
+    @staticmethod
+    def _ied_error_name(error: Any) -> str:
+        """将原生 IedClientError 转成人类可读名称。"""
+        if error is None:
+            return ""
+        converter = getattr(iec61850, "IedClientError_toString", None)
+        if callable(converter):
+            with contextlib.suppress(Exception):
+                value = converter(error)
+                if isinstance(value, bytes):
+                    return value.decode(errors="replace")
+                if value:
+                    return str(value)
+        if int(error) == 99:
+            return "IED_ERROR_UNKNOWN"
+        return f"IED_ERROR_{int(error)}"
 
     # ===== 推断逻辑 (从 DataModelsPlugin 和 ModelExporter 合并) =====
 

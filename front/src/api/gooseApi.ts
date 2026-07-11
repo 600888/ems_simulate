@@ -193,6 +193,10 @@ export interface DiscoveredGooseItem {
   conf_rev: number;
   name: string;
   ld_inst: string;
+  detail_status?: 'complete' | 'partial';
+  discovery_error_code?: number | null;
+  discovery_error?: string;
+  attempted_refs?: string[];
 }
 
 export interface NetworkInterfaceInfo {

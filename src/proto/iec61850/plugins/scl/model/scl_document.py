@@ -199,6 +199,27 @@ class SclGSEControl:
 
 
 @dataclass(slots=True)
+class SclExtRef:
+    """Inputs/ExtRef — 本 IED 对外部数据流的工程绑定。"""
+
+    ied_name: str = ""
+    ld_inst: str = ""
+    ln_class: str = ""
+    ln_inst: str = ""
+    prefix: str = ""
+    do_name: str = ""
+    da_name: str = ""
+    service_type: str = ""
+    src_ld_inst: str = ""
+    src_ln_class: str = ""
+    src_ln_inst: str = ""
+    src_prefix: str = ""
+    src_cb_name: str = ""
+    int_addr: str = ""
+    desc: str = ""
+
+
+@dataclass(slots=True)
 class SclDOI:
     """DOI — 数据对象实例 (IED 部分)"""
 
@@ -220,6 +241,7 @@ class SclLN:
     datasets: list[SclDataSet] = field(default_factory=list)
     report_controls: list[SclReportControl] = field(default_factory=list)
     gse_controls: list[SclGSEControl] = field(default_factory=list)
+    inputs: list[SclExtRef] = field(default_factory=list)
 
     @property
     def ln_name(self) -> str:

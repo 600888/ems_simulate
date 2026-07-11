@@ -1,13 +1,13 @@
 <template>
   <div class="goose-view">
-    <GooseSubscriberManager :channel-id="channelId" />
+    <GooseManager :channel-id="channelId" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import GooseSubscriberManager from '@/components/goose/GooseSubscriberManager.vue'
+import GooseManager from '@/components/goose/GooseManager.vue'
 
 const route = useRoute()
 const channelId = ref<number>(0)

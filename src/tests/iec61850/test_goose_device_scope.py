@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -168,3 +170,94 @@ def test_receiver_subscriptions_are_persisted_and_replaceable(monkeypatch):
     items = goose_receiver_dao.GooseReceiverDao.list_by_channel(1)
     assert len(items) == 1
     assert [item["go_cb_ref"] for item in items[0]["subscriptions"]] == ["gcb2"]
+
+
+def test_receiver_dao_normalizes_historical_string_mac(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(goose_receiver_dao, "local_session", session_factory)
+
+    receiver_id = goose_receiver_dao.GooseReceiverDao.save(
+        1,
+        {
+            "interface": "eth0",
+            "subscriptions": [{"go_cb_ref": "gcb1", "app_id": 1, "dst_mac": "01:0C:CD:01:10:04"}],
+        },
+    )
+    with session_factory.begin() as session:
+        subscription = (
+            session.query(goose_receiver_dao.GooseSubscriptionConfig).filter_by(receiver_id=receiver_id).one()
+        )
+        # 模拟旧版本写入的 JSON 字符串，而不是 JSON 数字数组。
+        subscription.dst_mac_json = '"01:0C:CD:01:10:04"'
+
+    item = goose_receiver_dao.GooseReceiverDao.list_by_channel(1)[0]["subscriptions"][0]
+
+    assert item["dst_mac"] == [1, 12, 205, 1, 16, 4]
+
+
+def test_delete_receivers_by_channel_removes_subscriptions_without_fk_cascade(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(goose_receiver_dao, "local_session", session_factory)
+
+    goose_receiver_dao.GooseReceiverDao.save(
+        1,
+        {"interface": "eth0", "subscriptions": [{"go_cb_ref": "remove", "app_id": 1}]},
+    )
+    goose_receiver_dao.GooseReceiverDao.save(
+        2,
+        {"interface": "eth0", "subscriptions": [{"go_cb_ref": "keep", "app_id": 2}]},
+    )
+
+    assert goose_receiver_dao.GooseReceiverDao.delete_by_channel(1) == 1
+    assert goose_receiver_dao.GooseReceiverDao.list_by_channel(1) == []
+    assert len(goose_receiver_dao.GooseReceiverDao.list_by_channel(2)) == 1
+    with session_factory() as session:
+        subscriptions = session.query(goose_receiver_dao.GooseSubscriptionConfig).all()
+        assert [item.go_cb_ref for item in subscriptions] == ["keep"]
+
+
+def test_delete_receivers_by_channel_clears_runtime_indexes():
+    manager = manager_module.GooseResourceManager(PersistenceAdapter(_Backend()))
+    remove = Mock()
+    keep = Mock()
+    keep.get_status.return_value = {}
+    manager._receivers = {"remove": remove, "keep": keep}
+    manager._receiver_channel_map = {"remove": 1, "keep": 2}
+    manager._receiver_meta = {
+        "remove": {"interface_key": "1:eth0:default"},
+        "keep": {"interface_key": "2:eth0:default"},
+    }
+    manager._interface_to_rid = {
+        "1:eth0:default": "remove",
+        "2:eth0:default": "keep",
+    }
+
+    assert manager.delete_receivers_by_channel(1) == 1
+    remove.stop.assert_called_once_with()
+    keep.stop.assert_not_called()
+    assert manager.list_receivers(1) == []
+    assert [item["id"] for item in manager.list_receivers(2)] == ["keep"]
+    assert manager._interface_to_rid == {"2:eth0:default": "keep"}
+
+
+def test_list_receivers_isolates_one_broken_receiver_status():
+    manager = manager_module.GooseResourceManager(PersistenceAdapter(_Backend()))
+    broken = Mock()
+    healthy = Mock()
+    broken.get_status.side_effect = ValueError("invalid historical subscription")
+    healthy.get_status.return_value = {"subscriptions": []}
+    manager._receivers = {"broken": broken, "healthy": healthy}
+    manager._receiver_channel_map = {"broken": 1, "healthy": 1}
+
+    results = manager.list_receivers(1)
+
+    assert results[0] == {
+        "id": "broken",
+        "error": "invalid historical subscription",
+        "subscriptions": [],
+    }
+    assert results[1]["id"] == "healthy"

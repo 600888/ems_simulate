@@ -75,6 +75,7 @@ class SclImportResult:
                 },
                 "publishers": publishers,
                 "subscriptions": subscriptions,
+                "engineered_subscriptions": self.goose.engineered_subscriptions,
                 "pure_datasets": self.goose.pure_datasets,
                 "errors": [],
             },

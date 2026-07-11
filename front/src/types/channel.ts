@@ -109,5 +109,7 @@ export interface GooseImportData {
     publishers: any[];
     subscriptions: any[];
     created_count: number;
+    subscription_created_count?: number;
+    import_mode?: 'model_only' | 'local_publish' | 'remote_subscribe' | 'both';
     errors: string[];
 }

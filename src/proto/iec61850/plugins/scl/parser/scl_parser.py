@@ -34,6 +34,7 @@ from ..model.scl_document import (
     SclDOType,
     SclEnumType,
     SclEnumVal,
+    SclExtRef,
     SclFCDA,
     SclGSE,
     SclGSEControl,
@@ -479,6 +480,14 @@ class SclParser:
         for gse_elem in self._ns.findall(elem, "GSEControl"):
             gse_controls.append(self._parse_gse_control(gse_elem))
 
+        # Inputs/ExtRef 描述的是当前 IED 对外部 GOOSE/SMV/Report 数据的
+        # 订阅关系，不能从本 IED 的 GSEControl 反向猜测。
+        inputs = []
+        inputs_elem = self._ns.find(elem, "Inputs")
+        if inputs_elem is not None:
+            for ext_ref_elem in self._ns.findall(inputs_elem, "ExtRef"):
+                inputs.append(self._parse_ext_ref(ext_ref_elem))
+
         return SclLN(
             ln_class=elem.get("lnClass", ""),
             inst=elem.get("inst", ""),
@@ -489,6 +498,27 @@ class SclParser:
             datasets=datasets,
             report_controls=report_controls,
             gse_controls=gse_controls,
+            inputs=inputs,
+        )
+
+    @staticmethod
+    def _parse_ext_ref(elem: ET.Element) -> SclExtRef:
+        return SclExtRef(
+            ied_name=elem.get("iedName", ""),
+            ld_inst=elem.get("ldInst", ""),
+            ln_class=elem.get("lnClass", ""),
+            ln_inst=elem.get("lnInst", ""),
+            prefix=elem.get("prefix", ""),
+            do_name=elem.get("doName", ""),
+            da_name=elem.get("daName", ""),
+            service_type=elem.get("serviceType", ""),
+            src_ld_inst=elem.get("srcLDInst", ""),
+            src_ln_class=elem.get("srcLNClass", ""),
+            src_ln_inst=elem.get("srcLNInst", ""),
+            src_prefix=elem.get("srcPrefix", ""),
+            src_cb_name=elem.get("srcCBName", ""),
+            int_addr=elem.get("intAddr", ""),
+            desc=elem.get("desc", ""),
         )
 
     def _parse_doi(self, elem: ET.Element) -> SclDOI:

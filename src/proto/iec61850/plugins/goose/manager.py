@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 import uuid
 
@@ -447,6 +448,8 @@ class GooseResourceManager:
             log.warning(f"GOOSE Receiver 已存在: interface={interface}, id={existing_id}")
             return self.get_receiver_status(existing_id)
 
+        receiver = None
+        recv_id = None
         try:
             config = ReceiverConfig(interface=interface)
             receiver = GooseReceiver(config)
@@ -454,19 +457,24 @@ class GooseResourceManager:
             # 添加初始订阅
             if subscriptions:
                 for s in subscriptions:
-                    receiver.add_subscription(
-                        go_cb_ref=s.get("go_cb_ref", ""),
-                        app_id=s.get("app_id"),
-                        dst_mac=s.get("dst_mac"),
-                        description=s.get("description", ""),
-                        data_set_ref=s.get("data_set_ref", ""),
-                        conf_rev=s.get("conf_rev", 0),
-                        enabled=s.get("enabled", False),
-                        ied_name=s.get("ied_name", ""),
-                        ld_inst=s.get("ld_inst", ""),
-                        ln_name=s.get("ln_name", "LLN0"),
-                        dataset_entries=s.get("dataset_entries", []),
-                    )
+                    try:
+                        receiver.add_subscription(
+                            go_cb_ref=s.get("go_cb_ref", ""),
+                            app_id=s.get("app_id"),
+                            dst_mac=s.get("dst_mac"),
+                            description=s.get("description", ""),
+                            data_set_ref=s.get("data_set_ref", ""),
+                            conf_rev=s.get("conf_rev", 0),
+                            enabled=s.get("enabled", False),
+                            ied_name=s.get("ied_name", ""),
+                            ld_inst=s.get("ld_inst", ""),
+                            ln_name=s.get("ln_name", "LLN0"),
+                            dataset_entries=s.get("dataset_entries", []),
+                        )
+                    except (TypeError, ValueError) as sub_error:
+                        log.warning(
+                            f"跳过无效 GOOSE Subscription: go_cb_ref={s.get('go_cb_ref', '')}, error={sub_error}"
+                        )
 
             recv_id = str(db_id) if db_id is not None else _scoped_key(channel_id, str(uuid.uuid4()))
             self._receivers[recv_id] = receiver
@@ -485,6 +493,14 @@ class GooseResourceManager:
             log.info(f"GOOSE Receiver 创建成功: id={recv_id}, interface={interface}")
             return self.get_receiver_status(recv_id)
         except Exception as e:
+            if receiver:
+                with contextlib.suppress(Exception):
+                    receiver.stop()
+            if recv_id is not None:
+                self._receivers.pop(recv_id, None)
+                self._receiver_channel_map.pop(recv_id, None)
+                self._receiver_meta.pop(recv_id, None)
+            self._interface_to_rid.pop(interface_key, None)
             log.error(f"创建 GOOSE Receiver 异常: {e}")
             return None
 
@@ -493,7 +509,14 @@ class GooseResourceManager:
         ids = [
             rid for rid in self._receivers if channel_id is None or self._receiver_channel_map.get(rid) == channel_id
         ]
-        return [self.get_receiver_status(rid) or {"id": rid, "error": "状态获取失败"} for rid in ids]
+        results = []
+        for receiver_id in ids:
+            try:
+                results.append(self.get_receiver_status(receiver_id) or {"id": receiver_id, "error": "状态获取失败"})
+            except Exception as exc:
+                log.error(f"获取 GOOSE Receiver 状态失败: id={receiver_id}, error={exc}")
+                results.append({"id": receiver_id, "error": str(exc), "subscriptions": []})
+        return results
 
     def get_receiver_status(self, receiver_id: str) -> dict[str, Any] | None:
         """获取 Receiver 状态"""
@@ -528,6 +551,30 @@ class GooseResourceManager:
 
         log.info(f"GOOSE Receiver 已删除: id={receiver_id}")
         return True
+
+    def delete_receivers_by_channel(self, channel_id: int, delete_from_db: bool = False) -> int:
+        """停止并移除通道下全部 Receiver/Subscription 运行时资源。"""
+        receiver_ids = [
+            receiver_id
+            for receiver_id, owner_channel_id in list(self._receiver_channel_map.items())
+            if owner_channel_id == channel_id
+        ]
+        for receiver_id in receiver_ids:
+            receiver = self._receivers.pop(receiver_id, None)
+            if receiver:
+                receiver.stop()
+            self._receiver_channel_map.pop(receiver_id, None)
+            self._receiver_meta.pop(receiver_id, None)
+            for interface_key, mapped_receiver_id in list(self._interface_to_rid.items()):
+                if mapped_receiver_id == receiver_id:
+                    self._interface_to_rid.pop(interface_key, None)
+
+        if delete_from_db:
+            from src.data.dao.goose_receiver_dao import GooseReceiverDao
+
+            GooseReceiverDao.delete_by_channel(channel_id)
+
+        return len(receiver_ids)
 
     def update_receiver(
         self,

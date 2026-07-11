@@ -261,6 +261,21 @@ async def discover_iec61850_model(req: DeviceInfoRequest, request: Request):
         req: {device_name}
     """
     device = _get_device(req.device_name, request)
+    channel_id = int(getattr(device, "device_id", 0) or 0)
+    if channel_id > 0:
+        from src.proto.iec61850.plugins.goose.cleanup import clear_channel_goose_resources
+
+        goose_manager = getattr(request.app.state, "goose_manager", None)
+        cleanup = await asyncio.to_thread(clear_channel_goose_resources, channel_id, goose_manager)
+        if any(cleanup.values()):
+            log.info(
+                f"设备 {req.device_name} 在线重发现前已清理旧 GOOSE 配置: "
+                f"Publisher/DataSet={cleanup['publishers']}, Receiver={cleanup['receivers']}, "
+                f"运行时 Publisher={cleanup['runtime_publishers']}, "
+                f"运行时 Receiver={cleanup['runtime_receivers']}"
+            )
+    else:
+        log.warning(f"设备 {req.device_name} 缺少有效 channel_id，在线重发现无法清理旧 GOOSE 配置")
     success = await asyncio.to_thread(device.iec61850_remote_discover_model)
     if not success:
         log.error(f"设备 {req.device_name} IEC61850 远程模型发现失败")

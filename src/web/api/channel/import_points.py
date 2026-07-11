@@ -25,6 +25,17 @@ from src.web.log import log
 router = APIRouter(tags=["channel"])
 
 
+def _resolve_goose_import_mode(goose_import_mode: str, auto_create_goose: bool) -> str:
+    """解析显式 GOOSE 导入视角，并兼容旧版布尔参数。"""
+    resolved = goose_import_mode.strip().lower()
+    if not resolved:
+        resolved = "local_publish" if auto_create_goose else "model_only"
+    valid_modes = {"model_only", "local_publish", "remote_subscribe", "both"}
+    if resolved not in valid_modes:
+        raise ValidationError("goose_import_mode 必须是 model_only、local_publish、remote_subscribe 或 both")
+    return resolved
+
+
 def _collect_dataset_configs(goose_data: dict[str, Any]) -> list[dict[str, Any]]:
     """收集导入时必须注册的 DataSet，并按完整引用去重。
 
@@ -194,6 +205,7 @@ async def preview_icd(
                     },
                     "publishers": [gse.to_publisher_dict(interface) for gse in result.goose.gse_controls],
                     "subscriptions": [gse.to_subscription_dict() for gse in result.goose.gse_controls],
+                    "engineered_subscriptions": result.goose.engineered_subscriptions,
                     "pure_datasets": result.goose.pure_datasets,
                     "report_controls": [
                         {
@@ -253,14 +265,19 @@ async def import_icd(
     file: UploadFile = File(...),
     interface: str = Form("eth0"),
     auto_create_goose: bool = Form(False),
+    goose_import_mode: str = Form(""),
 ):
     """导入 IEC 61850 ICD/SCD/CID 文件
 
     解析 ICD 文件并加载到设备内存模型:
     - MMS 测点 (遥测/遥信/遥控/遥调) → 仅解析返回数量，不写入数据库
-    - GOOSE 配置 (GSEControl/DataSet/GSE) → 返回给前端，可选自动创建 Publisher
+    - GOOSE 配置 (GSEControl/DataSet/GSE) → 按显式导入视角创建 Publisher/Subscription
     """
     require_iec61850_channel(channel_id)
+
+    # 兼容旧客户端的 auto_create_goose，同时禁止再根据 MMS Client/Server
+    # 角色隐式推断 GOOSE 方向。
+    resolved_goose_mode = _resolve_goose_import_mode(goose_import_mode, auto_create_goose)
 
     valid_extensions = (".icd", ".scd", ".cid", ".xml")
     if not file.filename.lower().endswith(valid_extensions):
@@ -342,30 +359,27 @@ async def import_icd(
         goose_data: dict[str, Any] = {}
         goose_errors: list[str] = []
         created_goose_count = 0
+        created_subscription_count = 0
         pure_datasets: list[dict[str, Any]] = []
         datasets_to_register: list[dict[str, Any]] = []
         publisher_dataset_refs: set[str] = set()
 
-        # 先清除旧的 GOOSE 持久化记录和内存中的 Publisher
-        from src.data.dao.goose_publisher_dao import GoosePublisherDao
+        # 重新导入 ICD 是当前通道 GOOSE 配置的全量替换。无论新的导入
+        # 视角是什么，都必须先删除旧 Publisher/DataSet/Receiver/Subscription，
+        # 否则数据库和运行时会同时残留上一份 ICD 的资源。
+        from src.proto.iec61850.plugins.goose.cleanup import clear_channel_goose_resources
 
-        # The imported ICD is authoritative for this channel. Clear stale
-        # publishers and pure DataSets even if the new file has no GOOSE or
-        # automatic publisher creation is disabled. Cleanup is strict: silently
-        # continuing would mix old and new ICD configurations.
-        old_count = GoosePublisherDao.delete_by_channel(channel_id, raise_on_error=True)
-        if old_count > 0:
-            log.info(f"重新导入前已删除 {old_count} 个旧 GOOSE Publisher 持久化记录")
-
-        # Clear runtime publishers too, otherwise the go_cb_ref cache can make
-        # manager.create_publisher return the stale instance instead of the new one.
-        from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
-
-        old_manager: GooseResourceManager | None = getattr(request.app.state, "goose_manager", None)
-        if old_manager:
-            deleted_old = old_manager.delete_publishers_by_channel(channel_id, delete_from_db=False)
-            if deleted_old > 0:
-                log.info(f"已从 GOOSE 管理器中清除通道 {channel_id} 的 {deleted_old} 个旧 Publisher")
+        imports_publishers = resolved_goose_mode in {"local_publish", "both"}
+        imports_subscriptions = resolved_goose_mode in {"remote_subscribe", "both"}
+        old_manager = getattr(request.app.state, "goose_manager", None)
+        cleanup = clear_channel_goose_resources(channel_id, old_manager)
+        if any(cleanup.values()):
+            log.info(
+                "重新导入前已清理旧 GOOSE 配置: "
+                f"Publisher/DataSet={cleanup['publishers']}, Receiver={cleanup['receivers']}, "
+                f"运行时 Publisher={cleanup['runtime_publishers']}, "
+                f"运行时 Receiver={cleanup['runtime_receivers']}"
+            )
 
         # 获取 IEC 61850 服务器（用于在 MMS 数据模型中注册 GSEControlBlock）
         iec61850_server = None
@@ -416,7 +430,7 @@ async def import_icd(
             # ===== 2b. 创建 GOOSE Publisher（注册 GSEControlBlock） =====
             # GoCB 引用的 DataSet 会在 add_goose_control_block 内部创建
             # 但纯 DataSet 已在 2a 步骤中提前注册到 IedModel
-            if auto_create_goose and goose_data.get("publishers"):
+            if imports_publishers and goose_data.get("publishers"):
                 from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
 
                 manager: GooseResourceManager | None = getattr(request.app.state, "goose_manager", None)
@@ -452,7 +466,35 @@ async def import_icd(
                 else:
                     goose_errors.append("GOOSE 管理器未初始化，无法自动创建 Publisher")
 
-            # ===== 2c. 统一启动 MMS 服务器 =====
+            # ===== 2c. 将远端 IED 的 GSEControl 显式导入为本地订阅 =====
+            # 此模式表示文件描述的是远端发布者，不改变 SCL 中 GSEControl
+            # 的所有权，也不把 MMS Client 身份等同于 GOOSE Subscriber。
+            subscription_configs = (
+                goose_data.get("subscriptions", [])
+                if resolved_goose_mode == "remote_subscribe"
+                else goose_data.get("engineered_subscriptions", [])
+            )
+            if imports_subscriptions and subscription_configs:
+                manager = getattr(request.app.state, "goose_manager", None)
+                if manager:
+                    subscription_configs = [
+                        item
+                        for item in subscription_configs
+                        if item.get("go_cb_ref") and item.get("binding_status") != "unresolved"
+                    ]
+                    receiver = manager.import_discovered(
+                        subscription_configs,
+                        interface=interface,
+                        channel_id=channel_id,
+                    )
+                    if receiver:
+                        created_subscription_count = len(subscription_configs)
+                    else:
+                        goose_errors.append("创建 GOOSE Receiver/Subscription 失败")
+                else:
+                    goose_errors.append("GOOSE 管理器未初始化，无法创建 Subscription")
+
+            # ===== 2d. 统一启动 MMS 服务器 =====
             # 所有 DataSet 和 GoCB 已注册到 IedModel，现在启动 IedServer
             # IedServer_create 一次性构建包含所有节点的 MMS 命名空间
             # register_default_rcbs=False: ICD 已提供 RCB 配置，不应再创建默认 brcb01/brcb02
@@ -538,6 +580,8 @@ async def import_icd(
                     "publishers": goose_data.get("publishers", []),
                     "subscriptions": goose_data.get("subscriptions", []),
                     "created_count": created_goose_count,
+                    "subscription_created_count": created_subscription_count,
+                    "import_mode": resolved_goose_mode,
                     "dataset_count": len(datasets_to_register),
                     "pure_dataset_count": len(pure_datasets) if pure_datasets else 0,
                     "errors": goose_errors,

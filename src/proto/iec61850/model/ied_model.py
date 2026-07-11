@@ -219,9 +219,25 @@ class GoCBRef:
     app_id: int | None = None
     data_set_ref: str = ""
     conf_rev: int = 0
+    detail_status: str = "complete"
+    discovery_error_code: int | None = None
+    discovery_error: str = ""
+    attempted_refs: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "ref": self.ref}
+        return {
+            "name": self.name,
+            "ref": self.ref,
+            "go_cb_ref": self.go_cb_ref,
+            "go_id": self.go_id,
+            "app_id": self.app_id,
+            "data_set_ref": self.data_set_ref,
+            "conf_rev": self.conf_rev,
+            "detail_status": self.detail_status,
+            "discovery_error_code": self.discovery_error_code,
+            "discovery_error": self.discovery_error,
+            "attempted_refs": list(self.attempted_refs),
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GoCBRef:
@@ -233,6 +249,10 @@ class GoCBRef:
             app_id=data.get("app_id"),
             data_set_ref=data.get("data_set_ref", ""),
             conf_rev=data.get("conf_rev", 0),
+            detail_status=data.get("detail_status", "complete"),
+            discovery_error_code=data.get("discovery_error_code"),
+            discovery_error=data.get("discovery_error", ""),
+            attempted_refs=tuple(data.get("attempted_refs", [])),
         )
 
 

@@ -3,7 +3,9 @@
 import json
 from typing import Any
 
+from src.common.mac_address import normalize_mac_address
 from src.data.controller.db import local_session
+from src.data.log import log
 from src.data.model.goose_receiver import GooseReceiverConfig, GooseSubscriptionConfig
 
 
@@ -38,12 +40,13 @@ class GooseReceiverDao:
             )
             session.flush()
             for sub in data.get("subscriptions", []):
+                dst_mac = normalize_mac_address(sub.get("dst_mac"))
                 session.add(
                     GooseSubscriptionConfig(
                         receiver_id=receiver.id,
                         go_cb_ref=sub["go_cb_ref"],
                         app_id=sub.get("app_id"),
-                        dst_mac_json=json.dumps(sub["dst_mac"]) if sub.get("dst_mac") else None,
+                        dst_mac_json=json.dumps(dst_mac) if dst_mac else None,
                         description=sub.get("description", ""),
                         data_set_ref=sub.get("data_set_ref", ""),
                         conf_rev=sub.get("conf_rev", 0),
@@ -73,6 +76,23 @@ class GooseReceiverDao:
                 query = query.where(GooseReceiverConfig.channel_id == channel_id)
             return query.delete() > 0
 
+    @classmethod
+    def delete_by_channel(cls, channel_id: int) -> int:
+        """删除通道下全部 Receiver，并显式删除其 Subscription。
+
+        不依赖数据库外键级联，兼容未启用 SQLite foreign_keys 的旧库。
+        """
+        with local_session() as session, session.begin():
+            receiver_ids = session.query(GooseReceiverConfig.id).where(GooseReceiverConfig.channel_id == channel_id)
+            session.query(GooseSubscriptionConfig).where(GooseSubscriptionConfig.receiver_id.in_(receiver_ids)).delete(
+                synchronize_session=False
+            )
+            return (
+                session.query(GooseReceiverConfig)
+                .where(GooseReceiverConfig.channel_id == channel_id)
+                .delete(synchronize_session=False)
+            )
+
     @staticmethod
     def _to_dict(receiver: GooseReceiverConfig) -> dict[str, Any]:
         return {
@@ -87,7 +107,7 @@ class GooseReceiverDao:
                     "id": sub.id,
                     "go_cb_ref": sub.go_cb_ref,
                     "app_id": sub.app_id,
-                    "dst_mac": json.loads(sub.dst_mac_json) if sub.dst_mac_json else None,
+                    "dst_mac": GooseReceiverDao._parse_dst_mac(sub.id, sub.dst_mac_json),
                     "description": sub.description,
                     "data_set_ref": sub.data_set_ref,
                     "conf_rev": sub.conf_rev,
@@ -100,3 +120,13 @@ class GooseReceiverDao:
                 for sub in receiver.subscriptions
             ],
         }
+
+    @staticmethod
+    def _parse_dst_mac(subscription_id: int, raw_value: str | None) -> list[int] | None:
+        if not raw_value:
+            return None
+        try:
+            return normalize_mac_address(json.loads(raw_value))
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            log.warning(f"GOOSE Subscription {subscription_id} 的 dst_mac 无效，已忽略: {exc}")
+            return None

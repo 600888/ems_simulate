@@ -146,6 +146,7 @@ class GooseTransformResult:
     """GOOSE 转换结果"""
 
     gse_controls: list[GseControlInfo] = field(default_factory=list)
+    engineered_subscriptions: list[dict[str, Any]] = field(default_factory=list)
     pure_datasets: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -168,7 +169,71 @@ class SclGooseTransformer:
                         continue
                     self._transform_ln0(ld.ln0, ld, ied, result)
 
+        self._transform_engineered_subscriptions(result)
+
         return result
+
+    def _transform_engineered_subscriptions(self, result: GooseTransformResult) -> None:
+        """由 Inputs/ExtRef 构建标准工程订阅，不反转本地 GSEControl。"""
+        publisher_index = {(gse.ied_name, gse.ld_inst, gse.name): gse for gse in result.gse_controls}
+        for subscriber_ied in self._doc.ieds:
+            for ap in subscriber_ied.access_points:
+                if not ap.server:
+                    continue
+                for ld in ap.server.ldevices:
+                    logical_nodes = ([ld.ln0] if ld.ln0 else []) + list(ld.lns)
+                    for ln in logical_nodes:
+                        for ext_ref in ln.inputs:
+                            if ext_ref.service_type.upper() != "GOOSE":
+                                continue
+                            publisher = publisher_index.get(
+                                (ext_ref.ied_name, ext_ref.src_ld_inst, ext_ref.src_cb_name)
+                            )
+                            if publisher:
+                                subscription = publisher.to_subscription_dict()
+                                subscription.update(
+                                    {
+                                        "description": ext_ref.desc or f"{subscriber_ied.name} Inputs/ExtRef",
+                                        "subscriber_ied_name": subscriber_ied.name,
+                                        "subscriber_ld_inst": ld.inst,
+                                        "subscriber_ln_name": ln.ln_name,
+                                        "int_addr": ext_ref.int_addr,
+                                        "binding_status": "resolved",
+                                        "source": "SCL_EXTREF",
+                                    }
+                                )
+                            else:
+                                source_ln = (
+                                    "LLN0"
+                                    if ext_ref.src_ln_class == "LLN0"
+                                    else f"{ext_ref.src_prefix}{ext_ref.src_ln_class}{ext_ref.src_ln_inst}"
+                                )
+                                go_cb_ref = (
+                                    f"{ext_ref.src_ld_inst}/{source_ln}$GO${ext_ref.src_cb_name}"
+                                    if ext_ref.src_ld_inst and ext_ref.src_cb_name
+                                    else ""
+                                )
+                                subscription = {
+                                    "go_cb_ref": go_cb_ref,
+                                    "app_id": None,
+                                    "dst_mac": None,
+                                    "description": ext_ref.desc
+                                    or f"{subscriber_ied.name} Inputs/ExtRef（发布源未解析）",
+                                    "enabled": False,
+                                    "ied_name": ext_ref.ied_name,
+                                    "ld_inst": ext_ref.src_ld_inst,
+                                    "ln_name": source_ln,
+                                    "data_set_ref": "",
+                                    "conf_rev": 0,
+                                    "dataset_entries": [],
+                                    "subscriber_ied_name": subscriber_ied.name,
+                                    "subscriber_ld_inst": ld.inst,
+                                    "subscriber_ln_name": ln.ln_name,
+                                    "int_addr": ext_ref.int_addr,
+                                    "binding_status": "unresolved",
+                                    "source": "SCL_EXTREF",
+                                }
+                            result.engineered_subscriptions.append(subscription)
 
     def _transform_ln0(
         self,
