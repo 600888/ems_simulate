@@ -4,7 +4,7 @@
       <el-input
         v-model="search"
         clearable
-        placeholder="搜索 IED / LD / GoCB"
+        placeholder="搜索 IED / 逻辑设备 / GOOSE控制块"
         :prefix-icon="Search"
       />
       <div v-if="batchMode" class="batch-row">

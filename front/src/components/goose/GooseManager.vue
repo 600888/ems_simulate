@@ -25,18 +25,18 @@
             min-width="220"
             show-overflow-tooltip
           />
-          <el-table-column prop="go_id" label="GoID" width="120" />
-          <el-table-column prop="app_id" label="APPID" width="80">
+          <el-table-column prop="go_id" label="GOOSE标识符" width="120" />
+          <el-table-column prop="app_id" label="应用标识" width="80">
             <template #default="{ row }">
               0x{{ (row.app_id ?? 0).toString(16).toUpperCase().padStart(4, "0") }}
             </template>
           </el-table-column>
-          <el-table-column prop="interface" label="Interface" width="100">
+          <el-table-column prop="interface" label="网络接口" width="100">
             <template #default="{ row }">
               {{ row.interface || "" }}
             </template>
           </el-table-column>
-          <el-table-column prop="dst_mac" label="Dest MAC" width="180" />
+          <el-table-column prop="dst_mac" label="目标MAC" width="180" />
           <el-table-column :label="$t('goose.dataSet')" width="95" align="center">
             <template #default="{ row }">
               {{ row.entry_count }}
@@ -131,8 +131,8 @@
             min-width="240"
             show-overflow-tooltip
           />
-          <el-table-column prop="go_id" label="GoID" width="120" show-overflow-tooltip />
-          <el-table-column prop="app_id" label="APPID" width="90">
+          <el-table-column prop="go_id" label="GOOSE标识符" width="120" show-overflow-tooltip />
+          <el-table-column prop="app_id" label="应用标识" width="90">
             <template #default="{ row }">
               {{
                 row.app_id != null
@@ -353,10 +353,10 @@
       destroy-on-close
     >
       <el-form :model="receiverForm" label-width="100px">
-        <el-form-item label="Name" required>
+        <el-form-item label="名称" required>
           <el-input v-model="receiverForm.name" />
         </el-form-item>
-        <el-form-item label="Description">
+        <el-form-item label="描述">
           <el-input v-model="receiverForm.description" />
         </el-form-item>
         <el-form-item :label="$t('goose.iface')" required>
@@ -415,7 +415,7 @@
             }}</el-button>
           </div>
         </el-form-item>
-        <el-form-item label="Auto Start">
+        <el-form-item label="自动启动">
           <el-switch v-model="receiverForm.auto_start" />
         </el-form-item>
       </el-form>
@@ -580,7 +580,7 @@
           <el-form-item :label="$t('goose.subDescription')">
             <el-input v-model="newSubForm.description" style="width: 180px" />
           </el-form-item>
-          <el-form-item label="Destination MAC">
+          <el-form-item label="目标MAC">
             <el-input
               v-model="newSubForm.dst_mac"
               placeholder="01-0C-CD-01-00-01"
@@ -988,7 +988,7 @@ function parseMac(value: string): number[] | null {
   if (!value.trim()) return null;
   const parts = value.trim().split(/[:-]/);
   if (parts.length !== 6 || parts.some((part) => !/^[0-9a-fA-F]{2}$/.test(part))) {
-    throw new Error("Destination MAC 格式应为 01-0C-CD-01-00-01");
+    throw new Error("目标MAC地址格式错误");
   }
   return parts.map((part) => Number.parseInt(part, 16));
 }

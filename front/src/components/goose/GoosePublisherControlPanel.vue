@@ -1,44 +1,44 @@
 <template>
   <el-empty v-if="!block?.publisher" description="请选择一个发布控制块" />
   <div v-else class="control-panel">
-    <el-descriptions :column="2" border size="small" label-width="150px">
-      <el-descriptions-item label="Name">{{ block.display_name }}</el-descriptions-item>
-      <el-descriptions-item label="Type"
-        ><el-tag type="primary">Publisher</el-tag></el-descriptions-item
+    <el-descriptions :column="2" border size="small" label-width="auto">
+      <el-descriptions-item label="名称 (Name)">{{ block.display_name }}</el-descriptions-item>
+      <el-descriptions-item label="类型 (Type)"
+        ><el-tag type="primary">发布器</el-tag></el-descriptions-item
       >
       <el-descriptions-item label="GoCBRef" :span="2">{{
         block.go_cb_ref
       }}</el-descriptions-item>
-      <el-descriptions-item label="GoID">{{ block.go_id || "-" }}</el-descriptions-item>
-      <el-descriptions-item label="APPID">{{
+      <el-descriptions-item label="GOOSE标识符 (GoID)">{{ block.go_id || "-" }}</el-descriptions-item>
+      <el-descriptions-item label="应用标识 (APPID)">{{
         formatAppId(block.app_id)
       }}</el-descriptions-item>
-      <el-descriptions-item label="DataSet" :span="2">{{
+      <el-descriptions-item label="数据集 (DataSet)" :span="2">{{
         block.data_set_ref || "-"
       }}</el-descriptions-item>
       <el-descriptions-item label="IED / LD / LN"
         >{{ block.ied_name }} / {{ block.ld_inst }} /
         {{ block.ln_name }}</el-descriptions-item
       >
-      <el-descriptions-item label="stNum / sqNum"
+      <el-descriptions-item label="状态号/顺序号 (stNum/sqNum)"
         >{{ block.st_num }} / {{ block.sq_num }}</el-descriptions-item
       >
-      <el-descriptions-item label="Interface">{{ block.interface }}</el-descriptions-item>
-      <el-descriptions-item label="Entries">{{
+      <el-descriptions-item label="网络接口 (Interface)">{{ block.interface }}</el-descriptions-item>
+      <el-descriptions-item label="条目数 (Entries)">{{
         block.data_values.length
       }}</el-descriptions-item>
     </el-descriptions>
 
     <section class="config-section">
       <div class="section-title">发布配置</div>
-      <el-form label-width="135px" class="config-form">
-        <el-form-item label="发布使能"
+      <el-form label-width="200px" class="config-form">
+        <el-form-item label="发布使能 (GoEna)"
           ><el-switch
             v-model="form.enabled"
-            active-text="Enabled"
-            inactive-text="Disabled"
+            active-text="已启用"
+            inactive-text="已禁用"
         /></el-form-item>
-        <el-form-item label="Interface">
+        <el-form-item label="网络接口 (Interface)">
           <el-select
             v-model="form.interface"
             style="width: 100%"
@@ -62,30 +62,30 @@
             </el-option>
           </el-select>
         </el-form-item>
-        <el-form-item label="GoID"><el-input v-model="form.go_id" /></el-form-item>
-        <el-form-item label="APPID"
+        <el-form-item label="GOOSE标识符 (GoID)"><el-input v-model="form.go_id" /></el-form-item>
+        <el-form-item label="应用标识 (APPID)"
           ><el-input-number
             v-model="form.app_id"
             :min="0"
             :max="65535"
             controls-position="right"
         /></el-form-item>
-        <el-form-item label="DataSet"
+        <el-form-item label="数据集 (DataSet)"
           ><el-input v-model="form.data_set_ref"
         /></el-form-item>
-        <el-form-item label="ConfRev"
+        <el-form-item label="配置版本号 (ConfRev)"
           ><el-input-number v-model="form.conf_rev" :min="1" controls-position="right"
         /></el-form-item>
-        <el-form-item label="TTL"
+        <el-form-item label="存活时间 (TTL)"
           ><el-input-number v-model="form.time_allowed_to_live" :min="100" :max="60000"
         /></el-form-item>
         <el-form-item label="VLAN ID"
           ><el-input-number v-model="form.vlan_id" :min="0" :max="4095"
         /></el-form-item>
-        <el-form-item label="VLAN Priority"
+        <el-form-item label="VLAN 优先级"
           ><el-input-number v-model="form.vlan_prio" :min="0" :max="7"
         /></el-form-item>
-        <el-form-item label="Simulation"
+        <el-form-item label="仿真模式 (Simulation)"
           ><el-switch v-model="form.simulation"
         /></el-form-item>
       </el-form>

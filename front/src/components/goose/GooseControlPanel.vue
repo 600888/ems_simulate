@@ -1,33 +1,33 @@
 <template>
   <el-empty v-if="!block" description="请选择一个 GOOSE 控制块" />
   <div v-else class="control-panel">
-    <el-descriptions :column="2" border size="small" label-width="150px">
-      <el-descriptions-item label="Name">{{ block.display_name }}</el-descriptions-item>
-      <el-descriptions-item label="State">
+    <el-descriptions :column="2" border size="small" label-width="auto">
+      <el-descriptions-item label="名称 (Name)">{{ block.display_name }}</el-descriptions-item>
+      <el-descriptions-item label="状态 (State)">
         <el-tag :type="stateTag">{{ stateLabel }}</el-tag>
       </el-descriptions-item>
       <el-descriptions-item label="GoCBRef" :span="2">{{ block.go_cb_ref }}</el-descriptions-item>
-      <el-descriptions-item label="GoID">{{ block.go_id || '-' }}</el-descriptions-item>
-      <el-descriptions-item label="APPID">{{ formatAppId(block.app_id) }}</el-descriptions-item>
-      <el-descriptions-item label="DataSet" :span="2">{{ block.data_set_ref || '-' }}</el-descriptions-item>
+      <el-descriptions-item label="GOOSE标识符 (GoID)">{{ block.go_id || '-' }}</el-descriptions-item>
+      <el-descriptions-item label="应用标识 (APPID)">{{ formatAppId(block.app_id) }}</el-descriptions-item>
+      <el-descriptions-item label="数据集 (DataSet)" :span="2">{{ block.data_set_ref || '-' }}</el-descriptions-item>
       <el-descriptions-item label="IED / LD / LN">{{ block.ied_name }} / {{ block.ld_inst }} / {{ block.ln_name }}</el-descriptions-item>
-      <el-descriptions-item label="stNum / sqNum">{{ block.st_num }} / {{ block.sq_num }}</el-descriptions-item>
-      <el-descriptions-item label="ConfRev expected / received">
+      <el-descriptions-item label="状态号/顺序号 (stNum/sqNum)">{{ block.st_num }} / {{ block.sq_num }}</el-descriptions-item>
+      <el-descriptions-item label="配置版本号 (ConfRev) 预期/接收">
         <span :class="{ mismatch: block.subscription?.config_mismatch }">{{ block.conf_rev }} / {{ block.subscription?.received_conf_rev || '-' }}</span>
       </el-descriptions-item>
-      <el-descriptions-item label="Interface">{{ interfaceLabel }}</el-descriptions-item>
-      <el-descriptions-item label="Last update">{{ formatGooseTime(block.last_update) }}</el-descriptions-item>
-      <el-descriptions-item label="Messages">{{ block.message_count || 0 }}</el-descriptions-item>
-      <el-descriptions-item label="TTL">{{ block.subscription?.time_allowed_to_live || 0 }} ms</el-descriptions-item>
+      <el-descriptions-item label="网络接口 (Interface)">{{ interfaceLabel }}</el-descriptions-item>
+      <el-descriptions-item label="最后更新 (Last update)">{{ formatGooseTime(block.last_update) }}</el-descriptions-item>
+      <el-descriptions-item label="报文数 (Messages)">{{ block.message_count || 0 }}</el-descriptions-item>
+      <el-descriptions-item label="存活时间 (TTL)">{{ block.subscription?.time_allowed_to_live || 0 }} ms</el-descriptions-item>
     </el-descriptions>
 
     <section class="config-section">
       <div class="section-title">订阅配置</div>
-      <el-form label-width="135px" class="config-form">
-        <el-form-item label="订阅使能">
-          <el-switch v-model="form.enabled" active-text="Enabled" inactive-text="Disabled" />
+      <el-form label-width="200px" class="config-form">
+        <el-form-item label="订阅使能 (GoEna)">
+          <el-switch v-model="form.enabled" active-text="已启用" inactive-text="已禁用" />
         </el-form-item>
-        <el-form-item label="Interface">
+        <el-form-item label="网络接口 (Interface)">
           <el-select v-model="form.interface" style="width: 100%" placeholder="请选择网卡">
             <el-option v-for="item in interfaces" :key="item.id" :value="item.id" class="network-option-item">
               <div class="network-option">
@@ -40,16 +40,16 @@
             </el-option>
           </el-select>
         </el-form-item>
-        <el-form-item label="APPID Filter">
+        <el-form-item label="应用标识过滤 (APPID Filter)">
           <el-input-number v-model="form.app_id" :min="0" :max="65535" controls-position="right" />
         </el-form-item>
-        <el-form-item label="DataSet">
+        <el-form-item label="数据集 (DataSet)">
           <el-input v-model="form.data_set_ref" />
         </el-form-item>
-        <el-form-item label="ConfRev">
+        <el-form-item label="配置版本号 (ConfRev)">
           <el-input-number v-model="form.conf_rev" :min="0" controls-position="right" />
         </el-form-item>
-        <el-form-item label="Description">
+        <el-form-item label="描述 (Description)">
           <el-input v-model="form.description" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
@@ -81,7 +81,7 @@ function sync() {
     description: props.block?.subscription?.description || '',
   });
 }
-const stateLabel = computed(() => !props.block?.enabled ? 'Disabled' : ({ connected: 'Connected', lost: 'Lost', error: 'Error', init: 'Waiting' }[props.block.state] || props.block.state));
+const stateLabel = computed(() => !props.block?.enabled ? '已禁用' : ({ connected: '已连接', lost: '超时', error: '错误', init: '等待中' }[props.block.state] || props.block.state));
 const stateTag = computed(() => !props.block?.enabled ? 'info' : props.block.state === 'connected' ? 'success' : props.block.state === 'init' ? 'primary' : 'danger');
 const interfaceLabel = computed(() => {
   const item = props.interfaces.find((candidate) => candidate.id === props.block?.interface);

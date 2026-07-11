@@ -1,7 +1,7 @@
 <template>
   <div class="goose-workbench">
     <header class="manager-header">
-      <h3>GOOSE Management</h3>
+      <h3>GOOSE 管理</h3>
       <div class="header-actions">
         <span>自动刷新</span>
         <el-switch v-model="autoRefresh" />
@@ -53,12 +53,12 @@
               <div class="latest-pane">
                 <div class="summary">
                   <el-tag :type="selected.kind === 'publisher' ? 'primary' : 'success'">
-                    {{ selected.kind === 'publisher' ? 'Publisher' : 'Subscriber' }}
+                    {{ selected.kind === 'publisher' ? '发布器' : '订阅器' }}
                   </el-tag>
                   <span v-if="selected.kind === 'subscriber'">时间：{{ formatGooseTime(selected.last_update) }}</span>
-                  <span>stNum：{{ selected.st_num }}</span>
-                  <span>sqNum：{{ selected.sq_num }}</span>
-                  <span>DataSet：{{ selected.data_set_ref || '-' }}</span>
+                  <span>状态号：{{ selected.st_num }}</span>
+                  <span>顺序号：{{ selected.sq_num }}</span>
+                  <span>数据集：{{ selected.data_set_ref || '-' }}</span>
                   <span>值：{{ selected.data_values.length }}</span>
                 </div>
                 <GooseDataSetTable :values="selected.data_values" />
@@ -75,8 +75,8 @@
                   highlight-current-row
                   @current-change="selectedHistory = $event"
                 >
-                  <el-table-column prop="st_num" label="stNum" width="75" />
-                  <el-table-column prop="sq_num" label="sqNum" width="75" />
+                  <el-table-column prop="st_num" label="状态号" width="75" />
+                  <el-table-column prop="sq_num" label="顺序号" width="75" />
                   <el-table-column label="时间" min-width="165">
                     <template #default="{ row }">{{ formatGooseTime(row.received_at) }}</template>
                   </el-table-column>
@@ -85,8 +85,8 @@
                 </el-table>
                 <div class="history-detail">
                   <div v-if="selectedHistory" class="summary">
-                    <span>stNum：{{ selectedHistory.st_num }}</span>
-                    <span>sqNum：{{ selectedHistory.sq_num }}</span>
+                    <span>状态号：{{ selectedHistory.st_num }}</span>
+                    <span>顺序号：{{ selectedHistory.sq_num }}</span>
                     <span>变化：{{ selectedHistory.changed_count }}</span>
                   </div>
                   <GooseDataSetTable :values="selectedHistory?.data_values || []" />
@@ -193,7 +193,7 @@ function parseMac(value: string): number[] | null {
   if (!value.trim()) return null;
   const parts = value.split(/[:-]/);
   if (parts.length !== 6 || parts.some((item) => !/^[0-9a-fA-F]{2}$/.test(item))) {
-    throw new Error('Destination MAC 格式错误');
+    throw new Error('目标MAC地址格式错误');
   }
   return parts.map((item) => Number.parseInt(item, 16));
 }
