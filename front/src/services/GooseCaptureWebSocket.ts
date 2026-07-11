@@ -226,28 +226,28 @@ export class GooseCaptureWebSocket {
   // ===== 指令封装 (Command Pattern) =====
 
   /** 启动 GOOSE 抓包 */
-  start(params?: { interface?: string; max_packets?: number; filter_app_id?: number | null }): void {
+  start(params: { channel_id: number; interface?: string; max_packets?: number; filter_app_id?: number | null }): void {
     this._sendCommand('start', params);
   }
 
   /** 停止 GOOSE 抓包 */
-  stop(): void {
-    this._sendCommand('stop');
+  stop(channelId: number): void {
+    this._sendCommand('stop', { channel_id: channelId });
   }
 
   /** 清空报文 */
-  clear(): void {
-    this._sendCommand('clear');
+  clear(channelId: number): void {
+    this._sendCommand('clear', { channel_id: channelId });
   }
 
   /** 获取报文列表 */
-  list(params?: { count?: number; filter_app_id?: number | null }): void {
+  list(params: { channel_id: number; count?: number; filter_app_id?: number | null }): void {
     this._sendCommand('list', params);
   }
 
   /** 获取状态 */
-  status(): void {
-    this._sendCommand('status');
+  status(channelId: number): void {
+    this._sendCommand('status', { channel_id: channelId });
   }
 
   // ===== 内部方法 =====

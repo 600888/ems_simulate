@@ -475,30 +475,8 @@ class Device:
         added_count = 0
         slave_id = 1  # IEC61850 默认使用从机地址 1
 
-        # 收集发现的 GOOSE 控制块，自动创建订阅
-        goose_subs = []
-        for dp in discovered_points:
-            if dp.get("_type") == "goose":
-                goose_subs.append(dp)
-
-        if goose_subs:
-            try:
-                from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
-
-                gm = GooseResourceManager()
-                sub_list = []
-                for g in goose_subs:
-                    sub_list.append(
-                        {
-                            "go_cb_ref": g.get("go_cb_ref", ""),
-                            "app_id": g.get("app_id"),
-                            "description": f"自动发现: {g.get('data_set_ref', '')}",
-                        }
-                    )
-                gm.create_receiver(interface="", subscriptions=sub_list)
-                self.log.info(f"已自动创建 GOOSE 订阅: {len(sub_list)} 个 (interface 为空，启动前请先配置网卡)")
-            except Exception as e:
-                self.log.warning(f"自动创建 GOOSE 订阅失败: {e}")
+        # GOOSE 控制块只作为发现结果缓存；订阅必须在设备 GOOSE 页面
+        # 选择本机网卡并显式确认，不能在发现回调中产生隐式配置写入。
 
         for dp in discovered_points:
             if dp.get("_type") == "goose":

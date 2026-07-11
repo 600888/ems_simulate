@@ -13,6 +13,7 @@ from src.web.api import (
     channel_router,
     device_group_router,
     device_router,
+    network_interfaces_router,
     point_mapping_router,
     point_router,
     point_tree_router,
@@ -76,6 +77,7 @@ def create_app():
     app.include_router(scl_router)
     app.include_router(settings_router)
     app.include_router(log_router)
+    app.include_router(network_interfaces_router)
 
     # 初始化应用状态
     app.state.initialized = False

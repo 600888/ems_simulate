@@ -252,7 +252,7 @@ async def import_icd(
     channel_id: int = Form(...),
     file: UploadFile = File(...),
     interface: str = Form("eth0"),
-    auto_create_goose: bool = Form(True),
+    auto_create_goose: bool = Form(False),
 ):
     """导入 IEC 61850 ICD/SCD/CID 文件
 
@@ -350,7 +350,7 @@ async def import_icd(
         try:
             from src.data.dao.goose_publisher_dao import GoosePublisherDao
 
-            old_count = GoosePublisherDao.delete_by_channel(channel_id)
+            old_count = GoosePublisherDao.delete_by_channel(channel_id) if auto_create_goose else 0
             if old_count > 0:
                 log.info(f"重新导入前已删除 {old_count} 个旧 GOOSE Publisher 持久化记录")
         except Exception as e:
@@ -361,7 +361,7 @@ async def import_icd(
             from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
 
             old_manager: GooseResourceManager | None = getattr(request.app.state, "goose_manager", None)
-            if old_manager:
+            if old_manager and auto_create_goose:
                 old_go_cb_refs = [go_cb_ref for go_cb_ref, cid in old_manager._channel_map.items() if cid == channel_id]
                 deleted_old = 0
                 for go_cb_ref in old_go_cb_refs:

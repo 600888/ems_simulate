@@ -85,6 +85,7 @@ class WebSocketSessionManager:
         self._initialized = True
 
         self._connections: set[WebSocket] = set()
+        self._connection_channels: dict[WebSocket, int] = {}
         self._lock = threading.Lock()
         self._capture_instance: Any | None = None
         self._capture_callback_registered = False
@@ -110,18 +111,21 @@ class WebSocketSessionManager:
         """断开并移除一个 WebSocket 连接"""
         with self._lock:
             self._connections.discard(ws)
+            self._connection_channels.pop(ws, None)
             log.info(f"GOOSE WebSocket 客户端已断开, 当前连接数: {len(self._connections)}")
 
     # ---- 消息广播 ----
 
-    async def broadcast(self, message: dict[str, Any]):
-        """向所有已连接的客户端广播消息"""
+    async def broadcast(self, message: dict[str, Any], channel_id: int | None = None):
+        """只向同一 IEC 61850 通道的客户端广播报文。"""
         if not self._connections:
             return
         payload = json.dumps(message, ensure_ascii=False, default=str)
         disconnected = []
         with self._lock:
             for ws in self._connections:
+                if channel_id is not None and self._connection_channels.get(ws) != channel_id:
+                    continue
                 try:
                     await ws.send_text(payload)
                 except Exception:
@@ -140,7 +144,7 @@ class WebSocketSessionManager:
 
     # ---- 报文回调 — 从捕获引擎接收实时报文 ----
 
-    def _on_packet_captured(self, packet_dict: dict[str, Any]):
+    def _on_packet_captured(self, packet_dict: dict[str, Any], channel_id: int):
         """GOOSE 报文捕获回调 (在捕获引擎的线程中调用)
 
         由于回调在非异步线程中执行，使用 run_coroutine_threadsafe
@@ -159,7 +163,8 @@ class WebSocketSessionManager:
                     {
                         "type": MsgType.PACKET,
                         "data": packet_data,
-                    }
+                    },
+                    channel_id,
                 ),
                 loop,
             )
@@ -172,6 +177,9 @@ class WebSocketSessionManager:
         """处理来自客户端的指令"""
         action = message.get("action", "")
         params = message.get("params", {})
+        if "channel_id" in params:
+            with self._lock:
+                self._connection_channels[ws] = int(params["channel_id"])
 
         try:
             from src.proto.iec61850.plugins.goose.capture import GooseCaptureEngine
@@ -179,13 +187,13 @@ class WebSocketSessionManager:
             if action == Action.START:
                 await self._handle_start(ws, params, GooseCaptureEngine)
             elif action == Action.STOP:
-                await self._handle_stop(ws)
+                await self._handle_stop(ws, params)
             elif action == Action.CLEAR:
-                await self._handle_clear(ws)
+                await self._handle_clear(ws, params)
             elif action == Action.LIST:
                 await self._handle_list(ws, params)
             elif action == Action.STATUS:
-                await self._handle_status(ws)
+                await self._handle_status(ws, params)
             else:
                 await self.send_to(
                     ws,
@@ -209,11 +217,17 @@ class WebSocketSessionManager:
         from src.web.api.channel.goose import GOOSE_CAPTURE_INSTANCES
 
         interface = params.get("interface", "")
+        channel_id = int(params.get("channel_id", 0))
+        if channel_id <= 0:
+            raise ValueError("channel_id 必须大于 0")
+        from src.web.api.network_interfaces import validate_network_interface
+
+        validate_network_interface(interface)
         max_packets = params.get("max_packets", 500)
         filter_app_id = params.get("filter_app_id")
 
         # 获取或创建捕获器
-        key = interface or "__default__"
+        key = f"{channel_id}:{interface or '__default__'}"
         capture = GOOSE_CAPTURE_INSTANCES.get(key)
 
         if capture is None:
@@ -225,7 +239,7 @@ class WebSocketSessionManager:
             capture.set_app_id_filter(filter_app_id)
 
         # 注册回调 — 用于实时推送（只需注册一次）
-        capture.set_callback(self._on_packet_captured)
+        capture.set_callback(lambda packet, cid=channel_id: self._on_packet_captured(packet, cid))
         self._capture_callback_registered = True
         self._capture_instance = capture
 
@@ -253,7 +267,7 @@ class WebSocketSessionManager:
                 },
             )
 
-    async def _handle_stop(self, ws: WebSocket):
+    async def _handle_stop(self, ws: WebSocket, params: dict[str, Any]):
         """停止 GOOSE 抓包
 
         使用 signal_stop() 非阻塞停止，不等待捕获线程退出，
@@ -261,7 +275,10 @@ class WebSocketSessionManager:
         """
         from src.web.api.channel.goose import GOOSE_CAPTURE_INSTANCES
 
-        for capture in GOOSE_CAPTURE_INSTANCES.values():
+        prefix = f"{int(params.get('channel_id', 0))}:"
+        for key, capture in GOOSE_CAPTURE_INSTANCES.items():
+            if not key.startswith(prefix):
+                continue
             if capture.is_running:
                 # 先移除回调，防止停止过程中推送残留报文
                 with contextlib.suppress(Exception):
@@ -282,11 +299,14 @@ class WebSocketSessionManager:
             },
         )
 
-    async def _handle_clear(self, ws: WebSocket):
+    async def _handle_clear(self, ws: WebSocket, params: dict[str, Any]):
         """清空捕获的报文"""
         from src.web.api.channel.goose import GOOSE_CAPTURE_INSTANCES
 
-        for capture in GOOSE_CAPTURE_INSTANCES.values():
+        prefix = f"{int(params.get('channel_id', 0))}:"
+        for key, capture in GOOSE_CAPTURE_INSTANCES.items():
+            if not key.startswith(prefix):
+                continue
             capture.clear()
 
         await self.send_to(
@@ -305,9 +325,12 @@ class WebSocketSessionManager:
 
         count = params.get("count", 0)
         filter_app_id = params.get("filter_app_id")
+        prefix = f"{int(params.get('channel_id', 0))}:"
 
         capture = None
-        for c in GOOSE_CAPTURE_INSTANCES.values():
+        for key, c in GOOSE_CAPTURE_INSTANCES.items():
+            if not key.startswith(prefix):
+                continue
             if c.is_running:
                 capture = c
                 break
@@ -342,12 +365,15 @@ class WebSocketSessionManager:
             },
         )
 
-    async def _handle_status(self, ws: WebSocket):
+    async def _handle_status(self, ws: WebSocket, params: dict[str, Any]):
         """获取抓包状态"""
         from src.web.api.channel.goose import GOOSE_CAPTURE_INSTANCES
 
         results = []
-        for capture in GOOSE_CAPTURE_INSTANCES.values():
+        prefix = f"{int(params.get('channel_id', 0))}:"
+        for key, capture in GOOSE_CAPTURE_INSTANCES.items():
+            if not key.startswith(prefix):
+                continue
             results.append(capture.get_status())
 
         await self.send_to(

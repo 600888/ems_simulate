@@ -5,12 +5,15 @@
       <div class="toolbar-left">
         <div class="toolbar-item">
           <span class="toolbar-label">{{ $t('goose.iface') }}</span>
-          <el-input
+          <el-select
             v-model="interfaceName"
-            :placeholder="$t('goose.iface') + ' (empty=auto)'"
-            style="width: 160px"
+            :placeholder="$t('goose.interfacePlaceholder')"
+            style="width: 240px"
             :disabled="captureRunning"
-          />
+          >
+            <el-option v-for="item in networkInterfaces" :key="item.id" :value="item.id"
+              :label="`${item.display_name}${item.ipv4?.[0] ? ` (${item.ipv4[0]})` : ''}`" />
+          </el-select>
         </div>
         <div class="toolbar-item">
           <span class="toolbar-label">{{ $t('goose.cache') }}</span>
@@ -235,7 +238,11 @@ import { GooseCaptureWebSocket, WsEventType } from '@/services/GooseCaptureWebSo
 import type {
   GooseCapturedPacket,
   GooseCaptureStatistics,
+  NetworkInterfaceInfo,
 } from '@/api/gooseApi'
+import { getGooseNetworkInterfaces } from '@/api/gooseApi'
+
+const props = defineProps<{ channelId: number }>()
 
 const ws = GooseCaptureWebSocket.getInstance()
 const { t } = useI18n()
@@ -246,6 +253,7 @@ const starting = ref(false)
 const stopping = ref(false)
 const captureRunning = ref(false)
 const interfaceName = ref('')
+const networkInterfaces = ref<NetworkInterfaceInfo[]>([])
 const maxPackets = ref(500)
 const filterAppId = ref<number | null>(null)
 
@@ -273,6 +281,7 @@ function startCapture() {
   cmdSeq++
 
   ws.start({
+    channel_id: props.channelId,
     interface: interfaceName.value || undefined,
     max_packets: maxPackets.value,
     filter_app_id: filterAppId.value,
@@ -287,7 +296,7 @@ function stopCapture() {
   stopping.value = true    // 停止按钮显示 loading
   cmdSeq++
 
-  ws.stop()
+  ws.stop(props.channelId)
 
   // ⏱ 兜底超时：3秒后如果还没收到 response，强制清除 loading
   if (stopTimeoutId) clearTimeout(stopTimeoutId)
@@ -295,7 +304,7 @@ function stopCapture() {
     if (stopping.value) {
       stopping.value = false
       // 再发一次 status 查询真实状态
-      ws.status()
+      ws.status(props.channelId)
     }
   }, 3000)
 }
@@ -303,14 +312,14 @@ function stopCapture() {
 function refreshPackets() {
   if (ws.isConnected) {
     loading.value = true
-    ws.list()
+    ws.list({ channel_id: props.channelId })
   }
 }
 
 function clearPackets() {
   ElMessageBox.confirm(t('goose.clearConfirm'), t('common.confirm'), { type: 'warning' })
     .then(() => {
-      ws.clear()
+      ws.clear(props.channelId)
     })
     .catch(() => {})
 }
@@ -341,7 +350,7 @@ cleanups.push(
       if (res.success) {
         ElMessage.success(t('goose.captureStarted'))
         lastListSeq = curSeq
-        ws.list()
+        ws.list({ channel_id: props.channelId })
       } else {
         captureRunning.value = false
         ElMessage.error(res.message || t('goose.createFailed'))
@@ -385,7 +394,7 @@ cleanups.push(
         starting.value = false
         // 重连后发现抓包在运行，拉取最新数据
         if (c.is_running && !wasRunning) {
-          ws.list()
+          ws.list({ channel_id: props.channelId })
         }
       }
     }
@@ -395,7 +404,7 @@ cleanups.push(
 /** 连接建立后自动检查抓包状态 */
 cleanups.push(
   ws.on(WsEventType.CONNECTED, () => {
-    ws.status()
+    ws.status(props.channelId)
   }),
 )
 
@@ -419,7 +428,9 @@ cleanups.push(
 
 // ===== 生命周期 =====
 
-onMounted(() => {
+onMounted(async () => {
+  networkInterfaces.value = (await getGooseNetworkInterfaces()).filter(item => item.supports_raw_ethernet)
+  if (!interfaceName.value && networkInterfaces.value.length) interfaceName.value = networkInterfaces.value[0].id
   // 自动建立 WebSocket 连接，连接后会检查抓包状态
   ws.connect()
 })

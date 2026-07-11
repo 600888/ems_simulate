@@ -23,6 +23,13 @@ from .types import (
 )
 
 
+def _scoped_key(channel_id: int | None, value: str) -> str:
+    return f"{channel_id}:{value}" if channel_id is not None else value
+
+
+_UNSET = object()
+
+
 class GooseResourceManager:
     """GOOSE 资源管理器
 
@@ -44,8 +51,10 @@ class GooseResourceManager:
         # interface -> receiver_id 映射
         self._interface_to_rid: dict[str, str] = {}
 
-        # go_cb_ref -> channel_id 映射 (用于持久化)
+        # runtime resource id -> channel_id 映射 (用于隔离和持久化)
         self._channel_map: dict[str, int] = {}
+        self._receiver_channel_map: dict[str, int] = {}
+        self._receiver_meta: dict[str, dict[str, Any]] = {}
 
         # 持久化适配器
         self._persistence = persistence or PersistenceAdapter()
@@ -95,13 +104,14 @@ class GooseResourceManager:
             log.error("GOOSE 功能不可用 (pyiec61850 未安装)")
             return None
 
-        # 检查 go_cb_ref 是否已存在
-        if go_cb_ref and go_cb_ref in self._gocbref_to_pid:
+        lookup_key = _scoped_key(channel_id, go_cb_ref)
+        # 同一通道内 GoCBRef 唯一，不同设备允许相同引用
+        if go_cb_ref and lookup_key in self._gocbref_to_pid:
             if force_recreate:
                 log.info(f"GOOSE Publisher 已存在但强制重新创建: go_cb_ref={go_cb_ref}")
-                self.delete_publisher(go_cb_ref, delete_from_db=False)
+                self.delete_publisher(self._gocbref_to_pid[lookup_key], delete_from_db=False)
             else:
-                existing_id = self._gocbref_to_pid[go_cb_ref]
+                existing_id = self._gocbref_to_pid[lookup_key]
                 log.warning(f"GOOSE Publisher 已存在: go_cb_ref={go_cb_ref}, id={existing_id}")
                 return self.get_publisher_status(existing_id)
 
@@ -132,15 +142,15 @@ class GooseResourceManager:
                     publisher.add_entry(entry)
 
             # 生成唯一 ID
-            pub_id = go_cb_ref or str(uuid.uuid4())
+            pub_id = lookup_key if go_cb_ref else _scoped_key(channel_id, str(uuid.uuid4()))
             self._publishers[pub_id] = publisher
             if go_cb_ref:
-                self._gocbref_to_pid[go_cb_ref] = pub_id
+                self._gocbref_to_pid[lookup_key] = pub_id
 
             # 持久化到数据库
             if channel_id is not None:
-                self._channel_map[go_cb_ref] = channel_id
-                self.save_to_db(channel_id, go_cb_ref)
+                self._channel_map[pub_id] = channel_id
+                self.save_to_db(channel_id, pub_id)
 
             # 注册 GSEControlBlock 到 MMS 数据模型
             if server is not None:
@@ -176,9 +186,10 @@ class GooseResourceManager:
             log.error(f"创建 GOOSE Publisher 异常: {e}")
             return None
 
-    def list_publishers(self) -> list[dict[str, Any]]:
+    def list_publishers(self, channel_id: int | None = None) -> list[dict[str, Any]]:
         """列出所有 Publisher 状态"""
-        return [self.get_publisher_status(pid) or {"id": pid, "error": "状态获取失败"} for pid in self._publishers]
+        ids = [pid for pid in self._publishers if channel_id is None or self._channel_map.get(pid) == channel_id]
+        return [self.get_publisher_status(pid) or {"id": pid, "error": "状态获取失败"} for pid in ids]
 
     def get_publisher_status(self, publisher_id: str) -> dict[str, Any] | None:
         """获取 Publisher 状态"""
@@ -188,15 +199,23 @@ class GooseResourceManager:
 
         status = publisher.get_status()
         status["id"] = publisher_id
+        status["channel_id"] = self._channel_map.get(publisher_id)
         status["entries"] = publisher.get_entries()
         return status
 
     def update_publisher(
         self,
         publisher_id: str,
+        interface: str | None = None,
+        go_cb_ref: str | None = None,
         go_id: str | None = None,
+        data_set_ref: str | None = None,
+        app_id: int | None = None,
         conf_rev: int | None = None,
         time_allowed_to_live: int | None = None,
+        dst_mac: list[int] | None | object = _UNSET,
+        vlan_id: int | None = None,
+        vlan_prio: int | None = None,
         simulation: bool | None = None,
     ) -> dict[str, Any] | None:
         """更新 Publisher 配置 (仅未运行时)"""
@@ -211,18 +230,18 @@ class GooseResourceManager:
         # 更新可变字段 (通过重建 config)
         config = publisher.config
         new_config = PublisherConfig(
-            interface=config.interface,
-            go_cb_ref=config.go_cb_ref,
+            interface=interface if interface is not None else config.interface,
+            go_cb_ref=go_cb_ref if go_cb_ref is not None else config.go_cb_ref,
             go_id=go_id if go_id is not None else config.go_id,
-            data_set_ref=config.data_set_ref,
-            app_id=config.app_id,
+            data_set_ref=data_set_ref if data_set_ref is not None else config.data_set_ref,
+            app_id=app_id if app_id is not None else config.app_id,
             conf_rev=conf_rev if conf_rev is not None else config.conf_rev,
             time_allowed_to_live=time_allowed_to_live
             if time_allowed_to_live is not None
             else config.time_allowed_to_live,
-            dst_mac=config.dst_mac,
-            vlan_id=config.vlan_id,
-            vlan_prio=config.vlan_prio,
+            dst_mac=config.dst_mac if dst_mac is _UNSET else dst_mac,
+            vlan_id=vlan_id if vlan_id is not None else config.vlan_id,
+            vlan_prio=vlan_prio if vlan_prio is not None else config.vlan_prio,
             simulation=simulation if simulation is not None else config.simulation,
         )
 
@@ -242,6 +261,15 @@ class GooseResourceManager:
 
         self._publishers[publisher_id] = new_publisher
 
+        if new_config.go_cb_ref != config.go_cb_ref:
+            channel_id = self._channel_map.get(publisher_id)
+            self._gocbref_to_pid.pop(_scoped_key(channel_id, config.go_cb_ref), None)
+            self._gocbref_to_pid[_scoped_key(channel_id, new_config.go_cb_ref)] = publisher_id
+            if channel_id is not None:
+                from src.data.dao.goose_publisher_dao import GoosePublisherDao
+
+                GoosePublisherDao.delete_publisher_by_channel_ref(channel_id, config.go_cb_ref)
+
         # 持久化更新
         self._auto_persist(publisher_id)
 
@@ -256,15 +284,19 @@ class GooseResourceManager:
         publisher.stop()
         go_cb_ref = publisher.go_cb_ref
         del self._publishers[publisher_id]
-        if go_cb_ref in self._gocbref_to_pid:
-            del self._gocbref_to_pid[go_cb_ref]
-        if go_cb_ref in self._channel_map:
-            del self._channel_map[go_cb_ref]
+        channel_id = self._channel_map.pop(publisher_id, None)
+        lookup_key = _scoped_key(channel_id, go_cb_ref)
+        self._gocbref_to_pid.pop(lookup_key, None)
 
         # 从数据库删除
         if delete_from_db:
             try:
-                self._persistence.delete_publisher_by_go_cb_ref(go_cb_ref)
+                if channel_id is not None:
+                    from src.data.dao.goose_publisher_dao import GoosePublisherDao
+
+                    GoosePublisherDao.delete_publisher_by_channel_ref(channel_id, go_cb_ref)
+                else:
+                    self._persistence.delete_publisher_by_go_cb_ref(go_cb_ref)
                 log.info(f"GOOSE Publisher 已从数据库删除: id={publisher_id}")
             except Exception as e:
                 log.warning(f"从数据库删除 GOOSE Publisher 失败: {e}")
@@ -305,7 +337,7 @@ class GooseResourceManager:
     ) -> dict[str, Any] | None:
         """向 Publisher 添加数据集条目"""
         publisher = self._publishers.get(publisher_id)
-        if not publisher:
+        if not publisher or publisher.is_running:
             return None
 
         entry = GooseDataSetEntry(name=name, value=value, iec_type=IecDataType(iec_type))
@@ -337,7 +369,7 @@ class GooseResourceManager:
     def remove_publisher_entry(self, publisher_id: str, index: int) -> bool:
         """移除 Publisher 数据集条目"""
         publisher = self._publishers.get(publisher_id)
-        if not publisher:
+        if not publisher or publisher.is_running:
             return False
         publisher.remove_entry(index)
 
@@ -346,12 +378,28 @@ class GooseResourceManager:
 
         return True
 
-    def _auto_persist(self, go_cb_ref: str) -> None:
+    def replace_publisher_entries(self, publisher_id: str, entries: list[dict[str, Any]]) -> dict[str, Any] | None:
+        publisher = self._publishers.get(publisher_id)
+        if not publisher or publisher.is_running:
+            return None
+        config = publisher.config
+        replacement = GoosePublisher(config)
+        for item in entries:
+            replacement.add_entry(
+                GooseDataSetEntry(
+                    name=item["name"], value=item.get("value"), iec_type=IecDataType(item.get("iec_type", "boolean"))
+                )
+            )
+        self._publishers[publisher_id] = replacement
+        self._auto_persist(publisher_id)
+        return self.get_publisher_status(publisher_id)
+
+    def _auto_persist(self, publisher_id: str) -> None:
         """自动将 Publisher 持久化到数据库（如果有 channel_id 映射）"""
-        channel_id = self._channel_map.get(go_cb_ref)
+        channel_id = self._channel_map.get(publisher_id)
         if channel_id is not None:
             try:
-                self.save_to_db(channel_id, go_cb_ref)
+                self.save_to_db(channel_id, publisher_id)
             except Exception as e:
                 log.warning(f"自动持久化 GOOSE Publisher 失败: {e}")
 
@@ -361,15 +409,20 @@ class GooseResourceManager:
         self,
         interface: str = "eth0",
         subscriptions: list[dict[str, Any]] | None = None,
+        channel_id: int | None = None,
+        name: str = "default",
+        description: str = "",
+        auto_start: bool = False,
+        db_id: int | None = None,
     ) -> dict[str, Any] | None:
         """创建 GOOSE Receiver"""
         if not HAS_IEC61850:
             log.error("GOOSE 功能不可用 (pyiec61850 未安装)")
             return None
 
-        # 检查同一接口是否已有 Receiver
-        if interface in self._interface_to_rid:
-            existing_id = self._interface_to_rid[interface]
+        interface_key = _scoped_key(channel_id, f"{interface}:{name}")
+        if interface_key in self._interface_to_rid:
+            existing_id = self._interface_to_rid[interface_key]
             log.warning(f"GOOSE Receiver 已存在: interface={interface}, id={existing_id}")
             return self.get_receiver_status(existing_id)
 
@@ -389,10 +442,19 @@ class GooseResourceManager:
                         conf_rev=s.get("conf_rev", 0),
                     )
 
-            # 使用接口名作为 ID
-            recv_id = interface
+            recv_id = str(db_id) if db_id is not None else _scoped_key(channel_id, str(uuid.uuid4()))
             self._receivers[recv_id] = receiver
-            self._interface_to_rid[interface] = recv_id
+            self._interface_to_rid[interface_key] = recv_id
+            if channel_id is not None:
+                self._receiver_channel_map[recv_id] = channel_id
+                self._receiver_meta[recv_id] = {
+                    "db_id": db_id,
+                    "name": name,
+                    "description": description,
+                    "auto_start": auto_start,
+                    "interface_key": interface_key,
+                }
+                self._persist_receiver(recv_id)
 
             log.info(f"GOOSE Receiver 创建成功: id={recv_id}, interface={interface}")
             return self.get_receiver_status(recv_id)
@@ -400,9 +462,12 @@ class GooseResourceManager:
             log.error(f"创建 GOOSE Receiver 异常: {e}")
             return None
 
-    def list_receivers(self) -> list[dict[str, Any]]:
+    def list_receivers(self, channel_id: int | None = None) -> list[dict[str, Any]]:
         """列出所有 Receiver 状态"""
-        return [self.get_receiver_status(rid) or {"id": rid, "error": "状态获取失败"} for rid in self._receivers]
+        ids = [
+            rid for rid in self._receivers if channel_id is None or self._receiver_channel_map.get(rid) == channel_id
+        ]
+        return [self.get_receiver_status(rid) or {"id": rid, "error": "状态获取失败"} for rid in ids]
 
     def get_receiver_status(self, receiver_id: str) -> dict[str, Any] | None:
         """获取 Receiver 状态"""
@@ -412,6 +477,8 @@ class GooseResourceManager:
 
         status = receiver.get_status()
         status["id"] = receiver_id
+        status["channel_id"] = self._receiver_channel_map.get(receiver_id)
+        status.update({k: v for k, v in self._receiver_meta.get(receiver_id, {}).items() if k != "interface_key"})
         return status
 
     def delete_receiver(self, receiver_id: str) -> bool:
@@ -420,14 +487,52 @@ class GooseResourceManager:
         if not receiver:
             return False
 
-        interface = receiver.interface
         receiver.stop()
         del self._receivers[receiver_id]
-        if interface in self._interface_to_rid:
-            del self._interface_to_rid[interface]
+        meta = self._receiver_meta.pop(receiver_id, {})
+        interface_key = meta.get("interface_key")
+        if interface_key:
+            self._interface_to_rid.pop(interface_key, None)
+        channel_id = self._receiver_channel_map.pop(receiver_id, None)
+        db_id = meta.get("db_id")
+        if db_id:
+            from src.data.dao.goose_receiver_dao import GooseReceiverDao
+
+            GooseReceiverDao.delete(int(db_id), channel_id)
 
         log.info(f"GOOSE Receiver 已删除: id={receiver_id}")
         return True
+
+    def update_receiver(
+        self,
+        receiver_id: str,
+        interface: str,
+        name: str = "default",
+        description: str = "",
+        auto_start: bool = False,
+    ) -> dict[str, Any] | None:
+        receiver = self._receivers.get(receiver_id)
+        if not receiver or receiver.is_running:
+            return None
+        subscriptions = receiver.get_subscriptions()
+        channel_id = self._receiver_channel_map.get(receiver_id)
+        meta = self._receiver_meta.get(receiver_id, {})
+        db_id = meta.get("db_id")
+        old_key = meta.get("interface_key")
+        if old_key:
+            self._interface_to_rid.pop(old_key, None)
+        self._receivers.pop(receiver_id, None)
+        self._receiver_channel_map.pop(receiver_id, None)
+        self._receiver_meta.pop(receiver_id, None)
+        return self.create_receiver(
+            interface=interface,
+            subscriptions=subscriptions,
+            channel_id=channel_id,
+            name=name,
+            description=description,
+            auto_start=auto_start,
+            db_id=db_id,
+        )
 
     def start_receiver(self, receiver_id: str) -> bool:
         """启动 Receiver"""
@@ -450,6 +555,7 @@ class GooseResourceManager:
         self,
         discovered: list[dict[str, Any]],
         interface: str = "eth0",
+        channel_id: int | None = None,
     ) -> dict[str, Any] | None:
         """将发现的远端 GOOSE 控制块导入为 Receiver 订阅 (幂等)
 
@@ -458,12 +564,12 @@ class GooseResourceManager:
         Receiver 运行中则跳过添加。
         """
         if not discovered:
-            recv_id = self._interface_to_rid.get(interface)
+            recv_id = self._interface_to_rid.get(_scoped_key(channel_id, f"{interface}:default"))
             return self.get_receiver_status(recv_id) if recv_id else None
 
-        recv_id = self._interface_to_rid.get(interface)
+        recv_id = self._interface_to_rid.get(_scoped_key(channel_id, f"{interface}:default"))
         if not recv_id:
-            status = self.create_receiver(interface=interface)
+            status = self.create_receiver(interface=interface, channel_id=channel_id)
             recv_id = status.get("id") if status else None
         if not recv_id:
             return None
@@ -481,6 +587,7 @@ class GooseResourceManager:
                         data_set_ref=g.get("data_set_ref", ""),
                         conf_rev=g.get("conf_rev", 0),
                     )
+            self._persist_receiver(recv_id)
         return self.get_receiver_status(recv_id)
 
     def add_subscription(
@@ -490,6 +597,8 @@ class GooseResourceManager:
         app_id: int | None = None,
         dst_mac: list[int] | None = None,
         description: str = "",
+        data_set_ref: str = "",
+        conf_rev: int = 0,
     ) -> dict[str, Any] | None:
         """向 Receiver 添加订阅"""
         receiver = self._receivers.get(receiver_id)
@@ -500,7 +609,8 @@ class GooseResourceManager:
             log.warning(f"GOOSE Receiver 运行中，无法添加订阅: {receiver_id}")
             return None
 
-        sub = receiver.add_subscription(go_cb_ref, app_id, dst_mac, description)
+        sub = receiver.add_subscription(go_cb_ref, app_id, dst_mac, description, data_set_ref, conf_rev)
+        self._persist_receiver(receiver_id)
         return sub.to_dict()
 
     def remove_subscription(self, receiver_id: str, go_cb_ref: str) -> bool:
@@ -513,7 +623,46 @@ class GooseResourceManager:
             log.warning(f"GOOSE Receiver 运行中，无法移除订阅: {receiver_id}")
             return False
 
-        return receiver.remove_subscription(go_cb_ref)
+        removed = receiver.remove_subscription(go_cb_ref)
+        if removed:
+            self._persist_receiver(receiver_id)
+        return removed
+
+    def replace_subscriptions(self, receiver_id: str, subscriptions: list[dict[str, Any]]) -> dict[str, Any] | None:
+        receiver = self._receivers.get(receiver_id)
+        if not receiver or receiver.is_running:
+            return None
+        for item in list(receiver.get_subscriptions()):
+            receiver.remove_subscription(item["go_cb_ref"])
+        for item in subscriptions:
+            receiver.add_subscription(
+                item["go_cb_ref"],
+                item.get("app_id"),
+                item.get("dst_mac"),
+                item.get("description", ""),
+                item.get("data_set_ref", ""),
+                item.get("conf_rev", 0),
+            )
+        self._persist_receiver(receiver_id)
+        return self.get_receiver_status(receiver_id)
+
+    def _persist_receiver(self, receiver_id: str) -> None:
+        channel_id = self._receiver_channel_map.get(receiver_id)
+        receiver = self._receivers.get(receiver_id)
+        if channel_id is None or receiver is None:
+            return
+        from src.data.dao.goose_receiver_dao import GooseReceiverDao
+
+        meta = self._receiver_meta.get(receiver_id, {})
+        db_id = GooseReceiverDao.save(
+            channel_id,
+            {
+                **meta,
+                "interface": receiver.interface,
+                "subscriptions": receiver.get_subscriptions(),
+            },
+        )
+        meta["db_id"] = db_id
 
     # ===== Capture 管理 =====
 
@@ -587,17 +736,17 @@ class GooseResourceManager:
 
     # ===== 持久化 =====
 
-    def save_to_db(self, channel_id: int, go_cb_ref: str) -> bool:
+    def save_to_db(self, channel_id: int, publisher_id: str) -> bool:
         """将 Publisher 配置持久化到数据库"""
         try:
-            status = self.get_publisher_status(go_cb_ref)
+            status = self.get_publisher_status(publisher_id)
             if not status:
-                log.warning(f"save_to_db 失败: Publisher 未找到 go_cb_ref={go_cb_ref}")
+                log.warning(f"save_to_db 失败: Publisher 未找到 id={publisher_id}")
                 return False
 
             db_id = self._persistence.save_publisher(channel_id, status)
             if db_id:
-                log.info(f"GOOSE Publisher 已持久化: go_cb_ref={go_cb_ref}, db_id={db_id}")
+                log.info(f"GOOSE Publisher 已持久化: id={publisher_id}, db_id={db_id}")
                 return True
             return False
         except Exception as e:
@@ -693,7 +842,9 @@ class GooseResourceManager:
                 if not go_cb_ref:
                     continue
 
-                if go_cb_ref in self._gocbref_to_pid:
+                db_channel_id = cfg.get("_channel_id")
+                lookup_key = _scoped_key(db_channel_id, go_cb_ref)
+                if lookup_key in self._gocbref_to_pid:
                     continue
 
                 try:
@@ -727,14 +878,13 @@ class GooseResourceManager:
                         publisher.add_entry(entry)
 
                     # 注册到管理器
-                    pub_id = go_cb_ref
+                    pub_id = lookup_key
                     self._publishers[pub_id] = publisher
-                    self._gocbref_to_pid[go_cb_ref] = pub_id
+                    self._gocbref_to_pid[lookup_key] = pub_id
 
                     # 记录 channel_id 映射
-                    db_channel_id = cfg.get("_channel_id")
                     if db_channel_id is not None:
-                        self._channel_map[go_cb_ref] = db_channel_id
+                        self._channel_map[pub_id] = db_channel_id
 
                     # 注册 GSEControlBlock
                     effective_server = server
@@ -792,9 +942,29 @@ class GooseResourceManager:
                 except Exception as e:
                     log.error(f"从数据库恢复 Publisher 失败: {go_cb_ref}, {e}")
 
+            # ===== 3. 恢复 Receiver/Subscription 配置 =====
+            try:
+                from src.data.dao.goose_receiver_dao import GooseReceiverDao
+
+                receiver_configs = GooseReceiverDao.list_by_channel(channel_id)
+                for receiver_cfg in receiver_configs:
+                    status = self.create_receiver(
+                        interface=receiver_cfg["interface"],
+                        subscriptions=receiver_cfg.get("subscriptions", []),
+                        channel_id=receiver_cfg["channel_id"],
+                        name=receiver_cfg.get("name", "default"),
+                        description=receiver_cfg.get("description", ""),
+                        auto_start=receiver_cfg.get("auto_start", False),
+                        db_id=receiver_cfg["db_id"],
+                    )
+                    if status and receiver_cfg.get("auto_start"):
+                        self.start_receiver(status["id"])
+            except Exception as receiver_err:
+                log.warning(f"从数据库恢复 GOOSE Receiver 失败: {receiver_err}")
+
             log.info(f"从数据库加载了 {loaded_count} 个 GOOSE Publisher")
 
-            # ===== 3. 应用模型变更 =====
+            # ===== 4. 应用模型变更 =====
             if server_map:
                 for sid, srv in server_map.items():
                     if hasattr(srv, "apply_model_changes"):

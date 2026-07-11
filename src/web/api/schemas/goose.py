@@ -66,6 +66,7 @@ class GoosePublisherIdRequest(BaseModel):
     """GOOSE Publisher ID 请求"""
 
     publisher_id: str = Field(..., description="Publisher 标识 (go_cb_ref)")
+    channel_id: int | None = Field(None, ge=1)
 
 
 class GooseChannelRequest(BaseModel):
@@ -85,10 +86,18 @@ class GoosePublisherUpdate(BaseModel):
     """更新 GOOSE Publisher 配置"""
 
     publisher_id: str = Field(..., description="Publisher 标识 (go_cb_ref)")
+    channel_id: int | None = Field(None, ge=1)
+    interface: str | None = Field(None, min_length=1)
+    go_cb_ref: str | None = Field(None, min_length=1)
     go_id: str | None = Field(None, description="GOOSE 标识符")
+    data_set_ref: str | None = None
+    app_id: int | None = Field(None, ge=0, le=0xFFFF)
     conf_rev: int | None = Field(None, description="配置修订号", ge=1)
     time_allowed_to_live: int | None = Field(None, description="报文存活时间(ms)", ge=100, le=60000)
     simulation: bool | None = Field(None, description="是否为仿真模式")
+    dst_mac: list[int] | None = Field(None, min_length=6, max_length=6)
+    vlan_id: int | None = Field(None, ge=0, le=4095)
+    vlan_prio: int | None = Field(None, ge=0, le=7)
 
 
 class GoosePublisherEntryAdd(BaseModel):
@@ -113,6 +122,12 @@ class GoosePublisherEntryRemove(BaseModel):
     index: int = Field(..., description="条目索引", ge=0)
 
 
+class GoosePublisherEntriesReplace(BaseModel):
+    publisher_id: str
+    channel_id: int = Field(..., ge=1)
+    entries: list[GooseDataSetEntryCreate] = Field(default_factory=list)
+
+
 # ===== GOOSE Subscriber 相关 =====
 
 
@@ -124,6 +139,8 @@ class GooseSubscriptionCreate(BaseModel):
     app_id: int | None = Field(None, description="APPID 过滤", ge=0, le=0xFFFF)
     dst_mac: list[int] | None = Field(None, description="目标MAC地址过滤 (6字节)", max_length=6)
     description: str = Field("", description="描述")
+    data_set_ref: str = ""
+    conf_rev: int = Field(0, ge=0)
 
     @field_validator("dst_mac")
     @classmethod
@@ -148,6 +165,10 @@ class GooseReceiverCreate(BaseModel):
     """创建 GOOSE Receiver"""
 
     interface: str = Field("eth0", description="网络接口名称", min_length=1)
+    channel_id: int = Field(..., ge=1)
+    name: str = Field("default", min_length=1, max_length=128)
+    description: str = Field("", max_length=512)
+    auto_start: bool = False
     subscriptions: list[GooseSubscriptionCreate] = Field(default_factory=list, description="初始订阅列表")
 
 
@@ -155,6 +176,22 @@ class GooseReceiverIdRequest(BaseModel):
     """GOOSE Receiver ID 请求"""
 
     receiver_id: str = Field(..., description="Receiver 标识")
+    channel_id: int | None = Field(None, ge=1)
+
+
+class GooseReceiverUpdate(BaseModel):
+    receiver_id: str
+    channel_id: int = Field(..., ge=1)
+    interface: str = Field(..., min_length=1)
+    name: str = Field("default", min_length=1, max_length=128)
+    description: str = Field("", max_length=512)
+    auto_start: bool = False
+
+
+class GooseReceiverSubscriptionsReplace(BaseModel):
+    receiver_id: str
+    channel_id: int = Field(..., ge=1)
+    subscriptions: list[GooseSubscriptionCreate] = Field(default_factory=list)
 
 
 # ===== 通用查询 =====
@@ -232,6 +269,7 @@ class GooseCaptureStartRequest(BaseModel):
     """启动 GOOSE 报文抓包"""
 
     interface: str = Field("", description="网络接口名称 (为空则自动选择)")
+    channel_id: int = Field(..., ge=1)
     max_packets: int = Field(500, description="最大缓存报文数", ge=50, le=10000)
     filter_app_id: int | None = Field(None, description="APPID 过滤", ge=0, le=0xFFFF)
 
@@ -239,13 +277,16 @@ class GooseCaptureStartRequest(BaseModel):
 class GooseCaptureStopRequest(BaseModel):
     """停止 GOOSE 报文抓包"""
 
-    pass
+    channel_id: int = Field(..., ge=1)
+    interface: str = ""
 
 
 class GooseCaptureListRequest(BaseModel):
     """获取捕获的 GOOSE 报文"""
 
     count: int = Field(0, description="获取最近 N 条 (0=全部)", ge=0)
+    channel_id: int = Field(..., ge=1)
+    interface: str = ""
     filter_app_id: int | None = Field(None, description="APPID 过滤", ge=0, le=0xFFFF)
 
 

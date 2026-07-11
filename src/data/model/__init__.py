@@ -6,6 +6,7 @@ from src.data.model.channel import Channel, ChannelDict
 from src.data.model.device import Device, DeviceDict
 from src.data.model.device_group import DeviceGroup, DeviceGroupDict
 from src.data.model.goose_publisher import GooseEntry, GooseEntryDict, GoosePublisher, GoosePublisherDict
+from src.data.model.goose_receiver import GooseReceiverConfig, GooseSubscriptionConfig
 from src.data.model.point_mapping import PointMapping, PointMappingDict
 from src.data.model.point_yc import PointYc, PointYcDict
 from src.data.model.point_yk import PointYk, PointYkDict
@@ -37,4 +38,6 @@ __all__ = [
     "GoosePublisherDict",
     "GooseEntry",
     "GooseEntryDict",
+    "GooseReceiverConfig",
+    "GooseSubscriptionConfig",
 ]

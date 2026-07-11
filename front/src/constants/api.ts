@@ -127,6 +127,7 @@ export const POINT_TREE_API = {
 
 // ===== GOOSE 相关 =====
 export const GOOSE_API = {
+  NETWORK_INTERFACES: '/api/network-interfaces',
   // Publisher
   PUBLISHERS: '/api/channels/goose/publishers',
   PUBLISHERS_LIST: '/api/channels/goose/publishers/list',
@@ -141,15 +142,18 @@ export const GOOSE_API = {
   PUBLISHER_ENTRIES_ADD: '/api/channels/goose/publishers/entries/add',
   PUBLISHER_ENTRIES_UPDATE: '/api/channels/goose/publishers/entries/update',
   PUBLISHER_ENTRIES_REMOVE: '/api/channels/goose/publishers/entries/remove',
+  PUBLISHER_ENTRIES_REPLACE: '/api/channels/goose/publishers/entries/replace',
   // Receiver
   RECEIVERS: '/api/channels/goose/receivers',
   RECEIVERS_LIST: '/api/channels/goose/receivers/list',
   RECEIVER_DETAIL: '/api/channels/goose/receivers/detail',
   RECEIVER_DELETE: '/api/channels/goose/receivers/delete',
+  RECEIVER_UPDATE: '/api/channels/goose/receivers/update',
   RECEIVER_START: '/api/channels/goose/receivers/start',
   RECEIVER_STOP: '/api/channels/goose/receivers/stop',
   RECEIVER_SUBSCRIPTIONS_ADD: '/api/channels/goose/receivers/subscriptions/add',
   RECEIVER_SUBSCRIPTIONS_REMOVE: '/api/channels/goose/receivers/subscriptions/remove',
+  RECEIVER_SUBSCRIPTIONS_REPLACE: '/api/channels/goose/receivers/subscriptions/replace',
   // ICD 统一导入使用 /import-icd (channelApi.ts)，含 MMS 测点 + GOOSE 配置
   // GOOSE 报文抓包
   CAPTURE_START: '/api/channels/goose/capture/start',

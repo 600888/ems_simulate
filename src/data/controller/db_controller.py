@@ -72,6 +72,7 @@ class DbController:
 
             # 创建所有表
             Base.metadata.create_all(self.db_config.engine)
+            self._migrate_goose_schema()
 
             # 迁移: 为现有数据库添加 IEC61850 相关字段
             try:
@@ -149,6 +150,8 @@ class DbController:
             self.db_config = DbMysqlConfig()
             self.db_config.set_db_config(ip, port, user_name, pass_word)
             self.db_config.create_engine(database, is_create_db=False)
+            Base.metadata.create_all(self.db_config.engine)
+            self._migrate_goose_schema()
 
             print(f"MySQL 数据库连接成功: {ip}:{port}/{database}")
             return True
@@ -163,3 +166,28 @@ class DbController:
     def is_mysql(self) -> bool:
         """是否使用 MySQL"""
         return self._db_type == "mysql"
+
+    def _migrate_goose_schema(self) -> None:
+        """补齐 create_all 无法添加的 GOOSE Publisher 新列。
+
+        Receiver/Subscription 是新表，由 create_all 创建；这里仅处理旧数据库
+        已存在 goose_publisher 表的增量列。使用 inspector 保证重复执行安全。
+        """
+        if not self.db_config:
+            return
+        from sqlalchemy import inspect, text
+
+        engine = self.db_config.engine
+        inspector = inspect(engine)
+        if "goose_publisher" not in inspector.get_table_names():
+            return
+        existing = {column["name"] for column in inspector.get_columns("goose_publisher")}
+        definitions = {
+            "name": "VARCHAR(128) NOT NULL DEFAULT ''",
+            "description": "VARCHAR(512) NOT NULL DEFAULT ''",
+            "auto_start": "BOOLEAN NOT NULL DEFAULT 0",
+        }
+        with engine.begin() as conn:
+            for column, ddl in definitions.items():
+                if column not in existing:
+                    conn.execute(text(f"ALTER TABLE goose_publisher ADD COLUMN {column} {ddl}"))

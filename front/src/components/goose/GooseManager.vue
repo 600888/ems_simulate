@@ -46,7 +46,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column :label="$t('common.operation')" width="280" fixed="right">
+          <el-table-column :label="$t('common.operation')" width="340" fixed="right">
             <template #default="{ row }">
               <el-button-group>
                 <el-button
@@ -78,6 +78,9 @@
                   @click="editPublisherEntries(row)"
                 >
                   {{ $t('goose.dataSet') }}
+                </el-button>
+                <el-button size="small" :disabled="row.is_running" @click="showEditPublisherDialog(row)">
+                  {{ $t('common.edit') }}
                 </el-button>
                 <el-button
                   type="danger"
@@ -158,6 +161,9 @@
                 <el-button size="small" @click="editReceiverSubscriptions(row)">
                   {{ $t('goose.subscriptionManager') }}
                 </el-button>
+                <el-button size="small" :disabled="row.is_running" @click="showEditReceiverDialog(row)">
+                  {{ $t('common.edit') }}
+                </el-button>
                 <el-button type="danger" size="small" @click="deleteReceiver(row.id)">
                   {{ $t('common.delete') }}
                 </el-button>
@@ -170,6 +176,9 @@
       <!-- 已发现的远端控制块 -->
       <el-tab-pane :label="$t('goose.discovered')" name="discovered">
         <div class="tab-header">
+          <el-button type="primary" :disabled="!discovered.length" @click="importDiscoveredSubscriptions">
+            {{ $t('goose.subscribe') }}
+          </el-button>
           <el-button :icon="Refresh" @click="refreshDiscovered" :loading="loading">
             {{ $t('goose.refresh') }}
           </el-button>
@@ -196,12 +205,12 @@
 
       <!-- GOOSE 抓包 -->
       <el-tab-pane :label="$t('goose.captureTitle')" name="capture">
-        <GooseCapture />
+        <GooseCapture :channel-id="props.channelId || 0" />
       </el-tab-pane>
     </el-tabs>
 
     <!-- 创建 Publisher 对话框 -->
-    <el-dialog v-model="createPublisherVisible" :title="$t('goose.newPublisher')" width="600px" destroy-on-close>
+    <el-dialog v-model="createPublisherVisible" :title="configEditingId ? $t('common.edit') : $t('goose.newPublisher')" width="600px" destroy-on-close>
       <el-form :model="publisherForm" label-width="130px" :rules="publisherRules" ref="publisherFormRef">
         <el-form-item :label="$t('goose.goCbRef')" prop="go_cb_ref">
           <el-input v-model="publisherForm.go_cb_ref" :placeholder="$t('goose.createPublisherPlaceholder')" />
@@ -212,6 +221,9 @@
         <el-form-item :label="$t('goose.dataSetRef')" prop="data_set_ref">
           <el-input v-model="publisherForm.data_set_ref" :placeholder="$t('goose.dataSetRefPlaceholder')" />
         </el-form-item>
+        <el-form-item label="Destination MAC">
+          <el-input v-model="publisherForm.dst_mac" placeholder="01-0C-CD-01-00-01" />
+        </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item :label="$t('goose.appId')" prop="app_id">
@@ -220,7 +232,10 @@
           </el-col>
           <el-col :span="12">
             <el-form-item :label="$t('goose.interface')" prop="interface">
-              <el-input v-model="publisherForm.interface" :placeholder="$t('goose.interfacePlaceholder')" />
+              <el-select v-model="publisherForm.interface" :placeholder="$t('goose.interfacePlaceholder')" style="width: 100%">
+                <el-option v-for="item in networkInterfaces" :key="item.id" :value="item.id"
+                  :label="`${item.display_name}${item.ipv4?.[0] ? ` (${item.ipv4[0]})` : ''}`" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -272,15 +287,24 @@
       </el-form>
       <template #footer>
         <el-button @click="createPublisherVisible = false">{{ $t('goose.cancel') }}</el-button>
-        <el-button type="primary" @click="createPublisher" :loading="creating">{{ $t('goose.create') }}</el-button>
+        <el-button type="primary" @click="savePublisherConfig" :loading="creating">{{ configEditingId ? $t('common.save') : $t('goose.create') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 创建 Receiver 对话框 -->
-    <el-dialog v-model="createReceiverVisible" :title="$t('goose.newReceiver')" width="500px" destroy-on-close>
+    <el-dialog v-model="createReceiverVisible" :title="receiverEditingId ? $t('common.edit') : $t('goose.newReceiver')" width="500px" destroy-on-close>
       <el-form :model="receiverForm" label-width="100px">
+        <el-form-item label="Name" required>
+          <el-input v-model="receiverForm.name" />
+        </el-form-item>
+        <el-form-item label="Description">
+          <el-input v-model="receiverForm.description" />
+        </el-form-item>
         <el-form-item :label="$t('goose.iface')" required>
-          <el-input v-model="receiverForm.interface" :placeholder="$t('goose.interfacePlaceholder')" />
+          <el-select v-model="receiverForm.interface" :placeholder="$t('goose.interfacePlaceholder')" style="width: 100%">
+            <el-option v-for="item in networkInterfaces" :key="item.id" :value="item.id"
+              :label="`${item.display_name}${item.ipv4?.[0] ? ` (${item.ipv4[0]})` : ''}`" />
+          </el-select>
         </el-form-item>
         <el-form-item :label="$t('goose.subscriptions')">
           <div class="entry-list">
@@ -292,10 +316,13 @@
             <el-button :icon="Plus" size="small" @click="addReceiverSubscription">{{ $t('goose.addSub') }}</el-button>
           </div>
         </el-form-item>
+        <el-form-item label="Auto Start">
+          <el-switch v-model="receiverForm.auto_start" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="createReceiverVisible = false">{{ $t('goose.cancel') }}</el-button>
-        <el-button type="primary" @click="createReceiver" :loading="creating">{{ $t('goose.create') }}</el-button>
+        <el-button type="primary" @click="saveReceiverConfig" :loading="creating">{{ receiverEditingId ? $t('common.save') : $t('goose.create') }}</el-button>
       </template>
     </el-dialog>
 
@@ -307,12 +334,12 @@
         </el-table-column>
         <el-table-column :label="$t('goose.entryName')" width="150">
           <template #default="{ row }">
-            <el-input v-model="row.name" size="small" :disabled="row._new !== true" :placeholder="$t('goose.entryNamePlaceholder')" />
+            <el-input v-model="row.name" size="small" :disabled="editingPublisher?.is_running" :placeholder="$t('goose.entryNamePlaceholder')" />
           </template>
         </el-table-column>
         <el-table-column :label="$t('goose.entryType')" width="130">
           <template #default="{ row }">
-            <el-select v-model="row.iec_type" size="small" :disabled="row._new !== true">
+            <el-select v-model="row.iec_type" size="small" :disabled="editingPublisher?.is_running">
               <el-option v-for="opt in GOOSE_IEC_TYPE_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
             </el-select>
           </template>
@@ -327,16 +354,16 @@
         </el-table-column>
         <el-table-column :label="$t('goose.entryOperation')" width="90" align="center">
           <template #default="{ $index }">
-            <el-button type="danger" :icon="Delete" circle size="small" @click="removeEntry($index)" />
+              <el-button type="danger" :icon="Delete" circle size="small" :disabled="editingPublisher?.is_running" @click="removeEntry($index)" />
           </template>
         </el-table-column>
       </el-table>
       <div style="margin-top: 12px; display: flex; gap: 8px">
-        <el-button :icon="Plus" size="small" @click="addEntryToEditor">{{ $t('goose.addEntry') }}</el-button>
+        <el-button :icon="Plus" size="small" :disabled="editingPublisher?.is_running" @click="addEntryToEditor">{{ $t('goose.addEntry') }}</el-button>
       </div>
       <template #footer>
         <el-button @click="entryEditorVisible = false">{{ $t('goose.close') }}</el-button>
-        <el-button type="primary" @click="saveNewEntries" :loading="savingEntries">{{ $t('goose.saveEntries') }}</el-button>
+        <el-button type="primary" :disabled="editingPublisher?.is_running" @click="saveNewEntries" :loading="savingEntries">{{ $t('goose.saveEntries') }}</el-button>
       </template>
     </el-dialog>
 
@@ -361,6 +388,15 @@
           </el-form-item>
           <el-form-item :label="$t('goose.subDescription')">
             <el-input v-model="newSubForm.description" style="width: 180px" />
+          </el-form-item>
+          <el-form-item label="Destination MAC">
+            <el-input v-model="newSubForm.dst_mac" placeholder="01-0C-CD-01-00-01" style="width: 190px" />
+          </el-form-item>
+          <el-form-item :label="$t('goose.dataSetRef')">
+            <el-input v-model="newSubForm.data_set_ref" style="width: 220px" />
+          </el-form-item>
+          <el-form-item :label="$t('goose.confRev')">
+            <el-input-number v-model="newSubForm.conf_rev" :min="0" />
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="addSubscription">{{ $t('goose.confirm') }}</el-button>
@@ -400,6 +436,9 @@
             <el-button v-if="!editingReceiver?.is_running" type="danger" :icon="Delete" circle
               style="margin-left:auto; flex-shrink:0"
               @click="removeSubscription(sub.go_cb_ref)" />
+            <el-button v-if="!editingReceiver?.is_running" size="small" @click="editSubscription(sub)">
+              {{ $t('common.edit') }}
+            </el-button>
           </div>
         </div>
       </template>
@@ -451,14 +490,18 @@ import {
   createGooseReceiver, deleteGooseReceiver,
   startGooseReceiver, stopGooseReceiver,
   addGooseSubscription, removeGooseSubscription,
-  addGoosePublisherEntry, updateGoosePublisherEntry, deleteGoosePublisherEntry,
+  updateGoosePublisherEntry, deleteGoosePublisherEntry,
+  getGooseNetworkInterfaces, updateGoosePublisher,
+  replaceGoosePublisherEntries,
+  replaceGooseSubscriptions,
+  updateGooseReceiver,
 } from '@/api/gooseApi'
 import {
   GOOSE_STATE_COLOR, GOOSE_STATE_LABEL, GOOSE_IEC_TYPE_OPTIONS,
 } from '@/constants/protocol'
 import type {
   GoosePublisherStatus, GooseReceiverStatus, GooseSubscriptionStatus,
-  DiscoveredGooseItem,
+  DiscoveredGooseItem, NetworkInterfaceInfo,
 } from '@/api/gooseApi'
 
 const { t } = useI18n()
@@ -470,6 +513,7 @@ const props = defineProps<{
 
 // ===== 通用状态 =====
 const loading = ref(false)
+const networkInterfaces = ref<NetworkInterfaceInfo[]>([])
 const creating = ref(false)
 const activeTab = ref('publisher')
 let refreshTimer: ReturnType<typeof setInterval> | null = null
@@ -480,12 +524,14 @@ const publishers = ref<GoosePublisherStatus[]>([])
 // ===== 发现的远端控制块 =====
 const discovered = ref<DiscoveredGooseItem[]>([])
 const createPublisherVisible = ref(false)
+const configEditingId = ref<string | null>(null)
 const publisherFormRef = ref()
 const publisherForm = reactive({
   interface: 'eth0',
   go_cb_ref: '',
   go_id: '',
   data_set_ref: '',
+  dst_mac: '',
   app_id: 0x0001,
   conf_rev: 1,
   time_allowed_to_live: 1000,
@@ -502,8 +548,12 @@ const publisherRules = {
 // ===== Receiver 状态 =====
 const receivers = ref<GooseReceiverStatus[]>([])
 const createReceiverVisible = ref(false)
+const receiverEditingId = ref<string | null>(null)
 const receiverForm = reactive({
   interface: 'eth0',
+  name: 'default',
+  description: '',
+  auto_start: false,
   subscriptions: [] as { go_cb_ref: string; app_id: number | null; description: string }[],
 })
 
@@ -513,11 +563,6 @@ const editingPublisher = ref<GoosePublisherStatus | null>(null)
 const editingEntries = ref<{ name: string; value: any; iec_type: string; _new?: boolean }[]>([])
 const savingEntries = ref(false)
 
-/** 检查名称是否已存在于条目列表中 */
-function hasDuplicateName(name: string, excludeIndex?: number): boolean {
-  return editingEntries.value.some((e, i) => e.name === name && i !== excludeIndex)
-}
-
 // ===== 订阅管理 =====
 const subManagerVisible = ref(false)
 const editingReceiver = ref<GooseReceiverStatus | null>(null)
@@ -526,7 +571,11 @@ const newSubForm = reactive({
   go_cb_ref: '',
   app_id: null as number | null,
   description: '',
+  dst_mac: '',
+  data_set_ref: '',
+  conf_rev: 0,
 })
+const editingSubRef = ref<string | null>(null)
 
 // ===== 订阅详情 =====
 const subDetailVisible = ref(false)
@@ -536,7 +585,8 @@ const selectedSubscription = ref<GooseSubscriptionStatus | null>(null)
 async function refreshPublishers() {
   loading.value = true
   try {
-    publishers.value = await getGoosePublishers()
+    if (!props.channelId) return
+    publishers.value = await getGoosePublishers(props.channelId)
   } catch (e) {
     console.error('刷新 GOOSE Publisher 失败:', e)
   } finally {
@@ -547,7 +597,8 @@ async function refreshPublishers() {
 async function refreshReceivers() {
   loading.value = true
   try {
-    receivers.value = await getGooseReceivers()
+    if (!props.channelId) return
+    receivers.value = await getGooseReceivers(props.channelId)
   } catch (e) {
     console.error('刷新 GOOSE Receiver 失败:', e)
   } finally {
@@ -571,37 +622,25 @@ async function refreshAll() {
   await Promise.all([refreshPublishers(), refreshReceivers(), refreshDiscovered()])
 }
 
-// channelId 变化时重新加载发现列表，并自动导入为订阅（每个通道仅导入一次）
-const importedChannels = new Set<number>()
+// channelId 变化时只刷新当前设备；导入必须由用户显式确认。
 watch(
   () => props.channelId,
   async (id) => {
     if (!id) return
-    activeTab.value = 'discovered'
-    await refreshDiscovered()
-    if (discovered.value.length > 0 && !importedChannels.has(id)) {
-      importedChannels.add(id)
-      try {
-        const res = await importDiscoveredGoose(id)
-        if (res.imported > 0) {
-          ElMessage.success(t('goose.autoImported', { count: res.imported }))
-          await refreshReceivers()
-        }
-      } catch (e) {
-        console.error('自动导入发现的 GOOSE 控制块失败:', e)
-      }
-    }
+    await refreshAll()
   },
   { immediate: true },
 )
 
 /** 基于发现的控制块快速创建 Publisher */
 function createPublisherFromDiscovered(item: DiscoveredGooseItem) {
+  configEditingId.value = null
   Object.assign(publisherForm, {
-    interface: 'eth0',
+    interface: networkInterfaces.value[0]?.id || '',
     go_cb_ref: item.go_cb_ref,
     go_id: item.go_id || '',
     data_set_ref: item.data_set_ref || '',
+    dst_mac: '',
     app_id: item.app_id ?? 0x0001,
     conf_rev: item.conf_rev || 1,
     time_allowed_to_live: 1000,
@@ -615,11 +654,13 @@ function createPublisherFromDiscovered(item: DiscoveredGooseItem) {
 
 // ===== Publisher 操作 =====
 function showCreatePublisherDialog() {
+  configEditingId.value = null
   Object.assign(publisherForm, {
-    interface: 'eth0',
+    interface: networkInterfaces.value[0]?.id || '',
     go_cb_ref: '',
     go_id: '',
     data_set_ref: '',
+    dst_mac: '',
     app_id: 0x0001,
     conf_rev: 1,
     time_allowed_to_live: 1000,
@@ -631,6 +672,80 @@ function showCreatePublisherDialog() {
   createPublisherVisible.value = true
 }
 
+async function importDiscoveredSubscriptions() {
+  if (!props.channelId || !discovered.value.length) return
+  try {
+    await ElMessageBox.confirm(`将 ${discovered.value.length} 个控制块导入当前设备订阅？`, t('common.confirm'))
+    const interfaceId = receiverForm.interface || networkInterfaces.value[0]?.id
+    if (!interfaceId) throw new Error(t('goose.interfaceRequired'))
+    await importDiscoveredGoose(props.channelId, interfaceId)
+    ElMessage.success(t('goose.createSuccess'))
+    await refreshReceivers()
+  } catch (e: any) {
+    if (e !== 'cancel' && e !== 'close' && e?.message) ElMessage.error(e.message)
+  }
+}
+
+function showEditPublisherDialog(pub: GoosePublisherStatus) {
+  configEditingId.value = pub.id
+  Object.assign(publisherForm, {
+    interface: pub.interface,
+    go_cb_ref: pub.go_cb_ref,
+    go_id: pub.go_id,
+    data_set_ref: pub.data_set_ref,
+    dst_mac: pub.dst_mac || '',
+    app_id: pub.app_id,
+    conf_rev: pub.conf_rev,
+    time_allowed_to_live: pub.time_allowed_to_live,
+    vlan_id: pub.vlan_id,
+    vlan_prio: pub.vlan_prio,
+    simulation: pub.simulation,
+    entries: [],
+  })
+  createPublisherVisible.value = true
+}
+
+function parseMac(value: string): number[] | null {
+  if (!value.trim()) return null
+  const parts = value.trim().split(/[:-]/)
+  if (parts.length !== 6 || parts.some(part => !/^[0-9a-fA-F]{2}$/.test(part))) {
+    throw new Error('Destination MAC 格式应为 01-0C-CD-01-00-01')
+  }
+  return parts.map(part => Number.parseInt(part, 16))
+}
+
+async function savePublisherConfig() {
+  if (!props.channelId) return
+  if (!configEditingId.value) {
+    await createPublisher()
+    return
+  }
+  creating.value = true
+  try {
+    await updateGoosePublisher(configEditingId.value, {
+      channel_id: props.channelId,
+      interface: publisherForm.interface,
+      go_cb_ref: publisherForm.go_cb_ref,
+      go_id: publisherForm.go_id,
+      data_set_ref: publisherForm.data_set_ref,
+      dst_mac: parseMac(publisherForm.dst_mac),
+      app_id: publisherForm.app_id,
+      conf_rev: publisherForm.conf_rev,
+      time_allowed_to_live: publisherForm.time_allowed_to_live,
+      vlan_id: publisherForm.vlan_id,
+      vlan_prio: publisherForm.vlan_prio,
+      simulation: publisherForm.simulation,
+    })
+    ElMessage.success(t('common.success'))
+    createPublisherVisible.value = false
+    await refreshPublishers()
+  } catch (e: any) {
+    ElMessage.error(e?.message || t('goose.createFailed'))
+  } finally {
+    creating.value = false
+  }
+}
+
 function addPublisherEntry() {
   publisherForm.entries.push({ name: '', value: false, iec_type: 'boolean' })
 }
@@ -639,8 +754,19 @@ async function createPublisher() {
   creating.value = true
   try {
     await createGoosePublisher({
-      ...publisherForm,
-      dst_mac: null,
+      interface: publisherForm.interface,
+      go_cb_ref: publisherForm.go_cb_ref,
+      go_id: publisherForm.go_id,
+      data_set_ref: publisherForm.data_set_ref,
+      app_id: publisherForm.app_id,
+      conf_rev: publisherForm.conf_rev,
+      time_allowed_to_live: publisherForm.time_allowed_to_live,
+      vlan_id: publisherForm.vlan_id,
+      vlan_prio: publisherForm.vlan_prio,
+      simulation: publisherForm.simulation,
+      entries: publisherForm.entries,
+      channel_id: props.channelId || 0,
+      dst_mac: parseMac(publisherForm.dst_mac),
     })
     ElMessage.success(t('goose.createSuccess'))
     createPublisherVisible.value = false
@@ -654,7 +780,7 @@ async function createPublisher() {
 
 async function startPublisher(id: string) {
   try {
-    const ok = await startGoosePublisher(id)
+    const ok = await startGoosePublisher(props.channelId || 0, id)
     if (ok) ElMessage.success(t('goose.startSuccess'))
     else ElMessage.error(t('goose.publishFailed'))
     await refreshPublishers()
@@ -665,7 +791,7 @@ async function startPublisher(id: string) {
 
 async function stopPublisher(id: string) {
   try {
-    const ok = await stopGoosePublisher(id)
+    const ok = await stopGoosePublisher(props.channelId || 0, id)
     if (ok) ElMessage.success(t('goose.stopSuccess'))
     await refreshPublishers()
   } catch (e: any) {
@@ -675,7 +801,7 @@ async function stopPublisher(id: string) {
 
 async function publishNow(id: string) {
   try {
-    const ok = await publishGooseNow(id)
+    const ok = await publishGooseNow(props.channelId || 0, id)
     if (ok) ElMessage.success(t('goose.publishSuccess'))
     else ElMessage.error(t('goose.publishFailed'))
     await refreshPublishers()
@@ -687,7 +813,7 @@ async function publishNow(id: string) {
 async function deletePublisher(id: string) {
   try {
     await ElMessageBox.confirm(t('goose.deleteConfirm'), t('common.confirm'), { type: 'warning' })
-    await deleteGoosePublisher(id)
+    await deleteGoosePublisher(props.channelId || 0, id)
     ElMessage.success(t('goose.deleted'))
     await refreshPublishers()
   } catch { /* cancelled */ }
@@ -742,24 +868,22 @@ async function onEntryValueChange(row: any) {
 
 async function saveNewEntries() {
   if (!editingPublisher.value) return
-  const newEntries = editingEntries.value.filter(e => e._new && e.name)
-  if (newEntries.length === 0) {
-    ElMessage.info(t('goose.noNewEntries'))
+  if (editingEntries.value.some(entry => !entry.name.trim())) {
+    ElMessage.warning(t('goose.addEntryNameRequired'))
     return
   }
-  // 去重检查
-  for (const entry of newEntries) {
-    if (hasDuplicateName(entry.name)) {
-      ElMessage.warning(t('goose.entryNameExists', { name: entry.name }))
-      return
-    }
+  if (new Set(editingEntries.value.map(entry => entry.name)).size !== editingEntries.value.length) {
+    ElMessage.warning(t('goose.entryNameExists', { name: '' }))
+    return
   }
   savingEntries.value = true
   try {
-    for (const entry of newEntries) {
-      await addGoosePublisherEntry(editingPublisher.value.id, entry.name, entry.value, entry.iec_type)
-    }
-    ElMessage.success(t('goose.entriesSaved', { count: newEntries.length }))
+    await replaceGoosePublisherEntries(
+      props.channelId || 0,
+      editingPublisher.value.id,
+      editingEntries.value.map(({ name, value, iec_type }) => ({ name, value, iec_type })),
+    )
+    ElMessage.success(t('goose.entriesSaved', { count: editingEntries.value.length }))
     await refreshPublishers()
     // 重新打开编辑器刷新数据
     const pub = publishers.value.find(p => p.id === editingPublisher.value?.id)
@@ -775,8 +899,12 @@ async function saveNewEntries() {
 
 // ===== Receiver 操作 =====
 function showCreateReceiverDialog() {
+  receiverEditingId.value = null
   Object.assign(receiverForm, {
-    interface: 'eth0',
+    interface: networkInterfaces.value[0]?.id || '',
+    name: 'default',
+    description: '',
+    auto_start: false,
     subscriptions: [],
   })
   createReceiverVisible.value = true
@@ -790,7 +918,11 @@ async function createReceiver() {
   creating.value = true
   try {
     await createGooseReceiver({
+      channel_id: props.channelId || 0,
       interface: receiverForm.interface,
+      name: receiverForm.name,
+      description: receiverForm.description,
+      auto_start: receiverForm.auto_start,
       subscriptions: receiverForm.subscriptions.map(s => ({
         go_cb_ref: s.go_cb_ref,
         app_id: s.app_id,
@@ -810,7 +942,7 @@ async function createReceiver() {
 
 async function startReceiver(id: string) {
   try {
-    const ok = await startGooseReceiver(id)
+    const ok = await startGooseReceiver(props.channelId || 0, id)
     if (ok) ElMessage.success(t('goose.startSuccess'))
     else ElMessage.error(t('goose.createFailed'))
     await refreshReceivers()
@@ -821,7 +953,7 @@ async function startReceiver(id: string) {
 
 async function stopReceiver(id: string) {
   try {
-    const ok = await stopGooseReceiver(id)
+    const ok = await stopGooseReceiver(props.channelId || 0, id)
     if (ok) ElMessage.success(t('goose.stopSuccess'))
     await refreshReceivers()
   } catch (e: any) {
@@ -832,7 +964,7 @@ async function stopReceiver(id: string) {
 async function deleteReceiver(id: string) {
   try {
     await ElMessageBox.confirm(t('goose.receiverDeleteConfirm'), t('common.confirm'), { type: 'warning' })
-    await deleteGooseReceiver(id)
+    await deleteGooseReceiver(props.channelId || 0, id)
     ElMessage.success(t('goose.deleted'))
     await refreshReceivers()
   } catch { /* cancelled */ }
@@ -845,18 +977,91 @@ function editReceiverSubscriptions(recv: GooseReceiverStatus) {
   subManagerVisible.value = true
 }
 
+function showEditReceiverDialog(receiver: GooseReceiverStatus) {
+  receiverEditingId.value = receiver.id
+  Object.assign(receiverForm, {
+    interface: receiver.interface,
+    name: receiver.name || 'default',
+    description: receiver.description || '',
+    auto_start: receiver.auto_start || false,
+    subscriptions: [],
+  })
+  createReceiverVisible.value = true
+}
+
+async function saveReceiverConfig() {
+  if (!receiverEditingId.value) {
+    await createReceiver()
+    return
+  }
+  creating.value = true
+  try {
+    await updateGooseReceiver(props.channelId || 0, receiverEditingId.value, {
+      interface: receiverForm.interface,
+      name: receiverForm.name,
+      description: receiverForm.description,
+      auto_start: receiverForm.auto_start,
+    })
+    ElMessage.success(t('common.success'))
+    createReceiverVisible.value = false
+    await refreshReceivers()
+  } catch (e: any) {
+    ElMessage.error(e?.message || t('goose.createFailed'))
+  } finally {
+    creating.value = false
+  }
+}
+
+function editSubscription(sub: GooseSubscriptionStatus) {
+  editingSubRef.value = sub.go_cb_ref
+  Object.assign(newSubForm, {
+    go_cb_ref: sub.go_cb_ref,
+    app_id: sub.app_id,
+    description: sub.description || '',
+    dst_mac: sub.dst_mac || '',
+    data_set_ref: sub.data_set_ref || '',
+    conf_rev: sub.conf_rev || 0,
+  })
+  showAddSubscriptionForm.value = true
+}
+
 async function addSubscription() {
   if (!editingReceiver.value || !newSubForm.go_cb_ref) return
   try {
+    if (editingSubRef.value) {
+      const subscriptions = editingReceiver.value.subscriptions.map(sub => sub.go_cb_ref === editingSubRef.value ? {
+        go_cb_ref: newSubForm.go_cb_ref,
+        app_id: newSubForm.app_id,
+        dst_mac: parseMac(newSubForm.dst_mac),
+        description: newSubForm.description,
+        data_set_ref: newSubForm.data_set_ref,
+        conf_rev: newSubForm.conf_rev,
+      } : {
+        go_cb_ref: sub.go_cb_ref,
+        app_id: sub.app_id,
+        dst_mac: parseMac(sub.dst_mac || ''),
+        description: sub.description,
+        data_set_ref: sub.data_set_ref,
+        conf_rev: sub.conf_rev,
+      })
+      await replaceGooseSubscriptions(props.channelId || 0, editingReceiver.value.id, subscriptions)
+      editingSubRef.value = null
+      await refreshReceivers()
+      editingReceiver.value = receivers.value.find(r => r.id === editingReceiver.value?.id) || editingReceiver.value
+      showAddSubscriptionForm.value = false
+      return
+    }
     await addGooseSubscription(editingReceiver.value.id, {
       go_cb_ref: newSubForm.go_cb_ref,
       app_id: newSubForm.app_id,
-      dst_mac: null,
+      dst_mac: parseMac(newSubForm.dst_mac),
       description: newSubForm.description,
+      data_set_ref: newSubForm.data_set_ref,
+      conf_rev: newSubForm.conf_rev,
     })
     ElMessage.success(t('goose.subscriptionAdded'))
     showAddSubscriptionForm.value = false
-    Object.assign(newSubForm, { go_cb_ref: '', app_id: null, description: '' })
+    Object.assign(newSubForm, { go_cb_ref: '', app_id: null, description: '', dst_mac: '', data_set_ref: '', conf_rev: 0 })
     await refreshReceivers()
     // 更新编辑中的 receiver
     editingReceiver.value = receivers.value.find(r => r.id === editingReceiver.value?.id) || editingReceiver.value
@@ -884,7 +1089,13 @@ function showSubscriptionDetail(sub: GooseSubscriptionStatus) {
 
 
 // ===== 生命周期 =====
-onMounted(() => {
+onMounted(async () => {
+  networkInterfaces.value = (await getGooseNetworkInterfaces()).filter(item => item.supports_raw_ethernet)
+  const firstInterface = networkInterfaces.value[0]?.id
+  if (firstInterface) {
+    publisherForm.interface = firstInterface
+    receiverForm.interface = firstInterface
+  }
   refreshAll()
   // 每5秒自动刷新
   refreshTimer = setInterval(refreshAll, 5000)

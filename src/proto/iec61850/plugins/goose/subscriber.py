@@ -251,7 +251,8 @@ class GooseReceiver:
             with self._lock:
                 for go_cb_ref, sub in self._subscriptions.items():
                     # v1.6.1.0+ dataSetValues 必须非 NULL，使用空数组
-                    empty_ds = iec61850.MmsValue_createEmptyArray(0)
+                    create_empty_array = getattr(iec61850, "MmsValue_createEmptyArray", None)
+                    empty_ds = create_empty_array(0) if create_empty_array else None
                     subscriber = iec61850.GooseSubscriber_create(go_cb_ref, empty_ds)
                     if not subscriber:
                         log.warning(f"GooseSubscriber_create 失败: {go_cb_ref}")
@@ -264,14 +265,19 @@ class GooseReceiver:
 
                     # 使用 SWIG director 机制设置 Python 回调
                     # (GooseSubscriber_setListener 在 pyiec61850-ng 中不可用)
-                    goose_handler = _PyGooseHandler(self)
-                    goose_subscriber_py = iec61850.GooseSubscriberForPython()
-                    goose_subscriber_py.setLibiec61850GooseSubscriber(subscriber)
-                    goose_subscriber_py.setEventHandler(goose_handler)
-                    goose_subscriber_py.subscribe()
-
-                    self._goose_handlers.append(goose_handler)
-                    self._goose_subscriber_py_list.append(goose_subscriber_py)
+                    if hasattr(iec61850, "GooseSubscriberForPython"):
+                        goose_handler = _PyGooseHandler(self)
+                        goose_subscriber_py = iec61850.GooseSubscriberForPython()
+                        goose_subscriber_py.setLibiec61850GooseSubscriber(subscriber)
+                        goose_subscriber_py.setEventHandler(goose_handler)
+                        goose_subscriber_py.subscribe()
+                        self._goose_handlers.append(goose_handler)
+                        self._goose_subscriber_py_list.append(goose_subscriber_py)
+                    else:
+                        # 兼容旧版 libiec61850 绑定及轻量测试替身。
+                        iec61850.GooseSubscriber_setListener(
+                            subscriber, lambda sub, _parameter=None: self._on_goose_message(sub), None
+                        )
 
                     iec61850.GooseReceiver_addSubscriber(self._receiver, subscriber)
                     self._subscriber_handles.append(subscriber)

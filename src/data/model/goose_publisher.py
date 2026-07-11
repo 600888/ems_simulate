@@ -6,7 +6,7 @@ GOOSE Publisher 数据库模型
 
 from typing import Any, TypedDict
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.data.model.base import Base
@@ -39,6 +39,9 @@ class GoosePublisherDict(TypedDict):
     vlan_id: int
     vlan_prio: int
     simulation: bool
+    name: str
+    description: str
+    auto_start: bool
     entries: list[GooseEntryDict]
 
 
@@ -106,12 +109,20 @@ class GoosePublisher(Base):
     vlan_id: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", comment="VLAN ID")
     vlan_prio: Mapped[int] = mapped_column(Integer, nullable=False, server_default="4", comment="VLAN 优先级")
     simulation: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1", comment="仿真模式")
+    name: Mapped[str] = mapped_column(String(128), nullable=False, server_default="", comment="显示名称")
+    description: Mapped[str] = mapped_column(String(512), nullable=False, server_default="", comment="描述")
+    auto_start: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0", comment="自动启动")
 
     # 关系
     entries: Mapped[list["GooseEntry"]] = relationship(
         back_populates="publisher",
         cascade="all, delete-orphan",
         order_by="GooseEntry.sort_order",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("channel_id", "go_cb_ref", name="uq_goose_publisher_channel_gocb"),
+        {"comment": "GOOSE 发布配置"},
     )
 
     def to_dict(self) -> GoosePublisherDict:
@@ -129,6 +140,9 @@ class GoosePublisher(Base):
             "vlan_id": self.vlan_id,
             "vlan_prio": self.vlan_prio,
             "simulation": self.simulation,
+            "name": self.name,
+            "description": self.description,
+            "auto_start": self.auto_start,
             "entries": [e.to_dict() for e in self.entries],
         }
 

@@ -6,6 +6,7 @@
 from src.web.api.channel import channel_router
 from src.web.api.device import device_router
 from src.web.api.device_group import device_group_router
+from src.web.api.network_interfaces import router as network_interfaces_router
 from src.web.api.point import point_mapping_router, point_router, point_tree_router
 from src.web.api.settings import settings_router
 
@@ -17,4 +18,5 @@ __all__ = [
     "point_tree_router",
     "device_group_router",
     "settings_router",
+    "network_interfaces_router",
 ]

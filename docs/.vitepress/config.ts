@@ -113,6 +113,7 @@ export default defineConfig({
                             text: '架构重构',
                             collapsed: false,
                             items: [
+                                { text: 'GOOSE 按设备作用域全栈重构', link: '/changelog/iec61850/25-goose-device-scoped-refactoring' },
                                 { text: '数据存储与协议流程整改', link: '/changelog/iec61850/18-iec61850-data-storage-optimization-plan' },
                                 { text: '统一模型架构重构', link: '/changelog/iec61850/09-iec61850-unified-model-refactoring' },
                                 { text: 'GOOSE 模块插件化重构', link: '/changelog/iec61850/06-goose-plugin-refactoring' },

@@ -17,6 +17,7 @@
 
 | 文档 | 说明 |
 |------|------|
+| [GOOSE 按设备作用域全栈重构](./iec61850/25-goose-device-scoped-refactoring) | 网卡选择、设备隔离、完整编辑与订阅持久化 — 日期：2026-07-11 |
 | [模块化重构计划](./iec61850/02-iec61850-refactoring-plan) | IEC61850 代码架构重整，插件模式 — 版本：1.0，日期：2026-05-30 |
 | [GOOSE 模块插件化重构](./iec61850/06-goose-plugin-refactoring) | GOOSE 插件化重构 — 版本：1.0，日期：2026-05-31 |
 | [统一模型架构重构](./iec61850/09-iec61850-unified-model-refactoring) | 模型发现重构 + SCL 模块 + 全局单次发现 — 版本：3.0，日期：2026-06-02 |

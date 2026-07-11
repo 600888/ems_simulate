@@ -32,7 +32,10 @@ class GoosePublisherDao:
             with local_session() as session, session.begin():
                 existing = (
                     session.query(GoosePublisher)
-                    .where(GoosePublisher.go_cb_ref == pub_data.get("go_cb_ref", ""))
+                    .where(
+                        GoosePublisher.channel_id == channel_id,
+                        GoosePublisher.go_cb_ref == pub_data.get("go_cb_ref", ""),
+                    )
                     .first()
                 )
 
@@ -60,6 +63,9 @@ class GoosePublisherDao:
                     existing.vlan_id = pub_data.get("vlan_id", 0)
                     existing.vlan_prio = pub_data.get("vlan_prio", 4)
                     existing.simulation = pub_data.get("simulation", True)
+                    existing.name = pub_data.get("name", "")
+                    existing.description = pub_data.get("description", "")
+                    existing.auto_start = pub_data.get("auto_start", False)
 
                     # 替换条目
                     entries = pub_data.get("entries", [])
@@ -81,6 +87,9 @@ class GoosePublisherDao:
                         vlan_id=pub_data.get("vlan_id", 0),
                         vlan_prio=pub_data.get("vlan_prio", 4),
                         simulation=pub_data.get("simulation", True),
+                        name=pub_data.get("name", ""),
+                        description=pub_data.get("description", ""),
+                        auto_start=pub_data.get("auto_start", False),
                     )
                     session.add(publisher)
                     session.flush()
@@ -110,6 +119,20 @@ class GoosePublisherDao:
                 return count > 0
         except Exception as e:
             log.error(f"删除 GOOSE Publisher 失败: {e}")
+            return False
+
+    @classmethod
+    def delete_publisher_by_channel_ref(cls, channel_id: int, go_cb_ref: str) -> bool:
+        try:
+            with local_session() as session, session.begin():
+                count = (
+                    session.query(GoosePublisher)
+                    .where(GoosePublisher.channel_id == channel_id, GoosePublisher.go_cb_ref == go_cb_ref)
+                    .delete()
+                )
+                return count > 0
+        except Exception as e:
+            log.error(f"删除通道 GOOSE Publisher 失败: {e}")
             return False
 
     @classmethod
@@ -330,6 +353,9 @@ class GoosePublisherDao:
             "vlan_id": publisher.vlan_id,
             "vlan_prio": publisher.vlan_prio,
             "simulation": publisher.simulation,
+            "name": publisher.name,
+            "description": publisher.description,
+            "auto_start": publisher.auto_start,
             "entries": entries,
             "_db_id": publisher.id,
             "_channel_id": publisher.channel_id,
