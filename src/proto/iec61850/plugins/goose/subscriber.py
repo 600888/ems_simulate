@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+from collections import defaultdict, deque
 from collections.abc import Callable
+import copy
 import threading
 import time
 from typing import Any
@@ -118,6 +120,7 @@ class GooseReceiver:
         self._is_running = False
         self._callback: Callable[[dict[str, Any]], None] | None = None
         self._lock = threading.Lock()
+        self._history: dict[str, deque[dict[str, Any]]] = defaultdict(lambda: deque(maxlen=200))
 
         # 底层
         self._receiver: Any = None
@@ -153,6 +156,11 @@ class GooseReceiver:
         description: str = "",
         data_set_ref: str = "",
         conf_rev: int = 0,
+        enabled: bool = True,
+        ied_name: str = "",
+        ld_inst: str = "",
+        ln_name: str = "LLN0",
+        dataset_entries: list[dict[str, Any]] | None = None,
     ) -> GooseSubscriptionInfo:
         """添加 GOOSE 订阅"""
         with self._lock:
@@ -166,6 +174,11 @@ class GooseReceiver:
                 description=description,
                 data_set_ref=data_set_ref,
                 conf_rev=conf_rev,
+                enabled=enabled,
+                ied_name=ied_name,
+                ld_inst=ld_inst,
+                ln_name=ln_name,
+                dataset_entries=dataset_entries or [],
             )
             self._subscriptions[go_cb_ref] = sub
             return sub
@@ -189,6 +202,44 @@ class GooseReceiver:
             sub = self._subscriptions.get(go_cb_ref)
             return sub.to_dict() if sub else None
 
+    def update_subscription(self, current_go_cb_ref: str, **changes: Any) -> dict[str, Any] | None:
+        """Update one GOOSE control block subscription configuration."""
+        with self._lock:
+            sub = self._subscriptions.get(current_go_cb_ref)
+            if sub is None:
+                return None
+            new_ref = str(changes.pop("go_cb_ref", current_go_cb_ref) or current_go_cb_ref)
+            allowed = {
+                "app_id",
+                "dst_mac",
+                "description",
+                "data_set_ref",
+                "conf_rev",
+                "enabled",
+                "ied_name",
+                "ld_inst",
+                "ln_name",
+                "dataset_entries",
+            }
+            for key, value in changes.items():
+                if key in allowed:
+                    setattr(sub, key, value)
+            if new_ref != current_go_cb_ref:
+                sub.go_cb_ref = new_ref
+                self._subscriptions.pop(current_go_cb_ref)
+                self._subscriptions[new_ref] = sub
+                if current_go_cb_ref in self._history:
+                    self._history[new_ref] = self._history.pop(current_go_cb_ref)
+            return sub.to_dict()
+
+    def get_history(self, go_cb_ref: str, limit: int = 100) -> list[dict[str, Any]]:
+        with self._lock:
+            history = self._history.get(go_cb_ref)
+            if not history:
+                return []
+            bounded = max(1, min(limit, 200))
+            return [copy.deepcopy(item) for item in list(history)[-bounded:]][::-1]
+
     def set_callback(self, callback: Callable[[dict[str, Any]], None]) -> None:
         """设置 GOOSE 报文接收回调"""
         self._callback = callback
@@ -208,7 +259,8 @@ class GooseReceiver:
                 # 读取报文字段
                 sub.go_id = iec61850.GooseSubscriber_getGoId(subscriber) or ""
                 sub.data_set_ref = iec61850.GooseSubscriber_getDataSet(subscriber) or ""
-                sub.conf_rev = iec61850.GooseSubscriber_getConfRev(subscriber)
+                sub.received_conf_rev = iec61850.GooseSubscriber_getConfRev(subscriber)
+                sub.config_mismatch = bool(sub.conf_rev and sub.received_conf_rev != sub.conf_rev)
                 sub.st_num = iec61850.GooseSubscriber_getStNum(subscriber)
                 sub.sq_num = iec61850.GooseSubscriber_getSqNum(subscriber)
                 sub.time_allowed_to_live = iec61850.GooseSubscriber_getTimeAllowedToLive(subscriber)
@@ -221,7 +273,39 @@ class GooseReceiver:
                 sub.last_update = time.time()
 
                 # 解析数据集值
-                sub.data_values = _DataSetParser.parse(subscriber)
+                previous_values = [item.get("value") for item in sub.data_values]
+                parsed_values = _DataSetParser.parse(subscriber)
+                changed_at = time.time()
+                changed_count = 0
+                for item in parsed_values:
+                    index = item["index"]
+                    meta = sub.dataset_entries[index] if index < len(sub.dataset_entries) else {}
+                    previous = previous_values[index] if index < len(previous_values) else None
+                    item["name"] = meta.get("name", f"Entry[{index}]")
+                    item["fc"] = meta.get("fc", "")
+                    item["description"] = meta.get("description", "")
+                    item["previous_value"] = previous
+                    item["changed"] = previous != item.get("value") if sub.message_count else False
+                    item["changed_at"] = changed_at if item["changed"] else 0.0
+                    if item["changed"]:
+                        changed_count += 1
+                sub.data_values = parsed_values
+                sub.message_count += 1
+                if changed_count:
+                    sub.last_change = changed_at
+                self._history[go_cb_ref].append(
+                    {
+                        "received_at": sub.last_update,
+                        "timestamp": sub.timestamp,
+                        "st_num": sub.st_num,
+                        "sq_num": sub.sq_num,
+                        "conf_rev": sub.received_conf_rev,
+                        "data_set_ref": sub.data_set_ref,
+                        "value_count": len(parsed_values),
+                        "changed_count": changed_count,
+                        "data_values": copy.deepcopy(parsed_values),
+                    }
+                )
 
             # 触发上层回调
             if self._callback:
@@ -250,6 +334,8 @@ class GooseReceiver:
             # 添加所有订阅者
             with self._lock:
                 for go_cb_ref, sub in self._subscriptions.items():
+                    if not sub.enabled:
+                        continue
                     # v1.6.1.0+ dataSetValues 必须非 NULL，使用空数组
                     create_empty_array = getattr(iec61850, "MmsValue_createEmptyArray", None)
                     empty_ds = create_empty_array(0) if create_empty_array else None

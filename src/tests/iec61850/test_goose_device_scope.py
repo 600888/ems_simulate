@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.data.dao import goose_receiver_dao
+from src.data.dao import goose_publisher_dao, goose_receiver_dao
 import src.data.model  # noqa: F401
 from src.data.model.base import Base
 from src.proto.iec61850.plugins.goose import manager as manager_module
@@ -69,6 +69,54 @@ def test_publishers_are_isolated_by_channel(monkeypatch):
     assert [item["channel_id"] for item in manager.list_publishers(1)] == [1]
     assert [item["channel_id"] for item in manager.list_publishers(2)] == [2]
     assert len(backend.saved) == 2
+
+
+def test_delete_publishers_by_channel_only_removes_target_channel(monkeypatch):
+    monkeypatch.setattr(manager_module, "HAS_IEC61850", True)
+    monkeypatch.setattr(manager_module, "GoosePublisher", _Publisher)
+    manager = manager_module.GooseResourceManager(PersistenceAdapter(_Backend()))
+    manager.create_publisher(channel_id=1, go_cb_ref="old-a")
+    manager.create_publisher(channel_id=1, go_cb_ref="old-b")
+    manager.create_publisher(channel_id=2, go_cb_ref="keep")
+
+    assert manager.delete_publishers_by_channel(1) == 2
+    assert manager.list_publishers(1) == []
+    assert [item["go_cb_ref"] for item in manager.list_publishers(2)] == ["keep"]
+
+
+def test_delete_by_channel_removes_publishers_datasets_and_entries(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(goose_publisher_dao, "local_session", session_factory)
+
+    goose_publisher_dao.GoosePublisherDao.save_publisher(
+        1,
+        {"go_cb_ref": "old", "entries": [{"name": "old-entry", "value": True}]},
+    )
+    goose_publisher_dao.GoosePublisherDao.save_pure_dataset(
+        1,
+        "LD0",
+        "dsOld",
+        "LD0/LLN0$dsOld",
+        [{"name": "old-dataset-entry", "value": 1}],
+    )
+    goose_publisher_dao.GoosePublisherDao.save_publisher(2, {"go_cb_ref": "keep"})
+    goose_publisher_dao.GoosePublisherDao.save_pure_dataset(
+        2,
+        "LD0",
+        "dsOld",
+        "LD0/LLN0$dsOld",
+        [{"name": "keep-dataset-entry", "value": 2}],
+    )
+
+    assert goose_publisher_dao.GoosePublisherDao.delete_by_channel(1) == 2
+    assert goose_publisher_dao.GoosePublisherDao.get_by_channel(1) == []
+    assert goose_publisher_dao.GoosePublisherDao.get_pure_datasets_by_channel(1) == []
+    assert [item["go_cb_ref"] for item in goose_publisher_dao.GoosePublisherDao.get_by_channel(2)] == ["keep"]
+    assert len(goose_publisher_dao.GoosePublisherDao.get_pure_datasets_by_channel(2)) == 1
+    with session_factory() as session:
+        assert session.query(goose_publisher_dao.GooseEntry).count() == 1
 
 
 def test_stopped_publisher_supports_full_config_update(monkeypatch):

@@ -147,14 +147,26 @@ class GoosePublisherDao:
             return False
 
     @classmethod
-    def delete_by_channel(cls, channel_id: int) -> int:
+    def delete_by_channel(cls, channel_id: int, *, raise_on_error: bool = False) -> int:
         """删除通道下的所有 GOOSE Publisher 配置"""
         try:
             with local_session() as session, session.begin():
-                count = session.query(GoosePublisher).where(GoosePublisher.channel_id == channel_id).delete()
+                publisher_ids = session.query(GoosePublisher.id).where(GoosePublisher.channel_id == channel_id)
+                # Do not rely on database-level FK cascade. Some existing SQLite
+                # databases were created without foreign_keys enabled.
+                session.query(GooseEntry).where(GooseEntry.publisher_id.in_(publisher_ids)).delete(
+                    synchronize_session=False
+                )
+                count = (
+                    session.query(GoosePublisher)
+                    .where(GoosePublisher.channel_id == channel_id)
+                    .delete(synchronize_session=False)
+                )
                 return count
         except Exception as e:
             log.error(f"删除通道 GOOSE Publisher 失败: {e}")
+            if raise_on_error:
+                raise
             return 0
 
     _PURE_DATASET_PREFIX = "__pure__"
@@ -183,7 +195,14 @@ class GoosePublisherDao:
         try:
             pure_go_cb_ref = f"{cls._PURE_DATASET_PREFIX}{data_set_ref}"
             with local_session() as session, session.begin():
-                existing = session.query(GoosePublisher).where(GoosePublisher.go_cb_ref == pure_go_cb_ref).first()
+                existing = (
+                    session.query(GoosePublisher)
+                    .where(
+                        GoosePublisher.channel_id == channel_id,
+                        GoosePublisher.go_cb_ref == pure_go_cb_ref,
+                    )
+                    .first()
+                )
                 if existing:
                     existing.data_set_ref = data_set_ref
                     existing.go_id = ld_inst

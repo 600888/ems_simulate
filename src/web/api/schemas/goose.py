@@ -141,6 +141,11 @@ class GooseSubscriptionCreate(BaseModel):
     description: str = Field("", description="描述")
     data_set_ref: str = ""
     conf_rev: int = Field(0, ge=0)
+    enabled: bool = False
+    ied_name: str = Field("", max_length=128)
+    ld_inst: str = Field("", max_length=128)
+    ln_name: str = Field("LLN0", max_length=128)
+    dataset_entries: list[dict[str, Any]] = Field(default_factory=list)
 
     @field_validator("dst_mac")
     @classmethod
@@ -159,6 +164,30 @@ class GooseSubscriptionRemove(BaseModel):
 
     receiver_id: str = Field(..., description="Receiver 标识")
     go_cb_ref: str = Field(..., description="GOOSE 控制块引用", min_length=1)
+
+
+class GooseSubscriptionUpdate(BaseModel):
+    channel_id: int = Field(..., ge=1)
+    receiver_id: str = Field(..., min_length=1)
+    go_cb_ref: str = Field(..., min_length=1)
+    new_go_cb_ref: str | None = Field(None, min_length=1)
+    app_id: int | None = Field(None, ge=0, le=0xFFFF)
+    dst_mac: list[int] | None = Field(None, max_length=6)
+    description: str = Field("", max_length=512)
+    data_set_ref: str = ""
+    conf_rev: int = Field(0, ge=0)
+    enabled: bool = False
+    ied_name: str = Field("", max_length=128)
+    ld_inst: str = Field("", max_length=128)
+    ln_name: str = Field("LLN0", max_length=128)
+    dataset_entries: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class GooseSubscriptionHistoryRequest(BaseModel):
+    channel_id: int = Field(..., ge=1)
+    receiver_id: str = Field(..., min_length=1)
+    go_cb_ref: str = Field(..., min_length=1)
+    limit: int = Field(100, ge=1, le=200)
 
 
 class GooseReceiverCreate(BaseModel):

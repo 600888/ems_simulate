@@ -119,9 +119,93 @@ def test_goose_receiver_keeps_subscriber_handles(monkeypatch):
 
     receiver = subscriber_module.GooseReceiver(ReceiverConfig(interface="eth-test"))
     receiver.add_subscription("LD0/LLN0$GO$gcb1", app_id=1)
+    receiver.add_subscription("LD0/LLN0$GO$disabled", app_id=2, enabled=False)
 
     assert receiver.start() is True
     assert len(receiver._subscriber_handles) == 1
 
     receiver.stop()
     assert receiver._subscriber_handles == []
+
+
+def test_goose_subscription_history_tracks_dataset_changes(monkeypatch):
+    from src.proto.iec61850.plugins.goose import subscriber as subscriber_module
+
+    class FakeIec61850:
+        @staticmethod
+        def GooseSubscriber_getGoCbRef(subscriber):
+            return subscriber["go_cb_ref"]
+
+        @staticmethod
+        def GooseSubscriber_getGoId(_subscriber):
+            return "trip"
+
+        @staticmethod
+        def GooseSubscriber_getDataSet(_subscriber):
+            return "LD0/LLN0$dsTrip"
+
+        @staticmethod
+        def GooseSubscriber_getConfRev(_subscriber):
+            return 1
+
+        @staticmethod
+        def GooseSubscriber_getStNum(subscriber):
+            return subscriber["st_num"]
+
+        @staticmethod
+        def GooseSubscriber_getSqNum(subscriber):
+            return subscriber["sq_num"]
+
+        @staticmethod
+        def GooseSubscriber_getTimeAllowedToLive(_subscriber):
+            return 1000
+
+        @staticmethod
+        def GooseSubscriber_getTimestamp(_subscriber):
+            return 123
+
+        @staticmethod
+        def GooseSubscriber_isValid(_subscriber):
+            return True
+
+        @staticmethod
+        def GooseSubscriber_getDataSetValues(subscriber):
+            return subscriber["values"]
+
+        @staticmethod
+        def MmsValue_getArraySize(values):
+            return len(values)
+
+        @staticmethod
+        def MmsValue_getElement(values, index):
+            return values[index]
+
+        @staticmethod
+        def MmsValue_getType(_element):
+            return subscriber_module.MmsType.BOOLEAN
+
+        @staticmethod
+        def MmsValue_getBoolean(element):
+            return element["value"]
+
+    monkeypatch.setattr(subscriber_module, "HAS_IEC61850", True)
+    monkeypatch.setattr(subscriber_module, "iec61850", FakeIec61850, raising=False)
+    receiver = subscriber_module.GooseReceiver(ReceiverConfig(interface="eth-test"))
+    receiver.add_subscription(
+        "LD0/LLN0$GO$gcb1",
+        dataset_entries=[{"name": "LD0/XCBR1.Pos.stVal", "fc": "ST"}],
+    )
+
+    receiver._on_goose_message(
+        {"go_cb_ref": "LD0/LLN0$GO$gcb1", "st_num": 1, "sq_num": 0, "values": [{"value": False}]}
+    )
+    receiver._on_goose_message({"go_cb_ref": "LD0/LLN0$GO$gcb1", "st_num": 2, "sq_num": 0, "values": [{"value": True}]})
+
+    latest = receiver.get_subscription("LD0/LLN0$GO$gcb1")
+    history = receiver.get_history("LD0/LLN0$GO$gcb1")
+    assert latest["message_count"] == 2
+    assert latest["data_values"][0]["name"] == "LD0/XCBR1.Pos.stVal"
+    assert latest["data_values"][0]["previous_value"] is False
+    assert latest["data_values"][0]["changed"] is True
+    assert len(history) == 2
+    assert history[0]["changed_count"] == 1

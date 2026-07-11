@@ -47,6 +47,11 @@ class GooseReceiverDao:
                         description=sub.get("description", ""),
                         data_set_ref=sub.get("data_set_ref", ""),
                         conf_rev=sub.get("conf_rev", 0),
+                        enabled=sub.get("enabled", False),
+                        ied_name=sub.get("ied_name", ""),
+                        ld_inst=sub.get("ld_inst", ""),
+                        ln_name=sub.get("ln_name", "LLN0"),
+                        dataset_entries_json=json.dumps(sub.get("dataset_entries", []), ensure_ascii=False),
                     )
                 )
             session.flush()
@@ -86,6 +91,11 @@ class GooseReceiverDao:
                     "description": sub.description,
                     "data_set_ref": sub.data_set_ref,
                     "conf_rev": sub.conf_rev,
+                    "enabled": sub.enabled,
+                    "ied_name": sub.ied_name,
+                    "ld_inst": sub.ld_inst,
+                    "ln_name": sub.ln_name,
+                    "dataset_entries": json.loads(sub.dataset_entries_json) if sub.dataset_entries_json else [],
                 }
                 for sub in receiver.subscriptions
             ],

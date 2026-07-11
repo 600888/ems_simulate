@@ -154,6 +154,8 @@ export const GOOSE_API = {
   RECEIVER_SUBSCRIPTIONS_ADD: '/api/channels/goose/receivers/subscriptions/add',
   RECEIVER_SUBSCRIPTIONS_REMOVE: '/api/channels/goose/receivers/subscriptions/remove',
   RECEIVER_SUBSCRIPTIONS_REPLACE: '/api/channels/goose/receivers/subscriptions/replace',
+  RECEIVER_SUBSCRIPTIONS_UPDATE: '/api/channels/goose/receivers/subscriptions/update',
+  RECEIVER_SUBSCRIPTIONS_HISTORY: '/api/channels/goose/receivers/subscriptions/history',
   // ICD 统一导入使用 /import-icd (channelApi.ts)，含 MMS 测点 + GOOSE 配置
   // GOOSE 报文抓包
   CAPTURE_START: '/api/channels/goose/capture/start',

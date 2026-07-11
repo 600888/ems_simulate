@@ -101,6 +101,22 @@ class GseControlInfo:
             "app_id": app_id_int,
             "dst_mac": dst_mac,
             "description": f"从 ICD 导入 ({self.ied_name})",
+            "enabled": False,
+            "ied_name": self.ied_name,
+            "ld_inst": self.ld_inst,
+            "ln_name": f"{self.ln_prefix}{self.ln_class}{self.ln_inst}",
+            "data_set_ref": self.data_set_ref
+            or (f"{self.ld_inst}/{self.ln_class}${self.dat_set}" if self.dat_set else ""),
+            "conf_rev": self.conf_rev,
+            "dataset_entries": [
+                {
+                    "name": member.get("fcda_ref", ""),
+                    "fc": member.get("fc", ""),
+                    "type": _fcda_to_iec_type(member),
+                    "description": member.get("desc", ""),
+                }
+                for member in self.dataset_members
+            ],
         }
 
     @staticmethod

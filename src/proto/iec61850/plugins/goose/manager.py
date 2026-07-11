@@ -304,6 +304,27 @@ class GooseResourceManager:
         log.info(f"GOOSE Publisher 已删除: id={publisher_id}")
         return True
 
+    def delete_publishers_by_channel(self, channel_id: int, delete_from_db: bool = False) -> int:
+        """Stop and remove every publisher owned by a channel.
+
+        ICD import is a full replacement operation. Keeping this operation on
+        the manager avoids callers depending on its private runtime maps and
+        ensures running publishers are stopped before configuration is replaced.
+        """
+        publisher_ids = [
+            publisher_id
+            for publisher_id, owner_channel_id in list(self._channel_map.items())
+            if owner_channel_id == channel_id
+        ]
+        deleted = sum(self.delete_publisher(publisher_id, delete_from_db=False) for publisher_id in publisher_ids)
+
+        if delete_from_db:
+            from src.data.dao.goose_publisher_dao import GoosePublisherDao
+
+            GoosePublisherDao.delete_by_channel(channel_id)
+
+        return deleted
+
     def start_publisher(self, publisher_id: str) -> bool:
         """启动 Publisher"""
         publisher = self._publishers.get(publisher_id)
@@ -440,6 +461,11 @@ class GooseResourceManager:
                         description=s.get("description", ""),
                         data_set_ref=s.get("data_set_ref", ""),
                         conf_rev=s.get("conf_rev", 0),
+                        enabled=s.get("enabled", False),
+                        ied_name=s.get("ied_name", ""),
+                        ld_inst=s.get("ld_inst", ""),
+                        ln_name=s.get("ln_name", "LLN0"),
+                        dataset_entries=s.get("dataset_entries", []),
                     )
 
             recv_id = str(db_id) if db_id is not None else _scoped_key(channel_id, str(uuid.uuid4()))
@@ -586,6 +612,11 @@ class GooseResourceManager:
                         description="auto-discovered",
                         data_set_ref=g.get("data_set_ref", ""),
                         conf_rev=g.get("conf_rev", 0),
+                        enabled=g.get("enabled", False),
+                        ied_name=g.get("ied_name", ""),
+                        ld_inst=g.get("ld_inst", ""),
+                        ln_name=g.get("ln_name", "LLN0"),
+                        dataset_entries=g.get("dataset_entries", g.get("entries", [])),
                     )
             self._persist_receiver(recv_id)
         return self.get_receiver_status(recv_id)
@@ -599,6 +630,11 @@ class GooseResourceManager:
         description: str = "",
         data_set_ref: str = "",
         conf_rev: int = 0,
+        enabled: bool = False,
+        ied_name: str = "",
+        ld_inst: str = "",
+        ln_name: str = "LLN0",
+        dataset_entries: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | None:
         """向 Receiver 添加订阅"""
         receiver = self._receivers.get(receiver_id)
@@ -609,7 +645,19 @@ class GooseResourceManager:
             log.warning(f"GOOSE Receiver 运行中，无法添加订阅: {receiver_id}")
             return None
 
-        sub = receiver.add_subscription(go_cb_ref, app_id, dst_mac, description, data_set_ref, conf_rev)
+        sub = receiver.add_subscription(
+            go_cb_ref,
+            app_id,
+            dst_mac,
+            description,
+            data_set_ref,
+            conf_rev,
+            enabled,
+            ied_name,
+            ld_inst,
+            ln_name,
+            dataset_entries,
+        )
         self._persist_receiver(receiver_id)
         return sub.to_dict()
 
@@ -642,9 +690,49 @@ class GooseResourceManager:
                 item.get("description", ""),
                 item.get("data_set_ref", ""),
                 item.get("conf_rev", 0),
+                item.get("enabled", False),
+                item.get("ied_name", ""),
+                item.get("ld_inst", ""),
+                item.get("ln_name", "LLN0"),
+                item.get("dataset_entries", []),
             )
         self._persist_receiver(receiver_id)
         return self.get_receiver_status(receiver_id)
+
+    def update_subscription(
+        self,
+        receiver_id: str,
+        current_go_cb_ref: str,
+        **changes: Any,
+    ) -> dict[str, Any] | None:
+        """Apply subscription configuration and safely rebuild a running receiver."""
+        receiver = self._receivers.get(receiver_id)
+        if receiver is None:
+            return None
+        was_running = receiver.is_running
+        if was_running:
+            receiver.stop()
+        result = receiver.update_subscription(current_go_cb_ref, **changes)
+        if result is None:
+            if was_running:
+                receiver.start()
+            return None
+        self._persist_receiver(receiver_id)
+        should_run = was_running or bool(result.get("enabled"))
+        if should_run and not receiver.start():
+            return None
+        return self.get_receiver_status(receiver_id)
+
+    def get_subscription_history(
+        self,
+        receiver_id: str,
+        go_cb_ref: str,
+        limit: int = 100,
+    ) -> list[dict[str, Any]] | None:
+        receiver = self._receivers.get(receiver_id)
+        if receiver is None or receiver.get_subscription(go_cb_ref) is None:
+            return None
+        return receiver.get_history(go_cb_ref, limit)
 
     def _persist_receiver(self, receiver_id: str) -> None:
         channel_id = self._receiver_channel_map.get(receiver_id)

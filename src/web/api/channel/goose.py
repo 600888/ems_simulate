@@ -34,7 +34,9 @@ from src.web.api.schemas.goose import (
     GooseReceiverSubscriptionsReplace,
     GooseReceiverUpdate,
     GooseSubscriptionCreate,
+    GooseSubscriptionHistoryRequest,
     GooseSubscriptionRemove,
+    GooseSubscriptionUpdate,
 )
 from src.web.log import log
 
@@ -77,7 +79,39 @@ def _get_discovered_goose(channel_id: int, request: Request) -> list[dict[str, A
     device = device_controller.get_device_by_channel_id(channel_id) if device_controller else None
     handler = getattr(device, "protocol_handler", None) if device else None
     discovered = getattr(handler, "_discovered_goose_items", None)
-    return list(discovered) if discovered else []
+    if not discovered:
+        return []
+    client = getattr(handler, "_client", None)
+    ied_name = getattr(client, "model_name", "") or getattr(handler, "model_name", "") or "Remote IED"
+    datasets = getattr(handler, "_discovered_datasets", []) or getattr(client, "_discovered_datasets", []) or []
+    dataset_map = {item.get("ref", ""): item for item in datasets}
+    results = []
+    for raw in discovered:
+        item = dict(raw)
+        go_cb_ref = item.get("go_cb_ref", "")
+        path = go_cb_ref.split("$GO$", 1)[0]
+        ld_inst, _, ln_name = path.partition("/")
+        ds = dataset_map.get(item.get("data_set_ref", ""), {})
+        members = item.get("dataset_members") or ds.get("members") or []
+        item.update(
+            {
+                "ied_name": item.get("ied_name") or ied_name,
+                "ld_inst": item.get("ld_inst") or ld_inst or "LD0",
+                "ln_name": item.get("ln_name") or ln_name or "LLN0",
+                "dataset_entries": [
+                    {
+                        "name": member.get("fcda_ref") or member.get("ref") or member.get("name", ""),
+                        "fc": member.get("fc", ""),
+                        "type": member.get("iec_type") or member.get("type", "unknown"),
+                        "description": member.get("description") or member.get("desc", ""),
+                    }
+                    for member in members
+                ],
+                "enabled": False,
+            }
+        )
+        results.append(item)
+    return results
 
 
 def _require_resource_channel(actual: int | None, expected: int | None) -> None:
@@ -409,6 +443,11 @@ async def create_goose_receiver(
             "description": s.description,
             "data_set_ref": s.data_set_ref,
             "conf_rev": s.conf_rev,
+            "enabled": s.enabled,
+            "ied_name": s.ied_name,
+            "ld_inst": s.ld_inst,
+            "ln_name": s.ln_name,
+            "dataset_entries": s.dataset_entries,
         }
         for s in body.subscriptions
     ]
@@ -531,10 +570,57 @@ async def add_receiver_subscription(
         description=body.description,
         data_set_ref=body.data_set_ref,
         conf_rev=body.conf_rev,
+        enabled=body.enabled,
+        ied_name=body.ied_name,
+        ld_inst=body.ld_inst,
+        ln_name=body.ln_name,
+        dataset_entries=body.dataset_entries,
     )
     if not result:
         raise NotFoundError("GOOSE Receiver 未找到")
     return BaseResponse(message="添加订阅成功", data=result)
+
+
+@router.post("/goose/receivers/subscriptions/update", response_model=BaseResponse)
+async def update_receiver_subscription(request: Request, body: GooseSubscriptionUpdate):
+    manager = _get_goose_manager(request)
+    _validate_iec61850_channel(body.channel_id)
+    current = manager.get_receiver_status(body.receiver_id)
+    if not current:
+        raise NotFoundError("GOOSE Receiver 未找到")
+    _require_resource_channel(current.get("channel_id"), body.channel_id)
+    result = manager.update_subscription(
+        body.receiver_id,
+        body.go_cb_ref,
+        go_cb_ref=body.new_go_cb_ref or body.go_cb_ref,
+        app_id=body.app_id,
+        dst_mac=body.dst_mac,
+        description=body.description,
+        data_set_ref=body.data_set_ref,
+        conf_rev=body.conf_rev,
+        enabled=body.enabled,
+        ied_name=body.ied_name,
+        ld_inst=body.ld_inst,
+        ln_name=body.ln_name,
+        dataset_entries=body.dataset_entries,
+    )
+    if not result:
+        raise OperationError("GOOSE 订阅配置应用失败")
+    return BaseResponse(message="GOOSE 订阅配置已应用", data=result)
+
+
+@router.post("/goose/receivers/subscriptions/history", response_model=BaseResponse)
+async def get_receiver_subscription_history(request: Request, body: GooseSubscriptionHistoryRequest):
+    manager = _get_goose_manager(request)
+    _validate_iec61850_channel(body.channel_id)
+    current = manager.get_receiver_status(body.receiver_id)
+    if not current:
+        raise NotFoundError("GOOSE Receiver 未找到")
+    _require_resource_channel(current.get("channel_id"), body.channel_id)
+    items = manager.get_subscription_history(body.receiver_id, body.go_cb_ref, body.limit)
+    if items is None:
+        raise NotFoundError("GOOSE 控制块未找到")
+    return BaseResponse(message="获取 GOOSE 报文历史成功", data={"items": items, "total": len(items)})
 
 
 @router.post("/goose/receivers/subscriptions/remove", response_model=BaseResponse)

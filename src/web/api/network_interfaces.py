@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import socket
 from typing import Any
 
@@ -14,24 +15,27 @@ router = APIRouter(prefix="/api/network-interfaces", tags=["network-interfaces"]
 
 
 def list_network_interfaces() -> list[dict[str, Any]]:
-    """返回稳定接口名以及可获得的地址信息。
+    """返回本机可用网卡列表。
 
-    psutil 在打包运行时通常可用；缺失时退回标准库，仍可完成接口选择。
+    优先使用 psutil 获取友好名称（如"以太网"、"Wi-Fi"）及完整地址信息；
+    psutil 不可用时退回 socket.if_nameindex，仅保证最基本的接口发现。
     """
-    addresses: dict[str, list[Any]] = {}
-    stats: dict[str, Any] = {}
     try:
         import psutil
 
         addresses = psutil.net_if_addrs()
         stats = psutil.net_if_stats()
+        names = sorted(addresses.keys(), key=str.casefold)
     except ImportError:
-        pass
+        addresses = {}
+        stats = {}
+        names = [name for _, name in socket.if_nameindex()]
 
-    names = {name for _, name in socket.if_nameindex()}
-    names.update(addresses)
+    # 匹配 xx:xx:xx:xx:xx:xx 或 xx-xx-xx-xx-xx-xx 两种格式
+    _MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}[-:]){5}[0-9A-Fa-f]{2}$")
+
     result: list[dict[str, Any]] = []
-    for name in sorted(names, key=str.casefold):
+    for name in names:
         ipv4: list[str] = []
         ipv6: list[str] = []
         mac = ""
@@ -40,7 +44,7 @@ def list_network_interfaces() -> list[dict[str, Any]]:
                 ipv4.append(addr.address)
             elif addr.family == socket.AF_INET6:
                 ipv6.append(addr.address.split("%", 1)[0])
-            elif str(addr.family).endswith("AF_LINK") or getattr(socket, "AF_PACKET", object()) == addr.family:
+            elif _MAC_RE.match(addr.address or ""):
                 mac = addr.address or ""
         stat = stats.get(name)
         is_up = bool(stat.isup) if stat is not None else True
@@ -55,7 +59,7 @@ def list_network_interfaces() -> list[dict[str, Any]]:
                 "ipv6": ipv6,
                 "is_up": is_up,
                 "is_loopback": is_loopback,
-                "supports_raw_ethernet": is_up and not is_loopback,
+                "supports_raw_ethernet": bool(mac) and not is_loopback,
             }
         )
     return result

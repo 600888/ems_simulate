@@ -1,13 +1,13 @@
 <template>
   <div class="goose-view">
-    <GooseManager :channel-id="channelId" />
+    <GooseSubscriberManager :channel-id="channelId" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import GooseManager from '@/components/goose/GooseManager.vue'
+import GooseSubscriberManager from '@/components/goose/GooseSubscriberManager.vue'
 
 const route = useRoute()
 const channelId = ref<number>(0)
@@ -24,7 +24,10 @@ watch(
 
 <style lang="scss" scoped>
 .goose-view {
-  height: 100%;
-  overflow: auto;
+  height: calc(100vh - var(--header-height) - var(--tags-height) - var(--footer-height));
+  padding: 16px;
+  box-sizing: border-box;
+  background: #f5f7fa;
+  overflow: hidden;
 }
 </style>

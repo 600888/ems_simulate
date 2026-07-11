@@ -44,6 +44,19 @@ export interface GooseSubscriptionDataValue {
   index: number;
   type: string;
   value: boolean | number | string | null;
+  name?: string;
+  fc?: string;
+  description?: string;
+  previous_value?: boolean | number | string | null;
+  changed?: boolean;
+  changed_at?: number;
+}
+
+export interface GooseDataSetMember {
+  name: string;
+  fc?: string;
+  type?: string;
+  description?: string;
 }
 
 /** GOOSE 订阅状态 */
@@ -53,6 +66,8 @@ export interface GooseSubscriptionStatus {
   go_id: string;
   data_set_ref: string;
   conf_rev: number;
+  received_conf_rev: number;
+  config_mismatch: boolean;
   st_num: number;
   sq_num: number;
   time_allowed_to_live: number;
@@ -61,6 +76,25 @@ export interface GooseSubscriptionStatus {
   last_update: number;
   description: string;
   dst_mac: string;
+  data_values: GooseSubscriptionDataValue[];
+  enabled: boolean;
+  ied_name: string;
+  ld_inst: string;
+  ln_name: string;
+  dataset_entries: GooseDataSetMember[];
+  message_count: number;
+  last_change: number;
+}
+
+export interface GooseMessageHistoryItem {
+  received_at: number;
+  timestamp: number;
+  st_num: number;
+  sq_num: number;
+  conf_rev: number;
+  data_set_ref: string;
+  value_count: number;
+  changed_count: number;
   data_values: GooseSubscriptionDataValue[];
 }
 
@@ -139,6 +173,15 @@ export interface GooseSubscriptionCreateRequest {
   description?: string;
   data_set_ref?: string;
   conf_rev?: number;
+  enabled?: boolean;
+  ied_name?: string;
+  ld_inst?: string;
+  ln_name?: string;
+  dataset_entries?: GooseDataSetMember[];
+}
+
+export interface GooseSubscriptionUpdateRequest extends Omit<GooseSubscriptionCreateRequest, 'go_cb_ref'> {
+  new_go_cb_ref?: string;
 }
 
 /** 发现的远端 GOOSE 控制块 */
@@ -362,6 +405,35 @@ export async function removeGooseSubscription(
 ): Promise<boolean> {
   const data = await requestApi(GOOSE_API.RECEIVER_SUBSCRIPTIONS_REMOVE, 'post', { receiver_id: receiverId, go_cb_ref: goCbRef });
   return data !== null;
+}
+
+export async function updateGooseSubscription(
+  channelId: number,
+  receiverId: string,
+  goCbRef: string,
+  req: GooseSubscriptionUpdateRequest,
+): Promise<GooseReceiverStatus | null> {
+  return await requestApi(GOOSE_API.RECEIVER_SUBSCRIPTIONS_UPDATE, 'post', {
+    channel_id: channelId,
+    receiver_id: receiverId,
+    go_cb_ref: goCbRef,
+    ...req,
+  });
+}
+
+export async function getGooseSubscriptionHistory(
+  channelId: number,
+  receiverId: string,
+  goCbRef: string,
+  limit = 100,
+): Promise<GooseMessageHistoryItem[]> {
+  const data = await requestApi(GOOSE_API.RECEIVER_SUBSCRIPTIONS_HISTORY, 'post', {
+    channel_id: channelId,
+    receiver_id: receiverId,
+    go_cb_ref: goCbRef,
+    limit,
+  });
+  return data?.items || [];
 }
 
 

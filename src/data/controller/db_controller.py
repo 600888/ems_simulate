@@ -179,15 +179,28 @@ class DbController:
 
         engine = self.db_config.engine
         inspector = inspect(engine)
-        if "goose_publisher" not in inspector.get_table_names():
-            return
-        existing = {column["name"] for column in inspector.get_columns("goose_publisher")}
-        definitions = {
-            "name": "VARCHAR(128) NOT NULL DEFAULT ''",
-            "description": "VARCHAR(512) NOT NULL DEFAULT ''",
-            "auto_start": "BOOLEAN NOT NULL DEFAULT 0",
-        }
+        table_names = inspector.get_table_names()
         with engine.begin() as conn:
-            for column, ddl in definitions.items():
-                if column not in existing:
-                    conn.execute(text(f"ALTER TABLE goose_publisher ADD COLUMN {column} {ddl}"))
+            if "goose_publisher" in table_names:
+                existing = {column["name"] for column in inspector.get_columns("goose_publisher")}
+                definitions = {
+                    "name": "VARCHAR(128) NOT NULL DEFAULT ''",
+                    "description": "VARCHAR(512) NOT NULL DEFAULT ''",
+                    "auto_start": "BOOLEAN NOT NULL DEFAULT 0",
+                }
+                for column, ddl in definitions.items():
+                    if column not in existing:
+                        conn.execute(text(f"ALTER TABLE goose_publisher ADD COLUMN {column} {ddl}"))
+
+            if "goose_subscription" in table_names:
+                existing = {column["name"] for column in inspector.get_columns("goose_subscription")}
+                definitions = {
+                    "enabled": "BOOLEAN NOT NULL DEFAULT 0",
+                    "ied_name": "VARCHAR(128) NOT NULL DEFAULT ''",
+                    "ld_inst": "VARCHAR(128) NOT NULL DEFAULT ''",
+                    "ln_name": "VARCHAR(128) NOT NULL DEFAULT 'LLN0'",
+                    "dataset_entries_json": "TEXT",
+                }
+                for column, ddl in definitions.items():
+                    if column not in existing:
+                        conn.execute(text(f"ALTER TABLE goose_subscription ADD COLUMN {column} {ddl}"))

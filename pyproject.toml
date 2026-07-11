@@ -21,6 +21,7 @@ dependencies = [
     "pyiec61850-ng==1.6.1.7",
     "scapy==2.7.0",
     "xmltodict==1.0.4",
+    "psutil==7.2.2",
 ]
 
 [project.optional-dependencies]

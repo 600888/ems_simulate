@@ -84,9 +84,16 @@ class GooseSubscriptionInfo:
     app_id: int | None = None
     dst_mac: list[int] | None = None
     description: str = ""
+    enabled: bool = True
+    ied_name: str = ""
+    ld_inst: str = ""
+    ln_name: str = "LLN0"
+    dataset_entries: list[dict[str, Any]] = field(default_factory=list)
     go_id: str = ""
     data_set_ref: str = ""
     conf_rev: int = 0
+    received_conf_rev: int = 0
+    config_mismatch: bool = False
     st_num: int = 0
     sq_num: int = 0
     time_allowed_to_live: int = 0
@@ -94,6 +101,8 @@ class GooseSubscriptionInfo:
     state: GooseState = GooseState.INIT
     last_update: float = 0.0
     data_values: list[dict[str, Any]] = field(default_factory=list)
+    message_count: int = 0
+    last_change: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -102,6 +111,8 @@ class GooseSubscriptionInfo:
             "go_id": self.go_id,
             "data_set_ref": self.data_set_ref,
             "conf_rev": self.conf_rev,
+            "received_conf_rev": self.received_conf_rev,
+            "config_mismatch": self.config_mismatch,
             "st_num": self.st_num,
             "sq_num": self.sq_num,
             "time_allowed_to_live": self.time_allowed_to_live,
@@ -109,8 +120,15 @@ class GooseSubscriptionInfo:
             "state": self.state.value,
             "last_update": self.last_update,
             "description": self.description,
+            "enabled": self.enabled,
+            "ied_name": self.ied_name,
+            "ld_inst": self.ld_inst,
+            "ln_name": self.ln_name,
+            "dataset_entries": self.dataset_entries,
             "dst_mac": ":".join(f"{b:02X}" for b in self.dst_mac) if self.dst_mac else "",
             "data_values": self.data_values,
+            "message_count": self.message_count,
+            "last_change": self.last_change,
         }
 
 

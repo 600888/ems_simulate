@@ -11,8 +11,15 @@
             style="width: 240px"
             :disabled="captureRunning"
           >
-            <el-option v-for="item in networkInterfaces" :key="item.id" :value="item.id"
-              :label="`${item.display_name}${item.ipv4?.[0] ? ` (${item.ipv4[0]})` : ''}`" />
+            <el-option v-for="item in networkInterfaces" :key="item.id" :value="item.id" class="network-option-item">
+              <div class="network-option">
+                <el-icon class="network-option-icon"><Monitor /></el-icon>
+                <div class="network-option-body">
+                  <span class="network-option-name">{{ item.display_name }}</span>
+                  <span class="network-option-mac">MAC: {{ (item.mac || "-").replace(/-/g, ":") }}</span>
+                </div>
+              </div>
+            </el-option>
           </el-select>
         </div>
         <div class="toolbar-item">
@@ -233,7 +240,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VideoPlay, VideoPause, Refresh, Delete } from '@element-plus/icons-vue'
+import { VideoPlay, VideoPause, Refresh, Delete, Monitor } from '@element-plus/icons-vue'
 import { GooseCaptureWebSocket, WsEventType } from '@/services/GooseCaptureWebSocket'
 import type {
   GooseCapturedPacket,
@@ -549,5 +556,25 @@ onUnmounted(() => {
   overflow-x: auto;
   max-height: 400px;
   white-space: pre;
+}
+</style>
+
+<style lang="scss">
+.el-select-dropdown__item.network-option-item {
+  height: auto;
+  min-height: auto;
+  padding: 4px 12px;
+}
+.el-select-dropdown__item.network-option-item:first-child { padding-top: 0; }
+.el-select-dropdown__item.network-option-item:last-child { padding-bottom: 0; }
+.network-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  .network-option-icon { font-size: 16px; color: #409eff; flex-shrink: 0; }
+  .network-option-body { display: flex; flex-direction: column; min-width: 0; }
+  .network-option-name { font-size: 13px; color: #303133; line-height: 1.3; }
+  .network-option-mac { font-family: "Cascadia Code","Fira Code","JetBrains Mono",Consolas,monospace; font-size: 11px; color: #909399; line-height: 1.2; }
 }
 </style>

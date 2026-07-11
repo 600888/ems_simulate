@@ -347,30 +347,25 @@ async def import_icd(
         publisher_dataset_refs: set[str] = set()
 
         # 先清除旧的 GOOSE 持久化记录和内存中的 Publisher
-        try:
-            from src.data.dao.goose_publisher_dao import GoosePublisherDao
+        from src.data.dao.goose_publisher_dao import GoosePublisherDao
 
-            old_count = GoosePublisherDao.delete_by_channel(channel_id) if auto_create_goose else 0
-            if old_count > 0:
-                log.info(f"重新导入前已删除 {old_count} 个旧 GOOSE Publisher 持久化记录")
-        except Exception as e:
-            log.warning(f"清除旧 GOOSE 持久化记录失败: {e}")
+        # The imported ICD is authoritative for this channel. Clear stale
+        # publishers and pure DataSets even if the new file has no GOOSE or
+        # automatic publisher creation is disabled. Cleanup is strict: silently
+        # continuing would mix old and new ICD configurations.
+        old_count = GoosePublisherDao.delete_by_channel(channel_id, raise_on_error=True)
+        if old_count > 0:
+            log.info(f"重新导入前已删除 {old_count} 个旧 GOOSE Publisher 持久化记录")
 
-        # 清除管理器中的旧 Publisher 记录（防止 go_cb_ref 缓存导致新 Publisher 跳过创建）
-        try:
-            from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
+        # Clear runtime publishers too, otherwise the go_cb_ref cache can make
+        # manager.create_publisher return the stale instance instead of the new one.
+        from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
 
-            old_manager: GooseResourceManager | None = getattr(request.app.state, "goose_manager", None)
-            if old_manager and auto_create_goose:
-                old_go_cb_refs = [go_cb_ref for go_cb_ref, cid in old_manager._channel_map.items() if cid == channel_id]
-                deleted_old = 0
-                for go_cb_ref in old_go_cb_refs:
-                    if old_manager.delete_publisher(go_cb_ref, delete_from_db=False):
-                        deleted_old += 1
-                if deleted_old > 0:
-                    log.info(f"已从 GOOSE 管理器中清除通道 {channel_id} 的 {deleted_old} 个旧 Publisher")
-        except Exception as e:
-            log.warning(f"清除旧 GOOSE Publisher 内存记录失败: {e}")
+        old_manager: GooseResourceManager | None = getattr(request.app.state, "goose_manager", None)
+        if old_manager:
+            deleted_old = old_manager.delete_publishers_by_channel(channel_id, delete_from_db=False)
+            if deleted_old > 0:
+                log.info(f"已从 GOOSE 管理器中清除通道 {channel_id} 的 {deleted_old} 个旧 Publisher")
 
         # 获取 IEC 61850 服务器（用于在 MMS 数据模型中注册 GSEControlBlock）
         iec61850_server = None
