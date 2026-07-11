@@ -195,6 +195,11 @@ class ModelDiscoveryService:
         """获取当前缓存的 IedModel"""
         return self._model
 
+    def install_model(self, model: IedModel) -> None:
+        """安装从离线 SCL 文档构建的模型。"""
+        self._model = model
+        self._model_timestamp = time.time()
+
     @property
     def is_discovered(self) -> bool:
         return self._model is not None

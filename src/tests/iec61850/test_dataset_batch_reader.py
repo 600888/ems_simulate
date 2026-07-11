@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from src.device.protocol.iec61850_handler import IEC61850ClientHandler
 from src.enums.point_data import Yc
 from src.proto.iec61850.core.connection import Iec61850Connection
+from src.proto.iec61850.core.registry import PointRegistry
+from src.proto.iec61850.iec61850_client import IEC61850Client
 from src.proto.iec61850.model.discovery import IedModelBuilder, ModelDiscoveryService
 from src.proto.iec61850.model.ied_model import DARef, DORef, IedModel, LDModel, LNModel
 from src.proto.iec61850.plugins.datasets import DataSetsPlugin
@@ -25,6 +27,8 @@ from src.proto.iec61850.plugins.datasets.models import (
     DatasetReadResult,
 )
 from src.proto.iec61850.plugins.datasets.transport import DatasetTransport
+from src.proto.iec61850.plugins.scl.model.scl_document import SclDocument
+from src.proto.iec61850.plugins.scl.service.import_service import SclImportResult
 
 
 def test_normalizes_dataset_and_fcda_reference_forms():
@@ -33,6 +37,25 @@ def test_normalizes_dataset_and_fcda_reference_forms():
     assert normalize_dataset_ref("IEDLD0/LLN0$dsStatus", "IED") == "IEDLD0/LLN0$dsStatus"
     assert normalize_point_ref("LD0/MMXU1$MX$TotW$mag$f[MX]", "IED") == "IEDLD0/MMXU1.TotW.mag.f"
     assert strip_fc_suffix("LD0/MMXU1.TotW.mag.f[MX]") == ("LD0/MMXU1.TotW.mag.f", "MX")
+
+
+def test_icd_load_installs_offline_ied_model_for_dataset_projection():
+    """ICD 导入必须像在线发现一样给 DataSet 目录提供完整 IedModel。"""
+    client = IEC61850Client.__new__(IEC61850Client)
+    client.ip = "127.0.0.1"
+    client.port = 102
+    client.model_name = "IED"
+    client._registry = PointRegistry("IED", "LD0")
+    client._discovery = ModelDiscoveryService()
+    client._last_import_result = None
+    client._rcbs_from_icd = []
+
+    result = SclImportResult(doc=SclDocument(), ied_name="IED")
+
+    assert client.load_model_from_icd("offline.icd", scl_result=result) is True
+    assert client.model is not None
+    assert client.model.host == "127.0.0.1"
+    assert client.model.port == 102
 
 
 def test_planner_uses_stable_greedy_selection_for_overlapping_datasets():
@@ -118,6 +141,46 @@ def test_catalog_projects_do_level_fcda_with_complete_model_order():
         "IEDLD0/MMXU1.TotW.t",
     )
     assert DatasetReadPlanner(catalog).plan(["power"]).uncovered == ()
+
+
+def test_icd_import_aggregate_registry_filters_q_t_du():
+    """ICD 导入（无模型）时，结构体成员只能投影值属性，排除 q/t/dU 等元数据。
+
+    ``aggregate_registry`` 应从注册表中选取所有以 member_ref 开头的叶子引用，
+    但只保留值属性终点（f / i / stVal / ctlVal / setVal），避免 dU 等
+    VISIBLE_STRING 写入期望数值的 YC 测点。
+    """
+    # 模拟 ICD 导入后的注册表：包含 mag.f（值）、mag.i、以及元数据 q / t / dU
+    registry = SimpleNamespace(
+        point_refs={
+            "power_f": "IEDLD0/MMXU1.TotW.mag.f",
+            "power_i": "IEDLD0/MMXU1.TotW.mag.i",
+            "power_q": "IEDLD0/MMXU1.TotW.mag.q",
+            "power_t": "IEDLD0/MMXU1.TotW.mag.t",
+            "power_du": "IEDLD0/MMXU1.TotW.mag.dU",
+        }
+    )
+    catalog = DatasetCatalog.from_sources(
+        [{"ref": "IEDLD0/LLN0$ds", "members": [{"ref": "IEDLD0/MMXU1.TotW.mag", "fc": "MX"}]}],
+        registry=registry,
+        model=None,
+    )
+
+    leaf_refs = catalog.datasets[0].members[0].leaf_refs
+
+    # 值属性必须保留
+    assert "IEDLD0/MMXU1.TotW.mag.f" in leaf_refs
+    assert "IEDLD0/MMXU1.TotW.mag.i" in leaf_refs
+
+    # 元数据属性必须排除
+    assert "IEDLD0/MMXU1.TotW.mag.q" not in leaf_refs
+    assert "IEDLD0/MMXU1.TotW.mag.t" not in leaf_refs
+    assert "IEDLD0/MMXU1.TotW.mag.dU" not in leaf_refs
+
+    assert len(leaf_refs) == 2  # 仅 mag.f + mag.i
+
+    # 验证 planner 能正确规划覆盖
+    assert DatasetReadPlanner(catalog).plan(["power_f", "power_i"]).uncovered == ()
 
 
 class _FakeValue:

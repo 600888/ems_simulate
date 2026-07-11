@@ -678,6 +678,20 @@ class IEC61850Client:
         if result.ied_name:
             self.model_name = result.ied_name
 
+        # ICD 导入过去只填充 PointRegistry 和兼容 DataSet 字典，没有建立
+        # IedModel。这样 DO/结构体级 FCDA 只能走保守的注册表投影，q/t/dU
+        # 等线上真实成员会被排除；在线发现却能通过完整模型展开，导致两条
+        # 路径的 DataSet 覆盖率不一致。安装离线模型，让二者共享同一套
+        # DA/BDA 线序投影逻辑。
+        if getattr(result, "doc", None) is not None:
+            try:
+                from .plugins.scl.transformer.server_model_builder import SclServerModelBuilder
+
+                offline_model = SclServerModelBuilder(result.doc).build(host=self.ip, port=self.port)
+                self._discovery.install_model(offline_model)
+            except Exception as exc:
+                log.warning(f"ICD IedModel 构建失败，将使用兼容 DataSet 映射: {exc}")
+
         # 5. 填充 DataSet 列表（供 UI 展示，不依赖 MMS 连接）
         datasets: list[dict[str, Any]] = []
         seen_ds_refs: set[str] = set()

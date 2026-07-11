@@ -316,12 +316,27 @@ class DataSetsPlugin:
         except Exception as exc:
             log.debug(f"DataSet 读取进度回调失败: {exc}")
 
+    _CONTAINER_MMS_TYPES = frozenset({"MMS_STRUCTURE", "MMS_ARRAY"})
+
     def _cache_runtime_types(self, result: DatasetReadResult, catalog: DatasetCatalog) -> None:
-        """把 DataSet 返回的真实 MMS 类型回写测点注册表。"""
+        """把 DataSet 返回的真实 MMS 类型回写测点注册表。
+
+        安全规则：
+        1. 如果运行时无法检测到类型（MMS_UNKNOWN），不覆盖注册表中已有的有效类型。
+        2. 如果注册表中已存在一个更精确的叶子类型（如 MMS_FLOAT），
+           不会被容器类型（MMS_STRUCTURE / MMS_ARRAY）覆盖。
+        3. 这避免了 DataSet 结构体级成员将父类型传播到子叶地址。
+        """
         if self._registry is None:
             return
         for ref, mms_type in result.runtime_types:
+            if mms_type == "MMS_UNKNOWN":
+                continue
             for address in catalog.addresses_for_ref(ref):
+                get_mms_type = getattr(self._registry, "get_mms_type", None)
+                existing = get_mms_type(address) if callable(get_mms_type) else ""
+                if existing and existing not in ("MMS_UNKNOWN", "") and mms_type in self._CONTAINER_MMS_TYPES:
+                    continue
                 self._registry.set_mms_type(address, mms_type)
                 self._registry.set_iec_type(address, iec_type_from_mms_type(mms_type).value)
 

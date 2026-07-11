@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ....defs.da_patterns import SKIP_DA_NAMES
 from ..model.enums import (
     CDC_CATEGORY_MAP,
     CDC_DEFAULT_FC,
@@ -132,6 +133,12 @@ class SclPointTransformer:
                 da_path = da_info["path"]
                 da_fc = da_info["fc"]
                 if da_path == main_da_path:
+                    continue
+                # q/t/dU 等是模型元数据，不是独立业务测点。模型树仍从
+                # IedModel 展示这些 DA，但不能把它们加入轮询点表，否则
+                # ICD 导入会比在线发现多出约三倍单点读取，并可能让 DO
+                # 摘要误选 q 的 MMS_BIT_STRING 作为主类型。
+                if da_info.get("name") in SKIP_DA_NAMES:
                     continue
                 # 只收集相关 FC 的 DA
                 if category == PointCategory.YC and da_fc in ("MX", "ST", "DC"):

@@ -10,6 +10,18 @@ from typing import Any
 from .models import DatasetDescriptor, DatasetMember, DatasetReadPlan
 
 _FC_SUFFIX_RE = re.compile(r"\[([A-Za-z]{2})\]\s*$")
+
+# 从 DA_PATH_TO_FRAME_TYPE 推导的值属性终点名称集合。
+# 用于无模型时过滤 aggregate_registry，排除 q/t/dU 等元数据属性。
+_VALUE_TERMINALS = frozenset(
+    {
+        "f",  # mag.f, cVal.mag.f, instMag.f, setMag.f, mxVal.f, wVal.f
+        "i",  # setMag.i, mag.i
+        "stVal",  # stVal
+        "ctlVal",  # ctlVal, Oper.ctlVal, SBOw.ctlVal, Cancel.ctlVal
+        "setVal",  # setVal
+    }
+)
 _KNOWN_FCS = frozenset(
     {"ST", "MX", "SP", "SV", "CF", "DC", "SG", "SE", "SR", "OR", "BL", "EX", "CO", "US", "MS", "RP", "BR", "LG", "GO"}
 )
@@ -212,10 +224,27 @@ class DatasetCatalog:
         if aggregate:
             return aggregate
 
-        # 仅从 ICD 加载时可能没有 IedModel。精确匹配仍然安全，
-        # 但不能证明顺序的结构成员绝不猜测展开，交由单点回退。
+        # 仅从 ICD 加载时可能没有 IedModel。FCDA 与注册表叶子精确匹配时
+        # 不存在结构体展开或线序错位风险，因此厂商自定义 DA 以及 q/t 等
+        # 标量元数据都可以安全覆盖。名称白名单只用于下方的结构体推测。
         exact_registry = tuple(dict.fromkeys(ref for ref in point_refs if ref == member_ref))
-        return exact_registry
+        if exact_registry:
+            return exact_registry
+
+        # 无模型时，将结构体级成员投影到注册的叶子引用上。
+        # 仅包含值属性（如 mag.f / stVal / ctlVal），排除 q/t/dU 等元数据，
+        # 与发现模型时 _wire_leaves 只投影值路径的行为保持一致。
+        aggregate_registry = tuple(
+            dict.fromkeys(
+                ref
+                for ref in point_refs
+                if ref.startswith(f"{member_ref}.") and ref.rsplit(".", 1)[-1] in _VALUE_TERMINALS
+            )
+        )
+        if aggregate_registry:
+            return aggregate_registry
+
+        return ()
 
     def addresses_for_ref(self, ref: str) -> tuple[str, ...]:
         """查找一个规范 MMS 引用对应的全部应用测点地址。"""

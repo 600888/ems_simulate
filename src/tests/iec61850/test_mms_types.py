@@ -75,7 +75,31 @@ def test_scl_point_transformer_carries_mms_types_from_icd_templates():
 
     assert by_da["mag.f"].mms_type == MmsType.FLOAT
     assert by_da["mag.f"].iec_type == "float"
-    assert by_da["q"].mms_type == MmsType.BIT_STRING
+    # q/t/dU 等元数据由模型树展示，不应注册为独立轮询测点
+    assert "q" not in by_da
+
+
+def test_scl_point_transformer_uses_actual_integer_analogue_leaf():
+    doc = SclParser().parse_string(
+        """
+        <SCL>
+          <IED name="IED1"><AccessPoint name="AP1"><Server><LDevice inst="LD0">
+            <LN0 lnClass="LLN0" lnType="LLN0Type" />
+            <LN lnClass="MMXU" inst="1" lnType="MMXUType" />
+          </LDevice></Server></AccessPoint></IED>
+          <DataTypeTemplates>
+            <LNodeType id="LLN0Type" lnClass="LLN0" />
+            <LNodeType id="MMXUType" lnClass="MMXU"><DO name="Index" type="MVInt" /></LNodeType>
+            <DOType id="MVInt" cdc="MV"><DA name="mag" fc="MX" bType="Struct" type="IntValue" /></DOType>
+            <DAType id="IntValue"><BDA name="i" bType="INT32" /></DAType>
+          </DataTypeTemplates>
+        </SCL>
+        """
+    )
+
+    points = SclPointTransformer(doc).transform().yc_points
+
+    assert [(point.da_name, point.mms_type) for point in points] == [("mag.i", MmsType.INTEGER)]
 
 
 def test_mms_type_keeps_legacy_iec_type_compatibility():
@@ -289,7 +313,7 @@ def test_tree_api_exposes_do_da_and_bda_mms_types():
                                 das=(
                                     DARef(
                                         name="mag",
-                                        path="mag.f",
+                                        path="mag",
                                         fc="MX",
                                         iec_type="float",
                                         mms_type=MmsType.STRUCTURE,

@@ -883,6 +883,10 @@ class IEC61850ClientHandler(ClientHandler):
                 point = point_map.get(addr)
                 code = addr_to_code.get(addr, addr)
                 if point and isinstance(point, Yc):
+                    # 遥测点只接受数值，跳过字符串值（如 dU 的描述文本），
+                    # 避免后续 point.value 赋值时引发 int() 转换错误。
+                    if isinstance(value, str):
+                        continue
                     try:
                         results[code] = int((value - point.add_coe) / point.mul_coe)
                     except (ZeroDivisionError, TypeError):

@@ -73,6 +73,18 @@ class TypeResolver:
     def _find_measurement_path(self, do_type: SclDOType, cdc: str) -> str | None:
         for da in do_type.das:
             if da.name in ("mag", "instMag", "cVal", "mxVal", "fCVal"):
+                # AnalogueValue is a Struct whose actual wire leaf can be f or
+                # i.  Do not blindly apply the CDC default (for example
+                # mag.f), because vendor models legitimately use mag.i.
+                if str(da.b_type or "").upper() == "STRUCT" and da.type_id:
+                    da_type = self._dtt.da_types.get(da.type_id)
+                    if da_type:
+                        leaf = next(
+                            (bda for bda in da_type.bdas if str(bda.b_type or "").upper() != "STRUCT"),
+                            None,
+                        )
+                        if leaf is not None:
+                            return f"{da.name}.{leaf.name}"
                 return STRUCT_DA_TO_FULL_PATH.get(da.name, da.name)
             if da.name == "stVal":
                 return "stVal"
@@ -137,21 +149,26 @@ class TypeResolver:
             da_path = mapped_name
         fc = fc_override or da.fc
 
-        result.append(
-            {
-                "name": da.name,
-                "path": da_path,
-                "fc": fc,
-                "bType": da.b_type,
-                "iecType": iec_type_from_btype(da.b_type),
-                "mmsType": mms_type_from_btype(da.b_type).value,
-                "dchg": da.dchg,
-                "qchg": da.qchg,
-                "dupd": da.dupd,
-            }
-        )
+        is_struct = str(da.b_type or "").upper() == "STRUCT"
+        # This API promises DA/BDA leaf paths.  Registering the Struct parent
+        # as a point produces bogus addresses such as mag.f with
+        # MMS_STRUCTURE alongside the real mag.i leaf.
+        if not is_struct:
+            result.append(
+                {
+                    "name": da.name,
+                    "path": da_path,
+                    "fc": fc,
+                    "bType": da.b_type,
+                    "iecType": iec_type_from_btype(da.b_type),
+                    "mmsType": mms_type_from_btype(da.b_type).value,
+                    "dchg": da.dchg,
+                    "qchg": da.qchg,
+                    "dupd": da.dupd,
+                }
+            )
 
-        if str(da.b_type or "").upper() == "STRUCT" and da.type_id:
+        if is_struct and da.type_id:
             da_type = self._dtt.da_types.get(da.type_id)
             if da_type:
                 for bda in da_type.bdas:

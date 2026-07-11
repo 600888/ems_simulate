@@ -139,10 +139,11 @@ class ObjectTypeReader:
     def read_typed(self, conn, ref: str, fc_val) -> tuple[Any, MmsType]:
         value, actual_type = _read_object_typed(conn, ref, fc_val)
         if self.accepted_types and actual_type not in self.accepted_types:
-            log.debug(
-                f"MMS 类型不匹配: ref={ref}, expected={[item.value for item in self.accepted_types]}, "
-                f"actual={actual_type.value}"
-            )
+            if actual_type is not MmsType.DATA_ACCESS_ERROR:
+                log.debug(
+                    f"MMS 类型不匹配: ref={ref}, expected={[item.value for item in self.accepted_types]}, "
+                    f"actual={actual_type.value}"
+                )
             return None, actual_type
         return value, actual_type
 

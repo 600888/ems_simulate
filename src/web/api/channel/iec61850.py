@@ -468,17 +468,17 @@ def _build_iec61850_tree_from_model(
                 primary_fc = da_list[0]["fc"] if da_list else ""
                 primary_mms_type = "MMS_UNKNOWN"
                 for da_item in da_list:
-                    if not da_item.get("point_code"):
-                        continue
                     if da_item.get("children"):
                         value_child = next(
                             (child for child in da_item["children"] if child.get("point_code")),
-                            da_item["children"][0],
+                            None,
                         )
-                        primary_mms_type = value_child.get("mms_type", "MMS_UNKNOWN")
-                    else:
+                        if value_child is not None:
+                            primary_mms_type = value_child.get("mms_type", "MMS_UNKNOWN")
+                            break
+                    if da_item.get("point_code"):
                         primary_mms_type = da_item.get("mms_type", "MMS_UNKNOWN")
-                    break
+                        break
                 items.append(
                     {
                         "do_name": do.name,
