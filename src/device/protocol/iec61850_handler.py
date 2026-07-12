@@ -30,6 +30,8 @@ class IEC61850ServerHandler(ServerHandler):
         super().__init__()
         self._server = None
         self._log = log
+        self._discovered_goose_items: list[dict[str, Any]] = []
+        self._discovered_datasets: list[dict[str, Any]] = []
 
     def initialize(self, config: dict[str, Any]) -> None:
         """初始化 IEC 61850 服务器
@@ -112,7 +114,13 @@ class IEC61850ServerHandler(ServerHandler):
         if not self._server:
             return False
         self._icd_path = icd_path
-        return self._server.load_model(icd_path, scl_result=scl_result)
+        success = self._server.load_model(icd_path, scl_result=scl_result)
+        if success:
+            self._discovered_goose_items.clear()
+            self._discovered_goose_items.extend(self._server.get_discovered_goose_items())
+            self._discovered_datasets.clear()
+            self._discovered_datasets.extend(self._server.browse_datasets())
+        return success
 
     def get_icd_points(self) -> dict[str, list]:
         """获取最近一次 ICD 导入的测点列表
@@ -128,6 +136,8 @@ class IEC61850ServerHandler(ServerHandler):
 
     def clear_cache(self) -> None:
         """清除服务端侧的缓存"""
+        self._discovered_goose_items.clear()
+        self._discovered_datasets.clear()
         if self._server:
             self._server.reset_model()
 

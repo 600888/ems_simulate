@@ -56,7 +56,7 @@ body,
  * Element Plus 默认将弹框 teleport 到 body。应用主体可能被整体缩放且多处使用
  * overflow:hidden，因此遮罩和弹框必须独立固定到视口，内容区自行滚动。
  */
-body > .el-overlay {
+body>.el-overlay {
     position: fixed !important;
     inset: 0 !important;
     width: 100vw !important;
@@ -76,7 +76,6 @@ body > .el-overlay {
 .el-overlay-dialog .el-dialog {
     display: flex;
     flex-direction: column;
-    width: min(var(--el-dialog-width, 50%), calc(100vw - 32px));
     max-width: calc(100vw - 32px);
     max-height: 92vh;
     margin: 0 auto !important;
@@ -122,7 +121,6 @@ body > .el-overlay {
 /* 对话框在窄屏下自动缩小 */
 @media (max-width: 1199px) {
     .el-overlay-dialog .el-dialog {
-        width: 90vw !important;
         max-height: 92vh;
 
         .el-dialog__body {

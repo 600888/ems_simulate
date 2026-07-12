@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from src.common.mac_address import format_mac_address
 from src.data.service.channel_service import ChannelService
 from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
 from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
@@ -103,6 +104,10 @@ def _get_discovered_goose(channel_id: int, request: Request) -> list[dict[str, A
                 "ied_name": item.get("ied_name") or ied_name,
                 "ld_inst": item.get("ld_inst") or ld_inst or "LD0",
                 "ln_name": item.get("ln_name") or ln_name or "LLN0",
+                # Discovery is a JSON/UI boundary: expose MAC consistently as
+                # text even though runtime publisher/subscriber objects use a
+                # six-byte integer list internally.
+                "dst_mac": format_mac_address(item.get("dst_mac") or item.get("mac_address")),
                 "dataset_entries": [
                     {
                         "name": member.get("fcda_ref") or member.get("ref") or member.get("name", ""),

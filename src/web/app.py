@@ -165,35 +165,13 @@ async def _init_device_controller():
     return await get_device_controller()
 
 
-async def _init_goose_manager(device_controller):
+async def _init_goose_manager():
     """后台初始化 GOOSE 管理器"""
     try:
         from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
 
         goose_manager = GooseResourceManager()
         log.info("GOOSE 管理器初始化成功")
-
-        # 从数据库加载已持久化的 GOOSE Publisher 配置
-        try:
-            from src.proto.iec61850.iec61850_server import IEC61850Server
-
-            server_map = {}
-            for device in device_controller.device_list:
-                device_id = getattr(device, "device_id", None) or getattr(device, "id", None)
-                if device_id and device.protocol_handler:
-                    handler = device.protocol_handler
-                    from src.device.protocol.iec61850_handler import IEC61850ServerHandler
-
-                    if isinstance(handler, IEC61850ServerHandler) and handler.server:
-                        if isinstance(handler.server, IEC61850Server):
-                            server_map[device_id] = handler.server
-
-            loaded_count = goose_manager.load_from_db(server_map=server_map)
-            if server_map:
-                log.info(f"已将 {len(server_map)} 个 IEC61850 服务器关联到 GOOSE DataSet 注册")
-            log.info(f"从数据库加载 {loaded_count} 个已持久化的 GOOSE Publisher")
-        except Exception as load_err:
-            log.warning(f"从数据库加载 GOOSE Publisher 失败: {load_err}")
 
         return goose_manager
     except Exception as e:
@@ -219,7 +197,7 @@ async def _background_init():
         )
 
         # 2. 初始化 GOOSE 管理器
-        app.state.goose_manager = await _init_goose_manager(device_controller)
+        app.state.goose_manager = await _init_goose_manager()
 
         # 3. 标记初始化完成
         app.state.initialized = True

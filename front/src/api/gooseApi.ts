@@ -241,10 +241,23 @@ export async function replaceGooseSubscriptions(
 /** 获取客户端发现的远端 GOOSE 控制块列表 */
 export async function getDiscoveredGoose(channelId: number): Promise<DiscoveredGooseItem[]> {
   const data = await requestApi(GOOSE_API.DISCOVERED_LIST, 'post', { channel_id: channelId });
-  return (data?.items || []).map((item: DiscoveredGooseItem & { app_id?: number | string | null }) => ({
+  return (data?.items || []).map((item: DiscoveredGooseItem & {
+    app_id?: number | string | null;
+    dst_mac?: string | number[];
+  }) => ({
     ...item,
     app_id: parseGooseAppId(item.app_id),
+    dst_mac: formatGooseMac(item.dst_mac),
   }));
+}
+
+function formatGooseMac(value: string | number[] | null | undefined): string {
+  if (Array.isArray(value)) {
+    return value.length === 6
+      ? value.map((part) => Number(part).toString(16).padStart(2, '0')).join(':').toUpperCase()
+      : '';
+  }
+  return String(value ?? '').trim();
 }
 
 export function parseGooseAppId(value: number | string | null | undefined): number | null {

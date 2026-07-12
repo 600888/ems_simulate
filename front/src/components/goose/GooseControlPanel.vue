@@ -55,7 +55,19 @@
           <el-input v-model="form.dst_mac" placeholder="留空表示不过滤" />
         </el-form-item>
         <el-form-item label="数据集 (DatSet)">
-          <el-input v-model="form.data_set_ref" />
+          <el-select
+            v-model="form.data_set_ref"
+            style="width: 100%"
+            placeholder="请选择数据集"
+            filterable
+          >
+            <el-option
+              v-for="item in availableDataSets"
+              :key="item.ref"
+              :value="item.ref"
+              :label="`${item.name} (${item.member_count} members) — ${item.ref}`"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="配置版本号 (ConfRev)">
           <el-input-number v-model="form.conf_rev" :min="0" controls-position="right" />
@@ -78,10 +90,24 @@ import type { NetworkInterfaceInfo } from '@/api/gooseApi';
 import type { GooseBlockItem } from './gooseWorkbench';
 import { formatGooseTime } from './gooseWorkbench';
 
-const props = defineProps<{ block: GooseBlockItem | null; loading?: boolean; interfaces: NetworkInterfaceInfo[] }>();
+const props = defineProps<{
+  block: GooseBlockItem | null;
+  loading?: boolean;
+  interfaces: NetworkInterfaceInfo[];
+  dataSets: Array<{ ref: string; name: string; member_count: number }>;
+}>();
 const emit = defineEmits<{ (e: 'apply', value: typeof form): void }>();
 const form = reactive({ enabled: false, interface: '', app_id: null as number | null, go_id: '', dst_mac: '', data_set_ref: '', conf_rev: 0, description: '' });
 const appIdHex = ref('');
+const availableDataSets = computed(() => {
+  if (!form.data_set_ref || props.dataSets.some((item) => item.ref === form.data_set_ref)) {
+    return props.dataSets;
+  }
+  return [
+    { ref: form.data_set_ref, name: form.data_set_ref, member_count: 0 },
+    ...props.dataSets,
+  ];
+});
 watch(appIdHex, (value) => {
   form.app_id = parseAppId(value);
 });

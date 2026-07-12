@@ -111,17 +111,19 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
             raise RuntimeError(f"无法为协议 {channel_protocol_type} 创建设备 {device_name}")
         device.name = device_name
 
-        if channel_protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client):
+        # 普通重载/程序启动只恢复设备与 ICD 路径，不自动加载模型。
+        # scl_result 仅在用户主动执行 ICD 导入时传入，属于显式加载操作。
+        if scl_result is not None and channel_protocol_type in (
+            ProtocolType.Iec61850Server,
+            ProtocolType.Iec61850Client,
+        ):
             icd_path = channel.get("icd_path")
             if icd_path and os.path.exists(icd_path):
                 try:
-                    if scl_result is not None:
-                        device.load_iec61850_model(icd_path, scl_result=scl_result)
-                    else:
-                        device.load_iec61850_model(icd_path)
-                    log.info(f"重新加载设备时已自动加载 ICD 模型: {icd_path}")
+                    device.load_iec61850_model(icd_path, scl_result=scl_result)
+                    log.info(f"用户导入 ICD 时显式加载模型: {icd_path}")
                 except Exception as load_err:
-                    log.warning(f"重新加载设备时自动加载 ICD 模型失败: {load_err}")
+                    log.warning(f"用户导入 ICD 时加载模型失败: {load_err}")
         return device
 
     new_device = await asyncio.to_thread(build_device)

@@ -971,13 +971,27 @@ function showEditPublisherDialog(pub: GoosePublisherStatus) {
   createPublisherVisible.value = true;
 }
 
-function parseMac(value: string): number[] | null {
-  if (!value.trim()) return null;
-  const parts = value.trim().split(/[:-]/);
+function parseMac(value: string | number[] | null | undefined): number[] | null {
+  if (Array.isArray(value)) {
+    if (value.length !== 6 || value.some((part) => !Number.isInteger(part) || part < 0 || part > 0xff)) {
+      throw new Error("目标MAC地址格式错误");
+    }
+    return [...value];
+  }
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parts = text.split(/[:-]/);
   if (parts.length !== 6 || parts.some((part) => !/^[0-9a-fA-F]{2}$/.test(part))) {
     throw new Error("目标MAC地址格式错误");
   }
   return parts.map((part) => Number.parseInt(part, 16));
+}
+
+function defaultGooseMulticastMac(appId: number): string {
+  const normalized = Number(appId || 0) & 0xffff;
+  const high = ((normalized >> 8) & 0xff).toString(16).toUpperCase().padStart(2, "0");
+  const low = (normalized & 0xff).toString(16).toUpperCase().padStart(2, "0");
+  return `01:0C:CD:01:${high}:${low}`;
 }
 
 async function savePublisherConfig() {
@@ -1002,7 +1016,11 @@ async function savePublisherConfig() {
       vlan_prio: publisherForm.vlan_prio,
       simulation: publisherForm.simulation,
     });
-    ElMessage.success(t("common.success"));
+    ElMessage.success(
+      publisherForm.dst_mac
+        ? t("common.success")
+        : `保存成功，目标地址留空，自动使用 GOOSE 组播地址 ${defaultGooseMulticastMac(publisherForm.app_id)}`
+    );
     createPublisherVisible.value = false;
     await refreshPublishers();
   } catch (e: any) {
@@ -1034,7 +1052,11 @@ async function createPublisher() {
       channel_id: props.channelId || 0,
       dst_mac: parseMac(publisherForm.dst_mac),
     });
-    ElMessage.success(t("goose.createSuccess"));
+    ElMessage.success(
+      publisherForm.dst_mac
+        ? t("goose.createSuccess")
+        : `创建成功，目标地址留空，自动使用 GOOSE 组播地址 ${defaultGooseMulticastMac(publisherForm.app_id)}`
+    );
     createPublisherVisible.value = false;
     await refreshPublishers();
   } catch (e: any) {
@@ -1407,16 +1429,6 @@ onUnmounted(() => {
   }
 });
 
-// 网络接口切换时自动更新 Destination MAC
-watch(
-  () => publisherForm.interface,
-  (ifaceId) => {
-    const iface = networkInterfaces.value.find((item) => item.id === ifaceId);
-    if (iface?.mac) {
-      publisherForm.dst_mac = iface.mac.replace(/:/g, "-").toUpperCase();
-    }
-  }
-);
 </script>
 
 <style scoped lang="scss">

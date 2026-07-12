@@ -99,13 +99,8 @@ class ServerDataSetManager:
         lln0 = self._builder.ln_map.get(lln0_key)
         log.info(f"register_dataset [{ds_name}]: 查找 LLN0 key={lln0_key}, found={lln0 is not None}")
         if lln0 is None:
-            if ld_inst == self._builder.ld_name:
-                self._builder.ensure_base_ld()
-                lln0 = self._builder.ln_map.get(lln0_key)
-            else:
-                self._builder.get_or_create_ld(ld_inst)
-                lln0 = self._builder.ln_map.get(lln0_key)
-                log.info(f"为 register_dataset 自动创建 LD/LLN0: {ld_inst}")
+            log.error(f"无法注册 DataSet: ICD 模型中不存在 LD/LLN0 (ld_inst={ld_inst})")
+            return False
         if not lln0:
             log.warning(f"无法注册 DataSet: LLN0 未找到 (ld_inst={ld_inst})")
             return False
@@ -163,22 +158,33 @@ class ServerDataSetManager:
             log.warning("无法添加 GSEControlBlock: 模型未初始化")
             return False
 
-        ld_inst = ld_inst or self._builder.ld_name
+        if not ld_inst and data_set_ref and "/" in data_set_ref:
+            ld_inst = data_set_ref.split("/", 1)[0]
+        if not ld_inst:
+            log.error(f"无法注册 GSEControlBlock: 配置未指定 LD, data_set_ref={data_set_ref}")
+            return False
         lln0_key = f"{ld_inst}/LLN0"
         lln0 = self._builder.ln_map.get(lln0_key)
         if lln0 is None:
-            if ld_inst == self._builder.ld_name:
-                self._builder.ensure_base_ld()
-                lln0 = self._builder.ln_map.get(lln0_key)
-            else:
-                self._builder.get_or_create_ld(ld_inst)
-                lln0 = self._builder.ln_map.get(lln0_key)
-                log.info(f"为 GSEControlBlock 自动创建 LD/LLN0: {ld_inst}")
+            log.error(f"无法注册 GSEControlBlock: ICD 模型中不存在 LD/LLN0 (ld_inst={ld_inst})")
+            return False
         if not lln0:
             log.warning(f"无法添加 GSEControlBlock: LLN0 未找到 (ld_inst={ld_inst})")
             return False
 
         try:
+            # GSEControlBlock 在同一 LogicalNode 下必须同名唯一。ICD/SCL
+            # 加载时已经注册过的 GoCB，可能会被“加入发布”接口再次提交；
+            # libiec61850 不会拒绝这个重复节点，但客户端枚举 FC=GO 模型时
+            # 会看到两个同名对象并失败。这里将重复注册处理为幂等复用。
+            existing_gocb = next(
+                (item for item in self._goose_cb_list if item.get("ld_inst") == ld_inst and item.get("name") == name),
+                None,
+            )
+            if existing_gocb is not None:
+                log.info(f"GSEControlBlock 已存在，复用现有模型节点: ld={ld_inst}, name={name}")
+                return True
+
             # 1. 创建或复用 DataSet。ICD 导入会先独立注册全部 DataSet，
             # GSEControlBlock 必须复用同一对象，不能在 LLN0 下创建重名节点。
             ds_name = data_set_ref.split("$")[-1] if "$" in data_set_ref else f"ds{name}"
@@ -346,7 +352,18 @@ class ServerDataSetManager:
                         ld_part, ln_name, model_do_da_part, fc, entry.get("iec_type", "")
                     )
 
-                    variable_ref = f"{ld_part}/{ln_name}${fc}${do_name}"
+                    # DataSetEntry_create expects the native LDevice inst, not
+                    # the already-qualified MMS domain. libiec61850 prefixes
+                    # the IED model name itself, just as LogicalDevice_create
+                    # does. Passing PCS001GC1 here for IED PCS001G creates an
+                    # unresolved entry and can crash directory enumeration.
+                    native_ld_part = ld_part
+                    model_name = getattr(self._builder, "model_name", "")
+                    if model_name and ld_part.startswith(model_name):
+                        unqualified = ld_part[len(model_name) :]
+                        if unqualified:
+                            native_ld_part = unqualified
+                    variable_ref = f"{native_ld_part}/{ln_name}${fc}${do_name}"
                     component_ref = "$".join(component_parts) if component_parts else None
                 else:
                     continue

@@ -107,37 +107,53 @@ export default defineConfig({
                 },
                 {
                     text: 'IEC 61850',
-                    collapsed: true,
+                    collapsed: false,
                     items: [
                         {
-                            text: '架构重构',
+                            text: '核心架构',
                             collapsed: false,
                             items: [
-                                { text: 'GOOSE 按设备作用域全栈重构', link: '/changelog/iec61850/25-goose-device-scoped-refactoring' },
                                 { text: '数据存储与协议流程整改', link: '/changelog/iec61850/18-iec61850-data-storage-optimization-plan' },
                                 { text: '统一模型架构重构', link: '/changelog/iec61850/09-iec61850-unified-model-refactoring' },
-                                { text: 'GOOSE 模块插件化重构', link: '/changelog/iec61850/06-goose-plugin-refactoring' },
                                 { text: '模块化重构计划', link: '/changelog/iec61850/02-iec61850-refactoring-plan' }
                             ]
                         },
                         {
-                            text: '功能开发',
+                            text: 'GOOSE',
                             collapsed: false,
                             items: [
-                                { text: 'MMS 类型识别与标签优化', link: '/changelog/iec61850/21-iec61850-mms-type-tag-ui' },
+                                { text: '专题总览', link: '/changelog/iec61850/goose/' },
+                                { text: '接收、历史与抓包链路重构', link: '/changelog/iec61850/goose/04-receive-history-capture-refactoring' },
+                                { text: '按设备作用域全栈重构', link: '/changelog/iec61850/25-goose-device-scoped-refactoring' },
+                                { text: '模块插件化重构', link: '/changelog/iec61850/06-goose-plugin-refactoring' },
+                                { text: '功能支持', link: '/changelog/iec61850/01-goose-support' }
+                            ]
+                        },
+                        {
+                            text: 'Reports',
+                            collapsed: false,
+                            items: [
+                                { text: '报告功能', link: '/changelog/iec61850/03-iec61850-reports-support' },
                                 { text: 'Reports 树形数据展示重构', link: '/changelog/iec61850/17-iec61850-report-tree-ui-refactoring' },
-                                { text: '前端 UI 设计', link: '/changelog/iec61850/10-iec61850-frontend-ui-design' },
-                                { text: '文件下载服务模块', link: '/changelog/iec61850/05-iec61850-file-download-module' },
-                                { text: 'Reports 报告功能', link: '/changelog/iec61850/03-iec61850-reports-support' },
-                                { text: 'GOOSE 功能支持', link: '/changelog/iec61850/01-goose-support' }
+                                { text: '报告回调崩溃与禁用修复', link: '/changelog/iec61850/15-iec61850-report-callback-crash-fix' },
+                                { text: '报告 GI 与 DataSet 读取修复', link: '/changelog/iec61850/16-iec61850-report-gi-dataset-read-fix' },
+                                { text: '服务端总召唤与主动报告修复', link: '/changelog/iec61850/19-iec61850-server-gi-spontaneous-report-fix' },
+                                { text: 'DataSet 批读进度与软件 GI', link: '/changelog/iec61850/22-iec61850-dataset-batch-read-progress-gi-fix' },
+                                { text: '报告与 DataModel 并发修复', link: '/changelog/iec61850/23-iec61850-report-datamodel-concurrency-crash-fix' }
                             ]
                         },
                         {
                             text: '模型与发现',
                             collapsed: false,
                             items: [
+                                { text: 'SCL 文件模块（历史）', link: '/changelog/iec61850/04-iec61850-scl-file-module' },
+                                { text: '文件下载服务模块', link: '/changelog/iec61850/05-iec61850-file-download-module' },
+                                { text: 'SCL 重构实施（历史）', link: '/changelog/iec61850/07-iec61850-scl-refactoring-implementation' },
+                                { text: '模型导出优化（历史）', link: '/changelog/iec61850/08-iec61850-model-export-optimization' },
                                 { text: '元数据按需读取', link: '/changelog/iec61850/12-iec61850-metadata-reader' },
-                                { text: '测点注册表精简优化', link: '/changelog/iec61850/11-iec61850-point-registry-optimization' }
+                                { text: '测点注册表精简优化', link: '/changelog/iec61850/11-iec61850-point-registry-optimization' },
+                                { text: 'ICD 导出器修复', link: '/changelog/iec61850/14-iec61850-icd-exporter-fix' },
+                                { text: 'MMS 类型识别与标签优化', link: '/changelog/iec61850/21-iec61850-mms-type-tag-ui' }
                             ]
                         },
                         {
@@ -145,20 +161,15 @@ export default defineConfig({
                             collapsed: false,
                             items: [
                                 { text: '超大模型性能、超时与服务状态治理', link: '/changelog/iec61850/24-iec61850-large-model-performance-timeout-fix' },
+                                { text: '客户端模型发现进度修复', link: '/changelog/iec61850/20-iec61850-client-discovery-progress-fix' },
                                 { text: '模型发现性能优化', link: '/changelog/iec61850/13-iec61850-discovery-performance-optimization' }
                             ]
                         },
                         {
-                            text: 'Bug 修复',
-                            collapsed: false,
+                            text: '界面与交互',
+                            collapsed: true,
                             items: [
-                                { text: '报告与 DataModel 并发崩溃修复', link: '/changelog/iec61850/23-iec61850-report-datamodel-concurrency-crash-fix' },
-                                { text: 'DataSet 批读进度与软件 GI 修复', link: '/changelog/iec61850/22-iec61850-dataset-batch-read-progress-gi-fix' },
-                                { text: '客户端模型发现进度修复', link: '/changelog/iec61850/20-iec61850-client-discovery-progress-fix' },
-                                { text: '服务端总召唤与主动报告修复', link: '/changelog/iec61850/19-iec61850-server-gi-spontaneous-report-fix' },
-                                { text: '报告 GI 与 DataSet 读取修复', link: '/changelog/iec61850/16-iec61850-report-gi-dataset-read-fix' },
-                                { text: '报告回调崩溃与禁用逻辑修复', link: '/changelog/iec61850/15-iec61850-report-callback-crash-fix' },
-                                { text: 'ICD 导出器修复', link: '/changelog/iec61850/14-iec61850-icd-exporter-fix' }
+                                { text: 'IEC 61850 前端 UI 设计', link: '/changelog/iec61850/10-iec61850-frontend-ui-design' }
                             ]
                         }
                     ]

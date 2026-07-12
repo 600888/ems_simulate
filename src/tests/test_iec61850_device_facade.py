@@ -26,7 +26,7 @@ class IEC61850DeviceFacadeTests(unittest.TestCase):
         device.protocol_handler = handler
 
         self.assertTrue(device.load_iec61850_model("client.icd"))
-        handler.load_model_from_icd.assert_called_once_with("client.icd")
+        handler.load_model_from_icd.assert_called_once_with("client.icd", scl_result=None)
 
     def test_server_model_load_delegates_to_server_handler(self):
         device = Device(ProtocolType.Iec61850Server)
@@ -35,7 +35,29 @@ class IEC61850DeviceFacadeTests(unittest.TestCase):
         device.protocol_handler = handler
 
         self.assertTrue(device.load_iec61850_model("server.icd"))
-        handler.load_model.assert_called_once_with("server.icd")
+        handler.load_model.assert_called_once_with("server.icd", scl_result=None)
+
+    def test_server_model_load_populates_goose_discovery_cache(self):
+        handler = IEC61850ServerHandler()
+        handler._server = Mock()
+        handler._server.load_model.return_value = True
+        handler._server.get_discovered_goose_items.return_value = [
+            {"go_cb_ref": "LD0/LLN0$GO$gcb1", "data_set_ref": "LD0/LLN0$ds1"}
+        ]
+        handler._server.browse_datasets.return_value = [{"ref": "LD0/LLN0$ds1"}]
+
+        self.assertTrue(handler.load_model("server.icd"))
+        self.assertEqual(handler._discovered_goose_items[0]["go_cb_ref"], "LD0/LLN0$GO$gcb1")
+        self.assertEqual(handler._discovered_datasets, [{"ref": "LD0/LLN0$ds1"}])
+
+    def test_failed_server_model_load_keeps_existing_discovery_cache(self):
+        handler = IEC61850ServerHandler()
+        handler._server = Mock()
+        handler._server.load_model.return_value = False
+        handler._discovered_goose_items.append({"go_cb_ref": "existing"})
+
+        self.assertFalse(handler.load_model("broken.icd"))
+        self.assertEqual(handler._discovered_goose_items, [{"go_cb_ref": "existing"}])
 
     def test_discovered_points_are_loaded_into_memory_table(self):
         device = Device(ProtocolType.Iec61850Client)

@@ -58,6 +58,7 @@ class IEC61850Server:
         self._model_loaded = False
         self._loaded_icd_path: str = ""
         self._last_import_result = None
+        self._loaded_ied_ld_insts: set[str] = set()
 
     # ===== 向后兼容属性: 委托给 builder =====
 
@@ -302,6 +303,7 @@ class IEC61850Server:
         self._model_loaded = False
         self._loaded_icd_path = ""
         self._last_import_result = None
+        self._loaded_ied_ld_insts.clear()
         log.info("数据模型已重置，默认 GenericLD 已清除")
 
     # ===== 整改 v2.0: 模型加载与设备启动分离 =====
@@ -342,11 +344,47 @@ class IEC61850Server:
         self.ied_name = ied_name
         self.model_name = ied_name
 
+        # An SCD/CID may contain multiple IEDs. One IEC61850Server instance
+        # represents exactly one IED; mixing foreign LDs into this native
+        # IedModel creates invalid MMS domains and can crash libiec61850 while
+        # a client enumerates variable specifications.
+        selected_ld_insts: set[str] = set()
+        for doc_ied in getattr(result.doc, "ieds", []):
+            if doc_ied.name != ied_name:
+                continue
+            for access_point in doc_ied.access_points:
+                if access_point.server:
+                    selected_ld_insts.update(ld.inst for ld in access_point.server.ldevices)
+        self._loaded_ied_ld_insts = selected_ld_insts
+
+        def _point_belongs_to_loaded_ied(point: Any) -> bool:
+            ld_inst = point.reg_addr.split("/", 1)[0]
+            return not selected_ld_insts or ld_inst in selected_ld_insts
+
+        loaded_points = [
+            point
+            for point in (
+                result.points.yc_points + result.points.yx_points + result.points.yk_points + result.points.yt_points
+            )
+            if _point_belongs_to_loaded_ied(point)
+        ]
+        loaded_gse_controls = [
+            gse for gse in result.goose.gse_controls if not selected_ld_insts or gse.ld_inst in selected_ld_insts
+        ]
+        loaded_pure_datasets = [
+            dataset
+            for dataset in result.goose.pure_datasets
+            if not selected_ld_insts or dataset.get("ld_inst", "") in selected_ld_insts
+        ]
+        loaded_report_controls = [
+            report
+            for report in result.reports.report_controls
+            if not selected_ld_insts or report.ld_inst in selected_ld_insts
+        ]
+
         # 为每个逻辑设备创建 LD
         seen_lds: set[str] = set()
-        for point in (
-            result.points.yc_points + result.points.yx_points + result.points.yk_points + result.points.yt_points
-        ):
+        for point in loaded_points:
             address = point.reg_addr
             if "/" not in address:
                 continue
@@ -381,15 +419,23 @@ class IEC61850Server:
             )
 
         for point in result.points.yc_points:
+            if not _point_belongs_to_loaded_ied(point):
+                continue
             if _register_point(point, 0, "MX"):
                 registered_count += 1
         for point in result.points.yx_points:
+            if not _point_belongs_to_loaded_ied(point):
+                continue
             if _register_point(point, 1, "ST"):
                 registered_count += 1
         for point in result.points.yk_points:
+            if not _point_belongs_to_loaded_ied(point):
+                continue
             if _register_point(point, 2, "CO"):
                 registered_count += 1
         for point in result.points.yt_points:
+            if not _point_belongs_to_loaded_ied(point):
+                continue
             if _register_point(point, 3, "CO"):
                 registered_count += 1
         log.info(f"已注册 {registered_count} 个测点到数据模型")
@@ -400,17 +446,33 @@ class IEC61850Server:
 
         def _fcda_to_entry(member: dict) -> dict:
             """将 FCDA member dict 转换为 register_dataset 所需的 entry 格式"""
-            return {
-                "name": member.get("fcda_ref", member.get("name", "")),
-                "fc": member.get("fc", "MX"),
-            }
+            member_ref = member.get("fcda_ref", member.get("name", ""))
+            member_fc = member.get("fc", "MX")
+            member_iec_type = member.get("iec_type", "")
+
+            # An FCDA can reference an entire structured DO with daName
+            # omitted. Resolve that reference to the matching FC leaf in the
+            # dynamic model. Leaving the native DataSetEntry component empty
+            # for this shape produces an invalid reference in libiec61850.
+            path_after_ln = member_ref.split("/", 1)[-1]
+            if path_after_ln.count(".") == 1:
+                prefix = f"{member_ref}."
+                candidates = [
+                    point
+                    for point in loaded_points
+                    if point.reg_addr.startswith(prefix) and (not member_fc or point.fc == member_fc)
+                ]
+                if candidates:
+                    member_ref = candidates[0].reg_addr
+                    member_iec_type = candidates[0].iec_type
+            return {"name": member_ref, "fc": member_fc, "iec_type": member_iec_type}
 
         # 纯 DataSet（未被 GOOSE/Report 引用）
-        for pd in result.goose.pure_datasets:
+        for pd in loaded_pure_datasets:
             ref = pd.get("ds_ref", "")
             if ref and ref not in seen_ds_refs:
                 seen_ds_refs.add(ref)
-                entries = pd.get("entries", [])
+                entries = [_fcda_to_entry(entry) for entry in pd.get("entries", [])]
                 self._ds_manager.register_dataset(
                     ld_inst=pd.get("ld_inst", ""),
                     ds_name=pd.get("ds_name", ""),
@@ -419,7 +481,7 @@ class IEC61850Server:
                 )
 
         # GOOSE 控制块引用的 DataSet
-        for gse in result.goose.gse_controls:
+        for gse in loaded_gse_controls:
             # data_set_ref 在 GseControlInfo 中可能为空（to_publisher_dict 动态计算但属性未设值）
             ref = gse.data_set_ref
             if not ref and gse.dat_set:
@@ -437,7 +499,7 @@ class IEC61850Server:
                 )
 
         # Report 引用的 DataSet
-        for rc in result.reports.report_controls:
+        for rc in loaded_report_controls:
             ref = rc.data_set_ref
             if ref and ref not in seen_ds_refs:
                 seen_ds_refs.add(ref)
@@ -452,7 +514,7 @@ class IEC61850Server:
 
         # 4b. 注册 GOOSE 控制块（带 _type 标记，确保 apply_pending 能正确处理）
         self._ds_manager.pending_registrations.clear()
-        for gse in result.goose.gse_controls:
+        for gse in loaded_gse_controls:
             pub = gse.to_publisher_dict()
             pub["_type"] = "gocb"
             self._ds_manager.pending_registrations.append(pub)
@@ -462,7 +524,7 @@ class IEC61850Server:
 
         # 6. 应用 Report 配置（去重，RptEnabled max 多实例展开后防止重复）
         seen_rcb_names: set[tuple[str, str, str]] = set()
-        for rc in result.reports.report_controls:
+        for rc in loaded_report_controls:
             rcb_key = (rc.ld_inst, rc.ln_name or "LLN0", rc.name)
             if rcb_key in seen_rcb_names:
                 continue
@@ -500,12 +562,28 @@ class IEC61850Server:
         if not self._model_loaded or self._last_import_result is None:
             return {"yc_points": [], "yx_points": [], "yk_points": [], "yt_points": []}
         result = self._last_import_result
+
+        def _loaded(points: list[Any]) -> list[Any]:
+            if not self._loaded_ied_ld_insts:
+                return points
+            return [point for point in points if point.reg_addr.split("/", 1)[0] in self._loaded_ied_ld_insts]
+
         return {
-            "yc_points": result.points.yc_points,
-            "yx_points": result.points.yx_points,
-            "yk_points": result.points.yk_points,
-            "yt_points": result.points.yt_points,
+            "yc_points": _loaded(result.points.yc_points),
+            "yx_points": _loaded(result.points.yx_points),
+            "yk_points": _loaded(result.points.yk_points),
+            "yt_points": _loaded(result.points.yt_points),
         }
+
+    def get_discovered_goose_items(self) -> list[dict[str, Any]]:
+        """Return loaded GoCBs in the shape consumed by the discovery API."""
+        if not self._model_loaded or self._last_import_result is None:
+            return []
+        return [
+            gse.to_subscription_dict()
+            for gse in self._last_import_result.goose.gse_controls
+            if not self._loaded_ied_ld_insts or gse.ld_inst in self._loaded_ied_ld_insts
+        ]
 
     def start_device(self) -> bool:
         """启动 MMS 服务（模型必须已加载）
@@ -629,7 +707,7 @@ class IEC61850Server:
             self._is_running = False
             return False
 
-    def start(self, register_default_rcbs: bool = True):
+    def start(self, register_default_rcbs: bool = False):
         """启动 IEC 61850 MMS 服务器
 
         v3.0+: 必须先通过 load_model() 加载 ICD 模型才能启动，不再支持默认 GenericLD 模型。
@@ -648,9 +726,7 @@ class IEC61850Server:
             return
 
         if register_default_rcbs:
-            self._register_default_rcbs()
-        else:
-            log.info("跳过默认 RCB 注册 (register_default_rcbs=False，ICD 已提供 RCB 配置)")
+            log.warning("register_default_rcbs 已停用：服务端不再创建任何默认 LD/RCB")
         self._apply_pending_registrations()
 
         log.info(
@@ -971,9 +1047,8 @@ class IEC61850Server:
         注意: 依赖 libIEC61850 的 ReportControlBlock_create API，
         部分版本可能未暴露此 API 到 Python SWIG。
         """
-        if not self._builder.model:
-            log.debug("_register_default_rcbs: 模型未初始化，跳过")
-            return
+        log.warning("默认 RCB/LD 自动创建已停用；仅使用 ICD/SCL 中声明的模型")
+        return
 
         # 检查模型中是否已有用户自定义的 LD（来自 ICD 导入等）。
         # 如果已有，说明用户使用了 ICD 自定义模型，跳过默认 GenericLD 的创建。

@@ -63,8 +63,11 @@
           </el-select>
         </el-form-item>
         <el-form-item label="GOOSE标识符 (GoID)"><el-input v-model="form.go_id" /></el-form-item>
-        <el-form-item label="目标地址 (DstAddress/Addr)">
-          <el-input v-model="form.dst_mac" placeholder="01:0C:CD:01:00:01" />
+        <el-form-item label="目标组播地址 (可选)">
+          <el-input
+            v-model="form.dst_mac"
+            :placeholder="`留空则按 APPID 自动使用 ${defaultMulticastMac}`"
+          />
         </el-form-item>
         <el-form-item label="应用标识 (APPID)"
           ><el-input-number
@@ -159,6 +162,10 @@ const availableDataSets = computed(() => {
     { ref: form.data_set_ref, name: form.data_set_ref, member_count: 0 },
     ...props.dataSets,
   ];
+});
+const defaultMulticastMac = computed(() => {
+  const appId = Number(form.app_id || 0) & 0xffff;
+  return `01:0C:CD:01:${((appId >> 8) & 0xff).toString(16).toUpperCase().padStart(2, "0")}:${(appId & 0xff).toString(16).toUpperCase().padStart(2, "0")}`;
 });
 watch(
   () => props.block?.key,

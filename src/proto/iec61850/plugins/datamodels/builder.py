@@ -109,29 +109,27 @@ class IedModelBuilder:
     # ===== LD/LN 管理 =====
 
     def ensure_base_ld(self):
-        """懒创建默认 LD 及其逻辑节点"""
-        if self._ld is not None:
-            return
-        self._ld = iec61850.LogicalDevice_create(self.ld_name, self._model)
-        self._lln0 = iec61850.LogicalNode_create("LLN0", self._ld)
-        self._mmxu = iec61850.LogicalNode_create("MMXU1", self._ld)
-        self._ggio1 = iec61850.LogicalNode_create("GGIO1", self._ld)
-        self._ggio2 = iec61850.LogicalNode_create("GGIO2", self._ld)
-        self._ld_map[self.ld_name] = self._ld
-        self._ln_map[f"{self.ld_name}/LLN0"] = self._lln0
-        self._ln_map[f"{self.ld_name}/MMXU1"] = self._mmxu
-        self._ln_map[f"{self.ld_name}/GGIO1"] = self._ggio1
-        self._ln_map[f"{self.ld_name}/GGIO2"] = self._ggio2
+        """Default LD creation is intentionally unsupported."""
+        raise RuntimeError("禁止自动创建默认 LD；请先从 ICD/SCL 加载真实模型")
 
     def get_or_create_ld(self, ld_inst: str):
         """获取或创建逻辑设备"""
         if ld_inst in self._ld_map:
             return self._ld_map[ld_inst]
-        ld = iec61850.LogicalDevice_create(ld_inst, self._model)
+        # libiec61850 builds an MMS domain as ``IED name + LD inst``. SCL
+        # transforms already use qualified domains (for example PCS001GC1),
+        # so pass only C1 to the native model and retain the qualified value
+        # as the Python-side lookup key.
+        native_ld_inst = ld_inst
+        if self.model_name and ld_inst.startswith(self.model_name):
+            unqualified = ld_inst[len(self.model_name) :]
+            if unqualified:
+                native_ld_inst = unqualified
+        ld = iec61850.LogicalDevice_create(native_ld_inst, self._model)
         lln0 = iec61850.LogicalNode_create("LLN0", ld)
         self._ld_map[ld_inst] = ld
         self._ln_map[f"{ld_inst}/LLN0"] = lln0
-        log.info(f"IEC61850 动态创建逻辑设备: {ld_inst}")
+        log.info(f"IEC61850 动态创建逻辑设备: domain={ld_inst}, inst={native_ld_inst}")
         return ld
 
     def get_or_create_ln(self, ld_inst: str, ln_name: str):
@@ -173,7 +171,8 @@ class IedModelBuilder:
 
     def _add_point_simple(self, address, frame_type: int) -> str | None:
         """简单地址模式: 使用固定结构添加测点"""
-        self.ensure_base_ld()
+        log.error(f"拒绝简单地址测点，避免自动创建默认 LD: address={address}, frame_type={frame_type}")
+        return None
         addr_str = str(address)
         safe_addr = str(address).replace(".", "_").replace("/", "_").replace("\\", "_").replace("-", "_")
         ref = None

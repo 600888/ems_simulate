@@ -7,7 +7,10 @@
 from __future__ import annotations
 
 import contextlib
+import platform
+import struct
 import threading
+import time
 from typing import Any
 
 from ...defs.constants import HAS_IEC61850
@@ -31,9 +34,6 @@ class _IecApiAdapter:
     封装 _call_iec 的版本兼容逻辑，处理不同 pyiec61850 绑定之间的
     函数命名差异 (如 setAppid vs setAppId)。
     """
-
-    def __init__(self, publisher_obj: Any):
-        self._pub = publisher_obj
 
     def call(self, name: str, *args) -> tuple[bool, Any]:
         """安全调用 iec61850 函数，自动大小写兜底
@@ -100,6 +100,7 @@ class GoosePublisher:
         self._comm_params: Any = None
         self._is_running = False
         self._is_created = False
+        self._uses_npcap_transport = False
 
         # 定时重发
         self._retransmit_interval = config.time_allowed_to_live / 2000.0
@@ -236,9 +237,48 @@ class GoosePublisher:
             except AttributeError:
                 self._comm_params = None
 
+        if self._comm_params is None:
+            raise RuntimeError("当前 pyiec61850 不支持 GOOSE CommParameters")
+
+        # libiec61850 consumes all Ethernet parameters when
+        # GoosePublisher_create is called. Setting them on the publisher
+        # afterwards is too late (and those setters do not exist in the
+        # standard API).
+        self._comm_params.appId = int(self._config.app_id) & 0xFFFF
+        self._comm_params.vlanId = int(self._config.vlan_id) & 0x0FFF
+        self._comm_params.vlanPriority = int(self._config.vlan_prio) & 0x07
+
+        if len(self._dst_mac) != 6:
+            raise ValueError(f"GOOSE 目标 MAC 必须为 6 字节: {self._dst_mac}")
+        set_dst_address = getattr(iec61850, "CommParameters_setDstAddress", None)
+        if callable(set_dst_address):
+            set_dst_address(self._comm_params, *(int(value) & 0xFF for value in self._dst_mac))
+        else:
+            # Compatibility fallback for bindings exposing only the SWIG
+            # unsigned-char pointer.
+            import ctypes
+
+            mac_ptr = int(self._comm_params.dstAddress)
+            for index, value in enumerate(self._dst_mac):
+                ctypes.memset(mac_ptr + index, int(value) & 0xFF, 1)
+
     def _create_publisher(self) -> None:
         """创建底层 GOOSE Publisher 对象"""
         if self._is_created:
+            return
+
+        # The bundled Windows libiec61850 uses the legacy WinPcap adapter
+        # index API. With modern Npcap it can return success while no frame is
+        # transmitted. Receiver/capture already use Scapy/Npcap on Windows;
+        # use the same reliable transport for publishing.
+        if platform.system() == "Windows":
+            try:
+                from scapy.all import sendp  # noqa: F401
+            except ImportError as exc:
+                raise RuntimeError("Windows GOOSE 发布需要安装 Scapy/Npcap") from exc
+            self._publisher = object()
+            self._uses_npcap_transport = True
+            self._is_created = True
             return
 
         self._create_comm_parameters()
@@ -246,7 +286,7 @@ class GoosePublisher:
         if not self._publisher:
             raise RuntimeError(f"GOOSE Publisher 创建失败, interface={self._config.interface}")
 
-        adapter = _IecApiAdapter(self._publisher)
+        adapter = _IecApiAdapter()
 
         # 设置 GOOSE 控制块属性
         if self._config.go_cb_ref:
@@ -261,24 +301,6 @@ class GoosePublisher:
         adapter.call("GoosePublisher_setStNum", self._publisher, self._st_num)
         adapter.call("GoosePublisher_setSqNum", self._publisher, self._sq_num)
         adapter.call("GoosePublisher_setSimulation", self._publisher, self._config.simulation)
-
-        # 设置目标 MAC
-        if len(self._dst_mac) == 6:
-            adapter.call("GoosePublisher_setDstMac", self._publisher, self._dst_mac)
-
-        # 设置 APPID (大小写兼容)
-        ok, _ = adapter.call("GoosePublisher_setAppid", self._publisher, self._config.app_id)
-        if not ok:
-            adapter.call("GoosePublisher_setAppId", self._publisher, self._config.app_id)
-
-        # 设置 VLAN
-        if self._config.vlan_id > 0:
-            ok, _ = adapter.call(
-                "GoosePublisher_setVlanTag", self._publisher, self._config.vlan_id, self._config.vlan_prio
-            )
-            if not ok:
-                adapter.call("GoosePublisher_setVlanId", self._publisher, self._config.vlan_id)
-                adapter.call("GoosePublisher_setVlanPriority", self._publisher, self._config.vlan_prio)
 
         self._is_created = True
 
@@ -310,6 +332,15 @@ class GoosePublisher:
             self._create_publisher()
             self._is_running = True
 
+            # Perform one real send before reporting success. Previously the
+            # API returned “started” after allocating the native object even
+            # when opening the adapter or transmitting frames failed later in
+            # the background thread.
+            if not self.publish():
+                raise RuntimeError(f"首次 GOOSE 报文发送失败，请检查 Npcap、管理员权限和网卡: {self._config.interface}")
+            with self._lock:
+                self._sq_num += 1
+
             # 启动定时重发线程
             self._retransmit_stop.clear()
             self._retransmit_thread = threading.Thread(target=self._retransmit_loop, daemon=True)
@@ -320,6 +351,7 @@ class GoosePublisher:
         except Exception as e:
             log.error(f"GOOSE Publisher 启动失败: {e}")
             self._is_running = False
+            self._destroy_publisher()
             return False
 
     def stop(self) -> None:
@@ -336,9 +368,106 @@ class GoosePublisher:
     def _destroy_publisher(self) -> None:
         """销毁底层 Publisher"""
         if self._publisher:
-            iec61850.GoosePublisher_destroy(self._publisher)
+            if not self._uses_npcap_transport:
+                iec61850.GoosePublisher_destroy(self._publisher)
             self._publisher = None
+        self._uses_npcap_transport = False
         self._is_created = False
+
+    @staticmethod
+    def _ber_length(length: int) -> bytes:
+        if length < 0x80:
+            return bytes([length])
+        encoded = length.to_bytes((length.bit_length() + 7) // 8, "big")
+        return bytes([0x80 | len(encoded)]) + encoded
+
+    @classmethod
+    def _ber_tlv(cls, tag: int, value: bytes) -> bytes:
+        return bytes([tag]) + cls._ber_length(len(value)) + value
+
+    @staticmethod
+    def _unsigned_bytes(value: int) -> bytes:
+        value = max(0, int(value))
+        encoded = value.to_bytes(max(1, (value.bit_length() + 7) // 8), "big")
+        if encoded[0] & 0x80:
+            encoded = b"\x00" + encoded
+        return encoded
+
+    @staticmethod
+    def _signed_bytes(value: int) -> bytes:
+        value = int(value)
+        size = max(1, (value.bit_length() + 8) // 8)
+        encoded = value.to_bytes(size, "big", signed=True)
+        while len(encoded) > 1 and (
+            (encoded[0] == 0 and not encoded[1] & 0x80) or (encoded[0] == 0xFF and encoded[1] & 0x80)
+        ):
+            encoded = encoded[1:]
+        return encoded
+
+    @staticmethod
+    def _utc_time(timestamp_ms: int) -> bytes:
+        seconds, milliseconds = divmod(max(0, int(timestamp_ms)), 1000)
+        fraction = int(milliseconds / 1000 * (1 << 24))
+        return seconds.to_bytes(4, "big") + fraction.to_bytes(3, "big") + b"\x0a"
+
+    def _encode_mms_data(self, entry: GooseDataSetEntry) -> bytes:
+        if entry.iec_type == IecDataType.BOOLEAN:
+            return self._ber_tlv(0x83, b"\xff" if bool(entry.value) else b"\x00")
+        if entry.iec_type == IecDataType.INTEGER:
+            return self._ber_tlv(0x85, self._signed_bytes(int(entry.value or 0)))
+        if entry.iec_type == IecDataType.FLOAT:
+            return self._ber_tlv(0x87, b"\x08" + struct.pack(">f", float(entry.value or 0.0)))
+        if entry.iec_type == IecDataType.STRING:
+            return self._ber_tlv(0x8A, str(entry.value or "").encode("utf-8"))
+        if entry.iec_type == IecDataType.BITSTRING:
+            value = int(entry.value or 0) & 0x0F
+            return self._ber_tlv(0x84, bytes([4, value << 4]))
+        if entry.iec_type == IecDataType.TIMESTAMP:
+            return self._ber_tlv(0x91, self._utc_time(int(entry.value or 0)))
+        return self._ber_tlv(0x83, b"\x00")
+
+    def _build_goose_payload(self) -> bytes:
+        now_ms = int(time.time() * 1000)
+        all_data = b"".join(self._encode_mms_data(entry) for entry in self._entries)
+        fields = b"".join(
+            [
+                self._ber_tlv(0x80, self._config.go_cb_ref.encode("utf-8")),
+                self._ber_tlv(0x81, self._unsigned_bytes(self._config.time_allowed_to_live)),
+                self._ber_tlv(0x82, self._config.data_set_ref.encode("utf-8")),
+                self._ber_tlv(0x83, self._config.go_id.encode("utf-8")),
+                self._ber_tlv(0x84, self._utc_time(now_ms)),
+                self._ber_tlv(0x85, self._unsigned_bytes(self._st_num)),
+                self._ber_tlv(0x86, self._unsigned_bytes(self._sq_num)),
+                self._ber_tlv(0x87, b"\xff" if self._config.simulation else b"\x00"),
+                self._ber_tlv(0x88, self._unsigned_bytes(self._config.conf_rev)),
+                self._ber_tlv(0x89, b"\x00"),
+                self._ber_tlv(0x8A, self._unsigned_bytes(len(self._entries))),
+                self._ber_tlv(0xAB, all_data),
+            ]
+        )
+        pdu = self._ber_tlv(0x61, fields)
+        goose_length = 8 + len(pdu)
+        header = struct.pack(">HHHH", self._config.app_id & 0xFFFF, goose_length, 0, 0)
+        return header + pdu
+
+    def _publish_with_npcap(self) -> bool:
+        try:
+            from scapy.all import Dot1Q, Ether, Raw, sendp
+
+            dst = ":".join(f"{value:02x}" for value in self._dst_mac)
+            if self._config.vlan_id > 0:
+                frame = (
+                    Ether(dst=dst)
+                    / Dot1Q(prio=self._config.vlan_prio, vlan=self._config.vlan_id, type=0x88B8)
+                    / Raw(self._build_goose_payload())
+                )
+            else:
+                frame = Ether(dst=dst, type=0x88B8) / Raw(self._build_goose_payload())
+            sendp(frame, iface=self._config.interface, count=1, verbose=False)
+            return True
+        except Exception as e:
+            log.error(f"GOOSE Npcap 发布失败: interface={self._config.interface}, error={e}")
+            return False
 
     def _retransmit_loop(self) -> None:
         """定时重发循环 (按照 IEC 61850 规范，GOOSE 应周期性重发)"""
@@ -363,6 +492,12 @@ class GoosePublisher:
                 if not self._is_created:
                     self._destroy_publisher()
                     self._create_publisher()
+
+                if self._uses_npcap_transport:
+                    result = self._publish_with_npcap()
+                    if result:
+                        log.debug(f"GOOSE 发布成功 (Npcap): stNum={self._st_num}, sqNum={self._sq_num}")
+                    return result
 
                 # 创建 LinkedList 并填充 MMS 值
                 data_set_values = iec61850.LinkedList_create()

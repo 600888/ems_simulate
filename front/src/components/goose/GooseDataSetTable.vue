@@ -27,20 +27,61 @@
           formatValue(row.previous_value)
         }}</template></el-table-column
       >
-      <el-table-column label="当前值" min-width="140">
-        <template #default="{ row }"
-          ><strong>{{ formatValue(row.value) }}</strong
-          ><el-tag v-if="row.changed" type="warning" size="small" class="changed-tag"
-            >已变化</el-tag
-          ></template
-        >
+      <el-table-column label="当前值" min-width="180">
+        <template #default="{ row }">
+          <template v-if="editable">
+            <el-switch
+              v-if="row.type === 'boolean'"
+              v-model="row.value"
+              :loading="updatingIndex === row.index"
+              @change="updateValue(row)"
+            />
+            <el-input-number
+              v-else-if="row.type === 'integer' || row.type === 'float' || row.type === 'timestamp'"
+              v-model="row.value"
+              :step="row.type === 'float' ? 0.1 : 1"
+              :precision="row.type === 'float' ? 6 : 0"
+              :disabled="updatingIndex === row.index"
+              controls-position="right"
+              style="width: 100%"
+              @change="updateValue(row)"
+            />
+            <el-input
+              v-else
+              v-model="row.value"
+              :disabled="updatingIndex === row.index"
+              @change="updateValue(row)"
+            />
+          </template>
+          <template v-else>
+            <strong>{{ formatValue(row.value) }}</strong>
+            <el-tag v-if="row.changed" type="warning" size="small" class="changed-tag">
+              已变化
+            </el-tag>
+          </template>
+        </template>
       </el-table-column>
     </el-table>
   </div>
 </template>
 <script setup lang="ts">
 import type { GooseSubscriptionDataValue } from "@/api/gooseApi";
-defineProps<{ values: GooseSubscriptionDataValue[] }>();
+const props = defineProps<{
+  values: GooseSubscriptionDataValue[];
+  editable?: boolean;
+  updatingIndex?: number | null;
+}>();
+const emit = defineEmits<{
+  (event: "update-value", payload: { index: number; value: string | number | boolean }): void;
+}>();
+function updateValue(row: GooseSubscriptionDataValue) {
+  if (props.editable && ["string", "number", "boolean"].includes(typeof row.value)) {
+    emit("update-value", {
+      index: row.index,
+      value: row.value as string | number | boolean,
+    });
+  }
+}
 function formatValue(value: unknown) {
   if (value === null || value === undefined) return "-";
   return typeof value === "object" ? JSON.stringify(value) : String(value);

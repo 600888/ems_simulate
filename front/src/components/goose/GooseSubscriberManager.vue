@@ -75,6 +75,7 @@
                 :block="selected"
                 :loading="applying"
                 :interfaces="networkInterfaces"
+                :data-sets="dataSets"
                 @apply="applySubscriptionConfig"
               />
             </el-tab-pane>
@@ -96,7 +97,12 @@
                   <span>数据集：{{ selected.data_set_ref || "-" }}</span>
                   <span>值：{{ selected.data_values.length }}</span>
                 </div>
-                <GooseDataSetTable :values="selected.data_values" />
+                <GooseDataSetTable
+                  :values="selected.data_values"
+                  :editable="selected.kind === 'publisher'"
+                  :updating-index="updatingEntryIndex"
+                  @update-value="updatePublisherDataValue"
+                />
               </div>
             </el-tab-pane>
 
@@ -159,6 +165,7 @@ import {
   startGoosePublisher,
   stopGoosePublisher,
   publishGooseNow,
+  updateGoosePublisherEntry,
   deleteGoosePublisher,
   removeGooseSubscription,
   stopGooseReceiver,
@@ -187,6 +194,7 @@ const history = ref<GooseMessageHistoryItem[]>([]);
 const selectedHistory = ref<GooseMessageHistoryItem | null>(null);
 const loading = ref(false);
 const applying = ref(false);
+const updatingEntryIndex = ref<number | null>(null);
 const autoRefresh = ref(true);
 const pollInterval = ref(2000);
 const batchMode = ref(false);
@@ -274,6 +282,22 @@ async function publishSelected() {
   }
 }
 
+async function updatePublisherDataValue(payload: { index: number; value: string | number | boolean }) {
+  const block = selected.value;
+  if (block?.kind !== 'publisher' || !block.publisher) return;
+  updatingEntryIndex.value = payload.index;
+  try {
+    await updateGoosePublisherEntry(block.publisher.id, payload.index, payload.value);
+    await loadBlocks(false);
+    ElMessage.success('数据集值已更新');
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '数据集值更新失败');
+    await loadBlocks(false);
+  } finally {
+    updatingEntryIndex.value = null;
+  }
+}
+
 async function deleteSelected() {
   const block = selected.value;
   if (!props.channelId || !block) return;
@@ -305,6 +329,13 @@ function parseMac(value: string): number[] | null {
     throw new Error('目标MAC地址格式错误');
   }
   return parts.map((item) => Number.parseInt(item, 16));
+}
+
+function defaultGooseMulticastMac(appId: number): string {
+  const normalized = Number(appId || 0) & 0xffff;
+  const high = ((normalized >> 8) & 0xff).toString(16).toUpperCase().padStart(2, '0');
+  const low = (normalized & 0xff).toString(16).toUpperCase().padStart(2, '0');
+  return `01:0C:CD:01:${high}:${low}`;
 }
 
 async function applyPublisherConfig(form: {
@@ -340,7 +371,11 @@ async function applyPublisherConfig(form: {
       simulation: form.simulation,
     });
     if (form.enabled) await startGoosePublisher(props.channelId, publisherId);
-    ElMessage.success('GOOSE 发布配置已应用');
+    ElMessage.success(
+      form.dst_mac
+        ? 'GOOSE 发布配置已应用'
+        : `GOOSE 发布配置已应用，目标地址留空，自动使用组播地址 ${defaultGooseMulticastMac(form.app_id)}`
+    );
     await loadBlocks(false);
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '发布配置应用失败');

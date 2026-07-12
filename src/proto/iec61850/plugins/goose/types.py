@@ -49,7 +49,9 @@ class MmsType(IntEnum):
 
 # ===== 常量 =====
 
-GOOSE_MULTICAST_MAC_PREFIX = [0x01, 0x0C, 0xCD, 0x01, 0x00]
+# IEC 61850-8-1 GOOSE multicast range: 01-0C-CD-01-00-00 through
+# 01-0C-CD-01-01-FF. The final two octets are derived from APPID.
+GOOSE_MULTICAST_MAC_PREFIX = [0x01, 0x0C, 0xCD, 0x01]
 DEFAULT_TIME_ALLOWED_TO_LIVE = 1000
 DEFAULT_CONF_REV = 1
 DEFAULT_ST_NUM = 1
