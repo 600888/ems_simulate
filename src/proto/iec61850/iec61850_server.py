@@ -420,7 +420,10 @@ class IEC61850Server:
 
         # GOOSE 控制块引用的 DataSet
         for gse in result.goose.gse_controls:
+            # data_set_ref 在 GseControlInfo 中可能为空（to_publisher_dict 动态计算但属性未设值）
             ref = gse.data_set_ref
+            if not ref and gse.dat_set:
+                ref = f"{gse.ld_inst}/{gse.ln_class}${gse.dat_set}"
             if ref and ref not in seen_ds_refs:
                 seen_ds_refs.add(ref)
                 entries = [_fcda_to_entry(m) for m in gse.dataset_members]

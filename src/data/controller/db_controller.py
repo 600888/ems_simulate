@@ -200,6 +200,7 @@ class DbController:
                     "ld_inst": "VARCHAR(128) NOT NULL DEFAULT ''",
                     "ln_name": "VARCHAR(128) NOT NULL DEFAULT 'LLN0'",
                     "dataset_entries_json": "TEXT",
+                    "go_id": "VARCHAR(256) NOT NULL DEFAULT ''",
                 }
                 for column, ddl in definitions.items():
                     if column not in existing:

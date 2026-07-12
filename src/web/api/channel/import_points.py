@@ -247,6 +247,8 @@ async def preview_icd(
                     "summary": goose_data.get("summary", {"gse_control_count": 0, "gse_controls": []}),
                     "publishers": goose_data.get("publishers", []),
                     "subscriptions": goose_data.get("subscriptions", []),
+                    "datasets": _collect_dataset_configs(goose_data),
+                    "pure_datasets": goose_data.get("pure_datasets", []),
                     "errors": goose_errors,
                 }
                 if goose_data
@@ -583,7 +585,9 @@ async def import_icd(
                     "subscription_created_count": created_subscription_count,
                     "import_mode": resolved_goose_mode,
                     "dataset_count": len(datasets_to_register),
+                    "datasets": datasets_to_register,
                     "pure_dataset_count": len(pure_datasets) if pure_datasets else 0,
+                    "pure_datasets": pure_datasets,
                     "errors": goose_errors,
                 }
                 if goose_data

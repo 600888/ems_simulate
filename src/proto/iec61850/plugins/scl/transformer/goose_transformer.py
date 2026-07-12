@@ -316,6 +316,10 @@ class SclGooseTransformer:
         # GoCBRef
         info.go_cb_ref = f"{ld.inst}/{ln0.ln_name}$GO${gse_ctrl.name}"
 
+        # DataSetRef（to_publisher_dict / to_subscription_dict 动态计算，此处同步补全）
+        if gse_ctrl.dat_set:
+            info.data_set_ref = f"{ld.inst}/{ln0.ln_class}${gse_ctrl.dat_set}"
+
         # 匹配通信地址
         gse_addr = self._doc.get_gse_address(ied.name, ld.inst, gse_ctrl.name)
         if gse_addr:

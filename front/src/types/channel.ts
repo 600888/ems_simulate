@@ -92,6 +92,24 @@ export interface PointImportResult {
     goose?: GooseImportData | null;
 }
 
+// GOOSE 导入数据（数据集条目）
+export interface DataSetEntry {
+    name: string;
+    value: boolean | number | string;
+    iec_type: string;
+    fc?: string;
+}
+
+// GOOSE 导入数据（数据集信息）
+export interface DataSetImportInfo {
+    ld_inst: string;
+    ds_name: string;
+    ds_ref: string;
+    data_set_ref: string;
+    member_count: number;
+    entries: DataSetEntry[];
+}
+
 // GOOSE 导入数据
 export interface GooseImportData {
     summary: {
@@ -108,6 +126,10 @@ export interface GooseImportData {
     };
     publishers: any[];
     subscriptions: any[];
+    /** 所有数据集列表（纯数据集 + GOOSE 引用的数据集） */
+    datasets?: DataSetImportInfo[];
+    /** 纯数据集（未被 GSEControl 引用的数据集） */
+    pure_datasets?: DataSetImportInfo[];
     created_count: number;
     subscription_created_count?: number;
     import_mode?: 'model_only' | 'local_publish' | 'remote_subscribe' | 'both';

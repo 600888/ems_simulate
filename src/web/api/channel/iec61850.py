@@ -1078,9 +1078,10 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
                     }
                 )
             # 转换为层级树: [{name: "LD0", children: [{name: "LLN0", datasets: [...]}]}]
-            for ld_name, ln_dict in sorted(ld_map.items()):
+            # 保持 ICD 中的原始 LD/LN/DataSet 顺序，不排序
+            for ld_name, ln_dict in ld_map.items():
                 ln_items = []
-                for ln_name, ds_list in sorted(ln_dict.items()):
+                for ln_name, ds_list in ln_dict.items():
                     ln_node = {
                         "name": ln_name,
                         "datasets": ds_list,
@@ -1442,7 +1443,8 @@ def _build_iec61850_dataset_tree(device, dataset_ref: str) -> dict[str, Any]:
         if da_item["da_name"] not in existing_da_names:
             do_map[do_ref]["children"].append(da_item)
 
-    items = sorted(do_map.values(), key=lambda x: x["do_ref"])
+    # 保持 ICD 文件中的 FCDA 原始顺序，不自作主张排序
+    items = list(do_map.values())
     return {"items": items, "total": len(items)}
 
 
