@@ -448,6 +448,7 @@ async def create_goose_receiver(
             "ld_inst": s.ld_inst,
             "ln_name": s.ln_name,
             "dataset_entries": s.dataset_entries,
+            "go_id": s.go_id,
         }
         for s in body.subscriptions
     ]
@@ -575,6 +576,7 @@ async def add_receiver_subscription(
         ld_inst=body.ld_inst,
         ln_name=body.ln_name,
         dataset_entries=body.dataset_entries,
+        go_id=body.go_id,
     )
     if not result:
         raise NotFoundError("GOOSE Receiver 未找到")
@@ -603,6 +605,7 @@ async def update_receiver_subscription(request: Request, body: GooseSubscription
         ld_inst=body.ld_inst,
         ln_name=body.ln_name,
         dataset_entries=body.dataset_entries,
+        go_id=body.go_id,
     )
     if not result:
         raise OperationError("GOOSE 订阅配置应用失败")

@@ -46,6 +46,7 @@ class GooseSubscriptionConfig(Base):
     ld_inst: Mapped[str] = mapped_column(String(128), nullable=False, server_default="")
     ln_name: Mapped[str] = mapped_column(String(128), nullable=False, server_default="LLN0")
     dataset_entries_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    go_id: Mapped[str] = mapped_column(String(256), nullable=False, server_default="")
 
     receiver: Mapped[GooseReceiverConfig] = relationship(back_populates="subscriptions")
 

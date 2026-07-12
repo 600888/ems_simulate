@@ -470,6 +470,7 @@ class GooseResourceManager:
                             ld_inst=s.get("ld_inst", ""),
                             ln_name=s.get("ln_name", "LLN0"),
                             dataset_entries=s.get("dataset_entries", []),
+                            go_id=s.get("go_id", ""),
                         )
                     except (TypeError, ValueError) as sub_error:
                         log.warning(
@@ -664,6 +665,7 @@ class GooseResourceManager:
                         ld_inst=g.get("ld_inst", ""),
                         ln_name=g.get("ln_name", "LLN0"),
                         dataset_entries=g.get("dataset_entries", g.get("entries", [])),
+                        go_id=g.get("go_id", ""),
                     )
             self._persist_receiver(recv_id)
         return self.get_receiver_status(recv_id)
@@ -682,6 +684,7 @@ class GooseResourceManager:
         ld_inst: str = "",
         ln_name: str = "LLN0",
         dataset_entries: list[dict[str, Any]] | None = None,
+        go_id: str = "",
     ) -> dict[str, Any] | None:
         """向 Receiver 添加订阅"""
         receiver = self._receivers.get(receiver_id)
@@ -704,6 +707,7 @@ class GooseResourceManager:
             ld_inst,
             ln_name,
             dataset_entries,
+            go_id=go_id,
         )
         self._persist_receiver(receiver_id)
         return sub.to_dict()
@@ -742,6 +746,7 @@ class GooseResourceManager:
                 item.get("ld_inst", ""),
                 item.get("ln_name", "LLN0"),
                 item.get("dataset_entries", []),
+                go_id=item.get("go_id", ""),
             )
         self._persist_receiver(receiver_id)
         return self.get_receiver_status(receiver_id)

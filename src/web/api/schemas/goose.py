@@ -146,6 +146,7 @@ class GooseSubscriptionCreate(BaseModel):
     ld_inst: str = Field("", max_length=128)
     ln_name: str = Field("LLN0", max_length=128)
     dataset_entries: list[dict[str, Any]] = Field(default_factory=list)
+    go_id: str = Field("", description="GOOSE 标识符")
 
     @field_validator("dst_mac")
     @classmethod
@@ -181,6 +182,7 @@ class GooseSubscriptionUpdate(BaseModel):
     ld_inst: str = Field("", max_length=128)
     ln_name: str = Field("LLN0", max_length=128)
     dataset_entries: list[dict[str, Any]] = Field(default_factory=list)
+    go_id: str = Field("", description="GOOSE 标识符")
 
 
 class GooseSubscriptionHistoryRequest(BaseModel):

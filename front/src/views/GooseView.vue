@@ -29,5 +29,7 @@ watch(
   box-sizing: border-box;
   background: #f5f7fa;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 </style>

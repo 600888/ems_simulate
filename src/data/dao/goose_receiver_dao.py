@@ -55,6 +55,7 @@ class GooseReceiverDao:
                         ld_inst=sub.get("ld_inst", ""),
                         ln_name=sub.get("ln_name", "LLN0"),
                         dataset_entries_json=json.dumps(sub.get("dataset_entries", []), ensure_ascii=False),
+                        go_id=sub.get("go_id", ""),
                     )
                 )
             session.flush()
@@ -116,6 +117,7 @@ class GooseReceiverDao:
                     "ld_inst": sub.ld_inst,
                     "ln_name": sub.ln_name,
                     "dataset_entries": json.loads(sub.dataset_entries_json) if sub.dataset_entries_json else [],
+                    "go_id": sub.go_id,
                 }
                 for sub in receiver.subscriptions
             ],

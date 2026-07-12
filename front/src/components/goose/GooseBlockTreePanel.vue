@@ -156,8 +156,9 @@ function stateClass(block?: GooseBlockItem) {
 .goose-tree-panel {
   width: 330px;
   min-width: 280px;
+  height: 100%;
   border-right: 1px solid #d8dde5;
-  overflow: auto;
+  overflow-y: auto;
   background: #f7f9fc;
 }
 .tree-header {

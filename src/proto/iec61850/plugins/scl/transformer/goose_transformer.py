@@ -76,7 +76,7 @@ class GseControlInfo:
         return {
             "interface": interface,
             "go_cb_ref": self.go_cb_ref,
-            "go_id": self.name,
+            "go_id": self.go_cb_ref,
             "data_set_ref": f"{self.ld_inst}/{self.ln_class}${self.dat_set}" if self.dat_set else "",
             "app_id": app_id_int,
             "conf_rev": self.conf_rev,
@@ -108,6 +108,7 @@ class GseControlInfo:
             "data_set_ref": self.data_set_ref
             or (f"{self.ld_inst}/{self.ln_class}${self.dat_set}" if self.dat_set else ""),
             "conf_rev": self.conf_rev,
+            "go_id": self.name,
             "dataset_entries": [
                 {
                     "name": member.get("fcda_ref", ""),
@@ -226,6 +227,7 @@ class SclGooseTransformer:
                                     "data_set_ref": "",
                                     "conf_rev": 0,
                                     "dataset_entries": [],
+                                    "go_id": "",
                                     "subscriber_ied_name": subscriber_ied.name,
                                     "subscriber_ld_inst": ld.inst,
                                     "subscriber_ln_name": ln.ln_name,

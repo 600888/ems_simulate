@@ -163,6 +163,7 @@ class GooseReceiver:
         ld_inst: str = "",
         ln_name: str = "LLN0",
         dataset_entries: list[dict[str, Any]] | None = None,
+        go_id: str = "",
     ) -> GooseSubscriptionInfo:
         """添加 GOOSE 订阅"""
         with self._lock:
@@ -181,6 +182,7 @@ class GooseReceiver:
                 ld_inst=ld_inst,
                 ln_name=ln_name,
                 dataset_entries=dataset_entries or [],
+                go_id=go_id,
             )
             self._subscriptions[go_cb_ref] = sub
             return sub
@@ -222,6 +224,7 @@ class GooseReceiver:
                 "ld_inst",
                 "ln_name",
                 "dataset_entries",
+                "go_id",
             }
             for key, value in changes.items():
                 if key in allowed:
@@ -350,8 +353,8 @@ class GooseReceiver:
 
                     if sub.app_id is not None:
                         iec61850.GooseSubscriber_setAppId(subscriber, sub.app_id)
-                    if sub.dst_mac:
-                        iec61850.GooseSubscriber_setDstMac(subscriber, sub.dst_mac)
+                    if sub.dst_mac and len(sub.dst_mac) == 6:
+                        iec61850.GooseSubscriber_setDstMac(subscriber, *sub.dst_mac)
 
                     # 使用 SWIG director 机制设置 Python 回调
                     # (GooseSubscriber_setListener 在 pyiec61850-ng 中不可用)

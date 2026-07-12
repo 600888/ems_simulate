@@ -11,16 +11,31 @@
           <el-option :value="5000" label="5 s" />
         </el-select>
         <el-button :icon="Refresh" :loading="loading" @click="loadBlocks">刷新</el-button>
-        <el-button @click="batchMode = !batchMode">{{ batchMode ? '退出批量' : '批量模式' }}</el-button>
+        <el-button @click="batchMode = !batchMode">{{
+          batchMode ? "退出批量" : "批量模式"
+        }}</el-button>
         <template v-if="batchMode">
-          <el-button type="success" :disabled="!checkedKeys.length" @click="batchSetEnabled(true)">批量使能</el-button>
-          <el-button type="warning" :disabled="!checkedKeys.length" @click="batchSetEnabled(false)">批量禁用</el-button>
+          <el-button
+            type="success"
+            :disabled="!checkedKeys.length"
+            @click="batchSetEnabled(true)"
+            >批量使能</el-button
+          >
+          <el-button
+            type="warning"
+            :disabled="!checkedKeys.length"
+            @click="batchSetEnabled(false)"
+            >批量禁用</el-button
+          >
         </template>
       </div>
     </header>
 
     <main class="manager-body" v-loading="loading && !blocks.length">
-      <el-empty v-if="!loading && !blocks.length" description="没有 GOOSE 发布或订阅控制块" />
+      <el-empty
+        v-if="!loading && !blocks.length"
+        description="没有 GOOSE 发布或订阅控制块"
+      />
       <template v-else>
         <GooseBlockTreePanel
           :blocks="blocks"
@@ -31,7 +46,12 @@
         />
         <section class="workspace">
           <el-empty v-if="!selected" description="从左侧选择一个 GOOSE 控制块" />
-          <el-tabs v-else v-model="activeTab" class="workspace-tabs" @tab-change="handleTabChange">
+          <el-tabs
+            v-else
+            v-model="activeTab"
+            class="workspace-tabs"
+            @tab-change="handleTabChange"
+          >
             <el-tab-pane label="属性配置" name="attributes">
               <GoosePublisherControlPanel
                 v-if="selected.kind === 'publisher'"
@@ -49,23 +69,32 @@
               />
             </el-tab-pane>
 
-            <el-tab-pane :label="selected.kind === 'publisher' ? '当前发布数据' : '最近 GOOSE 报文'" name="latest">
+            <el-tab-pane
+              :label="selected.kind === 'publisher' ? '当前发布数据' : '最近 GOOSE 报文'"
+              name="latest"
+            >
               <div class="latest-pane">
                 <div class="summary">
                   <el-tag :type="selected.kind === 'publisher' ? 'primary' : 'success'">
-                    {{ selected.kind === 'publisher' ? '发布器' : '订阅器' }}
+                    {{ selected.kind === "publisher" ? "发布器" : "订阅器" }}
                   </el-tag>
-                  <span v-if="selected.kind === 'subscriber'">时间：{{ formatGooseTime(selected.last_update) }}</span>
+                  <span v-if="selected.kind === 'subscriber'"
+                    >时间：{{ formatGooseTime(selected.last_update) }}</span
+                  >
                   <span>状态号：{{ selected.st_num }}</span>
                   <span>顺序号：{{ selected.sq_num }}</span>
-                  <span>数据集：{{ selected.data_set_ref || '-' }}</span>
+                  <span>数据集：{{ selected.data_set_ref || "-" }}</span>
                   <span>值：{{ selected.data_values.length }}</span>
                 </div>
                 <GooseDataSetTable :values="selected.data_values" />
               </div>
             </el-tab-pane>
 
-            <el-tab-pane v-if="selected.kind === 'subscriber'" :label="`GOOSE 报文数据 (${history.length})`" name="history">
+            <el-tab-pane
+              v-if="selected.kind === 'subscriber'"
+              :label="`GOOSE 报文数据 (${history.length})`"
+              name="history"
+            >
               <div class="history-pane">
                 <el-table
                   :data="history"
@@ -78,7 +107,9 @@
                   <el-table-column prop="st_num" label="状态号" width="75" />
                   <el-table-column prop="sq_num" label="顺序号" width="75" />
                   <el-table-column label="时间" min-width="165">
-                    <template #default="{ row }">{{ formatGooseTime(row.received_at) }}</template>
+                    <template #default="{ row }">{{
+                      formatGooseTime(row.received_at)
+                    }}</template>
                   </el-table-column>
                   <el-table-column prop="value_count" label="值" width="55" />
                   <el-table-column prop="changed_count" label="变化" width="60" />
@@ -355,19 +386,110 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
-.goose-workbench { display: flex; flex-direction: column; height: 100%; overflow: hidden; border-radius: 4px; background: #fff; }
-.manager-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #d8dde5; background: #fbfcfe; }
-.manager-header h3 { margin: 0; color: #263241; font-size: 16px; font-weight: 700; }
-.header-actions { display: flex; align-items: center; gap: 9px; color: #5d6876; font-size: 13px; }
-.manager-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-.manager-body > .el-empty { width: 100%; }
-.workspace { flex: 1; min-width: 0; min-height: 0; padding: 12px; overflow: hidden; }
-.workspace-tabs { display: flex; flex-direction: column; height: 100%; }
-:deep(.el-tabs__content) { flex: 1; min-height: 0; overflow: hidden; }
-:deep(.el-tab-pane) { height: 100%; overflow: auto; }
-.latest-pane { display: flex; flex-direction: column; gap: 10px; height: 100%; }
-.summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 9px 11px; border: 1px solid #d8dde5; background: #f6f8fb; font-size: 13px; }
-.history-pane { display: grid; grid-template-columns: 390px minmax(0, 1fr); height: 100%; min-height: 0; }
-.history-detail { display: flex; flex-direction: column; gap: 9px; min-width: 0; padding-left: 10px; }
-@media (max-width: 900px) { .manager-header { align-items: flex-start; flex-direction: column; gap: 10px; } .header-actions { flex-wrap: wrap; } .manager-body { flex-direction: column; overflow: auto; } .history-pane { grid-template-columns: 1fr; grid-template-rows: 240px minmax(300px, 1fr); } }
+.goose-workbench {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #fff;
+}
+.manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #d8dde5;
+  background: #fbfcfe;
+}
+.manager-header h3 {
+  margin: 0;
+  color: #263241;
+  font-size: 16px;
+  font-weight: 700;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #5d6876;
+  font-size: 13px;
+}
+.manager-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.manager-body > .el-empty {
+  width: 100%;
+}
+.workspace {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow: hidden;
+}
+.workspace-tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+:deep(.el-tabs__content) {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+:deep(.el-tab-pane) {
+  height: 100%;
+  overflow: auto;
+}
+.latest-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+}
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  padding: 9px 11px;
+  border: 1px solid #d8dde5;
+  background: #f6f8fb;
+  font-size: 13px;
+}
+.history-pane {
+  display: grid;
+  grid-template-columns: 390px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+.history-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+  padding-left: 10px;
+}
+@media (max-width: 900px) {
+  .manager-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .header-actions {
+    flex-wrap: wrap;
+  }
+  .manager-body {
+    flex-direction: column;
+    overflow: auto;
+  }
+  .history-pane {
+    grid-template-columns: 1fr;
+    grid-template-rows: 240px minmax(300px, 1fr);
+  }
+}
 </style>
