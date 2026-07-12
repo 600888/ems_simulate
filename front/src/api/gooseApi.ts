@@ -168,6 +168,7 @@ export interface GooseReceiverCreateRequest {
 /** 创建订阅请求 */
 export interface GooseSubscriptionCreateRequest {
   go_cb_ref: string;
+  go_id?: string;
   app_id?: number | null;
   dst_mac?: number[] | null;
   description?: string;
@@ -197,6 +198,15 @@ export interface DiscoveredGooseItem {
   discovery_error_code?: number | null;
   discovery_error?: string;
   attempted_refs?: string[];
+  ied_name?: string;
+  ln_name?: string;
+  dst_mac?: string;
+  vlan_id?: number;
+  vlan_prio?: number;
+  time_allowed_to_live?: number;
+  min_time?: number;
+  max_time?: number;
+  dataset_entries?: GooseDataSetMember[];
 }
 
 export interface NetworkInterfaceInfo {
@@ -237,10 +247,12 @@ export async function getDiscoveredGoose(channelId: number): Promise<DiscoveredG
 export async function importDiscoveredGoose(
   channelId: number,
   iface = 'eth0',
+  goCbRefs: string[] = [],
 ): Promise<{ imported: number; receiver: GooseReceiverStatus | null }> {
   const data = await requestApi(GOOSE_API.DISCOVERED_IMPORT, 'post', {
     channel_id: channelId,
     interface: iface,
+    go_cb_refs: goCbRefs,
   });
   return data || { imported: 0, receiver: null };
 }

@@ -15,6 +15,22 @@ from src.web.log import log
 router = APIRouter(tags=["channel"])
 
 
+def _format_goose_app_id(value: Any) -> str:
+    """Format APPID from normalized integers or raw hexadecimal SCL strings."""
+    if value is None or value == "":
+        return ""
+    if isinstance(value, str):
+        text = value.strip()
+        try:
+            value = int(text[2:] if text.lower().startswith("0x") else text, 16)
+        except ValueError:
+            return text
+    try:
+        return f"0x{int(value):04X}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def _get_iec61850_device(request: Request, channel_id: int):
     """获取 IEC61850 设备，校验通道存在且协议为 IEC61850
 
@@ -1044,7 +1060,7 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
             for g in discovered_goose:
                 cb_ref = g.get("go_cb_ref", "")
                 app_id = g.get("app_id")
-                app_id_str = f"0x{app_id:04X}" if app_id is not None else ""
+                app_id_str = _format_goose_app_id(app_id)
                 status = "已发现"
                 goose_items.append(f"远端GoCB: {cb_ref} ({status}, APPID={app_id_str})")
 

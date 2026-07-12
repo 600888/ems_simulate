@@ -92,9 +92,14 @@ def _get_discovered_goose(channel_id: int, request: Request) -> list[dict[str, A
         path = go_cb_ref.split("$GO$", 1)[0]
         ld_inst, _, ln_name = path.partition("/")
         ds = dataset_map.get(item.get("data_set_ref", ""), {})
-        members = item.get("dataset_members") or ds.get("members") or []
+        members = (
+            item.get("dataset_members") or item.get("dataset_entries") or item.get("entries") or ds.get("members") or []
+        )
         item.update(
             {
+                # 本项目按 IEDScout 的展示/发送约定使用完整 GoCB 引用作为 GoID，
+                # 避免设备只返回控制块短名称（如 gocbPub1）时配置不一致。
+                "go_id": go_cb_ref,
                 "ied_name": item.get("ied_name") or ied_name,
                 "ld_inst": item.get("ld_inst") or ld_inst or "LD0",
                 "ln_name": item.get("ln_name") or ln_name or "LLN0",
@@ -112,6 +117,22 @@ def _get_discovered_goose(channel_id: int, request: Request) -> list[dict[str, A
         )
         results.append(item)
     return results
+
+
+def _set_remote_go_ena(request: Request, channel_id: int, go_cb_ref: str, enabled: bool) -> None:
+    """Apply the subscriber commissioning state to the remote publisher over MMS."""
+    device_controller = getattr(request.app.state, "device_controller", None)
+    device = device_controller.get_device_by_channel_id(channel_id) if device_controller else None
+    handler = getattr(device, "protocol_handler", None) if device else None
+    client = getattr(handler, "_client", None) if handler else None
+    connection = getattr(client, "_conn", None) if client else None
+    if connection is None:
+        raise OperationError("无法设置远端 GoEna：IEC 61850 MMS 客户端未连接")
+
+    from src.proto.iec61850.plugins.goose.client_control import GooseClientControl
+
+    if not GooseClientControl.set_go_ena(connection, go_cb_ref, enabled):
+        raise OperationError(f"远端 GOOSE 控制块 GoEna {'使能' if enabled else '禁用'}失败: {go_cb_ref}")
 
 
 def _require_resource_channel(actual: int | None, expected: int | None) -> None:
@@ -199,10 +220,15 @@ async def import_discovered_goose(body: GooseImportDiscoveredRequest, request: R
 
     validate_network_interface(body.interface)
     items = _get_discovered_goose(body.channel_id, request)
+    if body.go_cb_refs:
+        selected_refs = set(body.go_cb_refs)
+        items = [item for item in items if item.get("go_cb_ref") in selected_refs]
     if not items:
         return BaseResponse(message="没有可导入的 GOOSE 控制块", data={"imported": 0, "receiver": None})
 
     receiver = manager.import_discovered(items, interface=body.interface, channel_id=body.channel_id)
+    if not receiver:
+        raise OperationError("GOOSE 订阅已创建，但 Receiver 启动失败")
     return BaseResponse(
         message=f"已导入 {len(items)} 个 GOOSE 控制块",
         data={"imported": len(items), "receiver": receiver},
@@ -591,6 +617,8 @@ async def update_receiver_subscription(request: Request, body: GooseSubscription
     if not current:
         raise NotFoundError("GOOSE Receiver 未找到")
     _require_resource_channel(current.get("channel_id"), body.channel_id)
+    remote_ref = body.new_go_cb_ref or body.go_cb_ref
+    _set_remote_go_ena(request, body.channel_id, remote_ref, body.enabled)
     result = manager.update_subscription(
         body.receiver_id,
         body.go_cb_ref,
@@ -608,6 +636,10 @@ async def update_receiver_subscription(request: Request, body: GooseSubscription
         go_id=body.go_id,
     )
     if not result:
+        try:
+            _set_remote_go_ena(request, body.channel_id, remote_ref, not body.enabled)
+        except Exception:
+            log.warning(f"GOOSE 本地订阅更新失败后回滚远端 GoEna 失败: {remote_ref}")
         raise OperationError("GOOSE 订阅配置应用失败")
     return BaseResponse(message="GOOSE 订阅配置已应用", data=result)
 

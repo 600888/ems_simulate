@@ -6,17 +6,17 @@
       <el-descriptions-item label="类型 (Type)"
         ><el-tag type="primary">发布器</el-tag></el-descriptions-item
       >
-      <el-descriptions-item label="GoCBRef" :span="2">{{
+      <el-descriptions-item label="控制块引用 (GoCBRef)" :span="2">{{
         block.go_cb_ref
       }}</el-descriptions-item>
       <el-descriptions-item label="GOOSE标识符 (GoID)">{{ block.go_id || "-" }}</el-descriptions-item>
       <el-descriptions-item label="应用标识 (APPID)">{{
         formatAppId(block.app_id)
       }}</el-descriptions-item>
-      <el-descriptions-item label="数据集 (DataSet)" :span="2">{{
+      <el-descriptions-item label="数据集 (DatSet)" :span="2">{{
         block.data_set_ref || "-"
       }}</el-descriptions-item>
-      <el-descriptions-item label="IED / LD / LN"
+      <el-descriptions-item label="IED/逻辑设备/逻辑节点 (IED/LD/LN)"
         >{{ block.ied_name }} / {{ block.ld_inst }} /
         {{ block.ln_name }}</el-descriptions-item
       >
@@ -24,7 +24,7 @@
         >{{ block.st_num }} / {{ block.sq_num }}</el-descriptions-item
       >
       <el-descriptions-item label="网络接口 (Interface)">{{ block.interface }}</el-descriptions-item>
-      <el-descriptions-item label="条目数 (Entries)">{{
+      <el-descriptions-item label="数据集条目数 (Entries)">{{
         block.data_values.length
       }}</el-descriptions-item>
     </el-descriptions>
@@ -63,6 +63,9 @@
           </el-select>
         </el-form-item>
         <el-form-item label="GOOSE标识符 (GoID)"><el-input v-model="form.go_id" /></el-form-item>
+        <el-form-item label="目标地址 (DstAddress/Addr)">
+          <el-input v-model="form.dst_mac" placeholder="01:0C:CD:01:00:01" />
+        </el-form-item>
         <el-form-item label="应用标识 (APPID)"
           ><el-input-number
             v-model="form.app_id"
@@ -70,19 +73,31 @@
             :max="65535"
             controls-position="right"
         /></el-form-item>
-        <el-form-item label="数据集 (DataSet)"
-          ><el-input v-model="form.data_set_ref"
-        /></el-form-item>
+        <el-form-item label="数据集 (DatSet)">
+          <el-select
+            v-model="form.data_set_ref"
+            style="width: 100%"
+            placeholder="请选择数据集"
+            filterable
+          >
+            <el-option
+              v-for="item in availableDataSets"
+              :key="item.ref"
+              :value="item.ref"
+              :label="`${item.name} (${item.member_count} members) — ${item.ref}`"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="配置版本号 (ConfRev)"
           ><el-input-number v-model="form.conf_rev" :min="1" controls-position="right"
         /></el-form-item>
-        <el-form-item label="存活时间 (TTL)"
+        <el-form-item label="最大重发时间 (MaxTime)"
           ><el-input-number v-model="form.time_allowed_to_live" :min="100" :max="60000"
         /></el-form-item>
-        <el-form-item label="VLAN ID"
+        <el-form-item label="VLAN标识 (VID)"
           ><el-input-number v-model="form.vlan_id" :min="0" :max="4095"
         /></el-form-item>
-        <el-form-item label="VLAN 优先级"
+        <el-form-item label="VLAN优先级 (PRIORITY)"
           ><el-input-number v-model="form.vlan_prio" :min="0" :max="7"
         /></el-form-item>
         <el-form-item label="仿真模式 (Simulation)"
@@ -99,7 +114,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from "vue";
+import { computed, reactive, watch } from "vue";
 import { Monitor } from "@element-plus/icons-vue";
 import type { NetworkInterfaceInfo } from "@/api/gooseApi";
 import type { GooseBlockItem } from "./gooseWorkbench";
@@ -107,11 +122,13 @@ const props = defineProps<{
   block: GooseBlockItem | null;
   loading?: boolean;
   interfaces: NetworkInterfaceInfo[];
+  dataSets: Array<{ ref: string; name: string; member_count: number }>;
 }>();
 interface PublisherForm {
   enabled: boolean;
   interface: string;
   go_id: string;
+  dst_mac: string;
   data_set_ref: string;
   app_id: number;
   conf_rev: number;
@@ -124,6 +141,7 @@ const form = reactive<PublisherForm>({
   enabled: false,
   interface: "",
   go_id: "",
+  dst_mac: "",
   data_set_ref: "",
   app_id: 1,
   conf_rev: 1,
@@ -133,6 +151,15 @@ const form = reactive<PublisherForm>({
   simulation: true,
 });
 const emit = defineEmits<{ (e: "apply", form: PublisherForm): void }>();
+const availableDataSets = computed(() => {
+  if (!form.data_set_ref || props.dataSets.some((item) => item.ref === form.data_set_ref)) {
+    return props.dataSets;
+  }
+  return [
+    { ref: form.data_set_ref, name: form.data_set_ref, member_count: 0 },
+    ...props.dataSets,
+  ];
+});
 watch(
   () => props.block?.key,
   () => {
@@ -141,7 +168,8 @@ watch(
     Object.assign(form, {
       enabled: publisher.is_running,
       interface: publisher.interface,
-      go_id: publisher.go_id,
+      go_id: publisher.go_cb_ref || publisher.go_id,
+      dst_mac: publisher.dst_mac || "",
       data_set_ref: publisher.data_set_ref,
       app_id: publisher.app_id,
       conf_rev: publisher.conf_rev,

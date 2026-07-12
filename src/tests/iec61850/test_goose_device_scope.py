@@ -244,6 +244,100 @@ def test_delete_receivers_by_channel_clears_runtime_indexes():
     assert manager._interface_to_rid == {"2:eth0:default": "keep"}
 
 
+def test_remove_last_subscription_deletes_receiver_and_runtime_index(monkeypatch):
+    manager = manager_module.GooseResourceManager(PersistenceAdapter(_Backend()))
+    receiver = Mock()
+    receiver.is_running = False
+    receiver.remove_subscription.return_value = True
+    receiver.get_subscriptions.return_value = []
+    manager._receivers = {"3": receiver}
+    manager._receiver_channel_map = {"3": 1}
+    manager._receiver_meta = {
+        "3": {"db_id": 3, "interface_key": "1:WLAN:default"},
+    }
+    manager._interface_to_rid = {"1:WLAN:default": "3"}
+    delete = Mock(return_value=True)
+    monkeypatch.setattr(goose_receiver_dao.GooseReceiverDao, "delete", delete)
+
+    assert manager.remove_subscription("3", "LD0/LLN0$GO$gcb1") is True
+
+    receiver.stop.assert_called_once_with()
+    delete.assert_called_once_with(3, 1)
+    assert manager._receivers == {}
+    assert manager._receiver_channel_map == {}
+    assert manager._receiver_meta == {}
+    assert manager._interface_to_rid == {}
+
+
+def test_update_receiver_preserves_runtime_id(monkeypatch):
+    manager = manager_module.GooseResourceManager(PersistenceAdapter(_Backend()))
+    receiver = Mock()
+    receiver.is_running = False
+    receiver.get_subscriptions.return_value = [{"go_cb_ref": "LD0/LLN0$GO$gcb1"}]
+    manager._receivers = {"1:runtime-id": receiver}
+    manager._receiver_channel_map = {"1:runtime-id": 1}
+    manager._receiver_meta = {
+        "1:runtime-id": {"db_id": 3, "interface_key": "1:eth0:default"},
+    }
+    manager._interface_to_rid = {"1:eth0:default": "1:runtime-id"}
+    create_receiver = Mock(return_value={"id": "1:runtime-id"})
+    monkeypatch.setattr(manager, "create_receiver", create_receiver)
+
+    result = manager.update_receiver("1:runtime-id", "WLAN")
+
+    assert result == {"id": "1:runtime-id"}
+    create_receiver.assert_called_once_with(
+        interface="WLAN",
+        subscriptions=[{"go_cb_ref": "LD0/LLN0$GO$gcb1"}],
+        channel_id=1,
+        name="default",
+        description="",
+        auto_start=False,
+        db_id=3,
+        runtime_id="1:runtime-id",
+    )
+
+
+def test_import_discovered_adds_disabled_subscription_and_restarts_running_receiver(monkeypatch):
+    manager = manager_module.GooseResourceManager(PersistenceAdapter(_Backend()))
+    receiver = Mock()
+    receiver.is_running = True
+    receiver.start.return_value = True
+    receiver.get_subscription.return_value = None
+    receiver.get_status.return_value = {"subscriptions": []}
+    manager._receivers = {"3": receiver}
+    manager._receiver_channel_map = {"3": 1}
+    manager._receiver_meta = {"3": {"db_id": 3}}
+    manager._interface_to_rid = {"1:WLAN:default": "3"}
+    persist = Mock()
+    monkeypatch.setattr(manager, "_persist_receiver", persist)
+
+    result = manager.import_discovered(
+        [{"go_cb_ref": "LD0/LLN0$GO$gcb1", "app_id": 1}],
+        interface="WLAN",
+        channel_id=1,
+    )
+
+    receiver.stop.assert_called_once_with()
+    receiver.add_subscription.assert_called_once_with(
+        go_cb_ref="LD0/LLN0$GO$gcb1",
+        app_id=1,
+        dst_mac=None,
+        description="auto-discovered",
+        data_set_ref="",
+        conf_rev=0,
+        enabled=False,
+        ied_name="",
+        ld_inst="",
+        ln_name="LLN0",
+        dataset_entries=[],
+        go_id="",
+    )
+    persist.assert_called_once_with("3")
+    receiver.start.assert_called_once_with()
+    assert result["id"] == "3"
+
+
 def test_list_receivers_isolates_one_broken_receiver_status():
     manager = manager_module.GooseResourceManager(PersistenceAdapter(_Backend()))
     broken = Mock()

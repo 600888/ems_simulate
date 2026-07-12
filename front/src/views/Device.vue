@@ -674,8 +674,7 @@ const onIcdFileChange = () => {
     ElMessage.error(t("device.modelLoadFailed"));
     return;
   }
-  const defaultMode = isIec61850Client.value ? "remote_subscribe" : "local_publish";
-  icdImportUploadRef.value?.importIcd(channelId.value, defaultMode).catch(() => {});
+  icdImportUploadRef.value?.importIcd(channelId.value, "model_only").catch(() => {});
 };
 
 // IEC61850 模型导入：点击按钮打开文件选择框

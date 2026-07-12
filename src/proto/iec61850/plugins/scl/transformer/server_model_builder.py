@@ -279,7 +279,7 @@ class SclServerModelBuilder:
             name=gc.name,
             ref=f"{ld_inst}/{ln_name}.{gc.name}",
             go_cb_ref=go_cb_ref,
-            go_id=gc.name,
+            go_id=go_cb_ref,
             app_id=int(gc.app_id, 16) if gc.app_id and gc.app_id.startswith("0x") else None,
             data_set_ref=f"{ld_inst}/{ln_name}${gc.dat_set}" if gc.dat_set else "",
             conf_rev=gc.conf_rev,

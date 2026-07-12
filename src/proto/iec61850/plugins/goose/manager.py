@@ -436,6 +436,7 @@ class GooseResourceManager:
         description: str = "",
         auto_start: bool = False,
         db_id: int | None = None,
+        runtime_id: str | None = None,
     ) -> dict[str, Any] | None:
         """创建 GOOSE Receiver"""
         if not HAS_IEC61850:
@@ -477,7 +478,7 @@ class GooseResourceManager:
                             f"跳过无效 GOOSE Subscription: go_cb_ref={s.get('go_cb_ref', '')}, error={sub_error}"
                         )
 
-            recv_id = str(db_id) if db_id is not None else _scoped_key(channel_id, str(uuid.uuid4()))
+            recv_id = runtime_id or (str(db_id) if db_id is not None else _scoped_key(channel_id, str(uuid.uuid4())))
             self._receivers[recv_id] = receiver
             self._interface_to_rid[interface_key] = recv_id
             if channel_id is not None:
@@ -606,6 +607,7 @@ class GooseResourceManager:
             description=description,
             auto_start=auto_start,
             db_id=db_id,
+            runtime_id=receiver_id,
         )
 
     def start_receiver(self, receiver_id: str) -> bool:
@@ -649,25 +651,36 @@ class GooseResourceManager:
             return None
 
         receiver = self._receivers.get(recv_id)
-        if receiver and not receiver.is_running:
+        if receiver:
+            was_running = receiver.is_running
+            if was_running:
+                receiver.stop()
             for g in discovered:
                 go_cb_ref = g.get("go_cb_ref", "")
                 if go_cb_ref:
-                    receiver.add_subscription(
+                    existing = receiver.get_subscription(go_cb_ref)
+                    subscription_data = dict(
                         go_cb_ref=go_cb_ref,
                         app_id=g.get("app_id"),
                         dst_mac=g.get("dst_mac"),
                         description="auto-discovered",
                         data_set_ref=g.get("data_set_ref", ""),
                         conf_rev=g.get("conf_rev", 0),
-                        enabled=g.get("enabled", False),
+                        enabled=bool(existing and existing.get("enabled")),
                         ied_name=g.get("ied_name", ""),
                         ld_inst=g.get("ld_inst", ""),
                         ln_name=g.get("ln_name", "LLN0"),
                         dataset_entries=g.get("dataset_entries", g.get("entries", [])),
                         go_id=g.get("go_id", ""),
                     )
+                    if existing:
+                        receiver.update_subscription(go_cb_ref, **subscription_data)
+                    else:
+                        receiver.add_subscription(**subscription_data)
             self._persist_receiver(recv_id)
+            if was_running and not receiver.start():
+                log.error(f"瀵煎叆 GOOSE 璁㈤槄鍚庡惎鍔?Receiver 澶辫触: id={recv_id}")
+                return None
         return self.get_receiver_status(recv_id)
 
     def add_subscription(
@@ -724,7 +737,12 @@ class GooseResourceManager:
 
         removed = receiver.remove_subscription(go_cb_ref)
         if removed:
-            self._persist_receiver(receiver_id)
+            # Receiver without subscriptions has no useful runtime role. Keeping it
+            # indexed causes a later import to reuse stale runtime/DB identity.
+            if not receiver.get_subscriptions():
+                self.delete_receiver(receiver_id)
+            else:
+                self._persist_receiver(receiver_id)
         return removed
 
     def replace_subscriptions(self, receiver_id: str, subscriptions: list[dict[str, Any]]) -> dict[str, Any] | None:

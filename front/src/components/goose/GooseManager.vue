@@ -1,138 +1,42 @@
 <template>
   <div class="goose-manager">
     <el-tabs v-model="activeTab" class="goose-tabs">
-      <!-- Publisher 面板 -->
-      <el-tab-pane :label="$t('goose.publish')" name="publisher">
-        <div class="tab-header">
-          <el-button type="primary" :icon="Plus" @click="showCreatePublisherDialog">
-            {{ $t("goose.newPublisher") }}
-          </el-button>
-          <el-button :icon="Refresh" @click="refreshPublishers" :loading="loading">
-            {{ $t("goose.refresh") }}
-          </el-button>
-        </div>
-
-        <el-table
-          :data="publishers"
-          stripe
-          border
-          style="width: 100%"
-          v-loading="loading"
-        >
-          <el-table-column
-            prop="go_cb_ref"
-            label="GoCBRef"
-            min-width="220"
-            show-overflow-tooltip
-          />
-          <el-table-column prop="go_id" label="GOOSE标识符" width="120" />
-          <el-table-column prop="app_id" label="应用标识" width="80">
-            <template #default="{ row }">
-              0x{{ (row.app_id ?? 0).toString(16).toUpperCase().padStart(4, "0") }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="interface" label="网络接口" width="100">
-            <template #default="{ row }">
-              {{ row.interface || "" }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="dst_mac" label="目标MAC" width="180" />
-          <el-table-column :label="$t('goose.dataSet')" width="95" align="center">
-            <template #default="{ row }">
-              {{ row.entry_count }}
-            </template>
-          </el-table-column>
-          <el-table-column label="stNum/sqNum" width="140" align="center">
-            <template #default="{ row }"> {{ row.st_num }}/{{ row.sq_num }} </template>
-          </el-table-column>
-          <el-table-column :label="$t('goose.running')" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.is_running ? 'success' : 'info'" size="small">
-                {{ row.is_running ? $t("goose.running") : $t("goose.stopped") }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column :label="$t('goose.yes')" width="80" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.simulation ? 'warning' : ''" size="small">
-                {{ row.simulation ? $t("goose.yes") : $t("goose.no") }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column :label="$t('common.operation')" width="340" fixed="right">
-            <template #default="{ row }">
-              <el-button-group>
-                <el-button
-                  v-if="!row.is_running"
-                  type="success"
-                  size="small"
-                  @click="startPublisher(row.id)"
-                >
-                  {{ $t("goose.start") }}
-                </el-button>
-                <el-button
-                  v-else
-                  type="warning"
-                  size="small"
-                  @click="stopPublisher(row.id)"
-                >
-                  {{ $t("goose.stop") }}
-                </el-button>
-                <el-button
-                  type="primary"
-                  size="small"
-                  :disabled="!row.is_running"
-                  @click="publishNow(row.id)"
-                >
-                  {{ $t("goose.publishAction") }}
-                </el-button>
-                <el-button size="small" @click="editPublisherEntries(row)">
-                  {{ $t("goose.dataSet") }}
-                </el-button>
-                <el-button
-                  size="small"
-                  :disabled="row.is_running"
-                  @click="showEditPublisherDialog(row)"
-                >
-                  {{ $t("common.edit") }}
-                </el-button>
-                <el-button type="danger" size="small" @click="deletePublisher(row.id)">
-                  {{ $t("common.delete") }}
-                </el-button>
-              </el-button-group>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
-
-      <!-- Receiver 面板 -->
-      <el-tab-pane :label="$t('goose.subscribe')" name="receiver">
+      <!-- 发布和订阅统一在一个管理工作台中配置 -->
+      <el-tab-pane label="GOOSE 管理" name="manager">
         <GooseSubscriberManager :channel-id="channelId" />
       </el-tab-pane>
 
       <!-- 已发现的远端控制块 -->
       <el-tab-pane :label="`${$t('goose.discovered')} (${discovered.length})`" name="discovered">
         <div class="tab-header">
-          <el-button
-            type="primary"
-            :disabled="!discovered.length"
-            @click="importDiscoveredSubscriptions"
-          >
-            {{ $t("goose.subscribe") }}
+          <el-button type="primary" :disabled="!selectedDiscovered.length" @click="addDiscoveredAsPublisher">
+            添加到发布
+          </el-button>
+          <el-button type="success" :disabled="!selectedDiscovered.length" @click="importDiscoveredSubscriptions">
+            添加到订阅
           </el-button>
           <el-button :icon="Refresh" @click="refreshDiscovered" :loading="loading">
             {{ $t("goose.refresh") }}
           </el-button>
         </div>
-        <el-table :data="discovered" stripe border style="width: 100%">
+        <el-table
+          ref="discoveredTableRef"
+          :data="discovered"
+          row-key="go_cb_ref"
+          stripe
+          border
+          style="width: 100%"
+          @selection-change="handleDiscoveredSelectionChange"
+        >
+          <el-table-column type="selection" width="48" reserve-selection />
           <el-table-column
             prop="go_cb_ref"
             label="GoCBRef"
             min-width="240"
             show-overflow-tooltip
           />
-          <el-table-column prop="go_id" label="GOOSE标识符" width="120" show-overflow-tooltip />
-          <el-table-column prop="app_id" label="应用标识" width="90">
+          <el-table-column prop="go_id" label="GOOSE标识符 (GoID)" min-width="260" show-overflow-tooltip />
+          <el-table-column prop="app_id" label="APPID" width="100">
             <template #default="{ row }">
               {{
                 row.app_id != null
@@ -748,7 +652,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, watch } from "vue";
+import { ref, reactive, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Plus, Refresh, Delete, Monitor } from "@element-plus/icons-vue";
@@ -802,7 +706,7 @@ const props = defineProps<{
 const loading = ref(false);
 const networkInterfaces = ref<NetworkInterfaceInfo[]>([]);
 const creating = ref(false);
-const activeTab = ref("publisher");
+const activeTab = ref("manager");
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 // ===== Publisher 状态 =====
@@ -810,6 +714,9 @@ const publishers = ref<GoosePublisherStatus[]>([]);
 
 // ===== 发现的远端控制块 =====
 const discovered = ref<DiscoveredGooseItem[]>([]);
+const selectedDiscovered = ref<DiscoveredGooseItem[]>([]);
+const discoveredTableRef = ref();
+let restoringDiscoveredSelection = false;
 const createPublisherVisible = ref(false);
 const configEditingId = ref<string | null>(null);
 const publisherFormRef = ref();
@@ -905,17 +812,46 @@ async function refreshDiscovered() {
     return;
   }
   try {
+    const selectedRefs = loadDiscoveredSelection();
+    selectedDiscovered.value.forEach((item) => selectedRefs.add(item.go_cb_ref));
+    restoringDiscoveredSelection = true;
     discovered.value = await getDiscoveredGoose(props.channelId);
+    await nextTick();
+    discoveredTableRef.value?.clearSelection();
+    const restored = discovered.value.filter((item) => selectedRefs.has(item.go_cb_ref));
+    restored.forEach((item) => discoveredTableRef.value?.toggleRowSelection(item, true));
+    selectedDiscovered.value = restored;
   } catch (e) {
     console.error("刷新发现的 GOOSE 控制块失败:", e);
+  } finally {
+    restoringDiscoveredSelection = false;
   }
+}
+
+function discoveredSelectionKey() {
+  return `goose:discovered-selection:${props.channelId || 0}`;
+}
+
+function loadDiscoveredSelection(): Set<string> {
+  try {
+    const value = JSON.parse(localStorage.getItem(discoveredSelectionKey()) || "[]");
+    return new Set(Array.isArray(value) ? value.filter((item) => typeof item === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function handleDiscoveredSelectionChange(rows: DiscoveredGooseItem[]) {
+  if (restoringDiscoveredSelection) return;
+  selectedDiscovered.value = rows;
+  localStorage.setItem(
+    discoveredSelectionKey(),
+    JSON.stringify(rows.map((item) => item.go_cb_ref)),
+  );
 }
 
 async function refreshAll() {
   await Promise.all([refreshPublishers(), refreshReceivers(), refreshDiscovered()]);
-  if (!publishers.value.length && !receivers.value.length && discovered.value.length) {
-    activeTab.value = "discovered";
-  }
 }
 
 // channelId 变化时只刷新当前设备；导入必须由用户显式确认。
@@ -949,19 +885,69 @@ function showCreatePublisherDialog() {
 }
 
 async function importDiscoveredSubscriptions() {
-  if (!props.channelId || !discovered.value.length) return;
+  if (!props.channelId || !selectedDiscovered.value.length) return;
   try {
     await ElMessageBox.confirm(
-      `将 ${discovered.value.length} 个控制块导入当前设备订阅？`,
+      `将选中的 ${selectedDiscovered.value.length} 个控制块添加到当前设备订阅？`,
       t("common.confirm")
     );
     const interfaceId = receiverForm.interface || networkInterfaces.value[0]?.id;
     if (!interfaceId) throw new Error(t("goose.interfaceRequired"));
-    await importDiscoveredGoose(props.channelId, interfaceId);
+    await importDiscoveredGoose(
+      props.channelId,
+      interfaceId,
+      selectedDiscovered.value.map((item) => item.go_cb_ref),
+    );
     ElMessage.success(t("goose.createSuccess"));
-    await refreshReceivers();
+    await refreshAll();
   } catch (e: any) {
     if (e !== "cancel" && e !== "close" && e?.message) ElMessage.error(e.message);
+  }
+}
+
+function initialDiscoveredValue(iecType?: string): boolean | number | string {
+  if (iecType === "integer" || iecType === "float" || iecType === "timestamp") return 0;
+  if (iecType === "string") return "";
+  return false;
+}
+
+async function addDiscoveredAsPublisher() {
+  if (!props.channelId || !selectedDiscovered.value.length) return;
+  try {
+    await ElMessageBox.confirm(
+      `将选中的 ${selectedDiscovered.value.length} 个控制块添加到当前设备发布？`,
+      t("common.confirm"),
+    );
+    const interfaceId = networkInterfaces.value[0]?.id;
+    if (!interfaceId) throw new Error(t("goose.interfaceRequired"));
+    for (const item of selectedDiscovered.value) {
+      await createGoosePublisher({
+        channel_id: props.channelId,
+        interface: interfaceId,
+        go_cb_ref: item.go_cb_ref,
+        go_id: item.go_cb_ref,
+        data_set_ref: item.data_set_ref || "",
+        app_id: item.app_id ?? 1,
+        conf_rev: item.conf_rev || 1,
+        time_allowed_to_live: item.max_time || item.time_allowed_to_live || 1000,
+        dst_mac: parseMac(item.dst_mac || ""),
+        vlan_id: item.vlan_id || 0,
+        vlan_prio: item.vlan_prio ?? 4,
+        simulation: false,
+        entries: (item.dataset_entries || []).map((entry) => ({
+          name: entry.name,
+          value: initialDiscoveredValue(entry.type),
+          iec_type: ["boolean", "integer", "float", "string", "bitstring", "timestamp"].includes(entry.type || "")
+            ? entry.type!
+            : "boolean",
+        })),
+      });
+    }
+    ElMessage.success(`已添加 ${selectedDiscovered.value.length} 个发布控制块`);
+    activeTab.value = "manager";
+    await refreshAll();
+  } catch (e: any) {
+    if (e !== "cancel" && e !== "close") ElMessage.error(e?.message || "添加发布控制块失败");
   }
 }
 
@@ -1434,7 +1420,6 @@ watch(
 
 <style scoped lang="scss">
 .goose-manager {
-  padding: 16px;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -1457,14 +1442,6 @@ watch(
     height: 100%;
     overflow: hidden;
   }
-
-  @include bp.respond-to("medium-down") {
-    padding: 12px;
-  }
-
-  @include bp.respond-to("small") {
-    padding: 10px;
-  }
 }
 
 .tab-header {
@@ -1486,6 +1463,12 @@ watch(
 /* 表格所有列居中 */
 :deep(.el-table .cell) {
   text-align: center;
+}
+
+/* 表格选择列始终保持标准方形复选框。 */
+:deep(.el-table__header-wrapper .el-checkbox__inner),
+:deep(.el-table__body-wrapper .el-checkbox__inner) {
+  border-radius: 2px !important;
 }
 
 .entry-list {

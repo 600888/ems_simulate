@@ -176,7 +176,7 @@ class GoosePublisherDao:
         cls,
         channel_id: int,
         ld_inst: str,
-        _ds_name: str,
+        ds_name: str,
         data_set_ref: str,
         entries: list[dict[str, Any]],
     ) -> int | None:
@@ -192,6 +192,9 @@ class GoosePublisherDao:
         Returns:
             数据库记录 ID
         """
+        # Keep ds_name in the persistence interface for callers; the name is
+        # derived from data_set_ref when records are read back.
+        del ds_name
         try:
             pure_go_cb_ref = f"{cls._PURE_DATASET_PREFIX}{data_set_ref}"
             with local_session() as session, session.begin():

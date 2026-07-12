@@ -404,6 +404,30 @@ async def import_icd(
             goose_data = dict(scl_data.get("goose", {}))
             goose_data["pure_datasets"] = scl_result.goose.pure_datasets
             goose_data["report_controls"] = scl_data.get("report_controls", [])
+
+            # 导入模型只负责发现候选项，不再替用户决定发布或订阅方向。
+            # 将解析出的控制块挂到当前 handler，供 GOOSE“已发现”页选择使用。
+            try:
+                current_device = device_controller.get_device_by_id(channel_id)
+                current_handler = getattr(current_device, "protocol_handler", None)
+                cached_candidates = getattr(current_handler, "_discovered_goose_items", None)
+                candidates = list(cached_candidates or goose_data.get("publishers", []))
+                discovered_items = getattr(current_handler, "_discovered_goose_items", None)
+                if isinstance(discovered_items, list):
+                    discovered_items.clear()
+                    discovered_items.extend(candidates)
+                elif current_handler is not None:
+                    current_handler._discovered_goose_items = candidates
+                get_datasets = getattr(current_handler, "get_discovered_datasets", None)
+                normalized_datasets = list(get_datasets()) if callable(get_datasets) else []
+                discovered_datasets = getattr(current_handler, "_discovered_datasets", None)
+                if isinstance(discovered_datasets, list):
+                    discovered_datasets.clear()
+                    discovered_datasets.extend(normalized_datasets)
+                elif current_handler is not None:
+                    current_handler._discovered_datasets = normalized_datasets
+            except Exception as e:
+                log.warning(f"缓存 GOOSE 已发现候选项失败: {e}")
             for p in (
                 scl_result.points.yc_points
                 + scl_result.points.yx_points

@@ -376,7 +376,9 @@ class IEC61850ClientHandler(ClientHandler):
             return False
         success = self._client.load_model_from_icd(icd_path, scl_result=scl_result)
         if success:
-            # 同步 DataSet 和 RCB 缓存，供 UI 展示
+            # 统一从 IEC61850Client 的标准化解析结果同步 UI 发现缓存。
+            self._discovered_goose_items.clear()
+            self._discovered_goose_items.extend(self._client._discovered_goose_items)
             self._discovered_datasets = self._client.get_discovered_datasets()
             self._discovered_rcbs = list(getattr(self._client, "_rcbs_from_icd", []))
             self._model_loaded = True

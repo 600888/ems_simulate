@@ -80,6 +80,7 @@ class GooseImportDiscoveredRequest(BaseModel):
 
     channel_id: int = Field(..., description="关联的通道ID", ge=1)
     interface: str = Field("eth0", description="GOOSE 接收使用的网络接口", min_length=1)
+    go_cb_refs: list[str] = Field(default_factory=list, description="要添加的控制块引用；为空时兼容导入全部")
 
 
 class GoosePublisherUpdate(BaseModel):

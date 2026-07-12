@@ -108,7 +108,7 @@ class GseControlInfo:
             "data_set_ref": self.data_set_ref
             or (f"{self.ld_inst}/{self.ln_class}${self.dat_set}" if self.dat_set else ""),
             "conf_rev": self.conf_rev,
-            "go_id": self.name,
+            "go_id": self.go_cb_ref,
             "dataset_entries": [
                 {
                     "name": member.get("fcda_ref", ""),

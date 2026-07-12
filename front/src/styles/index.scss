@@ -51,10 +51,53 @@ body,
     border: 1px solid var(--sidebar-border);
 }
 
-/* 对话框圆角补完 */
-.el-dialog {
+/*
+ * 全局弹框布局
+ * Element Plus 默认将弹框 teleport 到 body。应用主体可能被整体缩放且多处使用
+ * overflow:hidden，因此遮罩和弹框必须独立固定到视口，内容区自行滚动。
+ */
+body > .el-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    overflow: auto !important;
+}
+
+.el-overlay-dialog {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    min-height: 100%;
+    padding: 4vh 16px;
+    overflow: auto;
+}
+
+.el-overlay-dialog .el-dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(var(--el-dialog-width, 50%), calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+    max-height: 92vh;
+    margin: 0 auto !important;
     border-radius: 16px !important;
     overflow: hidden;
+}
+
+.el-overlay-dialog .el-dialog__header,
+.el-overlay-dialog .el-dialog__footer {
+    flex: 0 0 auto;
+}
+
+.el-overlay-dialog .el-dialog__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
+/* MessageBox 同样限制在当前视口内。 */
+.el-message-box {
+    max-width: calc(100vw - 32px);
 }
 
 /* 滚动条美化 */
@@ -78,12 +121,12 @@ body,
 
 /* 对话框在窄屏下自动缩小 */
 @media (max-width: 1199px) {
-    .el-dialog {
+    .el-overlay-dialog .el-dialog {
         width: 90vw !important;
-        max-height: 90vh;
+        max-height: 92vh;
 
         .el-dialog__body {
-            max-height: calc(90vh - 120px);
+            min-height: 0;
             overflow-y: auto;
         }
     }

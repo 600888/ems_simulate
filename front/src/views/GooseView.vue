@@ -25,7 +25,7 @@ watch(
 <style lang="scss" scoped>
 .goose-view {
   height: calc(100vh - var(--header-height) - var(--tags-height) - var(--footer-height));
-  padding: 16px;
+  padding: 8px 16px 16px;
   box-sizing: border-box;
   background: #f5f7fa;
   overflow: hidden;

@@ -32,28 +32,6 @@
         @icd-file-change="handleIcdFileChange"
       />
 
-      <el-form-item v-if="isIec61850Server && icdFile" label="GOOSE 导入">
-        <el-select v-model="gooseImportMode" style="width: 100%">
-          <el-option label="本地 IED：创建发布" value="local_publish" />
-          <el-option label="仅加载模型，不创建 GOOSE 资源" value="model_only" />
-          <el-option label="远端 IED：创建订阅" value="remote_subscribe" />
-          <el-option label="同时创建发布和订阅（测试）" value="both" />
-        </el-select>
-      </el-form-item>
-      <el-form-item
-        v-if="isIec61850Server && icdFile && gooseImportMode !== 'model_only'"
-        label="GOOSE 网卡"
-      >
-        <el-select v-model="gooseInterface" style="width: 100%" filterable>
-          <el-option
-            v-for="item in gooseNetworkInterfaces"
-            :key="item.id"
-            :label="`${item.display_name} · ${item.mac || '无 MAC'}`"
-            :value="item.id"
-          />
-        </el-select>
-      </el-form-item>
-
       <!-- 操作进度条 -->
       <div v-if="saving" class="icd-import-progress">
         <el-progress
@@ -137,7 +115,7 @@
           min-width="240"
           show-overflow-tooltip
         />
-        <el-table-column prop="go_id" label="GoID" width="100" />
+        <el-table-column prop="go_id" label="GOOSE标识符 (GoID)" width="180" />
         <el-table-column prop="app_id" label="APPID" width="70" />
         <el-table-column
           prop="dat_set"
@@ -222,9 +200,6 @@ const previewLoading = ref(false);
 const goosePreviewVisible = ref(false);
 const goosePreviewData = ref<PointImportResult | null>(null);
 const previewDone = ref(false);
-const gooseImportMode = ref<'model_only' | 'local_publish' | 'remote_subscribe' | 'both'>('local_publish');
-const gooseInterface = ref('eth0');
-const gooseNetworkInterfaces = ref<Array<{ id: string; display_name: string; mac: string }>>([]);
 
 // 操作进度
 const saving = ref(false);
@@ -331,18 +306,6 @@ function clearPendingPointFiles() {
 
 const handleIcdFileChange = async (file: File | null) => {
   icdFile.value = file;
-  if (!file) return;
-  try {
-    const { getGooseNetworkInterfaces } = await import('@/api/gooseApi');
-    const interfaces = await getGooseNetworkInterfaces();
-    gooseNetworkInterfaces.value = interfaces.filter(
-      (item) => item.is_up && !item.is_loopback && item.supports_raw_ethernet,
-    );
-    gooseInterface.value = gooseNetworkInterfaces.value[0]?.id || 'eth0';
-  } catch {
-    gooseNetworkInterfaces.value = [];
-    gooseInterface.value = 'eth0';
-  }
 };
 
 // MAC 地址格式化：优先用 ICD 中的，否则按 GOOSE 标准根据 APPID 自动推算
@@ -412,7 +375,7 @@ const handleSubmit = async () => {
       if (isIec61850Server.value && icdFile.value) {
         progressText.value = t('addDevice.icdImporting');
         const { importIcdPoints } = await import('@/api/channelApi');
-        await importIcdPoints(resultId, icdFile.value, gooseInterface.value, gooseImportMode.value);
+        await importIcdPoints(resultId, icdFile.value, 'eth0', 'model_only');
       }
 
       emit('success', form.name, isEditMode.value, originalName.value);

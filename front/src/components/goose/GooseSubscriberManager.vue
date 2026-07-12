@@ -11,6 +11,15 @@
           <el-option :value="5000" label="5 s" />
         </el-select>
         <el-button :icon="Refresh" :loading="loading" @click="loadBlocks">刷新</el-button>
+        <el-button
+          v-if="selected?.kind === 'publisher'"
+          type="primary"
+          :disabled="!selected.publisher?.is_running"
+          @click="publishSelected"
+        >立即发布</el-button>
+        <el-button v-if="selected" type="danger" plain @click="deleteSelected">
+          删除控制块
+        </el-button>
         <el-button @click="batchMode = !batchMode">{{
           batchMode ? "退出批量" : "批量模式"
         }}</el-button>
@@ -58,6 +67,7 @@
                 :block="selected"
                 :loading="applying"
                 :interfaces="networkInterfaces"
+                :data-sets="dataSets"
                 @apply="applyPublisherConfig"
               />
               <GooseControlPanel
@@ -133,7 +143,7 @@
 
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { Refresh } from '@element-plus/icons-vue';
 import {
   getGoosePublishers,
@@ -142,12 +152,16 @@ import {
   getGooseSubscriptionHistory,
   startGoosePublisher,
   stopGoosePublisher,
+  publishGooseNow,
+  deleteGoosePublisher,
+  removeGooseSubscription,
   stopGooseReceiver,
   updateGoosePublisher,
   updateGooseReceiver,
   updateGooseSubscription,
   type GooseMessageHistoryItem,
 } from '@/api/gooseApi';
+import { getIEC61850Structure, type IEC61850DataSetInfo } from '@/api/channelApi';
 import GooseBlockTreePanel from './GooseBlockTreePanel.vue';
 import GooseControlPanel from './GooseControlPanel.vue';
 import GooseDataSetTable from './GooseDataSetTable.vue';
@@ -158,6 +172,7 @@ const props = defineProps<{ channelId?: number }>();
 const publishers = ref<Awaited<ReturnType<typeof getGoosePublishers>>>([]);
 const receivers = ref<Awaited<ReturnType<typeof getGooseReceivers>>>([]);
 const networkInterfaces = ref<Awaited<ReturnType<typeof getGooseNetworkInterfaces>>>([]);
+const dataSets = ref<IEC61850DataSetInfo[]>([]);
 const blocks = computed(() => flattenGooseBlocks(publishers.value, receivers.value));
 const selectedKey = ref('');
 const selected = computed(() => blocks.value.find((item) => item.key === selectedKey.value) || null);
@@ -178,7 +193,7 @@ watch(
   async () => {
     selectedKey.value = '';
     history.value = [];
-    await Promise.all([loadBlocks(), loadNetworkInterfaces()]);
+    await Promise.all([loadBlocks(), loadNetworkInterfaces(), loadDataSets()]);
   },
   { immediate: true },
 );
@@ -212,12 +227,63 @@ async function loadNetworkInterfaces() {
   }
 }
 
+async function loadDataSets() {
+  if (!props.channelId) {
+    dataSets.value = [];
+    return;
+  }
+  try {
+    const structure = await getIEC61850Structure(props.channelId);
+    dataSets.value = structure.DataSets.flatMap((ld) =>
+      ld.children.flatMap((ln) => ln.datasets),
+    );
+  } catch {
+    dataSets.value = [];
+  }
+}
+
 function selectBlock(block: GooseBlockItem) {
   selectedKey.value = block.key;
   history.value = [];
   selectedHistory.value = null;
   if (block.kind === 'publisher' && activeTab.value === 'history') activeTab.value = 'attributes';
   if (activeTab.value === 'history') void loadHistory();
+}
+
+async function publishSelected() {
+  const block = selected.value;
+  if (!props.channelId || block?.kind !== 'publisher' || !block.publisher) return;
+  try {
+    await publishGooseNow(props.channelId, block.publisher.id);
+    ElMessage.success('GOOSE 报文已发布');
+    await loadBlocks(false);
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : 'GOOSE 发布失败');
+  }
+}
+
+async function deleteSelected() {
+  const block = selected.value;
+  if (!props.channelId || !block) return;
+  try {
+    await ElMessageBox.confirm(`确定删除 ${block.display_name}？`, '删除 GOOSE 控制块', {
+      type: 'warning',
+    });
+    if (block.kind === 'publisher' && block.publisher) {
+      await deleteGoosePublisher(props.channelId, block.publisher.id);
+    } else if (block.receiver_id) {
+      const receiver = receivers.value.find((item) => item.id === block.receiver_id);
+      if (receiver?.is_running) await stopGooseReceiver(props.channelId, receiver.id);
+      await removeGooseSubscription(block.receiver_id, block.go_cb_ref);
+    }
+    selectedKey.value = '';
+    await loadBlocks(false);
+    ElMessage.success('GOOSE 控制块已删除');
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error instanceof Error ? error.message : '删除失败');
+    }
+  }
 }
 
 function parseMac(value: string): number[] | null {
@@ -233,6 +299,7 @@ async function applyPublisherConfig(form: {
   enabled: boolean;
   interface: string;
   go_id: string;
+  dst_mac: string;
   data_set_ref: string;
   app_id: number;
   conf_rev: number;
@@ -255,7 +322,7 @@ async function applyPublisherConfig(form: {
       app_id: form.app_id,
       conf_rev: form.conf_rev,
       time_allowed_to_live: form.time_allowed_to_live,
-      dst_mac: block.publisher.dst_mac ? parseMac(block.publisher.dst_mac) : null,
+      dst_mac: form.dst_mac ? parseMac(form.dst_mac) : null,
       vlan_id: form.vlan_id,
       vlan_prio: form.vlan_prio,
       simulation: form.simulation,
@@ -274,6 +341,8 @@ async function applySubscriptionConfig(form: {
   enabled: boolean;
   interface: string;
   app_id: number | null;
+  go_id: string;
+  dst_mac: string;
   data_set_ref: string;
   conf_rev: number;
   description: string;
@@ -295,7 +364,7 @@ async function applySubscriptionConfig(form: {
     await updateGooseSubscription(props.channelId, block.receiver_id, block.go_cb_ref, {
       enabled: form.enabled,
       app_id: form.app_id,
-      dst_mac: block.subscription.dst_mac ? parseMac(block.subscription.dst_mac) : null,
+      dst_mac: form.dst_mac ? parseMac(form.dst_mac) : null,
       description: form.description,
       data_set_ref: form.data_set_ref,
       conf_rev: form.conf_rev,
@@ -303,6 +372,7 @@ async function applySubscriptionConfig(form: {
       ld_inst: block.ld_inst,
       ln_name: block.ln_name,
       dataset_entries: block.subscription.dataset_entries,
+      go_id: form.go_id,
     });
     ElMessage.success('GOOSE 订阅配置已应用');
     await loadBlocks(false);

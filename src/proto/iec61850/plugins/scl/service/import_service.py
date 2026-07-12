@@ -63,7 +63,7 @@ class SclImportResult:
                     "gse_controls": [
                         {
                             "go_cb_ref": g.go_cb_ref,
-                            "go_id": g.name,
+                            "go_id": g.go_cb_ref,
                             "app_id": g.app_id or g.gse_app_id,
                             "dat_set": g.dat_set,
                             "conf_rev": g.conf_rev,
