@@ -41,7 +41,7 @@ class GooseClientControl:
             return False
         native_connection = getattr(connection, "connection", None)
         if not native_connection:
-            log.warning(f"设置远端 GoCB GoEna 失败: MMS 连接不可用, ref={go_cb_ref}")
+            log.error(f"设置远端 GoCB GoEna 失败: MMS 连接不可用, ref={go_cb_ref}")
             return False
 
         mask = getattr(iec61850, "GOCB_ELEMENT_GO_ENA", cls.GO_ENA)
@@ -72,5 +72,5 @@ class GooseClientControl:
                     with contextlib.suppress(Exception):
                         iec61850.ClientGooseControlBlock_destroy(block)
 
-        log.warning(f"设置远端 GoCB GoEna 失败: ref={go_cb_ref}, enabled={enabled}, error={last_error}")
+        log.error(f"设置远端 GoCB GoEna 失败: ref={go_cb_ref}, enabled={enabled}, error={last_error}")
         return False

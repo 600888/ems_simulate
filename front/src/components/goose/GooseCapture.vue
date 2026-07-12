@@ -8,8 +8,9 @@
           <el-select
             v-model="interfaceName"
             :placeholder="$t('goose.interfacePlaceholder')"
-            style="width: 240px"
+            class="capture-control interface-control"
             :disabled="captureRunning"
+            :title="interfaceName"
           >
             <el-option v-for="item in networkInterfaces" :key="item.id" :value="item.id" class="network-option-item">
               <div class="network-option">
@@ -29,7 +30,8 @@
             :min="100"
             :max="10000"
             :step="100"
-            style="width: 130px"
+            :controls="true"
+            class="capture-control number-control"
             :disabled="captureRunning"
           />
         </div>
@@ -39,7 +41,8 @@
             v-model="filterAppId"
             :min="0"
             :max="65535"
-            style="width: 130px"
+            :controls="true"
+            class="capture-control number-control appid-control"
             :placeholder="$t('goose.filterAppId')"
             :disabled="captureRunning"
           />
@@ -261,8 +264,8 @@ const stopping = ref(false)
 const captureRunning = ref(false)
 const interfaceName = ref('')
 const networkInterfaces = ref<NetworkInterfaceInfo[]>([])
-const maxPackets = ref(500)
-const filterAppId = ref<number | null>(null)
+const maxPackets = ref(100)
+const filterAppId = ref<number | null>(1)
 
 const packets = ref<GooseCapturedPacket[]>([])
 const statistics = ref<GooseCaptureStatistics | null>(null)
@@ -284,7 +287,6 @@ function startCapture() {
   if (captureRunning.value || starting.value) return
 
   starting.value = true
-  captureRunning.value = true
   cmdSeq++
 
   ws.start({
@@ -298,9 +300,10 @@ function startCapture() {
 let stopTimeoutId: ReturnType<typeof setTimeout> | null = null
 
 function stopCapture() {
-  if (!captureRunning.value || stopping.value) return
+  if ((!captureRunning.value && !starting.value) || stopping.value) return
 
   stopping.value = true    // 停止按钮显示 loading
+  starting.value = false
   cmdSeq++
 
   ws.stop(props.channelId)
@@ -355,6 +358,7 @@ cleanups.push(
     if (res.command === 'start') {
       starting.value = false
       if (res.success) {
+        captureRunning.value = true
         ElMessage.success(t('goose.captureStarted'))
         lastListSeq = curSeq
         ws.list({ channel_id: props.channelId })
@@ -482,18 +486,67 @@ onUnmounted(() => {
     align-items: center;
     gap: 8px;
   }
+
+  .toolbar-left {
+    flex: 1 1 620px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .toolbar-right {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
 }
 
 .toolbar-item {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .toolbar-label {
   font-size: 13px;
   color: var(--text-secondary, #64748b);
   white-space: nowrap;
+}
+
+.capture-control {
+  height: 32px;
+}
+
+.interface-control {
+  width: 280px;
+}
+
+.number-control {
+  width: 156px;
+}
+
+.appid-control {
+  width: 180px;
+}
+
+:deep(.capture-control .el-select__wrapper),
+:deep(.capture-control.el-input-number .el-input__wrapper) {
+  min-height: 32px;
+}
+
+:deep(.number-control .el-input__inner) {
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .toolbar-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .interface-control {
+    width: min(280px, calc(100vw - 150px));
+  }
 }
 
 .capture-stats {

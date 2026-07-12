@@ -1,6 +1,6 @@
 <template>
   <div class="dataset-table">
-    <el-empty v-if="!values.length" description="尚未收到 GOOSE 数据" />
+    <el-empty v-if="!values.length" description="暂无 DataSet 数据" />
     <el-table
       v-else
       :data="values"
@@ -8,6 +8,7 @@
       size="small"
       height="100%"
       :row-class-name="rowClass"
+      class="ied-table"
     >
       <el-table-column prop="index" label="#" width="55" align="center" />
       <el-table-column prop="name" label="数据引用" min-width="260" show-overflow-tooltip>
@@ -51,7 +52,30 @@ function rowClass({ row }: { row: GooseSubscriptionDataValue }) {
 <style scoped lang="scss">
 .dataset-table {
   height: 100%;
-  min-height: 280px;
+  min-height: 260px;
+}
+.ied-table {
+  --el-table-border-color: #eef2f6;
+  --el-table-header-bg-color: #cfd5dd;
+  --el-table-tr-bg-color: #d9dee5;
+  --el-table-row-hover-bg-color: #cbd8e6;
+  color: #151c24;
+  font-size: 14px;
+}
+:deep(.el-table__header th) {
+  height: 32px;
+  background: #c4cbd4 !important;
+  color: #101820;
+  font-weight: 600;
+}
+:deep(.el-table__row) {
+  height: 36px;
+}
+:deep(.el-table__cell) {
+  padding: 4px 0;
+}
+:deep(.el-table__body .cell) {
+  font-size: 15px;
 }
 .changed-tag {
   margin-left: 8px;

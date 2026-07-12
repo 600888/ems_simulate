@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from collections.abc import Callable
 import copy
+import platform
 import threading
 import time
 from typing import Any
@@ -19,6 +20,9 @@ from src.common.mac_address import normalize_mac_address
 from ...defs.constants import HAS_IEC61850
 from ...log import log
 from .types import GooseState, GooseSubscriptionInfo, MmsType, ReceiverConfig
+
+if platform.system().lower() == "windows":
+    from .capture import CapturedPacket, GooseCaptureEngine
 
 
 class _PyGooseHandler(iec61850.GooseHandler):
@@ -131,6 +135,7 @@ class GooseReceiver:
         # SWIG director handler (防止 GC)
         self._goose_handlers: list[Any] = []
         self._goose_subscriber_py_list: list[Any] = []
+        self._capture_engine: GooseCaptureEngine | None = None
 
         # 状态监控
         self._monitor_stop = threading.Event()
@@ -198,13 +203,18 @@ class GooseReceiver:
     def get_subscriptions(self) -> list[dict[str, Any]]:
         """获取所有订阅信息"""
         with self._lock:
-            return [sub.to_dict() for sub in self._subscriptions.values()]
+            return [self._subscription_to_dict(sub) for sub in self._subscriptions.values()]
 
     def get_subscription(self, go_cb_ref: str) -> dict[str, Any] | None:
         """获取指定订阅信息"""
         with self._lock:
             sub = self._subscriptions.get(go_cb_ref)
-            return sub.to_dict() if sub else None
+            return self._subscription_to_dict(sub) if sub else None
+
+    def _subscription_to_dict(self, sub: GooseSubscriptionInfo) -> dict[str, Any]:
+        result = sub.to_dict()
+        result["history_count"] = len(self._history.get(sub.go_cb_ref, ()))
+        return result
 
     def update_subscription(self, current_go_cb_ref: str, **changes: Any) -> dict[str, Any] | None:
         """Update one GOOSE control block subscription configuration."""
@@ -231,6 +241,10 @@ class GooseReceiver:
                     if key == "dst_mac":
                         value = normalize_mac_address(value)
                     setattr(sub, key, value)
+            if "dataset_entries" in changes and sub.dataset_entries:
+                self._apply_dataset_metadata(sub.data_values, sub.dataset_entries)
+                for history_item in self._history.get(current_go_cb_ref, ()):
+                    self._apply_dataset_metadata(history_item.get("data_values", []), sub.dataset_entries)
             if new_ref != current_go_cb_ref:
                 sub.go_cb_ref = new_ref
                 self._subscriptions.pop(current_go_cb_ref)
@@ -238,6 +252,16 @@ class GooseReceiver:
                 if current_go_cb_ref in self._history:
                     self._history[new_ref] = self._history.pop(current_go_cb_ref)
             return sub.to_dict()
+
+    @staticmethod
+    def _apply_dataset_metadata(values: list[dict[str, Any]], entries: list[dict[str, Any]]) -> None:
+        for index, item in enumerate(values):
+            if index >= len(entries):
+                break
+            metadata = entries[index]
+            item["name"] = metadata.get("name", f"Entry[{index}]")
+            item["fc"] = metadata.get("fc", "")
+            item["description"] = metadata.get("description", "")
 
     def get_history(self, go_cb_ref: str, limit: int = 100) -> list[dict[str, Any]]:
         with self._lock:
@@ -280,20 +304,28 @@ class GooseReceiver:
                 sub.last_update = time.time()
 
                 # 解析数据集值
-                previous_values = [item.get("value") for item in sub.data_values]
+                previous_items = sub.data_values
                 parsed_values = _DataSetParser.parse(subscriber)
                 changed_at = time.time()
                 changed_count = 0
                 for item in parsed_values:
                     index = item["index"]
                     meta = sub.dataset_entries[index] if index < len(sub.dataset_entries) else {}
-                    previous = previous_values[index] if index < len(previous_values) else None
+                    previous_item = previous_items[index] if index < len(previous_items) else None
+                    current_value = previous_item.get("value") if previous_item else None
+                    value_changed = bool(previous_item) and current_value != item.get("value")
                     item["name"] = meta.get("name", f"Entry[{index}]")
                     item["fc"] = meta.get("fc", "")
                     item["description"] = meta.get("description", "")
-                    item["previous_value"] = previous
-                    item["changed"] = previous != item.get("value") if sub.message_count else False
-                    item["changed_at"] = changed_at if item["changed"] else 0.0
+                    item["previous_value"] = (
+                        current_value
+                        if value_changed
+                        else previous_item.get("previous_value")
+                        if previous_item
+                        else None
+                    )
+                    item["changed"] = value_changed
+                    item["changed_at"] = changed_at if value_changed else 0.0
                     if item["changed"]:
                         changed_count += 1
                 sub.data_values = parsed_values
@@ -324,6 +356,77 @@ class GooseReceiver:
         except Exception as e:
             log.error(f"GOOSE 报文处理异常: {e}")
 
+    def _on_captured_packet(self, packet: CapturedPacket) -> None:
+        """Apply a Windows Npcap packet to the matching subscription."""
+        try:
+            with self._lock:
+                sub = self._subscriptions.get(packet.go_cb_ref)
+                if not sub or not sub.enabled:
+                    return
+                if sub.app_id is not None and packet.app_id != sub.app_id:
+                    return
+                if sub.dst_mac:
+                    expected_mac = ":".join(f"{item:02X}" for item in sub.dst_mac)
+                    if packet.dst_mac.upper() != expected_mac:
+                        return
+
+                sub.go_id = packet.go_id
+                sub.data_set_ref = packet.data_set_ref
+                sub.received_conf_rev = packet.conf_rev
+                sub.config_mismatch = bool(sub.conf_rev and packet.conf_rev != sub.conf_rev)
+                sub.st_num = packet.st_num
+                sub.sq_num = packet.sq_num
+                sub.time_allowed_to_live = packet.time_allowed_to_live
+                sub.timestamp = int(packet.timestamp * 1000)
+                sub.state = GooseState.CONNECTED
+                sub.last_update = packet.timestamp
+
+                previous_items = sub.data_values
+                parsed_values = [dict(item) for item in packet.data_values]
+                changed_count = 0
+                for index, item in enumerate(parsed_values):
+                    meta = sub.dataset_entries[index] if index < len(sub.dataset_entries) else {}
+                    previous_item = previous_items[index] if index < len(previous_items) else None
+                    current_value = previous_item.get("value") if previous_item else None
+                    value_changed = bool(previous_item) and current_value != item.get("value")
+                    item["index"] = index
+                    item["name"] = meta.get("name", f"Entry[{index}]")
+                    item["fc"] = meta.get("fc", "")
+                    item["description"] = meta.get("description", "")
+                    item["previous_value"] = (
+                        current_value
+                        if value_changed
+                        else previous_item.get("previous_value")
+                        if previous_item
+                        else None
+                    )
+                    item["changed"] = value_changed
+                    item["changed_at"] = packet.timestamp if value_changed else 0.0
+                    changed_count += int(item["changed"])
+                sub.data_values = parsed_values
+                sub.message_count += 1
+                if changed_count:
+                    sub.last_change = packet.timestamp
+                self._history[packet.go_cb_ref].append(
+                    {
+                        "received_at": packet.timestamp,
+                        "timestamp": sub.timestamp,
+                        "st_num": packet.st_num,
+                        "sq_num": packet.sq_num,
+                        "conf_rev": packet.conf_rev,
+                        "data_set_ref": packet.data_set_ref,
+                        "value_count": len(parsed_values),
+                        "changed_count": changed_count,
+                        "data_values": copy.deepcopy(parsed_values),
+                    }
+                )
+                callback_data = sub.to_dict()
+
+            if self._callback:
+                self._callback(callback_data)
+        except Exception as e:
+            log.error(f"GOOSE Npcap 报文处理异常: {e}")
+
     # ===== 生命周期 =====
 
     def start(self) -> bool:
@@ -332,6 +435,19 @@ class GooseReceiver:
             return True
 
         try:
+            if platform.system().lower() == "windows":
+                self._capture_engine = GooseCaptureEngine(interface=self._config.interface, max_packets=200)
+                self._capture_engine.set_callback(self._on_captured_packet)
+                if not self._capture_engine.start():
+                    raise RuntimeError(f"Npcap GOOSE 捕获启动失败: interface={self._config.interface}")
+                self._is_running = True
+                self._start_monitor()
+                log.info(
+                    f"GOOSE Receiver 已启动 (Npcap): interface={self._config.interface}, "
+                    f"订阅数={len(self._subscriptions)}"
+                )
+                return True
+
             self._receiver = iec61850.GooseReceiver_create()
             if not self._receiver:
                 raise RuntimeError("GooseReceiver_create 失败")
@@ -380,9 +496,7 @@ class GooseReceiver:
             self._is_running = True
 
             # 启动状态监控线程
-            self._monitor_stop.clear()
-            self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
-            self._monitor_thread.start()
+            self._start_monitor()
 
             log.info(f"GOOSE Receiver 已启动: interface={self._config.interface}, 订阅数={len(self._subscriptions)}")
             return True
@@ -394,6 +508,11 @@ class GooseReceiver:
             self._goose_subscriber_py_list.clear()
             return False
 
+    def _start_monitor(self) -> None:
+        self._monitor_stop.clear()
+        self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self._monitor_thread.start()
+
     def stop(self) -> None:
         """停止 GOOSE Receiver"""
         self._is_running = False
@@ -401,6 +520,11 @@ class GooseReceiver:
 
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=2.0)
+
+        if self._capture_engine:
+            self._capture_engine.set_callback(None)
+            self._capture_engine.stop()
+            self._capture_engine = None
 
         # 先切断 SWIG director 链接，再销毁 C++ 对象
         for py_sub in self._goose_subscriber_py_list:

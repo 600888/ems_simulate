@@ -283,6 +283,8 @@ class GooseSubscriptionStatus(BaseModel):
     description: str = ""
     dst_mac: str = ""
     data_values: list[dict[str, Any]] = Field(default_factory=list)
+    message_count: int = 0
+    history_count: int = 0
 
 
 class GooseReceiverStatus(BaseModel):

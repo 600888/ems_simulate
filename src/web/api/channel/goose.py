@@ -135,6 +135,69 @@ def _set_remote_go_ena(request: Request, channel_id: int, go_cb_ref: str, enable
         raise OperationError(f"远端 GOOSE 控制块 GoEna {'使能' if enabled else '禁用'}失败: {go_cb_ref}")
 
 
+def _resolve_dataset_entries(
+    request: Request,
+    channel_id: int,
+    data_set_ref: str,
+    configured: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Reuse the report-side MMS DataSet directory lookup for GOOSE values."""
+    if configured or not data_set_ref:
+        return configured
+    device_controller = getattr(request.app.state, "device_controller", None)
+    device = device_controller.get_device_by_channel_id(channel_id) if device_controller else None
+    handler = getattr(device, "protocol_handler", None) if device else None
+    client = getattr(handler, "_client", None) if handler else None
+    browse = getattr(client, "browse_dataset_directory", None)
+    if not callable(browse):
+        return configured
+    try:
+        members = browse(data_set_ref) or []
+    except Exception as exc:
+        log.warning(f"在线读取 GOOSE DataSet 成员失败: ref={data_set_ref}, error={exc}")
+        members = []
+    if not members:
+        members = _cached_dataset_members(client, data_set_ref)
+    entries = [
+        {
+            "name": member.get("ref") or member.get("fcda_ref") or member.get("name", ""),
+            "fc": member.get("fc", ""),
+            "type": member.get("iec_type") or member.get("type", "unknown"),
+            "description": member.get("description") or member.get("desc", ""),
+        }
+        for member in members
+        if member.get("ref") or member.get("fcda_ref") or member.get("name")
+    ]
+    if entries:
+        log.info(f"在线读取 GOOSE DataSet 成员成功: ref={data_set_ref}, count={len(entries)}")
+    return entries or configured
+
+
+def _cached_dataset_members(client: Any, data_set_ref: str) -> list[dict[str, Any]]:
+    """Find DataSet members in the online model cache when MMS browsing fails."""
+    if client is None:
+        return []
+    try:
+        from src.proto.iec61850.model import ModelCache
+
+        cache_key = f"{client.ip}:{client.port}"
+        model = ModelCache.instance().get(cache_key)
+    except Exception as exc:
+        log.debug(f"读取 IEC 61850 模型缓存失败: ref={data_set_ref}, error={exc}")
+        return []
+    if model is None:
+        return []
+
+    normalized = data_set_ref.replace("$", ".")
+    for ld in model.lds:
+        for ln in ld.lns:
+            for dataset in ln.datasets:
+                if dataset.ref.replace("$", ".") == normalized:
+                    log.info(f"从模型缓存关联 GOOSE DataSet 成员: ref={data_set_ref}, count={len(dataset.members)}")
+                    return [dict(member) for member in dataset.members]
+    return []
+
+
 def _require_resource_channel(actual: int | None, expected: int | None) -> None:
     if expected is not None and actual != expected:
         raise NotFoundError("当前设备下未找到该 GOOSE 资源")
@@ -618,6 +681,12 @@ async def update_receiver_subscription(request: Request, body: GooseSubscription
         raise NotFoundError("GOOSE Receiver 未找到")
     _require_resource_channel(current.get("channel_id"), body.channel_id)
     remote_ref = body.new_go_cb_ref or body.go_cb_ref
+    dataset_entries = _resolve_dataset_entries(
+        request,
+        body.channel_id,
+        body.data_set_ref,
+        body.dataset_entries,
+    )
     _set_remote_go_ena(request, body.channel_id, remote_ref, body.enabled)
     result = manager.update_subscription(
         body.receiver_id,
@@ -632,7 +701,7 @@ async def update_receiver_subscription(request: Request, body: GooseSubscription
         ied_name=body.ied_name,
         ld_inst=body.ld_inst,
         ln_name=body.ln_name,
-        dataset_entries=body.dataset_entries,
+        dataset_entries=dataset_entries,
         go_id=body.go_id,
     )
     if not result:

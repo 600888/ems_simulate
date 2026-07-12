@@ -29,16 +29,17 @@ def _goose_frame() -> bytes:
             _tlv(0x81, b"\x03\xe8"),
             _tlv(0x82, b"LD0/LLN0$dsGOOSE1"),
             _tlv(0x83, b"gcb1"),
-            _tlv(0x84, b"\x01"),
-            _tlv(0x85, b"\x02"),
-            _tlv(0x86, b"\x01"),
-            _tlv(0x87, b"\x01"),
-            _tlv(0x88, b"\x00"),
-            _tlv(0x89, b"\x01"),
-            _tlv(0x8A, _tlv(0x09, b"\x01")),
+            _tlv(0x84, b"\x00" * 8),
+            _tlv(0x85, b"\x01"),
+            _tlv(0x86, b"\x02"),
+            _tlv(0x87, b"\x00"),
+            _tlv(0x88, b"\x01"),
+            _tlv(0x89, b"\x00"),
+            _tlv(0x8A, b"\x01"),
+            _tlv(0xAB, _tlv(0x83, b"\x01")),
         ]
     )
-    pdu = _tlv(0xA1, pdu_fields)
+    pdu = _tlv(0x61, pdu_fields)
     ethernet = bytes.fromhex("010ccd010001 020304050607 88b8")
     goose_header = bytes.fromhex("0001 0000 0000 0000")
     return ethernet + goose_header + pdu
@@ -116,6 +117,7 @@ def test_goose_receiver_keeps_subscriber_handles(monkeypatch):
 
     monkeypatch.setattr(subscriber_module, "HAS_IEC61850", True)
     monkeypatch.setattr(subscriber_module, "iec61850", FakeIec61850, raising=False)
+    monkeypatch.setattr(subscriber_module.platform, "system", lambda: "Linux")
 
     receiver = subscriber_module.GooseReceiver(ReceiverConfig(interface="eth-test"))
     receiver.add_subscription("LD0/LLN0$GO$gcb1", app_id=1)
@@ -200,12 +202,14 @@ def test_goose_subscription_history_tracks_dataset_changes(monkeypatch):
         {"go_cb_ref": "LD0/LLN0$GO$gcb1", "st_num": 1, "sq_num": 0, "values": [{"value": False}]}
     )
     receiver._on_goose_message({"go_cb_ref": "LD0/LLN0$GO$gcb1", "st_num": 2, "sq_num": 0, "values": [{"value": True}]})
+    receiver._on_goose_message({"go_cb_ref": "LD0/LLN0$GO$gcb1", "st_num": 2, "sq_num": 1, "values": [{"value": True}]})
 
     latest = receiver.get_subscription("LD0/LLN0$GO$gcb1")
     history = receiver.get_history("LD0/LLN0$GO$gcb1")
-    assert latest["message_count"] == 2
+    assert latest["message_count"] == 3
     assert latest["data_values"][0]["name"] == "LD0/XCBR1.Pos.stVal"
     assert latest["data_values"][0]["previous_value"] is False
-    assert latest["data_values"][0]["changed"] is True
-    assert len(history) == 2
-    assert history[0]["changed_count"] == 1
+    assert latest["data_values"][0]["changed"] is False
+    assert len(history) == 3
+    assert history[0]["changed_count"] == 0
+    assert history[1]["changed_count"] == 1

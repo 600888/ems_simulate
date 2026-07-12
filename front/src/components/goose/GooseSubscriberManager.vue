@@ -80,7 +80,7 @@
             </el-tab-pane>
 
             <el-tab-pane
-              :label="selected.kind === 'publisher' ? '当前发布数据' : '最近 GOOSE 报文'"
+              :label="selected.kind === 'publisher' ? '当前 GOOSE 数据' : '最近 GOOSE 数据'"
               name="latest"
             >
               <div class="latest-pane">
@@ -102,7 +102,7 @@
 
             <el-tab-pane
               v-if="selected.kind === 'subscriber'"
-              :label="`GOOSE 报文数据 (${history.length})`"
+              :label="`GOOSE 数据历史 (${selected.subscription?.history_count || 0})`"
               name="history"
             >
               <div class="history-pane">
@@ -112,23 +112,29 @@
                   border
                   height="100%"
                   highlight-current-row
-                  @current-change="selectedHistory = $event"
+                  row-key="received_at"
+                  :current-row-key="selectedHistory?.received_at"
+                  @current-change="handleHistoryCurrentChange"
                 >
-                  <el-table-column prop="st_num" label="状态号" width="75" />
-                  <el-table-column prop="sq_num" label="顺序号" width="75" />
-                  <el-table-column label="时间" min-width="165">
+                  <el-table-column type="index" label="#" width="48" align="center" />
+                  <el-table-column label="接收时间" min-width="165">
                     <template #default="{ row }">{{
                       formatGooseTime(row.received_at)
                     }}</template>
                   </el-table-column>
-                  <el-table-column prop="value_count" label="值" width="55" />
-                  <el-table-column prop="changed_count" label="变化" width="60" />
+                  <el-table-column prop="st_num" label="状态号" width="75" />
+                  <el-table-column prop="sq_num" label="顺序号" width="75" />
+                  <el-table-column prop="value_count" label="数据项" width="70" />
+                  <el-table-column prop="changed_count" label="变化项" width="70" />
                 </el-table>
                 <div class="history-detail">
                   <div v-if="selectedHistory" class="summary">
+                    <span>时间：{{ formatGooseTime(selectedHistory.received_at) }}</span>
+                    <span>数据集：{{ selectedHistory.data_set_ref || "-" }}</span>
                     <span>状态号：{{ selectedHistory.st_num }}</span>
                     <span>顺序号：{{ selectedHistory.sq_num }}</span>
-                    <span>变化：{{ selectedHistory.changed_count }}</span>
+                    <span>数据项：{{ selectedHistory.value_count }}</span>
+                    <span>变化项：{{ selectedHistory.changed_count }}</span>
                   </div>
                   <GooseDataSetTable :values="selectedHistory?.data_values || []" />
                 </div>
@@ -187,6 +193,8 @@ const batchMode = ref(false);
 const checkedKeys = ref<string[]>([]);
 let timer: ReturnType<typeof setTimeout> | null = null;
 let active = true;
+let historyRequestId = 0;
+let historyKnownRevision = -1;
 
 watch(
   () => props.channelId,
@@ -208,7 +216,9 @@ async function loadBlocks(showLoading = true) {
       getGooseReceivers(props.channelId),
     ]);
     if (selectedKey.value && !selected.value) selectedKey.value = '';
-    if (activeTab.value === 'history' && selected.value?.kind === 'subscriber') await loadHistory();
+    if (activeTab.value === 'history' && selected.value?.kind === 'subscriber') {
+      await loadHistory(false);
+    }
   } finally {
     loading.value = false;
     schedule();
@@ -246,8 +256,10 @@ function selectBlock(block: GooseBlockItem) {
   selectedKey.value = block.key;
   history.value = [];
   selectedHistory.value = null;
+  historyKnownRevision = -1;
+  historyRequestId++;
   if (block.kind === 'publisher' && activeTab.value === 'history') activeTab.value = 'attributes';
-  if (activeTab.value === 'history') void loadHistory();
+  if (activeTab.value === 'history') void loadHistory(true);
 }
 
 async function publishSelected() {
@@ -419,19 +431,37 @@ async function batchSetEnabled(enabled: boolean) {
   }
 }
 
-async function loadHistory() {
+async function loadHistory(force = true) {
   const block = selected.value;
   if (!props.channelId || block?.kind !== 'subscriber' || !block.receiver_id) return;
-  history.value = await getGooseSubscriptionHistory(
+  const revision = block.subscription?.message_count || 0;
+  if (!force && revision === historyKnownRevision) return;
+
+  const requestId = ++historyRequestId;
+  const requestedKey = block.key;
+  const items = await getGooseSubscriptionHistory(
     props.channelId,
     block.receiver_id,
     block.go_cb_ref,
+    200,
   );
-  selectedHistory.value = history.value[0] || null;
+  if (requestId !== historyRequestId || selected.value?.key !== requestedKey) return;
+
+  historyKnownRevision = revision;
+  history.value = items;
+  const selectedReceivedAt = selectedHistory.value?.received_at;
+  selectedHistory.value =
+    items.find((item) => item.received_at === selectedReceivedAt) || items[0] || null;
 }
 
 function handleTabChange(tab: string | number) {
-  if (tab === 'history') void loadHistory();
+  if (tab === 'history') void loadHistory(true);
+}
+
+function handleHistoryCurrentChange(row: GooseMessageHistoryItem | null) {
+  // Replacing the polled table data briefly emits null. Keep the user's
+  // selection and let current-row-key bind it to the refreshed row object.
+  if (row) selectedHistory.value = row;
 }
 
 function schedule() {

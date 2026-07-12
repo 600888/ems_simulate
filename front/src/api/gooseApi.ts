@@ -83,6 +83,7 @@ export interface GooseSubscriptionStatus {
   ln_name: string;
   dataset_entries: GooseDataSetMember[];
   message_count: number;
+  history_count: number;
   last_change: number;
 }
 
@@ -240,7 +241,18 @@ export async function replaceGooseSubscriptions(
 /** 获取客户端发现的远端 GOOSE 控制块列表 */
 export async function getDiscoveredGoose(channelId: number): Promise<DiscoveredGooseItem[]> {
   const data = await requestApi(GOOSE_API.DISCOVERED_LIST, 'post', { channel_id: channelId });
-  return data?.items || [];
+  return (data?.items || []).map((item: DiscoveredGooseItem & { app_id?: number | string | null }) => ({
+    ...item,
+    app_id: parseGooseAppId(item.app_id),
+  }));
+}
+
+export function parseGooseAppId(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') return Number.isInteger(value) ? value : null;
+  const text = String(value).trim();
+  const parsed = /^0x/i.test(text) ? Number.parseInt(text.slice(2), 16) : Number.parseInt(text, 10);
+  return Number.isInteger(parsed) ? parsed : null;
 }
 
 /** 将发现的远端 GOOSE 控制块导入为 Receiver 订阅 */

@@ -87,16 +87,10 @@ export class GooseCaptureWebSocket {
 
   /** 获取 baseURL */
   private get _baseUrl(): string {
-    // 从 axios 实例获取 baseURL
-    const axios = (window as any).__axios_instance;
-    let baseURL = '/';
-    if (axios?.defaults?.baseURL) {
-      baseURL = axios.defaults.baseURL;
-    }
-    if (baseURL.startsWith('/')) {
-      baseURL = window.location.origin + baseURL;
-    }
-    return baseURL;
+    const configured = import.meta.env.VUE_APP_API_BASE || '/';
+    return configured.startsWith('http')
+      ? configured
+      : new URL(configured, window.location.origin).toString();
   }
 
   /** 获取 WebSocket URL */

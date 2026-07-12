@@ -257,7 +257,11 @@ def _trace_id(request: Request) -> str:
 @app.exception_handler(BizError)
 async def biz_exception_handler(request: Request, exc: BizError):
     """业务异常：按异常自身声明的 code / http_status 返回"""
-    log.warning(f"[{_trace_id(request)}] 业务异常: {exc.message} (code={exc.code})")
+    message = f"[{_trace_id(request)}] 业务异常: {exc.message} (code={exc.code})"
+    if exc.http_status >= 500:
+        log.error(message)
+    else:
+        log.warning(message)
     return _error_response(exc.code, exc.message, exc.data, exc.http_status)
 
 

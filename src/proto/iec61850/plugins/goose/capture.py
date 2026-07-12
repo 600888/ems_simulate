@@ -30,28 +30,29 @@ ETHER_TYPE_GOOSE = 0x88B8
 ETHER_TYPE_VLAN = 0x8100
 
 # GOOSE PDU 标签 (ASN.1 BER-TLV)
-TAG_GOOSE_PDU = 0xA1
+TAG_GOOSE_PDU = 0x61
 TAG_GOCB_REF = 0x80
 TAG_TIME_ALLOWED_TO_LIVE = 0x81
 TAG_DATASET = 0x82
 TAG_GO_ID = 0x83
-TAG_ST_NUM = 0x84
-TAG_SQ_NUM = 0x85
-TAG_SIMULATION = 0x86
-TAG_CONF_REV = 0x87
-TAG_NDS_COM = 0x88
-TAG_NUM_DAT_SET_ENTRIES = 0x89
-TAG_ALL_DATA = 0x8A
+TAG_TIMESTAMP = 0x84
+TAG_ST_NUM = 0x85
+TAG_SQ_NUM = 0x86
+TAG_SIMULATION = 0x87
+TAG_CONF_REV = 0x88
+TAG_NDS_COM = 0x89
+TAG_NUM_DAT_SET_ENTRIES = 0x8A
+TAG_ALL_DATA = 0xAB
 
 # MMS 数据类型 (BER-TLV within ALL_DATA) - 捕获引擎中的 BER 标签
-MMS_TAG_BOOLEAN = 0x09
-MMS_TAG_INTEGER = 0x02
-MMS_TAG_BIT_STRING = 0x03
-MMS_TAG_OCTET_STRING = 0x04
-MMS_TAG_VISIBLE_STRING = 0x1A
-MMS_TAG_UTC_TIME = 0x11
-MMS_TAG_FLOAT = 0x07
-MMS_TAG_UNSIGNED = 0x06
+MMS_TAG_BOOLEAN = 0x83
+MMS_TAG_BIT_STRING = 0x84
+MMS_TAG_INTEGER = 0x85
+MMS_TAG_UNSIGNED = 0x86
+MMS_TAG_FLOAT = 0x87
+MMS_TAG_OCTET_STRING = 0x89
+MMS_TAG_VISIBLE_STRING = 0x8A
+MMS_TAG_UTC_TIME = 0x91
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,8 +277,12 @@ class _GoosePduParser:
                 entry["value"] = _GoosePduParser._parse_ber_integer(data, offset, field_end)
             elif mms_tag == MMS_TAG_FLOAT:
                 entry["type"] = "float"
-                if mms_length >= 4:
-                    entry["value"] = round(struct.unpack(">f", data[offset : offset + 4])[0], 6)
+                # MMS floating-point carries a one-byte exponent-width prefix
+                # followed by the IEEE-754 payload (normally 0x08 + float32).
+                if mms_length >= 5:
+                    entry["value"] = round(struct.unpack(">f", data[offset + 1 : offset + 5])[0], 6)
+                elif mms_length == 4:
+                    entry["value"] = round(struct.unpack(">f", data[offset:field_end])[0], 6)
                 else:
                     entry["value"] = 0.0
             elif mms_tag == MMS_TAG_UNSIGNED:
@@ -429,8 +434,10 @@ class GooseCaptureEngine:
         )
         self._capture_thread.start()
 
-        # 等待线程启动
-        self._started_event.wait(0.5)
+        # Scapy/Npcap performs adapter discovery on first import and can take
+        # noticeably longer than a raw AF_PACKET socket to become ready.
+        startup_timeout = 5.0 if platform.system().lower() == "windows" else 0.5
+        self._started_event.wait(startup_timeout)
         if not self._is_running:
             if self._capture_thread.is_alive():
                 self._stop_event.set()
