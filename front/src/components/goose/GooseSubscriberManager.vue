@@ -123,7 +123,7 @@
                   @current-change="handleHistoryCurrentChange"
                 >
                   <el-table-column type="index" label="#" width="48" align="center" />
-                  <el-table-column label="接收时间" min-width="165">
+                  <el-table-column prop="received_at" label="接收时间" min-width="185" sortable>
                     <template #default="{ row }">{{
                       formatGooseTime(row.received_at)
                     }}</template>

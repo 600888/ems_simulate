@@ -123,9 +123,9 @@
       @row-click="showPacketDetail"
     >
       <el-table-column type="index" :label="$t('goose.seqNum')" width="50" />
-      <el-table-column :label="$t('goose.time')" width="165" sortable>
+      <el-table-column prop="timestamp" :label="$t('goose.time')" width="185" sortable>
         <template #default="{ row }">
-          {{ row.time }}
+          {{ formatGooseTime(row.timestamp) }}
         </template>
       </el-table-column>
       <el-table-column prop="src_mac" :label="$t('goose.srcMac')" width="140" />
@@ -161,10 +161,10 @@
             <el-tooltip
               v-for="(dv, idx) in row.data_values.slice(0, 5)"
               :key="idx"
-              :content="`[${idx}] ${dv.type}: ${dv.value}`"
+              :content="`[${idx}] ${dv.type}: ${formatCapturedValue(dv)}`"
               placement="top"
             >
-              <span class="data-value-item">{{ dv.value }}</span>
+              <span class="data-value-item">{{ formatCapturedValue(dv) }}</span>
             </el-tooltip>
             <span v-if="row.data_values.length > 5" class="text-muted">+{{ row.data_values.length - 5 }}</span>
           </div>
@@ -183,7 +183,7 @@
     >
       <template v-if="detailPacket">
         <el-descriptions :column="3" border size="small">
-          <el-descriptions-item :label="$t('goose.time')" :span="2">{{ detailPacket.time }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.time')" :span="2">{{ formatGooseTime(detailPacket.timestamp) }}</el-descriptions-item>
           <el-descriptions-item :label="$t('goose.length')">{{ $t('goose.bytes', { count: detailPacket.length }) }}</el-descriptions-item>
           <el-descriptions-item :label="$t('goose.srcMac')">{{ detailPacket.src_mac }}</el-descriptions-item>
           <el-descriptions-item :label="$t('goose.dstMacLabel')">{{ detailPacket.dst_mac }}</el-descriptions-item>
@@ -215,7 +215,9 @@
         <el-table :data="detailPacket.data_values || []" border size="small" max-height="200">
           <el-table-column type="index" :label="$t('goose.seqNum')" width="60" />
           <el-table-column :label="$t('goose.entryType')" width="120" prop="type" />
-          <el-table-column :label="$t('goose.entryValue')" prop="value" />
+          <el-table-column :label="$t('goose.entryValue')">
+            <template #default="{ row }">{{ formatCapturedValue(row) }}</template>
+          </el-table-column>
         </el-table>
 
         <!-- 十六进制转储 -->
@@ -246,11 +248,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { VideoPlay, VideoPause, Refresh, Delete, Monitor } from '@element-plus/icons-vue'
 import { GooseCaptureWebSocket, WsEventType } from '@/services/GooseCaptureWebSocket'
 import type {
+  GooseCapturedDataValue,
   GooseCapturedPacket,
   GooseCaptureStatistics,
   NetworkInterfaceInfo,
 } from '@/api/gooseApi'
 import { getGooseNetworkInterfaces } from '@/api/gooseApi'
+import { formatGooseTime } from './gooseWorkbench'
 
 const props = defineProps<{ channelId: number }>()
 
@@ -270,6 +274,12 @@ const filterAppId = ref<number | null>(1)
 const packets = ref<GooseCapturedPacket[]>([])
 const statistics = ref<GooseCaptureStatistics | null>(null)
 const hasData = computed(() => packets.value.length > 0)
+
+function formatCapturedValue(value: GooseCapturedDataValue) {
+  return value.type === 'timestamp' && (typeof value.value === 'number' || typeof value.value === 'string')
+    ? formatGooseTime(value.value)
+    : String(value.value ?? '-')
+}
 
 // 详情对话框
 const detailVisible = ref(false)

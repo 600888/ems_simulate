@@ -24,7 +24,7 @@
       <el-table-column prop="type" label="类型" width="105" />
       <el-table-column label="前值" min-width="120"
         ><template #default="{ row }">{{
-          formatValue(row.previous_value)
+          formatValue(row.previous_value, row.type)
         }}</template></el-table-column
       >
       <el-table-column label="当前值" min-width="180">
@@ -54,7 +54,7 @@
             />
           </template>
           <template v-else>
-            <strong>{{ formatValue(row.value) }}</strong>
+            <strong>{{ formatValue(row.value, row.type) }}</strong>
             <el-tag v-if="row.changed" type="warning" size="small" class="changed-tag">
               已变化
             </el-tag>
@@ -66,6 +66,7 @@
 </template>
 <script setup lang="ts">
 import type { GooseSubscriptionDataValue } from "@/api/gooseApi";
+import { formatGooseTime } from "./gooseWorkbench";
 const props = defineProps<{
   values: GooseSubscriptionDataValue[];
   editable?: boolean;
@@ -82,8 +83,11 @@ function updateValue(row: GooseSubscriptionDataValue) {
     });
   }
 }
-function formatValue(value: unknown) {
+function formatValue(value: unknown, type?: string) {
   if (value === null || value === undefined) return "-";
+  if (type === "timestamp" && (typeof value === "number" || typeof value === "string")) {
+    return formatGooseTime(value);
+  }
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 function rowClass({ row }: { row: GooseSubscriptionDataValue }) {

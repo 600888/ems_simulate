@@ -108,7 +108,17 @@ export function parseGoCbRef(ref: string, fallbackIed = 'Remote IED') {
   return { ied: fallbackIed, ld: ldPart || 'LD0', ln: lnPart || 'LLN0', name: controlName || ref };
 }
 
-export function formatGooseTime(value: number): string {
-  if (!value) return '-';
-  return new Date(value * 1000).toLocaleString();
+/** 统一以本地时间展示 GOOSE 时间，固定保留三位毫秒。兼容秒和毫秒时间戳。 */
+export function formatGooseTime(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '-';
+  const numericValue = Number(value);
+  if (numericValue === 0) return '-';
+  const date = Number.isFinite(numericValue)
+    ? new Date(Math.abs(numericValue) >= 100_000_000_000 ? numericValue : numericValue * 1000)
+    : new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+
+  const pad = (part: number, length = 2) => String(part).padStart(length, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
+    + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
 }
