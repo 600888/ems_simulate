@@ -100,6 +100,7 @@ export const COLUMN_WIDTH_MAP: Record<string, number> = {
   '解析码': 90,
   '帧类型': 80,
   'IEC104类型': 160,
+  '测点类型': 180,
   '类型标识': 100,
   '传送原因': 100,
   '公共地址': 100,

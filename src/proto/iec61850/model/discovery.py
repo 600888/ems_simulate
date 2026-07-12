@@ -174,6 +174,7 @@ class ModelDiscoveryService:
         #   SglMaxVolNo.mag → [i]（整型状态值）
         # 故使用完整引用路径（da_full_ref）而非 DA 名称作为缓存键。
         self._struct_sub_da_cache: dict[str, list[DARef]] = {}
+        self._description_da_cache: dict[str, tuple[str, ...]] = {}
         self._type_probe_cache: dict[tuple[str, str], MmsType] = {}
         self._type_probe_stats: dict[str, int] = {
             "total": 0,
@@ -209,6 +210,7 @@ class ModelDiscoveryService:
         self._model = None
         self._model_timestamp = 0.0
         self._struct_sub_da_cache.clear()
+        self._description_da_cache.clear()
         self._type_probe_cache.clear()
         self._variable_spec_failures = 0
         self._variable_spec_disabled = False
@@ -245,6 +247,7 @@ class ModelDiscoveryService:
         # 与强制重新发现必须使用相同的在线遍历状态。
         self._struct_sub_da_cache.clear()
         self._type_probe_cache.clear()
+        self._description_da_cache.clear()
         self._type_probe_stats = {
             "total": 0,
             "spec": 0,
@@ -366,6 +369,34 @@ class ModelDiscoveryService:
         self._type_probe_stats["static" if resolved is not MmsType.UNKNOWN else "unknown"] += 1
         self._type_probe_cache[key] = resolved
         return resolved
+
+    def _resolve_leaf_mms_type(self, conn, ref: str, fc: str, fallback: MmsType) -> MmsType:
+        """Use deterministic IEC 61850 metadata before doing an MMS round trip.
+
+        Standard DA/BDA paths already identify their wire type precisely.  A
+        remote specification query (and, on failure, a value read) adds no
+        information for those leaves and makes discovery latency proportional
+        to the number of points.  Online probing remains available for unknown
+        or vendor-specific leaves.
+        """
+        key = (ref, fc)
+        cached = self._type_probe_cache.get(key)
+        if cached is not None:
+            return cached
+        if fallback is not MmsType.UNKNOWN:
+            self._type_probe_stats["total"] += 1
+            self._type_probe_stats["static"] += 1
+            self._type_probe_cache[key] = fallback
+            return fallback
+        return self._probe_mms_type(conn, ref, fc, fallback)
+
+    def description_da_names(self, do_ref: str) -> tuple[str, ...] | None:
+        """Return dU/d names advertised by the already-read DO directory.
+
+        ``None`` means the directory was unavailable.  An empty tuple means
+        the server explicitly advertised no description attribute.
+        """
+        return self._description_da_cache.get(do_ref)
 
     def _probe_mms_type_across_fcs(self, conn, ref: str, preferred_fc: str) -> tuple[str, MmsType | None]:
         """Resolve an unknown DA's FC and MMS type from variable specifications."""
@@ -697,6 +728,8 @@ class ModelDiscoveryService:
             else:
                 da_list = result
             da_names = get_list_from_linked_list(da_list) if da_list is not None else []
+            if da_list is not None:
+                self._description_da_cache[do_ref] = tuple(name for name in ("dU", "d") if name in da_names)
         except Exception as e:
             log.warning(f"获取数据属性列表异常: {do_ref}, {e}")
             da_names = []
@@ -769,7 +802,7 @@ class ModelDiscoveryService:
                 effective_da_path = da_info.path
                 effective_iec_type = da_info.iec_type
                 fallback_mms_type = infer_mms_type_from_path(effective_da_path, effective_iec_type)
-                mms_type = specified_type or self._probe_mms_type(
+                mms_type = specified_type or self._resolve_leaf_mms_type(
                     conn, f"{do_ref}.{effective_da_path}", da_fc, fallback_mms_type
                 )
 
@@ -808,7 +841,7 @@ class ModelDiscoveryService:
                         )
                     )
                 meta_sub_das = tuple(bda_refs)
-            meta_mms_type = self._probe_mms_type(
+            meta_mms_type = self._resolve_leaf_mms_type(
                 conn,
                 f"{do_ref}.{da_path}",
                 da_fc,
@@ -870,7 +903,7 @@ class ModelDiscoveryService:
             for bda_name in bda_names:
                 bda_type = BDA_TYPE_MAP.get(bda_name, "unknown")
                 bda_path = f"{path_prefix}{bda_name}"
-                bda_mms_type = self._probe_mms_type(
+                bda_mms_type = self._resolve_leaf_mms_type(
                     conn,
                     f"{parent_ref}.{bda_name}",
                     parent_fc,
@@ -935,7 +968,7 @@ class ModelDiscoveryService:
                             path=sub_path,
                             fc=fc,
                             iec_type=sub_iec_type,
-                            mms_type=self._probe_mms_type(
+                            mms_type=self._resolve_leaf_mms_type(
                                 conn,
                                 f"{da_full_ref}.{sub_name}",
                                 fc,

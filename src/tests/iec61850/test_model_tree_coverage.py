@@ -5,7 +5,11 @@ from unittest.mock import Mock
 from src.enums.points.base_point import BasePoint
 from src.proto.iec61850.iec61850_client import IEC61850Client
 from src.proto.iec61850.model.ied_model import DARef, DORef, IedModel, LDModel, LNModel
-from src.web.api.channel.iec61850 import _build_iec61850_tree_from_model, _resolve_control_write_code
+from src.web.api.channel.iec61850 import (
+    _build_iec61850_tree,
+    _build_iec61850_tree_from_model,
+    _resolve_control_write_code,
+)
 
 
 def test_client_browse_children_prefers_cached_model():
@@ -84,7 +88,26 @@ def test_tree_data_from_model_keeps_non_point_model_nodes():
 
     assert tree["total"] == 1
     assert tree["items"][0]["do_ref"] == "LD0/LLN0.NamPlt"
+    assert tree["items"][0]["mms_type"] == "MMS_STRUCTURE"
     assert tree["items"][0]["children"][0]["da_path"] == "vendor"
+
+
+def test_server_fallback_tree_infers_standard_mms_types():
+    point = BasePoint(
+        address="LD0/MMXU1.TotW.mag.f",
+        code="MMXU1.TotW.mag.f",
+        frame_type=0,
+        fc="MX",
+    )
+
+    tree = _build_iec61850_tree([point], point_types=[0], device=None)
+
+    children = {child["da_name"]: child for child in tree["items"][0]["children"]}
+    assert children["mag"]["mms_type"] == "MMS_STRUCTURE"
+    assert children["mag"]["children"][0]["mms_type"] == "MMS_FLOAT"
+    assert children["q"]["mms_type"] == "MMS_BIT_STRING"
+    assert children["t"]["mms_type"] == "MMS_UTC_TIME"
+    assert children["dU"]["mms_type"] == "MMS_VISIBLE_STRING"
 
 
 def test_tree_data_materializes_only_requested_page_but_keeps_full_total():

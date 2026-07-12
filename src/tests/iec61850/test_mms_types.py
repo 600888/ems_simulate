@@ -124,6 +124,17 @@ def test_control_and_pulse_config_paths_have_static_mms_types():
         assert infer_mms_type_from_path(path) is expected
 
 
+def test_nameplate_data_objects_are_structures():
+    assert infer_mms_type_from_path("NamPlt") is MmsType.STRUCTURE
+    assert infer_mms_type_from_path("PhyNam") is MmsType.STRUCTURE
+
+
+def test_standard_enum_system_data_objects_use_integer_wire_type():
+    assert infer_mms_type_from_path("Beh") is MmsType.INTEGER
+    assert infer_mms_type_from_path("Health") is MmsType.INTEGER
+    assert infer_mms_type_from_path("Mod") is MmsType.INTEGER
+
+
 class _FakeValue:
     def __init__(self, mms_type: int, value):
         self.mms_type = mms_type
@@ -184,6 +195,46 @@ def test_discovery_probes_a_readable_leaf_once_and_skips_control(monkeypatch):
     assert first is second is MmsType.FLOAT
     assert control is MmsType.BOOLEAN
     assert calls == ["readObject", "delete"]
+
+
+def test_discovery_does_not_probe_deterministic_standard_leaf(monkeypatch):
+    calls = []
+    fake = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IEC61850_FC_MX=1,
+        IedConnection_getVariableSpecification=lambda *_args: calls.append("getSpec"),
+        IedConnection_readObject=lambda *_args: calls.append("readObject"),
+    )
+    monkeypatch.setattr(discovery_module, "iec61850", fake, raising=False)
+    service = discovery_module.ModelDiscoveryService()
+
+    first = service._resolve_leaf_mms_type(object(), "LD/LN.DO.mag.f", "MX", MmsType.FLOAT)
+    second = service._resolve_leaf_mms_type(object(), "LD/LN.DO.mag.f", "MX", MmsType.FLOAT)
+
+    assert first is second is MmsType.FLOAT
+    assert calls == []
+    assert service._type_probe_stats["total"] == 1
+    assert service._type_probe_stats["static"] == 1
+
+
+def test_discovery_still_probes_unknown_vendor_leaf(monkeypatch):
+    calls = []
+    spec = object()
+    fake = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IEC61850_FC_CF=1,
+        MMS_UNSIGNED=5,
+        IedConnection_getVariableSpecification=lambda *_args: (calls.append("getSpec") or spec, 0),
+        MmsVariableSpecification_getType=lambda _spec: 5,
+        MmsVariableSpecification_destroy=lambda _spec: calls.append("destroy"),
+    )
+    monkeypatch.setattr(discovery_module, "iec61850", fake, raising=False)
+    service = discovery_module.ModelDiscoveryService()
+
+    resolved = service._resolve_leaf_mms_type(object(), "LD/VENDOR1.Custom.vendorCounter", "CF", MmsType.UNKNOWN)
+
+    assert resolved is MmsType.UNSIGNED
+    assert calls == ["getSpec", "destroy"]
 
 
 def test_discovery_uses_generic_variable_spec_for_vendor_control_type(monkeypatch):

@@ -380,7 +380,8 @@ class IEC61850Client:
 
         total_dos = len(do_refs)
         for index, do_ref in enumerate(do_refs, start=1):
-            du_desc = self._read_du_description(do_ref)
+            description_das = self._discovery.description_da_names(do_ref)
+            du_desc = "" if description_das == () else self._read_du_description(do_ref)
             if du_desc:
                 # O(1) 索引查找取代 O(N) 内层遍历
                 for p in do_point_index.get(do_ref, []):

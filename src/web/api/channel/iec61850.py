@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from src.data.service.channel_service import ChannelService
 from src.enums.points.base_point import BasePoint
+from src.proto.iec61850.defs.mms_types import MmsType, infer_mms_type_from_path
 from src.web.api.exceptions import NotFoundError, ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
@@ -482,19 +483,20 @@ def _build_iec61850_tree_from_model(
                     do_status = "未知"
 
                 primary_fc = da_list[0]["fc"] if da_list else ""
-                primary_mms_type = "MMS_UNKNOWN"
-                for da_item in da_list:
-                    if da_item.get("children"):
-                        value_child = next(
-                            (child for child in da_item["children"] if child.get("point_code")),
-                            None,
-                        )
-                        if value_child is not None:
-                            primary_mms_type = value_child.get("mms_type", "MMS_UNKNOWN")
+                primary_mms_type = infer_mms_type_from_path(do.name).value
+                if primary_mms_type == MmsType.UNKNOWN.value:
+                    for da_item in da_list:
+                        if da_item.get("children"):
+                            value_child = next(
+                                (child for child in da_item["children"] if child.get("point_code")),
+                                None,
+                            )
+                            if value_child is not None:
+                                primary_mms_type = value_child.get("mms_type", "MMS_UNKNOWN")
+                                break
+                        if da_item.get("point_code"):
+                            primary_mms_type = da_item.get("mms_type", "MMS_UNKNOWN")
                             break
-                    if da_item.get("point_code"):
-                        primary_mms_type = da_item.get("mms_type", "MMS_UNKNOWN")
-                        break
                 items.append(
                     {
                         "do_name": do.name,
@@ -597,7 +599,7 @@ def _build_iec61850_tree(
         except Exception:
             pass
 
-    def _resolve_mms_type(address: str) -> str:
+    def _resolve_mms_type(address: str, fallback: str = "MMS_UNKNOWN") -> str:
         """获取地址的 mms_type，优先服务端映射，其次客户端 registry"""
         mms_type = _point_mms_type_map.get(address, "")
         if not mms_type and _client_mms_getter is not None:
@@ -605,7 +607,12 @@ def _build_iec61850_tree(
                 mms_type = _client_mms_getter(address) or ""
             except Exception:
                 pass
-        return mms_type
+        return mms_type or fallback
+
+    def _infer_tree_mms_type(path: str, *, is_struct: bool = False) -> str:
+        if is_struct:
+            return MmsType.STRUCTURE.value
+        return infer_mms_type_from_path(path).value
 
     # 1. 收集所有测点, 构建 DO 分组
 
@@ -699,7 +706,7 @@ def _build_iec61850_tree(
                     "point_name": top_da,
                     "value": "",
                     "status": "",
-                    "mms_type": "",
+                    "mms_type": _infer_tree_mms_type(top_da, is_struct=True),
                     "children": [],
                 }
 
@@ -717,7 +724,7 @@ def _build_iec61850_tree(
                         "point_code": bda_point_code,
                         "value": value,
                         "status": status,
-                        "mms_type": _resolve_mms_type(address),
+                        "mms_type": _resolve_mms_type(address, _infer_tree_mms_type(da_path)),
                     }
                 )
         else:
@@ -733,7 +740,10 @@ def _build_iec61850_tree(
                     "point_name": str(point.name),
                     "value": value,
                     "status": status,
-                    "mms_type": _resolve_mms_type(address),
+                    "mms_type": _resolve_mms_type(
+                        address,
+                        _infer_tree_mms_type(da_path, is_struct=is_struct),
+                    ),
                     "children": [],
                 }
             else:
@@ -796,7 +806,7 @@ def _build_iec61850_tree(
                 "point_name": dU_name,
                 "value": dU_value,
                 "status": "",
-                "mms_type": "",
+                "mms_type": _infer_tree_mms_type(da_name, is_struct=is_struct),
                 "children": [
                     {
                         "bda_name": bda,
@@ -805,7 +815,7 @@ def _build_iec61850_tree(
                         "point_code": "",
                         "value": "",
                         "status": "",
-                        "mms_type": "",
+                        "mms_type": _infer_tree_mms_type(f"{da_name}.{bda}"),
                     }
                     for bda in bda_list
                 ],
@@ -827,7 +837,7 @@ def _build_iec61850_tree(
                             "point_code": "",
                             "value": "",
                             "status": "",
-                            "mms_type": "",
+                            "mms_type": _infer_tree_mms_type(f"{da_name}.{bda_name}"),
                         }
                     )
 
@@ -870,17 +880,18 @@ def _build_iec61850_tree(
             do_status = "未知"
 
         # DO 级 mms_type: 取第一个有点码且非空的 DA 子节点的 mms_type
-        do_mms_type = ""
-        for da in da_list:
-            if da.get("point_code") and da.get("mms_type"):
-                do_mms_type = da["mms_type"]
-                break
-            for bda in da.get("children", []):
-                if bda.get("point_code") and bda.get("mms_type"):
-                    do_mms_type = bda["mms_type"]
+        do_mms_type = infer_mms_type_from_path(do_info["do_name"]).value
+        if do_mms_type == MmsType.UNKNOWN.value:
+            for da in da_list:
+                if da.get("point_code") and da.get("mms_type"):
+                    do_mms_type = da["mms_type"]
                     break
-            if do_mms_type:
-                break
+                for bda in da.get("children", []):
+                    if bda.get("point_code") and bda.get("mms_type"):
+                        do_mms_type = bda["mms_type"]
+                        break
+                if do_mms_type != MmsType.UNKNOWN.value:
+                    break
 
         items.append(
             {

@@ -153,7 +153,8 @@ export default defineConfig({
                                 { text: '元数据按需读取', link: '/changelog/iec61850/12-iec61850-metadata-reader' },
                                 { text: '测点注册表精简优化', link: '/changelog/iec61850/11-iec61850-point-registry-optimization' },
                                 { text: 'ICD 导出器修复', link: '/changelog/iec61850/14-iec61850-icd-exporter-fix' },
-                                { text: 'MMS 类型识别与标签优化', link: '/changelog/iec61850/21-iec61850-mms-type-tag-ui' }
+                                { text: 'MMS 类型识别与标签优化', link: '/changelog/iec61850/21-iec61850-mms-type-tag-ui' },
+                                { text: '模型发现与 MMS 类型推断优化', link: '/changelog/iec61850/26-iec61850-discovery-mms-type-performance-fix' }
                             ]
                         },
                         {

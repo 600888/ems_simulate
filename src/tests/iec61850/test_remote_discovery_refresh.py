@@ -8,6 +8,8 @@ from src.proto.iec61850.iec61850_client import IEC61850Client
 def test_fill_du_names_applies_one_do_description_to_all_child_points():
     client = IEC61850Client.__new__(IEC61850Client)
     client._registry = Mock()
+    client._discovery = Mock()
+    client._discovery.description_da_names.return_value = None
     client._read_du_description = Mock(return_value="总有功功率")
     discovered = [
         {"address": "LD0/MMXU1.TotW.mag.f"},
@@ -19,6 +21,19 @@ def test_fill_du_names_applies_one_do_description_to_all_child_points():
     client._read_du_description.assert_called_once_with("LD0/MMXU1.TotW")
     assert [point["name"] for point in discovered] == ["总有功功率", "总有功功率"]
     assert client._registry.set_name.call_count == 2
+
+
+def test_fill_du_names_skips_reads_when_directory_has_no_description_da():
+    client = IEC61850Client.__new__(IEC61850Client)
+    client._registry = Mock()
+    client._discovery = Mock()
+    client._discovery.description_da_names.return_value = ()
+    client._read_du_description = Mock(return_value="")
+    discovered = [{"address": "LD0/MMXU1.TotW.mag.f"}]
+
+    client._fill_du_names(discovered)
+
+    client._read_du_description.assert_not_called()
 
 
 def test_remote_discovery_forces_online_refresh_and_replaces_registry():

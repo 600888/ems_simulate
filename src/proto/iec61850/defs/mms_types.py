@@ -153,6 +153,12 @@ def iec_type_from_mms_type(mms_type: str | MmsType) -> IecType:
 def infer_mms_type_from_path(path: str, iec_type: str | IecType = IecType.UNKNOWN) -> MmsType:
     """Infer deterministic MMS leaf types from a DA/BDA path."""
     leaf = str(path or "").split(".")[-1]
+    if leaf in ("NamPlt", "PhyNam"):
+        return MmsType.STRUCTURE
+    # Standard system DO main values. Beh/Health use CDC=ENS and Mod uses
+    # CDC=ENC; both encode their stVal enumeration as MMS integer.
+    if leaf in ("Beh", "Health", "Mod"):
+        return MmsType.INTEGER
     if leaf == "f":
         return MmsType.FLOAT
     if leaf == "i":
