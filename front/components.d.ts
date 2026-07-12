@@ -92,6 +92,7 @@ declare module 'vue' {
     LogViewerDialog: typeof import('./src/components/logs/LogViewerDialog.vue')['default']
     LongRegister: typeof import('./src/components/register/LongRegister.vue')['default']
     MessageViewDialog: typeof import('./src/components/device/MessageViewDialog.vue')['default']
+    MessageViewPanel: typeof import('./src/components/device/MessageViewPanel.vue')['default']
     ModelExportDialog: typeof import('./src/components/device/ModelExportDialog.vue')['default']
     PointChangeHistory: typeof import('./src/components/point/PointChangeHistory.vue')['default']
     PointMappingConfig: typeof import('./src/components/point/PointMappingConfig.vue')['default']

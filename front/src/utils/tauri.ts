@@ -8,6 +8,45 @@ export function isTauri(): boolean {
   return !!(window as any).__TAURI_INTERNALS__
 }
 
+/** 在独立原生窗口中打开指定设备的报文查看器；同一设备只保留一个窗口。 */
+export async function openMessageWindow(deviceName: string): Promise<void> {
+  if (!isTauri()) throw new Error('不在 Tauri 环境中运行')
+
+  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
+  let hash = 2166136261
+  for (const char of deviceName) {
+    hash ^= char.charCodeAt(0)
+    hash = Math.imul(hash, 16777619)
+  }
+  const label = `message-${(hash >>> 0).toString(16)}`
+  const existing = await WebviewWindow.getByLabel(label)
+  if (existing) {
+    await existing.show()
+    await existing.unminimize()
+    await existing.setFocus()
+    return
+  }
+
+  const baseUrl = `${window.location.origin}${window.location.pathname}`
+  const messageWindow = new WebviewWindow(label, {
+    url: `${baseUrl}#/message-view/${encodeURIComponent(deviceName)}`,
+    title: `查看报文 - ${deviceName}`,
+    width: 1100,
+    height: 650,
+    minWidth: 760,
+    minHeight: 480,
+    center: true,
+    resizable: true,
+    decorations: true,
+    focus: true,
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    messageWindow.once('tauri://created', () => resolve())
+    messageWindow.once('tauri://error', ({ payload }) => reject(payload))
+  })
+}
+
 /** 获取 Tauri API 模块（仅 Tauri 环境可用） */
 export async function getTauriApi() {
   if (!isTauri()) return null

@@ -7,7 +7,7 @@ import LogViewerDialog from "@/components/logs/LogViewerDialog.vue";
 import { currentTheme } from "@/utils/theme";
 import { sidebarOverlayMode, closeSidebarOverlay } from "@/components/header/isCollapse";
 import { isTauri, onCloseRequested } from "@/utils/tauri";
-import { ref, watch, onMounted, onUnmounted } from "vue";
+import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { currentLocale, setLocale } from "@/composables/useAppSettings";
@@ -26,6 +26,7 @@ i18nLocale.value = currentLocale.value;
 
 const route = useRoute();
 const router = useRouter();
+const isStandaloneView = computed(() => route.meta.standalone === true);
 
 // 监听语言切换
 watch(currentLocale, (val) => {
@@ -43,6 +44,8 @@ const openLogs = () => {
 };
 
 onMounted(async () => {
+  if (isStandaloneView.value) return;
+
   if (isTauri()) {
     await onCloseRequested(() => {
       isClosing.value = true;
@@ -83,6 +86,8 @@ async function fetchLogErrorCount() {
 </script>
 
 <template>
+  <router-view v-if="isStandaloneView" />
+  <template v-else>
   <div :class="`theme-wrapper theme-${currentTheme}`">
     <!-- 关闭动画覆盖层 -->
     <Transition name="close-fade">
@@ -140,6 +145,7 @@ async function fetchLogErrorCount() {
 
   <!-- 日志查看器 -->
   <LogViewerDialog v-model:visible="logVisible" />
+  </template>
 </template>
 
 <style lang="scss">

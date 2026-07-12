@@ -113,12 +113,12 @@
 
     <!-- 报文列表 -->
     <el-table
+      class="capture-table"
       :data="packets"
       stripe
       border
       style="width: 100%"
       v-loading="loading"
-      height="calc(100vh - 340px)"
       size="small"
       @row-click="showPacketDetail"
     >
@@ -460,6 +460,15 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .goose-capture {
   padding: 0;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.capture-table {
+  flex: 1;
+  min-height: 0;
 }
 
 /* 表头文字不换行 */

@@ -27,6 +27,12 @@ const menuRouter = createRouter({
       name: 'files-explorer',
       component: () => import('../views/FilesView.vue'),
     },
+    {
+      path: '/message-view/:deviceName',
+      name: 'message-view',
+      component: () => import('../views/MessageView.vue'),
+      meta: { standalone: true },
+    },
     // SCL 文件管理
     {
       path: '/scl',

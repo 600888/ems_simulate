@@ -96,6 +96,7 @@ body>.el-overlay {
 
 /* MessageBox 同样限制在当前视口内。 */
 .el-message-box {
+    width: var(--el-messagebox-width, 420px);
     max-width: calc(100vw - 32px);
 }
 

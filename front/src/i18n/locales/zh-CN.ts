@@ -303,6 +303,7 @@ export default {
     resetPointValue: "重置测点值",
   },
   messageView: {
+    openWindowFailed: "打开报文窗口失败",
     title: "实时报文查看",
     pauseRefresh: "暂停刷新",
     startRefresh: "开始刷新",

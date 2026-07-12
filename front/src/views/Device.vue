@@ -59,7 +59,7 @@
           </el-button>
         </span>
       </el-tooltip>
-      <el-button class="button btn-info" @click="showMessageDialog = true">
+      <el-button class="button btn-info" @click="handleOpenMessageView">
         <el-icon class="icon"><Document /></el-icon>
         <span>{{ $t("device.viewMessages") }}</span>
       </el-button>
@@ -232,6 +232,7 @@ import { useRoute } from "vue-router";
 import TextNode from "@/components/common/TextNode.vue";
 import Slave from "@/components/device/Slave.vue";
 import MessageViewDialog from "@/components/device/MessageViewDialog.vue";
+import { isTauri, openMessageWindow } from "@/utils/tauri";
 import ModelExportDialog from "@/components/device/ModelExportDialog.vue";
 import {
   getDeviceInfo,
@@ -282,6 +283,19 @@ const communicationType = ref<any>("");
 const deviceStatus = ref<boolean>(false);
 const simulationStatus = ref<boolean>(false);
 const showMessageDialog = ref<boolean>(false);
+
+const handleOpenMessageView = async () => {
+  if (!isTauri()) {
+    showMessageDialog.value = true;
+    return;
+  }
+  try {
+    await openMessageWindow(routeName.value);
+  } catch (error) {
+    console.error("打开独立报文窗口失败:", error);
+    ElMessage.error(t("messageView.openWindowFailed", "打开报文窗口失败"));
+  }
+};
 const showExportDialog = ref<boolean>(false);
 const slaveRef = ref<any>(null);
 const icdImportUploadRef = ref<InstanceType<typeof IcdImportUpload>>();
@@ -703,6 +717,9 @@ const handleDiscoverModel = async () => {
 
       if (action === "confirm") {
         useCache = true;
+      } else if (action === "close") {
+        // 点击右上角关闭按钮只关闭询问框，不应触发重新发现。
+        return;
       }
     }
   } catch (e) {

@@ -1,9 +1,10 @@
 {
   "identifier": "default",
   "description": "Default capabilities for EMS Simulate",
-  "windows": ["main"],
+  "windows": ["main", "message-*"],
   "permissions": [
     "core:default",
+    "core:webview:allow-create-webview-window",
     "opener:allow-open-url",
     "opener:allow-open-path",
     "opener:allow-reveal-item-in-dir",

@@ -306,6 +306,7 @@ export default {
     resetPointValue: "Reset Point Values",
   },
   messageView: {
+    openWindowFailed: "Failed to open message window",
     title: "Real-time Message View",
     pauseRefresh: "Pause",
     startRefresh: "Refresh",

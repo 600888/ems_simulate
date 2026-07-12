@@ -87,10 +87,13 @@ pub fn run() {
                 let _ = w.show();
             });
 
+            let app_handle = app.handle().clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
                     eprintln!("[EMS] window close requested, fast cleanup");
                     backend::cleanup_managed_process();
+                    // 独立报文窗口存在时，关闭主窗口也应退出整个应用。
+                    app_handle.exit(0);
                 }
             });
 
