@@ -18,7 +18,7 @@ from src.enums.modbus_def import ProtocolType
 from src.tools.excel_point_importer import ExcelPointImporter
 from src.web.api.channel.helpers import reload_device_instance
 from src.web.api.channel.protocol_guards import require_iec61850_channel, require_tabular_point_channel
-from src.web.api.exceptions import ValidationError
+from src.web.api.exceptions import OperationError, ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
 
@@ -109,7 +109,24 @@ async def import_points(
             device_controller = request.app.state.device_controller
             device = device_controller.get_device_by_id(channel_id)
             if device:
-                if device.protocol_type == ProtocolType.Iec61850Server:
+                if device.protocol_type in (ProtocolType.Iec104Server, ProtocolType.Iec104Client):
+                    # IEC104 的 Station/Point 模型在协议处理器初始化时创建。
+                    # 仅把数据库测点追加到 PointManager 不会更新已经存在的 Station，
+                    # 并且重复导入还会在内存中残留旧点，因此必须重建设备实例。
+                    was_running = device.is_protocol_running()
+                    was_auto_reading = (
+                        device.is_auto_read_running() if device.protocol_type == ProtocolType.Iec104Client else False
+                    )
+                    new_device = await reload_device_instance(device_controller, channel_id, is_start=False)
+                    if was_running and not await new_device.start():
+                        raise RuntimeError("IEC104 设备重建后恢复启动失败")
+                    if was_auto_reading:
+                        new_device.start_auto_read()
+                    log.info(
+                        f"IEC104 设备 {device.name} (ID: {channel_id}) 已重建，"
+                        f"新点表已注册到从站 (恢复运行: {was_running})"
+                    )
+                elif device.protocol_type == ProtocolType.Iec61850Server:
                     was_running = device.is_protocol_running()
                     await reload_device_instance(device_controller, channel_id, is_start=was_running)
                     log.info(f"IEC 61850 服务端设备 {device.name} (ID: {channel_id}) 已重建以加载新点表")
@@ -120,6 +137,7 @@ async def import_points(
                 log.warning(f"导入点表后未找到内存设备 (ID: {channel_id})，需要手动加载或重启")
         except Exception as e:
             log.error(f"同步内存点表失败: {e}")
+            raise OperationError("点表已导入，但设备运行时模型同步失败，请重试或重启设备") from e
 
         return BaseResponse(
             message="导入点表成功",
