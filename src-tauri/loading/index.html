@@ -53,7 +53,9 @@
     <div class="status" id="status-text">EMS模拟设备启动中<span class="dots"></span></div>
   </div>
   <script>
-    var POLL_INTERVAL = 500;
+    // A local process normally becomes ready quickly. A 500 ms interval added
+    // up to half a second of avoidable delay after the backend was listening.
+    var POLL_INTERVAL = 100;
     var STARTUP_TIMEOUT = 30 * 1000; // 30 秒超时
     var BACKEND_URL = 'http://127.0.0.1:8991'; // 默认，Tauri 环境下动态获取
     var backendUrlReady = Promise.resolve(BACKEND_URL);

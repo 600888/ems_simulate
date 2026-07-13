@@ -3,6 +3,7 @@
     v-model="visible"
     title="报文精确解析"
     size="min(760px, 100vw)"
+    resizable
     append-to-body
     destroy-on-close
     class="message-detail-drawer"

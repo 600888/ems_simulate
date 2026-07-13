@@ -119,9 +119,12 @@ if (-not $SkipBuild) {
     WriteSkip "Frontend build (skipped by flag)"
 }
 
-# Build Python backend (Sidecar: single file via --onefile)
+# Build Python backend as an onedir sidecar. PyInstaller --onefile extracts the
+# whole Python runtime on every launch (about 3 seconds on a typical machine).
+# Keeping the runtime beside the executable lets Windows load it directly.
 $SIDECAR_TARGET = GetRustTargetTriple
 $BE_SIDECAR_EXE = Join-Path $BINARIES_DIR "ems_simulate_backend-$SIDECAR_TARGET.exe"
+$BE_RUNTIME_DIR = Join-Path $BINARIES_DIR "ems_simulate_backend_runtime"
 
 if (-not $SkipBackend) {
     # Check if sidecar binary is up-to-date
@@ -132,10 +135,10 @@ if (-not $SkipBackend) {
         (Join-Path $PROJECT_ROOT "pyproject.toml"),
         (Join-Path $SCRIPT_DIR "rthook_numpy_compat.py")
     )
-    if ((Test-Path $BE_SIDECAR_EXE) -and (IsUpToDate $BE_SIDECAR_EXE $beSources)) {
+    if ((Test-Path $BE_RUNTIME_DIR) -and (IsUpToDate $BE_SIDECAR_EXE $beSources)) {
         WriteSkip "Python backend (sidecar) is up-to-date"
     } else {
-        WriteStep "Building Python backend (PyInstaller --onefile for Sidecar)..."
+        WriteStep "Building Python backend (PyInstaller onedir fast-start sidecar)..."
 
         # Clear old binaries directory
         Remove-Item -Recurse -Force $BINARIES_DIR -ErrorAction SilentlyContinue
@@ -149,8 +152,9 @@ if (-not $SkipBackend) {
 
         $rthookNumpy = Join-Path $SCRIPT_DIR "rthook_numpy_compat.py"
         $pyArgs = @(
-            "--noconfirm", "--onefile",
+            "--noconfirm", "--onedir",
             "--name", "ems_simulate_backend", "--clean",
+            "--contents-directory", "ems_simulate_backend_runtime",
             "--exclude-module", "numpy",
             "--distpath", $pyDist,
             "--workpath", $pyWork,
@@ -171,11 +175,16 @@ if (-not $SkipBackend) {
         pyinstaller @pyArgs
         if ($LASTEXITCODE -ne 0) { WriteErr "PyInstaller packaging failed" }
 
-        # Copy the single-file exe to binaries/ with target-triple naming
-        $pyOutExe = Join-Path $pyDist "ems_simulate_backend.exe"
+        # Tauri externalBin requires the target-triple executable name. The
+        # runtime directory is bundled as a resource beside the renamed exe.
+        $pyOutDir = Join-Path $pyDist "ems_simulate_backend"
+        $pyOutExe = Join-Path $pyOutDir "ems_simulate_backend.exe"
+        $pyRuntimeDir = Join-Path $pyOutDir "ems_simulate_backend_runtime"
         if (Test-Path $pyOutExe) {
             Copy-Item -Force $pyOutExe $BE_SIDECAR_EXE
+            Copy-Item -Recurse -Force $pyRuntimeDir $BE_RUNTIME_DIR
             WriteOk "Sidecar binary created: $BE_SIDECAR_EXE"
+            WriteOk "Sidecar runtime created: $BE_RUNTIME_DIR"
         } else {
             WriteErr "PyInstaller output not found: $pyOutExe"
         }
@@ -185,18 +194,20 @@ if (-not $SkipBackend) {
 }
 
 # Build Tauri
-# Keep only the target-triple sidecar required by Tauri externalBin.
+# Keep only the target-triple sidecar and its onedir runtime.
 # Do not let runtime data/log leftovers enter the installer.
-WriteStep "Cleaning binaries directory, keeping only sidecar exe..."
+WriteStep "Cleaning binaries directory, keeping only sidecar and runtime..."
 Get-ChildItem -Path $BINARIES_DIR -Force | Where-Object {
-    $_.Name -ne "ems_simulate_backend-$SIDECAR_TARGET.exe"
+    $_.Name -ne "ems_simulate_backend-$SIDECAR_TARGET.exe" -and
+    $_.Name -ne "ems_simulate_backend_runtime"
 } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 WriteOk "binaries directory cleaned"
 $tauriExe = Join-Path $TAURI_DIR "target\release\ems-simulate.exe"
 $tauriSrc = Join-Path $TAURI_DIR "src"
 $tauriCargo = Join-Path $TAURI_DIR "Cargo.toml"
+$tauriConfig = Join-Path $TAURI_DIR "tauri.conf.json"
 
-if ((Test-Path $tauriExe) -and (IsUpToDate $tauriExe @($tauriSrc, $tauriCargo, $BE_SIDECAR_EXE))) {
+if ((Test-Path $tauriExe) -and (IsUpToDate $tauriExe @($tauriSrc, $tauriCargo, $tauriConfig, $BE_SIDECAR_EXE, $BE_RUNTIME_DIR))) {
     WriteSkip "Tauri build is up-to-date"
 } else {
     WriteStep "Building Tauri desktop app..."
@@ -209,6 +220,9 @@ if ((Test-Path $tauriExe) -and (IsUpToDate $tauriExe @($tauriSrc, $tauriCargo, $
     # Sidecar binary must be in place at binaries/ before build
     if (-not (Test-Path $BE_SIDECAR_EXE)) {
         WriteErr "Sidecar binary not found at $BE_SIDECAR_EXE. Run without -SkipBackend first."
+    }
+    if (-not (Test-Path $BE_RUNTIME_DIR)) {
+        WriteErr "Sidecar runtime not found at $BE_RUNTIME_DIR. Run without -SkipBackend first."
     }
 
     if ($Msix) {
@@ -271,6 +285,7 @@ if ($Msix) {
     New-Item -ItemType Directory -Force -Path $sidecarDestDir | Out-Null
     if (Test-Path $BE_SIDECAR_EXE) {
         Copy-Item -Force $BE_SIDECAR_EXE (Join-Path $sidecarDestDir "ems_simulate_backend-$SIDECAR_TARGET.exe")
+        Copy-Item -Recurse -Force $BE_RUNTIME_DIR (Join-Path $sidecarDestDir "ems_simulate_backend_runtime")
         WriteOk "Sidecar binary copied to MSIX dist/binaries/"
     } else {
         WriteErr "Sidecar binary not found at $BE_SIDECAR_EXE"

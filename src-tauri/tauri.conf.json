@@ -48,6 +48,9 @@
     "externalBin": [
       "binaries/ems_simulate_backend"
     ],
+    "resources": {
+      "binaries/ems_simulate_backend_runtime/": "ems_simulate_backend_runtime/"
+    },
     "createUpdaterArtifacts": false,
     "windows": {
       "wix": {
