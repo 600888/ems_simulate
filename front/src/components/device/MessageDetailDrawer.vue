@@ -8,6 +8,17 @@
     destroy-on-close
     class="message-detail-drawer"
   >
+    <template #header="{ titleId, titleClass }">
+      <div class="drawer-title-content">
+        <span :id="titleId" :class="titleClass">报文精确解析</span>
+        <el-tooltip content="拖动左侧边缘可调整详情面板宽度" placement="bottom">
+          <span class="resize-hint">
+            <el-icon><Rank /></el-icon>
+            <span>可拖动调整宽度</span>
+          </span>
+        </el-tooltip>
+      </div>
+    </template>
     <div v-loading="loading" class="detail-body">
       <template v-if="detail">
         <el-alert :title="detail.summary" :type="detail.valid ? 'success' : 'error'" :closable="false" show-icon />
@@ -150,6 +161,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Rank } from '@element-plus/icons-vue'
 import { getMessageDetail, type MessageDetail } from '@/api/deviceApi'
 
 const props = defineProps<{ deviceName: string }>()
@@ -223,6 +235,9 @@ defineExpose({ open })
 </script>
 
 <style scoped>
+.drawer-title-content { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.resize-hint { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 3px 7px; border-radius: 4px; background: var(--el-fill-color-light); color: var(--el-text-color-secondary); font-size: 12px; cursor: help; }
+.resize-hint .el-icon { font-size: 14px; color: var(--el-color-primary); }
 .detail-body { min-height: 180px; }
 .section { margin-top: 18px; }
 .section h3 { margin: 0 0 10px; font-size: 15px; }
@@ -234,4 +249,34 @@ defineExpose({ open })
 .notice { margin-top: 8px; }
 .object-detail { padding: 8px 14px 14px; line-height: 1.8; }
 .object-fields { margin-top: 8px; }
+
+:global(.message-detail-drawer.rtl > .el-drawer__dragger) {
+  left: -7px;
+  width: 14px;
+}
+
+:global(.message-detail-drawer.rtl > .el-drawer__dragger::after) {
+  content: "⠿";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 48px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 7px;
+  background: var(--el-bg-color);
+  box-shadow: var(--el-box-shadow-light);
+  color: var(--el-text-color-secondary);
+  font-size: 18px;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+:global(.message-detail-drawer.rtl > .el-drawer__dragger:hover::after) {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+}
 </style>
