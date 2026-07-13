@@ -1,5 +1,4 @@
 from pathlib import Path
-import sqlite3
 
 import start_back_end
 
@@ -58,13 +57,15 @@ def test_prepare_runtime_root_recovers_empty_database(tmp_path, monkeypatch):
     assert not empty_database.with_suffix(".db.tmp").exists()
 
 
-def test_packaged_seed_database_is_valid_and_has_application_tables():
-    database_path = Path(__file__).resolve().parents[2] / "data" / "ems.db"
+def test_prepare_runtime_root_allows_missing_optional_seed_database(tmp_path, monkeypatch):
+    bundle_dir = tmp_path / "bundle"
+    runtime_dir = tmp_path / "runtime"
+    _create_bundle(bundle_dir)
+    (bundle_dir / "data" / "ems.db").unlink()
+    monkeypatch.setattr(start_back_end, "_bundled_path", lambda name: bundle_dir / name)
 
-    with sqlite3.connect(database_path) as connection:
-        assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-        table_count = connection.execute(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
-        ).fetchone()[0]
+    start_back_end._prepare_runtime_root(runtime_dir)
 
-    assert table_count > 0
+    # DbController creates the SQLite file and schema when the application is
+    # imported; runtime-root preparation must not require a prebuilt database.
+    assert not (runtime_dir / "data" / "ems.db").exists()

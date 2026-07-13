@@ -192,13 +192,6 @@ if ! $SKIP_BACKEND; then
     else
         WriteStep "构建 Python 后端 (PyInstaller --onefile for Tauri Sidecar)..."
 
-        # The installed application initializes its writable user database
-        # from this bundled seed. Failing here is preferable to producing an
-        # installer whose database APIs only fail after installation.
-        if [ ! -s "${PROJECT_ROOT}/data/ems.db" ]; then
-            WriteErr "种子数据库不存在或为空: ${PROJECT_ROOT}/data/ems.db"
-        fi
-
         # 清理旧 sidecar 目录
         rm -rf "$BINARIES_DIR"
         mkdir -p "$BINARIES_DIR"
@@ -267,14 +260,6 @@ if [ ! -f "$BE_SIDECAR_BINARY" ]; then
 fi
 if [ ! -x "$BE_SIDECAR_BINARY" ]; then
     chmod +x "$BE_SIDECAR_BINARY"
-fi
-
-# Linux uses a PyInstaller onefile sidecar. The onedir runtime resource in
-# tauri.conf.json is Windows-only and is disabled by tauri.linux.conf.json.
-# Keep this guard close to the Tauri invocation so --skip-backend builds are
-# also protected from silently packaging without the seed database.
-if [ ! -s "${PROJECT_ROOT}/data/ems.db" ]; then
-    WriteErr "种子数据库不存在或为空: ${PROJECT_ROOT}/data/ems.db"
 fi
 
 # Tauri 会把 externalBin 复制到 target/release 并去掉 target triple。
