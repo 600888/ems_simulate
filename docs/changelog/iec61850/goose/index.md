@@ -10,6 +10,7 @@
 | 2 | [GOOSE 模块插件化重构](../06-goose-plugin-refactoring.md) | 了解协议层模块边界和资源管理器 |
 | 3 | [GOOSE 按设备作用域全栈重构](../25-goose-device-scoped-refactoring.md) | 了解 `channel_id` 隔离、持久化、真实网卡和导入流程 |
 | 4 | [GOOSE 接收、数据历史与抓包链路重构](./04-receive-history-capture-refactoring.md) | 了解 2026-07-12 的接收修复、DataSet 映射、环形队列和前端性能优化 |
+| 5 | [报文详情精确解析与原始字节定位](../../protocol/01-message-detail-parsing.md#8-iec-61850-goose-独立解析链路) | 了解 GOOSE 独立解析器、DataSet/测点关联、字节定位与高频抓包优化 |
 
 ## 当前能力地图
 
@@ -92,4 +93,3 @@ flowchart LR
 | 抓包点开始后无数据且停不掉 | WebSocket 是否连接后端 API 端口、前端是否提前设置运行状态 |
 | Receiver 启动偶发失败 | Scapy/Npcap 冷启动是否超过等待时间、网卡是否启用 |
 | GoEna 失败但报文仍在发送 | MMS 控制连接与 GOOSE 二层发送是两条独立链路 |
-

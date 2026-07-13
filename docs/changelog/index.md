@@ -7,6 +7,8 @@
 
 | 文档 | 说明 |
 |------|------|
+| [协议解析专题](./protocol/) | DL/T 645、Modbus RTU/TCP、IEC104、GOOSE 的字段级报文解析、原始字节定位与测点关联 |
+| [报文详情精确解析与原始字节定位](./protocol/01-message-detail-parsing) | 统一详情契约、独立协议解析器、Tauri 详情抽屉、GOOSE DataSet 定位与性能优化 — 日期：2026-07-13 |
 | [IEC104 协议全 ASDU 类型支持](./01-iec104-asdu-type-support) | IEC104 全 ASDU 类型支持 — 日期：2026-04-29 |
 | [Web API 层重构](./02-api-refactoring) | 前后端代码架构重构，去除硬编码 — 日期：2026-05-01 |
 | [Ruff 代码质量工具引入计划](./03-ruff-introduction-plan) | Ruff 代码质量工具引入 — 版本：1.1，日期：2026-06-01，状态：第 1~2 阶段已完成 |
