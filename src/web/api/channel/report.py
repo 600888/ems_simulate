@@ -173,7 +173,8 @@ def _fix_rpt_id_suffix(rcb: dict) -> dict:
 def _discover_rcbs(reports: Any, channel_id: int = 0, handler: Any = None) -> list:
     """统一获取 RCB 列表，兼容客户端和服务端模式
 
-    客户端模式: 优先用连接时缓存的 RCB，缓存为空再现场 MMS 发现
+    客户端模式: 直接使用连接阶段已校验的 RCB 缓存，缓存为空才现场发现。
+    列表接口不读取每个 RCB 的在线状态，避免进入页面时产生大量 MMS 请求。
     服务端模式: 直接从本地 ReportManager 获取
     """
     if _is_server_mode(reports):
@@ -185,10 +186,6 @@ def _discover_rcbs(reports: Any, channel_id: int = 0, handler: Any = None) -> li
     if handler is not None and hasattr(handler, "get_discovered_rcbs"):
         cached = handler.get_discovered_rcbs()
         if cached:
-            if hasattr(reports, "refresh_rcb_states"):
-                cached = reports.refresh_rcb_states(cached)
-                if hasattr(handler, "set_discovered_rcbs"):
-                    handler.set_discovered_rcbs(cached)
             for rcb in cached:
                 _fix_rpt_id_suffix(rcb)
             return cached

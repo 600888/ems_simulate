@@ -253,3 +253,29 @@ def test_urcb_software_gi_uses_strict_dataset_batch_read(monkeypatch):
     assert calls == [("IEDLD0/LLN0$dsMeas", False)]
     assert cached_entries[0].data_values == {"IEDLD0/MMXU1.TotW.mag.f": 10.0}
     assert cached_entries[0].reason_codes == {"IEDLD0/MMXU1.TotW.mag.f": "gi"}
+
+
+def test_reports_plugin_prefers_native_urcb_gi_without_reading_dataset(monkeypatch):
+    plugin = ReportsPlugin()
+    plugin._connection = SimpleNamespace(is_connected=True)
+    plugin._rcb_type_map["IEDLD0/LLN0.urcb01"] = "URCB"
+    monkeypatch.setattr(plugin, "_ensure_connection", lambda: True)
+    monkeypatch.setattr(UrcbHandler, "trigger_gi", lambda *_args: True)
+    monkeypatch.setattr(
+        plugin,
+        "_trigger_urcb_software_gi",
+        lambda _ref: (_ for _ in ()).throw(AssertionError("must not read DataSet after native GI succeeds")),
+    )
+
+    assert plugin.trigger_gi("IEDLD0/LLN0.urcb01") is True
+
+
+def test_reports_plugin_uses_software_gi_only_after_native_urcb_gi_fails(monkeypatch):
+    plugin = ReportsPlugin()
+    plugin._connection = SimpleNamespace(is_connected=True)
+    plugin._rcb_type_map["IEDLD0/LLN0.urcb01"] = "URCB"
+    monkeypatch.setattr(plugin, "_ensure_connection", lambda: True)
+    monkeypatch.setattr(UrcbHandler, "trigger_gi", lambda *_args: False)
+    monkeypatch.setattr(plugin, "_trigger_urcb_software_gi", lambda _ref: True)
+
+    assert plugin.trigger_gi("IEDLD0/LLN0.urcb01") is True

@@ -68,17 +68,38 @@ export function showError(error: unknown, fallback = '请求失败') {
   if (error instanceof Error) markErrorNotified(error);
 }
 
+function extractErrorText(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (value instanceof Error) return value.message.trim();
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => extractErrorText(item))
+      .filter(Boolean)
+      .join('；');
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const nested = extractErrorText(record.message) || extractErrorText(record.detail);
+    if (nested) return nested;
+    if (typeof record.msg === 'string' && record.msg.trim()) {
+      const location = Array.isArray(record.loc) ? record.loc.join('.') : '';
+      return location ? `${location}: ${record.msg.trim()}` : record.msg.trim();
+    }
+  }
+  return '';
+}
+
 export function getApiErrorMessage(error: unknown, fallback = '请求失败'): string {
   if (axios.isAxiosError(error)) {
     const respData = error.response?.data;
 
     if (respData) {
       if (typeof respData === 'object') {
-        const responseMessage = (respData as { message?: unknown; detail?: unknown }).message
-          ?? (respData as { message?: unknown; detail?: unknown }).detail;
-        if (typeof responseMessage === 'string' && responseMessage.trim()) {
-          return responseMessage;
-        }
+        const responseMessage = extractErrorText(
+          (respData as { message?: unknown }).message
+          ?? (respData as { detail?: unknown }).detail,
+        );
+        if (responseMessage) return responseMessage;
       }
 
       if (typeof respData === 'string' && respData.trim()) {
@@ -104,9 +125,8 @@ export function getApiErrorMessage(error: unknown, fallback = '请求失败'): s
     }
   }
 
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
+  const directMessage = extractErrorText(error);
+  if (directMessage) return directMessage;
 
   return fallback;
 }

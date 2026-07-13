@@ -441,10 +441,13 @@ class UrcbHandler:
         ReportCallbackHandler.mark_pending_gi(rcb_ref, connection=connection)
         log.info(f"URCB trigger_gi 开始: rcb_ref={rcb_ref}")
 
+        if UrcbHandler._trigger_gi_direct(conn, rcb_ref):
+            return True
+
         if UrcbHandler._trigger_gi_write_object(conn, rcb_ref):
             return True
 
-        log.warning(f"URCB GI 直接写属性失败，已跳过 setRCBValues 同步写入以避免进程卡死: {rcb_ref}")
+        log.warning(f"URCB GI 专用 API 和直接写属性均失败，已跳过 setRCBValues 同步写入以避免进程卡死: {rcb_ref}")
         return False
 
     @staticmethod

@@ -40,7 +40,11 @@ def test_rcb_dict_marks_only_external_reservation_as_locked(monkeypatch):
 def test_refresh_rcb_states_uses_live_urcb_resv(monkeypatch):
     plugin = ReportsPlugin()
     plugin._browse_connection = SimpleNamespace(is_connected=True)
-    monkeypatch.setattr(plugin, "restore_cached_rcbs", lambda _rcbs: True)
+    monkeypatch.setattr(
+        plugin,
+        "restore_cached_rcbs",
+        lambda _rcbs: (_ for _ in ()).throw(AssertionError("must not validate directories again")),
+    )
     live = RCBInfo(
         ref="LD0/LLN0.urcb01",
         rcb_type="URCB",
@@ -57,17 +61,3 @@ def test_refresh_rcb_states_uses_live_urcb_resv(monkeypatch):
     assert result[0]["reserved"] is True
     assert result[0]["locked"] is True
     assert result[0]["owner"] == "192.0.2.20"
-
-
-def test_refresh_rcb_states_skips_per_rcb_reads_when_cache_prime_fails(monkeypatch):
-    plugin = ReportsPlugin()
-    plugin._browse_connection = SimpleNamespace(is_connected=True)
-    monkeypatch.setattr(plugin, "restore_cached_rcbs", lambda _rcbs: False)
-    monkeypatch.setattr(
-        UrcbHandler,
-        "get_rcb_values",
-        lambda *_args: (_ for _ in ()).throw(AssertionError("must not read stale RCB refs")),
-    )
-    cached = [{"ref": "OLD/LLN0.rp01", "rcb_type": "URCB", "rpt_ena": False}]
-
-    assert plugin.refresh_rcb_states(cached) == cached

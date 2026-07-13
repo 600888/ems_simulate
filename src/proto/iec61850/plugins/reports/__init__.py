@@ -480,19 +480,13 @@ class ReportsPlugin:
         return result
 
     def refresh_rcb_states(self, rcbs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """刷新已发现 RCB 的实时使能和预留状态。
+        """按明确请求刷新指定 RCB 的实时使能和预留状态。
 
-        RCB 的目录与配置继续使用缓存；易变化的 RptEna/Resv/ResvTms/Owner
-        每次请求列表时从 IED 读取。状态读取使用主浏览连接，避免与报告回调连接竞争。
+        模型一致性和 RCB 目录已在连接阶段校验、预热，本方法不再重复
+        校验目录。状态读取使用主浏览连接，避免与报告回调连接竞争。
         """
         connection = self._browse_connection or self._connection
         if not connection or not connection.is_connected:
-            return list(rcbs)
-
-        # 缓存可能早于主连接加载。首次状态刷新时惰性预热当前 association；
-        # 若缓存与在线 IED 不匹配，避免对数百个无效引用逐个读取并刷屏。
-        if rcbs and not self.restore_cached_rcbs(rcbs):
-            log.warning("RCB 状态刷新已跳过: 缓存目录尚未在当前连接上恢复或与在线 IED 不匹配")
             return list(rcbs)
 
         refreshed: list[dict[str, Any]] = []
@@ -904,6 +898,9 @@ class ReportsPlugin:
             rcb_type = self._infer_rcb_type(rcb_ref)
             if rcb_type == "BRCB":
                 return BrcbHandler.trigger_gi(self._connection, rcb_ref)
+            if UrcbHandler.trigger_gi(self._connection, rcb_ref):
+                return True
+            log.warning(f"URCB 原生 GI 触发失败，尝试软件兼容回退: ref={rcb_ref}")
             return self._trigger_urcb_software_gi(rcb_ref)
 
     def _trigger_urcb_software_gi(self, rcb_ref: str) -> bool:
