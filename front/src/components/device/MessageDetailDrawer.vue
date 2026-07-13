@@ -160,7 +160,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { showError } from '@/api/http'
 import { Rank } from '@element-plus/icons-vue'
 import { getMessageDetail, type MessageDetail } from '@/api/deviceApi'
 
@@ -179,7 +179,7 @@ async function open(sequenceId: number) {
   try {
     detail.value = await getMessageDetail(props.deviceName, sequenceId)
   } catch (error) {
-    ElMessage.error('获取报文详情失败，报文可能已被缓存淘汰')
+    showError(error, '获取报文详情失败，报文可能已被缓存淘汰')
     visible.value = false
   } finally {
     loading.value = false

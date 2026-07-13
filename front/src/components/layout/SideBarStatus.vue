@@ -34,6 +34,7 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { Refresh } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
+import { showError, showErrorOnce } from "@/api/http";
 import { isTauri, checkBackendStatus, restartBackend } from "@/utils/tauri";
 import { useI18n } from "vue-i18n";
 import { isAutoRefreshPaused } from "@/composables/autoRefreshGate";
@@ -104,13 +105,12 @@ const handleRestart = async () => {
     if (ok) {
       ElMessage.success(t("sidebar.restartSuccess"));
     } else {
-      ElMessage.error(t("sidebar.restartFailed"));
+      showErrorOnce(t("sidebar.restartFailed"));
     }
   } catch (error) {
     console.error("Restart backend failed:", error);
     isHealthy.value = false;
-    const detail = error instanceof Error ? error.message : String(error || "");
-    ElMessage.error(detail || t("sidebar.restartFailed"));
+    showError(error, t("sidebar.restartFailed"));
   } finally {
     restarting.value = false;
   }

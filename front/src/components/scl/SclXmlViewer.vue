@@ -23,6 +23,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { showErrorOnce } from '@/api/http'
 import { getSclFileContent } from '@/api/sclApi'
 
 const route = useRoute()
@@ -55,7 +56,7 @@ async function copyContent() {
     await navigator.clipboard.writeText(content.value)
     ElMessage.success('已复制')
   } catch {
-    ElMessage.error('复制失败')
+    showErrorOnce('复制失败')
   }
 }
 

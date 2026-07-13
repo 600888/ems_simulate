@@ -304,6 +304,7 @@
 import { ref, shallowRef, markRaw, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { showErrorOnce } from '@/api/http'
 import { VideoPlay, VideoPause, Refresh, Delete, Monitor } from '@element-plus/icons-vue'
 import { GooseCaptureWebSocket, WsEventType } from '@/services/GooseCaptureWebSocket'
 import type {
@@ -513,7 +514,7 @@ cleanups.push(
         ws.list({ channel_id: props.channelId })
       } else {
         captureRunning.value = false
-        ElMessage.error(res.message || t('goose.createFailed'))
+        showErrorOnce(res.message || t('goose.createFailed'))
       }
     } else if (res.command === 'stop') {
       // 清除兜底超时
@@ -529,7 +530,7 @@ cleanups.push(
         ElMessage.success(t('goose.captureStopped'))
       } else {
         captureRunning.value = true
-        ElMessage.error(res.message || t('goose.publishFailed'))
+        showErrorOnce(res.message || t('goose.publishFailed'))
       }
     } else if (res.command === 'list') {
       loading.value = false
@@ -586,7 +587,7 @@ cleanups.push(
     loading.value = false
     starting.value = false
     stopping.value = false
-    ElMessage.error(err.message || t('goose.websocketError'))
+    showErrorOnce(err.message || t('goose.websocketError'))
   }),
 )
 

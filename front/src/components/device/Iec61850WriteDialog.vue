@@ -37,6 +37,7 @@
 import { ref, reactive, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus';
+import { showError } from '@/api/http';
 import { iec61850WritePoint } from '@/api/channelApi';
 
 const { t } = useI18n()
@@ -92,7 +93,7 @@ const handleSubmit = async () => {
       emit('success');
     }
   } catch (e: any) {
-    ElMessage.error(t('writeDialog.writeFailed', { msg: e?.message || e }));
+    showError(e, t('writeDialog.writeFailed', { msg: '未知错误' }));
   } finally {
     loading.value = false;
   }

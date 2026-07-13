@@ -7,6 +7,7 @@
 import { ref, computed, onActivated, onDeactivated, onUnmounted } from "vue";
 import { isAutoRefreshPaused } from "@/composables/autoRefreshGate";
 import { ElMessage } from "element-plus";
+import { showErrorOnce } from "@/api/http";
 import {
   getAutoReadStatus,
   startAutoRead,
@@ -301,7 +302,7 @@ export function useAutoRead(options: AutoReadOptions) {
     const deviceInfo = await getDeviceInfo(routeName.value);
     const serverStatus = deviceInfo?.get("server_status");
     if (!serverStatus) {
-      ElMessage.error("设备未连接，请先启动设备后再进行读取操作");
+      showErrorOnce("设备未连接，请先启动设备后再进行读取操作");
       return;
     }
 

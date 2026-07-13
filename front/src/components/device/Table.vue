@@ -493,6 +493,7 @@ import { useRoute } from "vue-router"
 import { useI18n } from 'vue-i18n'
 import { QuestionFilled, Download, Edit, Delete, CircleCheckFilled, CircleCloseFilled, RemoveFilled, ArrowRight, InfoFilled } from "@element-plus/icons-vue"
 import { ElMessage } from 'element-plus'
+import { showError, showErrorOnce } from '@/api/http'
 import { getPointType, PointType, getIec104TypeLabelKey } from '@/types/point'
 import { readSinglePoint, deletePoint } from '@/api/pointApi'
 import { iec61850ReadPoint, iec61850ReadPointMetadata } from '@/api/channelApi'
@@ -1027,7 +1028,7 @@ const handleIec61850ReadMetadata = async (pointCode: string) => {
       metadataCache.value = newCache;
     }
   } catch (e: any) {
-    ElMessage.error(t('table.metadataFailed', { msg: e?.message || e }));
+    showError(e, t('table.metadataFailed', { msg: '未知错误' }));
     metadataDialogVisible.value = false;
   } finally {
     readingMetadata.value[pointCode] = false;
@@ -1119,7 +1120,7 @@ const handleIec61850ReadPoint = async (pointCode: string) => {
       ElMessage.warning(t('table.readFailed'));
     }
   } catch (e: any) {
-    ElMessage.error(t('table.iec61850ReadFailed', { msg: e?.message || e }));
+    showError(e, t('table.iec61850ReadFailed', { msg: '未知错误' }));
   } finally {
     readingPoints[pointCode] = false;
   }
@@ -1149,7 +1150,7 @@ const handleDeletePoint = async (pointCode: string) => {
       ElMessage.success(t('table.deleteSuccess'));
       emit('refresh');
     } else {
-      ElMessage.error(t('table.deleteFailed'));
+      showErrorOnce(t('table.deleteFailed'));
     }
   } catch (e) {
   } finally {

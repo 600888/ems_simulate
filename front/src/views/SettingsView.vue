@@ -5,6 +5,7 @@ import { Brush, Iphone, User, Document, Link, FolderOpened, Files, EditPen, Dele
 import { zoomLevel, setZoom, currentLocale, setLocale, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '@/composables/useAppSettings'
 import type { LocaleType } from '@/i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { showError } from '@/api/http'
 import {
   clearStorageDirectory,
   getStorageSettings,
@@ -92,7 +93,7 @@ async function loadStorageSettings() {
   try {
     applyStorageData(await getStorageSettings())
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : t('settings.storageLoadFailed'))
+    showError(error, t('settings.storageLoadFailed'))
   } finally {
     storageLoading.value = false
   }
@@ -114,7 +115,7 @@ async function chooseDirectory(key: StoragePathKey) {
       storagePaths[key] = selected
     }
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : t('settings.directoryPickerFailed'))
+    showError(error, t('settings.directoryPickerFailed'))
   }
 }
 
@@ -131,7 +132,7 @@ async function openDirectory(key: StoragePathKey) {
   try {
     await invoke('open_directory', { path })
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : t('settings.directoryOpenFailed'))
+    showError(error, t('settings.directoryOpenFailed'))
   }
 }
 
@@ -164,7 +165,7 @@ async function clearDirectory(key: StoragePathKey) {
     await loadStorageSettings()
     ElMessage.success(t('settings.clearDirectorySuccess'))
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : t('settings.clearDirectoryFailed'))
+    showError(error, t('settings.clearDirectoryFailed'))
   } finally {
     clearingDirectory.value = null
   }
@@ -187,7 +188,7 @@ async function saveStorageSettings() {
       data.restart_required ? t('settings.storageSavedRestart') : t('settings.storageSaved'),
     )
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : t('settings.storageSaveFailed'))
+    showError(error, t('settings.storageSaveFailed'))
   } finally {
     storageSaving.value = false
   }

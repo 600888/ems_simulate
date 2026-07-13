@@ -281,6 +281,7 @@ import { ref, onMounted, watch, computed } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox, type TabsPaneContext } from "element-plus";
+import { showError } from "@/api/http";
 import { Search, Refresh, Download, Plus, Delete, CircleCloseFilled, MoreFilled, InfoFilled } from "@element-plus/icons-vue";
 import { getSlaveIdList, getDeviceTable, getDeviceInfo, deleteSlave, iec104Interrogation } from "@/api/deviceApi";
 import { instance } from "@/api/http";
@@ -348,7 +349,7 @@ const handleInterrogation = async () => {
     // 刷新表格
     handleSearch(currentSlaveId.value);
   } catch (e: any) {
-    ElMessage.error(e?.message || '总召唤失败');
+    showError(e, '总召唤失败');
   } finally {
     interrogating.value = false;
   }

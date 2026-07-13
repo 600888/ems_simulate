@@ -156,6 +156,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { showError } from '@/api/http';
 import { Refresh } from '@element-plus/icons-vue';
 import {
   getGoosePublishers,
@@ -278,7 +279,7 @@ async function publishSelected() {
     ElMessage.success('GOOSE 报文已发布');
     await loadBlocks(false);
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : 'GOOSE 发布失败');
+    showError(error, 'GOOSE 发布失败');
   }
 }
 
@@ -291,7 +292,7 @@ async function updatePublisherDataValue(payload: { index: number; value: string 
     await loadBlocks(false);
     ElMessage.success('数据集值已更新');
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '数据集值更新失败');
+    showError(error, '数据集值更新失败');
     await loadBlocks(false);
   } finally {
     updatingEntryIndex.value = null;
@@ -317,7 +318,7 @@ async function deleteSelected() {
     ElMessage.success('GOOSE 控制块已删除');
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
-      ElMessage.error(error instanceof Error ? error.message : '删除失败');
+      showError(error, '删除失败');
     }
   }
 }
@@ -378,7 +379,7 @@ async function applyPublisherConfig(form: {
     );
     await loadBlocks(false);
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '发布配置应用失败');
+    showError(error, '发布配置应用失败');
   } finally {
     applying.value = false;
   }
@@ -424,7 +425,7 @@ async function applySubscriptionConfig(form: {
     ElMessage.success('GOOSE 订阅配置已应用');
     await loadBlocks(false);
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '订阅配置应用失败');
+    showError(error, '订阅配置应用失败');
   } finally {
     applying.value = false;
   }

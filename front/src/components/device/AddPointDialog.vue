@@ -173,6 +173,7 @@ import { ref, reactive, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { FormInstance, FormRules } from 'element-plus';
 import { ElMessage } from 'element-plus';
+import { showErrorOnce } from '@/api/http';
 import { addPoint, addPointsBatch, type PointCreateData } from '@/api/pointApi';
 import { IEC104_TYPES_BY_FRAME_TYPE, getDefaultIec104Type, getIec104TypeLabelKey, encodeIec104Quality, supportsOverflow, supportsQuality as supportsQualityCheck } from '@/types/point';
 
@@ -393,7 +394,7 @@ const handleSubmit = async () => {
         emit('success');
         handleClose();
       } else {
-        ElMessage.error('批量添加测点失败');
+        showErrorOnce('批量添加测点失败');
       }
     } else {
       // 单个添加模式
@@ -405,7 +406,7 @@ const handleSubmit = async () => {
         emit('success');
         handleClose();
       } else {
-        ElMessage.error('添加测点失败');
+        showErrorOnce('添加测点失败');
       }
     }
   } catch (error) {

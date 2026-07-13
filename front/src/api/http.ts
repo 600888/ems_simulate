@@ -24,6 +24,18 @@ let lastErrorTime = 0;
 // 最多同时显示 3 条错误消息
 const MAX_ERROR_COUNT = 3;
 const activeErrorMessages: { close: () => void }[] = [];
+const ERROR_NOTIFIED = Symbol('error-notified');
+
+type NotifiedError = Error & { [ERROR_NOTIFIED]?: boolean };
+
+function markErrorNotified(error: Error): Error {
+  (error as NotifiedError)[ERROR_NOTIFIED] = true;
+  return error;
+}
+
+function isErrorNotified(error: unknown): boolean {
+  return error instanceof Error && Boolean((error as NotifiedError)[ERROR_NOTIFIED]);
+}
 
 export function showErrorOnce(message: string) {
   const now = Date.now();
@@ -46,6 +58,14 @@ export function showErrorOnce(message: string) {
     if (idx !== -1) activeErrorMessages.splice(idx, 1);
     origClose();
   };
+}
+
+/** 展示异常中的真实原因；同一个 HTTP 异常只通知一次。 */
+export function showError(error: unknown, fallback = '请求失败') {
+  if (isErrorNotified(error)) return;
+  const message = getApiErrorMessage(error, fallback);
+  showErrorOnce(message);
+  if (error instanceof Error) markErrorNotified(error);
 }
 
 export function getApiErrorMessage(error: unknown, fallback = '请求失败'): string {
@@ -97,14 +117,14 @@ instance.interceptors.response.use(
     if (typeof response.data === 'object' && response.data && response.data.code !== 200) {
       const errorMsg = response.data.message || '请求失败';
       showErrorOnce(errorMsg);
-      return Promise.reject(new Error(errorMsg));
+      return Promise.reject(markErrorNotified(new Error(errorMsg)));
     }
     return response;
   },
   (error) => {
     const message = getApiErrorMessage(error, '网络请求失败');
     showErrorOnce(message);
-    return Promise.reject(new Error(message));
+    return Promise.reject(markErrorNotified(new Error(message)));
   },
 );
 

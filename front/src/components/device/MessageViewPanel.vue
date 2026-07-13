@@ -71,6 +71,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CaretRight, VideoPause, Delete, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { showErrorOnce } from '@/api/http'
 import { getMessages, clearMessages, getAvgTime, type MessageRecord, type AvgTimeStats } from '@/api/deviceApi'
 import MessageDetailDrawer from './MessageDetailDrawer.vue'
 
@@ -133,7 +134,7 @@ async function handleClear() {
       avgStats.value = null
       ElMessage.success(t('messageView.cleared'))
     } else {
-      ElMessage.error(t('messageView.clearFailed'))
+      showErrorOnce(t('messageView.clearFailed'))
     }
   } catch { /* 用户取消 */ }
 }

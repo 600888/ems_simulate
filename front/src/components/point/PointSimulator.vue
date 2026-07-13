@@ -118,6 +118,7 @@
 import { ref, reactive, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus';
+import { showErrorOnce } from '@/api/http';
 import { 
   getPointInfo, 
   setSinglePointSimulateMethod, 
@@ -239,7 +240,7 @@ const saveSettings = async () => {
       ElMessage.success(t('pointSimulator.saved'));
       emit('update-success');
     } else {
-      ElMessage.error(t('pointSimulator.saveFailed'));
+      showErrorOnce(t('pointSimulator.saveFailed'));
     }
   } catch (error) {
     console.error('保存设置失败:', error);

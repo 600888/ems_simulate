@@ -655,6 +655,7 @@
 import { ref, reactive, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { showError, showErrorOnce } from "@/api/http";
 import { Plus, Refresh, Delete, Monitor } from "@element-plus/icons-vue";
 import GooseCapture from "./GooseCapture.vue";
 import GooseSubscriberManager from "./GooseSubscriberManager.vue";
@@ -902,7 +903,7 @@ async function importDiscoveredSubscriptions() {
     ElMessage.success(t("goose.createSuccess"));
     await refreshAll();
   } catch (e: any) {
-    if (e !== "cancel" && e !== "close" && e?.message) ElMessage.error(e.message);
+    if (e !== "cancel" && e !== "close") showError(e, t("goose.createFailed"));
   }
 }
 
@@ -948,7 +949,7 @@ async function addDiscoveredAsPublisher() {
     activeTab.value = "manager";
     await refreshAll();
   } catch (e: any) {
-    if (e !== "cancel" && e !== "close") ElMessage.error(e?.message || "添加发布控制块失败");
+    if (e !== "cancel" && e !== "close") showError(e, "添加发布控制块失败");
   }
 }
 
@@ -1024,7 +1025,7 @@ async function savePublisherConfig() {
     createPublisherVisible.value = false;
     await refreshPublishers();
   } catch (e: any) {
-    ElMessage.error(e?.message || t("goose.createFailed"));
+    showError(e, t("goose.createFailed"));
   } finally {
     creating.value = false;
   }
@@ -1060,7 +1061,7 @@ async function createPublisher() {
     createPublisherVisible.value = false;
     await refreshPublishers();
   } catch (e: any) {
-    ElMessage.error(e?.message || t("goose.createFailed"));
+    showError(e, t("goose.createFailed"));
   } finally {
     creating.value = false;
   }
@@ -1070,10 +1071,10 @@ async function startPublisher(id: string) {
   try {
     const ok = await startGoosePublisher(props.channelId || 0, id);
     if (ok) ElMessage.success(t("goose.startSuccess"));
-    else ElMessage.error(t("goose.publishFailed"));
+    else showErrorOnce(t("goose.publishFailed"));
     await refreshPublishers();
   } catch (e: any) {
-    ElMessage.error(e?.message || t("goose.publishFailed"));
+    showError(e, t("goose.publishFailed"));
   }
 }
 
@@ -1083,7 +1084,7 @@ async function stopPublisher(id: string) {
     if (ok) ElMessage.success(t("goose.stopSuccess"));
     await refreshPublishers();
   } catch (e: any) {
-    ElMessage.error(e?.message || t("goose.publishFailed"));
+    showError(e, t("goose.publishFailed"));
   }
 }
 
@@ -1091,10 +1092,10 @@ async function publishNow(id: string) {
   try {
     const ok = await publishGooseNow(props.channelId || 0, id);
     if (ok) ElMessage.success(t("goose.publishSuccess"));
-    else ElMessage.error(t("goose.publishFailed"));
+    else showErrorOnce(t("goose.publishFailed"));
     await refreshPublishers();
   } catch (e: any) {
-    ElMessage.error(e?.message || t("goose.publishFailed"));
+    showError(e, t("goose.publishFailed"));
   }
 }
 
@@ -1143,7 +1144,7 @@ async function removeEntry(index: number) {
       editingEntries.value.splice(index, 1);
       await refreshPublishers();
     } catch (e: any) {
-      ElMessage.error(e?.message || t("goose.deleteEntryFailed"));
+      showError(e, t("goose.deleteEntryFailed"));
     }
   }
 }
@@ -1153,7 +1154,7 @@ async function onEntryValueChange(row: any) {
     try {
       await updateGoosePublisherEntry(editingPublisher.value.id, row.index, row.value);
     } catch (e: any) {
-      ElMessage.error(e?.message || t("goose.updateValueFailed"));
+      showError(e, t("goose.updateValueFailed"));
     }
   }
 }
@@ -1186,7 +1187,7 @@ async function saveNewEntries() {
       editingEntries.value = (pub.entries || []).map((e) => ({ ...e, _new: false }));
     }
   } catch (e: any) {
-    ElMessage.error(e?.message || t("goose.saveEntriesFailed"));
+    showError(e, t("goose.saveEntriesFailed"));
   } finally {
     savingEntries.value = false;
   }
@@ -1229,7 +1230,7 @@ async function createReceiver() {
     createReceiverVisible.value = false;
     await refreshReceivers();
   } catch (e: any) {
-    ElMessage.error(e?.message || t("goose.createFailed"));
+    showError(e, t("goose.createFailed"));
   } finally {
     creating.value = false;
   }
@@ -1239,10 +1240,10 @@ async function startReceiver(id: string) {
   try {
     const ok = await startGooseReceiver(props.channelId || 0, id);
     if (ok) ElMessage.success(t("goose.startSuccess"));
-    else ElMessage.error(t("goose.createFailed"));
+    else showErrorOnce(t("goose.createFailed"));
     await refreshReceivers();
   } catch (e: any) {
-    ElMessage.error(e?.message || t("goose.createFailed"));
+    showError(e, t("goose.createFailed"));
   }
 }
 
@@ -1252,7 +1253,7 @@ async function stopReceiver(id: string) {
     if (ok) ElMessage.success(t("goose.stopSuccess"));
     await refreshReceivers();
   } catch (e: any) {
-    ElMessage.error(e?.message || t("goose.publishFailed"));
+    showError(e, t("goose.publishFailed"));
   }
 }
 
@@ -1305,7 +1306,7 @@ async function saveReceiverConfig() {
     createReceiverVisible.value = false;
     await refreshReceivers();
   } catch (e: any) {
-    ElMessage.error(e?.message || t("goose.createFailed"));
+    showError(e, t("goose.createFailed"));
   } finally {
     creating.value = false;
   }
@@ -1384,7 +1385,7 @@ async function addSubscription() {
       receivers.value.find((r) => r.id === editingReceiver.value?.id) ||
       editingReceiver.value;
   } catch (e: any) {
-    ElMessage.error(e?.message || t("goose.createFailed"));
+    showError(e, t("goose.createFailed"));
   }
 }
 
@@ -1398,7 +1399,7 @@ async function removeSubscription(goCbRef: string) {
       receivers.value.find((r) => r.id === editingReceiver.value?.id) ||
       editingReceiver.value;
   } catch (e: any) {
-    ElMessage.error(e?.message || t("goose.removeSubscriptionFailed"));
+    showError(e, t("goose.removeSubscriptionFailed"));
   }
 }
 

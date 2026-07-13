@@ -164,6 +164,7 @@ import {
 } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
+import { showError, showErrorOnce } from '@/api/http';
 import {
   applyConfig,
   batchApplyConfig,
@@ -445,7 +446,7 @@ async function handleApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps; opt
       if (result.rcb) updateRcbInList(result.rcb);
       if (payload.rptEna) await refreshVisibleReportData(false);
     } else {
-      ElMessage.error(t('report.applyConfigFailed'));
+      showErrorOnce(t('report.applyConfigFailed'));
     }
   } finally {
     actionLoading.value = false;
@@ -496,15 +497,17 @@ async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps
     if (result.fail_count === 0) {
       ElMessage.success(t('report.batchApplySuccess', { count: result.success_count }));
     } else {
-      ElMessage.warning(t('report.batchApplyPartial', {
+      const reasons = [...new Set(result.fail_details.map((item) => item.reason).filter(Boolean))];
+      const reasonText = reasons.length > 0 ? `：${reasons.slice(0, 3).join('；')}` : '';
+      ElMessage.warning(`${t('report.batchApplyPartial', {
         failed: result.fail_count,
         total,
-      }));
+      })}${reasonText}`);
     }
-  } catch {
+  } catch (error) {
     batchProgressFinished.value = true;
     batchProgressText.value = t('report.batchApplyResult', { success: 0, fail: total });
-    ElMessage.error(t('report.batchApplyPartial', { failed: total, total }));
+    showError(error, t('report.batchApplyPartial', { failed: total, total }));
   }
 
   if (payload.rptEna && selectedRcb.value) {
@@ -528,7 +531,7 @@ async function handleGi() {
       ElMessage.success(t('report.giSuccess'));
       void refreshReportCountAfterGi(requestedChannelId, requestedRcbRef, before);
     } else {
-      ElMessage.error(t('report.giFailed'));
+      showErrorOnce(t('report.giFailed'));
     }
   } finally {
     giLoading.value = false;

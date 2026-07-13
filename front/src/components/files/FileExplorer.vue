@@ -9,6 +9,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { showError, showErrorOnce } from '@/api/http'
 import type { UploadFile } from 'element-plus'
 import {
   Folder, Document, Download, Upload, Delete, Refresh, Files,
@@ -193,11 +194,11 @@ async function handleDownload() {
       }
       ElMessage.success(`文件下载成功: ${fileName}${result.cached ? ' (缓存)' : ''}`)
     } else {
-      ElMessage.error('文件下载失败')
+      showErrorOnce('文件下载失败')
     }
   } catch (e) {
     console.error('文件下载失败:', e)
-    ElMessage.error('文件下载失败')
+    showError(e, '文件下载失败')
   } finally {
     downloading.value = false
   }
@@ -229,11 +230,11 @@ async function handleUploadRequest(param: { file: File }) {
       uploadDialogVisible.value = false
       loadDirectory(currentDirectory.value)
     } else {
-      ElMessage.error('文件上传失败')
+      showErrorOnce('文件上传失败')
     }
   } catch (e) {
     console.error('文件上传失败:', e)
-    ElMessage.error('文件上传失败')
+    showError(e, '文件上传失败')
   } finally {
     uploading.value = false
   }
@@ -263,7 +264,7 @@ async function handleDelete() {
       ElMessage.success('文件已删除')
       loadDirectory(currentDirectory.value)
     } else {
-      ElMessage.error('删除失败')
+      showErrorOnce('删除失败')
     }
   } catch {
     // 用户取消

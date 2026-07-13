@@ -66,6 +66,7 @@
 import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
+import { showError } from '@/api/http';
 import { exportModel, type ExportModelType } from '@/api/deviceApi';
 
 const props = defineProps<{
@@ -117,7 +118,7 @@ const handleExport = async () => {
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
       console.error('showSaveFilePicker error:', err);
-      ElMessage.error(err.message || 'Failed to open save dialog');
+      showError(err, 'Failed to open save dialog');
       return; // ✅ 阻止后续导出逻辑
     }
   }
@@ -130,7 +131,7 @@ const handleExport = async () => {
     handleClose();
   } catch (error: any) {
     if (error?.name !== 'AbortError') {
-      ElMessage.error(error.message || t('modelExport.exportFailed'));
+      showError(error, t('modelExport.exportFailed'));
     }
   } finally {
     exporting.value = false;

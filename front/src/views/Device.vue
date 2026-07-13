@@ -263,7 +263,7 @@ import {
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { HTTP_TIMEOUT_MODEL_DISCOVERY } from "@/constants";
-import { showErrorOnce } from "@/api/http";
+import { showError, showErrorOnce } from "@/api/http";
 
 const route = useRoute();
 const { t } = useI18n();
@@ -294,7 +294,7 @@ const handleOpenMessageView = async () => {
     await openMessageWindow(routeName.value);
   } catch (error) {
     console.error("打开独立报文窗口失败:", error);
-    ElMessage.error(t("messageView.openWindowFailed", "打开报文窗口失败"));
+    showError(error, t("messageView.openWindowFailed", "打开报文窗口失败"));
   }
 };
 const showExportDialog = ref<boolean>(false);
@@ -577,7 +577,7 @@ const toggleDevice = async () => {
           simulationStatus.value = false;
         }
       } else {
-        ElMessage.error(t("device.stopDeviceFailed"));
+        showErrorOnce(t("device.stopDeviceFailed"));
       }
     } else {
       if (await startDevice(routeName.value)) {
@@ -589,7 +589,7 @@ const toggleDevice = async () => {
           ElMessage.success(t("device.startDeviceSuccess"));
         }
       } else {
-        ElMessage.error(t("device.startDeviceFailed"));
+        showErrorOnce(t("device.startDeviceFailed"));
       }
     }
   } catch (error: any) {
@@ -679,7 +679,7 @@ const handleLoadModelFromDb = async () => {
       ElMessage.success(msg);
       triggerSidebarRefresh(routeName.value);
     } else {
-      ElMessage.error(t("device.modelLoadFailed"));
+      showErrorOnce(t("device.modelLoadFailed"));
     }
   } catch (error: any) {
     console.error(error);
@@ -699,7 +699,7 @@ const handleLoadModelFromDb = async () => {
 const onIcdFileChange = () => {
   // 文件选中后自动开始导入
   if (!channelId.value) {
-    ElMessage.error(t("device.modelLoadFailed"));
+    showErrorOnce(t("device.modelLoadFailed"));
     return;
   }
   icdImportUploadRef.value?.importIcd(channelId.value, "model_only").catch(() => {});
@@ -754,7 +754,7 @@ const handleDiscoverModel = async () => {
         await slaveRef.value?.reloadDatas();
         triggerSidebarRefresh(routeName.value);
       } else {
-        ElMessage.error(t("device.modelLoadFailed"));
+        showErrorOnce(t("device.modelLoadFailed"));
       }
     } catch (error) {
       console.error(error);
@@ -799,7 +799,7 @@ const handleDiscoverModel = async () => {
       if (iec61850ConnectProgress.value) {
         iec61850ConnectProgress.value.phase = "failed";
       }
-      ElMessage.error(t("device.modelLoadFailed"));
+      showErrorOnce(t("device.modelLoadFailed"));
     }
   } catch (error) {
     console.error(error);
