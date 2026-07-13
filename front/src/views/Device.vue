@@ -263,6 +263,7 @@ import {
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { HTTP_TIMEOUT_MODEL_DISCOVERY } from "@/constants";
+import { showErrorOnce } from "@/api/http";
 
 const route = useRoute();
 const { t } = useI18n();
@@ -523,11 +524,24 @@ const startIec61850ProgressPolling = (
           stopIec61850ProgressPolling();
           if (iec61850ProgressMode === "connect" && progress.phase === "done") {
             deviceStatus.value = true;
+            lastNotifyServerStatus = true;
+            stableServerStatus = true;
+            statusUnstableCount = STATUS_STABLE_THRESHOLD;
             ElMessage.success(t("device.iec61850DeviceConnectSuccess"));
             slaveRef.value?.reloadDatas();
             triggerSidebarRefresh(routeName.value);
           } else if (iec61850ProgressMode === "connect") {
-            ElMessage.error(t("device.iec61850DeviceConnectFailed"));
+            deviceStatus.value = false;
+            lastNotifyServerStatus = false;
+            stableServerStatus = false;
+            statusUnstableCount = STATUS_STABLE_THRESHOLD;
+            if (progress.error_code === "model_mismatch") {
+              modelLoaded.value = false;
+              triggerSidebarRefresh(routeName.value);
+            }
+            showErrorOnce(
+              progress.message?.trim() || t("device.iec61850DeviceConnectFailed")
+            );
           }
         }
       }
@@ -744,7 +758,7 @@ const handleDiscoverModel = async () => {
       }
     } catch (error) {
       console.error(error);
-      ElMessage.error(t("device.modelLoadFailed"));
+      // HTTP 拦截器已经展示后端的具体错误，避免再次弹出通用错误。
     } finally {
       releaseAutoRefreshPause();
       modelDiscovering.value = false;
@@ -835,7 +849,7 @@ const onIcdImportSuccess = () => {
 // IEC61850 模型导入：失败回调
 const onIcdImportError = () => {
   stopModelImportProgress();
-  ElMessage.error(t("device.modelLoadFailed"));
+  // 导入请求错误已由 HTTP 拦截器展示，这里只负责结束进度状态。
 };
 
 // 状态轮询定时器
@@ -879,10 +893,6 @@ const fetchDeviceStatus = async () => {
         String(communicationType.value) === "Iec61850Client"
       ) {
         slaveRef.value?.reloadDatas();
-        // 远程发现可能先完成自动连接、再继续遍历模型；此时不能停掉发现进度。
-        if (iec61850ProgressMode === "connect") {
-          stopIec61850ProgressPolling();
-        }
         triggerSidebarRefresh(routeName.value);
       }
     }
@@ -904,6 +914,7 @@ const fetchDeviceStatus = async () => {
     // 状态已稳定（连续 N 次一致），且与上次通知状态不同时才弹窗
     if (
       statusUnstableCount >= STATUS_STABLE_THRESHOLD &&
+      !iec61850Connecting.value &&
       lastNotifyServerStatus !== serverStatus
     ) {
       lastNotifyServerStatus = serverStatus;

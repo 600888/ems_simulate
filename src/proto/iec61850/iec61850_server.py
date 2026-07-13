@@ -952,6 +952,38 @@ class IEC61850Server:
         except Exception as e:
             log.error(f"IEC61850 调用底层设置值函数失败: address={address}, value={value}, error={e}")
 
+    def set_point_values(self, values: list[tuple[Any, Any, str]]) -> bool:
+        """在一次数据模型事务中批量更新测点。
+
+        libIEC61850 会在 ``unlockDataModel`` 时统一处理本轮变化。这样随机
+        模拟一次更新大量 DataAttribute 时，同一个 RCB 不会为每个测点各
+        生成一份报告，从源头避免报告风暴。
+        """
+        if not self._server or not self._is_running:
+            return False
+        if not values:
+            return True
+
+        lock_model = getattr(iec61850, "IedServer_lockDataModel", None)
+        unlock_model = getattr(iec61850, "IedServer_unlockDataModel", None)
+        locked = False
+        try:
+            if callable(lock_model) and callable(unlock_model):
+                lock_model(self._server)
+                locked = True
+            for address, value, fc in values:
+                self.set_point_value(address, value, fc=fc)
+            return True
+        except Exception as e:
+            log.error(f"IEC61850 批量设置测点值失败: count={len(values)}, error={e}")
+            return False
+        finally:
+            if locked:
+                try:
+                    unlock_model(self._server)
+                except Exception as e:
+                    log.error(f"IEC61850 解锁数据模型失败: {e}")
+
     # ===== Reports (委托给 report_manager) =====
 
     @property

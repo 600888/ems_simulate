@@ -67,6 +67,38 @@ def test_client_uses_a_dedicated_report_connection(monkeypatch):
     ]
 
 
+def test_cached_urcb_restore_primes_only_browse_association(monkeypatch):
+    browse_native = object()
+    report_native = object()
+    browse_connection = SimpleNamespace(connection=browse_native, is_connected=True)
+    report_connection = SimpleNamespace(connection=report_native, is_connected=True)
+    plugin = ReportsPlugin()
+    plugin._browse_connection = browse_connection
+    plugin._connection = report_connection
+    plugin._client = SimpleNamespace()
+    events = []
+
+    fake_native = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IedConnection_getLogicalNodeDirectory=lambda conn, ln, acsi: events.append((conn, ln, acsi)) or (object(), 0),
+    )
+    monkeypatch.setattr(reports_module, "iec61850", fake_native, raising=False)
+    monkeypatch.setattr(reports_module, "get_list_from_linked_list", lambda _raw: ["rpPcs1Data101"])
+
+    cached = {
+        "ref": "LC001PCS01/LLN0.rpPcs1Data101",
+        "name": "rpPcs1Data101",
+        "rcb_type": "URCB",
+    }
+    assert plugin.restore_cached_rcbs([cached]) is True
+
+    assert events == [
+        (browse_native, "LC001PCS01/LLN0", reports_module.AcsiClass.URCB),
+    ]
+    assert plugin._rcb_type_map[cached["ref"]] == "URCB"
+    assert plugin._rcb_detail_cache[cached["ref"]] == cached
+
+
 def test_shutdown_all_only_removes_callbacks_for_own_connection(monkeypatch):
     first_connection = SimpleNamespace(connection=object())
     second_connection = SimpleNamespace(connection=object())
@@ -212,3 +244,119 @@ def test_report_uninstall_waits_for_idle_before_native_cleanup(monkeypatch):
         ("idle", connection, 1.0),
         "native-uninstall",
     ]
+
+
+def test_disabled_report_reuses_native_subscription(monkeypatch):
+    connection = SimpleNamespace(connection=object())
+    events = []
+
+    class FakeHandler:
+        def __init__(self, *_args):
+            pass
+
+        def pause(self):
+            events.append("pause")
+
+        def resume(self):
+            events.append("resume")
+
+        def close(self):
+            events.append("close")
+
+    class FakeSubscriber:
+        def setIedConnection(self, _conn):
+            pass
+
+        def setRcbReference(self, _ref):
+            pass
+
+        def setRcbRptId(self, _rpt_id):
+            pass
+
+        def setEventHandler(self, _handler):
+            pass
+
+        def subscribe(self):
+            events.append("subscribe")
+            return True
+
+        def deleteEventHandler(self):
+            events.append("delete")
+
+    monkeypatch.setattr(callback_module, "HAS_IEC61850", True)
+    monkeypatch.setattr(callback_module, "_PyRCBHandler", FakeHandler)
+    monkeypatch.setattr(
+        callback_module,
+        "iec61850",
+        SimpleNamespace(
+            RCBSubscriber=FakeSubscriber,
+            IedConnection_uninstallReportHandler=lambda *_args: events.append("native-uninstall"),
+        ),
+        raising=False,
+    )
+
+    ref = "LD0/LLN0.rp01"
+    assert callback_module.ReportCallbackHandler.install(connection, ref, rpt_id="rp01", rcb_type="URCB")
+    assert callback_module.ReportCallbackHandler.deactivate(connection, ref)
+    assert not callback_module.ReportCallbackHandler.is_active(ref, connection)
+    assert callback_module.ReportCallbackHandler.install(connection, ref, rpt_id="rp01", rcb_type="URCB")
+    assert callback_module.ReportCallbackHandler.is_active(ref, connection)
+
+    assert events == ["subscribe", "pause", "resume"]
+    callback_module.ReportCallbackHandler.shutdown_all(connection)
+
+
+def test_identical_rcb_refs_are_isolated_by_connection(monkeypatch):
+    events = []
+
+    class FakeHandler:
+        def __init__(self, *_args):
+            pass
+
+        def close(self):
+            pass
+
+    class FakeSubscriber:
+        def setIedConnection(self, _conn):
+            pass
+
+        def setRcbReference(self, _ref):
+            pass
+
+        def setRcbRptId(self, _rpt_id):
+            pass
+
+        def setEventHandler(self, _handler):
+            pass
+
+        def subscribe(self):
+            return True
+
+        def deleteEventHandler(self):
+            pass
+
+    monkeypatch.setattr(callback_module, "HAS_IEC61850", True)
+    monkeypatch.setattr(callback_module, "_PyRCBHandler", FakeHandler)
+    monkeypatch.setattr(
+        callback_module,
+        "iec61850",
+        SimpleNamespace(
+            RCBSubscriber=FakeSubscriber,
+            IedConnection_uninstallReportHandler=lambda conn, *_args: events.append(conn),
+        ),
+        raising=False,
+    )
+
+    first = SimpleNamespace(connection=object())
+    second = SimpleNamespace(connection=object())
+    ref = "LD0/LLN0.rp01"
+    assert callback_module.ReportCallbackHandler.install(first, ref, rpt_id="rp01", rcb_type="URCB")
+    assert callback_module.ReportCallbackHandler.install(second, ref, rpt_id="rp01", rcb_type="URCB")
+    assert callback_module.ReportCallbackHandler.is_active(ref, first)
+    assert callback_module.ReportCallbackHandler.is_active(ref, second)
+
+    callback_module.ReportCallbackHandler.shutdown_all(first)
+    assert not callback_module.ReportCallbackHandler.is_active(ref, first)
+    assert callback_module.ReportCallbackHandler.is_active(ref, second)
+    assert events == [first.connection]
+    callback_module.ReportCallbackHandler.shutdown_all(second)

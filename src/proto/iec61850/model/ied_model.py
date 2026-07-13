@@ -172,6 +172,7 @@ class RCBRef:
     name: str = ""
     ref: str = ""
     rcb_type: str = ""  # "URCB" / "BRCB"
+    rpt_id: str = ""  # 报告路由标识，缓存恢复后安装回调需要
     dat_set: str = ""  # 引用的 DataSet 名称
     intg_pd: int = 0  # 完整性周期(毫秒), URCB 专用
     # TrgOps 位图: bit0=dchg(0x01), bit1=qchg(0x02), bit2=dupd(0x04),
@@ -185,7 +186,12 @@ class RCBRef:
     opt_fields: int = 0x4F
 
     def to_dict(self) -> dict[str, Any]:
-        result: dict[str, Any] = {"name": self.name, "ref": self.ref, "type": self.rcb_type}
+        result: dict[str, Any] = {
+            "name": self.name,
+            "ref": self.ref,
+            "type": self.rcb_type,
+            "rptId": self.rpt_id,
+        }
         if self.dat_set:
             result["datSet"] = self.dat_set
         if self.intg_pd:
@@ -201,6 +207,7 @@ class RCBRef:
             name=data.get("name", ""),
             ref=data.get("ref", ""),
             rcb_type=data.get("type", ""),
+            rpt_id=data.get("rptId", ""),
             dat_set=data.get("datSet", ""),
             intg_pd=data.get("intgPd", 0),
             trg_ops=data.get("trgOps", 0x11),

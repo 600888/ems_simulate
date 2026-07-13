@@ -27,7 +27,7 @@ if HAS_IEC61850:
 
 # 全局回调映射表: rcb_ref -> callback_info
 # C 回调无法绑定到实例方法，需通过静态函数 + 全局字典分发
-_CALLBACK_REGISTRY: dict[str, "_CallbackInfo"] = {}
+_CALLBACK_REGISTRY: dict[Any, "_CallbackInfo"] = {}
 _CALLBACK_LOCK = threading.Lock()
 _CALLBACK_IDLE = threading.Condition(_CALLBACK_LOCK)
 _ACTIVE_CALLBACKS: dict[int, int] = {}
@@ -38,7 +38,7 @@ MAX_REPORT_VALUES_PER_ENTRY = 512
 
 
 def _select_report_value_ref(data_ref: str, dataset_ref: str) -> str:
-    """Prefer a more specific DataSet member ref over a DO-only report ref."""
+    """Prefer a DataSet ref that is more specific or carries missing FC metadata."""
     if not data_ref:
         return dataset_ref
     if not dataset_ref:
@@ -50,10 +50,23 @@ def _select_report_value_ref(data_ref: str, dataset_ref: str) -> str:
         report_parsed is not None
         and dataset_parsed is not None
         and report_parsed.do_ref == dataset_parsed.do_ref
-        and len(dataset_parsed.da_parts) > len(report_parsed.da_parts)
+        and (
+            len(dataset_parsed.da_parts) > len(report_parsed.da_parts)
+            or (not report_parsed.fc and bool(dataset_parsed.fc))
+        )
     ):
         return dataset_ref
     return data_ref
+
+
+def _report_ref_with_fc(ref: str, fc: str) -> str:
+    """Attach DataSet FC metadata to a normalized report reference."""
+    parsed = parse_report_ref(ref)
+    normalized_fc = str(fc or "").upper()
+    if parsed is None or parsed.fc or not normalized_fc:
+        return ref
+    path = ".".join((parsed.do_name, *parsed.da_parts))
+    return f"{parsed.ld}/{parsed.ln}.{normalized_fc}.{path}"
 
 
 def _infer_report_value_type(ref: str) -> str:
@@ -87,6 +100,7 @@ class _CallbackInfo:
     mms_ref: str = ""
     rpt_id: str = ""
     dataset_members: list[str] = field(default_factory=list)  # 数据集成员引用列表，用于索引到引用的映射
+    active: bool = True  # RptEna 对应的逻辑状态；禁用时保留原生订阅以避免并发析构
 
     def __post_init__(self):
         """确保 data_cache 的 maxlen 与 max_cache 一致"""
@@ -169,23 +183,39 @@ def _ref_aliases(rcb_ref: str, rcb_type: str = "") -> set[str]:
     return {a for a in aliases if a}
 
 
-def _find_registered_info(rcb_ref: str) -> tuple[str, "_CallbackInfo"] | tuple[None, None]:
+def _find_registered_info(
+    rcb_ref: str,
+    connection=None,
+) -> tuple[Any, "_CallbackInfo"] | tuple[None, None]:
     """Find callback info by exact key first, then by normalized reference aliases."""
+    connection_key = id(connection) if connection is not None else None
+
     info = _CALLBACK_REGISTRY.get(rcb_ref)
-    if info:
+    if info and (connection_key is None or id(info.connection) == connection_key):
         return rcb_ref, info
 
     query_aliases = _ref_aliases(rcb_ref)
     for key, candidate in _CALLBACK_REGISTRY.items():
-        candidate_aliases = _ref_aliases(key) | _ref_aliases(candidate.mms_ref)
+        if connection_key is not None and id(candidate.connection) != connection_key:
+            continue
+        candidate_aliases = _ref_aliases(candidate.rcb_ref) | _ref_aliases(candidate.mms_ref)
         if query_aliases & candidate_aliases:
             return key, candidate
     return None, None
 
 
-def _route_keys_for_ref(rcb_ref: str) -> set[str]:
+def _registry_key(connection, rcb_ref: str) -> Any:
+    """Keep legacy string keys when possible, but allow identical refs on other associations."""
+    existing = _CALLBACK_REGISTRY.get(rcb_ref)
+    if existing is None or existing.connection is connection:
+        return rcb_ref
+    return (id(connection), rcb_ref)
+
+
+def _route_keys_for_ref(rcb_ref: str, connection=None) -> set[str]:
     """基于 RCB 实例引用的路由键，不包含 RptId 以避免跨实例混淆。"""
-    return _ref_aliases(rcb_ref)
+    prefix = f"{id(connection)}:" if connection is not None else ""
+    return {f"{prefix}{key}" for key in _ref_aliases(rcb_ref)}
 
 
 def _expire_pending_gi_routes(now: float | None = None) -> None:
@@ -196,7 +226,7 @@ def _expire_pending_gi_routes(now: float | None = None) -> None:
         _PENDING_GI_ROUTES.pop(key, None)
 
 
-def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry) -> tuple[set[str], bool]:
+def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry, connection=None) -> tuple[set[str], bool]:
     """仅基于 RCB 实例引用路由 GI 报告。
 
     Returns:
@@ -208,10 +238,10 @@ def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry) -> tuple[set
     targets: set[str] = set()
 
     # 只使用 RCB 实例引用匹配，禁止按 RptId 跨实例分发。
-    _, current_info = _find_registered_info(rcb_ref)
+    _, current_info = _find_registered_info(rcb_ref, connection)
     route_keys: set[str] = set()
     if current_info:
-        route_keys.update(_route_keys_for_ref(rcb_ref))
+        route_keys.update(_route_keys_for_ref(rcb_ref, connection))
 
     for key in route_keys:
         pending = _PENDING_GI_ROUTES.get(key)
@@ -219,9 +249,9 @@ def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry) -> tuple[set
             continue
         target_set, _ = pending
         for target_ref in target_set:
-            matched_key, target_info = _find_registered_info(target_ref)
+            _, target_info = _find_registered_info(target_ref, connection)
             if target_info:
-                targets.add(matched_key or target_ref)
+                targets.add(target_info.rcb_ref)
 
     if targets:
         if len(targets) > 1 or next(iter(targets)) != rcb_ref:
@@ -272,12 +302,26 @@ class ReportCallbackHandler:
             log.warning(f"安装报告回调失败: 连接不可用, ref={rcb_ref}")
             return False
 
-        # 如果已注册，先注销。不能在 _CALLBACK_LOCK 内调用 C 层订阅接口；
-        # 其他报告的接收线程可能正要进入 _dispatch_report 获取同一把锁。
+        # 禁用报告时保留原生订阅，只暂停 Python handler。再次使能同一
+        # association/RCB 时直接复用，避免批量切换期间反复析构 SWIG
+        # director 与 C++ subscriber。
         with _CALLBACK_LOCK:
-            registered_key, _ = _find_registered_info(rcb_ref)
-        if registered_key:
-            ReportCallbackHandler.uninstall(connection, registered_key)
+            registered_key, registered_info = _find_registered_info(rcb_ref, connection)
+
+            if registered_info is not None and registered_info.rpt_id == (rpt_id or ""):
+                registered_info.on_report = on_report
+                registered_info.max_cache = max_cache
+                registered_info.dataset_members = dataset_members or []
+                registered_info.active = True
+                handler = registered_info.handler
+                if handler is not None and hasattr(handler, "resume"):
+                    handler.resume()
+                log.info(f"复用报告回调订阅: {rcb_ref}")
+                return True
+
+        # RptId 发生变化时不能复用 subscriber，先完整注销旧订阅。
+        if registered_key is not None:
+            ReportCallbackHandler.uninstall(connection, rcb_ref)
 
         nref = _normalize_ref(rcb_ref, rcb_type)
         effective_rpt_id = rpt_id or ""
@@ -291,7 +335,7 @@ class ReportCallbackHandler:
                         for existing_ref, existing_info in _CALLBACK_REGISTRY.items()
                         if existing_info.connection is connection
                         and existing_info.rpt_id == effective_rpt_id
-                        and existing_ref != rcb_ref
+                        and existing_info.rcb_ref != rcb_ref
                     ),
                     None,
                 )
@@ -332,7 +376,7 @@ class ReportCallbackHandler:
             should_cleanup = False
             cleanup_reason = ""
             with _CALLBACK_LOCK:
-                existing_key, _ = _find_registered_info(rcb_ref)
+                existing_key, _ = _find_registered_info(rcb_ref, connection)
                 duplicate_ref = None
                 if effective_rpt_id:
                     duplicate_ref = next(
@@ -341,7 +385,7 @@ class ReportCallbackHandler:
                             for existing_ref, existing_info in _CALLBACK_REGISTRY.items()
                             if existing_info.connection is connection
                             and existing_info.rpt_id == effective_rpt_id
-                            and existing_ref != rcb_ref
+                            and existing_info.rcb_ref != rcb_ref
                         ),
                         None,
                     )
@@ -355,7 +399,7 @@ class ReportCallbackHandler:
                         f"RptId 必须唯一, rpt_id={effective_rpt_id!r}, existing={duplicate_ref}, new={rcb_ref}"
                     )
                 else:
-                    _CALLBACK_REGISTRY[rcb_ref] = _CallbackInfo(
+                    _CALLBACK_REGISTRY[_registry_key(connection, rcb_ref)] = _CallbackInfo(
                         rcb_ref=rcb_ref,
                         connection=connection,
                         handler=handler,
@@ -381,6 +425,18 @@ class ReportCallbackHandler:
             log.info(f"报告回调已安装: {rcb_ref} (mms_ref={nref}, rpt_id={effective_rpt_id!r})")
             return True
         except Exception as e:
+            # subscribe() 可能已在 C++ 侧完成后才抛出。异常路径也必须按
+            # 正常注销顺序断开 director 和原生订阅，不能交给 GC 猜测。
+            handler = locals().get("handler")
+            subscriber = locals().get("subscriber")
+            if handler is not None and hasattr(handler, "close"):
+                with contextlib.suppress(Exception):
+                    handler.close()
+            if subscriber is not None:
+                with contextlib.suppress(Exception):
+                    subscriber.deleteEventHandler()
+            with contextlib.suppress(Exception):
+                call_gil_safe(iec61850, "IedConnection_uninstallReportHandler", conn, nref)
             log.error(f"安装报告回调异常: {rcb_ref}, {e}", exc_info=True)
             return False
 
@@ -408,9 +464,10 @@ class ReportCallbackHandler:
         # 1. 锁内从注册表移除，并取出 subscriber/handler 引用
         #    这样 _dispatch_report 不再分发该 RCB 的报告
         with _CALLBACK_LOCK:
-            if rcb_ref not in _CALLBACK_REGISTRY:
+            registered_key, info = _find_registered_info(rcb_ref, connection)
+            if registered_key is None or info is None:
                 return True
-            info = _CALLBACK_REGISTRY.pop(rcb_ref)
+            _CALLBACK_REGISTRY.pop(registered_key, None)
 
         subscriber = info.subscriber
         handler = info.handler
@@ -452,10 +509,24 @@ class ReportCallbackHandler:
         return True
 
     @staticmethod
-    def get_cache(rcb_ref: str) -> list[dict[str, Any]]:
+    def deactivate(connection, rcb_ref: str, timeout: float = 3.0) -> bool:
+        """暂停报告分发但保留原生订阅，供后续使能安全复用。"""
+        with _CALLBACK_LOCK:
+            _, info = _find_registered_info(rcb_ref, connection)
+            if info is None:
+                return True
+            info.active = False
+            handler = info.handler
+            if handler is not None and hasattr(handler, "pause"):
+                handler.pause()
+
+        return ReportCallbackHandler.wait_for_idle(connection, timeout=timeout)
+
+    @staticmethod
+    def get_cache(rcb_ref: str, connection=None) -> list[dict[str, Any]]:
         """获取指定 RCB 的缓存报告数据"""
         with _CALLBACK_LOCK:
-            matched_key, info = _find_registered_info(rcb_ref)
+            matched_key, info = _find_registered_info(rcb_ref, connection)
             if not info:
                 log.debug(f"报告缓存未命中: query={rcb_ref}, registered={list(_CALLBACK_REGISTRY.keys())}")
                 return []
@@ -464,10 +535,10 @@ class ReportCallbackHandler:
             return [ReportCallbackHandler._entry_to_dict(entry) for entry in info.data_cache]
 
     @staticmethod
-    def get_cache_summaries(rcb_ref: str, limit: int = 100) -> list[dict[str, Any]]:
+    def get_cache_summaries(rcb_ref: str, limit: int = 100, connection=None) -> list[dict[str, Any]]:
         """获取轻量报告摘要，不复制报告值和原因字典。"""
         with _CALLBACK_LOCK:
-            _, info = _find_registered_info(rcb_ref)
+            _, info = _find_registered_info(rcb_ref, connection)
             if not info:
                 return []
 
@@ -484,10 +555,11 @@ class ReportCallbackHandler:
         *,
         uid: int | None = None,
         latest: bool = True,
+        connection=None,
     ) -> dict[str, Any] | None:
         """按 uid 获取单条报告；未指定 uid 时返回最新（或最早）一条。"""
         with _CALLBACK_LOCK:
-            _, info = _find_registered_info(rcb_ref)
+            _, info = _find_registered_info(rcb_ref, connection)
             if not info or not info.data_cache:
                 return None
 
@@ -498,27 +570,27 @@ class ReportCallbackHandler:
             return ReportCallbackHandler._entry_to_dict(entry) if entry is not None else None
 
     @staticmethod
-    def get_cache_state(rcb_ref: str) -> tuple[int, int]:
+    def get_cache_state(rcb_ref: str, connection=None) -> tuple[int, int]:
         """Return cache size and latest uid without serializing report values."""
         with _CALLBACK_LOCK:
-            _, info = _find_registered_info(rcb_ref)
+            _, info = _find_registered_info(rcb_ref, connection)
             if not info or not info.data_cache:
                 return 0, 0
             return len(info.data_cache), info.data_cache[-1].uid
 
     @staticmethod
-    def clear_cache(rcb_ref: str) -> None:
+    def clear_cache(rcb_ref: str, connection=None) -> None:
         """清除指定 RCB 的缓存"""
         with _CALLBACK_LOCK:
-            _, info = _find_registered_info(rcb_ref)
+            _, info = _find_registered_info(rcb_ref, connection)
             if info:
                 info.data_cache.clear()
 
     @staticmethod
-    def append_cache_entry(rcb_ref: str, entry: ReportDataEntry) -> bool:
+    def append_cache_entry(rcb_ref: str, entry: ReportDataEntry, connection=None) -> bool:
         """Append one report entry to the matching RCB cache."""
         with _CALLBACK_LOCK:
-            matched_key, info = _find_registered_info(rcb_ref)
+            matched_key, info = _find_registered_info(rcb_ref, connection)
             if not info:
                 log.warning(f"报告缓存写入失败: RCB 未注册, ref={rcb_ref}")
                 return False
@@ -528,25 +600,25 @@ class ReportCallbackHandler:
             return True
 
     @staticmethod
-    def is_active(rcb_ref: str) -> bool:
+    def is_active(rcb_ref: str, connection=None) -> bool:
         """检查指定 RCB 是否有活跃回调"""
         with _CALLBACK_LOCK:
-            _, info = _find_registered_info(rcb_ref)
-            return info is not None
+            _, info = _find_registered_info(rcb_ref, connection)
+            return bool(info is not None and info.active)
 
     @staticmethod
-    def mark_pending_gi(rcb_ref: str, ttl: float = 3.0) -> None:
+    def mark_pending_gi(rcb_ref: str, ttl: float = 3.0, connection=None) -> None:
         """按 RCB 实例引用记录 GI 触发目标。"""
         log_message = ""
         with _CALLBACK_LOCK:
-            matched_key, info = _find_registered_info(rcb_ref)
+            _, info = _find_registered_info(rcb_ref, connection)
             if not info:
                 log_message = f"GI 待路由未记录: RCB 未注册, ref={rcb_ref}"
             else:
-                target_ref = matched_key or rcb_ref
+                target_ref = info.rcb_ref
                 deadline = time.monotonic() + ttl
                 _expire_pending_gi_routes()
-                for key in _route_keys_for_ref(target_ref):
+                for key in _route_keys_for_ref(target_ref, connection):
                     existing = _PENDING_GI_ROUTES.get(key)
                     if existing:
                         existing[0].add(target_ref)
@@ -567,7 +639,7 @@ class ReportCallbackHandler:
                     "cache_size": len(info.data_cache),
                 }
                 for info in _CALLBACK_REGISTRY.values()
-                if connection is None or info.connection is connection
+                if info.active and (connection is None or info.connection is connection)
             ]
 
     @staticmethod
@@ -671,7 +743,7 @@ class ReportCallbackHandler:
         }
 
 
-def _dispatch_report(rcb_ref: str, report) -> None:
+def _dispatch_report(rcb_ref: str, report, connection=None) -> None:
     """解析并分发一条报告 (由 _PyRCBHandler.trigger 调用)
 
     注意: 不能在持有 _CALLBACK_LOCK 时做耗时的 C 层解析，
@@ -681,8 +753,8 @@ def _dispatch_report(rcb_ref: str, report) -> None:
     """
     # 1. 锁内快速检查是否已注册，取出 dataset_members 和 on_report 回调
     with _CALLBACK_LOCK:
-        info = _CALLBACK_REGISTRY.get(rcb_ref)
-        if not info:
+        _, info = _find_registered_info(rcb_ref, connection)
+        if not info or not info.active:
             log.warning(
                 f"_dispatch_report: rcb_ref={rcb_ref} 未在注册表中找到, "
                 f"当前注册表 keys={list(_CALLBACK_REGISTRY.keys())}"
@@ -699,7 +771,7 @@ def _dispatch_report(rcb_ref: str, report) -> None:
 
     # 3. 锁内写入缓存
     with _CALLBACK_LOCK:
-        target_refs, is_gi_route = _resolve_pending_gi_route(rcb_ref, entry)
+        target_refs, is_gi_route = _resolve_pending_gi_route(rcb_ref, entry, connection)
 
         if is_gi_route:
             # GI 报告 — 写入所有触发 GI 的目标 RCB 实例
@@ -708,8 +780,8 @@ def _dispatch_report(rcb_ref: str, report) -> None:
             if not entry.uid:
                 entry.uid = _get_next_entry_uid()
             for target_ref in target_refs:
-                info = _CALLBACK_REGISTRY.get(target_ref)
-                if not info:
+                _, info = _find_registered_info(target_ref, connection)
+                if not info or not info.active:
                     continue
                 info.data_cache.append(entry)
                 if on_report is None:
@@ -719,8 +791,8 @@ def _dispatch_report(rcb_ref: str, report) -> None:
                 log.debug(f"_dispatch_report: GI 报告已写入 {written} 个 RCB 实例, rpt_id={entry.rpt_id!r}")
         else:
             # 常规报告只写入触发当前回调的 RCB 实例，禁止按 RptId 再分发。
-            target_info = _CALLBACK_REGISTRY.get(rcb_ref)
-            if target_info:
+            _, target_info = _find_registered_info(rcb_ref, connection)
+            if target_info and target_info.active:
                 if not entry.uid:
                     entry.uid = _get_next_entry_uid()
                 target_info.data_cache.append(entry)
@@ -745,14 +817,20 @@ if HAS_IEC61850:
             super().__init__()
             self._rcb_ref = rcb_ref
             self._connection_key = id(connection)
+            self._connection = connection
             self._closing = False
 
         def close(self):
             self._closing = True
 
+        def pause(self):
+            self._closing = True
+
+        def resume(self):
+            self._closing = False
+
         def trigger(self):
             """C 接收线程回调: 在线程内完成解析"""
-            log.info(f"RCBHandler.trigger 被调用: rcb_ref={self._rcb_ref}")
             with _CALLBACK_IDLE:
                 _ACTIVE_CALLBACKS[self._connection_key] = _ACTIVE_CALLBACKS.get(self._connection_key, 0) + 1
             try:
@@ -760,9 +838,8 @@ if HAS_IEC61850:
                     log.debug(f"RCBHandler.trigger ignored during close: rcb_ref={self._rcb_ref}")
                     return
                 cr = self._client_report
-                log.info(f"RCBHandler.trigger report: rcb_ref={self._rcb_ref}, report={cr}")
                 # 在 trigger 返回前完成解析 (C 层在 trigger 返回后可能释放 report)
-                _dispatch_report(self._rcb_ref, cr)
+                _dispatch_report(self._rcb_ref, cr, self._connection)
             except Exception as e:
                 log.error(f"RCBHandler.trigger 异常: {self._rcb_ref}, {e}", exc_info=True)
             finally:

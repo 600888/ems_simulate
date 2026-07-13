@@ -137,7 +137,14 @@ class ReportTreeBuilder:
 
             ld_node = self._get_child(roots, parsed.ld, parsed.ld, "ld")
             ln_node = self._get_child_by_id(ld_node, f"{parsed.ld}/{parsed.ln}", parsed.ln, "ln")
-            do_node = self._get_child_by_id(ln_node, parsed.do_ref, parsed.do_name, "do", raw_ref=parsed.do_ref)
+            do_node = self._get_child_by_id(
+                ln_node,
+                parsed.do_ref,
+                parsed.do_name,
+                "do",
+                fc=parsed.fc or None,
+                raw_ref=parsed.do_ref,
+            )
             self._append_da_path(do_node, parsed, value, reason, ref)
 
         ordered_roots = [roots[key] for key in sorted(roots)]

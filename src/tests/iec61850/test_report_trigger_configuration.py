@@ -238,11 +238,15 @@ def test_urcb_software_gi_uses_strict_dataset_batch_read(monkeypatch):
         "conf_rev": 1,
     }
     cached_entries = []
-    monkeypatch.setattr(report_callback_module.ReportCallbackHandler, "mark_pending_gi", lambda _ref: None)
+    monkeypatch.setattr(
+        report_callback_module.ReportCallbackHandler,
+        "mark_pending_gi",
+        lambda _ref, **_kwargs: None,
+    )
     monkeypatch.setattr(
         report_callback_module.ReportCallbackHandler,
         "append_cache_entry",
-        lambda _ref, entry: cached_entries.append(entry) or True,
+        lambda _ref, entry, *_args: cached_entries.append(entry) or True,
     )
 
     assert plugin._trigger_urcb_software_gi("IEDLD0/LLN0.RP.urcb01") is True

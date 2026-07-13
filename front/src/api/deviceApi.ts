@@ -260,6 +260,7 @@ export interface IEC61850ConnectProgress {
   operation_id?: number;
   elapsed_seconds?: number;
   message?: string;
+  error_code?: "connection_failed" | "connection_exception" | "model_mismatch" | string;
 }
 
 export interface ParsedField {

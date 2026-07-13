@@ -174,7 +174,20 @@ onUnmounted(stopAutoRefresh)
 .message-table { flex: 1; min-height: 0; border-radius: 8px; overflow: hidden; }
 .message-table :deep(.tx-row) { background-color: rgba(59, 130, 246, 0.05); }
 .message-table :deep(.rx-row) { background-color: rgba(16, 185, 129, 0.05); }
-.hex-data { font-family: Consolas, Monaco, monospace; font-size: 13px; word-break: break-word; white-space: normal; color: var(--text-primary, #333); }
+.hex-data {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-primary, #333);
+  font-family: Consolas, Monaco, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: normal;
+  text-align: left;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
 .length-badge { display: inline-block; min-width: 32px; padding: 2px 6px; background: var(--panel-bg, #f0f0f0); border-radius: 4px; text-align: center; font-size: 12px; font-weight: 500; }
 .desc-text { font-size: 13px; color: var(--text-secondary, #555); word-break: break-all; }
 </style>

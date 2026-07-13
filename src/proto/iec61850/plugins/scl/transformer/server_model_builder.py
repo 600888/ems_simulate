@@ -265,6 +265,7 @@ class SclServerModelBuilder:
             name=rc.name,
             ref=f"{ld_inst}/{ln_name}.{rc.name}",
             rcb_type=rcb_type,
+            rpt_id=rc.rpt_id,
             dat_set=rc.dat_set,
             intg_pd=rc.intg_period,
             trg_ops=trg_ops_bitmap,

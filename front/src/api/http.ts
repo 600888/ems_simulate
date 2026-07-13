@@ -25,7 +25,7 @@ let lastErrorTime = 0;
 const MAX_ERROR_COUNT = 3;
 const activeErrorMessages: { close: () => void }[] = [];
 
-function showErrorOnce(message: string) {
+export function showErrorOnce(message: string) {
   const now = Date.now();
   if (message === lastErrorMessage && now - lastErrorTime < ERROR_DEBOUNCE_MS) {
     return;
@@ -37,7 +37,7 @@ function showErrorOnce(message: string) {
     const oldest = activeErrorMessages.shift();
     oldest?.close();
   }
-  const msg = ElMessage.error(message);
+  const msg = ElMessage.error({ message, grouping: true });
   activeErrorMessages.push(msg);
   // 消息关闭时从数组中移除
   const origClose = msg.close.bind(msg);

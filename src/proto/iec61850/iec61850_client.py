@@ -80,6 +80,9 @@ class IEC61850Client:
 
         # ICD 导入结果缓存
         self._last_import_result = None
+        # 所有离线模型都必须等 MMS 连接建立后才能与当前服务端校验。
+        # 取值: "cache" / "local" / "import" / None。
+        self._offline_model_source: str | None = None
         # ICD 解析出的 RCB 列表（供 UI 展示，不依赖 MMS 连接）
         self._rcbs_from_icd: list[dict[str, Any]] = []
 
@@ -610,6 +613,12 @@ class IEC61850Client:
         from .plugins.scl.service.import_service import SclImportService
 
         log.info(f"正在从 ICD 文件加载模型: {icd_path}")
+        self._offline_model_source = None
+        self._discovery.invalidate()
+        self._registry.clear()
+        self._rcbs_from_icd.clear()
+        if self.datasets:
+            self.datasets.invalidate_catalog()
 
         # 1. 解析 ICD 文件（复用外部传入的结果，避免重复解析）
         if scl_result is not None:
@@ -813,6 +822,7 @@ class IEC61850Client:
 
         # 缓存解析结果，供 Device 注册 BasePoint 到 PointManager
         self._last_import_result = result
+        self._offline_model_source = "import" if scl_result is not None else "local"
         return True
 
     def get_icd_points(self) -> dict[str, list]:
@@ -866,6 +876,7 @@ class IEC61850Client:
 
         # 将缓存模型同步到 _discovery，确保 get_discovered_points() 能正确读取
         self._discovery._model = cached
+        self._offline_model_source = "cache"
 
         # build_registry_from_model 会重建：
         #   - PointRegistry (address → ref/fc/iec_type/mms_type)
@@ -886,6 +897,75 @@ class IEC61850Client:
             log.warning(f"从缓存加载模型: 读取 dU 名称失败（已跳过）: {e}")
 
         return True
+
+    @property
+    def loaded_from_model_cache(self) -> bool:
+        """当前内存模型是否来自持久化缓存。"""
+        return self._offline_model_source == "cache"
+
+    @property
+    def offline_model_requires_validation(self) -> bool:
+        """当前模型是否在连接前离线加载，需要在连接后校验。"""
+        return self._offline_model_source is not None
+
+    def validate_loaded_model_cache(self) -> bool:
+        """兼容入口：连接建立后校验离线加载的模型。"""
+        return self.validate_loaded_offline_model()
+
+    def validate_loaded_offline_model(self) -> bool:
+        """连接建立后校验缓存、本地加载或导入的离线模型。"""
+        source = self._offline_model_source
+        if source is None:
+            return True
+
+        offline_model = self._discovery.model
+        if offline_model is not None and self._cached_model_matches_online_server(offline_model):
+            return True
+
+        cache_key = f"{self.ip}:{self.port}"
+        if source == "cache":
+            from .model import ModelCache
+
+            ModelCache.instance().invalidate(cache_key)
+        self._discovery.invalidate()
+        self._registry.clear()
+        self._last_import_result = None
+        self._rcbs_from_icd.clear()
+        if self.datasets:
+            self.datasets.invalidate_catalog()
+        self._offline_model_source = None
+        log.warning(f"已清除与当前 IED 不匹配的离线模型及派生点表: source={source}, endpoint={cache_key}")
+        return False
+
+    def _cached_model_matches_online_server(self, cached: IedModel) -> bool:
+        """连接在线时校验缓存模型是否仍属于当前远端 IED。
+
+        未连接时允许离线加载；已连接时则要求逻辑设备集合完全一致。目录读取
+        失败也拒绝加载，因为此时无法证明缓存中的对象引用对当前 association 有效。
+        """
+        if not self._conn.is_connected:
+            return True
+
+        cached_lds = {ld.name for ld in cached.lds if ld.name}
+        try:
+            online_lds = set(self._conn.browse_logical_devices())
+        except Exception as e:
+            log.warning(f"模型缓存在线校验失败: 逻辑设备目录读取异常, error={e}")
+            return False
+
+        if not online_lds:
+            log.warning("模型缓存在线校验失败: 逻辑设备目录为空或读取失败")
+            return False
+
+        if cached_lds == online_lds:
+            return True
+
+        log.warning(
+            "模型缓存与当前 IED 不匹配: "
+            f"cached_lds={sorted(cached_lds)}, online_lds={sorted(online_lds)}; "
+            "请重新在线发现模型"
+        )
+        return False
 
     def _update_model_point_names(self, model: "IedModel", discovered: list[dict[str, Any]]) -> None:
         """将 dU 名称写回模型的 _point_refs，确保缓存文件包含名称"""
@@ -929,6 +1009,10 @@ class IEC61850Client:
         else:
             cached = cache.get(cache_key)
             if cached is not None:
+                if not self._cached_model_matches_online_server(cached):
+                    cache.invalidate(cache_key)
+                    return False
+                self._offline_model_source = None
                 log.info(f"远程模型缓存命中: {cache_key}")
                 discovered = build_registry_from_model(cached, self._registry)
                 if self.datasets:
@@ -965,6 +1049,7 @@ class IEC61850Client:
             # 将 dU 名称写回模型的 _point_refs，确保缓存文件包含名称
             self._update_model_point_names(model, discovered)
             cache.set(cache_key, model)
+            self._offline_model_source = None
             if progress:
                 progress("descriptions", 1, 1, "模型描述读取完成")
             log.info(f"远程模型发现完成并已缓存: {cache_key}")

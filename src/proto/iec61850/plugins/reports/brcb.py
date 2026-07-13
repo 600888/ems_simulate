@@ -304,7 +304,7 @@ class BrcbHandler:
 
         from .callback import ReportCallbackHandler
 
-        ReportCallbackHandler.mark_pending_gi(rcb_ref)
+        ReportCallbackHandler.mark_pending_gi(rcb_ref, connection=connection)
         log.info(f"BRCB trigger_gi 开始: rcb_ref={rcb_ref}")
 
         if BrcbHandler._trigger_gi_direct(conn, rcb_ref):

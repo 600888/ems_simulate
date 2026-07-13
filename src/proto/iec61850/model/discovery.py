@@ -1064,7 +1064,7 @@ class ModelDiscoveryService:
 
                 rcb_names = get_list_from_linked_list(rcb_list)
                 for rcb_name in rcb_names:
-                    dat_set, intg_pd, trg_ops_bitmap, opt_fields_bitmap = self._read_rcb_detail(
+                    rpt_id, dat_set, intg_pd, trg_ops_bitmap, opt_fields_bitmap = self._read_rcb_detail(
                         conn, ld_name, ln_ref, rcb_name, fc_seg
                     )
                     rcbs.append(
@@ -1072,6 +1072,7 @@ class ModelDiscoveryService:
                             name=rcb_name,
                             ref=f"{ln_ref}.{rcb_name}",
                             rcb_type=type_name,
+                            rpt_id=rpt_id,
                             dat_set=dat_set,
                             intg_pd=intg_pd,
                             trg_ops=trg_ops_bitmap,
@@ -1084,14 +1085,14 @@ class ModelDiscoveryService:
 
     def _read_rcb_detail(
         self, conn, ld_name: str, ln_ref: str, rcb_name: str, fc_seg: str
-    ) -> tuple[str, int, int, int]:
-        """读取 RCB 的 datSet、intgPd、TrgOps、OptFields 属性
+    ) -> tuple[str, str, int, int, int]:
+        """读取 RCB 的 rptId、datSet、intgPd、TrgOps、OptFields 属性
 
         使用完整参考路径(含 FC 段)读取 RCB 值。
         失败时静默返回空值，不阻断发现流程。
 
         Returns:
-            (dat_set, intg_pd, trg_ops_bitmap, opt_fields_bitmap) 四元组
+            (rpt_id, dat_set, intg_pd, trg_ops_bitmap, opt_fields_bitmap) 五元组
         """
         ln_name = ln_ref.split("/", 1)[-1] if "/" in ln_ref else ln_ref
         nref = f"{ld_name}/{ln_name}.{fc_seg}.{rcb_name}"
@@ -1102,6 +1103,14 @@ class ModelDiscoveryService:
                 result = call_gil_safe(iec61850, "IedConnection_getRCBValues", conn, nref, rcb)
                 err = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if err == iec61850.IED_ERROR_OK:
+                    rpt_id = ""
+                    try:
+                        value = iec61850.ClientReportControlBlock_getRptId(rcb)
+                        if value:
+                            rpt_id = str(value)
+                    except Exception:
+                        pass
+
                     dat_set = ""
                     try:
                         ds_ref = iec61850.ClientReportControlBlock_getDataSetReference(rcb)
@@ -1134,14 +1143,14 @@ class ModelDiscoveryService:
                     except Exception:
                         pass
 
-                    return (dat_set, intg_pd, trg_ops, opt_fields)
+                    return (rpt_id, dat_set, intg_pd, trg_ops, opt_fields)
         except Exception:
             pass
         finally:
             if rcb is not None:
                 with contextlib.suppress(Exception):
                     iec61850.ClientReportControlBlock_destroy(rcb)
-        return ("", 0, 0x11, 0x4F)
+        return ("", "", 0, 0x11, 0x4F)
 
     def _discover_gocbs(self, conn, ld_name: str, ln_ref: str) -> list[GoCBRef]:
         """发现 LN 下所有 GoCB (含完整信息)"""

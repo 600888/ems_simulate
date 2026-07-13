@@ -35,6 +35,15 @@ class ReportTreeBuilderTest(unittest.TestCase):
         self.assertEqual(parsed.do_ref, "PCS001MEAS/dcGGIO1.AnIn1")
         self.assertEqual(parsed.da_parts, ())
 
+    def test_do_level_fc_is_included_in_tree(self):
+        entry = {"data_values": {"LC001BESSSYS/CTRL1.SP.CtrlBlockPower": [[662.0, None]]}}
+
+        tree = ReportTreeBuilder().build(entry)
+        do_node = tree[0]["children"][0]["children"][0]
+
+        self.assertEqual(do_node["label"], "CtrlBlockPower")
+        self.assertEqual(do_node["fc"], "SP")
+
     def test_unmapped_data_i_fallback(self):
         entry = {
             "data_values": {"data[0]": True},

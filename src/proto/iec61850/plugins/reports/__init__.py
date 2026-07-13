@@ -14,6 +14,7 @@ from typing import Any, Optional
 from src.proto.iec61850.core import Iec61850Connection
 
 from ...core.linked_list import get_list_from_linked_list
+from ...core.native_calls import call_gil_safe
 from ...defs.constants import HAS_IEC61850, AcsiClass
 from ...defs.types import OptFields, RCBInfo, ReportDataEntry, TrgOps
 from ...log import log
@@ -25,7 +26,7 @@ if HAS_IEC61850:
 import contextlib
 
 from .brcb import BrcbHandler
-from .callback import ReportCallbackHandler
+from .callback import ReportCallbackHandler, _report_ref_with_fc
 from .urcb import UrcbHandler
 
 
@@ -50,6 +51,7 @@ class ReportsPlugin:
         self._rcb_type_map: dict[str, str] = {}  # ref -> "BRCB"/"URCB", 发现时填充
         self._operation_lock = threading.RLock()
         self._my_rpt_ids: dict[str, str] = {}  # ref -> 本客户端设置的 rpt_id
+        self._primed_rcb_directories: dict[int, set[tuple[str, str]]] = {}
 
     @property
     def name(self) -> str:
@@ -83,6 +85,7 @@ class ReportsPlugin:
         self._client = None
         self._rcb_detail_cache.clear()
         self._my_rpt_ids.clear()
+        self._primed_rcb_directories.clear()
         self._initialized = False
         log.info("Reports 插件已关闭")
 
@@ -95,25 +98,26 @@ class ReportsPlugin:
 
     def prepare_disconnect(self) -> None:
         """先停止报告上送并排空回调，再允许销毁底层连接。"""
-        if not self._connection:
-            return
+        with self._operation_lock:
+            if not self._connection:
+                return
 
-        active = ReportCallbackHandler.get_active_rcbs(self._connection)
-        if self._connection.is_connected:
-            for item in active:
-                rcb_ref = str(item.get("rcb_ref") or "")
-                if not rcb_ref:
-                    continue
-                with contextlib.suppress(Exception):
-                    self._set_rpt_ena_raw(rcb_ref, False)
-            # 让接收线程处理禁用响应之前已经到达的最后一批报告；sleep
-            # 会释放 GIL，等待中的 SWIG director 因而可以进入并退出。
-            if active:
-                time.sleep(0.1)
+            active = ReportCallbackHandler.get_active_rcbs(self._connection)
+            if self._connection.is_connected:
+                for item in active:
+                    rcb_ref = str(item.get("rcb_ref") or "")
+                    if not rcb_ref:
+                        continue
+                    with contextlib.suppress(Exception):
+                        self._set_rpt_ena_raw(rcb_ref, False)
+                # 让接收线程处理禁用响应之前已经到达的最后一批报告；sleep
+                # 会释放 GIL，等待中的 SWIG director 因而可以进入并退出。
+                if active:
+                    time.sleep(0.1)
 
-        ReportCallbackHandler.wait_for_idle(self._connection, timeout=3.0)
-        ReportCallbackHandler.shutdown_all(self._connection)
-        self._rcb_detail_cache.clear()
+            ReportCallbackHandler.wait_for_idle(self._connection, timeout=3.0)
+            ReportCallbackHandler.shutdown_all(self._connection)
+            self._rcb_detail_cache.clear()
 
     # ==================== RCB 发现 ====================
 
@@ -189,6 +193,99 @@ class ReportsPlugin:
 
         log.info(f"RCB 发现完成, 共发现 {len(all_rcbs)} 个报告控制块")
         return all_rcbs
+
+    def restore_cached_rcbs(self, rcbs: list[dict[str, Any]]) -> bool:
+        """恢复缓存 RCB 元数据，并在状态读取 association 上预热目录。
+
+        RptEnabled 展开的 URCB 实例可能是 association 级对象。只恢复旧
+        引用而不查询当前连接的 RCB 目录时，后续 getRCBValues 会返回
+        OBJECT_DOES_NOT_EXIST (error=22)。这里只读取涉及的 LN/RCB 目录，
+        不重新发现整棵数据模型。
+        """
+        directory_groups: dict[tuple[str, str], set[str]] = {}
+        for item in rcbs:
+            ref = str(item.get("ref") or "")
+            rcb_type = str(item.get("rcb_type") or self._infer_rcb_type(ref)).upper()
+            if ref:
+                self._rcb_type_map[ref] = rcb_type
+                self._rcb_detail_cache[ref] = dict(item)
+            if "/" not in ref or "." not in ref:
+                continue
+            ln_ref = ref.replace("$", ".").rsplit(".", 1)[0]
+            if ln_ref.endswith((".RP", ".BR")):
+                ln_ref = ln_ref.rsplit(".", 1)[0]
+            directory_groups.setdefault((ln_ref, rcb_type), set()).add(ref.rsplit(".", 1)[-1])
+
+        if not directory_groups:
+            return True
+        if not self._ensure_connection():
+            log.warning("缓存 RCB 目录预热失败: 独立报告连接不可用")
+            return False
+
+        # RCB 列表状态由主浏览连接读取。独立报告连接只负责实际使能和
+        # 回调，不能拿它遍历整棵模型；部分 IED 会对此返回 error=12
+        # (object-reference-invalid)，但这不代表缓存或主连接无效。
+        owner = (
+            self._browse_connection
+            if self._browse_connection and self._browse_connection.is_connected
+            else self._connection
+        )
+        conn = owner.connection if owner and owner.is_connected else None
+        if conn is None:
+            return False
+        association = "browse" if owner is self._browse_connection else "report"
+
+        primed = 0
+        for (ln_ref, rcb_type), expected_names in sorted(directory_groups.items()):
+            group_key = (ln_ref, rcb_type)
+            primed_groups = self._primed_rcb_directories.setdefault(id(conn), set())
+            if group_key in primed_groups:
+                primed += 1
+                continue
+            acsi_class = AcsiClass.BRCB if rcb_type == "BRCB" else AcsiClass.URCB
+            try:
+                result = call_gil_safe(
+                    iec61850,
+                    "IedConnection_getLogicalNodeDirectory",
+                    conn,
+                    ln_ref,
+                    acsi_class,
+                )
+                raw = result[0] if isinstance(result, (list, tuple)) else result
+                error = result[1] if isinstance(result, (list, tuple)) and len(result) > 1 else 0
+                if error != iec61850.IED_ERROR_OK or raw is None:
+                    error_text = str(error)
+                    with contextlib.suppress(Exception):
+                        error_text = f"{error}({iec61850.IedClientError_toString(error)})"
+                    log.warning(
+                        f"缓存 RCB 目录预热失败: association={association}, "
+                        f"ln={ln_ref}, type={rcb_type}, error={error_text}"
+                    )
+                    continue
+                names = get_list_from_linked_list(raw)
+                if not names:
+                    log.warning(
+                        f"缓存 RCB 与当前 IED 不匹配: association={association}, "
+                        f"ln={ln_ref}, type={rcb_type}, 在线目录为空"
+                    )
+                    continue
+                if not expected_names.intersection(names):
+                    log.warning(
+                        f"缓存 RCB 与当前 IED 不匹配: association={association}, "
+                        f"ln={ln_ref}, type={rcb_type}, cached={sorted(expected_names)}, online={names}"
+                    )
+                    continue
+                primed += 1
+                primed_groups.add(group_key)
+                log.debug(
+                    f"缓存 RCB 目录已预热: association={association}, ln={ln_ref}, type={rcb_type}, count={len(names)}"
+                )
+            except Exception as e:
+                log.warning(
+                    f"缓存 RCB 目录预热异常: association={association}, ln={ln_ref}, type={rcb_type}, error={e}"
+                )
+
+        return primed == len(directory_groups)
 
     def _discover_rcbs_via_directory(self, conn, ln_ref: str, ld_name: str, ln_name: str) -> list[dict]:
         """通过 ACSI 目录发现 RCB
@@ -370,7 +467,7 @@ class ReportsPlugin:
                 "config_ref": info.opt_fields.config_ref,
                 "buf_ovfl": info.opt_fields.buf_ovfl,
             },
-            "active": ReportCallbackHandler.is_active(info.ref),
+            "active": ReportCallbackHandler.is_active(info.ref, self._connection),
         }
         result["reserved"] = bool(info.resv or info.resv_tms != 0)
         # 兼容未实现 Owner/ResvTms 的旧版 IED：非本客户端订阅且 RptEna
@@ -390,6 +487,12 @@ class ReportsPlugin:
         """
         connection = self._browse_connection or self._connection
         if not connection or not connection.is_connected:
+            return list(rcbs)
+
+        # 缓存可能早于主连接加载。首次状态刷新时惰性预热当前 association；
+        # 若缓存与在线 IED 不匹配，避免对数百个无效引用逐个读取并刷屏。
+        if rcbs and not self.restore_cached_rcbs(rcbs):
+            log.warning("RCB 状态刷新已跳过: 缓存目录尚未在当前连接上恢复或与在线 IED 不匹配")
             return list(rcbs)
 
         refreshed: list[dict[str, Any]] = []
@@ -412,7 +515,7 @@ class ReportsPlugin:
                         detail = BrcbHandler.get_rcb_values(connection, rcb_ref)
                 if detail is not None:
                     success_count += 1
-                    active = ReportCallbackHandler.is_active(rcb_ref)
+                    active = ReportCallbackHandler.is_active(rcb_ref, self._connection)
                     reserved = bool(detail.resv or detail.resv_tms != 0)
                     my_rpt_id = self._my_rpt_ids.get(rcb_ref)
                     locked_by_other = reserved or (detail.rpt_ena and detail.rpt_id != my_rpt_id)
@@ -479,6 +582,29 @@ class ReportsPlugin:
                 return False
 
             return self._apply_config_once(rcb_ref, rpt_ena, trg_ops, opt_fields, on_report)
+
+    def apply_config_batch(
+        self,
+        rcb_refs: list[str],
+        rpt_ena: bool,
+        trg_ops: dict[str, bool] | None = None,
+        opt_fields: dict[str, bool] | None = None,
+    ) -> list[tuple[str, bool, str]]:
+        """在同一操作锁内完成一个批次，防止并发批次逐项交叉。"""
+        results: list[tuple[str, bool, str]] = []
+        with self._operation_lock:
+            if not self._ensure_connection():
+                return [(rcb_ref, False, "独立报告连接不可用") for rcb_ref in rcb_refs]
+            for rcb_ref in rcb_refs:
+                try:
+                    # 批次中不做会清空其他已成功订阅的全连接重建；单项失败
+                    # 只影响本项，下一项仍可继续。
+                    ok = self._apply_config_once(rcb_ref, rpt_ena, trg_ops, opt_fields)
+                    results.append((rcb_ref, ok, "" if ok else "操作失败"))
+                except Exception as exc:
+                    log.error(f"批量应用报告配置异常: ref={rcb_ref}, {exc}", exc_info=True)
+                    results.append((rcb_ref, False, str(exc)))
+        return results
 
     def _apply_config_once(
         self,
@@ -672,11 +798,11 @@ class ReportsPlugin:
                 if datasets:
                     members = datasets.browse_dataset_directory(data_set_ref)
                     if members:
-                        dataset_members = [
-                            str(m.get("ref", m.get("fcda_ref", "")))
-                            for m in members
-                            if m.get("ref") or m.get("fcda_ref")
-                        ]
+                        dataset_members = []
+                        for member in members:
+                            member_ref = str(member.get("ref", member.get("fcda_ref", "")) or "")
+                            if member_ref:
+                                dataset_members.append(_report_ref_with_fc(member_ref, str(member.get("fc", ""))))
                         log.info(
                             f"_enable_report: 获取数据集成员引用成功: ds={data_set_ref}, count={len(dataset_members)}"
                         )
@@ -703,7 +829,7 @@ class ReportsPlugin:
 
         if not success:
             log.warning(f"set RptEna=True failed: {rcb_ref}")
-            ReportCallbackHandler.uninstall(self._connection, rcb_ref)
+            ReportCallbackHandler.deactivate(self._connection, rcb_ref)
             self._my_rpt_ids.pop(rcb_ref, None)
             return False
 
@@ -743,13 +869,10 @@ class ReportsPlugin:
             log.error(f"disable report failed: {rcb_ref}, {e}")
             return False
 
-        time.sleep(0.05)
-        ReportCallbackHandler.wait_for_idle(self._connection, timeout=3.0)
-
-        try:
-            ReportCallbackHandler.uninstall(self._connection, rcb_ref)
-        except Exception as e:
-            log.error(f"uninstall report callback failed: {rcb_ref}, {e}")
+        # 不在报告接收高峰中销毁 SWIG/C++ subscriber。先暂停 Python
+        # 分发并排空已经进入的回调，后续使能复用同一原生订阅；连接关闭时
+        # 再由 shutdown_all 统一注销。
+        ReportCallbackHandler.deactivate(self._connection, rcb_ref, timeout=3.0)
 
         self._my_rpt_ids.pop(rcb_ref, None)
         log.info(f"report disabled: {rcb_ref}")
@@ -789,7 +912,7 @@ class ReportsPlugin:
         软件 GI 必须保持批量语义：NamedVariableList 读取失败时直接返回失败，
         不允许退化为逐成员 ``readObject``，避免大 DataSet 触发大量 MMS 请求。
         """
-        ReportCallbackHandler.mark_pending_gi(rcb_ref)
+        ReportCallbackHandler.mark_pending_gi(rcb_ref, connection=self._connection)
 
         # 强制从 IED 获取最新 data_set_ref，覆盖缓存/SCL 中的差异。
         # 在线发现模式从 ClientReportControlBlock_getDataSetReference 获取
@@ -841,7 +964,7 @@ class ReportsPlugin:
             rpt_id=rpt_id,
             received_at=now,
         )
-        ok = ReportCallbackHandler.append_cache_entry(rcb_ref, entry)
+        ok = ReportCallbackHandler.append_cache_entry(rcb_ref, entry, self._connection)
         if ok:
             log.info(f"URCB 软件 GI 已写入缓存: ref={rcb_ref}, ds={data_set_ref}, values={len(values)}")
         return ok
@@ -858,18 +981,18 @@ class ReportsPlugin:
         Returns:
             报告数据字典列表
         """
-        data = ReportCallbackHandler.get_cache(rcb_ref)
+        data = ReportCallbackHandler.get_cache(rcb_ref, self._connection)
         if limit > 0:
             data = data[-limit:]
         return data
 
     def get_report_data_state(self, rcb_ref: str) -> tuple[int, int]:
         """获取报告缓存数量和最新 uid，不序列化大体积 data_values。"""
-        return ReportCallbackHandler.get_cache_state(rcb_ref)
+        return ReportCallbackHandler.get_cache_state(rcb_ref, self._connection)
 
     def get_report_summaries(self, rcb_ref: str, limit: int = 100) -> list[dict[str, Any]]:
         """获取报告历史摘要列表，不返回 data_values。"""
-        return ReportCallbackHandler.get_cache_summaries(rcb_ref, limit)
+        return ReportCallbackHandler.get_cache_summaries(rcb_ref, limit, self._connection)
 
     def get_report_entry(
         self,
@@ -879,11 +1002,16 @@ class ReportsPlugin:
         latest: bool = True,
     ) -> dict[str, Any] | None:
         """按需获取一条完整报告。"""
-        return ReportCallbackHandler.get_cache_entry(rcb_ref, uid=uid, latest=latest)
+        return ReportCallbackHandler.get_cache_entry(
+            rcb_ref,
+            uid=uid,
+            latest=latest,
+            connection=self._connection,
+        )
 
     def clear_report_data(self, rcb_ref: str) -> None:
         """清除指定 RCB 的缓存数据"""
-        ReportCallbackHandler.clear_cache(rcb_ref)
+        ReportCallbackHandler.clear_cache(rcb_ref, self._connection)
 
     # ==================== 状态查询 ====================
 
@@ -897,7 +1025,7 @@ class ReportsPlugin:
 
     def is_active(self, rcb_ref: str) -> bool:
         """检查指定 RCB 是否处于活跃状态"""
-        return ReportCallbackHandler.is_active(rcb_ref)
+        return ReportCallbackHandler.is_active(rcb_ref, self._connection)
 
     def get_rcb_detail(self, rcb_ref: str) -> dict[str, Any] | None:
         """获取单个 RCB 的详细信息

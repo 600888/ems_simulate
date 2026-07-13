@@ -155,3 +155,16 @@ def test_report_callback_and_tree_keep_dcggio_analogue_as_mag_f():
     mag_node = next(child for child in do_node["children"] if child["label"] == "mag")
     assert mag_node["children"][0]["label"] == "f"
     assert mag_node["children"][0]["value"] == 12.5
+
+
+def test_dataset_fc_is_kept_when_report_only_returns_do_reference():
+    assert callback._report_ref_with_fc("LC001BESSSYS/CTRL1.CtrlBlockPower", "SP") == (
+        "LC001BESSSYS/CTRL1.SP.CtrlBlockPower"
+    )
+    assert (
+        callback._select_report_value_ref(
+            "LC001BESSSYS/CTRL1.CtrlBlockPower",
+            "LC001BESSSYS/CTRL1.SP.CtrlBlockPower",
+        )
+        == "LC001BESSSYS/CTRL1.SP.CtrlBlockPower"
+    )

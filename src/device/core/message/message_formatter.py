@@ -13,7 +13,7 @@ from src.device.core.message.message_parser import (
     IEC104MessageParser,
     ModbusMessageParser,
 )
-from src.device.core.message.parsers import parse_dlt645, parse_iec104, parse_modbus
+from src.device.core.message.parsers import describe_mms, parse_dlt645, parse_iec104, parse_mms, parse_modbus
 from src.enums.modbus_def import ProtocolType
 from src.enums.modbus_register import Decode
 
@@ -48,6 +48,11 @@ _DLT645_TYPES = {
 _IEC104_TYPES = {
     ProtocolType.Iec104Server,
     ProtocolType.Iec104Client,
+}
+
+_MMS_TYPES = {
+    ProtocolType.Iec61850Server,
+    ProtocolType.Iec61850Client,
 }
 
 
@@ -101,6 +106,7 @@ class MessageFormatter:
         is_tcp = protocol_type in _MODBUS_TCP_TYPES
         is_dlt645 = protocol_type in _DLT645_TYPES
         is_iec104 = protocol_type in _IEC104_TYPES
+        is_mms = protocol_type in _MMS_TYPES
 
         # 统一显示格式
         result = []
@@ -141,6 +147,11 @@ class MessageFormatter:
                 description = DLT645MessageParser.parse(raw_hex)
             elif is_iec104 and raw_hex:
                 description = IEC104MessageParser.parse(raw_hex)
+            elif is_mms and raw_hex:
+                try:
+                    description = describe_mms(bytes.fromhex(raw_hex), role=msg_type)
+                except (TypeError, ValueError):
+                    description = "MMS报文格式无效"
 
             # 原始16进制数据和长度
             hex_data = msg.get("hex_string", msg.get("data", ""))
@@ -194,6 +205,8 @@ class MessageFormatter:
             detail = parse_dlt645(raw, role=role)
         elif protocol_type in _IEC104_TYPES:
             detail = parse_iec104(raw, role=role)
+        elif protocol_type in _MMS_TYPES:
+            detail = parse_mms(raw, role=role)
         else:
             return None
         detail.update(

@@ -8,7 +8,6 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
-from src.data.service.channel_service import ChannelService
 from src.proto.iec61850.plugins.reports.report_tree import ReportTreeBuilder, make_entry_summary
 from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import BaseResponse
@@ -36,18 +35,10 @@ def _get_reports_plugin(channel_id: int, request: Request) -> Any:
         NotFoundError: 通道或设备不存在
         ValidationError: 协议不匹配或插件不可用
     """
-    channel = ChannelService.get_channel_by_id(channel_id)
-    if not channel:
-        raise NotFoundError("通道不存在")
-
-    protocol_type = channel.get("protocol_type", -1)
-    if protocol_type != 4:
-        raise ValidationError("该通道不是 IEC61850 协议")
-
     device_controller = request.app.state.device_controller
     device = device_controller.get_device_by_channel_id(channel_id)
     if not device:
-        raise NotFoundError("设备未找到")
+        raise NotFoundError("通道或设备不存在")
 
     protocol_handler = getattr(device, "protocol_handler", None)
     if not protocol_handler:
@@ -391,30 +382,26 @@ async def batch_apply_report_config(body: RcbBatchApplyConfigRequest, request: R
     fail_count = 0
     fail_details: list[dict] = []
 
-    for item in body.items:
-        try:
-            ok = await loop.run_in_executor(
-                None,
-                lambda r=item.rcb_ref: reports.apply_config(
-                    rcb_ref=r,
-                    rpt_ena=body.rpt_ena,
-                    trg_ops=body.trg_ops,
-                    opt_fields=body.opt_fields,
-                ),
-            )
-            if ok:
-                success_count += 1
-                if body.rpt_ena:
-                    _mark_rcb_enabled(body.channel_id, item.rcb_ref, request)
-                    _refresh_single_rcb(reports, item.rcb_ref, body.channel_id, request)
-                else:
-                    _mark_rcb_disabled(body.channel_id, item.rcb_ref, request)
+    results = await loop.run_in_executor(
+        None,
+        lambda: reports.apply_config_batch(
+            [item.rcb_ref for item in body.items],
+            rpt_ena=body.rpt_ena,
+            trg_ops=body.trg_ops,
+            opt_fields=body.opt_fields,
+        ),
+    )
+
+    for rcb_ref, ok, reason in results:
+        if ok:
+            success_count += 1
+            if body.rpt_ena:
+                _mark_rcb_enabled(body.channel_id, rcb_ref, request)
             else:
-                fail_count += 1
-                fail_details.append({"rcb_ref": item.rcb_ref, "reason": "操作失败"})
-        except Exception as e:
+                _mark_rcb_disabled(body.channel_id, rcb_ref, request)
+        else:
             fail_count += 1
-            fail_details.append({"rcb_ref": item.rcb_ref, "reason": str(e)})
+            fail_details.append({"rcb_ref": rcb_ref, "reason": reason or "操作失败"})
 
     return BaseResponse(
         message=f"批量应用完成: 成功 {success_count} 个, 失败 {fail_count} 个",

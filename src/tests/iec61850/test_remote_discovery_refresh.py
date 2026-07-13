@@ -3,6 +3,7 @@
 from unittest.mock import Mock, patch
 
 from src.proto.iec61850.iec61850_client import IEC61850Client
+from src.proto.iec61850.model.ied_model import IedModel, LDModel
 
 
 def test_fill_du_names_applies_one_do_description_to_all_child_points():
@@ -70,10 +71,11 @@ def test_remote_discovery_can_reuse_cache_for_internal_callers():
     client.ip = "127.0.0.1"
     client.port = 102
     client._conn = Mock(is_connected=True)
+    client._conn.browse_logical_devices.return_value = ["LD0"]
     client._discovery = Mock()
     client._registry = Mock()
     client._fill_du_names = Mock()
-    cached_model = Mock()
+    cached_model = IedModel(lds=(LDModel(name="LD0"),))
     cache = Mock()
     cache.get.return_value = cached_model
     discovered = [{"address": "LD0/MMXU1.TotW.mag.f"}]

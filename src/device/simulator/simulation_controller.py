@@ -1,5 +1,4 @@
 import threading
-import time
 
 from src.device.simulator.log import log
 from src.device.simulator.point_simulator import PointSimulator
@@ -125,23 +124,54 @@ class SimulationController:
         else:
             local_addr = f"{self.device.ip}:{self.device.port}"
         while not self._stop_event.is_set():
-            for point_simulator in self.points.values():
+            # IEC 61850 服务端必须按轮次批量提交。逐点调用 IedServer_update*
+            # 会让每个变化都立即生成报告，订阅后很容易形成报告风暴。
+            batch_writer = getattr(self.device.protocol_handler, "write_values_batch", None)
+            batch_values = [] if callable(batch_writer) else None
+
+            # 配置接口可能同时增删模拟点，使用快照避免迭代期间字典变化。
+            for point_simulator in tuple(self.points.values()):
                 if point_simulator.is_running and not self._stop_event.is_set():
                     point = point_simulator.point
 
                     # 性能优化：仅当开启追溯时才进入上下文
                     if point.change_tracking_enabled:
                         with track_change(ChangeSource.SIMULATION, f"自动模拟 {point.code}", local_addr):
-                            self._perform_point_simulation(point_simulator)
+                            changed = self._perform_point_simulation(
+                                point_simulator,
+                                write_protocol=batch_values is None,
+                            )
                     else:
-                        self._perform_point_simulation(point_simulator)
-            time.sleep(1)  # 适当降低CPU占用
+                        changed = self._perform_point_simulation(
+                            point_simulator,
+                            write_protocol=batch_values is None,
+                        )
 
-    def _perform_point_simulation(self, point_simulator: PointSimulator):
+                    if batch_values is not None and changed:
+                        # 与 PointOperator.edit_value 保持一致：协议层接收编码后
+                        # 的 point.value，而变化判断仍使用 Yc.real_value。
+                        batch_values.append((point, point.value))
+
+            if batch_values:
+                try:
+                    if not batch_writer(batch_values):
+                        log.warning(f"IEC61850 模拟值批量写入失败: count={len(batch_values)}")
+                except Exception as e:
+                    log.error(f"IEC61850 模拟值批量写入异常: count={len(batch_values)}, error={e}")
+
+            self._stop_event.wait(1)  # 可被 stop 立即唤醒
+
+    def _perform_point_simulation(self, point_simulator: PointSimulator, *, write_protocol: bool = True) -> bool:
         """执行单个点的模拟逻辑"""
+        point = point_simulator.point
+        before = point.real_value if isinstance(point, Yc) else point.value
         point_simulator.simulate()
+        after = point.real_value if isinstance(point, Yc) else point.value
+        changed = after != before
+        if not changed or not write_protocol:
+            return changed
+
         try:
-            point = point_simulator.point
             slave_id = int(point.rtu_addr) if hasattr(point, "rtu_addr") and point.rtu_addr else None
             if isinstance(point, Yc):
                 self.device.editPointData(
@@ -162,6 +192,7 @@ class SimulationController:
         except ValueError:
             # 忽略模拟超出范围异常，避免停止后续测点的模拟
             pass
+        return changed
 
     def is_simulation_running(self) -> bool:
         """检查模拟线程是否运行"""

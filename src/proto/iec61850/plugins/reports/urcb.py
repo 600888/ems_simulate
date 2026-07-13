@@ -438,7 +438,7 @@ class UrcbHandler:
 
         from .callback import ReportCallbackHandler
 
-        ReportCallbackHandler.mark_pending_gi(rcb_ref)
+        ReportCallbackHandler.mark_pending_gi(rcb_ref, connection=connection)
         log.info(f"URCB trigger_gi 开始: rcb_ref={rcb_ref}")
 
         if UrcbHandler._trigger_gi_write_object(conn, rcb_ref):

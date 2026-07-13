@@ -32,6 +32,7 @@ class IEC61850ServerHandler(ServerHandler):
         self._log = log
         self._discovered_goose_items: list[dict[str, Any]] = []
         self._discovered_datasets: list[dict[str, Any]] = []
+        self._mms_capture = None
 
     def initialize(self, config: dict[str, Any]) -> None:
         """初始化 IEC 61850 服务器
@@ -66,6 +67,9 @@ class IEC61850ServerHandler(ServerHandler):
             ied_name=effective_ied,
             ld_name=ld_name,
         )
+        from src.device.core.message.mms_capture import MmsMessageCapture
+
+        self._mms_capture = MmsMessageCapture(port=port, client=False, logger=self._log)
 
     @property
     def model_loaded(self) -> bool:
@@ -90,6 +94,8 @@ class IEC61850ServerHandler(ServerHandler):
                 return False
 
             # 模型已加载，启动 MMS 服务
+            if self._mms_capture:
+                self._mms_capture.start()
             await asyncio.to_thread(self._server.start_device)
             self._is_running = self._server.is_running
             return self._is_running
@@ -146,6 +152,8 @@ class IEC61850ServerHandler(ServerHandler):
         try:
             if self._server:
                 await asyncio.to_thread(self._server.stop)
+                if self._mms_capture:
+                    self._mms_capture.stop()
                 self._is_running = False
                 return True
             return False
@@ -172,6 +180,13 @@ class IEC61850ServerHandler(ServerHandler):
             )
             return True
         return False
+
+    def write_values_batch(self, values: Sequence[tuple[BasePoint, Any]]) -> bool:
+        """批量写入一轮模拟值，并让服务端合并报告通知。"""
+        if not self._server:
+            return False
+        updates = [(point.address, value, getattr(point, "fc", "") or "") for point, value in values]
+        return self._server.set_point_values(updates)
 
     async def read_value_async(self, point: BasePoint) -> Any:
         """异步读取测点值"""
@@ -253,16 +268,16 @@ class IEC61850ServerHandler(ServerHandler):
 
     def get_captured_messages(self, limit: int = 100) -> list[dict[str, Any]]:
         """获取捕获的报文列表"""
-        # IEC 61850 MMS 目前不支持报文捕获
-        return []
+        return self._mms_capture.get_messages(limit) if self._mms_capture else []
 
     def clear_captured_messages(self) -> None:
         """清空捕获的报文"""
-        pass
+        if self._mms_capture:
+            self._mms_capture.clear()
 
     def get_avg_time(self) -> dict:
         """获取平均收发时间"""
-        return {}
+        return self._mms_capture.get_avg_time() if self._mms_capture else {}
 
 
 class IEC61850ClientHandler(ClientHandler):
@@ -287,6 +302,7 @@ class IEC61850ClientHandler(ClientHandler):
         self._progress_active = False  # 连接、发现或批读任务是否仍在执行
         self._progress_operation = "idle"  # idle/connect/discover/read
         self._progress_message = ""
+        self._progress_error_code = ""
         self._progress_started_at: float | None = None
         self._progress_elapsed_seconds = 0
         self._progress_operation_id = 0
@@ -294,6 +310,7 @@ class IEC61850ClientHandler(ClientHandler):
         self._discovered_datasets: list[dict[str, Any]] = []  # 发现的 DataSet 列表
         self._discovered_rcbs: list[dict[str, Any]] = []  # 发现的报告控制块 (连接时缓存)
         self._model_loaded: bool = False  # 模型是否已加载
+        self._mms_capture = None
 
     @property
     def model_loaded(self) -> bool:
@@ -339,6 +356,9 @@ class IEC61850ClientHandler(ClientHandler):
             model_name=model_name,
             ld_name=ld_name,
         )
+        from src.device.core.message.mms_capture import MmsMessageCapture
+
+        self._mms_capture = MmsMessageCapture(port=port, remote_ip=ip, client=True, logger=self._log)
 
     async def start(self) -> bool:
         """启动客户端（仅连接 MMS 服务器，不自动发现模型）
@@ -365,6 +385,8 @@ class IEC61850ClientHandler(ClientHandler):
         self._connect_progress = 0
 
         self._connecting = True
+        if self._mms_capture:
+            self._mms_capture.start()
         self._begin_progress("connect", self.PHASE_CONNECTING, 10, "正在连接 MMS 服务器")
         import threading
 
@@ -485,6 +507,7 @@ class IEC61850ClientHandler(ClientHandler):
                                     "ref": rcb.ref,
                                     "name": rcb.name,
                                     "rcb_type": rcb.rcb_type,
+                                    "rpt_id": rcb.rpt_id,
                                     "ld": ld.name,
                                     "ln": ln.name,
                                     "data_set_ref": ds_ref,
@@ -626,6 +649,7 @@ class IEC61850ClientHandler(ClientHandler):
         """开始一轮连接、发现或批读进度，重置计时和操作标识。"""
         self._progress_operation_id += 1
         self._progress_operation = operation
+        self._progress_error_code = ""
         self._progress_active = True
         self._progress_started_at = time.monotonic()
         self._progress_elapsed_seconds = 0
@@ -673,7 +697,31 @@ class IEC61850ClientHandler(ClientHandler):
         if not is_connected:
             self._connect_phase = self.PHASE_FAILED
             self._connect_progress = 0
+            self._progress_error_code = "connection_failed"
+            self._progress_message = "无法连接 IEC61850 服务端，请检查 IP、端口和服务状态"
             return False
+
+        # 离线模型只能在主 MMS association 建立后确认它
+        # 是否仍属于当前服务端。失败时不能带着旧点表进入运行态。
+        if self._client.offline_model_requires_validation:
+            if not self._client.validate_loaded_offline_model():
+                self.clear_cache()
+                self._client.disconnect()
+                self._is_running = False
+                self._connect_phase = self.PHASE_FAILED
+                self._connect_progress = 0
+                self._progress_error_code = "model_mismatch"
+                self._progress_message = "离线模型与当前 IEC61850 服务端不匹配，请重新加载正确模型或在线发现"
+                if self._log:
+                    self._log.error(self._progress_message)
+                return False
+
+            # 离线模型确认匹配后，才在当前 association 上恢复 RCB 目录状态。
+            reports = getattr(self._client, "reports", None)
+            if reports and hasattr(reports, "restore_cached_rcbs"):
+                restored = reports.restore_cached_rcbs(self._discovered_rcbs)
+                if not restored and self._log:
+                    self._log.warning("离线模型匹配，但部分 RCB 目录预热失败")
 
         self._connect_progress = 100
         self._connect_phase = self.PHASE_DONE
@@ -684,6 +732,8 @@ class IEC61850ClientHandler(ClientHandler):
         try:
             self.connect()
         except Exception as e:
+            self._progress_error_code = "connection_exception"
+            self._progress_message = f"连接 IEC61850 服务端异常: {e}"
             if self._log:
                 self._log.error(f"连接 IEC 61850 服务器失败: {e}")
             self._is_running = False
@@ -714,6 +764,7 @@ class IEC61850ClientHandler(ClientHandler):
             "operation_id": self._progress_operation_id,
             "elapsed_seconds": elapsed_seconds,
             "message": self._progress_message,
+            "error_code": self._progress_error_code,
         }
 
     def disconnect(self) -> None:
@@ -728,10 +779,13 @@ class IEC61850ClientHandler(ClientHandler):
         self._progress_started_at = None
         self._progress_elapsed_seconds = 0
         self._progress_message = ""
+        self._progress_error_code = ""
         self._connect_phase = self.PHASE_IDLE
         self._connect_progress = 0
         if self._client:
             self._client.disconnect()
+        if self._mms_capture:
+            self._mms_capture.stop()
         self._is_running = False
 
     @property
@@ -979,12 +1033,13 @@ class IEC61850ClientHandler(ClientHandler):
 
     def get_captured_messages(self, limit: int = 100) -> list[dict[str, Any]]:
         """获取捕获的报文列表"""
-        return []
+        return self._mms_capture.get_messages(limit) if self._mms_capture else []
 
     def clear_captured_messages(self) -> None:
         """清空捕获的报文"""
-        pass
+        if self._mms_capture:
+            self._mms_capture.clear()
 
     def get_avg_time(self) -> dict:
         """获取平均收发时间"""
-        return {}
+        return self._mms_capture.get_avg_time() if self._mms_capture else {}
