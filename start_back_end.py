@@ -52,10 +52,14 @@ def _prepare_runtime_root(root_dir: Path) -> None:
 
     # 首次运行时复制初始数据库
     db_target = root_dir / "data" / "ems.db"
-    if not db_target.exists():
+    if not db_target.exists() or db_target.stat().st_size == 0:
         db_source = _bundled_path("data/ems.db")
-        if db_source.exists():
-            db_target.write_bytes(db_source.read_bytes())
+        if db_source.is_file() and db_source.stat().st_size > 0:
+            # Replace atomically so an interrupted first launch cannot leave a
+            # partial SQLite file that then survives every later restart.
+            db_temp = db_target.with_suffix(".db.tmp")
+            db_temp.write_bytes(db_source.read_bytes())
+            db_temp.replace(db_target)
 
     # 首次运行时复制样本点表文件
     point_csv_target = root_dir / "data" / "point_csv"

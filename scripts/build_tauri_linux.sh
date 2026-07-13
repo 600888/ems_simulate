@@ -66,13 +66,18 @@ function WriteErr()  { echo -e "${RED}[ERROR] $*${NC}"; exit 1; }
 function IsUpToDate() {
     local target="$1"; shift
     if [ ! -f "$target" ]; then return 1; fi
-    local target_time
-    target_time=$(stat -c %Y "$target" 2>/dev/null) || return 1
     for ref in "$@"; do
         if [ ! -e "$ref" ]; then continue; fi
-        local ref_time
-        ref_time=$(stat -c %Y "$ref" 2>/dev/null) || return 1
-        if [ "$ref_time" -gt "$target_time" ]; then return 1; fi
+        if [ -d "$ref" ]; then
+            # Directory mtimes do not change when an existing nested file is
+            # edited. Check the contents so changes to Python sources or the
+            # seed database cannot leave a stale sidecar in the installer.
+            if find "$ref" -type f -newer "$target" -print -quit | grep -q .; then
+                return 1
+            fi
+        elif [ "$ref" -nt "$target" ]; then
+            return 1
+        fi
     done
     return 0
 }
@@ -167,6 +172,7 @@ if ! $SKIP_BACKEND; then
         "${PROJECT_ROOT}/start_back_end.py"
         "${PROJECT_ROOT}/src"
         "${PROJECT_ROOT}/config.ini"
+        "${PROJECT_ROOT}/data"
         "${PROJECT_ROOT}/pyproject.toml"
     )
 
@@ -185,6 +191,13 @@ if ! $SKIP_BACKEND; then
         WriteSkip "Python 后端已是最新"
     else
         WriteStep "构建 Python 后端 (PyInstaller --onefile for Tauri Sidecar)..."
+
+        # The installed application initializes its writable user database
+        # from this bundled seed. Failing here is preferable to producing an
+        # installer whose database APIs only fail after installation.
+        if [ ! -s "${PROJECT_ROOT}/data/ems.db" ]; then
+            WriteErr "种子数据库不存在或为空: ${PROJECT_ROOT}/data/ems.db"
+        fi
 
         # 清理旧 sidecar 目录
         rm -rf "$BINARIES_DIR"
@@ -254,6 +267,14 @@ if [ ! -f "$BE_SIDECAR_BINARY" ]; then
 fi
 if [ ! -x "$BE_SIDECAR_BINARY" ]; then
     chmod +x "$BE_SIDECAR_BINARY"
+fi
+
+# Linux uses a PyInstaller onefile sidecar. The onedir runtime resource in
+# tauri.conf.json is Windows-only and is disabled by tauri.linux.conf.json.
+# Keep this guard close to the Tauri invocation so --skip-backend builds are
+# also protected from silently packaging without the seed database.
+if [ ! -s "${PROJECT_ROOT}/data/ems.db" ]; then
+    WriteErr "种子数据库不存在或为空: ${PROJECT_ROOT}/data/ems.db"
 fi
 
 # Tauri 会把 externalBin 复制到 target/release 并去掉 target triple。

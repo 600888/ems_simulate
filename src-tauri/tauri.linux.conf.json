@@ -1,3 +1,6 @@
 {
-  "productName": "EMS Simulate Desktop"
+  "productName": "EMS Simulate Desktop",
+  "bundle": {
+    "resources": []
+  }
 }
