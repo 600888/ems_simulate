@@ -73,4 +73,6 @@ def test_windows_npcap_payload_is_valid_goose(monkeypatch):
     assert packets[0]["app_id"] == 0x2001
     assert packets[0]["go_cb_ref"] == "TESTLD/LLN0$GO$gocb1"
     assert packets[0]["data_set_ref"] == "TESTLD/LLN0$ds1"
-    assert packets[0]["data_values"] == [{"type": "boolean", "value": True}]
+    assert packets[0]["data_values"][0]["type"] == "boolean"
+    assert packets[0]["data_values"][0]["value"] is True
+    assert packets[0]["data_values"][0]["raw_value"] == "83 01 FF"

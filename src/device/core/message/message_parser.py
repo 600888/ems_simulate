@@ -4,8 +4,6 @@
 支持 Modbus、DLT645 和 IEC104 协议。
 """
 
-from dlt645.protocol.protocol import DLT645Protocol
-
 # Modbus 异常码名称映射
 MODBUS_EXCEPTION_CODES: dict[int, str] = {
     0x01: "非法功能码",
@@ -280,16 +278,43 @@ class DLT645MessageParser:
             人类可读的描述字符串
         """
         try:
-            # 将十六进制字符串转换为字节流
             raw_bytes = bytes.fromhex(raw_hex.replace(" ", ""))
-        except ValueError:
+        except (ValueError, TypeError):
             return ""
+        if not raw_bytes:
+            return ""
+        from src.device.core.message.parsers.dlt645 import parse_dlt645
 
-        # 尝试反序列化
-        frame = DLT645Protocol.deserialize(raw_bytes)
-        if frame is None:
+        detail = parse_dlt645(raw_bytes, role="")
+        if detail["errors"]:
             return ""
-        return frame.description
+        control = next((field for field in detail["fields"] if field["key"] == "control"), None)
+        address = next((field for field in detail["fields"] if field["key"] == "address"), None)
+        di_field = next((field for field in detail["fields"] if field["key"] == "data_identifier"), None)
+        error_field = next((field for field in detail["fields"] if field["key"] == "error_status"), None)
+        function_name = str(control["display_value"]).split(" ", 1)[-1] if control else "DL/T645报文"
+        parts = [function_name]
+        if detail["frame_kind"] == "从站响应":
+            parts.append("异常响应" if error_field else "正常响应")
+        if address:
+            parts.append(f"电表地址:{address['display_value']}")
+        if di_field:
+            parts.append(f"DI:{di_field['display_value']}")
+        if error_field:
+            parts.append(str(error_field["display_value"]))
+        return " ".join(parts)
+
+    @staticmethod
+    def _get_di_name(di: int) -> str:
+        try:
+            from dlt645.model.data.data_handler import get_data_item
+
+            item = get_data_item(di)
+            if isinstance(item, list):
+                item = item[0] if item else None
+            return str(getattr(item, "name", "") or "") if item is not None else ""
+        except Exception:
+            return ""
 
 
 class IEC104MessageParser:

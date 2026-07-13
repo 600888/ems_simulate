@@ -487,8 +487,40 @@ export async function getGooseSubscriptionHistory(
 
 /** GOOSE 捕获的数据值 */
 export interface GooseCapturedDataValue {
+  index?: number;
   type: string;
-  value: boolean | number | string | null;
+  value: boolean | number | string | Record<string, unknown> | null;
+  offset: number;
+  length: number;
+  value_offset: number;
+  value_length: number;
+  raw_value: string;
+  value_raw_hex: string;
+  ber_tag: string;
+  name?: string;
+  fc?: string;
+  description?: string;
+  dataset_type?: string;
+  point?: {
+    code: string;
+    name: string;
+    address: string;
+    frame_type: number | null;
+    fc: string;
+    mms_type: string;
+  };
+}
+
+export interface GooseParsedField {
+  key: string;
+  name: string;
+  offset: number;
+  length: number;
+  raw_hex: string;
+  value: unknown;
+  display_value: string;
+  description: string;
+  level: string;
 }
 
 /** GOOSE 捕获的报文 */
@@ -514,8 +546,9 @@ export interface GooseCapturedPacket {
   vlan_prio: number;
   has_vlan: boolean;
   data_values: GooseCapturedDataValue[];
+  fields: GooseParsedField[];
+  metadata_matched?: boolean;
   hex_data: string;
-  hex_string: string;
 }
 
 /** GOOSE 捕获统计 */

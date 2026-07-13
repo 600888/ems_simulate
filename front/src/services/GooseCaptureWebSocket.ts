@@ -30,6 +30,8 @@ import { WS_RECONNECT_INTERVAL } from '@/constants/app';
 export enum WsEventType {
   /** 收到实时 GOOSE 报文 */
   PACKET = 'packet',
+  /** 批量收到实时 GOOSE 报文 */
+  PACKET_BATCH = 'packet_batch',
   /** 收到指令响应 */
   RESPONSE = 'response',
   /** 收到统计数据更新 */
@@ -273,6 +275,9 @@ export class GooseCaptureWebSocket {
     switch (msgType) {
       case 'packet':
         this._emit(WsEventType.PACKET, message.data);
+        break;
+      case 'packets':
+        this._emit(WsEventType.PACKET_BATCH, message.data || []);
         break;
       case MSG_RESPONSE:
         this._emit(WsEventType.RESPONSE, {

@@ -8,6 +8,7 @@ import { DEVICE_API } from "@/constants";
 // ===== 类型导出（供外部使用） =====
 
 export interface MessageRecord {
+  sequence_id: number;
   timestamp: number;
   formatted_time: string;
   direction: string;
@@ -217,6 +218,13 @@ export async function getMessages(
   }
 }
 
+export async function getMessageDetail(deviceName: string, sequenceId: number): Promise<MessageDetail> {
+  return await requestApi(DEVICE_API.MESSAGE_DETAIL, "post", {
+    device_name: deviceName,
+    sequence_id: sequenceId,
+  });
+}
+
 export async function clearMessages(deviceName: string): Promise<boolean> {
   try {
     const data = await requestApi(DEVICE_API.CLEAR_MESSAGES, "post", {
@@ -252,6 +260,78 @@ export interface IEC61850ConnectProgress {
   operation_id?: number;
   elapsed_seconds?: number;
   message?: string;
+}
+
+export interface ParsedField {
+  key: string;
+  name: string;
+  offset: number;
+  length: number;
+  raw_hex: string;
+  value: unknown;
+  display_value: string;
+  description: string;
+  level: "normal" | "warning" | "error";
+}
+
+export interface ParsedObject {
+  index: number;
+  offset: number;
+  length: number;
+  address: number | string | null;
+  value: unknown;
+  raw_value: unknown;
+  quality: Record<string, unknown> | null;
+  timestamp: string | null;
+  fields: ParsedField[];
+  name?: string;
+  unit?: string;
+  timestamp_detail?: Record<string, unknown> | null;
+  decoded_value?: unknown;
+  engineering_value?: unknown;
+  combined_raw?: string;
+  covered_by_point?: string;
+  warnings?: string[];
+  point?: {
+    name: string;
+    code: string;
+    address: number | string;
+    slave_id: number;
+    function_code: number;
+    frame_type: number;
+    decode_code: string;
+    iec_type_id: string | null;
+    multiplier: number;
+    addition: number;
+  };
+}
+
+export interface MessageDetail {
+  sequence_id: number;
+  protocol: string;
+  frame_kind: string;
+  role: string;
+  summary: string;
+  purpose: string;
+  valid: boolean;
+  complete: boolean;
+  raw_hex: string;
+  raw_length: number;
+  direction: string;
+  msg_type: string;
+  formatted_time: string;
+  fields: ParsedField[];
+  objects: ParsedObject[];
+  validation: Array<{ name: string; passed: boolean; detail: string }>;
+  correlation: {
+    request_sequence_id?: number;
+    start_address?: number;
+    end_address?: number;
+    quantity?: number;
+    match_method?: string;
+  } | null;
+  warnings: string[];
+  errors: string[];
 }
 
 export async function getIEC61850ConnectProgress(

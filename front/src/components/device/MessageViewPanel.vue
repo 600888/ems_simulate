@@ -56,7 +56,13 @@
       <el-table-column prop="description" :label="$t('messageView.parsed')" min-width="280" header-align="center">
         <template #default="{ row }"><span class="desc-text" :title="row.description">{{ row.description }}</span></template>
       </el-table-column>
+      <el-table-column label="详情" width="90" align="center" fixed="right">
+        <template #default="{ row }">
+          <el-button type="primary" link @click="detailDrawer?.open(row.sequence_id)">查看详情</el-button>
+        </template>
+      </el-table-column>
     </el-table>
+    <MessageDetailDrawer ref="detailDrawer" :device-name="deviceName" />
   </div>
 </template>
 
@@ -66,6 +72,7 @@ import { useI18n } from 'vue-i18n'
 import { CaretRight, VideoPause, Delete, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getMessages, clearMessages, getAvgTime, type MessageRecord, type AvgTimeStats } from '@/api/deviceApi'
+import MessageDetailDrawer from './MessageDetailDrawer.vue'
 
 const props = withDefaults(defineProps<{ deviceName: string; active?: boolean; fillWindow?: boolean }>(), {
   active: true,
@@ -75,6 +82,7 @@ const { t } = useI18n()
 const messages = ref<MessageRecord[]>([])
 const avgStats = ref<AvgTimeStats | null>(null)
 const autoRefresh = ref(true)
+const detailDrawer = ref<InstanceType<typeof MessageDetailDrawer> | null>(null)
 const searchKeyword = ref('')
 const searchMode = ref<'description' | 'hex_data'>('description')
 let refreshTimer: ReturnType<typeof setInterval> | null = null

@@ -844,6 +844,9 @@ async def list_goose_capture(
         raise ValidationError("没有正在运行的 GOOSE 抓包会话")
 
     packets = capture.get_packets(count=body.count, filter_app_id=body.filter_app_id)
+    from src.proto.iec61850.plugins.goose.detail import enrich_goose_packet
+
+    packets = [enrich_goose_packet(packet, body.channel_id) for packet in packets]
     stats = capture.get_statistics()
     status = capture.get_status()
 

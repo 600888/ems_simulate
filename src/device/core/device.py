@@ -919,6 +919,9 @@ class Device:
         """获取报文历史记录"""
         return self.message_formatter.get_messages(limit)
 
+    def get_message_detail(self, sequence_id: int) -> dict | None:
+        return self.message_formatter.get_message_detail(sequence_id)
+
     def clear_messages(self) -> None:
         """清空报文历史记录"""
         self.message_formatter.clear_messages()

@@ -114,7 +114,7 @@
     <!-- 报文列表 -->
     <el-table
       class="capture-table"
-      :data="packets"
+      :data="visiblePackets"
       stripe
       border
       style="width: 100%"
@@ -172,13 +172,26 @@
         </template>
       </el-table-column>
     </el-table>
+    <div v-if="packets.length > pageSize" class="capture-pagination">
+      <span class="pagination-summary">共 {{ packets.length }} 条，当前仅渲染 {{ visiblePackets.length }} 条</span>
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :total="packets.length"
+        :page-sizes="[100, 200, 500]"
+        layout="sizes, prev, pager, next"
+        small
+        background
+      />
+    </div>
 
     <!-- 报文详情对话框 -->
     <el-dialog
       v-model="detailVisible"
       :title="$t('goose.packetDetailTitle', { appId: detailPacket?.app_id_hex || '' })"
-      width="900px"
+      width="min(1200px, 95vw)"
       top="5vh"
+      append-to-body
       destroy-on-close
     >
       <template v-if="detailPacket">
@@ -210,10 +223,53 @@
           <el-descriptions-item :label="$t('goose.numEntries')">{{ detailPacket.num_dat_set_entries }}</el-descriptions-item>
         </el-descriptions>
 
+        <h4 style="margin: 16px 0 8px">协议字段</h4>
+        <el-table
+          :data="detailPacket.fields || []"
+          border
+          size="small"
+          max-height="220"
+          highlight-current-row
+          @row-click="selectRawRange"
+        >
+          <el-table-column label="字节" width="85">
+            <template #default="{ row }">{{ formatByteRange(row.offset, row.length) }}</template>
+          </el-table-column>
+          <el-table-column prop="raw_hex" label="原始字节" min-width="130" />
+          <el-table-column prop="name" label="字段" width="145" />
+          <el-table-column prop="display_value" label="解析值" min-width="180" />
+          <el-table-column prop="description" label="说明" min-width="130" />
+        </el-table>
+
         <!-- 数据集值 -->
         <h4 style="margin: 16px 0 8px">{{ $t('goose.dataValues') }} ({{ detailPacket.data_values?.length || 0 }})</h4>
-        <el-table :data="detailPacket.data_values || []" border size="small" max-height="200">
+        <el-table
+          :data="detailPacket.data_values || []"
+          border
+          size="small"
+          max-height="260"
+          highlight-current-row
+          @row-click="selectRawRange"
+        >
           <el-table-column type="index" :label="$t('goose.seqNum')" width="60" />
+          <el-table-column label="字节" width="85">
+            <template #default="{ row }">{{ formatByteRange(row.offset, row.length) }}</template>
+          </el-table-column>
+          <el-table-column label="数据项" min-width="180">
+            <template #default="{ row }">
+              <div>{{ row.name || `Entry[${row.index ?? '-'}]` }}</div>
+              <small v-if="row.description" class="text-muted">{{ row.description }}</small>
+            </template>
+          </el-table-column>
+          <el-table-column label="关联测点" min-width="150">
+            <template #default="{ row }">
+              <template v-if="row.point">
+                <div>{{ row.point.name || row.point.code }}</div>
+                <small class="text-muted">{{ row.point.code }} · {{ row.point.address }}</small>
+              </template>
+              <span v-else class="text-muted">未关联</span>
+            </template>
+          </el-table-column>
           <el-table-column :label="$t('goose.entryType')" width="120" prop="type" />
           <el-table-column :label="$t('goose.entryValue')">
             <template #default="{ row }">{{ formatCapturedValue(row) }}</template>
@@ -222,27 +278,30 @@
 
         <!-- 十六进制转储 -->
         <h4 style="margin: 16px 0 8px">{{ $t('goose.rawHex') }}</h4>
-        <el-tabs type="border-card" size="small">
-          <el-tab-pane :label="$t('goose.hexDumpLabel')">
-            <pre class="hex-dump">{{ detailPacket.hex_string }}</pre>
-          </el-tab-pane>
-          <el-tab-pane :label="$t('goose.hexStringLabel')">
-            <el-input
-              type="textarea"
-              :model-value="detailPacket.hex_data"
-              :rows="6"
-              readonly
-              style="font-family: monospace;"
-            />
-          </el-tab-pane>
-        </el-tabs>
+        <div ref="hexDumpRef" class="hex-dump">
+          <div v-for="line in hexDumpLines" :key="line.offset" class="hex-dump-line">
+            <span class="hex-offset">{{ line.offset.toString(16).padStart(4, '0') }}</span>
+            <span class="hex-bytes">
+              <span
+                v-for="item in line.bytes"
+                :key="item.index"
+                class="raw-byte"
+                :class="{ selected: isRawByteSelected(item.index) }"
+                :data-byte-index="item.index"
+                :title="`字节 ${item.index}`"
+              >{{ item.hex }}</span>
+            </span>
+            <span class="hex-ascii">{{ line.ascii }}</span>
+          </div>
+        </div>
+        <div class="raw-byte-hint">点击协议字段或DataSet数据项可定位并高亮对应字节</div>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, markRaw, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { VideoPlay, VideoPause, Refresh, Delete, Monitor } from '@element-plus/icons-vue'
@@ -271,19 +330,73 @@ const networkInterfaces = ref<NetworkInterfaceInfo[]>([])
 const maxPackets = ref(100)
 const filterAppId = ref<number | null>(1)
 
-const packets = ref<GooseCapturedPacket[]>([])
+const packets = shallowRef<GooseCapturedPacket[]>([])
 const statistics = ref<GooseCaptureStatistics | null>(null)
 const hasData = computed(() => packets.value.length > 0)
+const pageSize = ref(200)
+const currentPage = ref(1)
+const pageCount = computed(() => Math.max(1, Math.ceil(packets.value.length / pageSize.value)))
+const visiblePackets = computed(() => {
+  const safePage = Math.min(currentPage.value, pageCount.value)
+  const start = (safePage - 1) * pageSize.value
+  return packets.value.slice(start, start + pageSize.value)
+})
+let pendingPackets: GooseCapturedPacket[] = []
+let packetFlushTimer: ReturnType<typeof setTimeout> | null = null
+
+function flushPendingPackets() {
+  packetFlushTimer = null
+  if (!pendingPackets.length) return
+  const oldPageCount = pageCount.value
+  const followLatest = currentPage.value >= oldPageCount
+  const incoming = pendingPackets
+  pendingPackets = []
+  const limit = Math.max(100, maxPackets.value)
+  const merged = packets.value.concat(incoming)
+  packets.value = merged.length > limit ? merged.slice(merged.length - limit) : merged
+  if (followLatest) currentPage.value = Math.max(1, Math.ceil(packets.value.length / pageSize.value))
+}
+
+function queuePacket(packet: GooseCapturedPacket) {
+  pendingPackets.push(markRaw(packet))
+  if (!packetFlushTimer) packetFlushTimer = setTimeout(flushPendingPackets, 100)
+}
+
+function queuePackets(incoming: GooseCapturedPacket[]) {
+  if (!incoming.length) return
+  pendingPackets.push(...incoming.map((packet) => markRaw(packet)))
+  if (!packetFlushTimer) packetFlushTimer = setTimeout(flushPendingPackets, 100)
+}
 
 function formatCapturedValue(value: GooseCapturedDataValue) {
-  return value.type === 'timestamp' && (typeof value.value === 'number' || typeof value.value === 'string')
-    ? formatGooseTime(value.value)
-    : String(value.value ?? '-')
+  if (value.type === 'timestamp' && (typeof value.value === 'number' || typeof value.value === 'string')) {
+    return formatGooseTime(value.value)
+  }
+  return typeof value.value === 'object' ? JSON.stringify(value.value) : String(value.value ?? '-')
 }
 
 // 详情对话框
 const detailVisible = ref(false)
 const detailPacket = ref<GooseCapturedPacket | null>(null)
+const selectedRawRange = ref<{ offset: number; length: number } | null>(null)
+const detailRawBytes = computed(() => detailPacket.value?.hex_data.match(/.{2}/g)?.map((item) => item.toUpperCase()) ?? [])
+const hexDumpRef = ref<HTMLElement | null>(null)
+const hexDumpLines = computed(() => {
+  const bytes = detailRawBytes.value
+  const lines: Array<{ offset: number; bytes: Array<{ index: number; hex: string }>; ascii: string }> = []
+  for (let offset = 0; offset < bytes.length; offset += 16) {
+    const chunk = bytes.slice(offset, offset + 16)
+    lines.push({
+      offset,
+      bytes: chunk.map((hex, index) => ({ index: offset + index, hex })),
+      ascii: chunk.map((hex) => {
+        const value = Number.parseInt(hex, 16)
+        return value >= 32 && value < 127 ? String.fromCharCode(value) : '.'
+      }).join(''),
+    })
+  }
+  return lines
+})
 
 // 请求序列号，用于匹配 response，过滤过期响应
 let cmdSeq = 0
@@ -346,7 +459,27 @@ function clearPackets() {
 
 function showPacketDetail(row: GooseCapturedPacket) {
   detailPacket.value = row
+  selectedRawRange.value = null
   detailVisible.value = true
+}
+
+function selectRawRange(row: { offset?: number; length?: number }) {
+  if (typeof row.offset !== 'number' || !row.length) return
+  selectedRawRange.value = { offset: row.offset, length: row.length }
+  nextTick(() => {
+    const byte = hexDumpRef.value?.querySelector<HTMLElement>(`[data-byte-index="${row.offset}"]`)
+    byte?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+  })
+}
+
+function isRawByteSelected(index: number) {
+  const selected = selectedRawRange.value
+  return !!selected && index >= selected.offset && index < selected.offset + selected.length
+}
+
+function formatByteRange(offset?: number, length?: number) {
+  if (typeof offset !== 'number' || !length) return '-'
+  return length === 1 ? `${offset}` : `${offset}-${offset + length - 1}`
 }
 
 // ===== WebSocket 事件绑定 (Observer) =====
@@ -354,8 +487,14 @@ function showPacketDetail(row: GooseCapturedPacket) {
 /** 收到实时报文推送 */
 cleanups.push(
   ws.on(WsEventType.PACKET, (pkt: GooseCapturedPacket) => {
-    // 新报文从尾部追加
-    packets.value = [...packets.value, pkt]
+    queuePacket(pkt)
+  }),
+)
+
+/** 收到服务端合并后的实时报文批次 */
+cleanups.push(
+  ws.on(WsEventType.PACKET_BATCH, (batch: GooseCapturedPacket[]) => {
+    queuePackets(batch)
   }),
 )
 
@@ -397,12 +536,16 @@ cleanups.push(
       if (curSeq !== cmdSeq && lastListSeq !== curSeq) return
       lastListSeq = curSeq
       if (res.success && res.data) {
-        packets.value = res.data.packets || []
+        pendingPackets = []
+        packets.value = (res.data.packets || []).map((packet: GooseCapturedPacket) => markRaw(packet))
+        currentPage.value = Math.max(1, Math.ceil(packets.value.length / pageSize.value))
         statistics.value = res.data.statistics || null
       }
     } else if (res.command === 'clear') {
       if (res.success) {
         packets.value = []
+        pendingPackets = []
+        currentPage.value = 1
         statistics.value = null
         ElMessage.success(t('goose.clearSuccess'))
       }
@@ -464,6 +607,11 @@ onUnmounted(() => {
     clearTimeout(stopTimeoutId)
     stopTimeoutId = null
   }
+  if (packetFlushTimer) {
+    clearTimeout(packetFlushTimer)
+    packetFlushTimer = null
+  }
+  pendingPackets = []
 })
 </script>
 
@@ -479,6 +627,20 @@ onUnmounted(() => {
 .capture-table {
   flex: 1;
   min-height: 0;
+}
+
+.capture-pagination {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px 0;
+}
+
+.pagination-summary {
+  color: var(--text-secondary, #64748b);
+  font-size: 12px;
 }
 
 /* 表头文字不换行 */
@@ -627,7 +789,47 @@ onUnmounted(() => {
   line-height: 1.5;
   overflow-x: auto;
   max-height: 400px;
-  white-space: pre;
+  white-space: nowrap;
+}
+
+.hex-dump-line {
+  display: grid;
+  grid-template-columns: 48px minmax(520px, auto) 140px;
+  align-items: center;
+  min-height: 24px;
+}
+
+.hex-offset {
+  color: #6b9bd1;
+}
+
+.hex-bytes {
+  display: grid;
+  grid-template-columns: repeat(16, 27px);
+}
+
+.hex-ascii {
+  color: #9cdcfe;
+  letter-spacing: 1px;
+}
+
+.raw-byte {
+  display: inline-block;
+  padding: 0 2px;
+  border-radius: 3px;
+  text-align: center;
+}
+
+.raw-byte.selected {
+  background: #f59e0b;
+  color: #111827;
+  font-weight: 700;
+}
+
+.raw-byte-hint {
+  margin-top: 5px;
+  color: #909399;
+  font-size: 12px;
 }
 </style>
 

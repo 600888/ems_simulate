@@ -20,6 +20,7 @@ from src.web.api.schemas import (
     ExportModelRequest,
     IEC61850ImportModelRequest,
     ManualReadRequest,
+    MessageDetailRequest,
     MessageListRequest,
     SimulationStartRequest,
     SimulationStopRequest,
@@ -345,6 +346,15 @@ async def get_messages(req: MessageListRequest, request: Request):
     device = _get_device(req.device_name, request)
     messages = device.get_messages(limit=req.limit)
     return BaseResponse(message="获取报文历史成功!", data={"messages": messages, "count": len(messages)})
+
+
+@device_router.post("/message-detail", response_model=BaseResponse)
+async def get_message_detail(req: MessageDetailRequest, request: Request):
+    device = _get_device(req.device_name, request)
+    detail = device.get_message_detail(req.sequence_id)
+    if detail is None:
+        raise NotFoundError("报文不存在、已被缓存淘汰或该协议暂不支持详情解析")
+    return BaseResponse(message="获取报文详情成功!", data=detail)
 
 
 @device_router.post("/clear-messages", response_model=BaseResponse)

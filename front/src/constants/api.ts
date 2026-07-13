@@ -54,6 +54,7 @@ export const DEVICE_API = {
   STOP_AUTO_READ: '/api/devices/stop-auto-read',
   MANUAL_READ: '/api/devices/manual-read',
   MESSAGES: '/api/devices/messages',
+  MESSAGE_DETAIL: '/api/devices/message-detail',
   CLEAR_MESSAGES: '/api/devices/clear-messages',
   AVG_TIME: '/api/devices/avg-time',
   IEC61850_CONNECT_PROGRESS: '/api/devices/iec61850-connect-progress',

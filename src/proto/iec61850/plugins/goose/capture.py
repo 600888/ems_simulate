@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from datetime import datetime
 import platform
 import socket
-import struct
 import threading
 import time
 from typing import Any
@@ -29,35 +28,10 @@ from ...log import log
 ETHER_TYPE_GOOSE = 0x88B8
 ETHER_TYPE_VLAN = 0x8100
 
-# GOOSE PDU 标签 (ASN.1 BER-TLV)
-TAG_GOOSE_PDU = 0x61
-TAG_GOCB_REF = 0x80
-TAG_TIME_ALLOWED_TO_LIVE = 0x81
-TAG_DATASET = 0x82
-TAG_GO_ID = 0x83
-TAG_TIMESTAMP = 0x84
-TAG_ST_NUM = 0x85
-TAG_SQ_NUM = 0x86
-TAG_SIMULATION = 0x87
-TAG_CONF_REV = 0x88
-TAG_NDS_COM = 0x89
-TAG_NUM_DAT_SET_ENTRIES = 0x8A
-TAG_ALL_DATA = 0xAB
-
-# MMS 数据类型 (BER-TLV within ALL_DATA) - 捕获引擎中的 BER 标签
-MMS_TAG_BOOLEAN = 0x83
-MMS_TAG_BIT_STRING = 0x84
-MMS_TAG_INTEGER = 0x85
-MMS_TAG_UNSIGNED = 0x86
-MMS_TAG_FLOAT = 0x87
-MMS_TAG_OCTET_STRING = 0x89
-MMS_TAG_VISIBLE_STRING = 0x8A
-MMS_TAG_UTC_TIME = 0x91
-
 
 @dataclass(frozen=True, slots=True)
 class CapturedPacket:
-    """单条捕获的 GOOSE 报文 (不可变值对象)"""
+    """Single immutable captured GOOSE Ethernet frame."""
 
     timestamp: float
     src_mac: str
@@ -76,6 +50,7 @@ class CapturedPacket:
     nds_com: bool = False
     num_entries: int = 0
     data_values: tuple[dict[str, Any], ...] = ()
+    parsed_fields: tuple[dict[str, Any], ...] = ()
     vlan_id: int = 0
     vlan_prio: int = 0
     has_vlan: bool = False
@@ -83,8 +58,7 @@ class CapturedPacket:
 
     @property
     def formatted_time(self) -> str:
-        dt = datetime.fromtimestamp(self.timestamp)
-        return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        return datetime.fromtimestamp(self.timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -108,194 +82,10 @@ class CapturedPacket:
             "vlan_id": self.vlan_id,
             "vlan_prio": self.vlan_prio,
             "has_vlan": self.has_vlan,
-            "data_values": list(self.data_values),
+            "data_values": [dict(item) for item in self.data_values],
+            "fields": [dict(item) for item in self.parsed_fields],
             "hex_data": self.raw_bytes.hex(),
-            "hex_string": self._format_hex(),
         }
-
-    def _format_hex(self) -> str:
-        """格式化十六进制显示 (每16字节一行)"""
-        lines = []
-        for i in range(0, len(self.raw_bytes), 16):
-            chunk = self.raw_bytes[i : i + 16]
-            hex_part = " ".join(f"{b:02x}" for b in chunk)
-            ascii_part = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
-            lines.append(f"{i:04x}  {hex_part:<48}  {ascii_part}")
-        return "\n".join(lines)
-
-
-class _GoosePduParser:
-    """GOOSE PDU (ASN.1 BER-TLV) 解析器"""
-
-    @staticmethod
-    def parse(data: bytes, offset: int) -> dict[str, Any]:
-        """解析 GOOSE PDU，返回解析后的字段字典"""
-        result: dict[str, Any] = {
-            "go_cb_ref": "",
-            "go_id": "",
-            "data_set_ref": "",
-            "st_num": 0,
-            "sq_num": 0,
-            "time_allowed_to_live": 0,
-            "conf_rev": 0,
-            "simulation": False,
-            "nds_com": False,
-            "num_entries": 0,
-            "data_values": [],
-        }
-
-        if offset >= len(data):
-            return result
-
-        if data[offset] != TAG_GOOSE_PDU:
-            log.debug(f"GOOSE PDU 起始标签不符合预期: 0x{data[offset]:02X}")
-            return result
-
-        offset += 1
-        pdu_length, offset = _GoosePduParser._read_ber_length(data, offset)
-        if pdu_length is None or pdu_length < 0:
-            return result
-
-        pdu_end = offset + pdu_length
-        if pdu_end > len(data):
-            pdu_end = len(data)
-
-        while offset < pdu_end:
-            tag = data[offset]
-            offset += 1
-
-            field_length, offset = _GoosePduParser._read_ber_length(data, offset)
-            if field_length is None:
-                break
-
-            field_end = offset + field_length
-            if field_end > len(data):
-                break
-
-            if tag == TAG_GOCB_REF:
-                result["go_cb_ref"] = data[offset:field_end].decode("utf-8", errors="replace")
-            elif tag == TAG_TIME_ALLOWED_TO_LIVE:
-                result["time_allowed_to_live"] = _GoosePduParser._parse_ber_integer(data, offset, field_end)
-            elif tag == TAG_DATASET:
-                result["data_set_ref"] = data[offset:field_end].decode("utf-8", errors="replace")
-            elif tag == TAG_GO_ID:
-                result["go_id"] = data[offset:field_end].decode("utf-8", errors="replace")
-            elif tag == TAG_ST_NUM:
-                result["st_num"] = _GoosePduParser._parse_ber_integer(data, offset, field_end)
-            elif tag == TAG_SQ_NUM:
-                result["sq_num"] = _GoosePduParser._parse_ber_integer(data, offset, field_end)
-            elif tag == TAG_SIMULATION:
-                result["simulation"] = data[offset] != 0
-            elif tag == TAG_CONF_REV:
-                result["conf_rev"] = _GoosePduParser._parse_ber_integer(data, offset, field_end)
-            elif tag == TAG_NDS_COM:
-                result["nds_com"] = data[offset] != 0
-            elif tag == TAG_NUM_DAT_SET_ENTRIES:
-                result["num_entries"] = _GoosePduParser._parse_ber_integer(data, offset, field_end)
-            elif tag == TAG_ALL_DATA:
-                result["data_values"] = _GoosePduParser._parse_ber_all_data(data, offset, field_end)
-
-            offset = field_end
-
-        return result
-
-    @staticmethod
-    def _read_ber_length(data: bytes, offset: int) -> tuple[int | None, int]:
-        """读取 BER-TLV 长度字段"""
-        if offset >= len(data):
-            return None, offset
-
-        first = data[offset]
-        offset += 1
-
-        if first & 0x80:
-            num_bytes = first & 0x7F
-            if num_bytes == 0:
-                return None, offset
-            if offset + num_bytes > len(data):
-                return None, offset
-            length = 0
-            for _ in range(num_bytes):
-                length = (length << 8) | data[offset]
-                offset += 1
-            return length, offset
-        else:
-            return first, offset
-
-    @staticmethod
-    def _parse_ber_integer(data: bytes, start: int, end: int) -> int:
-        """解析 BER 编码的整数"""
-        value = 0
-        for i in range(start, end):
-            value = (value << 8) | data[i]
-        return value
-
-    @staticmethod
-    def _parse_ber_all_data(data: bytes, start: int, end: int) -> list[dict[str, Any]]:
-        """解析 ALL_DATA (SEQUENCE OF Data)"""
-        values: list[dict[str, Any]] = []
-        offset = start
-
-        while offset < end:
-            if offset >= end:
-                break
-
-            mms_tag = data[offset]
-            offset += 1
-
-            mms_length, offset = _GoosePduParser._read_ber_length(data, offset)
-            if mms_length is None:
-                break
-
-            field_end = offset + mms_length
-            if field_end > end:
-                break
-
-            entry: dict[str, Any] = {"type": "unknown", "value": None}
-
-            if mms_tag == MMS_TAG_BOOLEAN:
-                entry["type"] = "boolean"
-                entry["value"] = bool(data[offset])
-            elif mms_tag == MMS_TAG_INTEGER:
-                entry["type"] = "integer"
-                entry["value"] = _GoosePduParser._parse_ber_integer(data, offset, field_end)
-            elif mms_tag == MMS_TAG_BIT_STRING:
-                entry["type"] = "bitstring"
-                data[offset] if mms_length > 0 else 0
-                val = 0
-                for i in range(offset + 1, field_end):
-                    val = (val << 8) | data[i]
-                entry["value"] = val
-            elif mms_tag == MMS_TAG_OCTET_STRING:
-                entry["type"] = "octet_string"
-                entry["value"] = data[offset:field_end].hex()
-            elif mms_tag == MMS_TAG_VISIBLE_STRING:
-                entry["type"] = "string"
-                entry["value"] = data[offset:field_end].decode("utf-8", errors="replace")
-            elif mms_tag == MMS_TAG_UTC_TIME:
-                entry["type"] = "timestamp"
-                entry["value"] = _GoosePduParser._parse_ber_integer(data, offset, field_end)
-            elif mms_tag == MMS_TAG_FLOAT:
-                entry["type"] = "float"
-                # MMS floating-point carries a one-byte exponent-width prefix
-                # followed by the IEEE-754 payload (normally 0x08 + float32).
-                if mms_length >= 5:
-                    entry["value"] = round(struct.unpack(">f", data[offset + 1 : offset + 5])[0], 6)
-                elif mms_length == 4:
-                    entry["value"] = round(struct.unpack(">f", data[offset:field_end])[0], 6)
-                else:
-                    entry["value"] = 0.0
-            elif mms_tag == MMS_TAG_UNSIGNED:
-                entry["type"] = "unsigned"
-                entry["value"] = _GoosePduParser._parse_ber_integer(data, offset, field_end)
-            else:
-                entry["type"] = f"unknown(0x{mms_tag:02X})"
-                entry["value"] = data[offset:field_end].hex()
-
-            values.append(entry)
-            offset = field_end
-
-        return values
 
 
 class _RawSocketProvider:
@@ -623,9 +413,10 @@ class GooseCaptureEngine:
         if self._filter_app_id is not None and app_id != self._filter_app_id:
             return
 
-        # 解析 GOOSE PDU
-        pdu_start = offset + 8
-        parsed = _GoosePduParser.parse(raw_data, pdu_start)
+        # 协议解析由独立解析器负责；抓包引擎只保存捕获结果。
+        from src.device.core.message.parsers.goose import parse_goose
+
+        parsed = parse_goose(raw_data)
 
         # GoCBRef 过滤
         if self._filter_go_cb_ref and self._filter_go_cb_ref not in parsed["go_cb_ref"]:
@@ -649,7 +440,8 @@ class GooseCaptureEngine:
             simulation=parsed["simulation"],
             nds_com=parsed["nds_com"],
             num_entries=parsed["num_entries"],
-            data_values=tuple(parsed["data_values"]),
+            data_values=tuple(parsed["objects"]),
+            parsed_fields=tuple(parsed["fields"]),
             vlan_id=vlan_id,
             vlan_prio=vlan_prio,
             has_vlan=has_vlan,

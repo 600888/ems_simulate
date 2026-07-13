@@ -68,7 +68,10 @@ def test_capture_processes_goose_frame():
     assert len(packets) == 1
     assert packets[0]["app_id"] == 1
     assert packets[0]["go_cb_ref"] == "LD0/LLN0$GO$gcb1"
-    assert packets[0]["data_values"] == [{"type": "boolean", "value": True}]
+    assert packets[0]["data_values"][0]["type"] == "boolean"
+    assert packets[0]["data_values"][0]["value"] is True
+    assert packets[0]["data_values"][0]["offset"] > 0
+    assert packets[0]["fields"]
 
 
 def test_goose_receiver_keeps_subscriber_handles(monkeypatch):

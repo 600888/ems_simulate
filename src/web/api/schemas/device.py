@@ -78,6 +78,11 @@ class MessageListRequest(BaseModel):
     limit: int | None = Field(100, description="最大返回数量")
 
 
+class MessageDetailRequest(BaseModel):
+    device_name: str
+    sequence_id: int = Field(..., ge=1)
+
+
 class SlaveAddRequest(BaseModel):
     """添加从机请求"""
 

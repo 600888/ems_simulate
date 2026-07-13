@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import struct
 from typing import TYPE_CHECKING
 
 from src.device.core.message.message_parser import (
@@ -12,7 +13,9 @@ from src.device.core.message.message_parser import (
     IEC104MessageParser,
     ModbusMessageParser,
 )
+from src.device.core.message.parsers import parse_dlt645, parse_iec104, parse_modbus
 from src.enums.modbus_def import ProtocolType
+from src.enums.modbus_register import Decode
 
 if TYPE_CHECKING:
     from src.device.core.device import Device
@@ -46,6 +49,10 @@ _IEC104_TYPES = {
     ProtocolType.Iec104Server,
     ProtocolType.Iec104Client,
 }
+
+
+def _join_object_raw(objects: list[dict]) -> str:
+    return " ".join(str(item.get("raw_value", "")).strip() for item in objects).strip()
 
 
 class MessageFormatter:
@@ -162,6 +169,172 @@ class MessageFormatter:
             reverse=False,
         )
         return result[:limit] if limit else result
+
+    def get_message_detail(self, sequence_id: int) -> dict | None:
+        """Parse one captured frame into byte-addressable detail data."""
+        messages = self.get_messages(10_000)
+        message = next((item for item in messages if item.get("sequence_id") == sequence_id), None)
+        if message is None:
+            return None
+        try:
+            raw = bytes.fromhex(message.get("raw_hex", ""))
+        except (TypeError, ValueError):
+            raw = b""
+        protocol_type = self._device.protocol_type
+        role = message.get("msg_type", "")
+        if protocol_type in _MODBUS_ALL_TYPES:
+            request_context = self._find_modbus_request_context(messages, message, protocol_type in _MODBUS_TCP_TYPES)
+            detail = parse_modbus(
+                raw,
+                tcp=protocol_type in _MODBUS_TCP_TYPES,
+                role=role,
+                request_context=request_context,
+            )
+        elif protocol_type in _DLT645_TYPES:
+            detail = parse_dlt645(raw, role=role)
+        elif protocol_type in _IEC104_TYPES:
+            detail = parse_iec104(raw, role=role)
+        else:
+            return None
+        detail.update(
+            sequence_id=sequence_id,
+            direction=message.get("direction", ""),
+            msg_type=role,
+            timestamp=message.get("timestamp", 0),
+            formatted_time=message.get("formatted_time", ""),
+        )
+        self._enrich_with_points(detail, protocol_type)
+        return detail
+
+    def _enrich_with_points(self, detail: dict, protocol_type: ProtocolType) -> None:
+        """Attach configured point semantics without mixing point lookup into wire parsers."""
+        point_manager = getattr(self._device, "point_manager", None)
+        points = point_manager.get_all_points() if point_manager is not None else []
+        if not points or not detail.get("objects"):
+            return
+        if protocol_type in _MODBUS_ALL_TYPES:
+            self._enrich_modbus_objects(detail, points)
+        elif protocol_type in _DLT645_TYPES:
+            self._enrich_address_objects(detail, points, dlt645=True)
+        elif protocol_type in _IEC104_TYPES:
+            self._enrich_address_objects(detail, points, dlt645=False)
+
+    @staticmethod
+    def _point_metadata(point) -> dict:
+        multiplier = float(getattr(point, "mul_coe", 1.0))
+        addition = float(getattr(point, "add_coe", 0.0))
+        return {
+            "name": point.name,
+            "code": point.code,
+            "address": point.address,
+            "slave_id": point.rtu_addr,
+            "function_code": point.func_code,
+            "frame_type": point.frame_type,
+            "decode_code": point.decode,
+            "iec_type_id": point.iec_type_id,
+            "multiplier": multiplier,
+            "addition": addition,
+        }
+
+    def _enrich_modbus_objects(self, detail: dict, points: list) -> None:
+        raw = bytes.fromhex(detail["raw_hex"])
+        is_tcp = detail["protocol"] == "Modbus TCP"
+        unit = raw[6] if is_tcp else raw[0]
+        function_code = (raw[7] if is_tcp else raw[1]) & 0x7F
+        objects = detail["objects"]
+        object_index = {item.get("address"): index for index, item in enumerate(objects)}
+        for point in points:
+            if point.rtu_addr != unit or point.func_code != function_code or point.address not in object_index:
+                continue
+            index = object_index[point.address]
+            item = objects[index]
+            metadata = self._point_metadata(point)
+            item["point"] = metadata
+            if function_code in (1, 2):
+                item["engineering_value"] = bool(item["value"])
+                continue
+            info = Decode.get_info(point.decode)
+            registers = objects[index : index + info.register_cnt]
+            if len(registers) != info.register_cnt:
+                item.setdefault("warnings", []).append("响应寄存器不足，无法按测点解析码组合")
+                continue
+            try:
+                buffer = b"".join(bytes.fromhex(str(register["raw_value"])) for register in registers)
+                expected_size = info.register_cnt * 2
+                if info.pack_format[-1:] in ("b", "B"):
+                    buffer = buffer[:1]
+                elif len(buffer) != expected_size:
+                    raise ValueError("register byte count mismatch")
+                decoded = Decode.unpack_value(info.pack_format, buffer)
+                item["decoded_value"] = decoded
+                item["engineering_value"] = round(decoded * metadata["multiplier"] + metadata["addition"], 6)
+                item["combined_raw"] = _join_object_raw(registers)
+                for covered in registers[1:]:
+                    covered["covered_by_point"] = point.code
+            except (ValueError, TypeError, struct.error):
+                item.setdefault("warnings", []).append("按测点解析码组合寄存器失败")
+
+    def _enrich_address_objects(self, detail: dict, points: list, *, dlt645: bool) -> None:
+        common_address = None
+        if not dlt645:
+            common_field = next((field for field in detail["fields"] if field["key"] == "common_address"), None)
+            common_address = common_field.get("value") if common_field else None
+        for item in detail["objects"]:
+            address = item.get("address")
+            if dlt645 and isinstance(address, str):
+                address = int(address, 16)
+            point = next(
+                (
+                    candidate
+                    for candidate in points
+                    if candidate.address == address and (common_address is None or candidate.rtu_addr == common_address)
+                ),
+                None,
+            )
+            if point is None:
+                continue
+            metadata = self._point_metadata(point)
+            item["point"] = metadata
+            item["name"] = point.name or item.get("name", "")
+            value = item.get("value")
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                item["engineering_value"] = (
+                    value if not dlt645 else round(value * metadata["multiplier"] + metadata["addition"], 6)
+                )
+
+    @staticmethod
+    def _find_modbus_request_context(messages: list[dict], message: dict, is_tcp: bool) -> dict | None:
+        if message.get("msg_type") != "Response":
+            return None
+        try:
+            response = bytes.fromhex(message.get("raw_hex", ""))
+            response_unit = response[6] if is_tcp else response[0]
+            response_fc = (response[7] if is_tcp else response[1]) & 0x7F
+            response_transaction = int.from_bytes(response[:2], "big") if is_tcp else None
+        except (ValueError, IndexError, TypeError):
+            return None
+        previous = [item for item in messages if item.get("sequence_id", 0) < message.get("sequence_id", 0)]
+        for candidate in reversed(previous):
+            if candidate.get("msg_type") != "Request":
+                continue
+            info = ModbusMessageParser.extract_request_info(candidate.get("raw_hex", ""), is_tcp=is_tcp)
+            if not info or info["slave_id"] != response_unit or info["func_code"] != response_fc:
+                continue
+            if is_tcp:
+                try:
+                    request_transaction = int.from_bytes(bytes.fromhex(candidate["raw_hex"])[:2], "big")
+                except (ValueError, KeyError, TypeError):
+                    continue
+                if request_transaction != response_transaction:
+                    continue
+            return {
+                "request_sequence_id": candidate.get("sequence_id"),
+                "start_address": info["start_addr"],
+                "end_address": info["end_addr"],
+                "quantity": info["end_addr"] - info["start_addr"] + 1,
+                "match_method": "transaction_id" if is_tcp else "slave_function_time_order",
+            }
+        return None
 
     def clear_messages(self) -> None:
         """清空报文历史记录"""

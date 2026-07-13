@@ -33,7 +33,7 @@ export async function openMessageWindow(deviceName: string): Promise<void> {
     title: `查看报文 - ${deviceName}`,
     width: 1100,
     height: 650,
-    minWidth: 760,
+    minWidth: 820,
     minHeight: 480,
     center: true,
     resizable: true,

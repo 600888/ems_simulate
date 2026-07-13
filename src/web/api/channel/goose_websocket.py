@@ -91,6 +91,8 @@ class WebSocketSessionManager:
         self._capture_callback_registered = False
         self._capture_started = False
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._pending_packets: dict[int, list[dict[str, Any]]] = {}
+        self._packet_batch_scheduled: set[int] = set()
 
     # ---- 连接管理 ----
 
@@ -157,19 +159,28 @@ class WebSocketSessionManager:
                 return
 
             packet_data = packet_dict.to_dict() if hasattr(packet_dict, "to_dict") else packet_dict
+            from src.proto.iec61850.plugins.goose.detail import enrich_goose_packet
 
-            asyncio.run_coroutine_threadsafe(
-                self.broadcast(
-                    {
-                        "type": MsgType.PACKET,
-                        "data": packet_data,
-                    },
-                    channel_id,
-                ),
-                loop,
-            )
+            packet_data = enrich_goose_packet(packet_data, channel_id)
+
+            with self._lock:
+                self._pending_packets.setdefault(channel_id, []).append(packet_data)
+                should_schedule = channel_id not in self._packet_batch_scheduled
+                if should_schedule:
+                    self._packet_batch_scheduled.add(channel_id)
+            if should_schedule:
+                asyncio.run_coroutine_threadsafe(self._flush_packet_batch(channel_id), loop)
         except Exception as e:
             log.warning(f"推送 GOOSE 报文失败: {e}")
+
+    async def _flush_packet_batch(self, channel_id: int) -> None:
+        """Coalesce high-frequency capture callbacks into one WebSocket message."""
+        await asyncio.sleep(0.05)
+        with self._lock:
+            packets = self._pending_packets.pop(channel_id, [])
+            self._packet_batch_scheduled.discard(channel_id)
+        if packets:
+            await self.broadcast({"type": "packets", "data": packets}, channel_id)
 
     # ---- 指令处理 ----
 
@@ -348,6 +359,10 @@ class WebSocketSessionManager:
             return
 
         packets = capture.get_packets(count=count, filter_app_id=filter_app_id)
+        from src.proto.iec61850.plugins.goose.detail import enrich_goose_packet
+
+        channel_id = int(params.get("channel_id", 0))
+        packets = [enrich_goose_packet(packet, channel_id) for packet in packets]
         stats = capture.get_statistics()
         status = capture.get_status()
 
