@@ -1015,6 +1015,20 @@ class IEC61850Client:
         if force_refresh:
             cache.invalidate(cache_key)
             self._discovery.invalidate()
+            # 清空所有由上一份模型派生的进程内状态。连接级 LD 目录同样
+            # 属于缓存；若远端在同一地址切换了 IED，保留它会继续影响
+            # DataSet/Report 引用解析，即使 IedModel 本身已经失效。
+            self._registry.clear()
+            self._conn._discovered_lds.clear()
+            report_conn = getattr(self, "_report_conn", None)
+            if report_conn is not None:
+                report_conn._discovered_lds.clear()
+            self._last_import_result = None
+            self._offline_model_source = None
+            self._rcbs_from_icd.clear()
+            datasets = getattr(self, "datasets", None)
+            if datasets:
+                datasets.invalidate_catalog()
         else:
             cached = cache.get(cache_key)
             if cached is not None:

@@ -551,22 +551,24 @@ class IEC61850ClientHandler(ClientHandler):
                 self._log.warning("IEC61850 连接或模型发现任务已在执行")
             return False
 
-        initial_phase = self.PHASE_DISCOVERING if self._client.is_connected else self.PHASE_CONNECTING
-        initial_progress = 20 if self._client.is_connected else 10
-        self._begin_progress("discover", initial_phase, initial_progress, "正在准备发现模型")
+        # 用户显式触发的“重新发现”必须建立新的 MMS association。部分 IED
+        # 会把数据模型目录绑定到 association；即使 Python 侧模型缓存已清空，
+        # 复用旧连接仍可能继续浏览到切换前的模型。
+        self._begin_progress("discover", self.PHASE_CONNECTING, 5, "正在重建 MMS 连接")
 
         try:
-            if not self._client.is_connected:
+            if self._log:
+                self._log.info("显式重新发现模型: 关闭旧 MMS association 并重新连接...")
+            self._client.disconnect()
+            self._is_running = False
+            self._update_progress(self.PHASE_CONNECTING, 10, "正在建立新的 MMS 连接")
+            is_connected = self._client.connect(auto_discover=False)
+            self._is_running = is_connected
+            if not is_connected:
+                self._finish_progress(False, "重新建立 MMS 连接失败")
                 if self._log:
-                    self._log.info("客户端未连接，自动先连接 MMS 服务器...")
-                self._update_progress(self.PHASE_CONNECTING, 10, "正在连接 MMS 服务器")
-                is_connected = self._client.connect(auto_discover=False)
-                self._is_running = is_connected
-                if not is_connected:
-                    self._finish_progress(False, "连接 MMS 服务器失败")
-                    if self._log:
-                        self._log.error("远程发现模型失败: 连接 MMS 服务器失败")
-                    return False
+                    self._log.error("远程发现模型失败: 重新建立 MMS 连接失败")
+                return False
 
             self._update_progress(self.PHASE_DISCOVERING, 20, "开始远程发现模型")
             if self._log:

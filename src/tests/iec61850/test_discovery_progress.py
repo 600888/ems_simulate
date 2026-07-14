@@ -16,6 +16,7 @@ def _make_handler(client: Mock) -> IEC61850ClientHandler:
 
 def test_remote_discovery_reports_real_stages_and_keeps_final_snapshot():
     client = Mock(is_connected=True)
+    client.connect.return_value = True
     client._discovered_goose_items = []
     client.get_discovered_datasets.return_value = []
     client.reports = None
@@ -37,6 +38,8 @@ def test_remote_discovery_reports_real_stages_and_keeps_final_snapshot():
 
     assert handler.remote_discover_model() is True
 
+    client.disconnect.assert_called_once_with()
+    client.connect.assert_called_once_with(auto_discover=False)
     assert [snapshot["progress"] for snapshot in observed] == [20, 45, 75]
     assert all(snapshot["active"] for snapshot in observed)
     final = handler.get_connect_progress()
@@ -48,6 +51,7 @@ def test_remote_discovery_reports_real_stages_and_keeps_final_snapshot():
 
 def test_remote_discovery_exception_finishes_in_failed_state():
     client = Mock(is_connected=True)
+    client.connect.return_value = True
     client.remote_discover_model.side_effect = RuntimeError("browse failed")
     handler = _make_handler(client)
 
@@ -58,6 +62,21 @@ def test_remote_discovery_exception_finishes_in_failed_state():
     assert progress["active"] is False
     assert progress["progress"] == 20
     assert progress["message"] == "browse failed"
+
+
+def test_remote_discovery_stops_when_fresh_mms_association_cannot_be_created():
+    client = Mock(is_connected=True)
+    client.connect.return_value = False
+    handler = _make_handler(client)
+
+    assert handler.remote_discover_model() is False
+
+    client.disconnect.assert_called_once_with()
+    client.connect.assert_called_once_with(auto_discover=False)
+    client.remote_discover_model.assert_not_called()
+    progress = handler.get_connect_progress()
+    assert progress["phase"] == "failed"
+    assert progress["message"] == "重新建立 MMS 连接失败"
 
 
 def test_second_progress_task_is_rejected_while_discovery_is_active():

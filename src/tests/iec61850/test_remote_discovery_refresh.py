@@ -42,10 +42,16 @@ def test_remote_discovery_forces_online_refresh_and_replaces_registry():
     client.ip = "127.0.0.1"
     client.port = 102
     client._conn = Mock(is_connected=True)
+    client._conn._discovered_lds = ["OLD_LD"]
+    client._report_conn = Mock()
+    client._report_conn._discovered_lds = ["OLD_REPORT_LD"]
     fresh_model = Mock()
     client._discovery = Mock()
     client._discovery.discover.return_value = fresh_model
     client._registry = Mock()
+    client._last_import_result = Mock()
+    client._offline_model_source = "cache"
+    client._rcbs_from_icd = [{"ref": "OLD/LLN0.rp01"}]
     client._fill_du_names = Mock()
     cache = Mock()
     discovered = [{"address": "LD0/MMXU1.TotW.mag.f"}]
@@ -60,6 +66,12 @@ def test_remote_discovery_forces_online_refresh_and_replaces_registry():
     cache.invalidate.assert_called_once_with("127.0.0.1:102")
     cache.get.assert_not_called()
     client._discovery.invalidate.assert_called_once_with()
+    client._registry.clear.assert_called_once_with()
+    assert client._conn._discovered_lds == []
+    assert client._report_conn._discovered_lds == []
+    assert client._last_import_result is None
+    assert client._offline_model_source is None
+    assert client._rcbs_from_icd == []
     client._discovery.discover.assert_called_once_with(client._conn, progress=None)
     cache.set.assert_called_once_with("127.0.0.1:102", fresh_model)
     build_registry.assert_called_once_with(fresh_model, client._registry)
