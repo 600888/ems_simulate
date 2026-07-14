@@ -256,7 +256,11 @@ async function handleDelete() {
     await ElMessageBox.confirm(
       `确定删除远程文件 "${selectedEntry.value.name}" 吗？此操作不可撤销。`,
       '确认删除',
-      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning',
+      },
     )
 
     const success = await deleteRemoteFile(props.channelId, selectedEntry.value.full_path)
@@ -281,7 +285,9 @@ async function handleCacheManage() {
 async function handleClearCache() {
   try {
     await ElMessageBox.confirm('确定清空所有本地缓存文件吗？', '确认', {
-      confirmButtonText: '清空', cancelButtonText: '取消', type: 'warning',
+      confirmButtonText: t('common.clear'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning',
     })
     const count = await clearFileCache(props.channelId)
     ElMessage.success(`已清理 ${count} 个缓存文件`)

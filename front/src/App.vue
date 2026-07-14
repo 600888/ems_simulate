@@ -13,6 +13,8 @@ import { useRoute, useRouter } from "vue-router";
 import { currentLocale, setLocale } from "@/composables/useAppSettings";
 import { visitedViews } from "@/store/tagsView";
 import { getLogErrorCount, resetLogErrorCount } from "@/api/logApi";
+import zhCn from "element-plus/es/locale/lang/zh-cn";
+import en from "element-plus/es/locale/lang/en";
 
 const isClosing = ref(false);
 const settingsVisible = ref(false);
@@ -27,6 +29,7 @@ i18nLocale.value = currentLocale.value;
 const route = useRoute();
 const router = useRouter();
 const isStandaloneView = computed(() => route.meta.standalone === true);
+const elementLocale = computed(() => currentLocale.value === "en-US" ? en : zhCn);
 
 // 监听语言切换
 watch(currentLocale, (val) => {
@@ -86,8 +89,9 @@ async function fetchLogErrorCount() {
 </script>
 
 <template>
-  <router-view v-if="isStandaloneView" />
-  <template v-else>
+  <el-config-provider :locale="elementLocale">
+    <router-view v-if="isStandaloneView" />
+    <template v-else>
   <div :class="`theme-wrapper theme-${currentTheme}`">
     <!-- 关闭动画覆盖层 -->
     <Transition name="close-fade">
@@ -145,7 +149,8 @@ async function fetchLogErrorCount() {
 
   <!-- 日志查看器 -->
   <LogViewerDialog v-model:visible="logVisible" />
-  </template>
+    </template>
+  </el-config-provider>
 </template>
 
 <style lang="scss">

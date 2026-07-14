@@ -156,6 +156,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { useI18n } from 'vue-i18n';
 import { showError } from '@/api/http';
 import { Refresh } from '@element-plus/icons-vue';
 import {
@@ -194,6 +195,7 @@ import {
 } from './gooseWorkbench';
 
 const props = defineProps<{ channelId?: number }>();
+const { t } = useI18n();
 const publishers = ref<Awaited<ReturnType<typeof getGoosePublishers>>>([]);
 const receivers = ref<Awaited<ReturnType<typeof getGooseReceivers>>>([]);
 const networkInterfaces = ref<Awaited<ReturnType<typeof getGooseNetworkInterfaces>>>([]);
@@ -318,6 +320,8 @@ async function deleteSelected() {
   if (!props.channelId || !block) return;
   try {
     await ElMessageBox.confirm(`确定删除 ${block.display_name}？`, '删除 GOOSE 控制块', {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
       type: 'warning',
     });
     if (block.kind === 'publisher' && block.publisher) {

@@ -386,7 +386,11 @@ const handleBatchOperation = async (groupId: number, operation: 'start' | 'stop'
 };
 
 const handleDeleteGroup = async (data: TreeNode) => {
-    await ElMessageBox.confirm(t('sidebar.confirmDeleteGroup', { name: data.name }), t('common.hint'), { type: 'warning' });
+    await ElMessageBox.confirm(t('sidebar.confirmDeleteGroup', { name: data.name }), t('common.hint'), {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning',
+    });
     await deleteDeviceGroup(data.id, false);
     ElMessage.success(t('sidebar.success'));
     await fetchDeviceGroupTree();
@@ -403,7 +407,11 @@ const handleEditDeviceByName = async (deviceName: string) => {
 
 const handleDeleteDevice = (data: TreeNode) => handleDeleteDeviceByName(data.name);
 const handleDeleteDeviceByName = async (deviceName: string) => {
-  await ElMessageBox.confirm(t('sidebar.confirmDeleteDevice', { name: deviceName }), t('common.hint'), { type: 'warning' });
+  await ElMessageBox.confirm(t('sidebar.confirmDeleteDevice', { name: deviceName }), t('common.hint'), {
+    confirmButtonText: t('common.confirm'),
+    cancelButtonText: t('common.cancel'),
+    type: 'warning',
+  });
   const channel = (await getChannelList()).find(c => c.name === deviceName);
   if (channel) {
     await deleteChannel(channel.id);

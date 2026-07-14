@@ -451,7 +451,11 @@ function refreshPackets() {
 }
 
 function clearPackets() {
-  ElMessageBox.confirm(t('goose.clearConfirm'), t('common.confirm'), { type: 'warning' })
+  ElMessageBox.confirm(t('goose.clearConfirm'), t('common.confirm'), {
+    confirmButtonText: t('common.confirm'),
+    cancelButtonText: t('common.cancel'),
+    type: 'warning',
+  })
     .then(() => {
       ws.clear(props.channelId)
     })

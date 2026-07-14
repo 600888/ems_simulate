@@ -1,7 +1,7 @@
 export default {
   common: {
     cancel: "取消",
-    confirm: "确定",
+    confirm: "确认",
     close: "关闭",
     save: "保存",
     delete: "删除",

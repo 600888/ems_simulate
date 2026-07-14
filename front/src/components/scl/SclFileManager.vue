@@ -81,6 +81,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { getSclFileList, deleteSclFile } from '@/api/sclApi'
@@ -88,6 +89,7 @@ import type { SclFileInfo } from '@/api/sclApi'
 import SclUploadDialog from './SclUploadDialog.vue'
 
 const router = useRouter()
+const { t } = useI18n()
 const loading = ref(false)
 const files = ref<SclFileInfo[]>([])
 const searchText = ref('')
@@ -150,7 +152,11 @@ function handleDiff(row: SclFileInfo) {
 async function handleDelete(row: SclFileInfo) {
   const name = getFileName(row)
   try {
-    await ElMessageBox.confirm('确定删除文件 "' + name + '"？', '提示', { type: 'warning' })
+    await ElMessageBox.confirm('确定删除文件 "' + name + '"？', '提示', {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning',
+    })
     await deleteSclFile(name)
     await loadFiles()
   } catch {

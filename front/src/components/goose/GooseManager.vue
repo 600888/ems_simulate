@@ -891,7 +891,11 @@ async function importDiscoveredSubscriptions() {
   try {
     await ElMessageBox.confirm(
       `将选中的 ${selectedDiscovered.value.length} 个控制块添加到当前设备订阅？`,
-      t("common.confirm")
+      t("common.confirm"),
+      {
+        confirmButtonText: t("common.confirm"),
+        cancelButtonText: t("common.cancel"),
+      },
     );
     const interfaceId = receiverForm.interface || networkInterfaces.value[0]?.id;
     if (!interfaceId) throw new Error(t("goose.interfaceRequired"));
@@ -919,6 +923,10 @@ async function addDiscoveredAsPublisher() {
     await ElMessageBox.confirm(
       `将选中的 ${selectedDiscovered.value.length} 个控制块添加到当前设备发布？`,
       t("common.confirm"),
+      {
+        confirmButtonText: t("common.confirm"),
+        cancelButtonText: t("common.cancel"),
+      },
     );
     const interfaceId = networkInterfaces.value[0]?.id;
     if (!interfaceId) throw new Error(t("goose.interfaceRequired"));
@@ -1102,6 +1110,8 @@ async function publishNow(id: string) {
 async function deletePublisher(id: string) {
   try {
     await ElMessageBox.confirm(t("goose.deleteConfirm"), t("common.confirm"), {
+      confirmButtonText: t("common.confirm"),
+      cancelButtonText: t("common.cancel"),
       type: "warning",
     });
     await deleteGoosePublisher(props.channelId || 0, id);
@@ -1260,6 +1270,8 @@ async function stopReceiver(id: string) {
 async function deleteReceiver(id: string) {
   try {
     await ElMessageBox.confirm(t("goose.receiverDeleteConfirm"), t("common.confirm"), {
+      confirmButtonText: t("common.confirm"),
+      cancelButtonText: t("common.cancel"),
       type: "warning",
     });
     await deleteGooseReceiver(props.channelId || 0, id);

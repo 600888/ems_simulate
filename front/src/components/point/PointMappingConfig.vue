@@ -83,6 +83,8 @@
             <el-popconfirm 
               v-if="hasMapping"
               :title="$t('pointMapping.deleteConfirm')" 
+              :confirm-button-text="$t('common.confirm')"
+              :cancel-button-text="$t('common.cancel')"
               @confirm="handleDeleteMapping"
             >
               <template #reference>
