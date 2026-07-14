@@ -28,15 +28,6 @@
         <el-icon :size="24" color="var(--text-secondary)"><Files /></el-icon>
       </router-link>
 
-      <!-- GOOSE Management -->
-      <router-link
-        to="/goose"
-        class="icon-link goose-link"
-        :title="t('header.gooseManagement')"
-      >
-        <el-icon :size="24" color="var(--text-secondary)"><Connection /></el-icon>
-      </router-link>
-
       <!-- Log Viewer Button -->
       <el-badge
         :value="logErrorCount"
@@ -73,7 +64,6 @@ import { useI18n } from "vue-i18n";
 import {
   Expand,
   Fold,
-  Connection,
   Setting,
   Files,
   Document,

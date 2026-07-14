@@ -70,8 +70,8 @@ const menuRouter = createRouter({
 
 // 全局后置钩子，用于收集访问过的页面作为标签页
 menuRouter.afterEach((to) => {
-  // 只有设备、GOOSE 和 SCL 管理页面有独立标签页
-  if (!to.path.startsWith('/device') && !to.path.startsWith('/goose') && !to.path.startsWith('/scl')) return;
+  // GOOSE/Reports/Files 都属于具体设备，复用设备标签；仅设备和 SCL 页面创建独立标签。
+  if (!to.path.startsWith('/device') && !to.path.startsWith('/scl')) return;
 
   // addView 内部已按 path 去重：存在则更新，不存在则新增
   // 页面刷新时 visitedViews 从 localStorage 恢复，addView 会找到已有标签并更新，不会重复创建

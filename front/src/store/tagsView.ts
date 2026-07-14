@@ -12,7 +12,11 @@ function loadViews(): TagView[] {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
             const parsed = JSON.parse(saved);
-            return Array.isArray(parsed) ? parsed : [];
+            // GOOSE 已改为设备内页面。过滤旧版本持久化的全局 GOOSE 标签，
+            // 避免升级后仍显示已经取消的独立入口。
+            return Array.isArray(parsed)
+                ? parsed.filter(view => !normalizePath(view?.path).startsWith('/goose'))
+                : [];
         }
     } catch {
         // JSON 损坏，清除数据避免持续出错
@@ -90,7 +94,7 @@ export const delAllViews = (): Promise<void> => {
     });
 };
 
-// channelId -> deviceName 映射，用于报告/文件页面高亮对应的设备标签
+// channelId -> deviceName 映射，用于 GOOSE/报告/文件页面高亮对应的设备标签
 const channelIdDeviceMap = new Map<number, string>();
 
 export function updateChannelIdDeviceMap(channelId: number, deviceName: string) {

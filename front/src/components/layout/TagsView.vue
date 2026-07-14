@@ -118,8 +118,8 @@ const initSortable = () => {
 const isActive = (tag: TagView) => {
   // 规范化路径比较，防止 URI 编码差异
   if (normalizePath(tag.path) === normalizePath(route.path)) return true;
-  // 报告/文件是设备的子页面，高亮对应的设备标签
-  if ((route.path === '/reports' || route.path === '/files') && route.query.channel_id) {
+  // GOOSE/报告/文件是设备的子页面，高亮对应的设备标签
+  if (['/goose', '/reports', '/files'].includes(route.path) && route.query.channel_id) {
     const deviceName = getDeviceNameByChannelId(Number(route.query.channel_id));
     if (deviceName) return normalizePath(tag.path) === normalizePath(`/device/${deviceName}`);
   }

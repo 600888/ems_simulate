@@ -256,7 +256,7 @@ const fetchDeviceGroupTree = async () => {
     // 标记并获取未分组设备的 IEC61850 结构
     await markUngroupedIEC61850Devices(newUngrouped);
 
-    // 构建 channelId -> deviceName 映射，供 TagsView 在报告/文件页面高亮对应设备标签
+    // 构建 channelId -> deviceName 映射，供 TagsView 在 GOOSE/报告/文件页面高亮对应设备标签
     const channels = await getChannelList();
     channels.forEach(ch => {
       if (ch.name) updateChannelIdDeviceMap(ch.id, ch.name);
