@@ -109,6 +109,16 @@ export function parseGoCbRef(ref: string, fallbackIed = 'Remote IED') {
 }
 
 /** 统一以本地时间展示 GOOSE 时间，固定保留三位毫秒。兼容秒和毫秒时间戳。 */
+/** Normalize an object-style DataSet reference to the MMS/GOOSE form. */
+export function toGooseDataSetRef(ref: string): string {
+  const value = String(ref || '').trim();
+  const slashIndex = value.lastIndexOf('/');
+  if (slashIndex < 0 || value.indexOf('$', slashIndex) >= 0) return value;
+  const separatorIndex = value.indexOf('.', slashIndex);
+  if (separatorIndex < 0) return value;
+  return `${value.slice(0, separatorIndex)}$${value.slice(separatorIndex + 1)}`;
+}
+
 export function formatGooseTime(value: number | string | null | undefined): string {
   if (value === null || value === undefined || value === '') return '-';
   const numericValue = Number(value);

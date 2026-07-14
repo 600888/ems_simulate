@@ -167,6 +167,7 @@ import {
   stopGoosePublisher,
   publishGooseNow,
   updateGoosePublisherEntry,
+  replaceGoosePublisherEntries,
   deleteGoosePublisher,
   removeGooseSubscription,
   stopGooseReceiver,
@@ -175,12 +176,22 @@ import {
   updateGooseSubscription,
   type GooseMessageHistoryItem,
 } from '@/api/gooseApi';
-import { getIEC61850Structure, type IEC61850DataSetInfo } from '@/api/channelApi';
+import {
+  getIEC61850DatasetDetail,
+  getIEC61850Structure,
+  type IEC61850DataSetInfo,
+  type IEC61850DataSetMember,
+} from '@/api/channelApi';
 import GooseBlockTreePanel from './GooseBlockTreePanel.vue';
 import GooseControlPanel from './GooseControlPanel.vue';
 import GooseDataSetTable from './GooseDataSetTable.vue';
 import GoosePublisherControlPanel from './GoosePublisherControlPanel.vue';
-import { flattenGooseBlocks, formatGooseTime, type GooseBlockItem } from './gooseWorkbench';
+import {
+  flattenGooseBlocks,
+  formatGooseTime,
+  toGooseDataSetRef,
+  type GooseBlockItem,
+} from './gooseWorkbench';
 
 const props = defineProps<{ channelId?: number }>();
 const publishers = ref<Awaited<ReturnType<typeof getGoosePublishers>>>([]);
@@ -255,7 +266,10 @@ async function loadDataSets() {
     const structure = await getIEC61850Structure(props.channelId);
     dataSets.value = structure.DataSets.flatMap((ld) =>
       ld.children.flatMap((ln) => ln.datasets),
-    );
+    ).map((dataSet) => ({
+      ...dataSet,
+      ref: toGooseDataSetRef(dataSet.ref),
+    }));
   } catch {
     dataSets.value = [];
   }
@@ -339,6 +353,33 @@ function defaultGooseMulticastMac(appId: number): string {
   return `01:0C:CD:01:${high}:${low}`;
 }
 
+function normalizeGooseEntryType(iecType: string): string {
+  const normalized = String(iecType || '').trim().toLowerCase();
+  if (['boolean', 'integer', 'float', 'string', 'bitstring', 'timestamp'].includes(normalized)) {
+    return normalized;
+  }
+  return 'boolean';
+}
+
+function defaultGooseEntryValue(iecType: string): boolean | number | string {
+  if (iecType === 'boolean') return false;
+  if (iecType === 'string') return '';
+  return 0;
+}
+
+function dataSetMemberToPublisherEntry(member: IEC61850DataSetMember) {
+  const iecType = normalizeGooseEntryType(member.iec_type);
+  const value = member.value;
+  return {
+    name: member.ref,
+    value:
+      typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string'
+        ? value
+        : defaultGooseEntryValue(iecType),
+    iec_type: iecType,
+  };
+}
+
 async function applyPublisherConfig(form: {
   enabled: boolean;
   interface: string;
@@ -357,6 +398,13 @@ async function applyPublisherConfig(form: {
   applying.value = true;
   const publisherId = block.publisher.id;
   try {
+    const dataSetDetail = form.data_set_ref
+      ? await getIEC61850DatasetDetail(props.channelId, form.data_set_ref)
+      : null;
+    if (form.data_set_ref && (!dataSetDetail || !dataSetDetail.members.length)) {
+      throw new Error(`数据集 ${form.data_set_ref} 没有可发布的成员`);
+    }
+
     if (block.publisher.is_running) await stopGoosePublisher(props.channelId, publisherId);
     await updateGoosePublisher(publisherId, {
       channel_id: props.channelId,
@@ -371,6 +419,20 @@ async function applyPublisherConfig(form: {
       vlan_prio: form.vlan_prio,
       simulation: form.simulation,
     });
+    if (dataSetDetail) {
+      const expectedNames = dataSetDetail.members.map((member) => member.ref);
+      const currentNames = (block.publisher.entries || []).map((entry) => entry.name);
+      const entriesMatch =
+        expectedNames.length === currentNames.length
+        && expectedNames.every((name, index) => name === currentNames[index]);
+      if (!entriesMatch) {
+        await replaceGoosePublisherEntries(
+          props.channelId,
+          publisherId,
+          dataSetDetail.members.map(dataSetMemberToPublisherEntry),
+        );
+      }
+    }
     if (form.enabled) await startGoosePublisher(props.channelId, publisherId);
     ElMessage.success(
       form.dst_mac

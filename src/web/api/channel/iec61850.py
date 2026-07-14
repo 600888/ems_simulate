@@ -32,6 +32,28 @@ def _format_goose_app_id(value: Any) -> str:
         return str(value)
 
 
+def _normalize_dataset_ref(value: str) -> str:
+    """Normalize object-style ``LN.DataSet`` and MMS ``LN$DataSet`` refs."""
+    ref = str(value or "").strip()
+    slash_index = ref.rfind("/")
+    if slash_index < 0 or "$" in ref[slash_index:]:
+        return ref
+    separator_index = ref.find(".", slash_index)
+    if separator_index < 0:
+        return ref
+    return f"{ref[:separator_index]}${ref[separator_index + 1 :]}"
+
+
+def _dataset_ref_aliases(value: str) -> tuple[str, ...]:
+    normalized = _normalize_dataset_ref(value)
+    aliases = [normalized]
+    slash_index = normalized.rfind("/")
+    separator_index = normalized.find("$", slash_index)
+    if separator_index >= 0:
+        aliases.append(f"{normalized[:separator_index]}.{normalized[separator_index + 1 :]}")
+    return tuple(dict.fromkeys(alias for alias in aliases if alias))
+
+
 def _get_iec61850_device(request: Request, channel_id: int):
     """获取 IEC61850 设备，校验通道存在且协议为 IEC61850
 
@@ -1097,7 +1119,7 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
                     ld_map[ds_ld][ds_ln] = []
                 ld_map[ds_ld][ds_ln].append(
                     {
-                        "ref": ds.get("ref", ""),
+                        "ref": _normalize_dataset_ref(ds.get("ref", "")),
                         "name": ds.get("name", ""),
                         "ld": ds_ld,
                         "ln": ds_ln,
@@ -1362,7 +1384,7 @@ def _build_iec61850_dataset_tree(device, dataset_ref: str) -> dict[str, Any]:
 
     matched_ds = None
     for ds in discovered_datasets:
-        if ds.get("ref") == dataset_ref:
+        if _normalize_dataset_ref(ds.get("ref", "")) == _normalize_dataset_ref(dataset_ref):
             matched_ds = ds
             break
 
@@ -1379,7 +1401,8 @@ def _build_iec61850_dataset_tree(device, dataset_ref: str) -> dict[str, Any]:
     members = matched_ds.get("members", [])
 
     # 读取 DataSet 所有值
-    values = protocol_handler.read_dataset_values(dataset_ref)
+    resolved_ref = matched_ds.get("ref") or dataset_ref
+    values = protocol_handler.read_dataset_values(resolved_ref)
 
     # 记录读取时间（用于前端显示"最后更新时间"）
     import datetime
@@ -1684,19 +1707,22 @@ async def get_iec61850_dataset_detail(
 
     # 优先实时浏览 DataSet 目录（获取最新成员信息）
     matched_ds = None
-    if isinstance(protocol_handler, IEC61850ClientHandler):
-        members = protocol_handler.client.browse_dataset_directory(body.dataset_ref) if protocol_handler.client else []
-        matched_ds = {
-            "ref": body.dataset_ref,
-            "name": body.dataset_ref.split("$")[-1] if "$" in body.dataset_ref else body.dataset_ref,
-            "member_count": len(members),
-            "members": members,
-        }
+    if isinstance(protocol_handler, IEC61850ClientHandler) and protocol_handler.client:
+        for dataset_ref in _dataset_ref_aliases(body.dataset_ref):
+            members = protocol_handler.client.browse_dataset_directory(dataset_ref)
+            if members:
+                matched_ds = {
+                    "ref": dataset_ref,
+                    "name": _normalize_dataset_ref(dataset_ref).split("$")[-1],
+                    "member_count": len(members),
+                    "members": members,
+                }
+                break
 
     # 如果实时浏览失败，从缓存查找
     if not matched_ds or matched_ds.get("member_count", 0) == 0:
         for ds in protocol_handler.get_discovered_datasets():
-            if ds.get("ref") == body.dataset_ref:
+            if _normalize_dataset_ref(ds.get("ref", "")) == _normalize_dataset_ref(body.dataset_ref):
                 matched_ds = ds
                 break
 
@@ -1704,7 +1730,8 @@ async def get_iec61850_dataset_detail(
         raise NotFoundError("DataSet 未找到，请先连接设备获取结构")
 
     # 读取 DataSet 所有成员的值
-    values = protocol_handler.read_dataset_values(body.dataset_ref)
+    resolved_ref = matched_ds.get("ref") or body.dataset_ref
+    values = protocol_handler.read_dataset_values(resolved_ref)
 
     # 将值合并到成员列表
     members = matched_ds.get("members", [])
@@ -1715,7 +1742,7 @@ async def get_iec61850_dataset_detail(
     return BaseResponse(
         message="获取 DataSet 详情成功",
         data={
-            "ref": matched_ds.get("ref", ""),
+            "ref": _normalize_dataset_ref(matched_ds.get("ref", "")),
             "name": matched_ds.get("name", ""),
             "ld": matched_ds.get("ld", ""),
             "member_count": len(members),
