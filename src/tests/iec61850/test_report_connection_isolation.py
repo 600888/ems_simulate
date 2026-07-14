@@ -201,7 +201,7 @@ def test_prepare_disconnect_disables_reports_before_uninstall(monkeypatch):
     ]
 
 
-def test_batch_enable_waits_50ms_between_rcbs(monkeypatch):
+def test_batch_enable_suspends_report_dispatch_until_all_rcbs_are_registered(monkeypatch):
     plugin = ReportsPlugin()
     plugin._connection = SimpleNamespace(is_connected=True)
     events = []
@@ -211,17 +211,47 @@ def test_batch_enable_waits_50ms_between_rcbs(monkeypatch):
         "_apply_config_once",
         lambda ref, *_args: events.append(("apply", ref)) or True,
     )
-    monkeypatch.setattr(reports_module.time, "sleep", lambda seconds: events.append(("sleep", seconds)))
+    monkeypatch.setattr(
+        callback_module.ReportCallbackHandler,
+        "suspend_dispatch",
+        lambda owner, timeout: events.append(("suspend", owner, timeout)) or True,
+    )
+    monkeypatch.setattr(
+        callback_module.ReportCallbackHandler,
+        "resume_dispatch",
+        lambda owner: events.append(("resume", owner)),
+    )
 
-    refs = ["LD0/LLN0.rp01", "LD0/LLN0.rp02", "LD0/LLN0.rp03"]
+    refs = ["LD0/LLN0.alarm01", "LD0/LLN0.measure01", "LD0/LLN0.status01"]
     assert plugin.apply_config_batch(refs, rpt_ena=True) == [(ref, True, "") for ref in refs]
     assert events == [
+        ("suspend", plugin._connection, 3.0),
         ("apply", refs[0]),
-        ("sleep", 0.05),
         ("apply", refs[1]),
-        ("sleep", 0.05),
         ("apply", refs[2]),
+        ("resume", plugin._connection),
     ]
+
+
+def test_batch_enable_resumes_report_dispatch_after_exception(monkeypatch):
+    plugin = ReportsPlugin()
+    plugin._connection = SimpleNamespace(is_connected=True)
+    events = []
+
+    monkeypatch.setattr(
+        callback_module.ReportCallbackHandler,
+        "suspend_dispatch",
+        lambda owner, timeout: events.append("suspend") or True,
+    )
+    monkeypatch.setattr(
+        callback_module.ReportCallbackHandler,
+        "resume_dispatch",
+        lambda owner: events.append("resume"),
+    )
+    monkeypatch.setattr(plugin, "_apply_config_once", lambda *_args: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    assert plugin.apply_config_batch(["LD0/LLN0.rp01"], rpt_ena=True) == [("LD0/LLN0.rp01", False, "boom")]
+    assert events == ["suspend", "resume"]
 
 
 def test_batch_disable_does_not_wait_between_rcbs(monkeypatch):
@@ -395,6 +425,107 @@ def test_disabled_report_reuses_native_subscription(monkeypatch):
     assert callback_module.ReportCallbackHandler.is_active(ref, connection)
 
     assert events == ["subscribe", "pause", "resume"]
+    callback_module.ReportCallbackHandler.shutdown_all(connection)
+
+
+def test_report_dispatch_suspension_is_nested_and_preserves_active_state(monkeypatch):
+    connection = SimpleNamespace(connection=object())
+    events = []
+
+    class FakeHandler:
+        def pause(self):
+            events.append("pause")
+
+        def resume(self):
+            events.append("resume")
+
+    active = callback_module._CallbackInfo(
+        rcb_ref="LD0/LLN0.rp01",
+        connection=connection,
+        handler=FakeHandler(),
+        active=True,
+    )
+    inactive = callback_module._CallbackInfo(
+        rcb_ref="LD0/LLN0.rp02",
+        connection=connection,
+        handler=FakeHandler(),
+        active=False,
+    )
+    monkeypatch.setitem(callback_module._CALLBACK_REGISTRY, active.rcb_ref, active)
+    monkeypatch.setitem(callback_module._CALLBACK_REGISTRY, inactive.rcb_ref, inactive)
+
+    assert callback_module.ReportCallbackHandler.suspend_dispatch(connection)
+    assert callback_module.ReportCallbackHandler.suspend_dispatch(connection)
+    assert events == ["pause", "pause"]
+    assert active.active is True
+    assert inactive.active is False
+
+    callback_module.ReportCallbackHandler.resume_dispatch(connection)
+    assert events == ["pause", "pause"]
+    callback_module.ReportCallbackHandler.resume_dispatch(connection)
+    assert events == ["pause", "pause", "resume"]
+
+
+def test_new_report_handler_starts_paused_during_bulk_registration(monkeypatch):
+    connection = SimpleNamespace(connection=object())
+    events = []
+
+    class FakeHandler:
+        def __init__(self, *_args):
+            events.append("create")
+
+        def pause(self):
+            events.append("pause")
+
+        def resume(self):
+            events.append("resume")
+
+        def close(self):
+            pass
+
+    class FakeSubscriber:
+        def setIedConnection(self, _conn):
+            pass
+
+        def setRcbReference(self, _ref):
+            pass
+
+        def setRcbRptId(self, _rpt_id):
+            pass
+
+        def setEventHandler(self, _handler):
+            events.append("bind")
+
+        def subscribe(self):
+            events.append("subscribe")
+            return True
+
+        def deleteEventHandler(self):
+            pass
+
+    monkeypatch.setattr(callback_module, "HAS_IEC61850", True)
+    monkeypatch.setattr(callback_module, "_PyRCBHandler", FakeHandler)
+    monkeypatch.setattr(
+        callback_module,
+        "iec61850",
+        SimpleNamespace(
+            RCBSubscriber=FakeSubscriber,
+            IedConnection_uninstallReportHandler=lambda *_args: None,
+        ),
+        raising=False,
+    )
+
+    assert callback_module.ReportCallbackHandler.suspend_dispatch(connection)
+    assert callback_module.ReportCallbackHandler.install(
+        connection,
+        "LD0/LLN0.rp01",
+        rpt_id="rp01",
+        rcb_type="URCB",
+    )
+    assert events == ["create", "pause", "bind", "subscribe"]
+
+    callback_module.ReportCallbackHandler.resume_dispatch(connection)
+    assert events == ["create", "pause", "bind", "subscribe", "resume"]
     callback_module.ReportCallbackHandler.shutdown_all(connection)
 
 

@@ -8,6 +8,10 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from src.device.protocol.iec61850_report_coordination import (
+    pause_matching_local_server_simulations,
+    resume_local_server_simulations,
+)
 from src.proto.iec61850.plugins.reports.report_tree import ReportTreeBuilder, make_entry_summary
 from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import BaseResponse
@@ -379,15 +383,29 @@ async def batch_apply_report_config(body: RcbBatchApplyConfigRequest, request: R
     fail_count = 0
     fail_details: list[dict] = []
 
-    results = await loop.run_in_executor(
-        None,
-        lambda: reports.apply_config_batch(
-            [item.rcb_ref for item in body.items],
-            rpt_ena=body.rpt_ena,
-            trg_ops=body.trg_ops,
-            opt_fields=body.opt_fields,
-        ),
+    paused_simulations = (
+        await loop.run_in_executor(
+            None,
+            lambda: pause_matching_local_server_simulations(reports, request, log),
+        )
+        if body.rpt_ena
+        else []
     )
+    try:
+        results = await loop.run_in_executor(
+            None,
+            lambda: reports.apply_config_batch(
+                [item.rcb_ref for item in body.items],
+                rpt_ena=body.rpt_ena,
+                trg_ops=body.trg_ops,
+                opt_fields=body.opt_fields,
+            ),
+        )
+    finally:
+        await loop.run_in_executor(
+            None,
+            lambda: resume_local_server_simulations(paused_simulations, log),
+        )
 
     for rcb_ref, ok, reason in results:
         if ok:

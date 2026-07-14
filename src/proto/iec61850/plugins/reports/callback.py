@@ -31,6 +31,7 @@ _CALLBACK_REGISTRY: dict[Any, "_CallbackInfo"] = {}
 _CALLBACK_LOCK = threading.Lock()
 _CALLBACK_IDLE = threading.Condition(_CALLBACK_LOCK)
 _ACTIVE_CALLBACKS: dict[int, int] = {}
+_DISPATCH_SUSPEND_DEPTH: dict[int, int] = {}
 _PENDING_GI_ROUTES: dict[str, tuple[set[str], float]] = {}
 # 全局稳定递增 ID，用作环状缓冲区 entry_id
 _ENTRY_SEQUENCE: int = 0
@@ -329,8 +330,11 @@ class ReportCallbackHandler:
                 registered_info.dataset_members = dataset_members or []
                 registered_info.active = True
                 handler = registered_info.handler
-                if handler is not None and hasattr(handler, "resume"):
-                    handler.resume()
+                if handler is not None:
+                    if _DISPATCH_SUSPEND_DEPTH.get(id(connection), 0) > 0 and hasattr(handler, "pause"):
+                        handler.pause()
+                    elif hasattr(handler, "resume"):
+                        handler.resume()
                 log.info(f"复用报告回调订阅: {rcb_ref}")
                 return True
 
@@ -370,6 +374,14 @@ class ReportCallbackHandler:
 
         try:
             handler = _PyRCBHandler(rcb_ref, connection)
+            # A bulk RCB operation temporarily suspends every director callback
+            # on this association.  New handlers must join in the suspended
+            # state as well; otherwise reports emitted while the batch is still
+            # registering subscribers can race RCBSubscriber.subscribe().
+            with _CALLBACK_LOCK:
+                dispatch_suspended = _DISPATCH_SUSPEND_DEPTH.get(id(connection), 0) > 0
+            if dispatch_suspended and hasattr(handler, "pause"):
+                handler.pause()
             subscriber = iec61850.RCBSubscriber()
             subscriber.setIedConnection(conn)
             subscriber.setRcbReference(nref)
@@ -538,6 +550,47 @@ class ReportCallbackHandler:
         return ReportCallbackHandler.wait_for_idle(connection, timeout=timeout)
 
     @staticmethod
+    def suspend_dispatch(connection, timeout: float = 3.0) -> bool:
+        """Temporarily make native report callbacks return without parsing.
+
+        RCBSubscriber registration and SWIG director report parsing are both
+        native operations on the same MMS association.  During a large enable
+        batch an active simulator can otherwise make them overlap repeatedly,
+        which is unsafe in the binding and can terminate the whole process.
+        Suspension is nestable and preserves each RCB's logical active state.
+        """
+        connection_key = id(connection)
+        with _CALLBACK_LOCK:
+            depth = _DISPATCH_SUSPEND_DEPTH.get(connection_key, 0) + 1
+            _DISPATCH_SUSPEND_DEPTH[connection_key] = depth
+            if depth == 1:
+                for info in _CALLBACK_REGISTRY.values():
+                    if info.connection is not connection:
+                        continue
+                    handler = info.handler
+                    if handler is not None and hasattr(handler, "pause"):
+                        handler.pause()
+
+        return ReportCallbackHandler.wait_for_idle(connection, timeout=timeout)
+
+    @staticmethod
+    def resume_dispatch(connection) -> None:
+        """Resume callbacks suspended by :meth:`suspend_dispatch`."""
+        connection_key = id(connection)
+        with _CALLBACK_LOCK:
+            depth = _DISPATCH_SUSPEND_DEPTH.get(connection_key, 0)
+            if depth > 1:
+                _DISPATCH_SUSPEND_DEPTH[connection_key] = depth - 1
+                return
+            _DISPATCH_SUSPEND_DEPTH.pop(connection_key, None)
+            for info in _CALLBACK_REGISTRY.values():
+                if info.connection is not connection or not info.active:
+                    continue
+                handler = info.handler
+                if handler is not None and hasattr(handler, "resume"):
+                    handler.resume()
+
+    @staticmethod
     def get_cache(rcb_ref: str, connection=None) -> list[dict[str, Any]]:
         """获取指定 RCB 的缓存报告数据"""
         with _CALLBACK_LOCK:
@@ -684,6 +737,7 @@ class ReportCallbackHandler:
 
         # 1. 只清理属于当前 association 的回调，避免影响其他客户端。
         with _CALLBACK_LOCK:
+            _DISPATCH_SUSPEND_DEPTH.pop(id(connection), None)
             refs = [ref for ref, info in _CALLBACK_REGISTRY.items() if info.connection is connection]
             infos = [_CALLBACK_REGISTRY.pop(ref) for ref in refs]
 
@@ -851,7 +905,10 @@ if HAS_IEC61850:
                 _ACTIVE_CALLBACKS[self._connection_key] = _ACTIVE_CALLBACKS.get(self._connection_key, 0) + 1
             try:
                 if self._closing:
-                    log.debug(f"RCBHandler.trigger ignored during close: rcb_ref={self._rcb_ref}")
+                    # Bulk registration intentionally drops reports here.  Do
+                    # not log per report: hundreds of enabled RCBs can turn a
+                    # short suspension into a logging/terminal backpressure
+                    # problem of its own.
                     return
                 cr = self._client_report
                 # 在 trigger 返回前完成解析 (C 层在 trigger 返回后可能释放 report)

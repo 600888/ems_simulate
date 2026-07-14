@@ -583,31 +583,43 @@ class ReportsPlugin:
         rpt_ena: bool,
         trg_ops: dict[str, bool] | None = None,
         opt_fields: dict[str, bool] | None = None,
-        enable_interval_seconds: float = 0.05,
+        enable_interval_seconds: float = 0.0,
     ) -> list[tuple[str, bool, str]]:
         """在同一操作锁内完成一个批次，防止并发批次逐项交叉。
 
-        批量使能时在相邻 RCB 之间默认等待 50 ms，给 libIEC61850 的接收
-        线程留出处理刚启动报告回调的时间，避免连续创建订阅并写入
-        ``RptEna=True`` 时放大原生回调竞态。批量禁用不需要该节流。
+        批量使能期间暂停当前 association 的 Python 报告分发。模拟服务端
+        可能在每秒批量更新后同时触发大量 RCB；若此时继续创建原生
+        subscriber，会让 SWIG director 回调解析与 ``subscribe`` 交叉执行，
+        严重时直接终止进程。暂停只丢弃配置窗口内的瞬时报文，不改变
+        RptEna 和回调注册状态，批次结束后统一恢复。
         """
         results: list[tuple[str, bool, str]] = []
         enable_interval_seconds = max(0.0, enable_interval_seconds)
         with self._operation_lock:
             if not self._ensure_connection():
                 return [(rcb_ref, False, "独立报告连接不可用") for rcb_ref in rcb_refs]
-            last_index = len(rcb_refs) - 1
-            for index, rcb_ref in enumerate(rcb_refs):
-                try:
-                    # 批次中不做会清空其他已成功订阅的全连接重建；单项失败
-                    # 只影响本项，下一项仍可继续。
-                    ok = self._apply_config_once(rcb_ref, rpt_ena, trg_ops, opt_fields)
-                    results.append((rcb_ref, ok, "" if ok else "操作失败"))
-                except Exception as exc:
-                    log.error(f"批量应用报告配置异常: ref={rcb_ref}, {exc}", exc_info=True)
-                    results.append((rcb_ref, False, str(exc)))
-                if rpt_ena and index < last_index and enable_interval_seconds > 0:
-                    time.sleep(enable_interval_seconds)
+            dispatch_suspended = False
+            try:
+                if rpt_ena:
+                    dispatch_suspended = True
+                    if not ReportCallbackHandler.suspend_dispatch(self._connection, timeout=3.0):
+                        log.warning("批量使能前等待报告回调排空超时，将在暂停分发状态下继续")
+
+                last_index = len(rcb_refs) - 1
+                for index, rcb_ref in enumerate(rcb_refs):
+                    try:
+                        # 批次中不做会清空其他已成功订阅的全连接重建；单项失败
+                        # 只影响本项，下一项仍可继续。
+                        ok = self._apply_config_once(rcb_ref, rpt_ena, trg_ops, opt_fields)
+                        results.append((rcb_ref, ok, "" if ok else "操作失败"))
+                    except Exception as exc:
+                        log.error(f"批量应用报告配置异常: ref={rcb_ref}, {exc}", exc_info=True)
+                        results.append((rcb_ref, False, str(exc)))
+                    if rpt_ena and index < last_index and enable_interval_seconds > 0:
+                        time.sleep(enable_interval_seconds)
+            finally:
+                if dispatch_suspended:
+                    ReportCallbackHandler.resume_dispatch(self._connection)
         return results
 
     def _apply_config_once(
@@ -634,7 +646,7 @@ class ReportsPlugin:
                     config_ok = self._set_config(rcb_ref, trg_ops, opt_fields)
                     if not config_ok:
                         log.warning(f"使能前设置 TrgOps/OptFields 失败, 继续尝试使能: {rcb_ref}")
-                return self._enable_report(rcb_ref, on_report=on_report)
+                return self._enable_report(rcb_ref, on_report=on_report, rcb_detail=detail)
             return self._disable_report(rcb_ref)
 
         if current_rpt_ena:
@@ -725,6 +737,7 @@ class ReportsPlugin:
         self,
         rcb_ref: str,
         on_report: Callable[[ReportDataEntry], None] | None = None,
+        rcb_detail: dict[str, Any] | None = None,
     ) -> bool:
         """Enable a report and install its callback before RptEna=True."""
         rcb_type = self._infer_rcb_type(rcb_ref)
@@ -739,21 +752,27 @@ class ReportsPlugin:
         rpt_id = ""
         data_set_ref = ""
 
-        # 优先通过 getRCBValues 直接读取 RptId（比 get_rcb_detail 更直接可靠）
-        try:
-            if rcb_type == "BRCB":
-                rcb_info = BrcbHandler.get_rcb_values(self._connection, rcb_ref)
-            else:
-                rcb_info = UrcbHandler.get_rcb_values(self._connection, rcb_ref)
-            if rcb_info and hasattr(rcb_info, "rpt_id") and rcb_info.rpt_id:
-                rpt_id = str(rcb_info.rpt_id)
-                data_set_ref = str(rcb_info.data_set_ref or "")
-                log.info(f"_enable_report: 直接读取 RptId 成功: {rcb_ref}, rpt_id={rpt_id!r}")
-            elif rcb_info:
-                data_set_ref = str(rcb_info.data_set_ref or "")
-                log.info(f"_enable_report: 直接读取 RptId 为空: {rcb_ref}, data_set_ref={data_set_ref!r}")
-        except Exception as e:
-            log.warning(f"_enable_report: 直接读取 RptId 失败: {rcb_ref}, {e}, 尝试从缓存读取")
+        # _apply_config_once has already read the RCB state. Reuse that
+        # snapshot in a batch instead of issuing a second getRCBValues for
+        # every item; this halves a major source of MMS contention.
+        if rcb_detail:
+            rpt_id = str(rcb_detail.get("rpt_id", "") or "")
+            data_set_ref = str(rcb_detail.get("data_set_ref", "") or "")
+        else:
+            try:
+                if rcb_type == "BRCB":
+                    rcb_info = BrcbHandler.get_rcb_values(self._connection, rcb_ref)
+                else:
+                    rcb_info = UrcbHandler.get_rcb_values(self._connection, rcb_ref)
+                if rcb_info and hasattr(rcb_info, "rpt_id") and rcb_info.rpt_id:
+                    rpt_id = str(rcb_info.rpt_id)
+                    data_set_ref = str(rcb_info.data_set_ref or "")
+                    log.info(f"_enable_report: 直接读取 RptId 成功: {rcb_ref}, rpt_id={rpt_id!r}")
+                elif rcb_info:
+                    data_set_ref = str(rcb_info.data_set_ref or "")
+                    log.info(f"_enable_report: 直接读取 RptId 为空: {rcb_ref}, data_set_ref={data_set_ref!r}")
+            except Exception as e:
+                log.warning(f"_enable_report: 直接读取 RptId 失败: {rcb_ref}, {e}, 尝试从缓存读取")
 
         # 备用：从缓存中读取
         if not rpt_id:

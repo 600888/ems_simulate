@@ -102,11 +102,12 @@ class SimulationController:
             self._simulation_thread = threading.Thread(target=self._run_simulation, daemon=True)
             self._simulation_thread.start()
 
-    def stop_simulation(self):
-        """停止模拟线程"""
+    def stop_simulation(self, timeout: float = 1.0) -> bool:
+        """停止模拟线程，并返回线程是否已在超时内退出。"""
         self._stop_event.set()
         if self._simulation_thread and self._simulation_thread.is_alive():
-            self._simulation_thread.join(timeout=1)
+            self._simulation_thread.join(timeout=max(0.0, timeout))
+        return not self.is_simulation_running()
 
     def _run_simulation(self):
         """单线程模拟循环"""
