@@ -56,10 +56,13 @@ def test_client_accepts_matching_imported_model():
     client._offline_model_source = "import"
     client._conn = Mock(is_connected=True)
     client._conn.browse_logical_devices.return_value = ["LD0"]
+    client._report_conn = Mock()
     client._discovery = Mock()
     client._discovery.model = IedModel(lds=(LDModel(name="LD0"),))
 
     assert client.validate_loaded_offline_model() is True
+    assert client._conn._discovered_lds == ["LD0"]
+    assert client._report_conn._discovered_lds == ["LD0"]
     client._discovery.invalidate.assert_not_called()
 
 

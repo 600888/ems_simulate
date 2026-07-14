@@ -116,6 +116,7 @@ class DatasetCatalog:
     ) -> DatasetCatalog:
         """从注册表、统一模型和兼容字典构造强类型目录。"""
         address_to_ref = cls._address_index(registry, model_name)
+        registered_refs = frozenset(address_to_ref.values())
         leaf_index = cls._model_leaf_index(model, model_name)
         descriptors: list[DatasetDescriptor] = []
 
@@ -131,6 +132,8 @@ class DatasetCatalog:
                     continue
                 fc = str(raw_member.get("fc", "") or suffix_fc).upper()
                 leaf_refs = cls._project_member(member_ref, fc, leaf_index, address_to_ref.values())
+                scalar_candidates = tuple(ref for ref in leaf_refs if ref in registered_refs)
+                scalar_ref = scalar_candidates[0] if len(scalar_candidates) == 1 else ""
                 members.append(
                     DatasetMember(
                         index=ordinal,
@@ -139,6 +142,7 @@ class DatasetCatalog:
                         iec_type=str(raw_member.get("iec_type", "unknown") or "unknown"),
                         mms_type=str(raw_member.get("mms_type", "MMS_UNKNOWN") or "MMS_UNKNOWN"),
                         leaf_refs=leaf_refs,
+                        scalar_ref=scalar_ref,
                     )
                 )
             descriptors.append(

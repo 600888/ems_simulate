@@ -134,8 +134,13 @@ class Iec61850Connection:
                     self._last_alive_check = time.monotonic()
                     log.info(f"IEC 61850 连接已建立: {self.ip}:{self.port}")
 
-                    if not self.model_name:
-                        self._infer_model_name()
+                    # model_name is a local configuration hint, while DataSet
+                    # references must use the exact MMS domains exposed by the
+                    # current association.  Cache the remote LD directory even
+                    # when model_name is configured; otherwise an offline model
+                    # can be prefixed into an invalid reference such as
+                    # ``ZCA-110LC001PCS06/LLN0$ds...``.
+                    self._infer_model_name()
 
                     callback = discover_callback or self._discover_callback
                     if auto_discover and callback:

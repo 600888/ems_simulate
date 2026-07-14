@@ -16,6 +16,9 @@ class DatasetMember:
     iec_type: str = "unknown"
     mms_type: str = "MMS_UNKNOWN"
     leaf_refs: tuple[str, ...] = ()
+    # 厂商 DataSet 目录声明为 DO 级、实际却只返回一个标量时，只有点表中
+    # 唯一的业务值叶子可以作为安全兼容目标；为空表示不能猜测。
+    scalar_ref: str = ""
 
 
 @dataclass(slots=True, frozen=True)

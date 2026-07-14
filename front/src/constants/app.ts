@@ -7,6 +7,8 @@ export const TABLE_REFRESH_INTERVAL = 1000;
 
 // HTTP 请求超时时间（毫秒）
 export const HTTP_TIMEOUT = 5000;
+// IEC61850 DataSet 批量读取前端接口等待时间
+export const HTTP_TIMEOUT_IEC61850_DATASET_READ = 10000;
 // 文件上传/ICD解析等耗时操作单独设置超时
 export const HTTP_TIMEOUT_LONG = 60000;
 // 后端发现任务默认上限为 10 分钟，额外预留 10 秒用于响应编码与传输。

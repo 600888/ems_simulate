@@ -113,6 +113,17 @@ class DatasetTransport:
             if not member.leaf_refs:
                 errors.append(DatasetMemberError(member.index, member.ref, "member has no safe model projection"))
                 continue
+            # 部分厂商/模拟服务的目录将 FCDA 暴露为 DO 级引用，但线上
+            # NamedVariableList 只返回主值标量，而不是完整的 value/q/t 结构。
+            # 只有目录构建时已证明存在唯一业务测点，才允许兼容映射。
+            if len(leaves) == 1 and len(member.leaf_refs) != 1 and member.scalar_ref:
+                leaf = leaves[0]
+                runtime_type = self._runtime_type(leaf)
+                value = mms_value_to_python(leaf, IEC_TYPE_UNKNOWN)
+                if runtime_type is not MmsType.DATA_ACCESS_ERROR and value is not None:
+                    values.append((member.scalar_ref, value))
+                    runtime_types.append((member.scalar_ref, runtime_type.value))
+                    continue
             if len(leaves) != len(member.leaf_refs):
                 errors.append(
                     DatasetMemberError(

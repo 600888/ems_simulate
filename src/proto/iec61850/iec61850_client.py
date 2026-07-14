@@ -948,7 +948,8 @@ class IEC61850Client:
 
         cached_lds = {ld.name for ld in cached.lds if ld.name}
         try:
-            online_lds = set(self._conn.browse_logical_devices())
+            online_ld_list = list(self._conn.browse_logical_devices())
+            online_lds = set(online_ld_list)
         except Exception as e:
             log.warning(f"模型缓存在线校验失败: 逻辑设备目录读取异常, error={e}")
             return False
@@ -958,6 +959,14 @@ class IEC61850Client:
             return False
 
         if cached_lds == online_lds:
+            # Offline loading restores the model tree but does not run model
+            # discovery, so explicitly restore the runtime domain directory
+            # used by reference builders.  Keep the dedicated report
+            # association in sync as well.
+            self._conn._discovered_lds = online_ld_list
+            report_conn = getattr(self, "_report_conn", None)
+            if report_conn is not None:
+                report_conn._discovered_lds = list(online_ld_list)
             return True
 
         log.warning(

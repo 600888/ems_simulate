@@ -3,7 +3,7 @@
  */
 
 import { instance, requestApi } from './http';
-import { CHANNEL_API } from '@/constants';
+import { CHANNEL_API, HTTP_TIMEOUT_IEC61850_DATASET_READ } from '@/constants';
 import type {
   ChannelCreateRequest,
   ChannelInfo,
@@ -333,7 +333,7 @@ export async function iec61850ReadPoints(
       category,
       item,
       interval_ms: intervalMs,
-    });
+    }, HTTP_TIMEOUT_IEC61850_DATASET_READ);
   } catch (error) {
     console.error('Error reading IEC61850 points:', error);
     throw error;

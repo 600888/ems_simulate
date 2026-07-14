@@ -140,6 +140,7 @@ def test_catalog_projects_do_level_fcda_with_complete_model_order():
         "IEDLD0/MMXU1.TotW.q",
         "IEDLD0/MMXU1.TotW.t",
     )
+    assert catalog.datasets[0].members[0].scalar_ref == "IEDLD0/MMXU1.TotW.mag.f"
     assert DatasetReadPlanner(catalog).plan(["power"]).uncovered == ()
 
 
@@ -358,6 +359,59 @@ def test_transport_decodes_do_level_structure_using_wire_projection(monkeypatch)
         "IEDLD0/MMXU1.TotW.t": 123456,
     }
     assert result.errors == ()
+
+
+def test_transport_maps_vendor_do_level_scalar_to_unique_registered_value(monkeypatch):
+    """DO 级目录只返回标量时，可安全映射到点表中唯一的业务值叶子。"""
+    from src.proto.iec61850.plugins.datasets import transport as transport_module
+
+    native = _FakeNative([_FakeValue(_FakeNative.MMS_INTEGER, 7)])
+    monkeypatch.setattr(transport_module, "mms_value_to_python", lambda value, _iec_type: value.value)
+    dataset = DatasetDescriptor(
+        ref="IEDLD0/LLN0$ds",
+        members=(
+            DatasetMember(
+                0,
+                "IEDLD0/MMXU1.CommFault",
+                "MX",
+                leaf_refs=(
+                    "IEDLD0/MMXU1.CommFault.mag.i",
+                    "IEDLD0/MMXU1.CommFault.q",
+                    "IEDLD0/MMXU1.CommFault.t",
+                ),
+                scalar_ref="IEDLD0/MMXU1.CommFault.mag.i",
+            ),
+        ),
+    )
+
+    result = DatasetTransport(_FakeConnection(), native).read(dataset)
+
+    assert result.value_map == {"IEDLD0/MMXU1.CommFault.mag.i": 7}
+    assert result.errors == ()
+
+
+def test_transport_rejects_vendor_scalar_when_registered_value_is_ambiguous(monkeypatch):
+    """没有唯一业务叶子时继续报投影错误，不能按顺序猜测。"""
+    from src.proto.iec61850.plugins.datasets import transport as transport_module
+
+    native = _FakeNative([_FakeValue(_FakeNative.MMS_FLOAT, 1.0)])
+    monkeypatch.setattr(transport_module, "mms_value_to_python", lambda value, _iec_type: value.value)
+    dataset = DatasetDescriptor(
+        ref="IEDLD0/LLN0$ds",
+        members=(
+            DatasetMember(
+                0,
+                "IEDLD0/MMXU1.Vector",
+                "MX",
+                leaf_refs=("IEDLD0/MMXU1.Vector.x", "IEDLD0/MMXU1.Vector.y"),
+            ),
+        ),
+    )
+
+    result = DatasetTransport(_FakeConnection(), native).read(dataset)
+
+    assert result.value_map == {}
+    assert "projection mismatch" in result.errors[0].reason
 
 
 class _PluginConnection:
