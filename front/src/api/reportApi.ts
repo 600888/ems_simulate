@@ -4,6 +4,7 @@
 
 import { requestApi } from "./http";
 import { REPORT_API } from "@/constants/api";
+import { HTTP_TIMEOUT_IEC61850_REPORT_BATCH } from "@/constants/app";
 
 // ===== 类型定义 =====
 
@@ -179,13 +180,18 @@ export async function batchApplyConfig(
   trgOps?: Partial<TrgOps>,
   optFields?: Partial<OptFields>
 ): Promise<BatchApplyResult> {
-  const result = await requestApi(REPORT_API.BATCH_APPLY, "post", {
-    channel_id: channelId,
-    items: rcbRefs.map((ref) => ({ rcb_ref: ref })),
-    rpt_ena: rptEna,
-    trg_ops: trgOps,
-    opt_fields: optFields,
-  });
+  const result = await requestApi(
+    REPORT_API.BATCH_APPLY,
+    "post",
+    {
+      channel_id: channelId,
+      items: rcbRefs.map((ref) => ({ rcb_ref: ref })),
+      rpt_ena: rptEna,
+      trg_ops: trgOps,
+      opt_fields: optFields,
+    },
+    HTTP_TIMEOUT_IEC61850_REPORT_BATCH,
+  );
   return {
     success: result?.success === true,
     success_count: result?.success_count ?? 0,

@@ -261,6 +261,21 @@ def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry, connection=N
     return {rcb_ref}, False
 
 
+def _mark_entry_reasons_as_gi(entry: ReportDataEntry) -> None:
+    """Normalize inclusion reasons for a report matched to an explicit GI request.
+
+    Some pyiec61850-ng builds expose the callback's ClientReport as an
+    ``sMmsValue*`` SWIG object. Report values remain readable, but
+    ``ClientReport_getReasonForInclusion`` rejects that wrapper and returns no
+    usable reason. A report matched by the pending GI route is known to be the
+    response to our explicit GI request, so its included values have GI reason
+    by protocol semantics regardless of that binding limitation.
+    """
+    for ref in entry.data_values:
+        if not ref.startswith("__"):
+            entry.reason_codes[ref] = "gi"
+
+
 class ReportCallbackHandler:
     """报告回调管理器
 
@@ -775,6 +790,7 @@ def _dispatch_report(rcb_ref: str, report, connection=None) -> None:
 
         if is_gi_route:
             # GI 报告 — 写入所有触发 GI 的目标 RCB 实例
+            _mark_entry_reasons_as_gi(entry)
             written = 0
             on_report = None
             if not entry.uid:

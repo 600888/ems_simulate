@@ -37,6 +37,25 @@ def test_fill_du_names_skips_reads_when_directory_has_no_description_da():
     client._read_du_description.assert_not_called()
 
 
+def test_fill_du_names_prefers_batch_description_values():
+    client = IEC61850Client.__new__(IEC61850Client)
+    client._registry = Mock()
+    client._discovery = Mock()
+    client._discovery.description_da_names.return_value = ("dU",)
+    client._read_du_description = Mock(return_value="不应单点读取")
+    datamodels = Mock()
+    datamodels._read_du_descriptions_batch.return_value = {"LD0/MMXU1.TotW": "总有功功率"}
+    client._plugins = Mock()
+    client._plugins.get.return_value = datamodels
+    discovered = [{"address": "LD0/MMXU1.TotW.mag.f"}]
+
+    client._fill_du_names(discovered)
+
+    datamodels._read_du_descriptions_batch.assert_called_once_with({"LD0/MMXU1.TotW": ("dU",)})
+    client._read_du_description.assert_not_called()
+    assert discovered[0]["name"] == "总有功功率"
+
+
 def test_remote_discovery_forces_online_refresh_and_replaces_registry():
     client = IEC61850Client.__new__(IEC61850Client)
     client.ip = "127.0.0.1"

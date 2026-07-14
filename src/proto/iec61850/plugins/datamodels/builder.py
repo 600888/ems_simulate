@@ -61,6 +61,7 @@ class IedModelBuilder:
 
         # 标准 DA 列表 (用于服务器启动后初始化默认值)
         self._standard_bda_list: list[tuple] = []
+        self._standard_bda_ids: set[int] = set()
 
         # 保持底层 C 对象的 Python 引用
         self._keep_alive: list[Any] = []
@@ -105,6 +106,14 @@ class IedModelBuilder:
     @property
     def keep_alive(self) -> list[Any]:
         return self._keep_alive
+
+    def _track_standard_bda(self, da: Any, name: str, iec_type: str) -> None:
+        """Register a standard DA once without an O(n) identity scan."""
+        identity = id(da)
+        if identity in self._standard_bda_ids:
+            return
+        self._standard_bda_ids.add(identity)
+        self._standard_bda_list.append((da, name, iec_type))
 
     # ===== LD/LN 管理 =====
 
@@ -398,8 +407,8 @@ class IedModelBuilder:
         if leaf_da is not None:
             self._point_attrs[addr_str] = leaf_da
             standard_type = {"q": "quality", "t": "timestamp", "dU": "string"}.get(da_parts[-1])
-            if standard_type and not any(item[0] is leaf_da for item in self._standard_bda_list):
-                self._standard_bda_list.append((leaf_da, da_parts[-1], standard_type))
+            if standard_type:
+                self._track_standard_bda(leaf_da, da_parts[-1], standard_type)
 
         return ref
 
@@ -625,7 +634,7 @@ class IedModelBuilder:
             )
             self._da_map[q_key] = q_da
             self._keep_alive.append(q_da)
-            self._standard_bda_list.append((q_da, "q", "quality"))
+            self._track_standard_bda(q_da, "q", "quality")
 
         t_key = f"{do_key}.t"
         if t_key not in self._da_map and qt_fc_const:
@@ -634,7 +643,7 @@ class IedModelBuilder:
             )
             self._da_map[t_key] = t_da
             self._keep_alive.append(t_da)
-            self._standard_bda_list.append((t_da, "t", "timestamp"))
+            self._track_standard_bda(t_da, "t", "timestamp")
 
         du_key = f"{do_key}.dU"
         if du_key not in self._da_map and dc_fc_const:
@@ -643,7 +652,7 @@ class IedModelBuilder:
             )
             self._da_map[du_key] = du_da
             self._keep_alive.append(du_da)
-            self._standard_bda_list.append((du_da, "dU", "string"))
+            self._track_standard_bda(du_da, "dU", "string")
 
     # ===== FCDA 模型节点确保 =====
 

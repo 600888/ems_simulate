@@ -102,6 +102,40 @@ def test_scl_point_transformer_uses_actual_integer_analogue_leaf():
     assert [(point.da_name, point.mms_type) for point in points] == [("mag.i", MmsType.INTEGER)]
 
 
+def test_scl_point_transformer_keeps_instance_specific_du_descriptions():
+    doc = SclParser().parse_string(
+        """
+        <SCL>
+          <IED name="IED1"><AccessPoint name="AP1"><Server><LDevice inst="LD0">
+            <LN0 lnClass="LLN0" lnType="LLN0Type" />
+            <LN lnClass="MMXU" inst="1" lnType="MMXUType">
+              <DOI name="TotW"><DAI name="dU"><Val>一号有功功率</Val></DAI></DOI>
+            </LN>
+            <LN lnClass="MMXU" inst="2" lnType="MMXUType">
+              <DOI name="TotW"><DAI name="dU"><Val>二号有功功率</Val></DAI></DOI>
+            </LN>
+          </LDevice></Server></AccessPoint></IED>
+          <DataTypeTemplates>
+            <LNodeType id="LLN0Type" lnClass="LLN0" />
+            <LNodeType id="MMXUType" lnClass="MMXU"><DO name="TotW" type="MVType" /></LNodeType>
+            <DOType id="MVType" cdc="MV">
+              <DA name="mag" fc="MX" bType="Struct" type="AnalogueValue" />
+              <DA name="dU" fc="DC" bType="VisString255" />
+            </DOType>
+            <DAType id="AnalogueValue"><BDA name="f" bType="FLOAT32" /></DAType>
+          </DataTypeTemplates>
+        </SCL>
+        """
+    )
+
+    points = SclPointTransformer(doc).transform().yc_points
+
+    assert [(point.reg_addr, point.name) for point in points] == [
+        ("LD0/MMXU1.TotW.mag.f", "一号有功功率"),
+        ("LD0/MMXU2.TotW.mag.f", "二号有功功率"),
+    ]
+
+
 def test_mms_type_keeps_legacy_iec_type_compatibility():
     assert iec_type_from_mms_type(MmsType.UNSIGNED) is IecType.INTEGER
     assert iec_type_from_mms_type(MmsType.BIT_STRING) is IecType.INTEGER

@@ -30,7 +30,11 @@ class TypeResolver:
         self._doc = doc
         self._da_path_cache: dict[tuple[str, str], str | None] = {}
         self._all_das_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
-        self._do_desc_cache: dict[str, str] = {}
+        # Only type-level fallback descriptions are shared.  Instance-level
+        # DOI/DAI values must never be cached by DO name: the same LNodeType is
+        # commonly instantiated many times with a different dU value in every
+        # LN/LD instance.
+        self._do_desc_cache: dict[tuple[str, str], str] = {}
 
     def get_value_da_path(self, do_type_id: str, cdc: str) -> str | None:
         """Return the primary value DA path for a DOType/CDC pair."""
@@ -195,10 +199,17 @@ class TypeResolver:
         doi: SclDOI | None = None,
     ) -> str:
         """Return the best available display description for a DO."""
-        if do_name in self._do_desc_cache:
-            return self._do_desc_cache[do_name]
-        result = self._get_do_desc_impl(do_name, do_type, doi)
-        self._do_desc_cache[do_name] = result
+        # DOI contains instance data.  Two LNs can use the same DO name/type
+        # while declaring different <DAI name="dU"><Val> values, so resolve it
+        # directly instead of allowing the first instance to poison the cache.
+        if doi is not None:
+            return self._get_do_desc_impl(do_name, do_type, doi)
+
+        cache_key = (do_name, do_type.id)
+        if cache_key in self._do_desc_cache:
+            return self._do_desc_cache[cache_key]
+        result = self._get_do_desc_impl(do_name, do_type)
+        self._do_desc_cache[cache_key] = result
         return result
 
     def _get_do_desc_impl(

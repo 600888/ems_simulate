@@ -304,6 +304,10 @@ class IEC61850Server:
         self._loaded_icd_path = ""
         self._last_import_result = None
         self._loaded_ied_ld_insts.clear()
+        # dU values belong to the old model instance. Keeping this mapping
+        # across imports can apply stale descriptions to same-named DOs in the
+        # newly imported SCL model.
+        self._du_descriptions.clear()
         log.info("数据模型已重置，默认 GenericLD 已清除")
 
     # ===== 整改 v2.0: 模型加载与设备启动分离 =====
@@ -420,6 +424,20 @@ class IEC61850Server:
             ):
                 native_attribute_count += 1
         log.info(f"已注册 {native_attribute_count} 个 SCL 固有 DA/BDA 到原生 MMS 模型")
+
+        # dU is instance data and has to be restored after IedServer starts.
+        # Keep this in the model-loading path (rather than only in the upload
+        # API), so device reload/start and direct load_model() callers behave
+        # exactly like a fresh ICD import.
+        loaded_du_descriptions: dict[str, str] = {}
+        for point in loaded_points:
+            if not point.name or not point.reg_addr:
+                continue
+            do_ref = ".".join(point.reg_addr.split(".")[:2])
+            if f"{do_ref}.dU" in self._builder._da_map:
+                loaded_du_descriptions.setdefault(do_ref, point.name)
+        self._du_descriptions = loaded_du_descriptions
+        log.info(f"已从 SCL 模型加载 {len(self._du_descriptions)} 个实例 dU 描述值")
 
         registered_count = 0
 
@@ -1019,9 +1037,14 @@ class IEC61850Server:
         """
         if not descriptions:
             return
-        self._du_descriptions.update(descriptions)
+        applicable = {
+            do_key: desc for do_key, desc in descriptions.items() if desc and f"{do_key}.dU" in self._builder._da_map
+        }
+        if not applicable:
+            return
+        self._du_descriptions.update(applicable)
         log.info(
-            f"已存储 {len(descriptions)} 个 DO 的描述, "
+            f"已存储 {len(applicable)} 个 DO 的描述, "
             f"总计 {len(self._du_descriptions)} 个, "
             f"服务器运行={'是' if self._is_running else '否'}"
         )

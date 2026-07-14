@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from src.proto.iec61850.iec61850_server import IEC61850Server
 from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
 from src.proto.iec61850.plugins.scl.transformer.server_model_builder import SclServerModelBuilder
 
@@ -48,3 +49,34 @@ def test_non_business_intrinsic_attributes_are_kept_in_native_model_catalog():
     assert attributes["PCS01PIGO/LPHD1.Proxy.stVal"]["iec_type"] == "boolean"
     assert attributes["PCS01PIGO/LLN0.NamPlt.vendor"]["iec_type"] == "string"
     assert attributes["PCS01PIGO/GGIO1.AnIn2.sVC.scaleFactor"]["iec_type"] == "float"
+
+
+def test_server_load_model_collects_instance_du_for_device_start_path():
+    result = SclImportService().import_string(
+        """
+        <SCL>
+          <IED name="IED1"><AccessPoint name="AP1"><Server><LDevice inst="LD0">
+            <LN0 lnClass="LLN0" lnType="LLN0Type" />
+            <LN lnClass="MMXU" inst="1" lnType="MMXUType">
+              <DOI name="TotW"><DAI name="dU"><Val>一号有功功率</Val></DAI></DOI>
+            </LN>
+          </LDevice></Server></AccessPoint></IED>
+          <DataTypeTemplates>
+            <LNodeType id="LLN0Type" lnClass="LLN0" />
+            <LNodeType id="MMXUType" lnClass="MMXU"><DO name="TotW" type="MVType" /></LNodeType>
+            <DOType id="MVType" cdc="MV">
+              <DA name="mag" fc="MX" bType="Struct" type="AnalogueValue" />
+              <DA name="dU" fc="DC" bType="VisString255" />
+            </DOType>
+            <DAType id="AnalogueValue"><BDA name="f" bType="FLOAT32" /></DAType>
+          </DataTypeTemplates>
+        </SCL>
+        """,
+        validate=False,
+    )
+    server = IEC61850Server(model_name="IED1", ied_name="IED1")
+    try:
+        assert server.load_model("unused.icd", scl_result=result)
+        assert server._du_descriptions == {"LD0/MMXU1.TotW": "一号有功功率"}
+    finally:
+        server.destroy()

@@ -69,6 +69,15 @@ class BrcbHandler:
     @staticmethod
     def _trigger_gi_direct(conn, rcb_ref: str) -> bool:
         """Use libiec61850's dedicated GI API when available."""
+        # Never call the synchronous raw binding while reports are active. GI
+        # can make the receive thread re-enter Python immediately and deadlock
+        # if the request thread still owns the GIL. Without the safe wrapper,
+        # use the wrapped setRCBValues fallback in trigger_gi instead.
+        trigger = getattr(iec61850, "pyWrap_IedConnection_triggerGIReport", None)
+        if not callable(trigger):
+            log.debug("BRCB GI dedicated API skipped: GIL-safe wrapper unavailable")
+            return False
+
         refs = []
         for ref in (BrcbHandler._normalize_mms_ref(rcb_ref), BrcbHandler._normalize_ref(rcb_ref), rcb_ref):
             if ref and ref not in refs:
@@ -76,7 +85,7 @@ class BrcbHandler:
 
         for ref in refs:
             try:
-                result = iec61850.IedConnection_triggerGIReport(conn, ref)
+                result = trigger(conn, ref)
                 error = BrcbHandler._extract_error(result)
                 if error == iec61850.IED_ERROR_OK:
                     log.info(f"BRCB GI direct trigger ok: {rcb_ref} (ref={ref})")

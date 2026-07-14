@@ -3,9 +3,11 @@ from types import ModuleType
 from unittest.mock import patch
 
 from src.proto.iec61850.core import mms_value
+from src.proto.iec61850.defs.types import ReportDataEntry
 from src.proto.iec61850.plugins.reports import callback
 from src.proto.iec61850.plugins.reports.callback import (
     _infer_report_value_type,
+    _mark_entry_reasons_as_gi,
     _select_report_value_ref,
 )
 from src.proto.iec61850.plugins.reports.report_tree import ReportTreeBuilder, stringify_value
@@ -93,6 +95,20 @@ def test_prefers_full_dataset_member_over_do_only_report_reference():
 
     assert selected == dataset_ref
     assert _infer_report_value_type(selected) == "float"
+
+
+def test_pending_gi_report_normalizes_unknown_inclusion_reasons():
+    entry = ReportDataEntry(
+        data_values={"LD0/MMXU1.TotW.mag.f": 12.5, "__truncated__": "2 values omitted"},
+        reason_codes={"LD0/MMXU1.TotW.mag.f": "unknown", "__truncated__": "local-limit"},
+    )
+
+    _mark_entry_reasons_as_gi(entry)
+
+    assert entry.reason_codes == {
+        "LD0/MMXU1.TotW.mag.f": "gi",
+        "__truncated__": "local-limit",
+    }
 
 
 def test_recursively_converts_analogue_report_structure_without_swig_values():

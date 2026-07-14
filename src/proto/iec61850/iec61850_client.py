@@ -267,7 +267,10 @@ class IEC61850Client:
     @property
     def datamodels(self):
         """获取 DataModels 插件"""
-        return cast(DataModelsPlugin | None, self._plugins.get("datamodels"))
+        plugins = getattr(self, "_plugins", None)
+        if plugins is None:
+            return None
+        return cast(DataModelsPlugin | None, plugins.get("datamodels"))
 
     @property
     def datasets(self) -> DataSetsPlugin | None:
@@ -382,9 +385,14 @@ class IEC61850Client:
             do_refs.append(do_ref)
 
         total_dos = len(do_refs)
+        description_names = {do_ref: self._discovery.description_da_names(do_ref) for do_ref in do_refs}
+        dm = self.datamodels
+        batch_descriptions = dm._read_du_descriptions_batch(description_names) if dm else {}
         for index, do_ref in enumerate(do_refs, start=1):
-            description_das = self._discovery.description_da_names(do_ref)
-            du_desc = "" if description_das == () else self._read_du_description(do_ref)
+            description_das = description_names[do_ref]
+            du_desc = batch_descriptions.get(do_ref, "")
+            if not du_desc and description_das != ():
+                du_desc = self._read_du_description(do_ref)
             if du_desc:
                 # O(1) 索引查找取代 O(N) 内层遍历
                 for p in do_point_index.get(do_ref, []):

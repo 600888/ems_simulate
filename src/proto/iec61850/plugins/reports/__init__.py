@@ -583,13 +583,21 @@ class ReportsPlugin:
         rpt_ena: bool,
         trg_ops: dict[str, bool] | None = None,
         opt_fields: dict[str, bool] | None = None,
+        enable_interval_seconds: float = 0.05,
     ) -> list[tuple[str, bool, str]]:
-        """在同一操作锁内完成一个批次，防止并发批次逐项交叉。"""
+        """在同一操作锁内完成一个批次，防止并发批次逐项交叉。
+
+        批量使能时在相邻 RCB 之间默认等待 50 ms，给 libIEC61850 的接收
+        线程留出处理刚启动报告回调的时间，避免连续创建订阅并写入
+        ``RptEna=True`` 时放大原生回调竞态。批量禁用不需要该节流。
+        """
         results: list[tuple[str, bool, str]] = []
+        enable_interval_seconds = max(0.0, enable_interval_seconds)
         with self._operation_lock:
             if not self._ensure_connection():
                 return [(rcb_ref, False, "独立报告连接不可用") for rcb_ref in rcb_refs]
-            for rcb_ref in rcb_refs:
+            last_index = len(rcb_refs) - 1
+            for index, rcb_ref in enumerate(rcb_refs):
                 try:
                     # 批次中不做会清空其他已成功订阅的全连接重建；单项失败
                     # 只影响本项，下一项仍可继续。
@@ -598,6 +606,8 @@ class ReportsPlugin:
                 except Exception as exc:
                     log.error(f"批量应用报告配置异常: ref={rcb_ref}, {exc}", exc_info=True)
                     results.append((rcb_ref, False, str(exc)))
+                if rpt_ena and index < last_index and enable_interval_seconds > 0:
+                    time.sleep(enable_interval_seconds)
         return results
 
     def _apply_config_once(

@@ -135,7 +135,7 @@ class UrcbHandler:
                 if not value:
                     failures.append(f"{attr_ref}: create-boolean-failed")
                     continue
-                result = iec61850.IedConnection_writeObject(conn, attr_ref, fc_rp, value)
+                result = call_gil_safe(iec61850, "IedConnection_writeObject", conn, attr_ref, fc_rp, value)
                 error = UrcbHandler._extract_error(result)
                 if error == iec61850.IED_ERROR_OK:
                     log.info(f"URCB GI 直接写属性成功: ref={rcb_ref}, attr={attr_ref}")
@@ -155,6 +155,16 @@ class UrcbHandler:
     @staticmethod
     def _trigger_gi_direct(conn, rcb_ref: str) -> bool:
         """Use libiec61850's dedicated GI API when available."""
+        # The synchronous binding can keep the GIL while the IED immediately
+        # sends the GI report. The receive thread then waits for the GIL while
+        # this thread waits for the MMS response, deadlocking the backend.
+        # Only use the dedicated API when the binding exposes its GIL-releasing
+        # wrapper; otherwise fall back to the wrapped writeObject path below.
+        trigger = getattr(iec61850, "pyWrap_IedConnection_triggerGIReport", None)
+        if not callable(trigger):
+            log.debug("URCB GI dedicated API skipped: GIL-safe wrapper unavailable")
+            return False
+
         refs = []
         for nref in UrcbHandler._candidate_refs(rcb_ref):
             for ref in (UrcbHandler._normalize_mms_ref(nref), nref):
@@ -163,7 +173,7 @@ class UrcbHandler:
 
         for ref in refs:
             try:
-                result = iec61850.IedConnection_triggerGIReport(conn, ref)
+                result = trigger(conn, ref)
                 error = UrcbHandler._extract_error(result)
                 if error == iec61850.IED_ERROR_OK:
                     log.info(f"URCB GI direct trigger ok: {rcb_ref} (ref={ref})")

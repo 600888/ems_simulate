@@ -5,7 +5,11 @@ from src.proto.iec61850.core.native_calls import call_gil_safe
 from src.proto.iec61850.iec61850_client import IEC61850Client
 from src.proto.iec61850.plugins import reports as reports_module
 from src.proto.iec61850.plugins.reports import ReportsPlugin
+from src.proto.iec61850.plugins.reports import brcb as brcb_module
 from src.proto.iec61850.plugins.reports import callback as callback_module
+from src.proto.iec61850.plugins.reports import urcb as urcb_module
+from src.proto.iec61850.plugins.reports.brcb import BrcbHandler
+from src.proto.iec61850.plugins.reports.urcb import UrcbHandler
 
 
 def test_gil_safe_call_prefers_binding_wrapper():
@@ -17,6 +21,54 @@ def test_gil_safe_call_prefers_binding_wrapper():
 
     assert call_gil_safe(native, "IedConnection_readObject", "conn", "ref", "fc") == "value"
     assert calls == [("safe", ("conn", "ref", "fc"))]
+
+
+def test_urcb_gi_skips_raw_dedicated_api_without_safe_wrapper(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        urcb_module,
+        "iec61850",
+        SimpleNamespace(IedConnection_triggerGIReport=lambda *_args: calls.append("raw") or 0),
+        raising=False,
+    )
+
+    assert UrcbHandler._trigger_gi_direct(object(), "LD0/LLN0.rp01") is False
+    assert calls == []
+
+
+def test_brcb_gi_skips_raw_dedicated_api_without_safe_wrapper(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        brcb_module,
+        "iec61850",
+        SimpleNamespace(IedConnection_triggerGIReport=lambda *_args: calls.append("raw") or 0),
+        raising=False,
+    )
+
+    assert BrcbHandler._trigger_gi_direct(object(), "LD0/LLN0.br01") is False
+    assert calls == []
+
+
+def test_urcb_gi_attribute_write_uses_safe_wrapper(monkeypatch):
+    calls = []
+    value = object()
+    fake_native = SimpleNamespace(
+        IEC61850_FC_RP=99,
+        IED_ERROR_OK=0,
+        MmsValue_newBoolean=lambda enabled: value if enabled else None,
+        MmsValue_delete=lambda item: calls.append(("delete", item)),
+        pyWrap_IedConnection_writeObject=lambda *args: calls.append(("safe", args)) or 0,
+        IedConnection_writeObject=lambda *_args: calls.append(("raw",)) or 0,
+    )
+    monkeypatch.setattr(urcb_module, "iec61850", fake_native, raising=False)
+    monkeypatch.setattr(UrcbHandler, "_gi_attribute_refs", lambda _ref: ["LD0/LLN0.rp01.GI"])
+
+    connection = object()
+    assert UrcbHandler._trigger_gi_write_object(connection, "LD0/LLN0.rp01") is True
+    assert calls == [
+        ("safe", (connection, "LD0/LLN0.rp01.GI", 99, value)),
+        ("delete", value),
+    ]
 
 
 def test_client_uses_a_dedicated_report_connection(monkeypatch):
@@ -147,6 +199,46 @@ def test_prepare_disconnect_disables_reports_before_uninstall(monkeypatch):
         ("idle", connection, 3.0),
         ("uninstall", connection),
     ]
+
+
+def test_batch_enable_waits_50ms_between_rcbs(monkeypatch):
+    plugin = ReportsPlugin()
+    plugin._connection = SimpleNamespace(is_connected=True)
+    events = []
+
+    monkeypatch.setattr(
+        plugin,
+        "_apply_config_once",
+        lambda ref, *_args: events.append(("apply", ref)) or True,
+    )
+    monkeypatch.setattr(reports_module.time, "sleep", lambda seconds: events.append(("sleep", seconds)))
+
+    refs = ["LD0/LLN0.rp01", "LD0/LLN0.rp02", "LD0/LLN0.rp03"]
+    assert plugin.apply_config_batch(refs, rpt_ena=True) == [(ref, True, "") for ref in refs]
+    assert events == [
+        ("apply", refs[0]),
+        ("sleep", 0.05),
+        ("apply", refs[1]),
+        ("sleep", 0.05),
+        ("apply", refs[2]),
+    ]
+
+
+def test_batch_disable_does_not_wait_between_rcbs(monkeypatch):
+    plugin = ReportsPlugin()
+    plugin._connection = SimpleNamespace(is_connected=True)
+    events = []
+
+    monkeypatch.setattr(
+        plugin,
+        "_apply_config_once",
+        lambda ref, *_args: events.append(("apply", ref)) or True,
+    )
+    monkeypatch.setattr(reports_module.time, "sleep", lambda seconds: events.append(("sleep", seconds)))
+
+    refs = ["LD0/LLN0.rp01", "LD0/LLN0.rp02"]
+    assert plugin.apply_config_batch(refs, rpt_ena=False) == [(ref, True, "") for ref in refs]
+    assert events == [("apply", refs[0]), ("apply", refs[1])]
 
 
 def test_report_install_subscribes_outside_callback_lock(monkeypatch):

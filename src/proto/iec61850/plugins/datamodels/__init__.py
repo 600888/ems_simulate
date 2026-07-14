@@ -392,6 +392,82 @@ class DataModelsPlugin:
         log.debug(f"读取描述失败 (尝试 dU/d, DC/CF 均无): {do_ref}")
         return ""
 
+    def _read_du_descriptions_batch(
+        self,
+        description_names: dict[str, tuple[str, ...]],
+        chunk_size: int = 256,
+    ) -> dict[str, str]:
+        """Read DO descriptions with one MMS request per domain/chunk.
+
+        ``IedConnection_readStringValue`` incurs a full request/response for
+        every DO. Large models can contain thousands of dU attributes, so use
+        MMS ReadMultipleVariables for the standard DC form and leave unusual
+        CF/type combinations to the caller's single-value fallback.
+        """
+        if not description_names or not self._connection or not self._connection.is_connected:
+            return {}
+
+        grouped: dict[str, list[tuple[str, str]]] = {}
+        for do_ref, names in description_names.items():
+            if "/" not in do_ref or "." not in do_ref:
+                continue
+            names = names or ()
+            domain, object_ref = do_ref.split("/", 1)
+            ln_name, do_name = object_ref.split(".", 1)
+            da_name = "dU" if "dU" in names else "d" if "d" in names else ""
+            if not da_name:
+                continue
+            item_id = f"{ln_name}$DC${do_name.replace('.', '$')}${da_name}"
+            grouped.setdefault(domain, []).append((do_ref, item_id))
+
+        descriptions: dict[str, str] = {}
+        try:
+            with self._connection.native_operation() as conn:
+                if conn is None:
+                    return {}
+                mms_conn = iec61850.IedConnection_getMmsConnection(conn)
+                if not mms_conn:
+                    return {}
+                for domain, entries in grouped.items():
+                    for offset in range(0, len(entries), chunk_size):
+                        chunk = entries[offset : offset + chunk_size]
+                        item_list = iec61850.LinkedList_create()
+                        values = None
+                        try:
+                            for _, item_id in chunk:
+                                iec61850.LinkedList_addStringCopy(item_list, item_id)
+                            values = iec61850.MmsConnection_readMultipleVariables(
+                                mms_conn,
+                                None,
+                                domain,
+                                item_list,
+                            )
+                            if not values:
+                                continue
+                            value_count = iec61850.MmsValue_getArraySize(values)
+                            for index, (do_ref, _) in enumerate(chunk[:value_count]):
+                                value = iec61850.MmsValue_getElement(values, index)
+                                if not value or iec61850.MmsValue_getType(value) not in (
+                                    iec61850.MMS_VISIBLE_STRING,
+                                    iec61850.MMS_STRING,
+                                ):
+                                    continue
+                                description = str(iec61850.MmsValue_toString(value) or "").strip()
+                                if description:
+                                    descriptions[do_ref] = description
+                        except Exception as exc:
+                            log.debug(
+                                f"批量读取 dU 描述失败: domain={domain}, "
+                                f"count={len(chunk)}, error={exc}; 未完成项将回退单点读取"
+                            )
+                        finally:
+                            if values:
+                                iec61850.MmsValue_delete(values)
+                            iec61850.LinkedList_destroyDeepStringFree(item_list)
+        except Exception as exc:
+            log.debug(f"批量读取 dU 描述失败，未完成项将回退单点读取: {exc}")
+        return descriptions
+
     def _extract_code_from_address(self, address: str) -> str:
         """从 address 中提取短编码"""
         parsed = parse_ref(address)
