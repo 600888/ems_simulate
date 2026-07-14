@@ -24,6 +24,7 @@ from ...defs.da_patterns import (
     KNOWN_BDA_FALLBACK_ONLINE,
     SKIP_DA_NAMES,
     STRUCT_DA_EXPAND_ONLINE,
+    get_intrinsic_da_override,
 )
 from ...defs.ln_classes import (
     SIGNAL_DOS,
@@ -154,9 +155,13 @@ class DataModelsPlugin:
                 return []
             das = get_list_from_linked_list(da_list)
             da_items = []
+            do_frame_type = self._infer_frame_type_from_do(ln, do_name)
             for da_name in das:
                 da_info = {"name": da_name, "path": da_name, "fc": "", "type": ""}
-                if da_name in DA_PATTERNS:
+                intrinsic_override = get_intrinsic_da_override(do_name, da_name)
+                if intrinsic_override:
+                    da_info["fc"], da_info["type"] = intrinsic_override
+                elif da_name in DA_PATTERNS:
                     full_path, frame_type, _ = DA_PATTERNS[da_name]
                     da_info["path"] = full_path
                     type_names = {0: "Float32", 1: "Boolean", 2: "Boolean", 3: "Float32"}
@@ -166,8 +171,8 @@ class DataModelsPlugin:
                 elif da_name in EXTRA_DA_INFO:
                     full_path, fc, type_desc = EXTRA_DA_INFO[da_name]
                     da_info["path"] = full_path
-                    da_info["fc"] = fc
-                    da_info["type"] = type_desc
+                    da_info["fc"] = "ST" if da_name in ("q", "t") and do_frame_type == 1 else fc
+                    da_info["type"] = "bitstring" if da_name == "q" else type_desc
                 else:
                     da_info["type"] = "Unknown"
                 da_items.append(da_info)
@@ -291,8 +296,16 @@ class DataModelsPlugin:
                 return []
             das = get_list_from_linked_list(da_list)
             found = []
+            do_name = do_ref.rsplit(".", 1)[-1]
             for da_name in das:
-                if da_name in DA_PATTERNS:
+                intrinsic_override = get_intrinsic_da_override(do_name, da_name)
+                if intrinsic_override:
+                    if da_name in SKIP_DA_NAMES:
+                        continue
+                    fc, iec_type = intrinsic_override
+                    frame_type = 1 if fc == "ST" else 0
+                    found.append((da_name, frame_type, fc, iec_type))
+                elif da_name in DA_PATTERNS:
                     da_path, frame_type, iec_type = DA_PATTERNS[da_name]
                     fc_map = {0: "MX", 1: "ST", 2: "CO", 3: "SP"}
                     fc = fc_map.get(frame_type, "")
@@ -329,9 +342,13 @@ class DataModelsPlugin:
             if error == iec61850.IED_ERROR_OK and da_list is not None:
                 das = get_list_from_linked_list(da_list)
                 found = []
+                do_name = parent_ref.split(".", 1)[1].split(".", 1)[0] if "." in parent_ref else ""
                 for bda_name in das:
                     full_path = f"{parent_path_prefix}.{bda_name}"
-                    iec_type = BDA_TYPE_MAP.get(bda_name, IEC_TYPE_UNKNOWN)
+                    intrinsic_override = get_intrinsic_da_override(do_name, bda_name)
+                    iec_type = (
+                        intrinsic_override[1] if intrinsic_override else BDA_TYPE_MAP.get(bda_name, IEC_TYPE_UNKNOWN)
+                    )
                     found.append((full_path, 1, parent_fc, iec_type))
                 if found:
                     return found

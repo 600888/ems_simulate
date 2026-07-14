@@ -167,7 +167,7 @@ def infer_mms_type_from_path(path: str, iec_type: str | IecType = IecType.UNKNOW
         return MmsType.BOOLEAN
     if leaf in ("ctlNum", "onDur", "offDur", "numPls"):
         return MmsType.UNSIGNED
-    if leaf in ("origin", "pulseConfig"):
+    if leaf in ("origin", "pulseConfig", "sVC"):
         return MmsType.STRUCTURE
     if leaf in ("q", "subQ", "Check"):
         return MmsType.BIT_STRING

@@ -61,9 +61,54 @@ ENC_DO_DA_TYPE_OVERRIDE = {
     "Pos": {"stVal": IEC_TYPE_INTEGER},
 }
 
+INTRINSIC_DO_DA_OVERRIDE: dict[str, dict[str, tuple[str, str]]] = {
+    "Mod": {
+        "stVal": ("ST", IEC_TYPE_INTEGER),
+        "ctlVal": ("CO", IEC_TYPE_INTEGER),
+        "q": ("ST", "bitstring"),
+        "t": ("ST", IEC_TYPE_TIMESTAMP),
+        "ctlModel": ("CF", IEC_TYPE_INTEGER),
+    },
+    "Beh": {
+        "stVal": ("ST", IEC_TYPE_INTEGER),
+        "q": ("ST", "bitstring"),
+        "t": ("ST", IEC_TYPE_TIMESTAMP),
+    },
+    "Health": {
+        "stVal": ("ST", IEC_TYPE_INTEGER),
+        "q": ("ST", "bitstring"),
+        "t": ("ST", IEC_TYPE_TIMESTAMP),
+    },
+    "PhyHealth": {
+        "stVal": ("ST", IEC_TYPE_INTEGER),
+        "q": ("ST", "bitstring"),
+        "t": ("ST", IEC_TYPE_TIMESTAMP),
+    },
+    "Pos": {
+        "stVal": ("ST", IEC_TYPE_INTEGER),
+        "ctlVal": ("CO", IEC_TYPE_INTEGER),
+        "q": ("ST", "bitstring"),
+        "t": ("ST", IEC_TYPE_TIMESTAMP),
+    },
+    "Proxy": {
+        "stVal": ("ST", IEC_TYPE_BOOLEAN),
+        "q": ("ST", "bitstring"),
+        "t": ("ST", IEC_TYPE_TIMESTAMP),
+    },
+}
+
+
+def get_intrinsic_da_override(do_name: str, da_name: str) -> tuple[str, str] | None:
+    return INTRINSIC_DO_DA_OVERRIDE.get(do_name, {}).get(da_name)
+
+
 # 附加 DA (元数据类) - 这些不是主值, 但需要在树形表格中显示
 # 映射格式: DA名 -> (完整DA路径, FC, iec_type)
 EXTRA_DA_INFO = {
+    "ctlModel": ("ctlModel", "CF", IEC_TYPE_INTEGER),
+    "sboTimeout": ("sboTimeout", "CF", IEC_TYPE_INTEGER),
+    "sboClass": ("sboClass", "CF", IEC_TYPE_INTEGER),
+    "sVC": ("sVC", "CF", "struct"),
     "q": ("q", "MX", IEC_TYPE_INTEGER),  # 品质 (Quality struct - Pack32 / BitString)
     "t": ("t", "MX", IEC_TYPE_TIMESTAMP),  # 时标 (Timestamp struct)
     "du": ("du", "DC", IEC_TYPE_STRING),  # 描述 (Description string) - 小写兼容
@@ -109,6 +154,7 @@ SKIP_DA_NAMES = frozenset(
         "ctlModel",  # 控制模型配置
         "sboTimeout",  # SBO 超时配置
         "sboClass",  # SBO 类别配置
+        "sVC",  # 换算值配置结构
         # NamPlt/PhyNam 铭牌字符串 DA, 大部分服务器不支持 MMS 读取
         "vendor",
         "swRev",
@@ -152,16 +198,20 @@ BDA_TYPE_MAP = {
     # AnalogValue (mag/instMag) 的子 DA
     "f": IEC_TYPE_FLOAT,  # FLOAT32
     "i": IEC_TYPE_INTEGER,  # INTEGER32
+    # ScaledValueConfig (sVC) 的 BDA
+    "scaleFactor": IEC_TYPE_FLOAT,
+    "offset": IEC_TYPE_FLOAT,
 }
 
 # 需要递归展开子 BDA 的 struct DA 名称
 # q 和 t 展开为子测点 (如 q.validity, t.seconds 等), origin 展开为测点
-STRUCT_DA_EXPAND_ONLINE = {"origin", "pulseConfig", "q", "t"}
+STRUCT_DA_EXPAND_ONLINE = {"origin", "pulseConfig", "q", "sVC", "t"}
 
 # 已知 struct DA 的硬编码 BDA 子节点 (当在线发现子 DA 失败时使用)
 KNOWN_BDA_FALLBACK_ONLINE = {
     "origin": ["orCat", "orIdent"],
     "pulseConfig": ["cmdQual", "onDur", "offDur", "numPls"],
+    "sVC": ["scaleFactor", "offset"],
     # Quality (q) 的 BDA 子节点
     "q": ["validity", "detailQuality", "source", "operatorBlocked", "test"],
     # Timestamp (t) 的 BDA 子节点

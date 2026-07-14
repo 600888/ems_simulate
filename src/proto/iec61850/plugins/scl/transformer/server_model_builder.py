@@ -15,6 +15,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from typing import Any
+
 from ....defs.mms_types import mms_type_from_btype
 from ....model.ied_model import (
     DARef,
@@ -37,6 +40,7 @@ from ..model.scl_document import (
     SclLDevice,
     SclLN,
 )
+from ..parser.type_resolver import TypeResolver
 
 
 class SclServerModelBuilder:
@@ -76,6 +80,44 @@ class SclServerModelBuilder:
             discover_time=time.strftime("%Y-%m-%d %H:%M:%S"),
             lds=tuple(lds),
         )
+
+    def iter_leaf_attributes(self, ied_name: str = "") -> Iterator[dict[str, Any]]:
+        """Yield every native DA/BDA leaf declared by the selected IED's SCL types.
+
+        This is intentionally broader than the business point transformer: q, t,
+        ctlModel, dU and other intrinsic model attributes belong in the MMS model
+        even though they must not become independently polled business points.
+        """
+        resolver = TypeResolver(self._doc)
+        for ied in self._doc.ieds:
+            if ied_name and ied.name != ied_name:
+                continue
+            for access_point in ied.access_points:
+                if not access_point.server:
+                    continue
+                for ld in access_point.server.ldevices:
+                    logical_nodes = ([ld.ln0] + ld.lns) if ld.ln0 else ld.lns
+                    for ln in logical_nodes:
+                        ln_type = self._doc.get_ln_node_type(ln.ln_type) if ln.ln_type else None
+                        if not ln_type:
+                            continue
+                        for do_def in ln_type.dos:
+                            do_type = self._doc.get_do_type(do_def.type_id)
+                            if not do_type:
+                                continue
+                            category = CDC_CATEGORY_MAP.get(do_type.cdc)
+                            frame_type = category.value if category is not None else -1
+                            for da in resolver.collect_all_das(do_def.type_id, do_type.cdc):
+                                yield {
+                                    "ref": f"{ld.inst}/{ln.ln_name}.{do_def.name}.{da['path']}",
+                                    "frame_type": frame_type,
+                                    "fc": str(da.get("fc") or ""),
+                                    "iec_type": str(da.get("iecType") or "unknown"),
+                                    "mms_type": str(da.get("mmsType") or "MMS_UNKNOWN"),
+                                    "dchg": bool(da.get("dchg", False)),
+                                    "qchg": bool(da.get("qchg", False)),
+                                    "dupd": bool(da.get("dupd", False)),
+                                }
 
     def _build_ld(self, ld: SclLDevice) -> LDModel | None:
         """构建 LDModel"""

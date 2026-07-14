@@ -428,11 +428,15 @@ export async function getIEC61850TreeData(
 export async function iec61850ReadPoint(
   channelId: number,
   pointCode: string,
-): Promise<{ value: number | null; point_code: string; mms_type: string } | null> {
+  fc: string = '',
+  mmsType: string = '',
+): Promise<{ value: unknown; point_code: string; mms_type: string } | null> {
   try {
     return await requestApi(CHANNEL_API.IEC61850_READ_POINT, 'post', {
       channel_id: channelId,
       point_code: pointCode,
+      fc,
+      mms_type: mmsType,
     });
   } catch (error) {
     console.error('Error reading IEC61850 point:', error);

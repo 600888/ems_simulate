@@ -5,10 +5,146 @@ from types import SimpleNamespace
 import pytest
 import xmltodict
 
+from src.proto.iec61850.core.reader import Iec61850Reader
 from src.proto.iec61850.model import discovery as discovery_module
 from src.proto.iec61850.model.discovery import ModelDiscoveryService
-from src.proto.iec61850.model.ied_model import DataSetRef, IedModel, LDModel, LNModel, RCBRef
+from src.proto.iec61850.model.ied_model import DataSetRef, DORef, IedModel, LDModel, LNModel, RCBRef
 from src.proto.iec61850.plugins.model_exporter.exporters.icd import IcdExporter
+
+
+@pytest.mark.parametrize("do_name", ["Mod", "Beh", "Health", "PhyHealth", "Pos"])
+def test_intrinsic_enumerated_status_value_is_integer(do_name):
+    da = ModelDiscoveryService._resolve_da_info("stVal", do_name, "LLN0", 1)
+
+    assert da.fc == "ST"
+    assert da.iec_type == "integer"
+
+
+def test_proxy_sps_status_value_remains_boolean():
+    da = ModelDiscoveryService._resolve_da_info("stVal", "Proxy", "LPHD1", 1)
+
+    assert da.fc == "ST"
+    assert da.iec_type == "boolean"
+
+
+def test_online_discovery_keeps_intrinsic_status_attributes(monkeypatch):
+    directories = {
+        "LD0/LLN0.Mod": ["stVal", "q", "t", "ctlModel", "Oper"],
+        "LD0/LLN0.Mod.q": ["validity", "source", "test"],
+        "LD0/LLN0.Mod.t": ["seconds", "fraction", "TimeAccuracy"],
+        "LD0/LLN0.Mod.Oper": ["ctlVal", "ctlNum"],
+    }
+    fake_iec61850 = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IedConnection_getDataDirectory=lambda _conn, ref: (directories.get(ref, []), 0),
+    )
+    monkeypatch.setattr(discovery_module, "iec61850", fake_iec61850, raising=False)
+    monkeypatch.setattr(discovery_module, "get_list_from_linked_list", list)
+
+    service = ModelDiscoveryService()
+    monkeypatch.setattr(
+        service,
+        "_resolve_leaf_mms_type",
+        lambda _conn, _ref, _fc, fallback: fallback,
+    )
+    das = service._discover_data_attributes(object(), "LD0/LLN0.Mod", "Mod", "LLN0", 1)
+    by_name = {da.name: da for da in das}
+
+    assert by_name["stVal"].fc == "ST"
+    assert by_name["stVal"].iec_type == "integer"
+    assert by_name["q"].fc == "ST"
+    assert by_name["q"].iec_type == "bitstring"
+    assert by_name["q"].path == "q"
+    assert by_name["t"].fc == "ST"
+    assert by_name["t"].iec_type == "timestamp"
+    assert by_name["t"].path == "t"
+    assert by_name["ctlModel"].fc == "CF"
+    assert by_name["ctlModel"].iec_type == "integer"
+    assert by_name["Oper"].iec_type == "integer"
+    assert next(child for child in by_name["Oper"].sub_das if child.name == "ctlVal").iec_type == "integer"
+
+
+def test_online_discovery_keeps_non_point_nameplate_attributes(monkeypatch):
+    fake_iec61850 = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IedConnection_getDataDirectory=lambda _conn, _ref: (["vendor", "swRev", "configRev"], 0),
+    )
+    monkeypatch.setattr(discovery_module, "iec61850", fake_iec61850, raising=False)
+    monkeypatch.setattr(discovery_module, "get_list_from_linked_list", list)
+
+    service = ModelDiscoveryService()
+    monkeypatch.setattr(
+        service,
+        "_resolve_leaf_mms_type",
+        lambda _conn, _ref, _fc, fallback: fallback,
+    )
+    das = service._discover_data_attributes(object(), "LD0/LLN0.NamPlt", "NamPlt", "LLN0", 1)
+    by_name = {da.name: da for da in das}
+
+    for da_name in ("vendor", "swRev", "configRev"):
+        assert by_name[da_name].fc == "DC"
+        assert by_name[da_name].iec_type == "string"
+
+
+def test_scaled_value_config_is_cf_structure_and_not_a_business_point(monkeypatch):
+    directories = {
+        "LD0/GGIO1.AnIn1": ["mag", "sVC"],
+        "LD0/GGIO1.AnIn1.mag": ["f"],
+        "LD0/GGIO1.AnIn1.sVC": ["scaleFactor", "offset"],
+    }
+    fake_iec61850 = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IedConnection_getDataDirectory=lambda _conn, ref: (directories.get(ref, []), 0),
+    )
+    monkeypatch.setattr(discovery_module, "iec61850", fake_iec61850, raising=False)
+    monkeypatch.setattr(discovery_module, "get_list_from_linked_list", list)
+
+    service = ModelDiscoveryService()
+    monkeypatch.setattr(
+        service,
+        "_resolve_leaf_mms_type",
+        lambda _conn, _ref, _fc, fallback: fallback,
+    )
+    das = service._discover_data_attributes(object(), "LD0/GGIO1.AnIn1", "AnIn1", "GGIO1", 0)
+    svc = next(da for da in das if da.name == "sVC")
+
+    assert svc.fc == "CF"
+    assert svc.iec_type == "float"
+    assert svc.mms_type is discovery_module.MmsType.STRUCTURE
+    assert [(child.name, child.iec_type, child.mms_type) for child in svc.sub_das] == [
+        ("scaleFactor", "float", discovery_module.MmsType.FLOAT),
+        ("offset", "float", discovery_module.MmsType.FLOAT),
+    ]
+
+    model = IedModel(
+        lds=(
+            LDModel(
+                name="LD0",
+                lns=(
+                    LNModel(
+                        name="GGIO1",
+                        dos=(DORef(name="AnIn1", ref="LD0/GGIO1.AnIn1", frame_type=0, das=tuple(das)),),
+                    ),
+                ),
+            ),
+        )
+    )
+    assert all(".sVC" not in address for address in model.point_refs)
+
+
+def test_direct_model_read_does_not_duplicate_qualified_ied_domain():
+    connection = SimpleNamespace(model_name="PCS01", _discovered_lds=())
+    reader = Iec61850Reader(connection)
+
+    assert reader._build_ref("PCS01PIGO/GGIO1.AnIn1.sVC.scaleFactor") == "PCS01PIGO/GGIO1.AnIn1.sVC.scaleFactor"
+    assert reader._build_ref("PIGO/GGIO1.AnIn1.sVC.offset") == "PCS01PIGO/GGIO1.AnIn1.sVC.offset"
+
+
+def test_direct_model_read_trusts_discovered_domain_over_configured_model_name():
+    connection = SimpleNamespace(model_name="ZCA-110", _discovered_lds=("PCS01PIGO",))
+    reader = Iec61850Reader(connection)
+
+    assert reader._build_ref("PCS01PIGO/GGIO1.AnIn1.sVC.scaleFactor") == "PCS01PIGO/GGIO1.AnIn1.sVC.scaleFactor"
 
 
 def test_set_mag_integer_child_is_discovered_and_registered(monkeypatch):

@@ -92,6 +92,43 @@ def test_tree_data_from_model_keeps_non_point_model_nodes():
     assert tree["items"][0]["children"][0]["da_path"] == "vendor"
 
 
+def test_tree_data_gives_direct_read_codes_to_non_point_structure_leaves():
+    svc = DARef(
+        name="sVC",
+        path="sVC.scaleFactor",
+        fc="CF",
+        iec_type="float",
+        mms_type="MMS_STRUCTURE",
+        sub_das=(
+            DARef(name="scaleFactor", path="sVC.scaleFactor", fc="CF", iec_type="float", mms_type="MMS_FLOAT"),
+            DARef(name="offset", path="sVC.offset", fc="CF", iec_type="float", mms_type="MMS_FLOAT"),
+        ),
+    )
+    model = IedModel(
+        lds=(
+            LDModel(
+                name="PCS01PIGO",
+                lns=(
+                    LNModel(
+                        name="GGIO1",
+                        ref="PCS01PIGO/GGIO1",
+                        dos=(DORef(name="AnIn1", ref="PCS01PIGO/GGIO1.AnIn1", frame_type=0, das=(svc,)),),
+                    ),
+                ),
+            ),
+        )
+    )
+
+    tree = _build_iec61850_tree_from_model(model, [], category="DataModel")
+    svc_node = tree["items"][0]["children"][0]
+
+    assert svc_node["point_code"] == ""
+    assert [child["point_code"] for child in svc_node["children"]] == [
+        "PCS01PIGO/GGIO1.AnIn1.sVC.scaleFactor",
+        "PCS01PIGO/GGIO1.AnIn1.sVC.offset",
+    ]
+
+
 def test_server_fallback_tree_infers_standard_mms_types():
     point = BasePoint(
         address="LD0/MMXU1.TotW.mag.f",

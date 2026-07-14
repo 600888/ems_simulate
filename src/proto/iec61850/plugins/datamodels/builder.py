@@ -397,6 +397,9 @@ class IedModelBuilder:
         leaf_da = self._da_map.get(leaf_key)
         if leaf_da is not None:
             self._point_attrs[addr_str] = leaf_da
+            standard_type = {"q": "quality", "t": "timestamp", "dU": "string"}.get(da_parts[-1])
+            if standard_type and not any(item[0] is leaf_da for item in self._standard_bda_list):
+                self._standard_bda_list.append((leaf_da, da_parts[-1], standard_type))
 
         return ref
 

@@ -27,6 +27,7 @@ from ..defs.da_patterns import (
     KNOWN_BDA_FALLBACK_ONLINE,
     SKIP_DA_NAMES,
     STRUCT_DA_EXPAND_ONLINE,
+    get_intrinsic_da_override,
 )
 from ..defs.ln_classes import (
     SIGNAL_DOS,
@@ -714,8 +715,7 @@ class ModelDiscoveryService:
     ) -> list[DARef]:
         """发现 DO 下所有 DA
 
-        q/t/dU 是 IEC 61850 固有属性，不动态发现，默认硬编码创建。
-        即使 MMS getDataDirectory 调用失败，也会返回 q/t/dU 元数据 DA。
+        优先保留 MMS 目录返回的全部固有属性；当目录缺少 q/t/dU 时再补齐默认项。
         """
         da_refs = []
 
@@ -735,10 +735,7 @@ class ModelDiscoveryService:
             da_names = []
 
         for da_name in da_names:
-            # 跳过元数据 DA (q/t/dU 等), 稍后硬编码添加
-            if da_name in SKIP_DA_NAMES:
-                continue
-
+            # 模型树保留全部 DA；业务测点注册阶段会单独过滤固有元数据。
             da_full_ref = f"{do_ref}.{da_name}"
 
             # 解析 DA 信息 (fc, iec_type, path)
@@ -791,12 +788,16 @@ class ModelDiscoveryService:
             if sub_das:
                 # Oper/SBOw/Cancel 是控制命令结构，目录顺序经常以 Check/T
                 # 开头；其主值必须固定为 ctlVal，不能取第一个子属性。
-                preferred_sub_da = None
-                if da_name in ("Oper", "SBOw", "Cancel"):
-                    preferred_sub_da = next((sub_da for sub_da in sub_das if sub_da.name == "ctlVal"), None)
-                value_sub_da = preferred_sub_da or sub_das[0]
-                effective_da_path = f"{da_name}.{value_sub_da.name}"
-                effective_iec_type = value_sub_da.iec_type
+                if da_name in ("q", "t"):
+                    effective_da_path = da_info.path
+                    effective_iec_type = da_info.iec_type
+                else:
+                    preferred_sub_da = None
+                    if da_name in ("Oper", "SBOw", "Cancel"):
+                        preferred_sub_da = next((sub_da for sub_da in sub_das if sub_da.name == "ctlVal"), None)
+                    value_sub_da = preferred_sub_da or sub_das[0]
+                    effective_da_path = f"{da_name}.{value_sub_da.name}"
+                    effective_iec_type = value_sub_da.iec_type
                 mms_type = MmsType.STRUCTURE
             else:
                 effective_da_path = da_info.path
@@ -817,15 +818,27 @@ class ModelDiscoveryService:
                 )
             )
 
-        # 默认硬编码创建 q/t/dU (IEC 61850 固有属性)。控制对象的
+        # 仅补齐目录中缺失的 q/t/dU (IEC 61850 固有属性)。控制对象的
         # Oper/SBOw 等 FC=CO 属性不具备可读的 q/t，不能为其伪造元数据。
-        is_control_object = any(da.fc == "CO" or any(sub_da.fc == "CO" for sub_da in da.sub_das) for da in da_refs)
+        has_control = any(da.fc == "CO" or any(sub_da.fc == "CO" for sub_da in da.sub_das) for da in da_refs)
+        has_status_or_measurement = any(da.fc in ("ST", "MX") for da in da_refs)
+        is_control_object = has_control and not has_status_or_measurement
 
         # 即使 MMS 调用失败，也确保普通状态/测量 DO 包含这些元数据 DA
         # q 和 t 是结构化类型, 展开子 DA (如 q.validity, t.seconds) 以便 MMS 读取
+        existing_da_names = {da.name for da in da_refs}
         for da_name, da_path, da_fc, da_iec_type in self._DEFAULT_META_DAS:
+            if da_name in existing_da_names:
+                continue
             if is_control_object and da_name in ("q", "t"):
                 continue
+            intrinsic_override = get_intrinsic_da_override(do_name, da_name)
+            if intrinsic_override:
+                da_fc, da_iec_type = intrinsic_override
+            elif da_name in ("q", "t") and (do_frame_type == 1 or any(da.fc == "ST" for da in da_refs)):
+                da_fc = "ST"
+            if da_name == "q":
+                da_iec_type = "bitstring"
             meta_sub_das: tuple[DARef, ...] = ()
             if da_name in ("q", "t") and da_name in KNOWN_BDA_FALLBACK_ONLINE:
                 bda_refs: list[DARef] = []
@@ -900,8 +913,10 @@ class ModelDiscoveryService:
                 return sub_das
 
             bda_names = get_list_from_linked_list(bda_list)
+            do_name = parent_ref.split(".", 1)[1].split(".", 1)[0] if "." in parent_ref else ""
             for bda_name in bda_names:
-                bda_type = BDA_TYPE_MAP.get(bda_name, "unknown")
+                intrinsic_override = get_intrinsic_da_override(do_name, bda_name)
+                bda_type = intrinsic_override[1] if intrinsic_override else BDA_TYPE_MAP.get(bda_name, "unknown")
                 bda_path = f"{path_prefix}{bda_name}"
                 bda_mms_type = self._resolve_leaf_mms_type(
                     conn,
@@ -959,9 +974,13 @@ class ModelDiscoveryService:
                 sub_names = get_list_from_linked_list(sub_list)
                 sub_das: list[DARef] = []
                 base_path = da_info.path.split(".")[0]
+                do_name = da_full_ref.split(".", 1)[1].split(".", 1)[0] if "." in da_full_ref else ""
                 for sub_name in sub_names:
                     sub_path = f"{base_path}.{sub_name}"
-                    sub_iec_type = BDA_TYPE_MAP.get(sub_name, "unknown")
+                    intrinsic_override = get_intrinsic_da_override(do_name, sub_name)
+                    sub_iec_type = (
+                        intrinsic_override[1] if intrinsic_override else BDA_TYPE_MAP.get(sub_name, "unknown")
+                    )
                     sub_das.append(
                         DARef(
                             name=sub_name,
@@ -1334,6 +1353,11 @@ class ModelDiscoveryService:
     @staticmethod
     def _resolve_da_info(da_name: str, do_name: str, ln_name: str, do_frame_type: int) -> DARef:
         """根据 DA 名称推断完整路径、FC 和类型"""
+        intrinsic_override = get_intrinsic_da_override(do_name, da_name)
+        if intrinsic_override:
+            fc, iec_type = intrinsic_override
+            return DARef(name=da_name, path=da_name, fc=fc, iec_type=iec_type)
+
         if da_name in DA_PATTERNS:
             full_path, frame_type, iec_type = DA_PATTERNS[da_name]
             fc_map = {0: "MX", 1: "ST", 2: "CO", 3: "SP"}

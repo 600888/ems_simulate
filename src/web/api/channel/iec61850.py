@@ -92,6 +92,8 @@ class Iec61850ReadPointsRequest(BaseModel):
 class Iec61850ReadPointRequest(BaseModel):
     channel_id: int = Field(..., description="通道ID")
     point_code: str = Field(..., description="测点编码")
+    fc: str = Field("", description="功能约束；模型固有属性直读时使用")
+    mms_type: str = Field("", description="模型声明的 MMS 类型")
 
 
 class Iec61850ReadMetadataRequest(BaseModel):
@@ -459,12 +461,16 @@ def _build_iec61850_tree_from_model(
                     for bda in da.sub_das:
                         bda_addr = f"{do_ref}.{bda.path}"
                         bda_point = point_index.get(bda_addr, {})
+                        bda_fc = bda_point.get("fc") or bda.fc or da.fc
+                        bda_point_code = bda_point.get("point_code", "")
+                        if not bda_point_code and bda_fc != "CO" and da.name not in ("q", "t"):
+                            bda_point_code = bda_addr
                         children.append(
                             {
                                 "bda_name": bda.name,
                                 "bda_path": bda.path,
-                                "fc": bda_point.get("fc") or bda.fc or da.fc,
-                                "point_code": bda_point.get("point_code", ""),
+                                "fc": bda_fc,
+                                "point_code": bda_point_code,
                                 "mms_type": resolved_mms_type(bda_addr, bda.mms_type),
                                 "value": bda_point.get("value", ""),
                                 "status": bda_point.get("status", ""),
@@ -473,13 +479,17 @@ def _build_iec61850_tree_from_model(
                         if not da_value and bda_point.get("value"):
                             da_value = bda_point["value"]
 
+                    da_fc = da_point.get("fc") or da.fc or _infer_fc_from_da(da_path)
+                    da_point_code = da_point.get("point_code", "")
+                    if not da_point_code and not children and da_fc != "CO" and da.name not in ("q", "t"):
+                        da_point_code = da_addr
                     da_list.append(
                         {
                             "da_name": da.name,
                             "da_path": da_path,
-                            "fc": da_point.get("fc") or da.fc or _infer_fc_from_da(da_path),
+                            "fc": da_fc,
                             "is_struct": bool(children),
-                            "point_code": da_point.get("point_code", ""),
+                            "point_code": da_point_code,
                             "mms_type": (
                                 "MMS_STRUCTURE"
                                 if children and da.mms_type == "MMS_STRUCTURE"
@@ -1613,17 +1623,56 @@ async def iec61850_read_single_point(
         raise ValidationError("测点编码不能为空")
 
     point = device.point_manager.get_point_by_code(body.point_code)
-    if point is not None and getattr(point, "fc", "") == "CO":
+    point_fc = getattr(point, "fc", "") if point is not None else body.fc
+    if point_fc == "CO":
         raise ValidationError("控制测点不支持读取", data={"point_code": body.point_code})
 
-    value = await device.read_single_point_async(body.point_code)
-    if value is None:
-        raise ValidationError("读取失败，请检查连接状态", data={"value": None, "point_code": body.point_code})
-    mms_type = "MMS_UNKNOWN"
     protocol_handler = getattr(device, "protocol_handler", None)
     client = getattr(protocol_handler, "_client", None) if protocol_handler else None
+    model_attribute = None
+    if point is None and client is not None:
+        model = getattr(client, "model", None)
+        if model is not None:
+            for ld in model.lds:
+                for ln in ld.lns:
+                    for do in ln.dos:
+                        for da in do.das:
+                            if not da.sub_das and f"{do.ref}.{da.path}" == body.point_code:
+                                model_attribute = da
+                                break
+                            model_attribute = next(
+                                (bda for bda in da.sub_das if f"{do.ref}.{bda.path}" == body.point_code),
+                                None,
+                            )
+                            if model_attribute is not None:
+                                break
+                        if model_attribute is not None:
+                            break
+                    if model_attribute is not None:
+                        break
+                if model_attribute is not None:
+                    break
+
+    if point is not None:
+        value = await device.read_single_point_async(body.point_code)
+    elif model_attribute is not None and client is not None:
+        direct_fc = body.fc or model_attribute.fc
+        if direct_fc == "CO":
+            raise ValidationError("控制属性不支持直接读取", data={"point_code": body.point_code})
+        direct_mms_type = body.mms_type or model_attribute.mms_type
+        value = await asyncio.to_thread(client.read_point, body.point_code, direct_fc, direct_mms_type)
+    else:
+        raise ValidationError("模型中不存在可读取的数据属性", data={"point_code": body.point_code})
+
+    if value is None:
+        log.warning(
+            f"IEC61850 属性读取失败: ref={body.point_code}, fc={point_fc or body.fc}, "
+            f"mms_type={body.mms_type or getattr(model_attribute, 'mms_type', '')}"
+        )
+        raise ValidationError("读取失败，请检查连接状态", data={"value": None, "point_code": body.point_code})
+    mms_type = body.mms_type or getattr(model_attribute, "mms_type", "") or "MMS_UNKNOWN"
     registry = getattr(client, "_registry", None) if client else None
-    if registry is not None:
+    if registry is not None and point is not None:
         mms_type = registry.get_mms_type(str(point.address)) or mms_type
     return BaseResponse(
         message="读取成功",

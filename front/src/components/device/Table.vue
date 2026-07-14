@@ -286,7 +286,7 @@
               type="primary"
               size="small"
               :icon="Download"
-              @click="handleIec61850ReadPoint(scope.row['测点编码'])"
+              @click="handleIec61850ReadPoint(scope.row['测点编码'], scope.row.FC, scope.row['测点类型'])"
               :loading="readingPoints[scope.row['测点编码']]"
             >
               {{ $t('table.read') }}
@@ -317,7 +317,7 @@
               type="primary"
               size="small"
               :icon="Download"
-              @click="handleIec61850ReadPoint(scope.row['测点编码'])"
+              @click="handleIec61850ReadPoint(scope.row['测点编码'], scope.row.FC, scope.row['测点类型'])"
               :loading="readingPoints[scope.row['测点编码']]"
             >
               {{ $t('table.read') }}
@@ -877,7 +877,7 @@ const iec61850FlatRows = computed(() => {
         _daPath: daNode.da_path,
         _daDisplayName: daNode.da_name,
         _fc: daNode.fc,
-        _isControlObject: controlObject,
+        _isControlObject: daNode.fc === 'CO',
         _isControlAction: isControlValuePointCode(daNode.point_code || ''),
         _doRef: doRef,
         _isStructDa: daNode.is_struct,
@@ -906,7 +906,7 @@ const iec61850FlatRows = computed(() => {
             _bdaName: bdaNode.bda_name,
             _daPath: bdaNode.bda_path,
             _fc: bdaNode.fc,
-            _isControlObject: controlObject,
+            _isControlObject: bdaNode.fc === 'CO',
             _isControlAction: isControlValuePointCode(bdaNode.point_code || ''),
             _doRef: doRef,
             '地址': `${doRef}.${bdaNode.bda_path}`,
@@ -1000,6 +1000,7 @@ const readingMetadata = ref<Record<string, boolean>>({});
 
 /** 品质时标数据本地缓存（key: DO reference），避免被自动轮询刷新覆盖 */
 const metadataCache = ref<Map<string, Iec61850MetadataResponse>>(new Map());
+const directReadCache = ref<Map<string, unknown>>(new Map());
 
 const SYSTEM_DOS = new Set(['Mod', 'Beh', 'Health', 'NamPlt', 'PhyHealth', 'Proxy', 'PhyNam']);
 const isSystemDo = (name: string) => SYSTEM_DOS.has(name);
@@ -1037,7 +1038,14 @@ const handleIec61850ReadMetadata = async (pointCode: string) => {
 
 /** 将缓存的品质时标数据叠加到树形扁平行上，实现表格 DA 子节点回显 */
 const iec61850DisplayRows = computed(() => {
-  const baseRows = iec61850FlatRows.value;
+  const directValues = directReadCache.value;
+  const baseRows = directValues.size === 0
+    ? iec61850FlatRows.value
+    : iec61850FlatRows.value.map((row) => {
+        const pointCode = row['测点编码'];
+        if (!pointCode || !directValues.has(pointCode)) return row;
+        return { ...row, '真实值': directValues.get(pointCode), '状态': '成功' };
+      });
   const cache = metadataCache.value;
   if (cache.size === 0) return baseRows;
 
@@ -1108,12 +1116,15 @@ const iec61850DisplayRows = computed(() => {
 
 // ===== IEC61850 专用读写操作 =====
 
-const handleIec61850ReadPoint = async (pointCode: string) => {
+const handleIec61850ReadPoint = async (pointCode: string, fc: string = '', mmsType: string = '') => {
   if (!props.channelId) return;
   readingPoints[pointCode] = true;
   try {
-    const result = await iec61850ReadPoint(props.channelId, pointCode);
+    const result = await iec61850ReadPoint(props.channelId, pointCode, fc, mmsType);
     if (result && result.value !== null) {
+      const nextCache = new Map(directReadCache.value);
+      nextCache.set(pointCode, result.value);
+      directReadCache.value = nextCache;
       ElMessage.success(t('table.readSuccess', { value: result.value }));
       emit('refresh');
     } else {

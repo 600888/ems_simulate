@@ -402,6 +402,25 @@ class IEC61850Server:
             self._get_or_create_ln(ld_inst, ln_name)
 
         # 将 ICD 中的测点注册到数据模型（DO/DA 节点）
+        # Business points intentionally exclude intrinsic metadata such as q/t,
+        # but the native MMS model must still contain every SCL-declared leaf.
+        from .plugins.scl.transformer.server_model_builder import SclServerModelBuilder
+
+        native_attribute_count = 0
+        for attribute in SclServerModelBuilder(result.doc).iter_leaf_attributes(ied_name):
+            if self._builder._add_point_from_ref(
+                attribute["ref"],
+                attribute["frame_type"],
+                attribute["fc"],
+                iec_type_name=attribute["iec_type"],
+                mms_type=attribute["mms_type"],
+                dchg=attribute["dchg"],
+                qchg=attribute["qchg"],
+                dupd=attribute["dupd"],
+            ):
+                native_attribute_count += 1
+        log.info(f"已注册 {native_attribute_count} 个 SCL 固有 DA/BDA 到原生 MMS 模型")
+
         registered_count = 0
 
         def _register_point(point, frame_type: int, default_fc: str) -> bool:

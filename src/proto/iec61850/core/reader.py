@@ -226,20 +226,23 @@ class Iec61850Reader:
         """插件初始化完成后注入 DataSet 读取引擎。"""
         self._dataset_reader = dataset_reader
 
-    def read(self, address: str, fc: str = "") -> Any:
+    def read(self, address: str, fc: str = "", mms_type: str | MmsType = "") -> Any:
         if not self._connection.ensure_connected():
             return None
 
         addr_str = str(address)
         ref = self._build_ref(addr_str)
         fc_val = self._resolve_fc(addr_str, fc)
-        mms_type = self._resolve_mms_type(addr_str)
+        try:
+            resolved_mms_type = MmsType(mms_type) if mms_type else self._resolve_mms_type(addr_str)
+        except (TypeError, ValueError):
+            resolved_mms_type = self._resolve_mms_type(addr_str)
 
-        value = self._read_once(addr_str, ref, fc_val, mms_type)
+        value = self._read_once(addr_str, ref, fc_val, resolved_mms_type)
         if value is not None:
             return value
         if self._connection.reconnect_if_unhealthy(f"read {ref}"):
-            return self._read_once(addr_str, ref, fc_val, mms_type)
+            return self._read_once(addr_str, ref, fc_val, resolved_mms_type)
         return None
 
     def _read_once(self, address: str, ref: str, fc_val, mms_type: MmsType) -> Any:
@@ -327,7 +330,13 @@ class Iec61850Reader:
         if is_full_ref(address):
             parsed = parse_ref(address)
             if parsed:
-                return f"{self._connection.model_name}{parsed[0]}/{address.split('/', 1)[1]}"
+                ld_inst = parsed[0]
+                model_name = str(self._connection.model_name or "")
+                discovered_lds = tuple(getattr(self._connection, "_discovered_lds", ()) or ())
+                native_domain = (
+                    ld_inst if ld_inst in discovered_lds or ld_inst.startswith(model_name) else f"{model_name}{ld_inst}"
+                )
+                return f"{native_domain}/{address.split('/', 1)[1]}"
         safe_addr = str(address).replace(".", "_").replace("/", "_").replace("\\", "_").replace("-", "_")
         mms_type = self._resolve_mms_type(address)
         if mms_type is MmsType.FLOAT:

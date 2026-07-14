@@ -191,9 +191,9 @@ class IEC61850Client:
 
     # ===== 读写 (委托给 Iec61850Reader/Iec61850Writer) =====
 
-    def read_point(self, address, fc: str = "") -> Any:
+    def read_point(self, address, fc: str = "", mms_type: str = "") -> Any:
         """读取测点值 (委托给 Iec61850Reader)"""
-        return self._reader.read(address, fc)
+        return self._reader.read(address, fc, mms_type)
 
     def read_points_batch(
         self,
