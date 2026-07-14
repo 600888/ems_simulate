@@ -1039,26 +1039,43 @@ def _parse_client_report(report, rcb_ref: str, dataset_members: list[str] | None
 
 
 def _get_reason_for_inclusion(report, index: int) -> str:
+    # ReasonForInclusion is optional in IEC 61850 reports.  Calling the getter
+    # when OptFlds.reasonCode is absent makes some SWIG builds raise a type
+    # error, which used to be flattened to the misleading value "unknown".
+    has_reason = getattr(iec61850, "ClientReport_hasReasonForInclusion", None)
+    if callable(has_reason):
+        try:
+            if not bool(has_reason(report)):
+                return "not-included"
+        except Exception:
+            # Older bindings may not implement the presence probe correctly;
+            # still try the actual getter below.
+            pass
+
     try:
         reason = iec61850.ClientReport_getReasonForInclusion(report, index)
         try:
             reason_text = iec61850.ReasonForInclusion_getValueAsString(reason)
             if reason_text:
-                return str(reason_text)
+                normalized = str(reason_text).strip().lower()
+                if normalized:
+                    return normalized
         except Exception:
             pass
         reason_value = int(reason)
         reason_map = {
+            0: "not-included",
             1: "data-change",
             2: "quality-change",
             4: "data-update",
             8: "integrity",
             16: "gi",
+            32: "unknown",
         }
         return reason_map.get(reason_value, f"code={reason_value}")
-    except Exception:
-        log.error(f"get_reason_for_inclusion failed: {report}, {index}")
-    return "unknown"
+    except Exception as exc:
+        log.warning(f"get_reason_for_inclusion unavailable: index={index}, error={exc}")
+    return "not-included"
 
 
 def _get_data_reference(report, index: int) -> str:

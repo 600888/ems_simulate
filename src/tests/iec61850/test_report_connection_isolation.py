@@ -254,6 +254,32 @@ def test_batch_enable_resumes_report_dispatch_after_exception(monkeypatch):
     assert events == ["suspend", "resume"]
 
 
+def test_enable_preserves_explicit_reason_code_selection(monkeypatch):
+    plugin = ReportsPlugin()
+    plugin._connection = SimpleNamespace(is_connected=True)
+    written = []
+
+    monkeypatch.setattr(plugin, "get_rcb_detail", lambda _ref: {"rpt_ena": False})
+    monkeypatch.setattr(
+        plugin,
+        "_set_config",
+        lambda ref, trg_ops, opt_fields: written.append((ref, dict(opt_fields))) or True,
+    )
+    monkeypatch.setattr(plugin, "_enable_report", lambda *_args, **_kwargs: True)
+
+    for selected in (False, True):
+        assert plugin._apply_config_once(
+            "LD0/LLN0.rp01",
+            True,
+            opt_fields={"reason_code": selected},
+        )
+
+    assert written == [
+        ("LD0/LLN0.rp01", {"reason_code": False}),
+        ("LD0/LLN0.rp01", {"reason_code": True}),
+    ]
+
+
 def test_batch_disable_does_not_wait_between_rcbs(monkeypatch):
     plugin = ReportsPlugin()
     plugin._connection = SimpleNamespace(is_connected=True)

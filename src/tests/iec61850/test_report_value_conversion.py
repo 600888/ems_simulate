@@ -6,6 +6,7 @@ from src.proto.iec61850.core import mms_value
 from src.proto.iec61850.defs.types import ReportDataEntry
 from src.proto.iec61850.plugins.reports import callback
 from src.proto.iec61850.plugins.reports.callback import (
+    _get_reason_for_inclusion,
     _infer_report_value_type,
     _mark_entry_reasons_as_gi,
     _select_report_value_ref,
@@ -85,6 +86,59 @@ class FakeIec61850:
     @staticmethod
     def ClientReport_getDataReference(report, index):
         return "PCS001MEAS/dcGGIO1$MX$AnIn1"
+
+
+def test_missing_reason_optional_field_is_not_misreported_as_unknown():
+    class NoReasonBinding:
+        @staticmethod
+        def ClientReport_hasReasonForInclusion(_report):
+            return False
+
+        @staticmethod
+        def ClientReport_getReasonForInclusion(_report, _index):
+            raise AssertionError("getter must not run when reasonCode is absent")
+
+    with patch.object(callback, "iec61850", NoReasonBinding, create=True):
+        assert _get_reason_for_inclusion(object(), 0) == "not-included"
+
+
+def test_reason_codes_cover_all_libiec61850_values_and_normalize_gi():
+    class ReasonBinding:
+        current = 0
+
+        @staticmethod
+        def ClientReport_hasReasonForInclusion(_report):
+            return True
+
+        @classmethod
+        def ClientReport_getReasonForInclusion(cls, _report, _index):
+            return cls.current
+
+        @staticmethod
+        def ReasonForInclusion_getValueAsString(reason):
+            return {
+                0: "not-included",
+                1: "data-change",
+                2: "quality-change",
+                4: "data-update",
+                8: "integrity",
+                16: "GI",
+                32: "unknown",
+            }[reason]
+
+    expected = {
+        0: "not-included",
+        1: "data-change",
+        2: "quality-change",
+        4: "data-update",
+        8: "integrity",
+        16: "gi",
+        32: "unknown",
+    }
+    with patch.object(callback, "iec61850", ReasonBinding, create=True):
+        for raw, text in expected.items():
+            ReasonBinding.current = raw
+            assert _get_reason_for_inclusion(object(), 0) == text
 
 
 def test_prefers_full_dataset_member_over_do_only_report_reference():
