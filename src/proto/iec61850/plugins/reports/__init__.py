@@ -1016,6 +1016,15 @@ class ReportsPlugin:
         """获取报告缓存数量和最新 uid，不序列化大体积 data_values。"""
         return ReportCallbackHandler.get_cache_state(rcb_ref, self._connection)
 
+    def wait_for_report_after(self, rcb_ref: str, after_uid: int, timeout: float = 3.0) -> bool:
+        """Wait for the GI response to finish parsing and enter the cache."""
+        return ReportCallbackHandler.wait_for_cache_update(
+            rcb_ref,
+            after_uid,
+            connection=self._connection,
+            timeout=timeout,
+        )
+
     def get_report_summaries(self, rcb_ref: str, limit: int = 100) -> list[dict[str, Any]]:
         """获取报告历史摘要列表，不返回 data_values。"""
         return ReportCallbackHandler.get_cache_summaries(rcb_ref, limit, self._connection)

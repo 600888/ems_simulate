@@ -71,6 +71,47 @@ def test_urcb_gi_attribute_write_uses_safe_wrapper(monkeypatch):
     ]
 
 
+def test_pending_gi_route_is_consumed_after_first_matching_report(monkeypatch):
+    connection = SimpleNamespace(connection=object())
+    ref = "LD0/LLN0.rp01"
+    info = callback_module._CallbackInfo(rcb_ref=ref, connection=connection, rpt_id="rp01")
+    monkeypatch.setitem(callback_module._CALLBACK_REGISTRY, ref, info)
+    monkeypatch.setattr(callback_module, "_PENDING_GI_ROUTES", {})
+
+    callback_module.ReportCallbackHandler.mark_pending_gi(ref, connection=connection)
+    entry = callback_module.ReportDataEntry(rpt_id="rp01")
+
+    targets, matched = callback_module._resolve_pending_gi_route(ref, entry, connection)
+    assert matched is True
+    assert targets == {ref}
+
+    targets, matched = callback_module._resolve_pending_gi_route(ref, entry, connection)
+    assert matched is False
+    assert targets == {ref}
+
+
+def test_wait_for_cache_update_observes_newer_entry(monkeypatch):
+    connection = SimpleNamespace(connection=object())
+    ref = "LD0/LLN0.rp01"
+    info = callback_module._CallbackInfo(rcb_ref=ref, connection=connection)
+    monkeypatch.setitem(callback_module._CALLBACK_REGISTRY, ref, info)
+
+    entry = callback_module.ReportDataEntry()
+    assert callback_module.ReportCallbackHandler.append_cache_entry(ref, entry, connection)
+    assert callback_module.ReportCallbackHandler.wait_for_cache_update(
+        ref,
+        entry.uid - 1,
+        connection,
+        timeout=0.01,
+    )
+    assert not callback_module.ReportCallbackHandler.wait_for_cache_update(
+        ref,
+        entry.uid,
+        connection,
+        timeout=0.01,
+    )
+
+
 def test_client_uses_a_dedicated_report_connection(monkeypatch):
     class FakeConnection:
         def __init__(self, _ip, _port, model_name="", ld_name="", **_kwargs):

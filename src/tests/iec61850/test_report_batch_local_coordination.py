@@ -4,6 +4,7 @@ from src.device.protocol.iec61850_handler import IEC61850ServerHandler
 from src.device.protocol.iec61850_report_coordination import (
     pause_matching_local_server_simulations,
     resume_local_server_simulations,
+    trigger_gi_with_local_server_coordination,
 )
 
 
@@ -80,3 +81,40 @@ def test_external_report_client_does_not_pause_local_server_simulation():
 
     assert pause_matching_local_server_simulations(reports, request, LOG) == []
     assert simulation.events == []
+
+
+def test_local_gi_keeps_matching_simulation_paused_until_report_is_cached():
+    simulation = _FakeSimulation()
+    request = _request(_server_device("local", 10102, simulation))
+    events: list[object] = []
+
+    class _FakeReports:
+        _client = SimpleNamespace(ip="127.0.0.1", port=10102)
+
+        @staticmethod
+        def get_report_data_state(rcb_ref):
+            events.append(("state", rcb_ref))
+            return 4, 17
+
+        @staticmethod
+        def trigger_gi(*, rcb_ref):
+            events.append(("trigger", rcb_ref, simulation.running))
+            return True
+
+        @staticmethod
+        def wait_for_report_after(rcb_ref, after_uid, *, timeout):
+            events.append(("wait", rcb_ref, after_uid, timeout, simulation.running))
+            return True
+
+    assert trigger_gi_with_local_server_coordination(
+        _FakeReports(),
+        "LD0/LLN0.rp01",
+        request,
+        LOG,
+    )
+    assert simulation.events == ["stop", "start"]
+    assert events == [
+        ("state", "LD0/LLN0.rp01"),
+        ("trigger", "LD0/LLN0.rp01", False),
+        ("wait", "LD0/LLN0.rp01", 17, 3.0, False),
+    ]

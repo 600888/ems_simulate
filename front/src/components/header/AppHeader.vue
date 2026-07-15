@@ -24,7 +24,7 @@
       </el-icon>
 
       <!-- SCL Management -->
-      <router-link to="/scl/manager" class="icon-link scl-link" :title="t('scl.title')">
+      <router-link to="/scl/modeling" class="icon-link scl-link" :title="t('scl.title')">
         <el-icon :size="24" color="var(--text-secondary)"><Files /></el-icon>
       </router-link>
 
@@ -124,7 +124,15 @@ const updateBreadcrumb = () => {
   } else if (route.path.startsWith("/files")) {
     breadList.value = [{ path: "/files", meta: { title: t("header.filesExplorer") } }];
   } else if (route.path.startsWith("/scl")) {
-    breadList.value = [{ path: "/scl/manager", meta: { title: t("scl.title") } }];
+    const items = [{ path: "/scl/modeling", meta: { title: t("scl.title") } }];
+    if (route.path.startsWith("/scl/modeling/new")) {
+      items.push({ path: route.path, meta: { title: "从 0 新建模型" } });
+    } else if (route.name === "model-workspace") {
+      items.push({ path: route.path, meta: { title: "模型工作台" } });
+    } else if (route.path.startsWith("/scl/manager")) {
+      items.push({ path: route.path, meta: { title: "SCL 文件" } });
+    }
+    breadList.value = items;
   } else {
     breadList.value = route.matched.filter((item) => item.meta?.title);
   }

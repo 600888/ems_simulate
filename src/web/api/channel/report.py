@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request
 from src.device.protocol.iec61850_report_coordination import (
     pause_matching_local_server_simulations,
     resume_local_server_simulations,
+    trigger_gi_with_local_server_coordination,
 )
 from src.proto.iec61850.plugins.reports.report_tree import ReportTreeBuilder, make_entry_summary
 from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
@@ -440,7 +441,12 @@ async def trigger_gi(body: RcbGiRequest, request: Request):
     loop = asyncio.get_event_loop()
     success = await loop.run_in_executor(
         None,
-        lambda: reports.trigger_gi(rcb_ref=body.rcb_ref),
+        lambda: trigger_gi_with_local_server_coordination(
+            reports,
+            body.rcb_ref,
+            request,
+            log,
+        ),
     )
     if not success:
         raise OperationError("GI 触发失败", data={"success": False})

@@ -237,6 +237,7 @@ def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry, connection=N
     _expire_pending_gi_routes(now)
 
     targets: set[str] = set()
+    matched_route_keys: set[str] = set()
 
     # 只使用 RCB 实例引用匹配，禁止按 RptId 跨实例分发。
     _, current_info = _find_registered_info(rcb_ref, connection)
@@ -248,6 +249,7 @@ def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry, connection=N
         pending = _PENDING_GI_ROUTES.get(key)
         if not pending:
             continue
+        matched_route_keys.add(key)
         target_set, _ = pending
         for target_ref in target_set:
             _, target_info = _find_registered_info(target_ref, connection)
@@ -255,6 +257,12 @@ def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry, connection=N
                 targets.add(target_info.rcb_ref)
 
     if targets:
+        # A GI request produces one report.  Consume every alias recorded for
+        # that request as soon as its first response is matched; otherwise
+        # ordinary data-change reports arriving during the TTL window are
+        # mislabeled and routed as additional GI responses.
+        for key in matched_route_keys:
+            _PENDING_GI_ROUTES.pop(key, None)
         if len(targets) > 1 or next(iter(targets)) != rcb_ref:
             log.info(f"GI 报告重路由: from={rcb_ref}, to_count={len(targets)}, rpt_id={entry.rpt_id!r}")
         return targets, True
@@ -664,8 +672,30 @@ class ReportCallbackHandler:
                 return False
             entry.uid = _get_next_entry_uid()
             info.data_cache.append(entry)
+            _CALLBACK_IDLE.notify_all()
             log.info(f"报告缓存已写入: rcb_ref={matched_key}, cache_size={len(info.data_cache)}")
             return True
+
+    @staticmethod
+    def wait_for_cache_update(
+        rcb_ref: str,
+        after_uid: int,
+        connection=None,
+        timeout: float = 3.0,
+    ) -> bool:
+        """Wait until a newer report entry is committed to the RCB cache."""
+        deadline = time.monotonic() + max(timeout, 0.0)
+        with _CALLBACK_IDLE:
+            while True:
+                _, info = _find_registered_info(rcb_ref, connection)
+                if info is None:
+                    return False
+                if info.data_cache and info.data_cache[-1].uid > after_uid:
+                    return True
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                _CALLBACK_IDLE.wait(remaining)
 
     @staticmethod
     def is_active(rcb_ref: str, connection=None) -> bool:
@@ -858,6 +888,7 @@ def _dispatch_report(rcb_ref: str, report, connection=None) -> None:
                     on_report = info.on_report
                 written += 1
             if written > 0:
+                _CALLBACK_IDLE.notify_all()
                 log.debug(f"_dispatch_report: GI 报告已写入 {written} 个 RCB 实例, rpt_id={entry.rpt_id!r}")
         else:
             # 常规报告只写入触发当前回调的 RCB 实例，禁止按 RptId 再分发。
@@ -866,6 +897,7 @@ def _dispatch_report(rcb_ref: str, report, connection=None) -> None:
                 if not entry.uid:
                     entry.uid = _get_next_entry_uid()
                 target_info.data_cache.append(entry)
+                _CALLBACK_IDLE.notify_all()
                 on_report = target_info.on_report
             else:
                 log.warning(f"_dispatch_report: rcb_ref={rcb_ref} 已被注销")

@@ -1,4 +1,4 @@
-"""Coordinate an in-process IEC 61850 server with bulk client RCB setup."""
+"""Coordinate in-process IEC 61850 server simulation and client RCB operations."""
 
 from typing import Any
 
@@ -28,15 +28,15 @@ def pause_matching_local_server_simulations(reports: Any, request: Any, log: Any
         # With hundreds of enabled RCBs, one server-side batch update can take
         # several seconds while libIEC61850 builds every report.  The normal
         # one-second UI stop timeout is therefore insufficient here: starting
-        # RCB writes while that update is still finishing recreates the native
-        # race this coordination is intended to prevent.
+        # an RCB operation while that update is still finishing recreates the
+        # native race this coordination is intended to prevent.
         if not simulation.stop_simulation(timeout=30.0):
             raise RuntimeError(
                 f"本地 IEC61850 服务端模拟未能在 30 秒内停止: device={getattr(device, 'name', '')}, port={target_port}"
             )
         paused.append(simulation)
         log.info(
-            f"批量配置报告期间已暂停匹配的本地 IEC61850 服务端模拟: "
+            f"报告控制操作期间已暂停匹配的本地 IEC61850 服务端模拟: "
             f"device={getattr(device, 'name', '')}, port={target_port}"
         )
     return paused
@@ -49,3 +49,37 @@ def resume_local_server_simulations(simulations: list[Any], log: Any) -> None:
             simulation.start_simulation()
         except Exception as exc:
             log.error(f"恢复本地 IEC61850 服务端模拟失败: {exc}", exc_info=True)
+
+
+def trigger_gi_with_local_server_coordination(
+    reports: Any,
+    rcb_ref: str,
+    request: Any,
+    log: Any,
+    *,
+    report_timeout: float = 3.0,
+) -> bool:
+    """Trigger GI without racing an in-process server simulation batch.
+
+    A local server update and a client report callback share the Python
+    process but run on different native threads.  Keeping the simulator
+    paused until the GI report has been copied into Python-owned cache avoids
+    concurrent access to libIEC61850/SWIG report objects.
+    """
+    paused = pause_matching_local_server_simulations(reports, request, log)
+    try:
+        state_getter = getattr(reports, "get_report_data_state", None)
+        previous_uid = 0
+        if paused and callable(state_getter):
+            _, previous_uid = state_getter(rcb_ref)
+
+        success = bool(reports.trigger_gi(rcb_ref=rcb_ref))
+        if not success or not paused:
+            return success
+
+        wait_for_report = getattr(reports, "wait_for_report_after", None)
+        if callable(wait_for_report) and not wait_for_report(rcb_ref, previous_uid, timeout=report_timeout):
+            log.warning(f"GI 已触发但等待报告回调超时: ref={rcb_ref}, timeout={report_timeout:.1f}s")
+        return True
+    finally:
+        resume_local_server_simulations(paused, log)

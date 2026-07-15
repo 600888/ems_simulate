@@ -36,7 +36,26 @@ const menuRouter = createRouter({
     // SCL 文件管理
     {
       path: '/scl',
-      redirect: '/scl/manager',
+      redirect: '/scl/modeling',
+    },
+    {
+      path: '/scl/modeling',
+      name: 'model-projects',
+      component: () => import('../views/modeling/ModelProjectListView.vue'),
+      meta: { title: '61850 模型工程' },
+    },
+    {
+      path: '/scl/modeling/new',
+      name: 'model-create',
+      component: () => import('../views/modeling/ModelCreateWizardView.vue'),
+      meta: { title: '从 0 新建模型' },
+    },
+    {
+      path: '/scl/modeling/:projectId',
+      name: 'model-workspace',
+      component: () => import('../views/modeling/ModelWorkspaceView.vue'),
+      props: true,
+      meta: { title: '模型工作台' },
     },
     {
       path: '/scl/manager',

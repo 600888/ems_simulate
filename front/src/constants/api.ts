@@ -201,3 +201,9 @@ export const SCL_API = {
   FILE_IED_LIST: '/api/scl/ied-list',   // GET ?filename=
 } as const;
 
+// ===== IEC 61850 图形化建模 =====
+export const MODELING_API = {
+  PROJECTS: '/api/modeling/projects',
+  NODE_KINDS: '/api/modeling/node-kinds',
+} as const;
+
