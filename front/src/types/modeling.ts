@@ -37,8 +37,9 @@ export interface ModelNode {
 export interface NodeFieldSchema {
   key: string
   label: string
-  component: 'input' | 'textarea' | 'number' | 'switch'
+  component: 'input' | 'textarea' | 'number' | 'switch' | 'select'
   required?: boolean
+  options?: string[]
 }
 
 export interface NodeSchema {
@@ -80,4 +81,23 @@ export interface ValidationResult {
   warning_count: number
   issues: ValidationIssue[]
   validated_revision: number
+}
+
+export interface ModelVersion {
+  id: string
+  project_id: string
+  version_number: number
+  label: string
+  description: string
+  status: 'SNAPSHOT' | 'PUBLISHED'
+  source_revision: number
+  created_at: string
+}
+
+export interface SclArtifact {
+  xml: string
+  filename: string
+  size: number
+  revision: number
+  status: ModelProject['status']
 }

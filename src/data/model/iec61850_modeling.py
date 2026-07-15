@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.data.model.base import Base
@@ -73,3 +74,23 @@ class Iec61850ModelReference(Base):
     )
     relation_type: Mapped[str] = mapped_column(String(32), nullable=False)
     attributes_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+
+
+class Iec61850ModelVersion(Base):
+    """模型工程的完整版本快照。"""
+
+    __tablename__ = "iec61850_model_version"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("iec61850_model_project.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    description: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="SNAPSHOT", index=True)
+    source_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot_json: Mapped[str] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+    __table_args__ = (UniqueConstraint("project_id", "version_number", name="uq_iec61850_model_version_number"),)

@@ -1,9 +1,16 @@
 """IEC 61850 图形化建模 REST API。"""
 
 from fastapi import APIRouter, Query
+from fastapi.responses import Response
 
 from src.modeling.service import Iec61850ModelingService
-from src.web.api.modeling.schemas import NodeCreateRequest, NodeUpdateRequest, ProjectCreateRequest
+from src.web.api.modeling.schemas import (
+    NodeCreateRequest,
+    NodeUpdateRequest,
+    ProjectCreateRequest,
+    PublishRequest,
+    VersionCreateRequest,
+)
 from src.web.api.schemas import BaseResponse
 
 router = APIRouter(prefix="/api/modeling", tags=["IEC 61850 Modeling"])
@@ -70,6 +77,53 @@ def delete_node(project_id: str, node_id: str, force: bool = False) -> BaseRespo
 @router.post("/projects/{project_id}/validate")
 def validate_project(project_id: str) -> BaseResponse:
     return BaseResponse.success(service.validate_project(project_id), "模型校验完成")
+
+
+@router.get("/projects/{project_id}/versions")
+def list_versions(project_id: str) -> BaseResponse:
+    return BaseResponse.success(service.list_versions(project_id))
+
+
+@router.post("/projects/{project_id}/versions")
+def create_version(project_id: str, request: VersionCreateRequest) -> BaseResponse:
+    return BaseResponse.success(
+        service.create_version(project_id, label=request.label, description=request.description),
+        "版本快照创建成功",
+    )
+
+
+@router.post("/projects/{project_id}/versions/{version_id}/restore")
+def restore_version(project_id: str, version_id: str) -> BaseResponse:
+    return BaseResponse.success(service.restore_version(project_id, version_id), "模型版本已恢复")
+
+
+@router.delete("/projects/{project_id}/versions/{version_id}")
+def delete_version(project_id: str, version_id: str) -> BaseResponse:
+    service.delete_version(project_id, version_id)
+    return BaseResponse.success(message="版本快照已删除")
+
+
+@router.get("/projects/{project_id}/scl-preview")
+def preview_scl(project_id: str) -> BaseResponse:
+    return BaseResponse.success(service.generate_scl(project_id))
+
+
+@router.get("/projects/{project_id}/scl-download")
+def download_scl(project_id: str) -> Response:
+    artifact = service.generate_scl(project_id)
+    return Response(
+        content=artifact["xml"].encode("utf-8"),
+        media_type="application/xml; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{artifact["filename"]}"'},
+    )
+
+
+@router.post("/projects/{project_id}/publish")
+def publish_project(project_id: str, request: PublishRequest) -> BaseResponse:
+    return BaseResponse.success(
+        service.publish_project(project_id, label=request.label, description=request.description),
+        "模型发布成功",
+    )
 
 
 @router.get("/node-kinds/{kind}/schema")

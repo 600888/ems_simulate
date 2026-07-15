@@ -4,6 +4,12 @@ from typing import Any
 
 CHILD_RULES: dict[str, tuple[str, ...]] = {
     "ROOT": ("HEADER", "COMMUNICATION", "IED", "DATA_TYPE_TEMPLATES"),
+    "COMMUNICATION": ("SUBNETWORK",),
+    "SUBNETWORK": ("CONNECTED_AP",),
+    "CONNECTED_AP": ("ADDRESS", "GSE", "SMV"),
+    "ADDRESS": ("P",),
+    "GSE": ("ADDRESS",),
+    "SMV": ("ADDRESS",),
     "IED": ("ACCESS_POINT",),
     "ACCESS_POINT": ("SERVER",),
     "SERVER": ("LDEVICE",),
@@ -25,6 +31,12 @@ KIND_LABELS = {
     "ROOT": "模型根节点",
     "HEADER": "SCL 头信息",
     "COMMUNICATION": "通信配置",
+    "SUBNETWORK": "子网",
+    "CONNECTED_AP": "已连接访问点",
+    "ADDRESS": "通信地址",
+    "P": "地址参数",
+    "GSE": "GOOSE 通信参数",
+    "SMV": "采样值通信参数",
     "IED": "智能电子设备 (IED)",
     "ACCESS_POINT": "访问点",
     "SERVER": "服务实例",
@@ -57,7 +69,98 @@ BASE_FIELDS = [
     {"key": "desc", "label": "描述", "component": "textarea"},
 ]
 
+FC_OPTIONS = [
+    "ST",
+    "MX",
+    "SP",
+    "SV",
+    "CF",
+    "DC",
+    "SG",
+    "SE",
+    "SR",
+    "OR",
+    "BL",
+    "EX",
+    "CO",
+    "US",
+    "MS",
+    "RP",
+    "BR",
+    "LG",
+    "GO",
+]
+BTYPE_OPTIONS = [
+    "BOOLEAN",
+    "INT8",
+    "INT16",
+    "INT32",
+    "INT64",
+    "INT8U",
+    "INT16U",
+    "INT24U",
+    "INT32U",
+    "FLOAT32",
+    "FLOAT64",
+    "Enum",
+    "Struct",
+    "Quality",
+    "Timestamp",
+    "VisString255",
+    "Unicode255",
+    "Octet64",
+    "ObjRef",
+]
+
 PROPERTY_FIELDS: dict[str, list[dict[str, Any]]] = {
+    "HEADER": [
+        {"key": "id", "label": "SCL 标识", "component": "input", "required": True},
+        {"key": "version", "label": "版本", "component": "input"},
+        {"key": "revision", "label": "修订", "component": "input"},
+        {"key": "toolID", "label": "建模工具", "component": "input"},
+    ],
+    "SUBNETWORK": [
+        {"key": "type", "label": "网络类型", "component": "input", "required": True},
+        {"key": "bitRate", "label": "比特率", "component": "number"},
+        {"key": "multiplier", "label": "倍率", "component": "select", "options": ["", "k", "M", "G"]},
+    ],
+    "CONNECTED_AP": [
+        {"key": "iedName", "label": "IED 名称", "component": "input", "required": True},
+        {"key": "apName", "label": "AccessPoint 名称", "component": "input", "required": True},
+    ],
+    "P": [
+        {
+            "key": "type",
+            "label": "参数类型",
+            "component": "select",
+            "required": True,
+            "options": [
+                "IP",
+                "IP-SUBNET",
+                "IP-GATEWAY",
+                "OSI-TSEL",
+                "OSI-SSEL",
+                "OSI-PSEL",
+                "OSI-AP-Title",
+                "OSI-AE-Qualifier",
+                "MAC-Address",
+                "APPID",
+                "VLAN-PRIORITY",
+                "VLAN-ID",
+            ],
+        },
+        {"key": "value", "label": "参数值", "component": "input", "required": True},
+    ],
+    "GSE": [
+        {"key": "ldInst", "label": "逻辑设备", "component": "input", "required": True},
+        {"key": "cbName", "label": "控制块名称", "component": "input", "required": True},
+        {"key": "minTime", "label": "最小重发时间", "component": "number"},
+        {"key": "maxTime", "label": "最大重发时间", "component": "number"},
+    ],
+    "SMV": [
+        {"key": "ldInst", "label": "逻辑设备", "component": "input", "required": True},
+        {"key": "cbName", "label": "控制块名称", "component": "input", "required": True},
+    ],
     "IED": [
         {"key": "manufacturer", "label": "制造商", "component": "input"},
         {"key": "type", "label": "设备类型", "component": "input"},
@@ -69,15 +172,29 @@ PROPERTY_FIELDS: dict[str, list[dict[str, Any]]] = {
         {"key": "prefix", "label": "前缀 prefix", "component": "input"},
         {"key": "lnClass", "label": "逻辑节点类", "component": "input", "required": True},
         {"key": "inst", "label": "实例号 inst", "component": "input", "required": True},
-        {"key": "lnType", "label": "类型引用 lnType", "component": "input"},
+        {"key": "lnType", "label": "类型引用 lnType", "component": "input", "required": True},
     ],
-    "LN0": [{"key": "lnType", "label": "类型引用 lnType", "component": "input"}],
+    "LN0": [{"key": "lnType", "label": "类型引用 lnType", "component": "input", "required": True}],
     "DOI": [{"key": "accessControl", "label": "访问控制", "component": "input"}],
     "DAI": [
         {"key": "sAddr", "label": "短地址", "component": "input"},
         {"key": "value", "label": "初始值", "component": "input"},
     ],
-    "DATASET": [{"key": "datSet", "label": "数据集标识", "component": "input"}],
+    "FCDA": [
+        {"key": "ldInst", "label": "逻辑设备 ldInst", "component": "input", "required": True},
+        {"key": "prefix", "label": "逻辑节点前缀", "component": "input"},
+        {"key": "lnClass", "label": "逻辑节点类", "component": "input", "required": True},
+        {"key": "lnInst", "label": "逻辑节点实例", "component": "input"},
+        {"key": "doName", "label": "数据对象", "component": "input", "required": True},
+        {"key": "daName", "label": "数据属性", "component": "input"},
+        {
+            "key": "fc",
+            "label": "功能约束 FC",
+            "component": "select",
+            "required": True,
+            "options": FC_OPTIONS,
+        },
+    ],
     "REPORT_CONTROL": [
         {"key": "rptID", "label": "报告标识", "component": "input"},
         {"key": "datSet", "label": "数据集引用", "component": "input", "required": True},
@@ -101,10 +218,68 @@ PROPERTY_FIELDS: dict[str, list[dict[str, Any]]] = {
     "DA_TYPE": [{"key": "id", "label": "类型 ID", "component": "input", "required": True}],
     "ENUM_TYPE": [{"key": "id", "label": "类型 ID", "component": "input", "required": True}],
     "ENUM_VALUE": [{"key": "ord", "label": "枚举序号", "component": "number", "required": True}],
+    "DO_DEF": [
+        {"key": "type", "label": "DOType 引用", "component": "input", "required": True},
+        {"key": "transient", "label": "瞬变数据", "component": "switch"},
+    ],
+    "SDO_DEF": [{"key": "type", "label": "DOType 引用", "component": "input", "required": True}],
+    "DA_DEF": [
+        {
+            "key": "bType",
+            "label": "基础类型 bType",
+            "component": "select",
+            "required": True,
+            "options": BTYPE_OPTIONS,
+        },
+        {"key": "type", "label": "类型引用", "component": "input"},
+        {
+            "key": "fc",
+            "label": "功能约束 FC",
+            "component": "select",
+            "required": True,
+            "options": FC_OPTIONS,
+        },
+        {"key": "dchg", "label": "数据变化触发", "component": "switch"},
+        {"key": "qchg", "label": "品质变化触发", "component": "switch"},
+        {"key": "dupd", "label": "数据更新触发", "component": "switch"},
+    ],
+    "BDA_DEF": [
+        {
+            "key": "bType",
+            "label": "基础类型 bType",
+            "component": "select",
+            "required": True,
+            "options": BTYPE_OPTIONS,
+        },
+        {"key": "type", "label": "类型引用", "component": "input"},
+    ],
+    "EXT_REF": [
+        {"key": "iedName", "label": "源 IED", "component": "input"},
+        {"key": "ldInst", "label": "源逻辑设备", "component": "input"},
+        {"key": "lnClass", "label": "源逻辑节点类", "component": "input"},
+        {"key": "lnInst", "label": "源逻辑节点实例", "component": "input"},
+        {"key": "doName", "label": "源数据对象", "component": "input"},
+        {"key": "daName", "label": "源数据属性", "component": "input"},
+        {"key": "intAddr", "label": "内部地址", "component": "input"},
+        {
+            "key": "serviceType",
+            "label": "服务类型",
+            "component": "select",
+            "options": ["Poll", "Report", "GOOSE", "SMV"],
+        },
+    ],
 }
 
 PROTECTED_KINDS = {"ROOT", "HEADER", "DATA_TYPE_TEMPLATES", "LN0"}
-SINGLETON_CHILD_KINDS = {"HEADER", "COMMUNICATION", "DATA_TYPE_TEMPLATES", "LN0", "SERVER", "INPUTS"}
+SINGLETON_CHILD_KINDS = {
+    "HEADER",
+    "COMMUNICATION",
+    "DATA_TYPE_TEMPLATES",
+    "LN0",
+    "SERVER",
+    "INPUTS",
+    "ADDRESS",
+}
 
 
 def get_kind_schema(kind: str) -> dict[str, Any]:

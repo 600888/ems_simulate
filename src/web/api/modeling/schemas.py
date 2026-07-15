@@ -45,3 +45,13 @@ class NodeUpdateRequest(BaseModel):
     attributes: dict[str, Any] | None = None
     sort_order: int | None = None
     expected_revision: int | None = Field(default=None, ge=1)
+
+
+class VersionCreateRequest(BaseModel):
+    label: str = Field(default="", max_length=128)
+    description: str = Field(default="", max_length=512)
+
+
+class PublishRequest(BaseModel):
+    label: str = Field(default="", max_length=128)
+    description: str = Field(default="", max_length=512)

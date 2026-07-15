@@ -3,7 +3,9 @@ import type {
   DeleteImpact,
   ModelNode,
   ModelProject,
+  ModelVersion,
   NodeSchema,
+  SclArtifact,
   ValidationResult,
 } from '@/types/modeling'
 
@@ -99,5 +101,44 @@ export const modelingApi = {
 
   async getNodeSchema(kind: string) {
     return unwrap<NodeSchema>(await instance.get(`/api/modeling/node-kinds/${kind}/schema`))
+  },
+
+  async listVersions(projectId: string) {
+    return unwrap<ModelVersion[]>(await instance.get(`/api/modeling/projects/${projectId}/versions`))
+  },
+
+  async createVersion(projectId: string, payload: { label: string; description: string }) {
+    return unwrap<ModelVersion>(await instance.post(`/api/modeling/projects/${projectId}/versions`, payload))
+  },
+
+  async restoreVersion(projectId: string, versionId: string) {
+    return unwrap<{ restored_version: ModelVersion; project_revision: number; node_count: number }>(
+      await instance.post(`/api/modeling/projects/${projectId}/versions/${versionId}/restore`),
+    )
+  },
+
+  async deleteVersion(projectId: string, versionId: string) {
+    return unwrap<null>(await instance.delete(`/api/modeling/projects/${projectId}/versions/${versionId}`))
+  },
+
+  async previewScl(projectId: string) {
+    return unwrap<SclArtifact>(await instance.get(`/api/modeling/projects/${projectId}/scl-preview`))
+  },
+
+  async downloadScl(projectId: string) {
+    const response = await instance.get<string>(`/api/modeling/projects/${projectId}/scl-download`, {
+      responseType: 'text',
+    })
+    const disposition = response.headers['content-disposition'] || ''
+    const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'model.icd'
+    return { content: response.data, filename }
+  },
+
+  async publish(projectId: string, payload: { label: string; description: string }) {
+    return unwrap<{
+      version: ModelVersion
+      validation: ValidationResult
+      artifact: { filename: string; size: number; revision: number }
+    }>(await instance.post(`/api/modeling/projects/${projectId}/publish`, payload))
   },
 }
