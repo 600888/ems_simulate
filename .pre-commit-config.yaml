@@ -1,4 +1,20 @@
 repos:
+  # 通用文件修复和基础安全检查
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: fix-byte-order-marker
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: detect-private-key
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version. 保持与 pyproject.toml 中的版本一致
     rev: v0.15.15
@@ -8,3 +24,21 @@ repos:
         args: [--fix]
       # 提交前自动修复 format 问题
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      # 格式化 Vue、TypeScript、JavaScript、SCSS 和前端配置文件
+      - id: prettier-frontend
+        name: Prettier frontend
+        entry: npx --no-install --prefix front prettier --write
+        language: system
+        files: >-
+          ^front/(src/.*\.(vue|ts|js|scss|css|json|html)|index\.html|vite\.config\.ts|jest\.config\.js|tsconfig(?:\.[^.]+)?\.json|package\.json)$
+
+      # 格式化 Tauri Rust 代码
+      - id: rustfmt
+        name: Rust format
+        entry: cargo fmt --manifest-path src-tauri/Cargo.toml --
+        language: system
+        types: [rust]
+        pass_filenames: false
