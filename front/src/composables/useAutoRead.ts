@@ -4,7 +4,7 @@
  * 支持暂停（导入文件时暂停自动轮询）
  */
 
-import { ref, computed, onActivated, onDeactivated, onUnmounted } from "vue";
+import { ref, computed, onActivated, onDeactivated, onUnmounted, watch } from "vue";
 import { isAutoRefreshPaused } from "@/composables/autoRefreshGate";
 import { ElMessage } from "element-plus";
 import { showErrorOnce } from "@/api/http";
@@ -105,6 +105,21 @@ export function useAutoRead(options: AutoReadOptions) {
     { label: "逐点", value: "single" },
   ];
 
+  // DataSet 页面使用独立状态，避免开关设备级自动读取。
+  const datasetAutoRead = ref(false);
+  const datasetReading = ref(false);
+  const datasetReadInterval = ref(1000);
+  const datasetIntervalOptions = ref([
+    { label: "500ms", value: 500 },
+    { label: "1000ms", value: 1000 },
+    { label: "2000ms", value: 2000 },
+    { label: "5000ms", value: 5000 },
+    { label: "10000ms", value: 10000 },
+    { label: "30000ms", value: 30000 },
+  ]);
+  let datasetAutoReadTimer: ReturnType<typeof setTimeout> | null = null;
+  let datasetReadInFlight = false;
+
   // 逐点自动读取定时器
   let singlePointAutoReadTimer: any = null;
 
@@ -128,7 +143,7 @@ export function useAutoRead(options: AutoReadOptions) {
     if (timer.value) return;
     const refresh = async () => {
       // 导入文件时暂停轮询，避免干扰上传和超时
-      if (isAutoRefreshPaused.value || refreshInFlight) return;
+      if (isAutoRefreshPaused.value || refreshInFlight || isIec61850DatasetPage()) return;
       refreshInFlight = true;
       try {
         await fetchDeviceTable(
@@ -145,11 +160,91 @@ export function useAutoRead(options: AutoReadOptions) {
     timer.value = setInterval(() => void refresh(), TABLE_REFRESH_INTERVAL);
   };
 
+  const isIec61850DatasetPage = () =>
+    isIec61850Protocol(String(protocolType.value)) &&
+    iec61850Category.value === "DataSets" &&
+    !!iec61850Item.value;
+
   const stopAutoRefresh = () => {
     if (timer.value) {
       clearInterval(timer.value);
       timer.value = null;
     }
+  };
+
+  const stopDatasetAutoReadTimer = () => {
+    if (datasetAutoReadTimer) {
+      clearTimeout(datasetAutoReadTimer);
+      datasetAutoReadTimer = null;
+    }
+  };
+
+  const readCurrentDataset = async (showSuccess: boolean) => {
+    if (!isIec61850DatasetPage() || datasetReadInFlight || isAutoRefreshPaused.value) return;
+    datasetReadInFlight = true;
+    datasetReading.value = true;
+    try {
+      await fetchDeviceTable(
+        routeName.value,
+        currentSlaveId.value,
+        searchQuery.value[currentSlaveId.value] || "",
+        pageIndex.value,
+        pageSize.value
+      );
+      if (showSuccess) ElMessage.success("DataSet 读取完成");
+    } finally {
+      datasetReadInFlight = false;
+      datasetReading.value = false;
+    }
+  };
+
+  // 使用递归 setTimeout，保证慢速 MMS 读取不会并发重叠。
+  const scheduleDatasetAutoRead = (delay = datasetReadInterval.value) => {
+    stopDatasetAutoReadTimer();
+    if (!datasetAutoRead.value || !isIec61850DatasetPage()) return;
+    datasetAutoReadTimer = setTimeout(async () => {
+      await readCurrentDataset(false);
+      scheduleDatasetAutoRead();
+    }, Math.max(delay, 1));
+  };
+
+  const handleDatasetAutoReadChange = async (enabled: boolean) => {
+    if (enabled) {
+      const deviceInfo = await getDeviceInfo(routeName.value);
+      if (!deviceInfo?.get("server_status")) {
+        datasetAutoRead.value = false;
+        showErrorOnce("设备未连接，请先启动设备后再启用 DataSet 自动读取");
+        return;
+      }
+      datasetAutoRead.value = true;
+      ElMessage.success("已启用 DataSet 自动读取");
+      scheduleDatasetAutoRead(0);
+    } else {
+      datasetAutoRead.value = false;
+      stopDatasetAutoReadTimer();
+      ElMessage.success("已停止 DataSet 自动读取");
+    }
+  };
+
+  const handleDatasetIntervalChange = (val: string | number) => {
+    const interval = Number(val);
+    if (!Number.isFinite(interval) || interval <= 0) return;
+    if (!datasetIntervalOptions.value.some((option) => option.value === interval)) {
+      datasetIntervalOptions.value.push({ label: `${interval}ms`, value: interval });
+      datasetIntervalOptions.value.sort((a, b) => a.value - b.value);
+    }
+    datasetReadInterval.value = interval;
+    if (datasetAutoRead.value) scheduleDatasetAutoRead();
+  };
+
+  const handleDatasetManualRead = async () => {
+    if (datasetReadInFlight) return;
+    const deviceInfo = await getDeviceInfo(routeName.value);
+    if (!deviceInfo?.get("server_status")) {
+      showErrorOnce("设备未连接，请先启动设备后再读取 DataSet");
+      return;
+    }
+    await readCurrentDataset(true);
   };
 
   /** 停止所有自动读取（批量+逐点） */
@@ -521,13 +616,29 @@ export function useAutoRead(options: AutoReadOptions) {
     if (status) startAutoRefresh();
   };
 
+  watch([iec61850Category, iec61850Item], () => {
+    if (!isIec61850DatasetPage()) {
+      datasetAutoRead.value = false;
+      stopDatasetAutoReadTimer();
+    } else if (datasetAutoRead.value) {
+      scheduleDatasetAutoRead(0);
+    }
+  });
+
   const formatProgress = (percentage: number) => {
     return percentage === 100 ? "完成" : `${percentage}%`;
   };
 
   onActivated(() => startAutoRefresh());
-  onDeactivated(() => stopAutoRefresh());
-  onUnmounted(() => stopAutoRefresh());
+  onDeactivated(() => {
+    stopAutoRefresh();
+    datasetAutoRead.value = false;
+    stopDatasetAutoReadTimer();
+  });
+  onUnmounted(() => {
+    stopAutoRefresh();
+    stopDatasetAutoReadTimer();
+  });
 
   return {
     isAutoRead,
@@ -541,6 +652,10 @@ export function useAutoRead(options: AutoReadOptions) {
     intervalOptions,
     readMode,
     readModeOptions,
+    datasetAutoRead,
+    datasetReading,
+    datasetReadInterval,
+    datasetIntervalOptions,
     needsAutoReadControls,
     startAutoRefresh,
     stopAutoRefresh,
@@ -548,6 +663,9 @@ export function useAutoRead(options: AutoReadOptions) {
     handleIntervalChange,
     handleReadModeChange,
     handleManualRead,
+    handleDatasetAutoReadChange,
+    handleDatasetIntervalChange,
+    handleDatasetManualRead,
     fetchAutoReadStatus,
     formatProgress,
   };

@@ -179,3 +179,4 @@ dist_msix
 
 data/*
 !data/point_csv/
+word/

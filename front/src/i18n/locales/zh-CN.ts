@@ -295,6 +295,8 @@ export default {
     interval: "间隔",
     batchAutoReading: "批量自动读取中",
     singleAutoReading: "逐点自动读取中",
+    readDataset: "读取 DataSet",
+    datasetAutoReading: "DataSet 自动读取中",
     addSlave: "添加从机",
     resetSuccess: "重置成功",
     clearSuccess: "清空成功，共删除 {count} 个测点",

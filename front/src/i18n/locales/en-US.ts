@@ -298,6 +298,8 @@ export default {
     interval: "Interval",
     batchAutoReading: "Batch auto reading...",
     singleAutoReading: "Single auto reading...",
+    readDataset: "Read DataSet",
+    datasetAutoReading: "DataSet auto reading...",
     addSlave: "Add Slave",
     resetSuccess: "Reset successful",
     clearSuccess: "Cleared successfully, {count} points deleted",

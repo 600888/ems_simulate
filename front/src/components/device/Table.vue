@@ -765,18 +765,9 @@ const filteredData = computed(() => {
   });
 });
 
-/** 有效分页总数（IEC61850 DataSet 按扁平行数，其他按后端 total） */
+/** 有效分页总数（后端 total 与各页面实际分页单位保持一致） */
 const effectiveTotal = computed(() => {
   if (props.isIec61850 && props.iec61850TreeData) {
-    // DataSet 扁平模式：items 展开后的总行数
-    if (props.iec61850Category === 'DataSets') {
-      let count = 0;
-      for (const item of (props.iec61850TreeData.items || [])) {
-        count += item.children?.length || 0;
-      }
-      return count;
-    }
-    // 树形模式：total 是 DO 数量
     return props.iec61850TreeData.total || 0;
   }
   return props.total;

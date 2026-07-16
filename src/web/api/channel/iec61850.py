@@ -943,12 +943,40 @@ def _build_iec61850_tree(
     return {"items": items, "total": len(items)}
 
 
+def _paginate_iec61850_dataset_tree(tree_data: dict[str, Any], page_index: int, page_size: int) -> dict[str, Any]:
+    """按前端实际展示的 DataSet 成员行分页，并保留其 DO 分组结构。"""
+    items = tree_data.get("items") or []
+    total = sum(len(item.get("children") or []) for item in items)
+    start = max(page_index - 1, 0) * max(page_size, 1)
+    end = start + max(page_size, 1)
+
+    paged_items: list[dict[str, Any]] = []
+    member_offset = 0
+    for item in items:
+        children = item.get("children") or []
+        item_end = member_offset + len(children)
+        if item_end > start and member_offset < end:
+            child_start = max(start - member_offset, 0)
+            child_end = min(end - member_offset, len(children))
+            paged_item = dict(item)
+            paged_item["children"] = children[child_start:child_end]
+            paged_items.append(paged_item)
+        member_offset = item_end
+        if member_offset >= end:
+            break
+
+    return {"items": paged_items, "total": total}
+
+
 @router.post("/iec61850-tree-data", response_model=BaseResponse)
 async def get_iec61850_tree_data(
     body: Iec61850TreeDataRequest,
     request: Request,
 ):
-    """获取 IEC61850 树形表格数据 (按 DO→DA→BDA 层级返回，支持 DO 级分页)"""
+    """获取 IEC61850 树形表格数据。
+
+    DataModel 按 DO 分页；DataSets 因前端平铺成员，按 DataSet 成员分页。
+    """
     device = _get_iec61850_device(request, body.channel_id)
 
     pt_filter = []
@@ -992,9 +1020,13 @@ async def get_iec61850_tree_data(
             point_types=pt_filter,
             device=device,
         )
-        start = (body.page_index - 1) * body.page_size
-        end = start + body.page_size
-        paged_items = tree_data["items"][start:end]
+        if body.category == "DataSets":
+            tree_data = _paginate_iec61850_dataset_tree(tree_data, body.page_index, body.page_size)
+            paged_items = tree_data["items"]
+        else:
+            start = (body.page_index - 1) * body.page_size
+            end = start + body.page_size
+            paged_items = tree_data["items"][start:end]
 
     total = tree_data["total"]
 

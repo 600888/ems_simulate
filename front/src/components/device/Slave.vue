@@ -82,14 +82,18 @@
                 </template>
               </el-popconfirm>
             </template>
-            <template
-              v-if="
-                !(isIec61850 && iec61850Category === 'DataSets') && needsAutoReadControls
-              "
-            >
+            <template v-if="needsAutoReadControls">
               <div class="auto-read-control">
                 <span class="auto-read-label">{{ $t("slave.autoRead") }}</span>
                 <el-switch
+                  v-if="isIec61850 && iec61850Category === 'DataSets'"
+                  v-model="datasetAutoRead"
+                  @change="handleDatasetAutoReadChange"
+                  active-color="#3b82f6"
+                  inactive-color="#94a3b8"
+                />
+                <el-switch
+                  v-else
                   v-model="isAutoRead"
                   @change="handleAutoReadChange"
                   active-color="#3b82f6"
@@ -100,6 +104,7 @@
 
                 <!-- 读取模式选择 (始终显示) -->
                 <el-tooltip
+                  v-if="!(isIec61850 && iec61850Category === 'DataSets')"
                   :content="
                     readMode === 'batch' ? $t('slave.batchRead') : $t('slave.singleRead')
                   "
@@ -116,6 +121,25 @@
                 <!-- 间隔设置 (批量和逐点都支持，始终显示) -->
                 <span class="auto-read-label">{{ $t("slave.interval") }}</span>
                 <el-select
+                  v-if="isIec61850 && iec61850Category === 'DataSets'"
+                  v-model="datasetReadInterval"
+                  :placeholder="$t('slave.interval')"
+                  allow-create
+                  filterable
+                  default-first-option
+                  style="width: 100px"
+                  @change="handleDatasetIntervalChange"
+                  size="normal"
+                >
+                  <el-option
+                    v-for="item in datasetIntervalOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
+                <el-select
+                  v-else
                   v-model="readInterval"
                   :placeholder="$t('slave.interval')"
                   allow-create
@@ -135,7 +159,17 @@
 
                 <!-- 手动读取/取消按钮 (仅在非自动读取时显示) -->
                 <el-button
-                  v-if="!isAutoRead"
+                  v-if="isIec61850 && iec61850Category === 'DataSets' && !datasetAutoRead"
+                  type="success"
+                  class="modern-btn manual-read-btn"
+                  @click="handleDatasetManualRead"
+                  :icon="Download"
+                  :loading="datasetReading"
+                >
+                  {{ $t("slave.readDataset") }}
+                </el-button>
+                <el-button
+                  v-else-if="!(isIec61850 && iec61850Category === 'DataSets') && !isAutoRead"
                   :type="isReading ? 'danger' : 'success'"
                   class="modern-btn"
                   :class="isReading ? 'cancel-read-btn' : 'manual-read-btn'"
@@ -153,7 +187,20 @@
                 </el-button>
 
                 <!-- 自动读取时显示当前模式 -->
-                <el-tag v-if="isAutoRead" type="info" size="small" effect="plain">
+                <el-tag
+                  v-if="isIec61850 && iec61850Category === 'DataSets' && datasetAutoRead"
+                  type="info"
+                  size="small"
+                  effect="plain"
+                >
+                  {{ $t("slave.datasetAutoReading") }}
+                </el-tag>
+                <el-tag
+                  v-else-if="!(isIec61850 && iec61850Category === 'DataSets') && isAutoRead"
+                  type="info"
+                  size="small"
+                  effect="plain"
+                >
                   {{
                     readMode === "batch"
                       ? $t("slave.batchAutoReading")
@@ -436,8 +483,11 @@ const fetchDeviceTable = async (name: string, sid: number, q: string, pi: number
         channelId.value, iec61850Category.value, iec61850Item.value,
         q || null, pointTypes.value, pi, ps,
       );
-      iec61850TreeData.value = treeResp;
-      total.value = treeResp?.total || 0;
+      // 读取失败时保留上一帧数据，避免表格瞬间清空后再次出现造成闪烁。
+      if (treeResp) {
+        iec61850TreeData.value = treeResp;
+        total.value = treeResp.total;
+      }
       // 设置 tableHeader: 地址/FC/最后更新时间/DA路径 是模板写死的专用列,
       // 动态列只需补充剩余的表头
       if (!tableDataMap.value[sid]) {
@@ -651,6 +701,10 @@ const {
   intervalOptions,
   readMode,
   readModeOptions,
+  datasetAutoRead,
+  datasetReading,
+  datasetReadInterval,
+  datasetIntervalOptions,
   needsAutoReadControls,
   startAutoRefresh,
   stopAutoRefresh,
@@ -658,6 +712,9 @@ const {
   handleIntervalChange,
   handleReadModeChange,
   handleManualRead,
+  handleDatasetAutoReadChange,
+  handleDatasetIntervalChange,
+  handleDatasetManualRead,
   fetchAutoReadStatus,
   formatProgress,
   successCount,
