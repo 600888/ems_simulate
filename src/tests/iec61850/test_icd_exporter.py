@@ -4,7 +4,7 @@ import pytest
 import xmltodict
 
 from src.proto.iec61850.defs.constants import IecType
-from src.proto.iec61850.model.ied_model import DARef, DataSetRef, DORef, IedModel, LDModel, LNModel, RCBRef
+from src.proto.iec61850.model.ied_model import DARef, DataSetRef, DORef, GoCBRef, IedModel, LDModel, LNModel, RCBRef
 from src.proto.iec61850.plugins.model_exporter.exporters.icd import (
     IcdExporter,
     _next_da_type_id,
@@ -73,6 +73,7 @@ class TestIcdExporter:
             # Bug fix: ld_name == ied_name 时不应返回空字符串
             ("GenericLD", "GenericLD", "GenericLD"),
             ("EMS", "EMS", "EMS"),
+            ("PCS01PIGO", "PCS01", "PIGO"),
             ("", "IED", ""),
             ("PCS001", "", "PCS001"),
         ],
@@ -209,6 +210,225 @@ class TestIcdExporter:
         assert second_fcda["@ldInst"] == "CTRL"
         assert second_fcda["@prefix"] == "kr"
         assert second_fcda["@lnClass"] == "GGIO"
+
+    def test_ln_type_id_does_not_repeat_identical_ied_and_ld_names(self, tmp_path):
+        model = IedModel(
+            host="127.0.0.1",
+            lds=(
+                LDModel(
+                    name="PCS01PIGO",
+                    inst="PCS01PIGO",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="PCS01PIGO/LLN0",
+                            dos=(
+                                DORef(
+                                    name="Mod",
+                                    ref="PCS01PIGO/LLN0.Mod",
+                                    cdc="ENC",
+                                    das=(
+                                        DARef(
+                                            name="stVal",
+                                            path="stVal",
+                                            fc="ST",
+                                            iec_type=IecType.INTEGER,
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        output_path = tmp_path / "no_duplicate_prefix.icd"
+        self.exporter.export(model, str(output_path), ied_name="PCS01PIGO")
+        doc = xmltodict.parse(output_path.read_text(encoding="utf-8"))
+
+        ln0 = doc["SCL"]["IED"]["AccessPoint"]["Server"]["LDevice"]["LN0"]
+        lnode_type = doc["SCL"]["DataTypeTemplates"]["LNodeType"]
+        assert ln0["@lnType"] == "PCS01PIGO.LLN0"
+        assert lnode_type["@id"] == "PCS01PIGO.LLN0"
+
+    def test_export_splits_pigo_domain_and_writes_goose_appid_address(self, tmp_path):
+        model = IedModel(
+            host="127.0.0.1",
+            lds=(
+                LDModel(
+                    name="PCS01PIGO",
+                    inst="PCS01PIGO",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            dos=(
+                                DORef(
+                                    name="Mod",
+                                    cdc="ENC",
+                                    das=(DARef(name="stVal", path="stVal", fc="ST", iec_type=IecType.INTEGER),),
+                                ),
+                            ),
+                            gocb_list=(GoCBRef(name="gocb0", app_id=1, conf_rev=1),),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        output_path = tmp_path / "pigo_goose.icd"
+        self.exporter.export(model, str(output_path))
+        doc = xmltodict.parse(output_path.read_text(encoding="utf-8"))
+
+        assert doc["SCL"]["IED"]["@name"] == "PCS01"
+        assert doc["SCL"]["IED"]["AccessPoint"]["Server"]["LDevice"]["@inst"] == "PIGO"
+        connected_ap = doc["SCL"]["Communication"]["SubNetwork"]["ConnectedAP"]
+        assert connected_ap["@iedName"] == "PCS01"
+        assert connected_ap["GSE"] == {
+            "@ldInst": "PIGO",
+            "@cbName": "gocb0",
+            "Address": {"P": {"@type": "APPID", "#text": "0001"}},
+        }
+
+    def test_quality_and_timestamp_never_reference_datypes(self):
+        q_children = (DARef(name="validity", path="q.validity", fc="ST", iec_type=IecType.INTEGER),)
+        t_children = (DARef(name="seconds", path="t.seconds", fc="ST", iec_type=IecType.INTEGER),)
+        model = IedModel(
+            lds=(
+                LDModel(
+                    name="IED1LD0",
+                    lns=(
+                        LNModel(
+                            name="GGIO1",
+                            ln_class="GGIO",
+                            dos=(
+                                DORef(
+                                    name="Ind1",
+                                    cdc="SPS",
+                                    das=(
+                                        DARef(
+                                            name="q",
+                                            path="q",
+                                            fc="ST",
+                                            iec_type=IecType.INTEGER,
+                                            sub_das=q_children,
+                                        ),
+                                        DARef(
+                                            name="t",
+                                            path="t",
+                                            fc="ST",
+                                            iec_type=IecType.TIMESTAMP,
+                                            sub_das=t_children,
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        templates = self.exporter._build_data_type_templates(model, "IED1")
+        do_type = templates["DOType"]
+        das = do_type["DA"] if isinstance(do_type["DA"], list) else [do_type["DA"]]
+        assert {da["@name"]: da for da in das} == {
+            "q": {"@name": "q", "@fc": "ST", "@bType": "Quality"},
+            "t": {"@name": "t", "@fc": "ST", "@bType": "Timestamp"},
+        }
+        assert "DAType" not in templates
+
+    def test_export_writes_goose_control_block_to_ln0(self, tmp_path):
+        model = IedModel(
+            host="192.168.1.10",
+            lds=(
+                LDModel(
+                    name="IED1LD0",
+                    inst="IED1LD0",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            ref="IED1LD0/LLN0",
+                            datasets=(
+                                DataSetRef(
+                                    name="dsTrip",
+                                    ref="IED1LD0/LLN0.dsTrip",
+                                    members=({"ref": "IED1LD0/GGIO1.Ind1.stVal", "fc": "ST"},),
+                                ),
+                            ),
+                            gocb_list=(
+                                GoCBRef(
+                                    name="gocbTrip",
+                                    ref="IED1LD0/LLN0.gocbTrip",
+                                    go_cb_ref="IED1LD0/LLN0$GO$gocbTrip",
+                                    go_id="trip-publisher",
+                                    app_id=0x1001,
+                                    data_set_ref="IED1LD0/LLN0$dsTrip",
+                                    conf_rev=7,
+                                ),
+                            ),
+                        ),
+                        LNModel(
+                            name="GGIO1",
+                            ln_class="GGIO",
+                            ref="IED1LD0/GGIO1",
+                            dos=(
+                                DORef(
+                                    name="Ind1",
+                                    ref="IED1LD0/GGIO1.Ind1",
+                                    cdc="SPS",
+                                    das=(
+                                        DARef(
+                                            name="stVal",
+                                            path="stVal",
+                                            fc="ST",
+                                            iec_type=IecType.BOOLEAN,
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        output_path = tmp_path / "goose.icd"
+        self.exporter.export(model, str(output_path), ied_name="IED1")
+        doc = xmltodict.parse(output_path.read_text(encoding="utf-8"))
+
+        gse_control = doc["SCL"]["IED"]["AccessPoint"]["Server"]["LDevice"]["LN0"]["GSEControl"]
+        assert gse_control == {
+            "@name": "gocbTrip",
+            "@type": "GOOSE",
+            "@confRev": "7",
+            "@datSet": "dsTrip",
+            "@appID": "trip-publisher",
+        }
+        assert doc["SCL"]["IED"]["Services"]["GOOSE"]["@max"] == "1"
+
+    def test_export_rejects_goose_control_with_missing_dataset(self, tmp_path):
+        model = IedModel(
+            lds=(
+                LDModel(
+                    name="LD0",
+                    inst="LD0",
+                    lns=(
+                        LNModel(
+                            name="LLN0",
+                            ln_class="LLN0",
+                            gocb_list=(GoCBRef(name="gcb1", data_set_ref="LD0/LLN0$missing"),),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        with pytest.raises(ValueError, match="GSEControl gcb1 -> missing DataSet missing"):
+            self.exporter.export(model, str(tmp_path / "invalid.icd"), ied_name="IED1")
 
     # ===== DOType ID 生成 =====
     def test_do_type_id_generation(self):

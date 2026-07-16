@@ -136,6 +136,11 @@ class IcdExporter:
                     if dat_set and dat_set not in data_set_names:
                         issues.append(f"ReportControl {report.get('@name', '')} -> missing DataSet {dat_set}")
 
+                for gse_control in cls._as_list(owner_ln.get("GSEControl")):
+                    dat_set = gse_control.get("@datSet", "")
+                    if dat_set and dat_set not in data_set_names:
+                        issues.append(f"GSEControl {gse_control.get('@name', '')} -> missing DataSet {dat_set}")
+
                 for data_set in data_sets:
                     ds_name = data_set.get("@name", "")
                     for fcda in cls._as_list(data_set.get("FCDA")):
@@ -404,22 +409,26 @@ class IcdExporter:
     def _model_to_scl_dict(self, model: IedModel, ied_name: str) -> dict[str, Any]:
         type_templates = self._build_data_type_templates(model, ied_name)
         ied = self._build_ied_section(model, ied_name, type_templates)
+        connected_ap: dict[str, Any] = {
+            "@iedName": ied_name,
+            "@apName": "S1",
+            "Address": {
+                "P": [
+                    {"@type": "IP", "#text": model.host},
+                    {"@type": "OSI-TSEL", "#text": "0001"},
+                    {"@type": "OSI-SSEL", "#text": "0001"},
+                    {"@type": "OSI-PSEL", "#text": "00000001"},
+                ]
+            },
+        }
+        gse_addresses = self._build_gse_addresses(model, ied_name)
+        if gse_addresses:
+            connected_ap["GSE"] = gse_addresses
         communication = {
             "SubNetwork": {
                 "@name": "MMS",
                 "@type": "8-MMS",
-                "ConnectedAP": {
-                    "@iedName": ied_name,
-                    "@apName": "S1",
-                    "Address": {
-                        "P": [
-                            {"@type": "IP", "#text": model.host},
-                            {"@type": "OSI-TSEL", "#text": "0001"},
-                            {"@type": "OSI-SSEL", "#text": "0001"},
-                            {"@type": "OSI-PSEL", "#text": "00000001"},
-                        ]
-                    },
-                },
+                "ConnectedAP": connected_ap,
             }
         }
         return {
@@ -444,15 +453,15 @@ class IcdExporter:
             ln0_item = None
             ln_list = []
             for ln in ld.lns:
-                ln_type_id = f"{ied_name}{ld_inst}.{ln.name}"
+                ln_type_id = self._build_ln_type_id(ied_name, ld_inst, ln.name)
                 # 使用去重后的LNodeType id（如果存在映射）
                 dedup_ln_type_id = self._ln_type_mapping.get(ln_type_id, ln_type_id)
                 ln_inst = self._extract_ln_inst(ln.name)
                 ln_class = ln.ln_class or self._extract_ln_class_from_name(ln.name)
                 ln_prefix = self._extract_ln_prefix(ln.name, ln_class)
                 if ln_class == "LLN0":
-                    # 跳过无实际数据的 LLN0 系统节点 (无 DO/DataSet/RCB)
-                    if not ln.dos and not ln.datasets and not ln.rcb_list:
+                    # GSEControl 也归属于 LLN0；仅含 GOOSE 控制块的 LLN0 仍须导出。
+                    if not ln.dos and not ln.datasets and not ln.rcb_list and not ln.gocb_list:
                         continue
                     ln0_item = {
                         "@lnType": dedup_ln_type_id,
@@ -463,6 +472,8 @@ class IcdExporter:
                         ln0_item["DataSet"] = self._build_datasets(ln.datasets, ld_inst, ln, ld.lns)
                     if ln.rcb_list:
                         ln0_item["ReportControl"] = self._build_report_controls(ln.rcb_list)
+                    if ln.gocb_list:
+                        ln0_item["GSEControl"] = self._build_gse_controls(ln.gocb_list)
                 else:
                     ln_item = {
                         "@lnType": dedup_ln_type_id,
@@ -488,21 +499,26 @@ class IcdExporter:
         server = {"Authentication": {"@none": "true"}}
         if ldevice_list:
             server["LDevice"] = ldevice_list if len(ldevice_list) > 1 else ldevice_list[0]
+        services = {
+            "DynAssociation": None,
+            "GetDirectory": None,
+            "GetDataObjectDefinition": None,
+            "DataObjectDirectory": None,
+            "GetDataSetValue": None,
+            "SetDataSetValue": None,
+            "DataSetDirectory": None,
+            "ReadWrite": None,
+            "ConfReportControl": {"@max": str(sum(len(ln.rcb_list) for ld in model.lds for ln in ld.lns))},
+            "GetCBValues": None,
+        }
+        goose_count = sum(len(ln.gocb_list) for ld in model.lds for ln in ld.lns)
+        if goose_count:
+            services["GOOSE"] = {"@max": str(goose_count)}
+        services["ConfLNs"] = {"@fixPrefix": "true", "@fixLnInst": "true"}
+
         return {
             "@name": ied_name,
-            "Services": {
-                "DynAssociation": None,
-                "GetDirectory": None,
-                "GetDataObjectDefinition": None,
-                "DataObjectDirectory": None,
-                "GetDataSetValue": None,
-                "SetDataSetValue": None,
-                "DataSetDirectory": None,
-                "ReadWrite": None,
-                "ConfReportControl": {"@max": str(sum(len(ln.rcb_list) for ld in model.lds for ln in ld.lns))},
-                "GetCBValues": None,
-                "ConfLNs": {"@fixPrefix": "true", "@fixLnInst": "true"},
-            },
+            "Services": services,
             "AccessPoint": {
                 "@name": "S1",
                 "Server": server,
@@ -529,7 +545,7 @@ class IcdExporter:
         for ld in model.lds:
             ld_inst = self._get_ld_inst(ld, ied_name)
             for ln in ld.lns:
-                ln_type_id = f"{ied_name}{ld_inst}.{ln.name}"
+                ln_type_id = self._build_ln_type_id(ied_name, ld_inst, ln.name)
                 ln_class = ln.ln_class or self._extract_ln_class_from_name(ln.name)
                 do_refs = []
 
@@ -549,8 +565,8 @@ class IcdExporter:
                     )
                     do_refs.append({"@name": do.name, "@type": do_type_id})
 
-                # 跳过无实际 DO 的系统节点 (如 LLN0)
-                if not do_refs and ln_class == "LLN0":
+                # 资源型 LLN0（DataSet/RCB/GoCB）仍会被 IED 段引用，保留其 LNodeType。
+                if not do_refs and ln_class == "LLN0" and not ln.datasets and not ln.rcb_list and not ln.gocb_list:
                     continue
 
                 # LNodeType去重：对具有相同lnClass和DO结构（名称+类型）的LNodeType进行合并
@@ -675,10 +691,10 @@ class IcdExporter:
             # 例如：Temp001.mag.f（浮点测量值）vs SglMaxVolNo.mag.i（整型状态值），
             # 两者的 mag 应有不同的 DAType 定义。
             # 默认定义为兜底（在线发现失败时使用）。
-            if da.sub_das:
+            if btype == "Struct" and da.sub_das:
                 da_type_id = self._resolve_or_create_da_type(da, da_type_cache, da_types)
                 da_ref["@type"] = da_type_id
-            elif da.name in self._STRUCT_DA_DEFAULT_BDAS:
+            elif btype == "Struct" and da.name in self._STRUCT_DA_DEFAULT_BDAS:
                 da_type_id = self._resolve_or_create_default_da_type(da, da_type_cache, da_types)
                 da_ref["@type"] = da_type_id
 
@@ -1040,6 +1056,60 @@ class IcdExporter:
 
         return rcb_items if len(rcb_items) > 1 else (rcb_items[0] if rcb_items else [])
 
+    @staticmethod
+    def _dataset_name_from_ref(data_set_ref: str) -> str:
+        """Convert an MMS DataSet object reference to the local SCL name."""
+        if not data_set_ref:
+            return ""
+        local_ref = data_set_ref.rsplit("/", 1)[-1]
+        if "$" in local_ref:
+            return local_ref.rsplit("$", 1)[-1]
+        if "." in local_ref:
+            return local_ref.rsplit(".", 1)[-1]
+        return local_ref
+
+    def _build_gse_controls(self, gocb_list) -> Any:
+        """Build SCL ``GSEControl`` elements from discovered GoCB metadata."""
+        items = []
+        for gocb in gocb_list:
+            item = {
+                "@name": gocb.name,
+                "@type": "GOOSE",
+                "@confRev": str(gocb.conf_rev),
+            }
+            data_set_name = self._dataset_name_from_ref(gocb.data_set_ref)
+            if data_set_name:
+                item["@datSet"] = data_set_name
+            if gocb.go_id:
+                # The MMS GoID maps to SCL GSEControl.appID.  The numeric
+                # destination APPID belongs to Communication/GSE/Address.
+                item["@appID"] = gocb.go_id
+            items.append(item)
+        return items if len(items) > 1 else (items[0] if items else [])
+
+    def _build_gse_addresses(self, model: IedModel, ied_name: str) -> Any:
+        """Build Communication/GSE entries from transport data exposed over MMS."""
+        items = []
+        for ld in model.lds:
+            ld_inst = self._get_ld_inst(ld, ied_name)
+            for ln in ld.lns:
+                for gocb in ln.gocb_list:
+                    if gocb.app_id is None:
+                        continue
+                    items.append(
+                        {
+                            "@ldInst": ld_inst,
+                            "@cbName": gocb.name,
+                            "Address": {
+                                "P": {
+                                    "@type": "APPID",
+                                    "#text": f"{int(gocb.app_id) & 0xFFFF:04X}",
+                                }
+                            },
+                        }
+                    )
+        return items if len(items) > 1 else (items[0] if items else [])
+
     def _model_to_xml_dict(self, model: IedModel) -> dict[str, Any]:
         """转换为 xmltodict 兼容的自定义 XML 字典"""
         ld_list = []
@@ -1165,10 +1235,23 @@ class IcdExporter:
         return self._extract_ld_inst(ld_name, ied_name)
 
     @staticmethod
+    def _build_ln_type_id(ied_name: str, ld_inst: str, ln_name: str) -> str:
+        """Build a stable LNodeType ID without duplicating the IED prefix."""
+        if not ied_name:
+            owner = ld_inst
+        elif not ld_inst or ld_inst == ied_name:
+            owner = ied_name
+        elif ld_inst.startswith(ied_name):
+            owner = ld_inst
+        else:
+            owner = f"{ied_name}{ld_inst}"
+        return f"{owner}.{ln_name}" if owner else ln_name
+
+    @staticmethod
     def _looks_like_ld_inst(value: str) -> bool:
         if not value:
             return False
-        return bool(re.match(r"^(LD\d+|CTRL\d*|MEAS\d*|PROT\d*|CTMP\d*|BAY\d*|GOOSE\d*|MMS\d*)$", value))
+        return bool(re.match(r"^(LD\d+|CTRL\d*|MEAS\d*|PROT\d*|CTMP\d*|BAY\d*|PIGO\d*|GOOSE\d*|MMS\d*)$", value))
 
     @staticmethod
     def _looks_like_named_ld_inst(value: str) -> bool:
@@ -1185,7 +1268,10 @@ class IcdExporter:
               "PCS001LD0" → ("PCS001", "LD0")
               "IED1_LD0" → ("IED1", "LD0")
         """
-        match = re.match(r"^(.+?)(LD\d+|CTRL\d*|MEAS\d*|PROT\d*|CTMP\d*|BAY\d*|GOOSE\d*|MMS\d*)$", ld_name)
+        match = re.match(
+            r"^(.+?)(LD\d+|CTRL\d*|MEAS\d*|PROT\d*|CTMP\d*|BAY\d*|PIGO\d*|GOOSE\d*|MMS\d*)$",
+            ld_name,
+        )
         if not match:
             return None
         ied_name, ld_inst = match.groups()
