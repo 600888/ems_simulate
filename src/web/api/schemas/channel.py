@@ -1,6 +1,13 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from src.config.config import Config
+
+
+class ProtocolParamsRequest(BaseModel):
+    schema_version: int = Field(1, ge=1)
+    values: dict[str, Any] = Field(default_factory=dict)
 
 
 class ChannelCreateRequest(BaseModel):
@@ -17,6 +24,7 @@ class ChannelCreateRequest(BaseModel):
     parity: str = "N"
     rtu_addr: str = "1"
     group_id: int | None = None
+    protocol_params: ProtocolParamsRequest | None = None
     model_name: str | None = None  # IEC61850 IED 模型名称
 
 
@@ -33,6 +41,7 @@ class ChannelUpdateRequest(BaseModel):
     stop_bits: int | None = None
     parity: str | None = None
     rtu_addr: str | None = None
+    protocol_params: ProtocolParamsRequest | None = None
     model_name: str | None = None  # IEC61850 IED 模型名称
 
 

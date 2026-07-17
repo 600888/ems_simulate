@@ -47,6 +47,8 @@ class DLT645ServerHandler(ServerHandler):
 
         self._config = config
         timeout = config.get("timeout", 30)
+        runtime = config.get("runtime", {})
+        timeout = runtime.get("session_idle_timeout_ms", 30000) / 1000
         self._meter_address = config.get("meter_address", "000000000000")
 
         # 判断使用 TCP 还是 RTU 模式
@@ -265,6 +267,8 @@ class DLT645ClientHandler(ClientHandler):
 
         self._config = config
         timeout = config.get("timeout", 3)  # 默认3秒超时，避免长时间阻塞
+        runtime = config.get("runtime", {})
+        timeout = runtime.get("command_timeout_ms", 3000) / 1000
         self._meter_address = config.get("meter_address", "000000000000")
 
         # 判断使用 TCP 还是 RTU 模式

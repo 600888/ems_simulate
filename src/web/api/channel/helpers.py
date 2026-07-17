@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 from src.config.config import Config
+from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
 from src.device.factory.general_device_builder import GeneralDeviceBuilder
 from src.device.types.circuit_breaker import CircuitBreaker
@@ -55,6 +56,17 @@ def configure_builder_network(builder, conn_type, protocol_type, ip, port, chann
         icd_path = channel_data.get("icd_path")
         if icd_path:
             builder.setDeviceIcdPath(icd_path)
+
+    channel_id = channel_data.get("id")
+    if channel_id:
+        builder.setDeviceRuntimeConfig(
+            ChannelConfigurationService.get_protocol_params(
+                channel_id,
+                channel_data.get("protocol_type", 1),
+                conn_type,
+            )["values"]
+        )
+        builder.setDeviceSecurityConfig(ChannelConfigurationService.get_runtime_security(channel_id))
 
 
 def is_client_protocol(protocol_type) -> bool:

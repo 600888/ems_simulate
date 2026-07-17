@@ -55,6 +55,7 @@ class IEC61850ServerHandler(ServerHandler):
         ied_name = config.get("ied_name")
         ld_name = config.get("ld_name", "GenericLD")
         self._icd_path: str | None = config.get("icd_path")
+        runtime = config.get("runtime", {})
 
         # model_name 由 Device._build_protocol_config() 从通道配置传入，
         # 对应 ICD 文件的 IED 名称 (如 "PCS001G")，传给 ied_name 参数
@@ -66,6 +67,7 @@ class IEC61850ServerHandler(ServerHandler):
             model_name=effective_ied,
             ied_name=effective_ied,
             ld_name=ld_name,
+            max_connections=runtime.get("max_connections", 5),
         )
         from src.device.core.message.mms_capture import MmsMessageCapture
 
@@ -295,6 +297,7 @@ class IEC61850ClientHandler(ClientHandler):
         super().__init__()
         self._client = None
         self._log = log
+        self._discovery_timeout = _discovery_timeout_seconds()
         self._on_points_discovered = None  # 测点发现回调
         self._connecting = False  # 是否正在连接中（防止重复启动）
         self._connect_phase = self.PHASE_IDLE  # 当前连接阶段
@@ -349,12 +352,22 @@ class IEC61850ClientHandler(ClientHandler):
         port = config.get("port", 102)
         model_name = config.get("model_name", "EMS")
         ld_name = config.get("ld_name", "GenericLD")
+        runtime = config.get("runtime", {})
+        self._discovery_timeout = runtime.get("model_discovery_timeout_ms", 600000) / 1000
+
+        from src.proto.iec61850.core.connection import Iec61850Timeouts
+
+        timeouts = Iec61850Timeouts(
+            connect_ms=runtime.get("connect_timeout_ms", 3000),
+            request_ms=runtime.get("command_timeout_ms", 3000),
+        )
 
         self._client = IEC61850Client(
             ip=ip,
             port=port,
             model_name=model_name,
             ld_name=ld_name,
+            timeouts=timeouts,
         )
         from src.device.core.message.mms_capture import MmsMessageCapture
 
@@ -574,7 +587,7 @@ class IEC61850ClientHandler(ClientHandler):
             if self._log:
                 self._log.info("开始远程发现模型...")
 
-            discovery_timeout = _discovery_timeout_seconds()
+            discovery_timeout = self._discovery_timeout
             discovery_deadline = time.monotonic() + discovery_timeout
 
             def on_discovery_progress(phase: str, current: int, total: int, message: str) -> None:

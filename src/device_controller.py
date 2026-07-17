@@ -4,6 +4,7 @@ import os.path
 import sys
 import time
 
+from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
 from src.device.data_update.data_update_thread import DataUpdateThread
 from src.device.factory.general_device_builder import GeneralDeviceBuilder
@@ -189,6 +190,19 @@ class DeviceController:
                     icd_path = channel.get("icd_path")
                     if icd_path:
                         general_device_builder.setDeviceIcdPath(icd_path)
+
+                # 协议参数和 TLS 配置均以数据库记录为准。旧通道没有记录时，
+                # get_protocol_params 会写入当前协议/连接模式的默认配置。
+                general_device_builder.setDeviceRuntimeConfig(
+                    ChannelConfigurationService.get_protocol_params(
+                        channel_id,
+                        channel.get("protocol_type", 1),
+                        conn_type,
+                    )["values"]
+                )
+                general_device_builder.setDeviceSecurityConfig(
+                    ChannelConfigurationService.get_runtime_security(channel_id)
+                )
 
                 general_device = general_device_builder.makeGeneralDevice(
                     device_id=channel_id,

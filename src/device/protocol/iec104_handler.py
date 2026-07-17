@@ -61,8 +61,16 @@ class IEC104ServerHandler(ServerHandler):
         self._config = config
         ip = config.get("ip", Config.DEFAULT_IP)
         port = config.get("port", Config.IEC104_DEFAULT_PORT)
+        runtime = config.get("runtime", {})
 
-        self._server: IEC104Server = IEC104Server(ip=ip, port=port)
+        self._server: IEC104Server = IEC104Server(
+            ip=ip,
+            port=port,
+            connection_timeout=max(1, runtime.get("connection_timeout_ms", 10000) // 1000),
+            message_timeout=max(1, runtime.get("message_timeout_ms", 15000) // 1000),
+            keep_alive_interval=max(1, runtime.get("keep_alive_interval_ms", 20000) // 1000),
+            max_connections=runtime.get("max_connections", 0),
+        )
 
         # 预创建所有从站对应的 Station（common_address = slave_id）
         slave_id_list = config.get("slave_id_list", [])
@@ -291,6 +299,7 @@ class IEC104ClientHandler(ClientHandler):
         super().__init__()
         self._client = None
         self._log = log
+        self._connect_timeout = 3.0
 
     def initialize(self, config: dict[str, Any]) -> None:
         """初始化 IEC104 客户端
@@ -306,6 +315,8 @@ class IEC104ClientHandler(ClientHandler):
         self._config = config
         ip = config.get("ip", "127.0.0.1")
         port = config.get("port", Config.IEC104_DEFAULT_PORT)
+        runtime = config.get("runtime", {})
+        self._connect_timeout = runtime.get("connect_timeout_ms", 3000) / 1000
 
         self._client = IEC104Client(ip=ip, port=port)
 
@@ -327,7 +338,7 @@ class IEC104ClientHandler(ClientHandler):
         """连接到 IEC104 服务器"""
         try:
             if self._client:
-                is_connected = await self._client.connect()
+                is_connected = await self._client.connect(timeout=self._connect_timeout)
                 self._is_running = is_connected
                 return is_connected
             return False

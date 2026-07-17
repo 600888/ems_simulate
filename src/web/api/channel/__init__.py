@@ -13,6 +13,7 @@ from src.web.api.channel.iec61850 import router as iec61850_router
 from src.web.api.channel.import_points import router as import_points_router
 from src.web.api.channel.report import router as report_router
 from src.web.api.channel.router import router as channel_crud_router
+from src.web.api.channel.security import router as security_router
 
 channel_router = APIRouter(prefix="/api/channels", tags=["通道管理"])
 
@@ -24,3 +25,4 @@ channel_router.include_router(goose_router)
 channel_router.include_router(goose_ws_router)
 channel_router.include_router(report_router)
 channel_router.include_router(files_router)
+channel_router.include_router(security_router)

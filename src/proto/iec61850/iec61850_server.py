@@ -34,6 +34,7 @@ class IEC61850Server:
         model_name: str = "EMS",
         ied_name: str = "EMSDevice",
         ld_name: str = "GenericLD",
+        max_connections: int = 5,
     ):
         if not HAS_IEC61850:
             raise RuntimeError("pyiec61850 未安装，无法创建 IEC 61850 服务器")
@@ -43,6 +44,7 @@ class IEC61850Server:
         self.model_name = model_name
         self.ied_name = ied_name
         self.ld_name = ld_name
+        self.max_connections = max_connections
 
         # ===== 组合核心组件 =====
         self._builder = IedModelBuilder(model_name, ied_name, ld_name)
@@ -137,6 +139,15 @@ class IEC61850Server:
     @property
     def _keep_alive(self) -> list[Any]:
         return self._builder.keep_alive
+
+    def _create_ied_server(self):
+        """Create a native server with the configured MMS connection limit."""
+        server_config = iec61850.IedServerConfig_create()
+        try:
+            iec61850.IedServerConfig_setMaxMmsConnections(server_config, self.max_connections)
+            return iec61850.IedServer_createWithConfig(self._builder.model, None, server_config)
+        finally:
+            iec61850.IedServerConfig_destroy(server_config)
 
     # ===== 向后兼容属性: 委托给 ds_manager =====
 
@@ -640,7 +651,7 @@ class IEC61850Server:
 
         log.info(f"正在启动 MMS 服务器 (模型: {self.ied_name})...")
 
-        self._server = iec61850.IedServer_create(self._builder.model)
+        self._server = self._create_ied_server()
         if not self._server:
             self._is_running = False
             log.error("IedServer_create 失败")
@@ -712,7 +723,7 @@ class IEC61850Server:
                 if rc_reapplied > 0:
                     log.info(f"IedServer 重建前重新创建了 {rc_reapplied} 个 RCB")
 
-            self._server = iec61850.IedServer_create(self._builder.model)
+            self._server = self._create_ied_server()
             if not self._server:
                 self._is_running = False
                 log.error("重建 IedServer 失败")
@@ -775,7 +786,7 @@ class IEC61850Server:
             f"LN={list(self._ln_map.keys())}"
         )
 
-        self._server = iec61850.IedServer_create(self._builder.model)
+        self._server = self._create_ied_server()
         iec61850.IedServer_setServerIdentity(self._server, "EMS", self.model_name, "1.0")
         self._is_running = True
         iec61850.IedServer_start(self._server, self.port)
@@ -862,7 +873,7 @@ class IEC61850Server:
         import time as _time
 
         _time.sleep(1)
-        self._server = iec61850.IedServer_create(self._builder.model)
+        self._server = self._create_ied_server()
         if not self._server:
             log.error("重启失败: IedServer_create 返回空")
             return False

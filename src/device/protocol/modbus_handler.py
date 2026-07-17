@@ -43,6 +43,8 @@ class ModbusServerHandler(ServerHandler):
         port = config.get("port", Config.DEFAULT_PORT)
         self._slave_id_list = config.get("slave_id_list", [1])
         protocol_type = config.get("protocol_type", ProtocolType.ModbusTcp)
+        security = config.get("security", {})
+        runtime = config.get("runtime", {})
 
         # 串口配置
         serial_port = config.get("serial_port", "COM1")
@@ -64,6 +66,11 @@ class ModbusServerHandler(ServerHandler):
             bytesize=bytesize,
             stopbits=stopbits,
             parity=parity,
+            tls_enabled=bool(security.get("tls_enabled")),
+            certificate_path=security.get("certificate_path"),
+            private_key_path=security.get("private_key_path"),
+            client_idle_timeout=runtime.get("client_idle_timeout_ms", 0) / 1000,
+            max_connections=runtime.get("max_connections", 0),
         )
         # 设置回调函数，用于处理来自 Modbus 客户端的写入请求，记录测点变化日志
         self._server.on_write_callback = self._on_modbus_client_write
@@ -221,6 +228,9 @@ class ModbusClientHandler(ClientHandler):
         super().__init__()
         self._client = None
         self._log = log
+        self._reconnect_initial_interval = 2.0
+        self._max_reconnect_attempts = 0
+        self._command_timeout = 2.0
         self._loop = None  # 事件循环引用
         # 重连相关状态
         self._reconnect_count = 0  # 连续重连尝试次数
@@ -242,6 +252,14 @@ class ModbusClientHandler(ClientHandler):
         ip = config.get("ip", "127.0.0.1")
         port = config.get("port", Config.DEFAULT_PORT)
         protocol_type = config.get("protocol_type", ProtocolType.ModbusTcp)
+        runtime = config.get("runtime", {})
+        security = config.get("security", {})
+        self._command_timeout = runtime.get("command_timeout_ms", 2000) / 1000
+        self._reconnect_initial_interval = runtime.get("reconnect_initial_interval_ms", 2000) / 1000
+        self._max_reconnect_interval = runtime.get("reconnect_max_interval_ms", 30000) / 1000
+        self._max_reconnect_attempts = runtime.get("reconnect_max_attempts", 0)
+        connect_timeout = runtime.get("connect_timeout_ms", 3000) / 1000
+        retries = runtime.get("command_retry_count", 1)
 
         try:
             self._loop = asyncio.get_running_loop()
@@ -257,7 +275,16 @@ class ModbusClientHandler(ClientHandler):
 
         # 对于 TCP 客户端，使用专门的异步客户端以避免同一进程中的阻塞
         if protocol_type == ProtocolType.ModbusTcpClient or protocol_type == ProtocolType.ModbusTcp:
-            self._client = AsyncModbusClient(host=ip, port=port, timeout=3.0, retries=1, log=self._log)
+            self._client = AsyncModbusClient(
+                host=ip,
+                port=port,
+                timeout=connect_timeout,
+                retries=retries,
+                tls_enabled=bool(security.get("tls_enabled")),
+                certificate_path=security.get("certificate_path"),
+                private_key_path=security.get("private_key_path"),
+                log=self._log,
+            )
         else:
             self._client = ModbusClient(
                 host=ip,
@@ -325,7 +352,12 @@ class ModbusClientHandler(ClientHandler):
         """
         now = time.time()
         # 指数退避：2, 4, 8, 16, 30, 30, 30...
-        min_interval = min(2**self._reconnect_count, self._max_reconnect_interval)
+        if self._max_reconnect_attempts and self._reconnect_count >= self._max_reconnect_attempts:
+            return False
+        min_interval = min(
+            self._reconnect_initial_interval * (2**self._reconnect_count),
+            self._max_reconnect_interval,
+        )
         if now - self._last_reconnect_attempt < min_interval:
             return False
 
@@ -366,7 +398,12 @@ class ModbusClientHandler(ClientHandler):
             bool: 重连是否成功
         """
         now = time.time()
-        min_interval = min(2**self._reconnect_count, self._max_reconnect_interval)
+        if self._max_reconnect_attempts and self._reconnect_count >= self._max_reconnect_attempts:
+            return False
+        min_interval = min(
+            self._reconnect_initial_interval * (2**self._reconnect_count),
+            self._max_reconnect_interval,
+        )
         if now - self._last_reconnect_attempt < min_interval:
             return False
 
@@ -375,7 +412,7 @@ class ModbusClientHandler(ClientHandler):
 
         try:
             future = asyncio.run_coroutine_threadsafe(self._try_reconnect(), self._loop)
-            return future.result(timeout=5)
+            return future.result(timeout=self._connection_timeout)
         except Exception as e:
             if self._log:
                 self._log.debug(f"跨线程重连失败: {e}")
@@ -438,7 +475,7 @@ class ModbusClientHandler(ClientHandler):
                     self._loop,
                 )
                 try:
-                    val = future.result(timeout=1)  # 1秒超时
+                    val = future.result(timeout=self._command_timeout)
                 except Exception as e:
                     # 单个读取超时不断开连接，只记录日志
                     if self._log:
@@ -477,7 +514,7 @@ class ModbusClientHandler(ClientHandler):
                 # 使用 asyncio.wait_for 添加超时保护
                 val = await asyncio.wait_for(
                     self._client.read_value_by_address(point.func_code, point.rtu_addr, point.address, point.decode),
-                    timeout=1.0,  # 1秒超时
+                    timeout=self._command_timeout,
                 )
             else:
                 # 同步客户端，放到线程池执行
@@ -491,7 +528,7 @@ class ModbusClientHandler(ClientHandler):
                         point.address,
                         point.decode,
                     ),
-                    timeout=1.0,  # 1秒超时
+                    timeout=self._command_timeout,
                 )
             bit_offset = getattr(point, "bit", None)
             if bit_offset is not None and val is not None:
@@ -540,7 +577,8 @@ class ModbusClientHandler(ClientHandler):
             if is_async_client:
                 # 异步客户端
                 return await asyncio.wait_for(
-                    self._read_registers_by_func_code_async(func_code, slave_id, start_address, count), timeout=2.0
+                    self._read_registers_by_func_code_async(func_code, slave_id, start_address, count),
+                    timeout=self._command_timeout,
                 )
             else:
                 # 同步客户端，放到线程池执行
@@ -549,7 +587,7 @@ class ModbusClientHandler(ClientHandler):
                     loop.run_in_executor(
                         None, self._read_registers_by_func_code_sync, func_code, slave_id, start_address, count
                     ),
-                    timeout=2.0,
+                    timeout=self._command_timeout,
                 )
         except TimeoutError:
             if self._log:
@@ -626,7 +664,7 @@ class ModbusClientHandler(ClientHandler):
 
                 future = asyncio.run_coroutine_threadsafe(_do_write(), self._loop)
                 try:
-                    return future.result(timeout=2.0)
+                    return future.result(timeout=self._command_timeout)
                 except concurrent.futures.TimeoutError:
                     if self._log:
                         self._log.warning(f"写入测试超时: {point.code}")
@@ -682,7 +720,7 @@ class ModbusClientHandler(ClientHandler):
                 self._client.write_value_by_address(
                     point.func_code, point.rtu_addr, point.address, write_val, point.decode
                 ),
-                timeout=2.0,
+                timeout=self._command_timeout,
             )
         else:
             # 同步客户端，放到线程池执行
@@ -703,7 +741,7 @@ class ModbusClientHandler(ClientHandler):
                 self._client.write_value_by_address(point.func_code, point.rtu_addr, point.address, w_val, point.decode)
                 return True
 
-            return await asyncio.wait_for(loop.run_in_executor(None, _sync_write), timeout=2.0)
+            return await asyncio.wait_for(loop.run_in_executor(None, _sync_write), timeout=self._command_timeout)
 
     def add_points(self, points: list[BasePoint]) -> None:
         """添加测点（Modbus 客户端按需读写，无需预先添加）"""

@@ -39,6 +39,65 @@ class CaptureRequestHandler(ServerRequestHandler):
     设置 change_client_info_ctx 以便写入回调能获取真实客户端地址。
     """
 
+    def __init__(
+        self,
+        owner,
+        trace_packet,
+        trace_pdu,
+        trace_connect,
+        idle_timeout: float = 0,
+        max_connections: int = 0,
+        logger=None,
+    ):
+        super().__init__(owner, trace_packet, trace_pdu, trace_connect)
+        self.idle_timeout = idle_timeout
+        self.max_connections = max_connections
+        self._activity_logger = logger
+        self._last_activity = 0.0
+        self._idle_watchdog_task = None
+
+    def callback_connected(self) -> None:
+        super().callback_connected()
+        connection_count = len(self.listener.active_connections) if self.listener else 1
+        if self.max_connections > 0 and connection_count > self.max_connections:
+            peername = self.transport.get_extra_info("peername") if self.transport else None
+            if self._activity_logger:
+                self._activity_logger.warning(
+                    f"Modbus 客户端连接数已达上限 {self.max_connections}，拒绝新连接: {peername}"
+                )
+            if self.transport:
+                self.transport.close()
+            return
+        if self.idle_timeout > 0:
+            self._last_activity = self.loop.time()
+            self._idle_watchdog_task = self.loop.create_task(self._disconnect_when_idle())
+
+    def callback_data(self, data: bytes, addr: tuple | None = None) -> int:
+        if self.idle_timeout > 0:
+            self._last_activity = self.loop.time()
+        return super().callback_data(data, addr)
+
+    def callback_disconnected(self, exc: Exception | None) -> None:
+        task = self._idle_watchdog_task
+        if task and task is not asyncio.current_task() and not task.done():
+            task.cancel()
+        self._idle_watchdog_task = None
+        super().callback_disconnected(exc)
+
+    async def _disconnect_when_idle(self) -> None:
+        try:
+            while self.transport:
+                remaining = self.idle_timeout - (self.loop.time() - self._last_activity)
+                if remaining <= 0:
+                    peername = self.transport.get_extra_info("peername")
+                    if self._activity_logger:
+                        self._activity_logger.info(f"Modbus 客户端空闲超时，主动断开: {peername}")
+                    self.transport.close()
+                    return
+                await asyncio.sleep(remaining)
+        except asyncio.CancelledError:
+            return
+
     async def handle_request(self):
         """Handle request with client IP context."""
         client_info = ""
@@ -88,6 +147,11 @@ class ModbusServer:
         bytesize: int = 8,
         parity: str = "N",
         stopbits: int = 1,
+        tls_enabled: bool = False,
+        certificate_path: str | None = None,
+        private_key_path: str | None = None,
+        client_idle_timeout: float = 0,
+        max_connections: int = 0,
     ):
         self._logger = logger
         self.server = None
@@ -99,6 +163,11 @@ class ModbusServer:
         self.bytesize = bytesize
         self.parity = parity
         self.stopbits = stopbits
+        self.tls_enabled = tls_enabled
+        self.certificate_path = certificate_path
+        self.private_key_path = private_key_path
+        self.client_idle_timeout = client_idle_timeout
+        self.max_connections = max_connections
         self.task = None
         self.loop = None
         self.is_running = False
@@ -219,7 +288,17 @@ class ModbusServer:
         }
 
         try:
-            if self.protocol_type == ProtocolType.ModbusTcp:
+            if self.protocol_type == ProtocolType.ModbusTcp and self.tls_enabled:
+                if not self.certificate_path or not self.private_key_path:
+                    raise ValueError("TLS requires a certificate and private key")
+                address = (self.ip if self.ip else "", self.port if self.port else None)
+                self.server = ModbusTlsServer(
+                    address=address,
+                    certfile=self.certificate_path,
+                    keyfile=self.private_key_path,
+                    **common_params,
+                )
+            elif self.protocol_type == ProtocolType.ModbusTcp:
                 address = (
                     self.ip if self.ip else "",
                     self.port if self.port else None,
@@ -284,22 +363,6 @@ class ModbusServer:
                     **common_params,
                     **serial_params,
                 )
-            elif self.protocol_type == ProtocolType.Tls:
-                address = (
-                    self.ip if self.ip else "",
-                    self.port if self.port else None,
-                )
-                tls_params = {
-                    "host": "localhost",
-                    "address": address,
-                    "certfile": helper.get_certificate("crt"),
-                    "keyfile": helper.get_certificate("key"),
-                }
-                self.server = ModbusTlsServer(
-                    **common_params,
-                    **tls_params,
-                )
-
             if self.server:
                 # 替换 callback_new_connection 以注入带客户端 IP 捕获的 RequestHandler
                 self._patch_server_handler()
@@ -315,7 +378,15 @@ class ModbusServer:
         server = self.server
 
         def patched_callback_new_connection():
-            return CaptureRequestHandler(server, server.trace_packet, server.trace_pdu, server.trace_connect)
+            return CaptureRequestHandler(
+                server,
+                server.trace_packet,
+                server.trace_pdu,
+                server.trace_connect,
+                idle_timeout=self.client_idle_timeout,
+                max_connections=self.max_connections,
+                logger=self._logger,
+            )
 
         server.callback_new_connection = patched_callback_new_connection
 

@@ -4,7 +4,9 @@ from fastapi import APIRouter, Request
 
 from src.config.config import Config
 from src.data.dao.point_dao import PointDao
+from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
+from src.device.protocol.runtime_config import normalize_protocol_params
 from src.enums.modbus_def import ProtocolType
 from src.web.api.channel.helpers import (
     get_device_builder,
@@ -82,6 +84,16 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
             if ch.get("conn_type") == 2 and ch.get("port") == req.port:
                 raise ValidationError(f"端口 {req.port} 已被设备 '{ch.get('name')}' 占用，请使用其他端口")
 
+    params = req.protocol_params
+    try:
+        normalize_protocol_params(
+            req.protocol_type,
+            req.conn_type,
+            params.values if params else None,
+        )
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+
     from src.data.service.device_service import DeviceService
 
     device_id = DeviceService.create_device(
@@ -112,6 +124,14 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
 
     if channel_id <= 0:
         raise OperationError("创建通道失败")
+
+    ChannelConfigurationService.save_protocol_params(
+        channel_id,
+        req.protocol_type,
+        req.conn_type,
+        params.values if params else None,
+        params.schema_version if params else 1,
+    )
 
     try:
         device_controller = request.app.state.device_controller
@@ -144,6 +164,11 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
             if req.model_name:
                 builder.setDeviceModelName(req.model_name)
 
+        builder.setDeviceRuntimeConfig(
+            ChannelConfigurationService.get_protocol_params(channel_id, req.protocol_type, req.conn_type)["values"]
+        )
+        builder.setDeviceSecurityConfig(ChannelConfigurationService.get_runtime_security(channel_id))
+
         new_device = builder.makeGeneralDevice(
             device_id=channel_id,
             device_name=req.name,
@@ -168,6 +193,7 @@ async def delete_channel(req: ChannelDeleteRequest, request: Request):
     """删除通道"""
     device_controller = request.app.state.device_controller
     await device_controller.remove_device_by_id(req.channel_id)
+    ChannelConfigurationService.delete_for_channel(req.channel_id)
     success = ChannelService.delete_channel(req.channel_id)
     if not success:
         raise NotFoundError("通道不存在", data=False)
@@ -185,6 +211,13 @@ async def get_channel_list():
 async def get_channel_by_id(req: ChannelDetailRequest):
     """获取单个通道详情"""
     channel = ChannelService.get_channel_by_id(req.channel_id)
+    if channel:
+        channel["protocol_params"] = ChannelConfigurationService.get_protocol_params(
+            req.channel_id,
+            channel.get("protocol_type", 1),
+            channel.get("conn_type", 1),
+        )
+        channel["security_config"] = ChannelConfigurationService.get_security_config(req.channel_id)
     if not channel:
         raise NotFoundError("通道不存在")
     return BaseResponse(message="获取通道详情成功", data=channel)
@@ -212,6 +245,16 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
                 data={"point_count": point_count, "has_iec61850_model": has_iec61850_model},
             )
 
+    params = req.protocol_params
+    protocol_combination_changed = protocol_to_use != existing.get(
+        "protocol_type", 1
+    ) or conn_type_to_use != existing.get("conn_type", 1)
+    if params is not None:
+        try:
+            normalize_protocol_params(protocol_to_use, conn_type_to_use, params.values)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+
     success = ChannelService.update_channel(
         channel_id=channel_id,
         name=req.name,
@@ -230,6 +273,15 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
 
     if not success:
         raise OperationError("更新通道失败", data=False)
+
+    if params is not None or protocol_combination_changed:
+        ChannelConfigurationService.save_protocol_params(
+            channel_id,
+            protocol_to_use,
+            conn_type_to_use,
+            params.values if params else None,
+            params.schema_version if params else 1,
+        )
 
     try:
         device_controller = request.app.state.device_controller

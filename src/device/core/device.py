@@ -69,6 +69,13 @@ class Device:
         self.icd_path: str | None = None  # ICD 文件存储路径 (IEC61850, v2.0)
 
         # 核心组件
+        self.runtime_config: dict[str, Any] = {}
+        self.security_config: dict[str, Any] = {
+            "tls_enabled": False,
+            "certificate_path": None,
+            "private_key_path": None,
+        }
+
         self.point_manager: PointManager = PointManager()
         self.protocol_handler: ProtocolHandler | None = None
         self.data_exporter: DataExporter = DataExporter(self.point_manager)
@@ -179,6 +186,8 @@ class Device:
             "model_name": self.model_name,
             "ied_name": self.model_name,  # IEC61850 IED 名称 (与 model_name 相同，对应 ICD 文件的 IED name)
             "icd_path": self.icd_path,  # ICD 文件路径 (IEC61850, v2.0)
+            "runtime": dict(self.runtime_config),
+            "security": dict(self.security_config),
         }
 
     def initProtocol(self) -> None:

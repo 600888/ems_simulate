@@ -17,6 +17,8 @@ declare module 'vue' {
     DeviceFormBasic: typeof import('./src/components/device/DeviceFormBasic.vue')['default']
     DeviceFormConfig: typeof import('./src/components/device/DeviceFormConfig.vue')['default']
     DeviceFormPoints: typeof import('./src/components/device/DeviceFormPoints.vue')['default']
+    DeviceProtocolParams: typeof import('./src/components/device/DeviceProtocolParams.vue')['default']
+    DeviceSecurityConfig: typeof import('./src/components/device/DeviceSecurityConfig.vue')['default']
     DiscoveryProgress: typeof import('./src/components/scl/DiscoveryProgress.vue')['default']
     EditPoint: typeof import('./src/components/point/EditPoint.vue')['default']
     EditPointIec104: typeof import('./src/components/point/EditPointIec104.vue')['default']

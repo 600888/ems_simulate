@@ -2,10 +2,10 @@
   <el-dialog
     v-model="dialogVisible"
     :title="isEditMode ? $t('addDevice.titleEdit') : $t('addDevice.titleAdd')"
-    width="640px"
+    width="760px"
     :close-on-click-modal="false"
     @close="handleClose"
-    class="modern-dialog"
+    class="device-form-dialog"
   >
     <el-form
       ref="formRef"
@@ -14,23 +14,50 @@
       label-width="110px"
       label-position="right"
     >
-      <DeviceFormBasic :model-value="form" :group-options="deviceGroupOptions" />
+      <el-tabs v-model="activeTab" class="device-form-tabs">
+        <el-tab-pane label="基本信息" name="basic">
+          <DeviceFormBasic
+            :model-value="form"
+            :group-options="deviceGroupOptions"
+          />
 
-      <DeviceFormConfig
-        :model-value="form"
-        v-model:media-type="mediaType"
-        :protocols="protocols"
-        :serial-ports="serialPorts"
-      />
+          <DeviceFormConfig
+            :model-value="form"
+            v-model:media-type="mediaType"
+            :protocols="protocols"
+            :serial-ports="serialPorts"
+          />
 
-      <DeviceFormPoints
-        ref="uploadCompRef"
-        :protocol-type="form.protocol_type"
-        :conn-type="form.conn_type"
-        :disabled="saving"
-        @file-change="(f) => (selectedFile = f)"
-        @icd-file-change="handleIcdFileChange"
-      />
+          <DeviceFormPoints
+            ref="uploadCompRef"
+            :protocol-type="form.protocol_type"
+            :conn-type="form.conn_type"
+            :disabled="saving"
+            @file-change="(f) => (selectedFile = f)"
+            @icd-file-change="handleIcdFileChange"
+          />
+        </el-tab-pane>
+
+        <el-tab-pane label="协议参数" name="protocol">
+          <DeviceProtocolParams
+            :model-value="protocolParams"
+            :protocol-type="form.protocol_type"
+            :conn-type="form.conn_type"
+          />
+        </el-tab-pane>
+
+        <el-tab-pane label="加密配置" name="security">
+          <DeviceSecurityConfig
+            ref="securityCompRef"
+            :model-value="securityConfig"
+            :network-mode="mediaType === 'network'"
+            :protocol-type="form.protocol_type"
+            :disabled="saving"
+            @certificate-change="(file) => (certificateFile = file)"
+            @private-key-change="(file) => (privateKeyFile = file)"
+          />
+        </el-tab-pane>
+      </el-tabs>
 
       <!-- 操作进度条 -->
       <div v-if="saving" class="icd-import-progress">
@@ -68,7 +95,11 @@
           class="submit-btn"
           :icon="Check"
         >
-          {{ isEditMode ? $t("addDevice.saveChanges") : $t("addDevice.confirmAdd") }}
+          {{
+            isEditMode
+              ? $t("addDevice.saveChanges")
+              : $t("addDevice.confirmAdd")
+          }}
         </el-button>
       </div>
     </template>
@@ -101,7 +132,9 @@
 
     <div v-if="gooseControlList.length > 0">
       <el-alert
-        :title="$t('addDevice.gooseControlBlocks', { count: gooseControlList.length })"
+        :title="
+          $t('addDevice.gooseControlBlocks', { count: gooseControlList.length })
+        "
         type="info"
         :closable="false"
         show-icon
@@ -155,20 +188,36 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, reactive, watch, onMounted } from 'vue';
-import { useI18n } from 'vue-i18n'
-import type { FormInstance, FormRules } from 'element-plus';
+import { ref, computed, reactive, watch, onMounted } from "vue";
+import { useI18n } from "vue-i18n";
+import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { Check, View } from "@element-plus/icons-vue";
 
 // 子组件
-import DeviceFormBasic from './DeviceFormBasic.vue';
-import DeviceFormConfig from './DeviceFormConfig.vue';
-import DeviceFormPoints from './DeviceFormPoints.vue';
+import DeviceFormBasic from "./DeviceFormBasic.vue";
+import DeviceFormConfig from "./DeviceFormConfig.vue";
+import DeviceFormPoints from "./DeviceFormPoints.vue";
+import DeviceProtocolParams from "./DeviceProtocolParams.vue";
+import DeviceSecurityConfig from "./DeviceSecurityConfig.vue";
 
 // API
-import { createChannel, importPoints, getChannel, updateChannel, getSerialPorts, reloadDeviceConfig, getProtocolConfig } from '@/api/channelApi';
-import { getAllDeviceGroups, type DeviceGroupInfo } from '@/api/deviceGroupApi';
-import type { ChannelCreateRequest, ProtocolOption, PointImportResult } from '@/types/channel';
+import {
+  createChannel,
+  importPoints,
+  getChannel,
+  updateChannel,
+  getSerialPorts,
+  reloadDeviceConfig,
+  getProtocolConfig,
+  uploadChannelSecurity,
+} from "@/api/channelApi";
+import { getAllDeviceGroups, type DeviceGroupInfo } from "@/api/deviceGroupApi";
+import type {
+  ChannelCreateRequest,
+  ProtocolOption,
+  PointImportResult,
+  SecurityConfig,
+} from "@/types/channel";
 
 const props = defineProps<{
   visible: boolean;
@@ -176,24 +225,39 @@ const props = defineProps<{
   initialGroupId?: number | null;
 }>();
 
-const { t } = useI18n()
+const { t } = useI18n();
 
 const emit = defineEmits<{
-  (e: 'update:visible', value: boolean): void;
-  (e: 'success', deviceName: string, isEdit?: boolean, oldName?: string): void;
-  (e: 'close'): void;
+  (e: "update:visible", value: boolean): void;
+  (e: "success", deviceName: string, isEdit?: boolean, oldName?: string): void;
+  (e: "close"): void;
 }>();
 
 // 状态
 const formRef = ref<FormInstance>();
 const uploadCompRef = ref();
-const originalName = ref('');
-const mediaType = ref<'serial' | 'network'>('network');
+const securityCompRef = ref();
+const activeTab = ref<"basic" | "protocol" | "security">("basic");
+const originalName = ref("");
+const mediaType = ref<"serial" | "network">("network");
 const selectedFile = ref<File | null>(null);
 const icdFile = ref<File | null>(null);
+const certificateFile = ref<File | null>(null);
+const privateKeyFile = ref<File | null>(null);
 const deviceGroupOptions = ref<DeviceGroupInfo[]>([]);
-const serialPorts = ref<Array<{device: string, description: string}>>([]);
+const serialPorts = ref<Array<{ device: string; description: string }>>([]);
 const protocols = ref<ProtocolOption[]>([]);
+const protocolParams = reactive({
+  schema_version: 1,
+  values: {} as Record<string, number | boolean>,
+});
+const securityConfig = reactive<SecurityConfig>({
+  tls_enabled: false,
+  certificate_configured: false,
+  certificate_filename: null,
+  private_key_configured: false,
+  private_key_filename: null,
+});
 
 // GOOSE 预览状态
 const previewLoading = ref(false);
@@ -212,23 +276,41 @@ const gooseControlList = computed(() => {
 });
 
 const isEditMode = computed(() => !!props.channelId);
-const isIec61850Server = computed(() => form.protocol_type === 4 && form.conn_type === 2);
+const isIec61850Server = computed(
+  () => form.protocol_type === 4 && form.conn_type === 2,
+);
 const dialogVisible = computed({
   get: () => props.visible,
-  set: (val) => emit('update:visible', val)
+  set: (val) => emit("update:visible", val),
 });
 
 const form = reactive<ChannelCreateRequest>({
-  code: '', name: '', protocol_type: 1, conn_type: 2,
-  ip: '0.0.0.0', port: 502, com_port: '',
-  baud_rate: 9600, data_bits: 8, stop_bits: 1,
-  parity: 'N', rtu_addr: '1', group_id: null,
+  code: "",
+  name: "",
+  protocol_type: 1,
+  conn_type: 2,
+  ip: "0.0.0.0",
+  port: 502,
+  com_port: "",
+  baud_rate: 9600,
+  data_bits: 8,
+  stop_bits: 1,
+  parity: "N",
+  rtu_addr: "1",
+  group_id: null,
+  protocol_params: protocolParams,
 });
 
 const rules: FormRules = {
-  code: [{ required: true, message: t('addDevice.codeRequired'), trigger: 'blur' }],
-  name: [{ required: true, message: t('addDevice.nameRequired'), trigger: 'blur' }],
-  port: [{ required: true, message: t('addDevice.portRequired'), trigger: 'blur' }],
+  code: [
+    { required: true, message: t("addDevice.codeRequired"), trigger: "blur" },
+  ],
+  name: [
+    { required: true, message: t("addDevice.nameRequired"), trigger: "blur" },
+  ],
+  port: [
+    { required: true, message: t("addDevice.portRequired"), trigger: "blur" },
+  ],
 };
 
 // 生命周期与监听
@@ -238,31 +320,40 @@ onMounted(async () => {
     protocols.value = config.protocols;
     await loadSerialPorts();
   } catch (e) {
-    console.error('加载系统配置失败', e);
+    console.error("加载系统配置失败", e);
   }
 });
 
-watch(() => props.visible, async (val) => {
-  if (val) {
-    clearPendingPointFiles();
-    await loadDeviceGroups();
-    if (!isEditMode.value) {
-      resetForm();
-      if (props.initialGroupId) form.group_id = props.initialGroupId;
+watch(
+  () => props.visible,
+  async (val) => {
+    if (val) {
+      activeTab.value = "basic";
+      clearPendingPointFiles();
+      await loadDeviceGroups();
+      if (!isEditMode.value) {
+        resetForm();
+        if (props.initialGroupId) form.group_id = props.initialGroupId;
+      }
     }
-  }
-});
+  },
+);
 
-watch(() => [props.visible, props.channelId], async ([v, c]) => {
-  if (v && c) {
-    clearPendingPointFiles();
-    await loadChannelData(c as number);
-  }
-}, { immediate: true });
+watch(
+  () => [props.visible, props.channelId],
+  async ([v, c]) => {
+    if (v && c) {
+      clearPendingPointFiles();
+      await loadChannelData(c as number);
+    }
+  },
+  { immediate: true },
+);
 
 watch(
   () => [form.protocol_type, form.conn_type],
   ([protocolType, connType]) => {
+    if (protocolType !== 1) securityConfig.tls_enabled = false;
     if (protocolType === 4 && connType === 2) {
       selectedFile.value = null;
     } else {
@@ -272,26 +363,70 @@ watch(
   },
 );
 
+watch(mediaType, (value) => {
+  if (value === "serial") securityConfig.tls_enabled = false;
+});
+
 // 核心逻辑
-const loadDeviceGroups = async () => { deviceGroupOptions.value = await getAllDeviceGroups(); };
-const loadSerialPorts = async () => { serialPorts.value = await getSerialPorts(); };
+const loadDeviceGroups = async () => {
+  deviceGroupOptions.value = await getAllDeviceGroups();
+};
+const loadSerialPorts = async () => {
+  serialPorts.value = await getSerialPorts();
+};
 
 const loadChannelData = async (id: number) => {
   try {
     const data = await getChannel(id);
     if (!data) return;
     Object.assign(form, data);
-    originalName.value = data.name || '';
-    mediaType.value = (data.conn_type === 0 || data.conn_type === 3) ? 'serial' : 'network';
-  } catch (e) { console.error('加载通道失败', e); }
+    Object.assign(
+      protocolParams,
+      data.protocol_params || { schema_version: 1, values: {} },
+    );
+    form.protocol_params = protocolParams;
+    Object.assign(
+      securityConfig,
+      data.security_config || {
+        tls_enabled: false,
+        certificate_configured: false,
+        certificate_filename: null,
+        private_key_configured: false,
+        private_key_filename: null,
+      },
+    );
+    originalName.value = data.name || "";
+    mediaType.value =
+      data.conn_type === 0 || data.conn_type === 3 ? "serial" : "network";
+  } catch (e) {
+    console.error("加载通道失败", e);
+  }
 };
 
 const resetForm = () => {
   Object.assign(form, {
-    code: '', name: '', protocol_type: 1, conn_type: 2,
-    ip: '0.0.0.0', port: 502, com_port: 'COM1',
-    baud_rate: 9600, data_bits: 8, stop_bits: 1, parity: 'N', rtu_addr: '1',
-    group_id: null
+    code: "",
+    name: "",
+    protocol_type: 1,
+    conn_type: 2,
+    ip: "0.0.0.0",
+    port: 502,
+    com_port: "COM1",
+    baud_rate: 9600,
+    data_bits: 8,
+    stop_bits: 1,
+    parity: "N",
+    rtu_addr: "1",
+    group_id: null,
+    protocol_params: protocolParams,
+  });
+  Object.assign(protocolParams, { schema_version: 1, values: {} });
+  Object.assign(securityConfig, {
+    tls_enabled: false,
+    certificate_configured: false,
+    certificate_filename: null,
+    private_key_configured: false,
+    private_key_filename: null,
   });
   clearPendingPointFiles();
   goosePreviewData.value = null;
@@ -302,6 +437,9 @@ function clearPendingPointFiles() {
   selectedFile.value = null;
   icdFile.value = null;
   uploadCompRef.value?.clearFiles();
+  certificateFile.value = null;
+  privateKeyFile.value = null;
+  securityCompRef.value?.clearFiles();
 }
 
 const handleIcdFileChange = async (file: File | null) => {
@@ -312,13 +450,16 @@ const handleIcdFileChange = async (file: File | null) => {
 const formatMac = (row: any) => {
   if (row.mac_address) return row.mac_address;
   if (row.app_id) {
-    const prefix = '01:0C:CD';
-    let appId = typeof row.app_id === 'number' ? row.app_id : parseInt(row.app_id, 16) || parseInt(row.app_id, 10) || 0;
-    const high = (appId >> 8) & 0xFF;
-    const low = appId & 0xFF;
-    return `${prefix}:${high.toString(16).padStart(2, '0').toUpperCase()}:${low.toString(16).padStart(2, '0').toUpperCase()}`;
+    const prefix = "01:0C:CD";
+    let appId =
+      typeof row.app_id === "number"
+        ? row.app_id
+        : parseInt(row.app_id, 16) || parseInt(row.app_id, 10) || 0;
+    const high = (appId >> 8) & 0xff;
+    const low = appId & 0xff;
+    return `${prefix}:${high.toString(16).padStart(2, "0").toUpperCase()}:${low.toString(16).padStart(2, "0").toUpperCase()}`;
   }
-  return '-';
+  return "-";
 };
 
 // ICD 预览：调用后端接口解析 ICD 文件中的 GOOSE 控制块信息
@@ -326,13 +467,13 @@ const handlePreviewIcd = async () => {
   if (!icdFile.value) return;
   previewLoading.value = true;
   try {
-    const { previewIcd } = await import('@/api/channelApi');
+    const { previewIcd } = await import("@/api/channelApi");
     const result = await previewIcd(icdFile.value);
     goosePreviewData.value = result;
     previewDone.value = true;
     goosePreviewVisible.value = true;
   } catch (e: any) {
-    console.error('预览 ICD 失败', e);
+    console.error("预览 ICD 失败", e);
   } finally {
     previewLoading.value = false;
   }
@@ -341,16 +482,33 @@ const handlePreviewIcd = async () => {
 // 提交保存：全程使用进度条，按钮不转圈
 const handleSubmit = async () => {
   if (!formRef.value || saving.value) return;
+  if (securityConfig.tls_enabled) {
+    const hasCertificate =
+      securityConfig.certificate_configured || !!certificateFile.value;
+    const hasPrivateKey =
+      securityConfig.private_key_configured || !!privateKeyFile.value;
+    if (!hasCertificate || !hasPrivateKey) {
+      activeTab.value = "security";
+      ElMessage.error("启用 TLS 后必须上传证书和私钥");
+      return;
+    }
+  }
+  form.protocol_params = protocolParams;
   await formRef.value.validate(async (valid) => {
-    if (!valid) return;
+    if (!valid) {
+      activeTab.value = "basic";
+      return;
+    }
     saving.value = true;
     importElapsed.value = 0;
-    progressTimer = window.setInterval(() => { importElapsed.value++; }, 1000);
+    progressTimer = window.setInterval(() => {
+      importElapsed.value++;
+    }, 1000);
     try {
       let resultId: number;
 
       // 1. 保存通道
-      progressText.value = t('addDevice.savingChannel');
+      progressText.value = t("addDevice.savingChannel");
       if (isEditMode.value && props.channelId) {
         await updateChannel(props.channelId, form);
         resultId = props.channelId;
@@ -359,33 +517,47 @@ const handleSubmit = async () => {
         resultId = createRes.channel_id;
       }
 
+      progressText.value = "正在保存 TLS 配置";
+      Object.assign(
+        securityConfig,
+        await uploadChannelSecurity(
+          resultId,
+          securityConfig.tls_enabled,
+          certificateFile.value,
+          privateKeyFile.value,
+        ),
+      );
+
       // 2. 编辑模式：重载配置
       if (isEditMode.value && props.channelId) {
-        progressText.value = t('addDevice.reloadingConfig');
+        progressText.value = t("addDevice.reloadingConfig");
         await reloadDeviceConfig(props.channelId);
       }
 
       // 3. Excel 点表导入
       if (!isIec61850Server.value && selectedFile.value) {
-        progressText.value = t('addDevice.importingPoints');
+        progressText.value = t("addDevice.importingPoints");
         await importPoints(resultId, selectedFile.value);
       }
 
       // 4. ICD 文件导入
       if (isIec61850Server.value && icdFile.value) {
-        progressText.value = t('addDevice.icdImporting');
-        const { importIcdPoints } = await import('@/api/channelApi');
-        await importIcdPoints(resultId, icdFile.value, 'eth0', 'model_only');
+        progressText.value = t("addDevice.icdImporting");
+        const { importIcdPoints } = await import("@/api/channelApi");
+        await importIcdPoints(resultId, icdFile.value, "eth0", "model_only");
       }
 
-      emit('success', form.name, isEditMode.value, originalName.value);
+      emit("success", form.name, isEditMode.value, originalName.value);
       dialogVisible.value = false;
-      localStorage.setItem('_pendingDevice', form.name);
+      localStorage.setItem("_pendingDevice", form.name);
       window.location.reload();
     } catch (e: any) {
-      console.error(e.message || '操作失败');
+      console.error(e.message || "操作失败");
     } finally {
-      if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+      if (progressTimer) {
+        clearInterval(progressTimer);
+        progressTimer = null;
+      }
       saving.value = false;
     }
   });
@@ -397,21 +569,43 @@ const handleClose = () => {
   goosePreviewVisible.value = false;
   goosePreviewData.value = null;
   previewDone.value = false;
-  emit('close');
+  emit("close");
 };
 </script>
 
 <style lang="scss">
-.modern-dialog {
-  border-radius: 16px;
-  overflow: hidden;
+.device-form-dialog {
   .el-dialog__header {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 54px;
     margin-right: 0;
-    padding-bottom: 20px;
+    padding: 0 56px 0 22px;
     border-bottom: 1px solid var(--sidebar-border);
+
+    .el-dialog__title {
+      line-height: 1;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--el-text-color-primary);
+    }
+
+    .el-dialog__headerbtn {
+      top: 0;
+      right: 4px;
+      width: 50px;
+      height: 54px;
+    }
   }
+
   .el-dialog__body {
-    padding: 24px 30px;
+    padding: 10px 28px 18px;
+  }
+
+  .el-dialog__footer {
+    padding: 14px 22px 18px;
+    border-top: 1px solid var(--sidebar-border);
   }
 }
 .submit-btn {
@@ -424,6 +618,67 @@ const handleClose = () => {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+.device-form-tabs {
+  min-height: 420px;
+
+  .el-tabs__header {
+    margin: 0 0 16px;
+  }
+
+  .el-tabs__nav-wrap {
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 10px;
+    background: var(--el-fill-color-light);
+
+    &::after {
+      display: none;
+    }
+  }
+
+  .el-tabs__nav-scroll,
+  .el-tabs__nav {
+    width: 100%;
+  }
+
+  .el-tabs__nav {
+    display: flex;
+  }
+
+  .el-tabs__item {
+    flex: 1;
+    justify-content: center;
+    height: 38px;
+    padding: 0 16px;
+    border-radius: 9px;
+    color: var(--el-text-color-secondary);
+    font-weight: 500;
+    transition:
+      color 0.2s ease,
+      background-color 0.2s ease,
+      box-shadow 0.2s ease;
+
+    &:hover {
+      color: var(--el-color-primary);
+    }
+
+    &.is-active {
+      color: var(--el-color-primary);
+      background: var(--el-bg-color);
+      box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+      font-weight: 600;
+    }
+  }
+
+  .el-tabs__active-bar {
+    display: none;
+  }
+
+  .el-tab-pane {
+    padding-top: 0;
+  }
 }
 .icd-import-progress {
   padding: 24px 0 12px;

@@ -4,9 +4,10 @@
 """
 
 import asyncio
+import ssl
 import struct
 
-from pymodbus.client import AsyncModbusTcpClient
+from pymodbus.client import AsyncModbusTcpClient, AsyncModbusTlsClient
 from pymodbus.exceptions import ModbusException
 from pymodbus.pdu import ModbusPDU as ModbusRequest
 from pymodbus.pdu import ModbusPDU as ModbusResponse
@@ -41,12 +42,18 @@ class AsyncModbusClient:
         port: int = 502,
         timeout: float = 3.0,
         retries: int = 1,
+        tls_enabled: bool = False,
+        certificate_path: str | None = None,
+        private_key_path: str | None = None,
         log=None,
     ):
         self.host = host
         self.port = port
         self.timeout = timeout
         self.retries = retries
+        self.tls_enabled = tls_enabled
+        self.certificate_path = certificate_path
+        self.private_key_path = private_key_path
         self.log = log
         self.client: AsyncModbusTcpClient | None = None
         self.connected = False
@@ -55,12 +62,27 @@ class AsyncModbusClient:
     async def connect(self) -> bool:
         """异步连接到 Modbus 服务器"""
         try:
-            self.client = AsyncModbusTcpClient(
-                host=self.host,
-                port=self.port,
-                timeout=self.timeout,
-                retries=self.retries,
-            )
+            if self.tls_enabled:
+                if not self.certificate_path or not self.private_key_path:
+                    raise ValueError("TLS requires a certificate and private key")
+                ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+                ssl_context.check_hostname = False
+                ssl_context.load_verify_locations(cafile=self.certificate_path)
+                ssl_context.load_cert_chain(certfile=self.certificate_path, keyfile=self.private_key_path)
+                self.client = AsyncModbusTlsClient(
+                    host=self.host,
+                    port=self.port,
+                    sslctx=ssl_context,
+                    timeout=self.timeout,
+                    retries=self.retries,
+                )
+            else:
+                self.client = AsyncModbusTcpClient(
+                    host=self.host,
+                    port=self.port,
+                    timeout=self.timeout,
+                    retries=self.retries,
+                )
             self.connected = await self.client.connect()
             if self.connected:
                 if self.log:

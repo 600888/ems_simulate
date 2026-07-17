@@ -15,7 +15,15 @@ from src.proto.iec104.log import log
 
 
 class IEC104Server:
-    def __init__(self, ip="0.0.0.0", port=2404):
+    def __init__(
+        self,
+        ip="0.0.0.0",
+        port=2404,
+        connection_timeout: int = 10,
+        message_timeout: int = 15,
+        keep_alive_interval: int = 20,
+        max_connections: int = 0,
+    ):
         """
         初始化IEC 104服务器
         :param ip: 服务器监听IP地址，默认0.0.0.0表示监听所有接口
@@ -25,6 +33,10 @@ class IEC104Server:
         self.port = port
         # 创建c104服务器实例
         self.server = c104.Server(ip=ip, port=port)
+        self.server.protocol_parameters.connection_timeout = connection_timeout
+        self.server.protocol_parameters.message_timeout = message_timeout
+        self.server.protocol_parameters.keep_alive_interval = keep_alive_interval
+        self.server.max_connections = max_connections
         # 多 Station 支持：common_address -> c104.Station
         self.stations: dict[int, c104.Station] = {}
         # 存储所有监控点的列表

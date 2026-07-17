@@ -52,6 +52,12 @@ class GeneralDeviceBuilder:
         """设置设备 ICD 文件路径 (IEC61850, v2.0)"""
         self.general_device.icd_path = icd_path
 
+    def setDeviceRuntimeConfig(self, runtime_config: dict) -> None:
+        self.general_device.runtime_config = dict(runtime_config)
+
+    def setDeviceSecurityConfig(self, security_config: dict) -> None:
+        self.general_device.security_config = dict(security_config)
+
     def setDeviceSerialConfig(
         self, serial_port: str, baudrate: int = 9600, databits: int = 8, stopbits: int = 1, parity: str = "E"
     ) -> None:

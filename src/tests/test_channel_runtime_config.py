@@ -1,0 +1,123 @@
+from datetime import UTC, datetime, timedelta, timezone
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from src.data.model.base import Base
+from src.data.model.channel_configuration import ChannelProtocolParams
+import src.data.service.channel_configuration_service as configuration_service_module
+from src.data.service.channel_configuration_service import ChannelConfigurationService
+from src.device.protocol.runtime_config import get_protocol_param_defaults, normalize_protocol_params
+from src.web.api.channel.security import _load_certificate, _load_private_key, _validate_pair
+from src.web.api.exceptions import ValidationError
+
+
+def _certificate_and_key(common_name: str = "ems-test"):
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
+    now = datetime.now(UTC)
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=1))
+        .not_valid_after(now + timedelta(days=1))
+        .sign(key, hashes.SHA256())
+    )
+    return certificate, key
+
+
+def test_modbus_client_defaults_match_existing_runtime_policy():
+    values = get_protocol_param_defaults(1, 1)
+    assert values["connect_timeout_ms"] == 3000
+    assert values["command_timeout_ms"] == 2000
+    assert values["command_retry_count"] == 1
+
+
+def test_server_without_runtime_parameters_rejects_client_fields():
+    with pytest.raises(ValueError, match="不支持参数"):
+        normalize_protocol_params(1, 2, {"connect_timeout_ms": 3000})
+
+
+def test_server_runtime_defaults_are_protocol_specific():
+    assert get_protocol_param_defaults(1, 2) == {
+        "client_idle_timeout_ms": 0,
+        "max_connections": 0,
+    }
+    assert get_protocol_param_defaults(2, 2)["keep_alive_interval_ms"] == 20000
+    assert get_protocol_param_defaults(3, 2)["session_idle_timeout_ms"] == 30000
+    assert get_protocol_param_defaults(4, 2)["max_connections"] == 5
+
+
+def test_server_connection_limit_is_validated():
+    with pytest.raises(ValueError, match="max_connections"):
+        normalize_protocol_params(4, 2, {"max_connections": 1001})
+
+
+def test_channel_protocol_params_are_persisted_across_sessions(monkeypatch):
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(configuration_service_module, "local_session", session_factory)
+
+    defaults = ChannelConfigurationService.get_protocol_params(501, 1, 2)
+    assert defaults["values"]["max_connections"] == 0
+
+    ChannelConfigurationService.save_protocol_params(
+        501,
+        1,
+        2,
+        {"client_idle_timeout_ms": 60000, "max_connections": 12},
+    )
+
+    with session_factory() as session:
+        persisted = session.get(ChannelProtocolParams, 501)
+        assert persisted is not None
+        assert persisted.params_json == {
+            "client_idle_timeout_ms": 60000,
+            "max_connections": 12,
+        }
+
+    reloaded = ChannelConfigurationService.get_protocol_params(501, 1, 2)
+    assert reloaded["values"]["client_idle_timeout_ms"] == 60000
+    assert reloaded["values"]["max_connections"] == 12
+
+
+def test_reconnect_maximum_must_not_be_less_than_initial_interval():
+    with pytest.raises(ValueError, match="最大间隔"):
+        normalize_protocol_params(
+            1,
+            1,
+            {
+                **get_protocol_param_defaults(1, 1),
+                "reconnect_initial_interval_ms": 5000,
+                "reconnect_max_interval_ms": 1000,
+            },
+        )
+
+
+def test_certificate_and_private_key_pair_validation():
+    certificate, key = _certificate_and_key()
+    parsed_certificate = _load_certificate(certificate.public_bytes(serialization.Encoding.PEM))
+    parsed_key = _load_private_key(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    _validate_pair(parsed_certificate, parsed_key)
+
+
+def test_mismatched_certificate_and_private_key_are_rejected():
+    certificate, _ = _certificate_and_key("certificate")
+    _, other_key = _certificate_and_key("private-key")
+    with pytest.raises(ValidationError, match="不匹配"):
+        _validate_pair(certificate, other_key)
