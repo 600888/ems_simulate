@@ -42,6 +42,9 @@ jobs:
   build:
     needs: version
     timeout-minutes: 120
+    env:
+      # c104's Windows CMake build cannot handle non-ASCII source paths.
+      UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
     strategy:
       fail-fast: false
       matrix:
@@ -84,11 +87,32 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install c104 build toolchain (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.18"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
-      - name: Install Python build dependencies
-        run: uv sync --extra build
+      - name: Install locked Python dependencies
+        run: uv sync --frozen --extra build --extra dev
+
+      - name: Verify c104 2.2.2 TLS API
+        run: >-
+          uv run --no-sync python -c "import importlib.metadata, c104;
+          assert importlib.metadata.version('c104') == '2.2.2';
+          assert hasattr(c104.TransportSecurity(), 'set_hostname_verification')"
+
+      - name: Test IEC104 TLS implementation
+        run: >-
+          uv run --no-sync pytest src/tests/iec104_test/test_tls.py
+          src/tests/test_channel_runtime_config.py -q --basetemp build/pytest-tmp
 
       - name: Install frontend dependencies
         working-directory: front
@@ -131,7 +155,6 @@ jobs:
       - name: Install Tauri system dependencies
         if: matrix.needs_tauri_deps
         run: |
-          sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
             libgtk-3-dev \
@@ -143,8 +166,7 @@ jobs:
             libssl-dev \
             patchelf \
             squashfs-tools \
-            pkg-config \
-            build-essential
+            pkg-config
 
       # --- 构建 ---
       - name: Make build scripts executable (Linux)

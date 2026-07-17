@@ -67,6 +67,15 @@ def _validate_pair(certificate: x509.Certificate, private_key) -> None:
         raise ValidationError("证书与私钥不匹配")
 
 
+def _validate_ca_certificate(certificate: x509.Certificate) -> None:
+    try:
+        constraints = certificate.extensions.get_extension_for_class(x509.BasicConstraints).value
+    except x509.ExtensionNotFound as exc:
+        raise ValidationError("CA 证书缺少 Basic Constraints 扩展") from exc
+    if not constraints.ca:
+        raise ValidationError("上传的证书不是 CA 证书")
+
+
 def _write_atomic(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix=".tls-", suffix=".tmp", dir=str(path.parent))
@@ -87,25 +96,32 @@ async def upload_security_config(
     request: Request,
     channel_id: int = Form(...),
     tls_enabled: bool = Form(...),
+    tls_mode: str = Form("mutual"),
     certificate: UploadFile | None = File(None),
     private_key: UploadFile | None = File(None),
+    ca_certificate: UploadFile | None = File(None),
 ):
     channel = ChannelService.get_channel_by_id(channel_id)
     if not channel:
         raise NotFoundError("通道不存在")
     if tls_enabled and channel.get("conn_type") not in (1, 2):
         raise ValidationError("串口模式不支持 TLS")
-    if tls_enabled and channel.get("protocol_type") != 1:
+    if tls_enabled and channel.get("protocol_type") not in (1, 2):
         raise ValidationError("当前协议暂不支持 TLS")
+    if tls_mode not in {"basic", "mutual"}:
+        raise ValidationError("TLS 模式必须是基础 TLS 或双向认证 TLS")
 
     current = ChannelConfigurationService.get_runtime_security(channel_id)
     certificate_path = current.get("certificate_path")
     private_key_path = current.get("private_key_path")
     certificate_filename = ChannelConfigurationService.get_security_config(channel_id).get("certificate_filename")
     private_key_filename = ChannelConfigurationService.get_security_config(channel_id).get("private_key_filename")
+    ca_certificate_path = current.get("ca_certificate_path")
+    ca_certificate_filename = ChannelConfigurationService.get_security_config(channel_id).get("ca_certificate_filename")
 
     certificate_content = None
     private_key_content = None
+    ca_certificate_content = None
     if certificate is not None:
         certificate_content = await _read_upload(certificate, _CERTIFICATE_SUFFIXES, "证书")
         certificate_filename = Path(certificate.filename or "certificate").name
@@ -118,8 +134,21 @@ async def upload_security_config(
     elif private_key_path and Path(private_key_path).is_file():
         private_key_content = Path(private_key_path).read_bytes()
 
+    if ca_certificate is not None:
+        ca_certificate_content = await _read_upload(ca_certificate, _CERTIFICATE_SUFFIXES, "CA 证书")
+        ca_certificate_filename = Path(ca_certificate.filename or "ca_certificate").name
+    elif ca_certificate_path and Path(ca_certificate_path).is_file():
+        ca_certificate_content = Path(ca_certificate_path).read_bytes()
+
     if tls_enabled and (certificate_content is None or private_key_content is None):
         raise ValidationError("启用 TLS 后必须上传证书和私钥")
+    if tls_enabled and channel.get("protocol_type") == 2 and tls_mode == "mutual" and ca_certificate_content is None:
+        raise ValidationError("IEC104 双向认证 TLS 必须上传 CA 证书")
+
+    parsed_ca_certificate = None
+    if ca_certificate_content is not None:
+        parsed_ca_certificate = _load_certificate(ca_certificate_content)
+        _validate_ca_certificate(parsed_ca_certificate)
 
     if certificate_content is not None and private_key_content is not None:
         parsed_certificate = _load_certificate(certificate_content)
@@ -145,13 +174,30 @@ async def upload_security_config(
         certificate_path = str(certificate_target)
         private_key_path = str(private_key_target)
 
+    if ca_certificate_content is not None:
+        assert parsed_ca_certificate is not None
+        channel_dir = Path(get_storage_path("data_directory")) / "security" / str(channel_id)
+        resolved_channel_dir = channel_dir.resolve(strict=False)
+        security_root = (Path(get_storage_path("data_directory")) / "security").resolve(strict=False)
+        if security_root not in resolved_channel_dir.parents:
+            raise OperationError("TLS 文件存储目录无效")
+        ca_certificate_target = resolved_channel_dir / "ca_certificate.pem"
+        _write_atomic(
+            ca_certificate_target,
+            parsed_ca_certificate.public_bytes(serialization.Encoding.PEM),
+        )
+        ca_certificate_path = str(ca_certificate_target)
+
     ChannelConfigurationService.save_security_config(
         channel_id,
         tls_enabled=tls_enabled,
+        tls_mode=tls_mode,
         certificate_path=certificate_path,
         certificate_filename=certificate_filename,
         private_key_path=private_key_path,
         private_key_filename=private_key_filename,
+        ca_certificate_path=ca_certificate_path,
+        ca_certificate_filename=ca_certificate_filename,
     )
 
     try:

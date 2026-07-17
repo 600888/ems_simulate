@@ -316,14 +316,18 @@ export async function updateChannel(
 export async function uploadChannelSecurity(
   channelId: number,
   tlsEnabled: boolean,
+  tlsMode: "basic" | "mutual",
   certificate?: File | null,
   privateKey?: File | null,
+  caCertificate?: File | null,
 ): Promise<SecurityConfig> {
   const formData = new FormData();
   formData.append("channel_id", channelId.toString());
   formData.append("tls_enabled", tlsEnabled ? "true" : "false");
+  formData.append("tls_mode", tlsMode);
   if (certificate) formData.append("certificate", certificate);
   if (privateKey) formData.append("private_key", privateKey);
+  if (caCertificate) formData.append("ca_certificate", caCertificate);
   const response = await instance.post(CHANNEL_API.SECURITY_UPLOAD, formData, {
     headers: { "Content-Type": "multipart/form-data" },
     timeout: 30000,

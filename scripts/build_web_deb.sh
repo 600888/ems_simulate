@@ -58,9 +58,6 @@ echo ">>> 构建后端 (PyInstaller)..."
 # 获取项目根目录的绝对路径
 PROJECT_ROOT=$(pwd)
 
-echo "Installing Python dependencies..."
-pip install ".[build]"
-
 pyinstaller --noconfirm --onedir --name "${APP_NAME//-/_}" --clean \
     --distpath "build/dist" \
     --workpath "build/build_pyinstaller" \
@@ -83,12 +80,20 @@ pyinstaller --noconfirm --onedir --name "${APP_NAME//-/_}" --clean \
     --hidden-import="sqlalchemy" \
     --hidden-import="pydantic" \
     --hidden-import="loguru" \
+    --hidden-import="c104" \
     start_back_end.py
+
+PYINSTALLER_OUTPUT="build/dist/${APP_NAME//-/_}"
+if ! find "$PYINSTALLER_OUTPUT" -type f -name '*_c104*.so' -print -quit | grep -q .; then
+    echo "错误: PyInstaller 产物缺少 c104 原生扩展"
+    exit 1
+fi
+echo ">>> c104 原生扩展检查通过"
 
 # 5. 组装内容
 echo ">>> 组装 Debian 包..."
 # 复制 PyInstaller 生成的内容到 /usr/share/ems-simulate-web
-cp -r "build/dist/${APP_NAME//-/_}/"* "$INSTALL_DIR/"
+cp -r "${PYINSTALLER_OUTPUT}/"* "$INSTALL_DIR/"
 
 # 创建 /usr/bin 下的软链接
 ln -sf "../share/${APP_NAME}/${APP_NAME//-/_}" "${DEB_DIR}/usr/bin/${APP_NAME}"

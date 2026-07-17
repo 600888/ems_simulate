@@ -14,10 +14,17 @@ import c104
 
 from src.device.core.message.message_capture import MessageCapture
 from src.proto.iec104.log import log
+from src.proto.iec104.tls import IEC104BasicTlsConfig, TlsClientBridge
 
 
 class IEC104Client:
-    def __init__(self, ip: str = "127.0.0.1", port: int = 2404):
+    def __init__(
+        self,
+        ip: str = "127.0.0.1",
+        port: int = 2404,
+        transport_security: c104.TransportSecurity | None = None,
+        basic_tls_config: IEC104BasicTlsConfig | None = None,
+    ):
         """
         初始化IEC 104客户端
         :param ip: 服务器IP地址，默认127.0.0.1
@@ -25,10 +32,15 @@ class IEC104Client:
         """
         self.ip = ip
         self.port = port
-        self.client = c104.Client()
+        self._tls_bridge = (
+            TlsClientBridge(ip, port, basic_tls_config.create_client_context()) if basic_tls_config else None
+        )
+        connection_ip = "127.0.0.1" if self._tls_bridge else self.ip
+        connection_port = self._tls_bridge.local_port if self._tls_bridge else self.port
+        self.client = c104.Client(transport_security=transport_security)
         self.connection: c104.Connection = self.client.add_connection(
-            ip=self.ip,
-            port=self.port,
+            ip=connection_ip,
+            port=connection_port,
             init=c104.Init.INTERROGATION,  # 连接时触发全召唤
         )
         # 多 Station 支持：common_address -> c104.Station
@@ -74,12 +86,16 @@ class IEC104Client:
         :return: 是否连接成功
         """
         try:
+            if self._tls_bridge:
+                self._tls_bridge.start()
             self.client.start()
             start_time = time.time()
             while not self.is_connected:
                 if time.time() - start_time > timeout:
                     log.error("连接服务器超时")
                     self.client.stop()
+                    if self._tls_bridge and self._tls_bridge.last_error:
+                        log.error(f"TLS 握手失败: {self._tls_bridge.last_error}")
                     return False
                 await asyncio.sleep(0.1)
 
@@ -97,7 +113,8 @@ class IEC104Client:
 
         if self.client:
             self.client.stop()
-
+        if self._tls_bridge:
+            self._tls_bridge.stop()
         log.info("已断开与服务器的连接")
 
     @property

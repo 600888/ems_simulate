@@ -67,10 +67,13 @@ export interface ProtocolParamsConfig {
 
 export interface SecurityConfig {
   tls_enabled: boolean;
+  tls_mode: "basic" | "mutual";
   certificate_configured: boolean;
   certificate_filename?: string | null;
   private_key_configured: boolean;
   private_key_filename?: string | null;
+  ca_certificate_configured: boolean;
+  ca_certificate_filename?: string | null;
 }
 
 // 通道信息

@@ -62,6 +62,9 @@ class IEC104ServerHandler(ServerHandler):
         ip = config.get("ip", Config.DEFAULT_IP)
         port = config.get("port", Config.IEC104_DEFAULT_PORT)
         runtime = config.get("runtime", {})
+        security = config.get("security", {})
+
+        from src.proto.iec104.tls import build_transport_security, load_basic_tls_config
 
         self._server: IEC104Server = IEC104Server(
             ip=ip,
@@ -70,6 +73,8 @@ class IEC104ServerHandler(ServerHandler):
             message_timeout=max(1, runtime.get("message_timeout_ms", 15000) // 1000),
             keep_alive_interval=max(1, runtime.get("keep_alive_interval_ms", 20000) // 1000),
             max_connections=runtime.get("max_connections", 0),
+            transport_security=build_transport_security(security),
+            basic_tls_config=load_basic_tls_config(security),
         )
 
         # 预创建所有从站对应的 Station（common_address = slave_id）
@@ -316,9 +321,17 @@ class IEC104ClientHandler(ClientHandler):
         ip = config.get("ip", "127.0.0.1")
         port = config.get("port", Config.IEC104_DEFAULT_PORT)
         runtime = config.get("runtime", {})
+        security = config.get("security", {})
         self._connect_timeout = runtime.get("connect_timeout_ms", 3000) / 1000
 
-        self._client = IEC104Client(ip=ip, port=port)
+        from src.proto.iec104.tls import build_transport_security, load_basic_tls_config
+
+        self._client = IEC104Client(
+            ip=ip,
+            port=port,
+            transport_security=build_transport_security(security, peer_hostname=ip),
+            basic_tls_config=load_basic_tls_config(security),
+        )
 
         # 预创建所有从站对应的 Station（common_address = slave_id）
         slave_id_list = config.get("slave_id_list", [])

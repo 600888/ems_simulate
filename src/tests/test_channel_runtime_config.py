@@ -9,11 +9,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.data.model.base import Base
-from src.data.model.channel_configuration import ChannelProtocolParams
+from src.data.model.channel_configuration import ChannelProtocolParams, ChannelSecurityConfig
 import src.data.service.channel_configuration_service as configuration_service_module
 from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.device.protocol.runtime_config import get_protocol_param_defaults, normalize_protocol_params
-from src.web.api.channel.security import _load_certificate, _load_private_key, _validate_pair
+from src.web.api.channel.security import (
+    _load_certificate,
+    _load_private_key,
+    _validate_ca_certificate,
+    _validate_pair,
+)
 from src.web.api.exceptions import ValidationError
 
 
@@ -90,6 +95,31 @@ def test_channel_protocol_params_are_persisted_across_sessions(monkeypatch):
     assert reloaded["values"]["max_connections"] == 12
 
 
+def test_tls_mode_is_persisted_and_exposed_to_runtime(monkeypatch):
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(configuration_service_module, "local_session", session_factory)
+
+    ChannelConfigurationService.save_security_config(
+        502,
+        tls_enabled=True,
+        tls_mode="basic",
+        certificate_path="certificate.pem",
+        certificate_filename="certificate.pem",
+        private_key_path="private_key.pem",
+        private_key_filename="private_key.pem",
+    )
+
+    with session_factory() as session:
+        persisted = session.get(ChannelSecurityConfig, 502)
+        assert persisted is not None
+        assert persisted.tls_mode == "basic"
+
+    assert ChannelConfigurationService.get_security_config(502)["tls_mode"] == "basic"
+    assert ChannelConfigurationService.get_runtime_security(502)["tls_mode"] == "basic"
+
+
 def test_reconnect_maximum_must_not_be_less_than_initial_interval():
     with pytest.raises(ValueError, match="最大间隔"):
         normalize_protocol_params(
@@ -121,3 +151,9 @@ def test_mismatched_certificate_and_private_key_are_rejected():
     _, other_key = _certificate_and_key("private-key")
     with pytest.raises(ValidationError, match="不匹配"):
         _validate_pair(certificate, other_key)
+
+
+def test_identity_certificate_is_rejected_as_ca_certificate():
+    certificate, _ = _certificate_and_key("identity")
+    with pytest.raises(ValidationError, match="Basic Constraints"):
+        _validate_ca_certificate(certificate)

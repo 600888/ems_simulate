@@ -1,4 +1,4 @@
-﻿# Tauri Windows packaging script (Sidecar mode)
+# Tauri Windows packaging script (Sidecar mode)
 param([switch]$SkipBuild, [switch]$SkipBackend, [switch]$Msix, [switch]$Help)
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -167,7 +167,7 @@ if (-not $SkipBackend) {
             "uvicorn.logging", "uvicorn.loops", "openpyxl", "uvicorn.loops.auto",
             "uvicorn.protocols", "uvicorn.protocols.http", "uvicorn.protocols.http.auto",
             "uvicorn.lifespan", "uvicorn.lifespan.on", "uvicorn.loops.asyncio",
-            "pymodbus", "fastapi", "sqlalchemy", "pydantic", "loguru"
+            "pymodbus", "fastapi", "sqlalchemy", "pydantic", "loguru", "c104"
         )
         foreach ($h in $hidden) { $pyArgs += "--hidden-import"; $pyArgs += $h }
         $pyArgs += "$ABS\start_back_end.py"
@@ -181,10 +181,16 @@ if (-not $SkipBackend) {
         $pyOutExe = Join-Path $pyOutDir "ems_simulate_backend.exe"
         $pyRuntimeDir = Join-Path $pyOutDir "ems_simulate_backend_runtime"
         if (Test-Path $pyOutExe) {
+            $c104Extension = Get-ChildItem -Path $pyRuntimeDir -Recurse -File -Filter "*_c104*.pyd" |
+                Select-Object -First 1
+            if (-not $c104Extension) {
+                WriteErr "PyInstaller runtime is missing the c104 native extension"
+            }
             Copy-Item -Force $pyOutExe $BE_SIDECAR_EXE
             Copy-Item -Recurse -Force $pyRuntimeDir $BE_RUNTIME_DIR
             WriteOk "Sidecar binary created: $BE_SIDECAR_EXE"
             WriteOk "Sidecar runtime created: $BE_RUNTIME_DIR"
+            WriteOk "c104 native extension verified: $($c104Extension.Name)"
         } else {
             WriteErr "PyInstaller output not found: $pyOutExe"
         }

@@ -55,6 +55,7 @@
             :disabled="saving"
             @certificate-change="(file) => (certificateFile = file)"
             @private-key-change="(file) => (privateKeyFile = file)"
+            @ca-certificate-change="(file) => (caCertificateFile = file)"
           />
         </el-tab-pane>
       </el-tabs>
@@ -244,6 +245,7 @@ const selectedFile = ref<File | null>(null);
 const icdFile = ref<File | null>(null);
 const certificateFile = ref<File | null>(null);
 const privateKeyFile = ref<File | null>(null);
+const caCertificateFile = ref<File | null>(null);
 const deviceGroupOptions = ref<DeviceGroupInfo[]>([]);
 const serialPorts = ref<Array<{ device: string; description: string }>>([]);
 const protocols = ref<ProtocolOption[]>([]);
@@ -253,10 +255,13 @@ const protocolParams = reactive({
 });
 const securityConfig = reactive<SecurityConfig>({
   tls_enabled: false,
+  tls_mode: "mutual",
   certificate_configured: false,
   certificate_filename: null,
   private_key_configured: false,
   private_key_filename: null,
+  ca_certificate_configured: false,
+  ca_certificate_filename: null,
 });
 
 // GOOSE 预览状态
@@ -353,7 +358,8 @@ watch(
 watch(
   () => [form.protocol_type, form.conn_type],
   ([protocolType, connType]) => {
-    if (protocolType !== 1) securityConfig.tls_enabled = false;
+    if (protocolType !== 1 && protocolType !== 2)
+      securityConfig.tls_enabled = false;
     if (protocolType === 4 && connType === 2) {
       selectedFile.value = null;
     } else {
@@ -389,10 +395,13 @@ const loadChannelData = async (id: number) => {
       securityConfig,
       data.security_config || {
         tls_enabled: false,
+        tls_mode: "mutual",
         certificate_configured: false,
         certificate_filename: null,
         private_key_configured: false,
         private_key_filename: null,
+        ca_certificate_configured: false,
+        ca_certificate_filename: null,
       },
     );
     originalName.value = data.name || "";
@@ -423,10 +432,13 @@ const resetForm = () => {
   Object.assign(protocolParams, { schema_version: 1, values: {} });
   Object.assign(securityConfig, {
     tls_enabled: false,
+    tls_mode: "mutual",
     certificate_configured: false,
     certificate_filename: null,
     private_key_configured: false,
     private_key_filename: null,
+    ca_certificate_configured: false,
+    ca_certificate_filename: null,
   });
   clearPendingPointFiles();
   goosePreviewData.value = null;
@@ -439,6 +451,7 @@ function clearPendingPointFiles() {
   uploadCompRef.value?.clearFiles();
   certificateFile.value = null;
   privateKeyFile.value = null;
+  caCertificateFile.value = null;
   securityCompRef.value?.clearFiles();
 }
 
@@ -487,9 +500,21 @@ const handleSubmit = async () => {
       securityConfig.certificate_configured || !!certificateFile.value;
     const hasPrivateKey =
       securityConfig.private_key_configured || !!privateKeyFile.value;
-    if (!hasCertificate || !hasPrivateKey) {
+    const hasCaCertificate =
+      securityConfig.ca_certificate_configured || !!caCertificateFile.value;
+    if (
+      !hasCertificate ||
+      !hasPrivateKey ||
+      (form.protocol_type === 2 &&
+        securityConfig.tls_mode === "mutual" &&
+        !hasCaCertificate)
+    ) {
       activeTab.value = "security";
-      ElMessage.error("启用 TLS 后必须上传证书和私钥");
+      ElMessage.error(
+        form.protocol_type === 2 && securityConfig.tls_mode === "mutual"
+          ? "IEC104 双向认证 TLS 必须上传本端证书、私钥和 CA 证书"
+          : "启用 TLS 后必须上传证书和私钥",
+      );
       return;
     }
   }
@@ -523,8 +548,10 @@ const handleSubmit = async () => {
         await uploadChannelSecurity(
           resultId,
           securityConfig.tls_enabled,
+          securityConfig.tls_mode,
           certificateFile.value,
           privateKeyFile.value,
+          caCertificateFile.value,
         ),
       );
 

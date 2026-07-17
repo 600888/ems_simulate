@@ -70,17 +70,23 @@ class ChannelConfigurationService:
             if not record:
                 return {
                     "tls_enabled": False,
+                    "tls_mode": "mutual",
                     "certificate_configured": False,
                     "certificate_filename": None,
                     "private_key_configured": False,
                     "private_key_filename": None,
+                    "ca_certificate_configured": False,
+                    "ca_certificate_filename": None,
                 }
             return {
                 "tls_enabled": record.tls_enabled,
+                "tls_mode": record.tls_mode or "mutual",
                 "certificate_configured": bool(record.certificate_path),
                 "certificate_filename": record.certificate_filename,
                 "private_key_configured": bool(record.private_key_path),
                 "private_key_filename": record.private_key_filename,
+                "ca_certificate_configured": bool(record.ca_certificate_path),
+                "ca_certificate_filename": record.ca_certificate_filename,
             }
 
     @classmethod
@@ -88,11 +94,19 @@ class ChannelConfigurationService:
         with local_session() as session:
             record = session.get(ChannelSecurityConfig, channel_id)
             if not record:
-                return {"tls_enabled": False, "certificate_path": None, "private_key_path": None}
+                return {
+                    "tls_enabled": False,
+                    "tls_mode": "mutual",
+                    "certificate_path": None,
+                    "private_key_path": None,
+                    "ca_certificate_path": None,
+                }
             return {
                 "tls_enabled": record.tls_enabled,
+                "tls_mode": record.tls_mode or "mutual",
                 "certificate_path": record.certificate_path,
                 "private_key_path": record.private_key_path,
+                "ca_certificate_path": record.ca_certificate_path,
             }
 
     @classmethod
@@ -105,6 +119,9 @@ class ChannelConfigurationService:
         certificate_filename: str | None,
         private_key_path: str | None,
         private_key_filename: str | None,
+        ca_certificate_path: str | None = None,
+        ca_certificate_filename: str | None = None,
+        tls_mode: str = "mutual",
     ) -> None:
         with local_session() as session, session.begin():
             record = session.get(ChannelSecurityConfig, channel_id)
@@ -112,10 +129,13 @@ class ChannelConfigurationService:
                 record = ChannelSecurityConfig(channel_id=channel_id)
                 session.add(record)
             record.tls_enabled = tls_enabled
+            record.tls_mode = tls_mode
             record.certificate_path = certificate_path
             record.certificate_filename = certificate_filename
             record.private_key_path = private_key_path
             record.private_key_filename = private_key_filename
+            record.ca_certificate_path = ca_certificate_path
+            record.ca_certificate_filename = ca_certificate_filename
 
     @classmethod
     def delete_for_channel(cls, channel_id: int) -> None:

@@ -12,6 +12,7 @@ from c104 import Quality
 
 from src.device.core.message.message_capture import MessageCapture
 from src.proto.iec104.log import log
+from src.proto.iec104.tls import IEC104BasicTlsConfig, TlsServerBridge, allocate_loopback_port
 
 
 class IEC104Server:
@@ -23,6 +24,8 @@ class IEC104Server:
         message_timeout: int = 15,
         keep_alive_interval: int = 20,
         max_connections: int = 0,
+        transport_security: c104.TransportSecurity | None = None,
+        basic_tls_config: IEC104BasicTlsConfig | None = None,
     ):
         """
         初始化IEC 104服务器
@@ -32,7 +35,23 @@ class IEC104Server:
         self.ip = ip
         self.port = port
         # 创建c104服务器实例
-        self.server = c104.Server(ip=ip, port=port)
+        backend_ip = ip
+        backend_port = port
+        self._tls_bridge = None
+        if basic_tls_config:
+            backend_ip = "127.0.0.1"
+            backend_port = allocate_loopback_port()
+            self._tls_bridge = TlsServerBridge(
+                listen_host=ip,
+                listen_port=port,
+                backend_port=backend_port,
+                context=basic_tls_config.create_server_context(),
+            )
+        self.server = c104.Server(
+            ip=backend_ip,
+            port=backend_port,
+            transport_security=transport_security,
+        )
         self.server.protocol_parameters.connection_timeout = connection_timeout
         self.server.protocol_parameters.message_timeout = message_timeout
         self.server.protocol_parameters.keep_alive_interval = keep_alive_interval
@@ -235,10 +254,18 @@ class IEC104Server:
     def start(self):
         """启动IEC 104服务器"""
         self.server.start()
+        if self._tls_bridge:
+            try:
+                self._tls_bridge.start()
+            except Exception:
+                self.server.stop()
+                raise
 
     def stop(self):
         """停止IEC 104服务器"""
         if self.server:
+            if self._tls_bridge:
+                self._tls_bridge.stop()
             self.server.stop()
             log.info("IEC 104服务器已停止")
 

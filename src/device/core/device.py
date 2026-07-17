@@ -72,8 +72,10 @@ class Device:
         self.runtime_config: dict[str, Any] = {}
         self.security_config: dict[str, Any] = {
             "tls_enabled": False,
+            "tls_mode": "mutual",
             "certificate_path": None,
             "private_key_path": None,
+            "ca_certificate_path": None,
         }
 
         self.point_manager: PointManager = PointManager()

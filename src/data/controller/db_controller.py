@@ -73,6 +73,7 @@ class DbController:
             # 创建所有表
             Base.metadata.create_all(self.db_config.engine)
             self._migrate_goose_schema()
+            self._migrate_channel_security_schema()
 
             # 迁移: 为现有数据库添加 IEC61850 相关字段
             try:
@@ -152,6 +153,7 @@ class DbController:
             self.db_config.create_engine(database, is_create_db=False)
             Base.metadata.create_all(self.db_config.engine)
             self._migrate_goose_schema()
+            self._migrate_channel_security_schema()
 
             print(f"MySQL 数据库连接成功: {ip}:{port}/{database}")
             return True
@@ -205,3 +207,24 @@ class DbController:
                 for column, ddl in definitions.items():
                     if column not in existing:
                         conn.execute(text(f"ALTER TABLE goose_subscription ADD COLUMN {column} {ddl}"))
+
+    def _migrate_channel_security_schema(self) -> None:
+        """为旧数据库补齐 IEC104 TLS 模式和 CA 证书字段。"""
+        if not self.db_config:
+            return
+        from sqlalchemy import inspect, text
+
+        engine = self.db_config.engine
+        inspector = inspect(engine)
+        if "channel_security_config" not in inspector.get_table_names():
+            return
+        existing = {column["name"] for column in inspector.get_columns("channel_security_config")}
+        definitions = {
+            "tls_mode": "VARCHAR(16) NOT NULL DEFAULT 'mutual'",
+            "ca_certificate_path": "VARCHAR(512)",
+            "ca_certificate_filename": "VARCHAR(255)",
+        }
+        with engine.begin() as conn:
+            for column, ddl in definitions.items():
+                if column not in existing:
+                    conn.execute(text(f"ALTER TABLE channel_security_config ADD COLUMN {column} {ddl}"))

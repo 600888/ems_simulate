@@ -221,6 +221,7 @@ if ! $SKIP_BACKEND; then
             --hidden-import="sqlalchemy" \
             --hidden-import="pydantic" \
             --hidden-import="loguru" \
+            --hidden-import="c104" \
             start_back_end.py
 
         # PyInstaller --onefile 直接输出到 distpath，需重命名为 sidecar 格式
@@ -228,7 +229,11 @@ if ! $SKIP_BACKEND; then
         if [ -f "$PYINSTALLER_OUTPUT" ]; then
             mv "$PYINSTALLER_OUTPUT" "$BE_SIDECAR_BINARY"
             chmod +x "$BE_SIDECAR_BINARY"
+            if ! pyi-archive_viewer -l "$BE_SIDECAR_BINARY" | grep '_c104' >/dev/null; then
+                WriteErr "PyInstaller sidecar 缺少 c104 原生扩展"
+            fi
             WriteOk "Python 后端已打包: ${BE_SIDECAR_BINARY}"
+            WriteOk "c104 原生扩展检查通过"
         else
             WriteErr "PyInstaller 输出未找到: $PYINSTALLER_OUTPUT"
         fi
