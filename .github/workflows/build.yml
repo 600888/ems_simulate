@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 120
     env:
       # c104's Windows CMake build cannot handle non-ASCII source paths.
-      UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
+      UV_CACHE_DIR: ${{ github.workspace }}/.uv-cache
     strategy:
       fail-fast: false
       matrix:
