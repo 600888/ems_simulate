@@ -2,14 +2,18 @@
   <el-empty v-if="!block?.publisher" description="请选择一个发布控制块" />
   <div v-else class="control-panel">
     <el-descriptions :column="2" border size="small" label-width="auto">
-      <el-descriptions-item label="名称 (Name)">{{ block.display_name }}</el-descriptions-item>
+      <el-descriptions-item label="名称 (Name)">{{
+        block.display_name
+      }}</el-descriptions-item>
       <el-descriptions-item label="类型 (Type)"
         ><el-tag type="primary">发布器</el-tag></el-descriptions-item
       >
       <el-descriptions-item label="控制块引用 (GoCBRef)" :span="2">{{
         block.go_cb_ref
       }}</el-descriptions-item>
-      <el-descriptions-item label="GOOSE标识符 (GoID)">{{ block.go_id || "-" }}</el-descriptions-item>
+      <el-descriptions-item label="GOOSE标识符 (GoID)">{{
+        block.go_id || "-"
+      }}</el-descriptions-item>
       <el-descriptions-item label="应用标识 (APPID)">{{
         formatAppId(block.app_id)
       }}</el-descriptions-item>
@@ -23,7 +27,9 @@
       <el-descriptions-item label="状态号/顺序号 (stNum/sqNum)"
         >{{ block.st_num }} / {{ block.sq_num }}</el-descriptions-item
       >
-      <el-descriptions-item label="网络接口 (Interface)">{{ block.interface }}</el-descriptions-item>
+      <el-descriptions-item label="网络接口 (Interface)">{{
+        block.interface
+      }}</el-descriptions-item>
       <el-descriptions-item label="数据集条目数 (Entries)">{{
         block.data_values.length
       }}</el-descriptions-item>
@@ -53,7 +59,9 @@
               <div class="network-option">
                 <el-icon class="network-option-icon"><Monitor /></el-icon>
                 <div class="network-option-body">
-                  <span class="network-option-name">{{ item.display_name }}</span>
+                  <span class="network-option-name">{{
+                    item.display_name
+                  }}</span>
                   <span class="network-option-mac"
                     >MAC: {{ (item.mac || "-").replace(/-/g, ":") }}</span
                   >
@@ -62,7 +70,9 @@
             </el-option>
           </el-select>
         </el-form-item>
-        <el-form-item label="GOOSE标识符 (GoID)"><el-input v-model="form.go_id" /></el-form-item>
+        <el-form-item label="GOOSE标识符 (GoID)"
+          ><el-input v-model="form.go_id"
+        /></el-form-item>
         <el-form-item label="目标组播地址 (可选)">
           <el-input
             v-model="form.dst_mac"
@@ -92,10 +102,16 @@
           </el-select>
         </el-form-item>
         <el-form-item label="配置版本号 (ConfRev)"
-          ><el-input-number v-model="form.conf_rev" :min="1" controls-position="right"
+          ><el-input-number
+            v-model="form.conf_rev"
+            :min="1"
+            controls-position="right"
         /></el-form-item>
         <el-form-item label="最大重发时间 (MaxTime)"
-          ><el-input-number v-model="form.time_allowed_to_live" :min="100" :max="60000"
+          ><el-input-number
+            v-model="form.time_allowed_to_live"
+            :min="100"
+            :max="60000"
         /></el-form-item>
         <el-form-item label="VLAN标识 (VID)"
           ><el-input-number v-model="form.vlan_id" :min="0" :max="4095"
@@ -109,7 +125,10 @@
       </el-form>
     </section>
     <div class="actions">
-      <el-button type="primary" :loading="loading" @click="emit('apply', { ...form })"
+      <el-button
+        type="primary"
+        :loading="loading"
+        @click="emit('apply', { ...form })"
         >应用配置</el-button
       >
     </div>
@@ -155,7 +174,10 @@ const form = reactive<PublisherForm>({
 });
 const emit = defineEmits<{ (e: "apply", form: PublisherForm): void }>();
 const availableDataSets = computed(() => {
-  if (!form.data_set_ref || props.dataSets.some((item) => item.ref === form.data_set_ref)) {
+  if (
+    !form.data_set_ref ||
+    props.dataSets.some((item) => item.ref === form.data_set_ref)
+  ) {
     return props.dataSets;
   }
   return [
@@ -186,10 +208,12 @@ watch(
       simulation: publisher.simulation,
     });
   },
-  { immediate: true }
+  { immediate: true },
 );
 function formatAppId(value: number | null) {
-  return value == null ? "-" : `0x${value.toString(16).toUpperCase().padStart(4, "0")}`;
+  return value == null
+    ? "-"
+    : `0x${value.toString(16).toUpperCase().padStart(4, "0")}`;
 }
 </script>
 
@@ -225,7 +249,7 @@ function formatAppId(value: number | null) {
   display: flex;
   justify-content: flex-end;
 }
-@media (max-width: 1000px) {
+@container (max-width: 1000px) {
   .config-form {
     grid-template-columns: 1fr;
   }
@@ -265,7 +289,8 @@ function formatAppId(value: number | null) {
     line-height: 1.3;
   }
   .network-option-mac {
-    font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace;
+    font-family:
+      "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace;
     font-size: 11px;
     color: #909399;
     line-height: 1.2;

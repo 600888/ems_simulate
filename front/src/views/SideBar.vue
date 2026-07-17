@@ -1,19 +1,21 @@
 <template>
   <el-aside
     class="sidebar"
+    :style="sidebarStyle"
     :class="[
       `sidebar-theme-${currentTheme}`,
-      { 'sidebar-collapsed': isCollapse },
+      { 'sidebar-collapsed': sidebarDisplayCollapsed },
       { 'sidebar-overlay-mode': overlayMode },
+      { 'is-resizing': isResizing },
     ]"
   >
     <el-scrollbar ref="scrollbarRef">
       <!-- 1. 头部徽标与主题切换 -->
-      <SideNavHeader :is-collapse="isCollapse" />
+      <SideNavHeader :is-collapse="sidebarDisplayCollapsed" />
 
       <!-- 2. 操作按钮组 -->
       <SideNavActions
-        :is-collapse="isCollapse"
+        :is-collapse="sidebarDisplayCollapsed"
         @add-device="showAddDeviceDialog"
         @add-group="() => showAddGroupDialog()"
       />
@@ -25,7 +27,7 @@
         :tree-props="treeProps"
         :expanded-keys="expandedKeys"
         :current-node-key="currentNodeKey"
-        :is-collapse="isCollapse"
+        :is-collapse="sidebarDisplayCollapsed"
         @node-click="handleNodeClick"
         @group-command="handleGroupCommand"
         @edit-device="handleEditDevice"
@@ -39,7 +41,7 @@
         :iec61850-map="iec61850UngroupedMap as any"
         :expanded="ungroupedExpanded"
         :current-device-name="currentDeviceName"
-        :is-collapse="isCollapse"
+        :is-collapse="sidebarDisplayCollapsed"
         @toggle="toggleUngrouped"
         @device-click="handleDeviceClick"
         @edit-device="handleEditDeviceByName"
@@ -51,7 +53,24 @@
     </el-scrollbar>
 
     <!-- 6. 后端状态栏 -->
-    <SideBarStatus :is-collapse="isCollapse" />
+    <SideBarStatus :is-collapse="sidebarDisplayCollapsed" />
+
+    <div
+      v-if="!sidebarDisplayCollapsed && !overlayMode"
+      class="sidebar-resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="调整侧边栏宽度"
+      :aria-valuenow="sidebarWidth"
+      :aria-valuemin="SIDEBAR_MIN_WIDTH"
+      :aria-valuemax="SIDEBAR_MAX_WIDTH"
+      tabindex="0"
+      title="拖动调整侧边栏宽度，双击恢复默认宽度"
+      @pointerdown="startSidebarResize"
+      @dblclick="resetSidebarWidth"
+      @keydown.left.prevent="adjustSidebarWidth(-10)"
+      @keydown.right.prevent="adjustSidebarWidth(10)"
+    />
   </el-aside>
 
   <!-- 5. 对话框组件 -->
@@ -85,8 +104,8 @@
 </template>
 
 <script lang="ts" setup>
-import { useI18n } from 'vue-i18n'
-import { onMounted, ref, computed, watch, nextTick } from "vue";
+import { useI18n } from "vue-i18n";
+import { onMounted, onUnmounted, ref, computed, watch, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import type { ElTree, ElScrollbar } from "element-plus";
@@ -103,23 +122,79 @@ import CopyDeviceDialog from "@/components/device/CopyDeviceDialog.vue";
 import { currentTheme } from "@/utils/theme";
 import { isCollapse, sidebarOverlayMode } from "@/components/header/isCollapse";
 import menuRouter from "@/router/index";
-import { delView, visitedViews, updateChannelIdDeviceMap } from "@/store/tagsView";
+import {
+  delView,
+  visitedViews,
+  updateChannelIdDeviceMap,
+} from "@/store/tagsView";
 import { deleteChannel, getChannelList } from "@/api/channelApi";
 import {
   getDeviceGroupTree,
   deleteDeviceGroup,
   batchDeviceOperation,
   type DeviceGroupTreeNode,
-  type DeviceInfo
+  type DeviceInfo,
 } from "@/api/deviceGroupApi";
 import { useIec61850Tree, type TreeNode } from "@/composables";
 import { useSidebarRefresh } from "@/composables";
+import { effectiveViewportWidth } from "@/composables/useAppSettings";
 
 const router = useRouter();
-const { t } = useI18n()
+const { t } = useI18n();
 const overlayMode = sidebarOverlayMode;
+const isCompactViewport = computed(() => effectiveViewportWidth.value < 1200);
+const sidebarDisplayCollapsed = computed(() =>
+  isCompactViewport.value ? !overlayMode.value : isCollapse.value,
+);
 const treeRef = ref<InstanceType<typeof ElTree>>();
 const scrollbarRef = ref<InstanceType<typeof ElScrollbar>>();
+
+const SIDEBAR_DEFAULT_WIDTH = 280;
+const SIDEBAR_MIN_WIDTH = 240;
+const SIDEBAR_MAX_WIDTH = 480;
+const SIDEBAR_WIDTH_STORAGE_KEY = "sidebar-width";
+const sidebarWidth = ref(SIDEBAR_DEFAULT_WIDTH);
+const isResizing = ref(false);
+const sidebarStyle = computed(() => ({
+  "--sidebar-width": `${sidebarWidth.value}px`,
+}));
+
+const clampSidebarWidth = (width: number) =>
+  Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));
+
+const setSidebarWidth = (width: number, persist = true) => {
+  sidebarWidth.value = clampSidebarWidth(width);
+  if (persist)
+    localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth.value));
+};
+
+const handleSidebarResize = (event: PointerEvent) => {
+  if (!isResizing.value) return;
+  setSidebarWidth(event.clientX, false);
+};
+
+const stopSidebarResize = () => {
+  if (!isResizing.value) return;
+  isResizing.value = false;
+  localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth.value));
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+  window.removeEventListener("pointermove", handleSidebarResize);
+  window.removeEventListener("pointerup", stopSidebarResize);
+};
+
+const startSidebarResize = (event: PointerEvent) => {
+  if (event.button !== 0) return;
+  isResizing.value = true;
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+  window.addEventListener("pointermove", handleSidebarResize);
+  window.addEventListener("pointerup", stopSidebarResize);
+};
+
+const adjustSidebarWidth = (delta: number) =>
+  setSidebarWidth(sidebarWidth.value + delta);
+const resetSidebarWidth = () => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH);
 
 // 状态管理
 const addDeviceDialogVisible = ref(false);
@@ -131,21 +206,28 @@ const parentGroupIdForNewGroup = ref<number | null>(null);
 
 const copyDeviceDialogVisible = ref(false);
 const copyingChannelId = ref<number | null>(null);
-const copyingDeviceName = ref<string>('');
-const copyingDeviceIp = ref<string>('');
+const copyingDeviceName = ref<string>("");
+const copyingDeviceIp = ref<string>("");
 const copyingDevicePort = ref<number>(502);
 const copyingPointCount = ref<number>(0);
 
 const treeData = ref<TreeNode[]>([]);
-const treeKey = ref(0);  // 递增计数，强制 el-tree 重建
+const treeKey = ref(0); // 递增计数，强制 el-tree 重建
 const ungroupedDevices = ref<DeviceInfo[]>([]);
 const expandedKeys = ref<string[]>([]);
-const currentNodeKey = ref<string>('');
-const currentDeviceName = ref<string>('');
+const currentNodeKey = ref<string>("");
+const currentDeviceName = ref<string>("");
 const ungroupedExpanded = ref(true);
 
 // IEC61850 设备树 composable
-const { iec61850UngroupedMap, fetchIEC61850Structure, markIEC61850Devices, markUngroupedIEC61850Devices, setStructureLoadedCallback, invalidateStructureCache } = useIec61850Tree();
+const {
+  iec61850UngroupedMap,
+  fetchIEC61850Structure,
+  markIEC61850Devices,
+  markUngroupedIEC61850Devices,
+  setStructureLoadedCallback,
+  invalidateStructureCache,
+} = useIec61850Tree();
 
 // IEC61850 结构加载完成后强制重建 el-tree
 setStructureLoadedCallback(() => {
@@ -155,42 +237,47 @@ setStructureLoadedCallback(() => {
 // 侧边栏刷新触发器
 const { refreshCounter } = useSidebarRefresh();
 
-const treeProps = { children: 'children', label: 'label' };
+const treeProps = { children: "children", label: "label" };
 
 // 计算父级设备组选项
 const groupTreeForSelect = computed(() => {
   const convertToSelectTree = (nodes: TreeNode[]): DeviceGroupTreeNode[] => {
-    return nodes.filter(n => n.isGroup).map(n => ({
-      id: n.id,
-      code: '',
-      name: n.name,
-      parent_id: null,
-      description: null,
-      status: 0,
-      enable: true,
-      created_at: null,
-      updated_at: null,
-      children: n.children ? convertToSelectTree(n.children) : [],
-      devices: []
-    }));
+    return nodes
+      .filter((n) => n.isGroup)
+      .map((n) => ({
+        id: n.id,
+        code: "",
+        name: n.name,
+        parent_id: null,
+        description: null,
+        status: 0,
+        enable: true,
+        created_at: null,
+        updated_at: null,
+        children: n.children ? convertToSelectTree(n.children) : [],
+        devices: [],
+      }));
   };
   return convertToSelectTree(treeData.value);
 });
 
 // 数据转换逻辑
 const transformToTreeData = (groups: DeviceGroupTreeNode[]): TreeNode[] => {
-  return groups.map(group => {
+  return groups.map((group) => {
     const children: TreeNode[] = [];
-    if (group.children?.length) children.push(...transformToTreeData(group.children));
+    if (group.children?.length)
+      children.push(...transformToTreeData(group.children));
     if (group.devices?.length) {
-      children.push(...group.devices.map(d => ({
-        nodeKey: `device-${d.name}`,
-        label: d.name,
-        isGroup: false,
-        id: d.id,
-        name: d.name,
-        groupId: group.id
-      })));
+      children.push(
+        ...group.devices.map((d) => ({
+          nodeKey: `device-${d.name}`,
+          label: d.name,
+          isGroup: false,
+          id: d.id,
+          name: d.name,
+          groupId: group.id,
+        })),
+      );
     }
     return {
       nodeKey: `group-${group.id}`,
@@ -198,7 +285,7 @@ const transformToTreeData = (groups: DeviceGroupTreeNode[]): TreeNode[] => {
       isGroup: true,
       id: group.id,
       name: group.name,
-      children
+      children,
     };
   });
 };
@@ -223,7 +310,10 @@ const fetchDeviceGroupTree = async () => {
         for (const node of nodes) {
           if (node.isGroup && node.children) {
             // 检查直接子节点是否有该设备
-            const hasDevice = node.children.some((child: TreeNode) => !child.isGroup && child.name === currentDeviceName.value);
+            const hasDevice = node.children.some(
+              (child: TreeNode) =>
+                !child.isGroup && child.name === currentDeviceName.value,
+            );
             if (hasDevice) {
               if (!newExpandedKeys.includes(node.nodeKey)) {
                 newExpandedKeys.push(node.nodeKey);
@@ -258,13 +348,15 @@ const fetchDeviceGroupTree = async () => {
 
     // 构建 channelId -> deviceName 映射，供 TagsView 在 GOOSE/报告/文件页面高亮对应设备标签
     const channels = await getChannelList();
-    channels.forEach(ch => {
+    channels.forEach((ch) => {
       if (ch.name) updateChannelIdDeviceMap(ch.id, ch.name);
     });
 
     // 如果是未分组设备，展开未分组区域
     if (currentDeviceName.value) {
-      const isUngrouped = newUngrouped.some(d => d.name === currentDeviceName.value);
+      const isUngrouped = newUngrouped.some(
+        (d) => d.name === currentDeviceName.value,
+      );
       if (isUngrouped) {
         ungroupedExpanded.value = true;
       }
@@ -275,7 +367,7 @@ const fetchDeviceGroupTree = async () => {
       });
     }
   } catch (error: any) {
-    console.error('获取设备组失败:', error);
+    console.error("获取设备组失败:", error);
     // error message is handled by global interceptor
   }
 };
@@ -291,14 +383,18 @@ const handleNodeClick = (data: TreeNode) => {
     // IEC61850 子节点点击: 携带 category/item 导航到设备页面
     // data.type 是分类 (如 "DataModel")，data.value 是完整过滤路径 (如 "GenericLD/MMXU1")
     const deviceName = data.deviceName || data.name;
-    const category = data.type || (data.isGroup ? data.name : '');
+    const category = data.type || (data.isGroup ? data.name : "");
     // DataSets 下的分组节点(LD/LN)只做展开/折叠，不做导航
-    if (category === 'DataSets' && data.isGroup) {
+    if (category === "DataSets" && data.isGroup) {
       return;
     }
     // 优先使用 value (DataModel 下 LN 节点的完整路径)，其次使用 name
-    const item = data.isGroup ? '' : (data.value || data.name || data.label);
-    navigateToDevice(deviceName, false, data.isIec61850Child, { ...data, _category: category, _item: item });
+    const item = data.isGroup ? "" : data.value || data.name || data.label;
+    navigateToDevice(deviceName, false, data.isIec61850Child, {
+      ...data,
+      _category: category,
+      _item: item,
+    });
     return;
   }
   if (!data.isGroup) navigateToDevice(data.name);
@@ -318,13 +414,22 @@ const handleUngroupedNodeClick = (data: any) => {
     const deviceName = data.deviceName || currentDeviceName.value;
     // 构建 category 和 item 信息
     // data.type 是分类 (如 "DataModel")，data.value 是完整过滤路径 (如 "GenericLD/MMXU1")
-    const category = data.type || (data.isGroup ? data.name : '');
-    const item = data.isGroup ? '' : (data.value || data.name);
-    navigateToDevice(deviceName, false, true, { ...data, _category: category, _item: item });
+    const category = data.type || (data.isGroup ? data.name : "");
+    const item = data.isGroup ? "" : data.value || data.name;
+    navigateToDevice(deviceName, false, true, {
+      ...data,
+      _category: category,
+      _item: item,
+    });
   }
 };
 
-const navigateToDevice = (deviceName: string, forceRefresh = false, isIec61850Child = false, treeNode?: any) => {
+const navigateToDevice = (
+  deviceName: string,
+  forceRefresh = false,
+  isIec61850Child = false,
+  treeNode?: any,
+) => {
   // 关闭 overlay 模式（small 断点下弹出后点击导航自动收起）
   sidebarOverlayMode.value = false;
   currentDeviceName.value = deviceName;
@@ -336,15 +441,24 @@ const navigateToDevice = (deviceName: string, forceRefresh = false, isIec61850Ch
   const query: Record<string, string> = {};
   if (isIec61850Child && treeNode) {
     // 优先使用 _category/_item (来自 handleUngroupedNodeClick 的计算值)
-    const category = treeNode._category || (treeNode.isGroup ? (treeNode.type || treeNode.name || treeNode.label) : '');
-    const item = treeNode._item || (treeNode.isGroup ? '' : (treeNode.name || treeNode.label));
+    const category =
+      treeNode._category ||
+      (treeNode.isGroup
+        ? treeNode.type || treeNode.name || treeNode.label
+        : "");
+    const item =
+      treeNode._item ||
+      (treeNode.isGroup ? "" : treeNode.name || treeNode.label);
     if (category) query.category = category;
     if (item) query.item = item;
   }
 
   if (forceRefresh) {
   }
-  router.push({ path, query: Object.keys(query).length > 0 ? query : undefined });
+  router.push({
+    path,
+    query: Object.keys(query).length > 0 ? query : undefined,
+  });
 };
 
 const showAddDeviceDialog = () => {
@@ -361,72 +475,95 @@ const showAddGroupDialog = (parentId?: number) => {
 
 const handleGroupCommand = async (command: string, data: TreeNode) => {
   const actions: Record<string, Function> = {
-    edit: () => { editingGroupId.value = data.id; addGroupDialogVisible.value = true; },
-    addDevice: () => { parentGroupIdForNewDevice.value = data.id; addDeviceDialogVisible.value = true; },
+    edit: () => {
+      editingGroupId.value = data.id;
+      addGroupDialogVisible.value = true;
+    },
+    addDevice: () => {
+      parentGroupIdForNewDevice.value = data.id;
+      addDeviceDialogVisible.value = true;
+    },
     addSubGroup: () => showAddGroupDialog(data.id),
-    startAll: () => handleBatchOperation(data.id, 'start'),
-    stopAll: () => handleBatchOperation(data.id, 'stop'),
-    delete: () => handleDeleteGroup(data)
+    startAll: () => handleBatchOperation(data.id, "start"),
+    stopAll: () => handleBatchOperation(data.id, "stop"),
+    delete: () => handleDeleteGroup(data),
   };
   actions[command]?.();
 };
 
 const handleUngroupedCommand = async (command: string) => {
   const actions: Record<string, Function> = {
-    addDevice: () => { parentGroupIdForNewDevice.value = null; addDeviceDialogVisible.value = true; },
-    startAll: () => handleBatchOperation(0, 'start'),
-    stopAll: () => handleBatchOperation(0, 'stop'),
+    addDevice: () => {
+      parentGroupIdForNewDevice.value = null;
+      addDeviceDialogVisible.value = true;
+    },
+    startAll: () => handleBatchOperation(0, "start"),
+    stopAll: () => handleBatchOperation(0, "stop"),
   };
   actions[command]?.();
 };
 
-const handleBatchOperation = async (groupId: number, operation: 'start' | 'stop' | 'reset') => {
-    await batchDeviceOperation(groupId, operation);
-    ElMessage.success(t('sidebar.' + (operation === 'start' ? 'startSuccess' : 'stopSuccess')));
+const handleBatchOperation = async (
+  groupId: number,
+  operation: "start" | "stop" | "reset",
+) => {
+  await batchDeviceOperation(groupId, operation);
+  ElMessage.success(
+    t("sidebar." + (operation === "start" ? "startSuccess" : "stopSuccess")),
+  );
 };
 
 const handleDeleteGroup = async (data: TreeNode) => {
-    await ElMessageBox.confirm(t('sidebar.confirmDeleteGroup', { name: data.name }), t('common.hint'), {
-      confirmButtonText: t('common.confirm'),
-      cancelButtonText: t('common.cancel'),
-      type: 'warning',
-    });
-    await deleteDeviceGroup(data.id, false);
-    ElMessage.success(t('sidebar.success'));
-    await fetchDeviceGroupTree();
+  await ElMessageBox.confirm(
+    t("sidebar.confirmDeleteGroup", { name: data.name }),
+    t("common.hint"),
+    {
+      confirmButtonText: t("common.confirm"),
+      cancelButtonText: t("common.cancel"),
+      type: "warning",
+    },
+  );
+  await deleteDeviceGroup(data.id, false);
+  ElMessage.success(t("sidebar.success"));
+  await fetchDeviceGroupTree();
 };
 
 const handleEditDevice = (data: TreeNode) => handleEditDeviceByName(data.name);
 const handleEditDeviceByName = async (deviceName: string) => {
-  const channel = (await getChannelList()).find(c => c.name === deviceName);
+  const channel = (await getChannelList()).find((c) => c.name === deviceName);
   if (channel) {
     editingChannelId.value = channel.id;
     addDeviceDialogVisible.value = true;
   }
 };
 
-const handleDeleteDevice = (data: TreeNode) => handleDeleteDeviceByName(data.name);
+const handleDeleteDevice = (data: TreeNode) =>
+  handleDeleteDeviceByName(data.name);
 const handleDeleteDeviceByName = async (deviceName: string) => {
-  await ElMessageBox.confirm(t('sidebar.confirmDeleteDevice', { name: deviceName }), t('common.hint'), {
-    confirmButtonText: t('common.confirm'),
-    cancelButtonText: t('common.cancel'),
-    type: 'warning',
-  });
-  const channel = (await getChannelList()).find(c => c.name === deviceName);
+  await ElMessageBox.confirm(
+    t("sidebar.confirmDeleteDevice", { name: deviceName }),
+    t("common.hint"),
+    {
+      confirmButtonText: t("common.confirm"),
+      cancelButtonText: t("common.cancel"),
+      type: "warning",
+    },
+  );
+  const channel = (await getChannelList()).find((c) => c.name === deviceName);
   if (channel) {
     await deleteChannel(channel.id);
-    ElMessage.success(t('sidebar.deleteSuccess'));
+    ElMessage.success(t("sidebar.deleteSuccess"));
 
     const path = `/device/${deviceName}`;
     // 如果存在这个标签，需要关闭它
-    const targetView = visitedViews.value.find(v => v.path === path);
+    const targetView = visitedViews.value.find((v) => v.path === path);
     if (targetView) {
       await delView(targetView);
     }
 
     if (currentDeviceName.value === deviceName) {
-      currentDeviceName.value = '';
-      currentNodeKey.value = '';
+      currentDeviceName.value = "";
+      currentNodeKey.value = "";
       localStorage.removeItem("activeRoute");
 
       // Navigate to another view if available
@@ -434,7 +571,7 @@ const handleDeleteDeviceByName = async (deviceName: string) => {
       if (latestView) {
         router.push(latestView.path as string);
       } else {
-        router.push('/');
+        router.push("/");
       }
     }
 
@@ -453,17 +590,17 @@ const handleCopyDevice = async (data: TreeNode) => {
 const handleCopyDeviceByName = async (deviceName: string) => {
   try {
     const channelList = await getChannelList();
-    const channel = channelList.find(c => c.name === deviceName);
+    const channel = channelList.find((c) => c.name === deviceName);
     if (channel) {
       copyingChannelId.value = channel.id;
       copyingDeviceName.value = channel.name;
-      copyingDeviceIp.value = channel.ip || '0.0.0.0';
+      copyingDeviceIp.value = channel.ip || "0.0.0.0";
       copyingDevicePort.value = channel.port || 502;
       copyingPointCount.value = 0;
       copyDeviceDialogVisible.value = true;
     }
   } catch (error) {
-    console.error('获取设备信息失败:', error);
+    console.error("获取设备信息失败:", error);
   }
 };
 
@@ -471,12 +608,17 @@ const handleCopyDeviceSuccess = async () => {
   await fetchDeviceGroupTree();
 };
 
-const handleDeviceAdded = async (deviceName: string, isEdit?: boolean, oldName?: string) => {
-  if (isEdit && oldName && oldName !== deviceName) menuRouter.removeRoute(oldName);
+const handleDeviceAdded = async (
+  deviceName: string,
+  isEdit?: boolean,
+  oldName?: string,
+) => {
+  if (isEdit && oldName && oldName !== deviceName)
+    menuRouter.removeRoute(oldName);
   menuRouter.addRoute({
     path: `/device/${deviceName}`,
     name: deviceName,
-    component: () => import("@/views/Device.vue")
+    component: () => import("@/views/Device.vue"),
   });
   await fetchDeviceGroupTree();
 
@@ -487,13 +629,15 @@ const handleDeviceAdded = async (deviceName: string, isEdit?: boolean, oldName?:
     for (const node of nodes) {
       if (node.isGroup && node.children) {
         // 检查子节点是否由新设备
-        const hasDevice = node.children.some((child: TreeNode) => !child.isGroup && child.name === deviceName);
+        const hasDevice = node.children.some(
+          (child: TreeNode) => !child.isGroup && child.name === deviceName,
+        );
         if (hasDevice) {
-           if (!expandedKeys.value.includes(node.nodeKey)) {
-             expandedKeys.value.push(node.nodeKey);
-           }
-           found = true;
-           return; // 暂不支持多层嵌套展开，找到即止，若支持多层需递归查找
+          if (!expandedKeys.value.includes(node.nodeKey)) {
+            expandedKeys.value.push(node.nodeKey);
+          }
+          found = true;
+          return; // 暂不支持多层嵌套展开，找到即止，若支持多层需递归查找
         }
         // 递归检查子分组
         expandGroup(node.children);
@@ -505,7 +649,9 @@ const handleDeviceAdded = async (deviceName: string, isEdit?: boolean, oldName?:
 
   // 2. 检查未分组
   if (!found) {
-    const isUngrouped = ungroupedDevices.value.some(d => d.name === deviceName);
+    const isUngrouped = ungroupedDevices.value.some(
+      (d) => d.name === deviceName,
+    );
     if (isUngrouped) {
       ungroupedExpanded.value = true;
     }
@@ -526,25 +672,34 @@ const scrollToCurrentDevice = () => {
   // element-plus 的 tree 节点 current 类名为 is-current
   // 但不仅仅是在 tree 中，未分组列表也可能有
 
-  const treeNode = document.querySelector('.el-tree-node.is-current');
-  const ungroupedNode = document.querySelector('.ungrouped-item.is-active');
+  const treeNode = document.querySelector(".el-tree-node.is-current");
+  const ungroupedNode = document.querySelector(".ungrouped-item.is-active");
 
-  const target = treeNode || ungroupedNode || document.querySelector('.is-current');
+  const target =
+    treeNode || ungroupedNode || document.querySelector(".is-current");
 
   if (target) {
-    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
   }
 };
 
 const handleGroupChanged = () => fetchDeviceGroupTree();
-const toggleUngrouped = () => { ungroupedExpanded.value = !ungroupedExpanded.value; };
+const toggleUngrouped = () => {
+  ungroupedExpanded.value = !ungroupedExpanded.value;
+};
 
 onMounted(async () => {
+  const storedSidebarWidth = Number(
+    localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY),
+  );
+  if (Number.isFinite(storedSidebarWidth) && storedSidebarWidth > 0) {
+    setSidebarWidth(storedSidebarWidth, false);
+  }
   await fetchDeviceGroupTree();
   // 检查是否有添加设备后的待导航设备
-  const pendingDevice = localStorage.getItem('_pendingDevice');
+  const pendingDevice = localStorage.getItem("_pendingDevice");
   if (pendingDevice) {
-    localStorage.removeItem('_pendingDevice');
+    localStorage.removeItem("_pendingDevice");
     // 静态 route '/device/:deviceName' 已存在，直接 push 即可
     router.push(`/device/${pendingDevice}`);
   }
@@ -552,14 +707,20 @@ onMounted(async () => {
   if (collapsed) isCollapse.value = collapsed === "true";
 });
 
+onUnmounted(stopSidebarResize);
+
 // 监听路由同步
-watch(() => router.currentRoute.value.params.deviceName, (name) => {
-  if (name) {
-    const nameStr = name as string;
-    currentDeviceName.value = nameStr;
-    currentNodeKey.value = `device-${nameStr}`;
-  }
-}, { immediate: true });
+watch(
+  () => router.currentRoute.value.params.deviceName,
+  (name) => {
+    if (name) {
+      const nameStr = name as string;
+      currentDeviceName.value = nameStr;
+      currentNodeKey.value = `device-${nameStr}`;
+    }
+  },
+  { immediate: true },
+);
 
 // 监听侧边栏刷新触发（如 IEC61850 客户端连接成功）
 watch(refreshCounter, () => {
@@ -572,16 +733,27 @@ watch(refreshCounter, () => {
 <style lang="scss" scoped>
 /* 全局侧边栏基础样式 - 通过主题变量驱动 */
 .sidebar {
+  position: relative;
   display: flex;
   flex-direction: column;
-  width: auto !important;
+  width: var(--sidebar-width) !important;
   min-width: var(--sidebar-width);
-  height: 100vh;
+  max-width: var(--sidebar-width);
+  flex: 0 0 var(--sidebar-width);
+  height: 100%;
   background: var(--sb-bg-main);
   border-right: 1px solid var(--sb-border);
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    width 0.3s ease,
+    min-width 0.3s ease,
+    max-width 0.3s ease,
+    flex-basis 0.3s ease;
   overflow: hidden;
   box-shadow: var(--sb-shadow);
+
+  &.is-resizing {
+    transition: none;
+  }
 
   /* 让滚动区域弹性伸缩占满剩余空间，将状态栏固定在底部 */
   :deep(> .el-scrollbar) {
@@ -593,6 +765,8 @@ watch(refreshCounter, () => {
   &.sidebar-collapsed {
     width: var(--sidebar-collapsed-width) !important;
     min-width: var(--sidebar-collapsed-width);
+    max-width: var(--sidebar-collapsed-width);
+    flex-basis: var(--sidebar-collapsed-width);
 
     /* 折叠时隐藏树形结构的文字和操作按钮，只显示图标 */
     :deep(.device-tree) {
@@ -669,6 +843,35 @@ watch(refreshCounter, () => {
   }
 }
 
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  width: 6px;
+  cursor: col-resize;
+  outline: none;
+}
+
+.sidebar-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--color-primary);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.sidebar-resizer:hover::after,
+.sidebar-resizer:focus-visible::after,
+.sidebar.is-resizing .sidebar-resizer::after {
+  opacity: 0.7;
+}
+
 /* 主题类定义 */
 .sidebar-theme-light {
   --sb-bg-main: linear-gradient(180deg, #fdfdff 0%, #f5f7fa 100%);
@@ -708,10 +911,13 @@ watch(refreshCounter, () => {
 .sidebar-overlay-mode {
   position: fixed;
   top: 0;
+  bottom: 0;
   left: 0;
-  height: 100vh;
-  width: 230px !important;
-  min-width: 230px !important;
+  height: auto;
+  width: 280px !important;
+  min-width: 280px !important;
+  max-width: 280px !important;
+  flex-basis: 280px;
   z-index: 999;
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
 }

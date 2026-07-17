@@ -1,54 +1,54 @@
 @use "./theme-vars.scss";
 
 * {
-    padding: 0;
-    margin: 0;
-    box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 html,
 body,
 #app {
-    height: 100%;
-    overflow: hidden;
-    background-color: var(--bg-main);
-    color: var(--text-primary);
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
 }
 
 /* 全局圆角工程与细节优化 */
 :root {
-    --el-border-radius-base: 8px;
-    --el-border-radius-small: 6px;
-    --el-border-radius-round: 24px;
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: 24px;
 }
 
 /* 统一输入框与选择器圆角 */
 .el-input__wrapper,
 .el-select__wrapper,
 .el-textarea__inner {
-    border-radius: 8px !important;
-    box-shadow: 0 0 0 1px var(--sidebar-border) inset !important;
-    background-color: transparent !important;
+  border-radius: 8px !important;
+  box-shadow: 0 0 0 1px var(--sidebar-border) inset !important;
+  background-color: transparent !important;
 }
 
 /* 统一按钮造型 */
 .el-button {
-    border-radius: 8px;
-    font-weight: 500;
+  border-radius: 8px;
+  font-weight: 500;
 
-    &.is-round {
-        border-radius: 20px;
-    }
+  &.is-round {
+    border-radius: 20px;
+  }
 
-    &.is-circle {
-        border-radius: 50%;
-    }
+  &.is-circle {
+    border-radius: 50%;
+  }
 }
 
 /* 消息提示框优化 */
 .el-message {
-    border-radius: 12px;
-    border: 1px solid var(--sidebar-border);
+  border-radius: 12px;
+  border: 1px solid var(--sidebar-border);
 }
 
 /*
@@ -56,63 +56,63 @@ body,
  * Element Plus 默认将弹框 teleport 到 body。应用主体可能被整体缩放且多处使用
  * overflow:hidden，因此遮罩和弹框必须独立固定到视口，内容区自行滚动。
  */
-body>.el-overlay {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    overflow: auto !important;
+body > .el-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  overflow: auto !important;
 }
 
 .el-overlay-dialog {
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    min-height: 100%;
-    padding: 4vh 16px;
-    overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100%;
+  padding: 4vh 16px;
+  overflow: auto;
 }
 
 .el-overlay-dialog .el-dialog {
-    display: flex;
-    flex-direction: column;
-    max-width: calc(100vw - 32px);
-    max-height: 92vh;
-    margin: 0 auto !important;
-    border-radius: 16px !important;
-    overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100vw - 32px);
+  max-height: 92vh;
+  margin: 0 auto !important;
+  border-radius: 16px !important;
+  overflow: hidden;
 }
 
 .el-overlay-dialog .el-dialog__header,
 .el-overlay-dialog .el-dialog__footer {
-    flex: 0 0 auto;
+  flex: 0 0 auto;
 }
 
 .el-overlay-dialog .el-dialog__body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 /* MessageBox 同样限制在当前视口内。 */
 .el-message-box {
-    width: var(--el-messagebox-width, 420px);
-    max-width: calc(100vw - 32px);
+  width: var(--el-messagebox-width, 420px);
+  max-width: calc(100vw - 32px);
 }
 
 /* 滚动条美化 */
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--sidebar-border);
-    border-radius: 10px;
+  background: var(--sidebar-border);
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-track {
-    background: transparent;
+  background: transparent;
 }
 
 /* ========================================
@@ -120,43 +120,44 @@ body>.el-overlay {
    ======================================== */
 
 /* 对话框在窄屏下自动缩小 */
-@media (max-width: 1199px) {
-    .el-overlay-dialog .el-dialog {
-        max-height: 92vh;
+body.layout-small {
+  .el-overlay-dialog .el-dialog {
+    max-height: 92vh;
 
-        .el-dialog__body {
-            min-height: 0;
-            overflow-y: auto;
-        }
+    .el-dialog__body {
+      min-height: 0;
+      overflow-y: auto;
     }
+  }
 }
 
 /* 表格在小窗口下支持横向滚动 */
-@media (max-width: 1199px) {
-    .el-table {
-        font-size: 13px;
+body.layout-small {
+  .el-table {
+    font-size: 13px;
 
-        .el-table__header-wrapper th,
-        .el-table__body-wrapper td {
-            padding: 8px 4px;
-        }
+    .el-table__header-wrapper th,
+    .el-table__body-wrapper td {
+      padding: 8px 4px;
     }
+  }
 }
 
 /* 表单在窄屏下 label 自适应 */
-@media (max-width: 1199px) {
-    .el-form--label-left {
-        .el-form-item__label {
-            width: auto !important;
-            min-width: 80px;
-        }
+body.layout-small {
+  .el-form--label-left {
+    .el-form-item__label {
+      width: auto !important;
+      min-width: 80px;
     }
+  }
 }
 
 /* 按钮组在窄屏下缩小间距 */
-@media (max-width: 1399px) {
-    .el-button-group .el-button {
-        padding: 5px 10px;
-        font-size: 12px;
-    }
+body.layout-small,
+body.layout-medium {
+  .el-button-group .el-button {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
 }

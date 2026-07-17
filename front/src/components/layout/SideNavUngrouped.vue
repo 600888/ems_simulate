@@ -3,17 +3,28 @@
     <div class="ungrouped-header">
       <div class="header-left" @click="$emit('toggle')">
         <el-icon><ArrowRight :class="{ 'is-expanded': expanded }" /></el-icon>
-        <span>{{ $t('sidebar.ungroupedDevices', { count: ungroupedDevices.length }) }}</span>
+        <span>{{
+          $t("sidebar.ungroupedDevices", { count: ungroupedDevices.length })
+        }}</span>
       </div>
-      
+
       <div class="header-actions" v-if="!isCollapse" @click.stop>
-        <el-dropdown trigger="click" @command="(cmd: string) => $emit('group-command', cmd)">
+        <el-dropdown
+          trigger="click"
+          @command="(cmd: string) => $emit('group-command', cmd)"
+        >
           <el-button link size="small" :icon="MoreFilled" />
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="addDevice" :icon="Plus">{{ $t('sidebar.addDevice') }}</el-dropdown-item>
-              <el-dropdown-item command="startAll" :icon="VideoPlay">{{ $t('sidebar.startAll') }}</el-dropdown-item>
-              <el-dropdown-item command="stopAll" :icon="VideoPause">{{ $t('sidebar.stopAll') }}</el-dropdown-item>
+              <el-dropdown-item command="addDevice" :icon="Plus">{{
+                $t("sidebar.addDevice")
+              }}</el-dropdown-item>
+              <el-dropdown-item command="startAll" :icon="VideoPlay">{{
+                $t("sidebar.startAll")
+              }}</el-dropdown-item>
+              <el-dropdown-item command="stopAll" :icon="VideoPause">{{
+                $t("sidebar.stopAll")
+              }}</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -27,7 +38,11 @@
       >
         <div
           class="ungrouped-item"
-          :class="{ 'is-active': currentDeviceName === device.name || selectedNodeKey === `device-${device.name}` }"
+          :class="{
+            'is-active':
+              currentDeviceName === device.name ||
+              selectedNodeKey === `device-${device.name}`,
+          }"
           @click="handleDeviceClick(device)"
         >
           <!-- IEC61850 展开箭头 -->
@@ -40,31 +55,65 @@
             <ArrowRight />
           </el-icon>
           <span v-else class="expand-arrow-placeholder" />
-          <el-tooltip :content="device.name" placement="right" :disabled="!isCollapse">
-            <el-icon v-if="iec61850Map[device.name]" class="node-icon iec61850-icon"><Connection /></el-icon>
+          <el-tooltip
+            :content="device.name"
+            placement="right"
+            :disabled="!isCollapse"
+          >
+            <el-icon
+              v-if="iec61850Map[device.name]"
+              class="node-icon iec61850-icon"
+              ><Connection
+            /></el-icon>
             <el-icon v-else class="node-icon"><Cpu /></el-icon>
           </el-tooltip>
           <span class="device-name">{{ device.name }}</span>
           <div class="node-actions" v-if="!isCollapse" @click.stop>
-            <el-button link size="small" :icon="Edit" @click="$emit('edit-device', device.name)" />
-            <el-button link size="small" :icon="DocumentCopy" @click="$emit('copy-device', device.name)" />
-            <el-button link size="small" :icon="Delete" @click="$emit('delete-device', device.name)" />
+            <el-button
+              link
+              size="small"
+              :icon="Edit"
+              @click="$emit('edit-device', device.name)"
+            />
+            <el-button
+              link
+              size="small"
+              :icon="DocumentCopy"
+              @click="$emit('copy-device', device.name)"
+            />
+            <el-button
+              link
+              size="small"
+              :icon="Delete"
+              @click="$emit('delete-device', device.name)"
+            />
           </div>
         </div>
 
         <!-- IEC61850 子节点树 -->
-        <div v-if="iec61850Map[device.name]" v-show="expandedIec61850[device.name]" class="iec61850-children">
+        <div
+          v-if="iec61850Map[device.name]"
+          v-show="expandedIec61850[device.name]"
+          class="iec61850-children"
+        >
           <div
             v-for="child in iec61850Map[device.name]"
             :key="child.nodeKey"
             class="iec61850-child-item"
             :class="{ 'is-group': child.isGroup }"
           >
-            <div class="child-row" :class="{ 'is-selected': selectedNodeKey === child.nodeKey }" @click="handleChildClick(device.name, child)">
+            <div
+              class="child-row"
+              :class="{ 'is-selected': selectedNodeKey === child.nodeKey }"
+              @click="handleChildClick(device.name, child)"
+            >
               <el-icon
                 v-if="child.isGroup"
                 class="expand-arrow small"
-                :class="{ 'is-expanded': expandedCategories[`${device.name}::${child.nodeKey}`] }"
+                :class="{
+                  'is-expanded':
+                    expandedCategories[`${device.name}::${child.nodeKey}`],
+                }"
               >
                 <ArrowRight />
               </el-icon>
@@ -76,7 +125,11 @@
               <span class="child-label">{{ child.label }}</span>
             </div>
             <!-- 分类下的子项 -->
-            <div v-if="child.isGroup && child.children" v-show="expandedCategories[`${device.name}::${child.nodeKey}`]" class="iec61850-sub-children">
+            <div
+              v-if="child.isGroup && child.children"
+              v-show="expandedCategories[`${device.name}::${child.nodeKey}`]"
+              class="iec61850-sub-children"
+            >
               <div
                 v-for="subChild in child.children"
                 :key="subChild.nodeKey"
@@ -84,13 +137,21 @@
               >
                 <div
                   class="iec61850-sub-item"
-                  :class="{ 'is-selected': selectedNodeKey === subChild.nodeKey, 'is-group': subChild.isGroup }"
+                  :class="{
+                    'is-selected': selectedNodeKey === subChild.nodeKey,
+                    'is-group': subChild.isGroup,
+                  }"
                   @click="handleSubChildClick(subChild, device.name)"
                 >
                   <el-icon
                     v-if="subChild.isGroup"
                     class="expand-arrow small"
-                    :class="{ 'is-expanded': expandedCategories[`${device.name}::${subChild.nodeKey}`] }"
+                    :class="{
+                      'is-expanded':
+                        expandedCategories[
+                          `${device.name}::${subChild.nodeKey}`
+                        ],
+                    }"
                   >
                     <ArrowRight />
                   </el-icon>
@@ -102,12 +163,20 @@
                   <span class="sub-label">{{ subChild.label }}</span>
                 </div>
                 <!-- LD 下的 LN 子节点 (第三层) -->
-                <div v-if="subChild.isGroup && subChild.children" v-show="expandedCategories[`${device.name}::${subChild.nodeKey}`]" class="iec61850-ln-children">
+                <div
+                  v-if="subChild.isGroup && subChild.children"
+                  v-show="
+                    expandedCategories[`${device.name}::${subChild.nodeKey}`]
+                  "
+                  class="iec61850-ln-children"
+                >
                   <div
                     v-for="lnChild in subChild.children"
                     :key="lnChild.nodeKey"
                     class="iec61850-ln-item"
-                    :class="{ 'is-selected': selectedNodeKey === lnChild.nodeKey }"
+                    :class="{
+                      'is-selected': selectedNodeKey === lnChild.nodeKey,
+                    }"
                   >
                     <div
                       class="iec61850-ln-row"
@@ -117,8 +186,15 @@
                       <el-icon
                         v-if="lnChild.isGroup"
                         class="expand-arrow small"
-                        :class="{ 'is-expanded': expandedCategories[`${device.name}::${lnChild.nodeKey}`] }"
-                        @click.stop="toggleIec61850Category(device.name, lnChild.nodeKey)"
+                        :class="{
+                          'is-expanded':
+                            expandedCategories[
+                              `${device.name}::${lnChild.nodeKey}`
+                            ],
+                        }"
+                        @click.stop="
+                          toggleIec61850Category(device.name, lnChild.nodeKey)
+                        "
                       >
                         <ArrowRight />
                       </el-icon>
@@ -127,12 +203,20 @@
                       <span class="ln-label">{{ lnChild.label }}</span>
                     </div>
                     <!-- LN 下的数据集子节点 (第四层) -->
-                    <div v-if="lnChild.isGroup && lnChild.children" v-show="expandedCategories[`${device.name}::${lnChild.nodeKey}`]" class="iec61850-ds-children">
+                    <div
+                      v-if="lnChild.isGroup && lnChild.children"
+                      v-show="
+                        expandedCategories[`${device.name}::${lnChild.nodeKey}`]
+                      "
+                      class="iec61850-ds-children"
+                    >
                       <div
                         v-for="dsChild in lnChild.children"
                         :key="dsChild.nodeKey"
                         class="iec61850-ds-item"
-                        :class="{ 'is-selected': selectedNodeKey === dsChild.nodeKey }"
+                        :class="{
+                          'is-selected': selectedNodeKey === dsChild.nodeKey,
+                        }"
                         @click="handleDsChildClick(dsChild)"
                       >
                         <el-icon class="ds-icon"><Document /></el-icon>
@@ -153,8 +237,18 @@
 <script lang="ts" setup>
 import { ref, watch } from "vue";
 import {
-  ArrowRight, Cpu, Edit, Delete, MoreFilled, Plus, VideoPlay, VideoPause,
-  DocumentCopy, Connection, FolderOpened, Document,
+  ArrowRight,
+  Cpu,
+  Edit,
+  Delete,
+  MoreFilled,
+  Plus,
+  VideoPlay,
+  VideoPause,
+  DocumentCopy,
+  Connection,
+  FolderOpened,
+  Document,
 } from "@element-plus/icons-vue";
 
 interface TreeNode {
@@ -163,9 +257,10 @@ interface TreeNode {
   isGroup: boolean;
   id: number;
   isIec61850Child?: boolean;
-  iec61850Level?: 'category' | 'ld' | 'ln';
+  iec61850Level?: "category" | "ld" | "ln";
   name: string;
-  type?: 'GOOSE' | 'Reports' | 'SettingGroups' | 'Files' | 'DataSets' | 'DataModel';
+  type?:
+    "GOOSE" | "Reports" | "SettingGroups" | "Files" | "DataSets" | "DataModel";
   value?: string;
   deviceName?: string;
   children?: TreeNode[];
@@ -181,19 +276,19 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'toggle'): void;
-  (e: 'device-click', device: any): void;
-  (e: 'edit-device', name: string): void;
-  (e: 'delete-device', name: string): void;
-  (e: 'group-command', command: string): void;
-  (e: 'copy-device', name: string): void;
-  (e: 'node-click', data: any): void;
+  (e: "toggle"): void;
+  (e: "device-click", device: any): void;
+  (e: "edit-device", name: string): void;
+  (e: "delete-device", name: string): void;
+  (e: "group-command", command: string): void;
+  (e: "copy-device", name: string): void;
+  (e: "node-click", data: any): void;
 }>();
 
 // IEC61850 设备展开状态
 const expandedIec61850 = ref<Record<string, boolean>>({});
 const expandedCategories = ref<Record<string, boolean>>({});
-const selectedNodeKey = ref<string>('');
+const selectedNodeKey = ref<string>("");
 
 const toggleIec61850 = (deviceName: string) => {
   expandedIec61850.value[deviceName] = !expandedIec61850.value[deviceName];
@@ -212,7 +307,7 @@ const handleDeviceClick = (device: any) => {
   if (props.iec61850Map[device.name]) {
     toggleIec61850(device.name);
   }
-  emit('device-click', device);
+  emit("device-click", device);
 };
 
 // 点击 IEC61850 子节点
@@ -222,7 +317,7 @@ const handleChildClick = (deviceName: string, child: TreeNode) => {
     toggleIec61850Category(deviceName, child.nodeKey);
   }
   // 发出 node-click 事件，传递完整的节点信息（包含 category/type）
-  emit('node-click', { ...child, deviceName, isIec61850Child: true });
+  emit("node-click", { ...child, deviceName, isIec61850Child: true });
 };
 
 // 点击 IEC61850 子项 (LD 层)
@@ -232,7 +327,11 @@ const handleSubChildClick = (subChild: TreeNode, deviceName: string) => {
     toggleIec61850Category(deviceName, subChild.nodeKey);
   }
   // 发出 node-click 事件，传递完整的节点信息
-  emit('node-click', { ...subChild, isIec61850Child: true, deviceName: subChild.deviceName || deviceName });
+  emit("node-click", {
+    ...subChild,
+    isIec61850Child: true,
+    deviceName: subChild.deviceName || deviceName,
+  });
 };
 
 // 点击 IEC61850 LN 子节点 (第三层)
@@ -241,31 +340,47 @@ const handleLnChildClick = (lnChild: TreeNode) => {
   // 如果 LN 有子节点（如 DataSet 下的数据集），切换展开/折叠
   // LN 节点不触发导航（只有叶子节点如数据集的 DS 才导航到主面板）
   if (lnChild.isGroup) {
-    toggleIec61850Category(lnChild.deviceName || '', lnChild.nodeKey);
+    toggleIec61850Category(lnChild.deviceName || "", lnChild.nodeKey);
     return;
   }
   // 无子节点的 LN 也允许导航
-  emit('node-click', { ...lnChild, isIec61850Child: true, deviceName: lnChild.deviceName });
+  emit("node-click", {
+    ...lnChild,
+    isIec61850Child: true,
+    deviceName: lnChild.deviceName,
+  });
 };
 
 // 点击 IEC61850 数据集子节点 (第四层)
 const handleDsChildClick = (dsChild: TreeNode) => {
   selectedNodeKey.value = dsChild.nodeKey;
   // 发出 node-click 事件，传递完整的节点信息
-  emit('node-click', { ...dsChild, isIec61850Child: true, deviceName: dsChild.deviceName });
+  emit("node-click", {
+    ...dsChild,
+    isIec61850Child: true,
+    deviceName: dsChild.deviceName,
+  });
 };
 
 // 当 iec61850Map 变化时，重置展开状态
-watch(() => props.iec61850Map, () => {
-  // 数据刷新时重置展开状态
-}, { deep: true });
+watch(
+  () => props.iec61850Map,
+  () => {
+    // 数据刷新时重置展开状态
+  },
+  { deep: true },
+);
 
 // 路由刷新时，同步 selectedNodeKey 以正确高亮当前设备
-watch(() => props.currentDeviceName, (name) => {
-  if (name) {
-    selectedNodeKey.value = `device-${name}`;
-  }
-}, { immediate: true });
+watch(
+  () => props.currentDeviceName,
+  (name) => {
+    if (name) {
+      selectedNodeKey.value = `device-${name}`;
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <style lang="scss" scoped>
@@ -343,6 +458,8 @@ watch(() => props.currentDeviceName, (name) => {
 .ungrouped-item {
   display: flex;
   align-items: center;
+  min-width: 0;
+  overflow: hidden;
   padding: 10px 14px;
   cursor: pointer;
   border-radius: 10px;
@@ -375,12 +492,19 @@ watch(() => props.currentDeviceName, (name) => {
 
 .ungrouped-item .device-name {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13.5px;
 }
 
 .node-actions {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
   opacity: 0.6;
   transition: opacity 0.2s;
 }
@@ -391,6 +515,7 @@ watch(() => props.currentDeviceName, (name) => {
 
 .node-actions .el-button {
   padding: 5px;
+  margin-left: 0;
   color: var(--text-secondary);
   border-radius: 6px;
 }

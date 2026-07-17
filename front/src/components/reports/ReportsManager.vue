@@ -6,7 +6,11 @@
         <div class="auto-refresh-group">
           <el-switch v-model="autoRefresh" />
           <span class="auto-refresh-label">{{ t("report.autoRefresh") }}</span>
-          <el-select v-model="pollInterval" :disabled="!autoRefresh" style="width: 90px">
+          <el-select
+            v-model="pollInterval"
+            :disabled="!autoRefresh"
+            style="width: 90px"
+          >
             <el-option
               v-for="opt in REFRESH_INTERVAL_OPTIONS"
               :key="opt.value"
@@ -43,14 +47,22 @@
         <!-- 失败详情列表 -->
         <div v-if="batchFailDetails.length > 0" class="batch-fail-list">
           <div class="batch-fail-header">{{ t("report.batchFailTitle") }}</div>
-          <div v-for="(item, idx) in batchFailDetails" :key="idx" class="batch-fail-item">
+          <div
+            v-for="(item, idx) in batchFailDetails"
+            :key="idx"
+            class="batch-fail-item"
+          >
             <span class="batch-fail-ref">{{ item.rcb_ref }}</span>
             <span class="batch-fail-reason">{{ item.reason }}</span>
           </div>
         </div>
       </div>
       <template #footer>
-        <el-button v-if="!batchProgressFinished" type="danger" @click="handleBatchCancel">
+        <el-button
+          v-if="!batchProgressFinished"
+          type="danger"
+          @click="handleBatchCancel"
+        >
           {{ t("report.batchCancel") }}
         </el-button>
         <el-button v-else type="primary" @click="batchProgressVisible = false">
@@ -60,7 +72,10 @@
     </el-dialog>
 
     <main class="reports-body" v-loading="loading">
-      <el-empty v-if="!loading && rcbs.length === 0" :description="t('report.noRcbs')" />
+      <el-empty
+        v-if="!loading && rcbs.length === 0"
+        :description="t('report.noRcbs')"
+      />
       <template v-else>
         <RcbTreePanel
           :rcbs="rcbs"
@@ -90,15 +105,24 @@
             <el-tab-pane :label="t('report.lastReportInfo')" name="latest">
               <div class="latest-pane">
                 <div class="entry-summary" v-if="latestEntry">
-                  <span>{{ t("report.seqNum") }}: {{ latestEntry.seq_num ?? "-" }}</span>
+                  <span
+                    >{{ t("report.seqNum") }}:
+                    {{ latestEntry.seq_num ?? "-" }}</span
+                  >
                   <span
                     >{{ t("report.time") }}:
-                    {{ latestEntry.received_at || latestEntry.time_stamp || "-" }}</span
+                    {{
+                      latestEntry.received_at || latestEntry.time_stamp || "-"
+                    }}</span
                   >
                   <span
-                    >{{ t("report.dataSet") }}: {{ latestEntry.data_set || "-" }}</span
+                    >{{ t("report.dataSet") }}:
+                    {{ latestEntry.data_set || "-" }}</span
                   >
-                  <span>{{ t("report.values") }}: {{ latestEntry.value_count }}</span>
+                  <span
+                    >{{ t("report.values") }}:
+                    {{ latestEntry.value_count }}</span
+                  >
                 </div>
                 <ReportDataTreeTable
                   :tree-items="latestTreeItems"
@@ -123,19 +147,25 @@
                 <div class="history-tree">
                   <div class="entry-summary" v-if="selectedEntry">
                     <span
-                      >{{ t("report.seqNum") }}: {{ selectedEntry.seq_num ?? "-" }}</span
+                      >{{ t("report.seqNum") }}:
+                      {{ selectedEntry.seq_num ?? "-" }}</span
                     >
                     <span
                       >{{ t("report.time") }}:
                       {{
-                        selectedEntry.received_at || selectedEntry.time_stamp || "-"
+                        selectedEntry.received_at ||
+                        selectedEntry.time_stamp ||
+                        "-"
                       }}</span
                     >
                     <span
                       >{{ t("report.dataSet") }}:
                       {{ selectedEntry.data_set || "-" }}</span
                     >
-                    <span>{{ t("report.values") }}: {{ selectedEntry.value_count }}</span>
+                    <span
+                      >{{ t("report.values") }}:
+                      {{ selectedEntry.value_count }}</span
+                    >
                   </div>
                   <ReportDataTreeTable
                     :tree-items="selectedTreeItems"
@@ -161,10 +191,10 @@ import {
   onMounted,
   ref,
   watch,
-} from 'vue';
-import { useI18n } from 'vue-i18n';
-import { ElMessage } from 'element-plus';
-import { showError, showErrorOnce } from '@/api/http';
+} from "vue";
+import { useI18n } from "vue-i18n";
+import { ElMessage } from "element-plus";
+import { showError, showErrorOnce } from "@/api/http";
 import {
   applyConfig,
   batchApplyConfig,
@@ -180,11 +210,11 @@ import {
   type ReportEntrySummary,
   type ReportTreeNode,
   type TrgOps,
-} from '@/api/reportApi';
-import RcbTreePanel from './RcbTreePanel.vue';
-import ReportControlPanel from './ReportControlPanel.vue';
-import ReportDataTreeTable from './ReportDataTreeTable.vue';
-import ReportHistoryPanel from './ReportHistoryPanel.vue';
+} from "@/api/reportApi";
+import RcbTreePanel from "./RcbTreePanel.vue";
+import ReportControlPanel from "./ReportControlPanel.vue";
+import ReportDataTreeTable from "./ReportDataTreeTable.vue";
+import ReportHistoryPanel from "./ReportHistoryPanel.vue";
 
 const { t } = useI18n();
 
@@ -201,7 +231,7 @@ const batchLoading = ref(false);
 const giLoading = ref(false);
 const rcbs = ref<RcbInfo[]>([]);
 const selectedRcb = ref<RcbInfo | null>(null);
-const detailTab = ref('attributes');
+const detailTab = ref("attributes");
 
 const checkedRefs = ref<string[]>([]);
 const selectedCount = computed(() => checkedRefs.value.length);
@@ -214,7 +244,7 @@ watch(batchMode, (val) => {
 
 // 批量操作进度
 const batchProgressVisible = ref(false);
-const batchProgressText = ref('');
+const batchProgressText = ref("");
 const batchProgressFinished = ref(false);
 const batchFailDetails = ref<{ rcb_ref: string; reason: string }[]>([]);
 
@@ -229,10 +259,10 @@ const selectedTreeItems = ref<ReportTreeNode[]>([]);
 const autoRefresh = ref(true);
 const pollInterval = ref(1000);
 const REFRESH_INTERVAL_OPTIONS = [
-  { value: 1000, label: '1s' },
-  { value: 3000, label: '3s' },
-  { value: 5000, label: '5s' },
-  { value: 10000, label: '10s' },
+  { value: 1000, label: "1s" },
+  { value: 3000, label: "3s" },
+  { value: 5000, label: "5s" },
+  { value: 10000, label: "10s" },
 ];
 let reportPollTimer: ReturnType<typeof setTimeout> | null = null;
 let stateRequestId = 0;
@@ -248,23 +278,32 @@ watch(
   () => props.channelId,
   (newId) => {
     resetReportState();
-    detailTab.value = 'attributes';
+    detailTab.value = "attributes";
     if (newId) loadRcbs();
   },
 );
 
 watch(detailTab, (tab) => {
-  if (tab === 'latest') void loadLatestReportData(true);
-  if (tab === 'data') void loadReportHistory(true);
+  if (tab === "latest") void loadLatestReportData(true);
+  if (tab === "data") void loadReportHistory(true);
 });
 
-watch([() => selectedRcb.value?.ref, autoRefresh, pollInterval, detailTab], () => {
-  startReportPolling();
-});
+watch(
+  [() => selectedRcb.value?.ref, autoRefresh, pollInterval, detailTab],
+  () => {
+    startReportPolling();
+  },
+);
 
 function startReportPolling() {
   stopReportPolling();
-  if (!reportPollingActive || !autoRefresh.value || !selectedRcb.value || !props.channelId) return;
+  if (
+    !reportPollingActive ||
+    !autoRefresh.value ||
+    !selectedRcb.value ||
+    !props.channelId
+  )
+    return;
   reportPollTimer = setTimeout(async () => {
     try {
       await refreshVisibleReportData(false);
@@ -290,7 +329,8 @@ async function loadRcbs() {
     rcbs.value = await listRcbs(props.channelId);
     await nextTick();
     if (rcbs.value.length > 0) {
-      const nextRcb = rcbs.value.find((rcb) => rcb.ref === previousRef) || rcbs.value[0];
+      const nextRcb =
+        rcbs.value.find((rcb) => rcb.ref === previousRef) || rcbs.value[0];
       if (nextRcb.ref !== previousRef) resetReportData();
       selectedRcb.value = nextRcb;
       void loadReportState();
@@ -299,7 +339,7 @@ async function loadRcbs() {
       resetReportData();
     }
   } catch (err) {
-    console.error('Load RCBs error:', err);
+    console.error("Load RCBs error:", err);
   } finally {
     loading.value = false;
     rcbRequestInFlight = false;
@@ -313,10 +353,11 @@ async function loadReportState() {
   const requestedRcbRef = selectedRcb.value.ref;
   const state = await getReportState(requestedChannelId, requestedRcbRef);
   if (
-    requestId !== stateRequestId
-    || props.channelId !== requestedChannelId
-    || selectedRcb.value?.ref !== requestedRcbRef
-  ) return;
+    requestId !== stateRequestId ||
+    props.channelId !== requestedChannelId ||
+    selectedRcb.value?.ref !== requestedRcbRef
+  )
+    return;
   reportDataTotal.value = state.total;
 }
 
@@ -331,12 +372,18 @@ async function loadLatestReportData(showLoading = true) {
       requestedRcbRef,
       showLoading ? null : latestKnownUid,
     );
-    if (requestId !== latestRequestId || selectedRcb.value?.ref !== requestedRcbRef || resp.unchanged) return;
+    if (
+      requestId !== latestRequestId ||
+      selectedRcb.value?.ref !== requestedRcbRef ||
+      resp.unchanged
+    )
+      return;
     latestKnownUid = resp.latest_uid ?? null;
     latestEntry.value = resp.entry;
     latestTreeItems.value = resp.tree_items || [];
   } finally {
-    if (requestId === latestRequestId && showLoading) latestLoading.value = false;
+    if (requestId === latestRequestId && showLoading)
+      latestLoading.value = false;
   }
 }
 
@@ -352,27 +399,38 @@ async function loadReportHistory(showLoading = true) {
       100,
       showLoading ? null : historyKnownUid,
     );
-    if (requestId !== historyRequestId || selectedRcb.value?.ref !== requestedRcbRef || resp.unchanged) return;
+    if (
+      requestId !== historyRequestId ||
+      selectedRcb.value?.ref !== requestedRcbRef ||
+      resp.unchanged
+    )
+      return;
     historyKnownUid = resp.latest_uid ?? null;
     reportHistory.value = resp.entries || [];
     reportDataTotal.value = resp.total || 0;
 
-    if (selectedEntryKey.value && !reportHistory.value.some((entry) => entry.entry_key === selectedEntryKey.value)) {
+    if (
+      selectedEntryKey.value &&
+      !reportHistory.value.some(
+        (entry) => entry.entry_key === selectedEntryKey.value,
+      )
+    ) {
       selectedEntryKey.value = null;
       selectedEntry.value = null;
       selectedTreeItems.value = [];
     }
   } finally {
-    if (requestId === historyRequestId && showLoading) historyLoading.value = false;
+    if (requestId === historyRequestId && showLoading)
+      historyLoading.value = false;
   }
 }
 
 async function refreshVisibleReportData(showLoading = true) {
-  if (detailTab.value === 'latest') {
+  if (detailTab.value === "latest") {
     await Promise.all([loadReportState(), loadLatestReportData(showLoading)]);
     return;
   }
-  if (detailTab.value === 'data') {
+  if (detailTab.value === "data") {
     await loadReportHistory(showLoading);
     return;
   }
@@ -381,7 +439,7 @@ async function refreshVisibleReportData(showLoading = true) {
 
 function onRcbSelect(rcb: RcbInfo) {
   selectedRcb.value = rcb;
-  detailTab.value = 'attributes';
+  detailTab.value = "attributes";
   resetReportData();
   void loadReportState();
 }
@@ -399,10 +457,11 @@ async function handleHistorySelect(row: { entry_key: string }) {
       latest: false,
     });
     if (
-      requestId !== selectedTreeRequestId
-      || selectedRcb.value?.ref !== requestedRcbRef
-      || selectedEntryKey.value !== requestedEntryKey
-    ) return;
+      requestId !== selectedTreeRequestId ||
+      selectedRcb.value?.ref !== requestedRcbRef ||
+      selectedEntryKey.value !== requestedEntryKey
+    )
+      return;
     selectedEntry.value = result.entry;
     selectedTreeItems.value = result.tree_items || [];
   } finally {
@@ -410,7 +469,11 @@ async function handleHistorySelect(row: { entry_key: string }) {
   }
 }
 
-async function handleApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps; optFields: OptFields }) {
+async function handleApplyConfig(payload: {
+  rptEna: boolean;
+  trgOps: TrgOps;
+  optFields: OptFields;
+}) {
   if (!selectedRcb.value) return;
   actionLoading.value = true;
   try {
@@ -422,11 +485,11 @@ async function handleApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps; opt
       payload.optFields,
     );
     if (result.success) {
-      ElMessage.success(t('report.applyConfigSuccess'));
+      ElMessage.success(t("report.applyConfigSuccess"));
       if (result.rcb) updateRcbInList(result.rcb);
       if (payload.rptEna) await refreshVisibleReportData(false);
     } else {
-      showErrorOnce(t('report.applyConfigFailed'));
+      showErrorOnce(t("report.applyConfigFailed"));
     }
   } finally {
     actionLoading.value = false;
@@ -442,9 +505,13 @@ function handleBatchCancel() {
   batchLoading.value = false;
 }
 
-async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps; optFields: OptFields }) {
+async function handleBatchApplyConfig(payload: {
+  rptEna: boolean;
+  trgOps: TrgOps;
+  optFields: OptFields;
+}) {
   if (checkedRefs.value.length === 0) {
-    ElMessage.warning(t('report.noRcbSelected'));
+    ElMessage.warning(t("report.noRcbSelected"));
     return;
   }
   batchLoading.value = true;
@@ -453,7 +520,7 @@ async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps
   const total = refs.length;
 
   // 打开进度对话框
-  batchProgressText.value = t('report.batchApplyInProgress');
+  batchProgressText.value = t("report.batchApplyInProgress");
   batchProgressVisible.value = true;
 
   try {
@@ -466,7 +533,7 @@ async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps
     );
 
     batchProgressFinished.value = true;
-    batchProgressText.value = t('report.batchApplyResult', {
+    batchProgressText.value = t("report.batchApplyResult", {
       success: result.success_count,
       fail: result.fail_count,
     });
@@ -475,19 +542,31 @@ async function handleBatchApplyConfig(payload: { rptEna: boolean; trgOps: TrgOps
     await loadRcbs();
 
     if (result.fail_count === 0) {
-      ElMessage.success(t('report.batchApplySuccess', { count: result.success_count }));
+      ElMessage.success(
+        t("report.batchApplySuccess", { count: result.success_count }),
+      );
     } else {
-      const reasons = [...new Set(result.fail_details.map((item) => item.reason).filter(Boolean))];
-      const reasonText = reasons.length > 0 ? `：${reasons.slice(0, 3).join('；')}` : '';
-      ElMessage.warning(`${t('report.batchApplyPartial', {
-        failed: result.fail_count,
-        total,
-      })}${reasonText}`);
+      const reasons = [
+        ...new Set(
+          result.fail_details.map((item) => item.reason).filter(Boolean),
+        ),
+      ];
+      const reasonText =
+        reasons.length > 0 ? `：${reasons.slice(0, 3).join("；")}` : "";
+      ElMessage.warning(
+        `${t("report.batchApplyPartial", {
+          failed: result.fail_count,
+          total,
+        })}${reasonText}`,
+      );
     }
   } catch (error) {
     batchProgressFinished.value = true;
-    batchProgressText.value = t('report.batchApplyResult', { success: 0, fail: total });
-    showError(error, t('report.batchApplyPartial', { failed: total, total }));
+    batchProgressText.value = t("report.batchApplyResult", {
+      success: 0,
+      fail: total,
+    });
+    showError(error, t("report.batchApplyPartial", { failed: total, total }));
   }
 
   if (payload.rptEna && selectedRcb.value) {
@@ -508,10 +587,14 @@ async function handleGi() {
     reportDataTotal.value = before.total;
     const ok = await triggerGi(requestedChannelId, requestedRcbRef);
     if (ok) {
-      ElMessage.success(t('report.giSuccess'));
-      void refreshReportCountAfterGi(requestedChannelId, requestedRcbRef, before);
+      ElMessage.success(t("report.giSuccess"));
+      void refreshReportCountAfterGi(
+        requestedChannelId,
+        requestedRcbRef,
+        before,
+      );
     } else {
-      showErrorOnce(t('report.giFailed'));
+      showErrorOnce(t("report.giFailed"));
     }
   } finally {
     giLoading.value = false;
@@ -526,11 +609,19 @@ async function refreshReportCountAfterGi(
   const maxAttempts = 6;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await sleep(attempt === 0 ? 200 : 400);
-    if (!reportPollingActive || props.channelId !== channelId || selectedRcb.value?.ref !== rcbRef) return;
+    if (
+      !reportPollingActive ||
+      props.channelId !== channelId ||
+      selectedRcb.value?.ref !== rcbRef
+    )
+      return;
 
     const state = await getReportState(channelId, rcbRef);
     reportDataTotal.value = state.total;
-    if (state.total !== before.total || state.latest_uid !== before.latest_uid) {
+    if (
+      state.total !== before.total ||
+      state.latest_uid !== before.latest_uid
+    ) {
       // 新报告已进入缓存；使下次打开页签时强制获取最新内容。
       latestKnownUid = null;
       historyKnownUid = null;
@@ -724,7 +815,7 @@ onBeforeUnmount(() => {
   font-size: 14px;
 }
 
-@media (max-width: 900px) {
+@container (max-width: 900px) {
   .reports-header {
     align-items: flex-start;
     flex-direction: column;

@@ -1,12 +1,16 @@
 <template>
   <el-header class="app-header">
     <el-icon @click="setCollapse(!isCollapse)">
-      <Expand v-show="isCollapse" />
-      <Fold v-show="!isCollapse" />
+      <Expand v-show="sidebarDisplayCollapsed" />
+      <Fold v-show="!sidebarDisplayCollapsed" />
     </el-icon>
 
     <el-breadcrumb separator="/">
-      <el-breadcrumb-item v-for="(item, index) in breadList" :key="index" :to="item.path">
+      <el-breadcrumb-item
+        v-for="(item, index) in breadList"
+        :key="index"
+        :to="item.path"
+      >
         {{ item.meta.title }}
       </el-breadcrumb-item>
     </el-breadcrumb>
@@ -20,11 +24,17 @@
         :title="currentLocale === 'zh-CN' ? 'Switch to English' : '切换到中文'"
         @click="toggleLang"
       >
-        <span class="lang-text">{{ currentLocale === "zh-CN" ? "EN" : "中" }}</span>
+        <span class="lang-text">{{
+          currentLocale === "zh-CN" ? "EN" : "中"
+        }}</span>
       </el-icon>
 
       <!-- SCL Management -->
-      <router-link to="/scl/modeling" class="icon-link scl-link" :title="t('scl.title')">
+      <router-link
+        to="/scl/modeling"
+        class="icon-link scl-link"
+        :title="t('scl.title')"
+      >
         <el-icon :size="24" color="var(--text-secondary)"><Files /></el-icon>
       </router-link>
 
@@ -59,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   Expand,
@@ -71,10 +81,15 @@ import {
 import { useRoute } from "vue-router";
 import { isCollapse, sidebarOverlayMode } from "./isCollapse";
 import { currentLocale, setLocale } from "@/composables/useAppSettings";
+import { effectiveViewportWidth } from "@/composables/useAppSettings";
 import type { LocaleType } from "@/i18n";
 
 const { t, locale } = useI18n();
 const emit = defineEmits(["open-settings", "open-logs"]);
+const isCompactViewport = computed(() => effectiveViewportWidth.value < 1200);
+const sidebarDisplayCollapsed = computed(() =>
+  isCompactViewport.value ? !sidebarOverlayMode.value : isCollapse.value,
+);
 
 const props = withDefaults(
   defineProps<{
@@ -82,11 +97,12 @@ const props = withDefaults(
   }>(),
   {
     logErrorCount: 0,
-  }
+  },
 );
 
 function toggleLang() {
-  const newLocale: LocaleType = currentLocale.value === "zh-CN" ? "en-US" : "zh-CN";
+  const newLocale: LocaleType =
+    currentLocale.value === "zh-CN" ? "en-US" : "zh-CN";
   setLocale(newLocale);
   locale.value = newLocale;
 }
@@ -100,7 +116,7 @@ const openSettings = () => {
 
 const setCollapse = (val: boolean) => {
   // small 断点 (< 1200px): 切换 overlay 弹出模式
-  if (window.innerWidth < 1200) {
+  if (isCompactViewport.value) {
     sidebarOverlayMode.value = !sidebarOverlayMode.value;
     return;
   }
@@ -108,21 +124,32 @@ const setCollapse = (val: boolean) => {
   localStorage.setItem("isCollapse", isCollapse.value.toString());
 };
 
+watch(isCompactViewport, (compact) => {
+  if (!compact) sidebarOverlayMode.value = false;
+});
+
 // 过滤有效路由并生成面包屑
 const updateBreadcrumb = () => {
   if (route.name === "device-detail" || route.path.startsWith("/device/")) {
     const deviceName = route.params.deviceName;
     breadList.value = [
-      { path: route.path, meta: { title: deviceName || t("header.deviceDetail") } },
+      {
+        path: route.path,
+        meta: { title: deviceName || t("header.deviceDetail") },
+      },
     ];
   } else if (route.path.startsWith("/goose")) {
-    breadList.value = [{ path: "/goose", meta: { title: t("header.gooseManagement") } }];
+    breadList.value = [
+      { path: "/goose", meta: { title: t("header.gooseManagement") } },
+    ];
   } else if (route.path.startsWith("/reports")) {
     breadList.value = [
       { path: "/reports", meta: { title: t("header.reportsManagement") } },
     ];
   } else if (route.path.startsWith("/files")) {
-    breadList.value = [{ path: "/files", meta: { title: t("header.filesExplorer") } }];
+    breadList.value = [
+      { path: "/files", meta: { title: t("header.filesExplorer") } },
+    ];
   } else if (route.path.startsWith("/scl")) {
     const items = [{ path: "/scl/modeling", meta: { title: t("scl.title") } }];
     if (route.path.startsWith("/scl/modeling/new")) {

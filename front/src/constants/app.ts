@@ -43,15 +43,15 @@ export const BREAKPOINTS = {
 
 // 侧边栏宽度（CSS 变量驱动，此处仅作参考常量）
 // 实际渲染值由 --sidebar-width CSS 变量在不同断点下动态覆盖
-// large: 230px / medium: 200px / small: 64px (自动折叠 overlay 模式)
-export const SIDEBAR_WIDTH = '230px';
-export const SIDEBAR_COLLAPSED_WIDTH = '64px';
-export const SIDEBAR_MEDIUM_WIDTH = '200px';
+// large: 280px / medium: 260px / small: 64px (自动折叠 overlay 模式)
+export const SIDEBAR_WIDTH = "280px";
+export const SIDEBAR_COLLAPSED_WIDTH = "64px";
+export const SIDEBAR_MEDIUM_WIDTH = "260px";
 
 // 侧边栏本地存储 Key
-export const LS_KEY_COLLAPSE = 'isCollapse';
-export const LS_KEY_ACTIVE_ROUTE = 'activeRoute';
-export const LS_KEY_THEME = 'sidebar-theme';
+export const LS_KEY_COLLAPSE = "isCollapse";
+export const LS_KEY_ACTIVE_ROUTE = "activeRoute";
+export const LS_KEY_THEME = "sidebar-theme";
 
 // 报文捕获默认限制
 export const MESSAGE_DEFAULT_LIMIT = 100;

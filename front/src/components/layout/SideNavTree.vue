@@ -23,7 +23,11 @@
           'is-iec61850-ln': data.iec61850Level === 'ln',
         }"
       >
-        <el-tooltip :content="node.label" placement="right" :disabled="!isCollapse">
+        <el-tooltip
+          :content="node.label"
+          placement="right"
+          :disabled="!isCollapse"
+        >
           <el-icon class="node-icon">
             <Folder v-if="data.isGroup && !data.isIec61850Child" />
             <Connection v-else-if="data.isIec61850 && !data.isGroup" />
@@ -43,22 +47,24 @@
               <el-button link size="small" :icon="MoreFilled" />
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="edit" :icon="Edit">{{ $t('common.edit') }}</el-dropdown-item>
-                  <el-dropdown-item command="addDevice" :icon="Plus"
-                    >{{ $t('sidebar.addDevice') }}</el-dropdown-item
-                  >
-                  <el-dropdown-item command="addSubGroup" :icon="FolderAdd"
-                    >{{ $t('sidebar.addSubGroup') }}</el-dropdown-item
-                  >
-                  <el-dropdown-item command="startAll" :icon="VideoPlay"
-                    >{{ $t('sidebar.startAll') }}</el-dropdown-item
-                  >
-                  <el-dropdown-item command="stopAll" :icon="VideoPause"
-                    >{{ $t('sidebar.stopAll') }}</el-dropdown-item
-                  >
-                  <el-dropdown-item command="delete" :icon="Delete" divided
-                    >{{ $t('common.delete') }}</el-dropdown-item
-                  >
+                  <el-dropdown-item command="edit" :icon="Edit">{{
+                    $t("common.edit")
+                  }}</el-dropdown-item>
+                  <el-dropdown-item command="addDevice" :icon="Plus">{{
+                    $t("sidebar.addDevice")
+                  }}</el-dropdown-item>
+                  <el-dropdown-item command="addSubGroup" :icon="FolderAdd">{{
+                    $t("sidebar.addSubGroup")
+                  }}</el-dropdown-item>
+                  <el-dropdown-item command="startAll" :icon="VideoPlay">{{
+                    $t("sidebar.startAll")
+                  }}</el-dropdown-item>
+                  <el-dropdown-item command="stopAll" :icon="VideoPause">{{
+                    $t("sidebar.stopAll")
+                  }}</el-dropdown-item>
+                  <el-dropdown-item command="delete" :icon="Delete" divided>{{
+                    $t("common.delete")
+                  }}</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -127,7 +133,7 @@ const emit = defineEmits<{
 const treeRef = ref<InstanceType<typeof ElTree>>();
 
 // 导入 router 用于 linkTo 导航
-import { useRouter } from 'vue-router';
+import { useRouter } from "vue-router";
 const router = useRouter();
 
 // 处理节点点击，为 IEC61850 子节点补充 category 信息
@@ -144,20 +150,26 @@ const handleNodeClick = (data: any) => {
     // 如果没有 type 字段，从 nodeKey 中提取
     if (!enrichedData.type && enrichedData.nodeKey) {
       // 尝试匹配 category: "device-{deviceName}-{category}" 或 "ungrouped-{deviceName}-{category}-{idx}"
-      const categories = ['GOOSE', 'Reports', 'SettingGroups', 'Files', 'DataSets', 'DataModel'];
+      const categories = [
+        "GOOSE",
+        "Reports",
+        "SettingGroups",
+        "Files",
+        "DataSets",
+        "DataModel",
+      ];
       for (const cat of categories) {
-        if (String(enrichedData.nodeKey).includes(cat.replace(' ', ''))) {
+        if (String(enrichedData.nodeKey).includes(cat.replace(" ", ""))) {
           enrichedData.type = cat;
           break;
         }
       }
     }
-    emit('node-click', enrichedData);
+    emit("node-click", enrichedData);
   } else {
-    emit('node-click', data);
+    emit("node-click", data);
   }
 };
-
 
 const expandKeys = () => {
   nextTick(() => {
@@ -194,7 +206,7 @@ watch(
     expandKeys();
     setTimeout(setCurrentKey, 50);
   },
-  { deep: true }
+  { deep: true },
 );
 watch(() => props.currentNodeKey, setCurrentKey);
 </script>
@@ -220,19 +232,22 @@ watch(() => props.currentNodeKey, setCurrentKey);
 }
 
 /* IEC61850 子节点行高：匹配未分组区域的紧凑样式 */
-.device-tree :deep(.el-tree-node:has(.is-iec61850-category) > .el-tree-node__content) {
+.device-tree
+  :deep(.el-tree-node:has(.is-iec61850-category) > .el-tree-node__content) {
   height: 32px;
   border-radius: 8px;
   margin-bottom: 2px;
 }
 
-.device-tree :deep(.el-tree-node:has(.is-iec61850-ld) > .el-tree-node__content) {
+.device-tree
+  :deep(.el-tree-node:has(.is-iec61850-ld) > .el-tree-node__content) {
   height: 28px;
   border-radius: 6px;
   margin-bottom: 1px;
 }
 
-.device-tree :deep(.el-tree-node:has(.is-iec61850-ln) > .el-tree-node__content) {
+.device-tree
+  :deep(.el-tree-node:has(.is-iec61850-ln) > .el-tree-node__content) {
   height: 26px;
   border-radius: 5px;
   margin-bottom: 1px;
@@ -249,6 +264,8 @@ watch(() => props.currentNodeKey, setCurrentKey);
   display: flex;
   align-items: center;
   width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding-left: 4px;
 }
 
@@ -323,13 +340,20 @@ watch(() => props.currentNodeKey, setCurrentKey);
 
 .node-label {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13.5px;
   letter-spacing: 0.3px;
 }
 
 .node-actions {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
   opacity: 0.6;
   transition: opacity 0.2s;
 }
@@ -340,6 +364,7 @@ watch(() => props.currentNodeKey, setCurrentKey);
 
 .node-actions .el-button {
   padding: 5px;
+  margin-left: 0;
   color: var(--text-secondary);
   border-radius: 6px;
   transition: all 0.2s;

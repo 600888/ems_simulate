@@ -8,7 +8,9 @@
         :prefix-icon="Search"
       />
       <div v-if="batchMode" class="batch-row">
-        <el-checkbox v-model="selectAll" :indeterminate="indeterminate">全选</el-checkbox>
+        <el-checkbox v-model="selectAll" :indeterminate="indeterminate"
+          >全选</el-checkbox
+        >
         <span>已选 {{ checkedKeys.length }}</span>
       </div>
     </div>
@@ -26,13 +28,22 @@
     >
       <template #default="{ data }">
         <span class="tree-node">
-          <span v-if="data.isBlock" class="state-dot" :class="stateClass(data.block)" />
+          <span
+            v-if="data.isBlock"
+            class="state-dot"
+            :class="stateClass(data.block)"
+          />
           <span v-if="data.isBlock" class="block-kind" :class="data.block.kind">
             {{ data.block.kind === "publisher" ? "PUB" : "SUB" }}
           </span>
           <span v-else class="node-badge">{{ data.kind }}</span>
-          <span :class="{ enabled: data.block?.enabled }">{{ data.label }}</span>
-          <span v-if="data.isBlock && data.block.message_count" class="message-count">
+          <span :class="{ enabled: data.block?.enabled }">{{
+            data.label
+          }}</span>
+          <span
+            v-if="data.isBlock && data.block.message_count"
+            class="message-count"
+          >
             {{ data.block.message_count }}
           </span>
         </span>
@@ -101,7 +112,8 @@ const treeData = computed<TreeNode[]>(() => {
 });
 
 const selectAll = computed({
-  get: () => props.blocks.length > 0 && checkedKeys.value.length === props.blocks.length,
+  get: () =>
+    props.blocks.length > 0 && checkedKeys.value.length === props.blocks.length,
   set: (value) => {
     checkedKeys.value = value ? props.blocks.map((item) => item.key) : [];
     treeRef.value?.setCheckedKeys(checkedKeys.value);
@@ -109,21 +121,23 @@ const selectAll = computed({
   },
 });
 const indeterminate = computed(
-  () => checkedKeys.value.length > 0 && checkedKeys.value.length < props.blocks.length
+  () =>
+    checkedKeys.value.length > 0 &&
+    checkedKeys.value.length < props.blocks.length,
 );
 
 watch(search, (value) => treeRef.value?.filter(value));
 watch(
   () => props.selectedKey,
-  (key) => nextTick(() => key && treeRef.value?.setCurrentKey(key))
+  (key) => nextTick(() => key && treeRef.value?.setCurrentKey(key)),
 );
 watch(
   () => props.blocks.map((item) => item.key),
   () => {
     checkedKeys.value = checkedKeys.value.filter((key) =>
-      props.blocks.some((item) => item.key === key)
+      props.blocks.some((item) => item.key === key),
     );
-  }
+  },
 );
 
 function filterNode(value: string, data: TreeNode) {
@@ -242,7 +256,7 @@ function stateClass(block?: GooseBlockItem) {
 :deep(.el-tree-node__content) {
   height: 32px;
 }
-@media (max-width: 900px) {
+@container (max-width: 900px) {
   .goose-tree-panel {
     width: 100%;
     max-height: 280px;

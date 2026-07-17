@@ -5,18 +5,25 @@
       <div class="header-actions">
         <span>自动刷新</span>
         <el-switch v-model="autoRefresh" />
-        <el-select v-model="pollInterval" :disabled="!autoRefresh" style="width: 90px">
+        <el-select
+          v-model="pollInterval"
+          :disabled="!autoRefresh"
+          style="width: 90px"
+        >
           <el-option :value="1000" label="1 s" />
           <el-option :value="2000" label="2 s" />
           <el-option :value="5000" label="5 s" />
         </el-select>
-        <el-button :icon="Refresh" :loading="loading" @click="loadBlocks">刷新</el-button>
+        <el-button :icon="Refresh" :loading="loading" @click="loadBlocks"
+          >刷新</el-button
+        >
         <el-button
           v-if="selected?.kind === 'publisher'"
           type="primary"
           :disabled="!selected.publisher?.is_running"
           @click="publishSelected"
-        >立即发布</el-button>
+          >立即发布</el-button
+        >
         <el-button v-if="selected" type="danger" plain @click="deleteSelected">
           删除控制块
         </el-button>
@@ -54,7 +61,10 @@
           @checked="checkedKeys = $event"
         />
         <section class="workspace">
-          <el-empty v-if="!selected" description="从左侧选择一个 GOOSE 控制块" />
+          <el-empty
+            v-if="!selected"
+            description="从左侧选择一个 GOOSE 控制块"
+          />
           <el-tabs
             v-else
             v-model="activeTab"
@@ -81,12 +91,20 @@
             </el-tab-pane>
 
             <el-tab-pane
-              :label="selected.kind === 'publisher' ? '当前 GOOSE 数据' : '最近 GOOSE 数据'"
+              :label="
+                selected.kind === 'publisher'
+                  ? '当前 GOOSE 数据'
+                  : '最近 GOOSE 数据'
+              "
               name="latest"
             >
               <div class="latest-pane">
                 <div class="summary">
-                  <el-tag :type="selected.kind === 'publisher' ? 'primary' : 'success'">
+                  <el-tag
+                    :type="
+                      selected.kind === 'publisher' ? 'primary' : 'success'
+                    "
+                  >
                     {{ selected.kind === "publisher" ? "发布器" : "订阅器" }}
                   </el-tag>
                   <span v-if="selected.kind === 'subscriber'"
@@ -122,27 +140,53 @@
                   :current-row-key="selectedHistory?.received_at"
                   @current-change="handleHistoryCurrentChange"
                 >
-                  <el-table-column type="index" label="#" width="48" align="center" />
-                  <el-table-column prop="received_at" label="接收时间" min-width="185" sortable>
+                  <el-table-column
+                    type="index"
+                    label="#"
+                    width="48"
+                    align="center"
+                  />
+                  <el-table-column
+                    prop="received_at"
+                    label="接收时间"
+                    min-width="185"
+                    sortable
+                  >
                     <template #default="{ row }">{{
                       formatGooseTime(row.received_at)
                     }}</template>
                   </el-table-column>
                   <el-table-column prop="st_num" label="状态号" width="75" />
                   <el-table-column prop="sq_num" label="顺序号" width="75" />
-                  <el-table-column prop="value_count" label="数据项" width="70" />
-                  <el-table-column prop="changed_count" label="变化项" width="70" />
+                  <el-table-column
+                    prop="value_count"
+                    label="数据项"
+                    width="70"
+                  />
+                  <el-table-column
+                    prop="changed_count"
+                    label="变化项"
+                    width="70"
+                  />
                 </el-table>
                 <div class="history-detail">
                   <div v-if="selectedHistory" class="summary">
-                    <span>时间：{{ formatGooseTime(selectedHistory.received_at) }}</span>
-                    <span>数据集：{{ selectedHistory.data_set_ref || "-" }}</span>
+                    <span
+                      >时间：{{
+                        formatGooseTime(selectedHistory.received_at)
+                      }}</span
+                    >
+                    <span
+                      >数据集：{{ selectedHistory.data_set_ref || "-" }}</span
+                    >
                     <span>状态号：{{ selectedHistory.st_num }}</span>
                     <span>顺序号：{{ selectedHistory.sq_num }}</span>
                     <span>数据项：{{ selectedHistory.value_count }}</span>
                     <span>变化项：{{ selectedHistory.changed_count }}</span>
                   </div>
-                  <GooseDataSetTable :values="selectedHistory?.data_values || []" />
+                  <GooseDataSetTable
+                    :values="selectedHistory?.data_values || []"
+                  />
                 </div>
               </div>
             </el-tab-pane>
@@ -154,11 +198,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
-import { useI18n } from 'vue-i18n';
-import { showError } from '@/api/http';
-import { Refresh } from '@element-plus/icons-vue';
+import {
+  computed,
+  onActivated,
+  onDeactivated,
+  onUnmounted,
+  ref,
+  watch,
+} from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { useI18n } from "vue-i18n";
+import { showError } from "@/api/http";
+import { Refresh } from "@element-plus/icons-vue";
 import {
   getGoosePublishers,
   getGooseReceivers,
@@ -176,34 +227,40 @@ import {
   updateGooseReceiver,
   updateGooseSubscription,
   type GooseMessageHistoryItem,
-} from '@/api/gooseApi';
+} from "@/api/gooseApi";
 import {
   getIEC61850DatasetDetail,
   getIEC61850Structure,
   type IEC61850DataSetInfo,
   type IEC61850DataSetMember,
-} from '@/api/channelApi';
-import GooseBlockTreePanel from './GooseBlockTreePanel.vue';
-import GooseControlPanel from './GooseControlPanel.vue';
-import GooseDataSetTable from './GooseDataSetTable.vue';
-import GoosePublisherControlPanel from './GoosePublisherControlPanel.vue';
+} from "@/api/channelApi";
+import GooseBlockTreePanel from "./GooseBlockTreePanel.vue";
+import GooseControlPanel from "./GooseControlPanel.vue";
+import GooseDataSetTable from "./GooseDataSetTable.vue";
+import GoosePublisherControlPanel from "./GoosePublisherControlPanel.vue";
 import {
   flattenGooseBlocks,
   formatGooseTime,
   toGooseDataSetRef,
   type GooseBlockItem,
-} from './gooseWorkbench';
+} from "./gooseWorkbench";
 
 const props = defineProps<{ channelId?: number }>();
 const { t } = useI18n();
 const publishers = ref<Awaited<ReturnType<typeof getGoosePublishers>>>([]);
 const receivers = ref<Awaited<ReturnType<typeof getGooseReceivers>>>([]);
-const networkInterfaces = ref<Awaited<ReturnType<typeof getGooseNetworkInterfaces>>>([]);
+const networkInterfaces = ref<
+  Awaited<ReturnType<typeof getGooseNetworkInterfaces>>
+>([]);
 const dataSets = ref<IEC61850DataSetInfo[]>([]);
-const blocks = computed(() => flattenGooseBlocks(publishers.value, receivers.value));
-const selectedKey = ref('');
-const selected = computed(() => blocks.value.find((item) => item.key === selectedKey.value) || null);
-const activeTab = ref('attributes');
+const blocks = computed(() =>
+  flattenGooseBlocks(publishers.value, receivers.value),
+);
+const selectedKey = ref("");
+const selected = computed(
+  () => blocks.value.find((item) => item.key === selectedKey.value) || null,
+);
+const activeTab = ref("attributes");
 const history = ref<GooseMessageHistoryItem[]>([]);
 const selectedHistory = ref<GooseMessageHistoryItem | null>(null);
 const loading = ref(false);
@@ -221,7 +278,7 @@ let historyKnownRevision = -1;
 watch(
   () => props.channelId,
   async () => {
-    selectedKey.value = '';
+    selectedKey.value = "";
     history.value = [];
     await Promise.all([loadBlocks(), loadNetworkInterfaces(), loadDataSets()]);
   },
@@ -237,8 +294,11 @@ async function loadBlocks(showLoading = true) {
       getGoosePublishers(props.channelId),
       getGooseReceivers(props.channelId),
     ]);
-    if (selectedKey.value && !selected.value) selectedKey.value = '';
-    if (activeTab.value === 'history' && selected.value?.kind === 'subscriber') {
+    if (selectedKey.value && !selected.value) selectedKey.value = "";
+    if (
+      activeTab.value === "history" &&
+      selected.value?.kind === "subscriber"
+    ) {
       await loadHistory(false);
     }
   } finally {
@@ -283,32 +343,41 @@ function selectBlock(block: GooseBlockItem) {
   selectedHistory.value = null;
   historyKnownRevision = -1;
   historyRequestId++;
-  if (block.kind === 'publisher' && activeTab.value === 'history') activeTab.value = 'attributes';
-  if (activeTab.value === 'history') void loadHistory(true);
+  if (block.kind === "publisher" && activeTab.value === "history")
+    activeTab.value = "attributes";
+  if (activeTab.value === "history") void loadHistory(true);
 }
 
 async function publishSelected() {
   const block = selected.value;
-  if (!props.channelId || block?.kind !== 'publisher' || !block.publisher) return;
+  if (!props.channelId || block?.kind !== "publisher" || !block.publisher)
+    return;
   try {
     await publishGooseNow(props.channelId, block.publisher.id);
-    ElMessage.success('GOOSE 报文已发布');
+    ElMessage.success("GOOSE 报文已发布");
     await loadBlocks(false);
   } catch (error) {
-    showError(error, 'GOOSE 发布失败');
+    showError(error, "GOOSE 发布失败");
   }
 }
 
-async function updatePublisherDataValue(payload: { index: number; value: string | number | boolean }) {
+async function updatePublisherDataValue(payload: {
+  index: number;
+  value: string | number | boolean;
+}) {
   const block = selected.value;
-  if (block?.kind !== 'publisher' || !block.publisher) return;
+  if (block?.kind !== "publisher" || !block.publisher) return;
   updatingEntryIndex.value = payload.index;
   try {
-    await updateGoosePublisherEntry(block.publisher.id, payload.index, payload.value);
+    await updateGoosePublisherEntry(
+      block.publisher.id,
+      payload.index,
+      payload.value,
+    );
     await loadBlocks(false);
-    ElMessage.success('数据集值已更新');
+    ElMessage.success("数据集值已更新");
   } catch (error) {
-    showError(error, '数据集值更新失败');
+    showError(error, "数据集值更新失败");
     await loadBlocks(false);
   } finally {
     updatingEntryIndex.value = null;
@@ -319,24 +388,31 @@ async function deleteSelected() {
   const block = selected.value;
   if (!props.channelId || !block) return;
   try {
-    await ElMessageBox.confirm(`确定删除 ${block.display_name}？`, '删除 GOOSE 控制块', {
-      confirmButtonText: t('common.confirm'),
-      cancelButtonText: t('common.cancel'),
-      type: 'warning',
-    });
-    if (block.kind === 'publisher' && block.publisher) {
+    await ElMessageBox.confirm(
+      `确定删除 ${block.display_name}？`,
+      "删除 GOOSE 控制块",
+      {
+        confirmButtonText: t("common.confirm"),
+        cancelButtonText: t("common.cancel"),
+        type: "warning",
+      },
+    );
+    if (block.kind === "publisher" && block.publisher) {
       await deleteGoosePublisher(props.channelId, block.publisher.id);
     } else if (block.receiver_id) {
-      const receiver = receivers.value.find((item) => item.id === block.receiver_id);
-      if (receiver?.is_running) await stopGooseReceiver(props.channelId, receiver.id);
+      const receiver = receivers.value.find(
+        (item) => item.id === block.receiver_id,
+      );
+      if (receiver?.is_running)
+        await stopGooseReceiver(props.channelId, receiver.id);
       await removeGooseSubscription(block.receiver_id, block.go_cb_ref);
     }
-    selectedKey.value = '';
+    selectedKey.value = "";
     await loadBlocks(false);
-    ElMessage.success('GOOSE 控制块已删除');
+    ElMessage.success("GOOSE 控制块已删除");
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close') {
-      showError(error, '删除失败');
+    if (error !== "cancel" && error !== "close") {
+      showError(error, "删除失败");
     }
   }
 }
@@ -344,30 +420,47 @@ async function deleteSelected() {
 function parseMac(value: string): number[] | null {
   if (!value.trim()) return null;
   const parts = value.split(/[:-]/);
-  if (parts.length !== 6 || parts.some((item) => !/^[0-9a-fA-F]{2}$/.test(item))) {
-    throw new Error('目标MAC地址格式错误');
+  if (
+    parts.length !== 6 ||
+    parts.some((item) => !/^[0-9a-fA-F]{2}$/.test(item))
+  ) {
+    throw new Error("目标MAC地址格式错误");
   }
   return parts.map((item) => Number.parseInt(item, 16));
 }
 
 function defaultGooseMulticastMac(appId: number): string {
   const normalized = Number(appId || 0) & 0xffff;
-  const high = ((normalized >> 8) & 0xff).toString(16).toUpperCase().padStart(2, '0');
-  const low = (normalized & 0xff).toString(16).toUpperCase().padStart(2, '0');
+  const high = ((normalized >> 8) & 0xff)
+    .toString(16)
+    .toUpperCase()
+    .padStart(2, "0");
+  const low = (normalized & 0xff).toString(16).toUpperCase().padStart(2, "0");
   return `01:0C:CD:01:${high}:${low}`;
 }
 
 function normalizeGooseEntryType(iecType: string): string {
-  const normalized = String(iecType || '').trim().toLowerCase();
-  if (['boolean', 'integer', 'float', 'string', 'bitstring', 'timestamp'].includes(normalized)) {
+  const normalized = String(iecType || "")
+    .trim()
+    .toLowerCase();
+  if (
+    [
+      "boolean",
+      "integer",
+      "float",
+      "string",
+      "bitstring",
+      "timestamp",
+    ].includes(normalized)
+  ) {
     return normalized;
   }
-  return 'boolean';
+  return "boolean";
 }
 
 function defaultGooseEntryValue(iecType: string): boolean | number | string {
-  if (iecType === 'boolean') return false;
-  if (iecType === 'string') return '';
+  if (iecType === "boolean") return false;
+  if (iecType === "string") return "";
   return 0;
 }
 
@@ -377,7 +470,9 @@ function dataSetMemberToPublisherEntry(member: IEC61850DataSetMember) {
   return {
     name: member.ref,
     value:
-      typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string'
+      typeof value === "boolean" ||
+      typeof value === "number" ||
+      typeof value === "string"
         ? value
         : defaultGooseEntryValue(iecType),
     iec_type: iecType,
@@ -398,18 +493,23 @@ async function applyPublisherConfig(form: {
   simulation: boolean;
 }) {
   const block = selected.value;
-  if (!props.channelId || block?.kind !== 'publisher' || !block.publisher) return;
+  if (!props.channelId || block?.kind !== "publisher" || !block.publisher)
+    return;
   applying.value = true;
   const publisherId = block.publisher.id;
   try {
     const dataSetDetail = form.data_set_ref
       ? await getIEC61850DatasetDetail(props.channelId, form.data_set_ref)
       : null;
-    if (form.data_set_ref && (!dataSetDetail || !dataSetDetail.members.length)) {
+    if (
+      form.data_set_ref &&
+      (!dataSetDetail || !dataSetDetail.members.length)
+    ) {
       throw new Error(`数据集 ${form.data_set_ref} 没有可发布的成员`);
     }
 
-    if (block.publisher.is_running) await stopGoosePublisher(props.channelId, publisherId);
+    if (block.publisher.is_running)
+      await stopGoosePublisher(props.channelId, publisherId);
     await updateGoosePublisher(publisherId, {
       channel_id: props.channelId,
       interface: form.interface,
@@ -425,10 +525,12 @@ async function applyPublisherConfig(form: {
     });
     if (dataSetDetail) {
       const expectedNames = dataSetDetail.members.map((member) => member.ref);
-      const currentNames = (block.publisher.entries || []).map((entry) => entry.name);
+      const currentNames = (block.publisher.entries || []).map(
+        (entry) => entry.name,
+      );
       const entriesMatch =
-        expectedNames.length === currentNames.length
-        && expectedNames.every((name, index) => name === currentNames[index]);
+        expectedNames.length === currentNames.length &&
+        expectedNames.every((name, index) => name === currentNames[index]);
       if (!entriesMatch) {
         await replaceGoosePublisherEntries(
           props.channelId,
@@ -440,12 +542,12 @@ async function applyPublisherConfig(form: {
     if (form.enabled) await startGoosePublisher(props.channelId, publisherId);
     ElMessage.success(
       form.dst_mac
-        ? 'GOOSE 发布配置已应用'
-        : `GOOSE 发布配置已应用，目标地址留空，自动使用组播地址 ${defaultGooseMulticastMac(form.app_id)}`
+        ? "GOOSE 发布配置已应用"
+        : `GOOSE 发布配置已应用，目标地址留空，自动使用组播地址 ${defaultGooseMulticastMac(form.app_id)}`,
     );
     await loadBlocks(false);
   } catch (error) {
-    showError(error, '发布配置应用失败');
+    showError(error, "发布配置应用失败");
   } finally {
     applying.value = false;
   }
@@ -462,36 +564,50 @@ async function applySubscriptionConfig(form: {
   description: string;
 }) {
   const block = selected.value;
-  if (!props.channelId || block?.kind !== 'subscriber' || !block.subscription || !block.receiver_id) return;
+  if (
+    !props.channelId ||
+    block?.kind !== "subscriber" ||
+    !block.subscription ||
+    !block.receiver_id
+  )
+    return;
   applying.value = true;
   try {
-    const receiver = receivers.value.find((item) => item.id === block.receiver_id);
+    const receiver = receivers.value.find(
+      (item) => item.id === block.receiver_id,
+    );
     if (receiver && form.interface && form.interface !== receiver.interface) {
-      if (receiver.is_running) await stopGooseReceiver(props.channelId, receiver.id);
+      if (receiver.is_running)
+        await stopGooseReceiver(props.channelId, receiver.id);
       await updateGooseReceiver(props.channelId, receiver.id, {
         interface: form.interface,
-        name: receiver.name || 'default',
-        description: receiver.description || '',
+        name: receiver.name || "default",
+        description: receiver.description || "",
         auto_start: receiver.auto_start || false,
       });
     }
-    await updateGooseSubscription(props.channelId, block.receiver_id, block.go_cb_ref, {
-      enabled: form.enabled,
-      app_id: form.app_id,
-      dst_mac: form.dst_mac ? parseMac(form.dst_mac) : null,
-      description: form.description,
-      data_set_ref: form.data_set_ref,
-      conf_rev: form.conf_rev,
-      ied_name: block.ied_name,
-      ld_inst: block.ld_inst,
-      ln_name: block.ln_name,
-      dataset_entries: block.subscription.dataset_entries,
-      go_id: form.go_id,
-    });
-    ElMessage.success('GOOSE 订阅配置已应用');
+    await updateGooseSubscription(
+      props.channelId,
+      block.receiver_id,
+      block.go_cb_ref,
+      {
+        enabled: form.enabled,
+        app_id: form.app_id,
+        dst_mac: form.dst_mac ? parseMac(form.dst_mac) : null,
+        description: form.description,
+        data_set_ref: form.data_set_ref,
+        conf_rev: form.conf_rev,
+        ied_name: block.ied_name,
+        ld_inst: block.ld_inst,
+        ln_name: block.ln_name,
+        dataset_entries: block.subscription.dataset_entries,
+        go_id: form.go_id,
+      },
+    );
+    ElMessage.success("GOOSE 订阅配置已应用");
     await loadBlocks(false);
   } catch (error) {
-    showError(error, '订阅配置应用失败');
+    showError(error, "订阅配置应用失败");
   } finally {
     applying.value = false;
   }
@@ -499,34 +615,43 @@ async function applySubscriptionConfig(form: {
 
 async function setBlockEnabled(block: GooseBlockItem, enabled: boolean) {
   if (!props.channelId) return;
-  if (block.kind === 'publisher' && block.publisher) {
+  if (block.kind === "publisher" && block.publisher) {
     if (enabled) await startGoosePublisher(props.channelId, block.publisher.id);
     else await stopGoosePublisher(props.channelId, block.publisher.id);
     return;
   }
   if (block.subscription && block.receiver_id) {
-    await updateGooseSubscription(props.channelId, block.receiver_id, block.go_cb_ref, {
-      enabled,
-      app_id: block.subscription.app_id,
-      dst_mac: block.dst_mac ? parseMac(block.dst_mac) : null,
-      description: block.subscription.description,
-      data_set_ref: block.data_set_ref,
-      conf_rev: block.conf_rev,
-      ied_name: block.ied_name,
-      ld_inst: block.ld_inst,
-      ln_name: block.ln_name,
-      dataset_entries: block.subscription.dataset_entries,
-    });
+    await updateGooseSubscription(
+      props.channelId,
+      block.receiver_id,
+      block.go_cb_ref,
+      {
+        enabled,
+        app_id: block.subscription.app_id,
+        dst_mac: block.dst_mac ? parseMac(block.dst_mac) : null,
+        description: block.subscription.description,
+        data_set_ref: block.data_set_ref,
+        conf_rev: block.conf_rev,
+        ied_name: block.ied_name,
+        ld_inst: block.ld_inst,
+        ln_name: block.ln_name,
+        dataset_entries: block.subscription.dataset_entries,
+      },
+    );
   }
 }
 
 async function batchSetEnabled(enabled: boolean) {
-  const targets = blocks.value.filter((item) => checkedKeys.value.includes(item.key));
+  const targets = blocks.value.filter((item) =>
+    checkedKeys.value.includes(item.key),
+  );
   if (!targets.length) return;
   applying.value = true;
   try {
     for (const block of targets) await setBlockEnabled(block, enabled);
-    ElMessage.success(`已${enabled ? '使能' : '禁用'} ${targets.length} 个 GOOSE 控制块`);
+    ElMessage.success(
+      `已${enabled ? "使能" : "禁用"} ${targets.length} 个 GOOSE 控制块`,
+    );
     await loadBlocks(false);
   } finally {
     applying.value = false;
@@ -535,7 +660,8 @@ async function batchSetEnabled(enabled: boolean) {
 
 async function loadHistory(force = true) {
   const block = selected.value;
-  if (!props.channelId || block?.kind !== 'subscriber' || !block.receiver_id) return;
+  if (!props.channelId || block?.kind !== "subscriber" || !block.receiver_id)
+    return;
   const revision = block.subscription?.message_count || 0;
   if (!force && revision === historyKnownRevision) return;
 
@@ -547,17 +673,20 @@ async function loadHistory(force = true) {
     block.go_cb_ref,
     200,
   );
-  if (requestId !== historyRequestId || selected.value?.key !== requestedKey) return;
+  if (requestId !== historyRequestId || selected.value?.key !== requestedKey)
+    return;
 
   historyKnownRevision = revision;
   history.value = items;
   const selectedReceivedAt = selectedHistory.value?.received_at;
   selectedHistory.value =
-    items.find((item) => item.received_at === selectedReceivedAt) || items[0] || null;
+    items.find((item) => item.received_at === selectedReceivedAt) ||
+    items[0] ||
+    null;
 }
 
 function handleTabChange(tab: string | number) {
-  if (tab === 'history') void loadHistory(true);
+  if (tab === "history") void loadHistory(true);
 }
 
 function handleHistoryCurrentChange(row: GooseMessageHistoryItem | null) {
@@ -676,7 +805,7 @@ onUnmounted(() => {
   min-width: 0;
   padding-left: 10px;
 }
-@media (max-width: 900px) {
+@container (max-width: 900px) {
   .manager-header {
     align-items: flex-start;
     flex-direction: column;

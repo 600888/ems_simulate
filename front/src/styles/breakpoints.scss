@@ -12,34 +12,34 @@ $breakpoint-large: 1400px;
 // 响应式 mixin：对指定断点应用样式
 // 用法：@include bp.respond-to('small') { ... }
 @mixin respond-to($size) {
-  @if $size == 'small' {
+  @if $size == "small" {
     // 960px ~ 1199px: 最小窗口/笔记本
-    @media (max-width: #{$breakpoint-medium - 1px}) {
+    @container (max-width: #{$breakpoint-medium - 1px}) {
       @content;
     }
-  } @else if $size == 'medium' {
+  } @else if $size == "medium" {
     // 1200px ~ 1399px: 标准桌面窗口
-    @media (min-width: $breakpoint-medium) and (max-width: #{$breakpoint-large - 1px}) {
+    @container (min-width: $breakpoint-medium) and (max-width: #{$breakpoint-large - 1px}) {
       @content;
     }
-  } @else if $size == 'large' {
+  } @else if $size == "large" {
     // >= 1400px: 大屏/全屏桌面
-    @media (min-width: $breakpoint-large) {
+    @container (min-width: $breakpoint-large) {
       @content;
     }
-  } @else if $size == 'medium-down' {
+  } @else if $size == "medium-down" {
     // <= 1399px: medium 及以下（中小屏通用）
-    @media (max-width: #{$breakpoint-large - 1px}) {
+    @container (max-width: #{$breakpoint-large - 1px}) {
       @content;
     }
-  } @else if $size == 'medium-up' {
+  } @else if $size == "medium-up" {
     // >= 1200px: medium 及以上
-    @media (min-width: $breakpoint-medium) {
+    @container (min-width: $breakpoint-medium) {
       @content;
     }
-  } @else if $size == 'small-up' {
+  } @else if $size == "small-up" {
     // >= 960px: 所有窗口尺寸
-    @media (min-width: $breakpoint-small) {
+    @container (min-width: $breakpoint-small) {
       @content;
     }
   }
@@ -47,7 +47,7 @@ $breakpoint-large: 1400px;
 
 // 区间响应式 mixin
 @mixin respond-between($min, $max) {
-  @media (min-width: $min) and (max-width: $max) {
+  @container (min-width: $min) and (max-width: $max) {
     @content;
   }
 }

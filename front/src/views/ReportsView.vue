@@ -5,9 +5,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
-import ReportsManager from '@/components/reports/ReportsManager.vue';
+import { ref, watch } from "vue";
+import { useRoute } from "vue-router";
+import ReportsManager from "@/components/reports/ReportsManager.vue";
 
 const route = useRoute();
 const channelId = ref<number>(0);
@@ -18,7 +18,7 @@ const channelId = ref<number>(0);
 watch(
   () => [route.path, route.query.channel_id] as const,
   ([path, newVal]) => {
-    if (path !== '/reports') return;
+    if (path !== "/reports") return;
     channelId.value = Number(newVal) || 0;
   },
   { immediate: true },
@@ -27,7 +27,9 @@ watch(
 
 <style scoped>
 .reports-view {
-  height: calc(100vh - var(--header-height) - var(--tags-height) - var(--footer-height));
+  height: 100%;
+  min-height: 0;
+  flex: 1;
   padding: 16px;
   box-sizing: border-box;
   background: #f5f7fa;

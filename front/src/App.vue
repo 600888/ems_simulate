@@ -5,12 +5,19 @@ import TagsView from "@/components/layout/TagsView.vue";
 import SettingsView from "@/views/SettingsView.vue";
 import LogViewerDialog from "@/components/logs/LogViewerDialog.vue";
 import { currentTheme } from "@/utils/theme";
-import { sidebarOverlayMode, closeSidebarOverlay } from "@/components/header/isCollapse";
+import {
+  sidebarOverlayMode,
+  closeSidebarOverlay,
+} from "@/components/header/isCollapse";
 import { isTauri, onCloseRequested } from "@/utils/tauri";
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
-import { currentLocale, setLocale } from "@/composables/useAppSettings";
+import {
+  currentLocale,
+  setLocale,
+  refreshZoomLayout,
+} from "@/composables/useAppSettings";
 import { visitedViews } from "@/store/tagsView";
 import { getLogErrorCount, resetLogErrorCount } from "@/api/logApi";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
@@ -29,7 +36,9 @@ i18nLocale.value = currentLocale.value;
 const route = useRoute();
 const router = useRouter();
 const isStandaloneView = computed(() => route.meta.standalone === true);
-const elementLocale = computed(() => currentLocale.value === "en-US" ? en : zhCn);
+const elementLocale = computed(() =>
+  currentLocale.value === "en-US" ? en : zhCn,
+);
 
 // 监听语言切换
 watch(currentLocale, (val) => {
@@ -47,6 +56,7 @@ const openLogs = () => {
 };
 
 onMounted(async () => {
+  refreshZoomLayout();
   if (isStandaloneView.value) return;
 
   if (isTauri()) {
@@ -59,7 +69,10 @@ onMounted(async () => {
   // 注意：需要等待 router.isReady() 确保路由已解析，避免 hash 路由下 path 暂时为 '/'
   await router.isReady();
   const currentPath = router.currentRoute.value.path;
-  if ((currentPath === "/" || currentPath === "") && visitedViews.value.length > 0) {
+  if (
+    (currentPath === "/" || currentPath === "") &&
+    visitedViews.value.length > 0
+  ) {
     const lastView = visitedViews.value[visitedViews.value.length - 1];
     if (lastView.path) {
       router.push(lastView.path);
@@ -92,80 +105,88 @@ async function fetchLogErrorCount() {
   <el-config-provider :locale="elementLocale">
     <router-view v-if="isStandaloneView" />
     <template v-else>
-  <div :class="`theme-wrapper theme-${currentTheme}`">
-    <!-- 关闭动画覆盖层 -->
-    <Transition name="close-fade">
-      <div v-if="isClosing" class="closing-overlay">
-        <div class="closing-content">
-          <div class="closing-spinner"></div>
-          <div class="closing-text">{{ $t("app.closing") }}</div>
-        </div>
-      </div>
-    </Transition>
-    <el-container class="app-container">
-      <Sidebar />
-      <!-- 侧边栏 overlay 遮罩 (small 断点下展开时显示) -->
-      <div
-        class="sidebar-overlay"
-        :class="{ active: sidebarOverlayMode }"
-        @click="closeSidebarOverlay"
-      ></div>
-      <el-container direction="vertical">
-        <AppHeader
-          @open-settings="openSettings"
-          @open-logs="openLogs"
-          :log-error-count="logErrorCount"
-        />
-        <!-- 标签页 -->
-        <TagsView />
-        <el-main class="main-content">
-          <el-scrollbar view-class="app-scrollbar-view">
-            <div class="app-view-container">
-              <router-view v-slot="{ Component, route }">
-                <keep-alive>
-                  <component :is="Component" :key="route.fullPath" />
-                </keep-alive>
-              </router-view>
+      <div :class="`theme-wrapper theme-${currentTheme}`">
+        <!-- 关闭动画覆盖层 -->
+        <Transition name="close-fade">
+          <div v-if="isClosing" class="closing-overlay">
+            <div class="closing-content">
+              <div class="closing-spinner"></div>
+              <div class="closing-text">{{ $t("app.closing") }}</div>
             </div>
+          </div>
+        </Transition>
+        <el-container class="app-container">
+          <Sidebar />
+          <!-- 侧边栏 overlay 遮罩 (small 断点下展开时显示) -->
+          <div
+            class="sidebar-overlay"
+            :class="{ active: sidebarOverlayMode }"
+            @click="closeSidebarOverlay"
+          ></div>
+          <el-container direction="vertical">
+            <AppHeader
+              @open-settings="openSettings"
+              @open-logs="openLogs"
+              :log-error-count="logErrorCount"
+            />
+            <!-- 标签页 -->
+            <TagsView />
+            <el-main class="main-content">
+              <el-scrollbar view-class="app-scrollbar-view">
+                <div class="app-view-container">
+                  <router-view v-slot="{ Component, route }">
+                    <keep-alive>
+                      <component :is="Component" :key="route.fullPath" />
+                    </keep-alive>
+                  </router-view>
+                </div>
+              </el-scrollbar>
+            </el-main>
             <!-- 全局底部版权 -->
             <footer class="app-footer">Copyright © 2026 CDY</footer>
-          </el-scrollbar>
-        </el-main>
-      </el-container>
-    </el-container>
-  </div>
+          </el-container>
+        </el-container>
+      </div>
 
-  <!-- 设置弹框 -->
-  <el-dialog
-    v-model="settingsVisible"
-    :title="$t('app.settings')"
-    width="900px"
-    top="4vh"
-    :close-on-click-modal="true"
-    class="settings-dialog"
-  >
-    <SettingsView />
-  </el-dialog>
+      <!-- 设置弹框 -->
+      <el-dialog
+        v-model="settingsVisible"
+        :title="$t('app.settings')"
+        width="900px"
+        top="4vh"
+        :close-on-click-modal="true"
+        class="settings-dialog"
+      >
+        <SettingsView />
+      </el-dialog>
 
-  <!-- 日志查看器 -->
-  <LogViewerDialog v-model:visible="logVisible" />
+      <!-- 日志查看器 -->
+      <LogViewerDialog v-model:visible="logVisible" />
     </template>
   </el-config-provider>
 </template>
 
 <style lang="scss">
 .theme-wrapper {
+  container-type: inline-size;
   height: 100vh;
   width: 100vw;
   overflow: hidden;
   background-color: var(--bg-main);
-  transition: all 0.3s ease;
+  transition: background-color 0.3s ease;
 }
 
 .app-container {
   height: 100%;
+  min-height: 0;
   width: 100%;
   position: relative;
+}
+
+.app-container > .el-container {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
 }
 
 .main-content {
@@ -179,6 +200,7 @@ async function fetchLogErrorCount() {
 
 /* 修复内容不足时 footer 上浮的问题 */
 .app-scrollbar-view {
+  height: 100%;
   min-height: 100%;
   display: flex;
   flex-direction: column;
@@ -186,30 +208,33 @@ async function fetchLogErrorCount() {
 
 .app-view-container {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .app-footer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
   height: var(--footer-height);
   line-height: var(--footer-height);
   text-align: center;
   font-size: 13px;
   color: var(--text-secondary);
   opacity: 0.6;
-  background-color: var(--bg-main);
-  flex-shrink: 0;
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
+  background-color: transparent;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 /* small 断点下侧边栏 overlay 遮罩 */
 .sidebar-overlay {
   display: none;
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  inset: 0;
   background: rgba(0, 0, 0, 0.35);
   z-index: 998;
   opacity: 0;
@@ -226,10 +251,7 @@ async function fetchLogErrorCount() {
 /* 关闭动画 */
 .closing-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  inset: 0;
   background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
   z-index: 9999;
   display: flex;

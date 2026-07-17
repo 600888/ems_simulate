@@ -4,7 +4,7 @@
     <div class="toolbar">
       <div class="toolbar-left">
         <div class="toolbar-item">
-          <span class="toolbar-label">{{ $t('goose.iface') }}</span>
+          <span class="toolbar-label">{{ $t("goose.iface") }}</span>
           <el-select
             v-model="interfaceName"
             :placeholder="$t('goose.interfacePlaceholder')"
@@ -12,19 +12,28 @@
             :disabled="captureRunning"
             :title="interfaceName"
           >
-            <el-option v-for="item in networkInterfaces" :key="item.id" :value="item.id" class="network-option-item">
+            <el-option
+              v-for="item in networkInterfaces"
+              :key="item.id"
+              :value="item.id"
+              class="network-option-item"
+            >
               <div class="network-option">
                 <el-icon class="network-option-icon"><Monitor /></el-icon>
                 <div class="network-option-body">
-                  <span class="network-option-name">{{ item.display_name }}</span>
-                  <span class="network-option-mac">MAC: {{ (item.mac || "-").replace(/-/g, ":") }}</span>
+                  <span class="network-option-name">{{
+                    item.display_name
+                  }}</span>
+                  <span class="network-option-mac"
+                    >MAC: {{ (item.mac || "-").replace(/-/g, ":") }}</span
+                  >
                 </div>
               </div>
             </el-option>
           </el-select>
         </div>
         <div class="toolbar-item">
-          <span class="toolbar-label">{{ $t('goose.cache') }}</span>
+          <span class="toolbar-label">{{ $t("goose.cache") }}</span>
           <el-input-number
             v-model="maxPackets"
             :min="100"
@@ -36,7 +45,7 @@
           />
         </div>
         <div class="toolbar-item">
-          <span class="toolbar-label">{{ $t('goose.appIdLabel') }}</span>
+          <span class="toolbar-label">{{ $t("goose.appIdLabel") }}</span>
           <el-input-number
             v-model="filterAppId"
             :min="0"
@@ -56,7 +65,7 @@
           @click="startCapture"
           :loading="starting"
         >
-          {{ $t('goose.startCapture') }}
+          {{ $t("goose.startCapture") }}
         </el-button>
         <el-button
           v-else
@@ -65,7 +74,7 @@
           @click="stopCapture"
           :loading="stopping"
         >
-          {{ $t('goose.stopCapture') }}
+          {{ $t("goose.stopCapture") }}
         </el-button>
         <el-button
           :icon="Refresh"
@@ -73,14 +82,10 @@
           :disabled="!captureRunning"
           :loading="loading"
         >
-          {{ $t('goose.refresh') }}
+          {{ $t("goose.refresh") }}
         </el-button>
-        <el-button
-          :icon="Delete"
-          @click="clearPackets"
-          :disabled="!hasData"
-        >
-          {{ $t('goose.clear') }}
+        <el-button :icon="Delete" @click="clearPackets" :disabled="!hasData">
+          {{ $t("goose.clear") }}
         </el-button>
       </div>
     </div>
@@ -88,18 +93,20 @@
     <!-- 统计信息 -->
     <div v-if="statistics" class="capture-stats">
       <div class="stat-item">
-        <span class="stat-label">{{ $t('goose.totalCaptured') }}</span>
+        <span class="stat-label">{{ $t("goose.totalCaptured") }}</span>
         <span class="stat-value">{{ statistics.total_captured }}</span>
       </div>
       <div class="stat-item">
-        <span class="stat-label">{{ $t('goose.buffer') }}</span>
-        <span class="stat-value">{{ statistics.buffer_size }} / {{ statistics.max_buffer_size }}</span>
+        <span class="stat-label">{{ $t("goose.buffer") }}</span>
+        <span class="stat-value"
+          >{{ statistics.buffer_size }} / {{ statistics.max_buffer_size }}</span
+        >
       </div>
       <div class="stat-item">
-        <span class="stat-label">{{ $t('goose.appIdDist') }}</span>
+        <span class="stat-label">{{ $t("goose.appIdDist") }}</span>
         <span class="stat-value">
           <el-tag
-            v-for="app in (statistics.app_ids || [])"
+            v-for="app in statistics.app_ids || []"
             :key="app.app_id"
             size="small"
             style="margin: 0 2px"
@@ -123,28 +130,74 @@
       @row-click="showPacketDetail"
     >
       <el-table-column type="index" :label="$t('goose.seqNum')" width="50" />
-      <el-table-column prop="timestamp" :label="$t('goose.time')" width="185" sortable>
+      <el-table-column
+        prop="timestamp"
+        :label="$t('goose.time')"
+        width="185"
+        sortable
+      >
         <template #default="{ row }">
           {{ formatGooseTime(row.timestamp) }}
         </template>
       </el-table-column>
       <el-table-column prop="src_mac" :label="$t('goose.srcMac')" width="140" />
-      <el-table-column prop="dst_mac" :label="$t('goose.dstMacLabel')" width="140" />
+      <el-table-column
+        prop="dst_mac"
+        :label="$t('goose.dstMacLabel')"
+        width="140"
+      />
       <el-table-column :label="$t('goose.appId')" width="90" sortable>
         <template #default="{ row }">
           <el-tag size="small">{{ row.app_id_hex }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="go_cb_ref" :label="$t('goose.goCbRef')" min-width="200" show-overflow-tooltip />
-      <el-table-column prop="go_id" :label="$t('goose.goId')" width="100" show-overflow-tooltip />
-      <el-table-column :label="$t('goose.stNum')" width="85" sortable align="center" prop="st_num" />
-      <el-table-column :label="$t('goose.sqNum')" width="80" align="center" prop="sq_num" />
-      <el-table-column :label="$t('goose.tal')" width="95" align="right" prop="time_allowed_to_live" />
-      <el-table-column :label="$t('goose.length')" width="75" align="right" prop="length" />
-      <el-table-column :label="$t('goose.simulationLabel')" width="75" align="center">
+      <el-table-column
+        prop="go_cb_ref"
+        :label="$t('goose.goCbRef')"
+        min-width="200"
+        show-overflow-tooltip
+      />
+      <el-table-column
+        prop="go_id"
+        :label="$t('goose.goId')"
+        width="100"
+        show-overflow-tooltip
+      />
+      <el-table-column
+        :label="$t('goose.stNum')"
+        width="85"
+        sortable
+        align="center"
+        prop="st_num"
+      />
+      <el-table-column
+        :label="$t('goose.sqNum')"
+        width="80"
+        align="center"
+        prop="sq_num"
+      />
+      <el-table-column
+        :label="$t('goose.tal')"
+        width="95"
+        align="right"
+        prop="time_allowed_to_live"
+      />
+      <el-table-column
+        :label="$t('goose.length')"
+        width="75"
+        align="right"
+        prop="length"
+      />
+      <el-table-column
+        :label="$t('goose.simulationLabel')"
+        width="75"
+        align="center"
+      >
         <template #default="{ row }">
-          <el-tag v-if="row.simulation" type="warning" size="small">{{ $t('goose.yes') }}</el-tag>
-          <span v-else class="text-muted">{{ $t('goose.no') }}</span>
+          <el-tag v-if="row.simulation" type="warning" size="small">{{
+            $t("goose.yes")
+          }}</el-tag>
+          <span v-else class="text-muted">{{ $t("goose.no") }}</span>
         </template>
       </el-table-column>
       <el-table-column :label="$t('goose.vlan')" width="100">
@@ -166,14 +219,19 @@
             >
               <span class="data-value-item">{{ formatCapturedValue(dv) }}</span>
             </el-tooltip>
-            <span v-if="row.data_values.length > 5" class="text-muted">+{{ row.data_values.length - 5 }}</span>
+            <span v-if="row.data_values.length > 5" class="text-muted"
+              >+{{ row.data_values.length - 5 }}</span
+            >
           </div>
           <span v-else class="text-muted">-</span>
         </template>
       </el-table-column>
     </el-table>
     <div v-if="packets.length > pageSize" class="capture-pagination">
-      <span class="pagination-summary">共 {{ packets.length }} 条，当前仅渲染 {{ visiblePackets.length }} 条</span>
+      <span class="pagination-summary"
+        >共 {{ packets.length }} 条，当前仅渲染
+        {{ visiblePackets.length }} 条</span
+      >
       <el-pagination
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
@@ -188,7 +246,9 @@
     <!-- 报文详情对话框 -->
     <el-dialog
       v-model="detailVisible"
-      :title="$t('goose.packetDetailTitle', { appId: detailPacket?.app_id_hex || '' })"
+      :title="
+        $t('goose.packetDetailTitle', { appId: detailPacket?.app_id_hex || '' })
+      "
       width="min(1200px, 95vw)"
       top="5vh"
       append-to-body
@@ -196,31 +256,66 @@
     >
       <template v-if="detailPacket">
         <el-descriptions :column="3" border size="small">
-          <el-descriptions-item :label="$t('goose.time')" :span="2">{{ formatGooseTime(detailPacket.timestamp) }}</el-descriptions-item>
-          <el-descriptions-item :label="$t('goose.length')">{{ $t('goose.bytes', { count: detailPacket.length }) }}</el-descriptions-item>
-          <el-descriptions-item :label="$t('goose.srcMac')">{{ detailPacket.src_mac }}</el-descriptions-item>
-          <el-descriptions-item :label="$t('goose.dstMacLabel')">{{ detailPacket.dst_mac }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.time')" :span="2">{{
+            formatGooseTime(detailPacket.timestamp)
+          }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.length')">{{
+            $t("goose.bytes", { count: detailPacket.length })
+          }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.srcMac')">{{
+            detailPacket.src_mac
+          }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.dstMacLabel')">{{
+            detailPacket.dst_mac
+          }}</el-descriptions-item>
           <el-descriptions-item :label="$t('goose.appId')">
             <el-tag size="small">{{ detailPacket.app_id_hex }}</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item :label="$t('goose.goCbRef')" :span="3">{{ detailPacket.go_cb_ref || '-' }}</el-descriptions-item>
-          <el-descriptions-item :label="$t('goose.goId')">{{ detailPacket.go_id || '-' }}</el-descriptions-item>
-          <el-descriptions-item :label="$t('goose.dataSetRef')">{{ detailPacket.data_set_ref || '-' }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.goCbRef')" :span="3">{{
+            detailPacket.go_cb_ref || "-"
+          }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.goId')">{{
+            detailPacket.go_id || "-"
+          }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.dataSetRef')">{{
+            detailPacket.data_set_ref || "-"
+          }}</el-descriptions-item>
           <el-descriptions-item :label="$t('goose.vlan')">
-            {{ detailPacket.has_vlan ? `ID=${detailPacket.vlan_id}, P=${detailPacket.vlan_prio}` : '-' }}
+            {{
+              detailPacket.has_vlan
+                ? `ID=${detailPacket.vlan_id}, P=${detailPacket.vlan_prio}`
+                : "-"
+            }}
           </el-descriptions-item>
-          <el-descriptions-item :label="$t('goose.stNum')">{{ detailPacket.st_num }}</el-descriptions-item>
-          <el-descriptions-item :label="$t('goose.sqNum')">{{ detailPacket.sq_num }}</el-descriptions-item>
-          <el-descriptions-item :label="$t('goose.confRev')">{{ detailPacket.conf_rev }}</el-descriptions-item>
-          <el-descriptions-item :label="$t('goose.tal')">{{ detailPacket.time_allowed_to_live }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.stNum')">{{
+            detailPacket.st_num
+          }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.sqNum')">{{
+            detailPacket.sq_num
+          }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.confRev')">{{
+            detailPacket.conf_rev
+          }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.tal')">{{
+            detailPacket.time_allowed_to_live
+          }}</el-descriptions-item>
           <el-descriptions-item :label="$t('goose.simulationLabel')">
-            <el-tag v-if="detailPacket.simulation" type="warning" size="small">{{ $t('goose.yes') }}</el-tag>
-            <span v-else>{{ $t('goose.no') }}</span>
+            <el-tag
+              v-if="detailPacket.simulation"
+              type="warning"
+              size="small"
+              >{{ $t("goose.yes") }}</el-tag
+            >
+            <span v-else>{{ $t("goose.no") }}</span>
           </el-descriptions-item>
           <el-descriptions-item :label="$t('goose.ndsCom')">
-            <span>{{ detailPacket.nds_com ? $t('goose.yes') : $t('goose.no') }}</span>
+            <span>{{
+              detailPacket.nds_com ? $t("goose.yes") : $t("goose.no")
+            }}</span>
           </el-descriptions-item>
-          <el-descriptions-item :label="$t('goose.numEntries')">{{ detailPacket.num_dat_set_entries }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.numEntries')">{{
+            detailPacket.num_dat_set_entries
+          }}</el-descriptions-item>
         </el-descriptions>
 
         <h4 style="margin: 16px 0 8px">协议字段</h4>
@@ -233,16 +328,26 @@
           @row-click="selectRawRange"
         >
           <el-table-column label="字节" width="85">
-            <template #default="{ row }">{{ formatByteRange(row.offset, row.length) }}</template>
+            <template #default="{ row }">{{
+              formatByteRange(row.offset, row.length)
+            }}</template>
           </el-table-column>
           <el-table-column prop="raw_hex" label="原始字节" min-width="130" />
           <el-table-column prop="name" label="字段" width="145" />
-          <el-table-column prop="display_value" label="解析值" min-width="180" />
+          <el-table-column
+            prop="display_value"
+            label="解析值"
+            min-width="180"
+          />
           <el-table-column prop="description" label="说明" min-width="130" />
         </el-table>
 
         <!-- 数据集值 -->
-        <h4 style="margin: 16px 0 8px">{{ $t('goose.dataValues') }} ({{ detailPacket.data_values?.length || 0 }})</h4>
+        <h4 style="margin: 16px 0 8px">
+          {{ $t("goose.dataValues") }} ({{
+            detailPacket.data_values?.length || 0
+          }})
+        </h4>
         <el-table
           :data="detailPacket.data_values || []"
           border
@@ -251,36 +356,58 @@
           highlight-current-row
           @row-click="selectRawRange"
         >
-          <el-table-column type="index" :label="$t('goose.seqNum')" width="60" />
+          <el-table-column
+            type="index"
+            :label="$t('goose.seqNum')"
+            width="60"
+          />
           <el-table-column label="字节" width="85">
-            <template #default="{ row }">{{ formatByteRange(row.offset, row.length) }}</template>
+            <template #default="{ row }">{{
+              formatByteRange(row.offset, row.length)
+            }}</template>
           </el-table-column>
           <el-table-column label="数据项" min-width="180">
             <template #default="{ row }">
-              <div>{{ row.name || `Entry[${row.index ?? '-'}]` }}</div>
-              <small v-if="row.description" class="text-muted">{{ row.description }}</small>
+              <div>{{ row.name || `Entry[${row.index ?? "-"}]` }}</div>
+              <small v-if="row.description" class="text-muted">{{
+                row.description
+              }}</small>
             </template>
           </el-table-column>
           <el-table-column label="关联测点" min-width="150">
             <template #default="{ row }">
               <template v-if="row.point">
                 <div>{{ row.point.name || row.point.code }}</div>
-                <small class="text-muted">{{ row.point.code }} · {{ row.point.address }}</small>
+                <small class="text-muted"
+                  >{{ row.point.code }} · {{ row.point.address }}</small
+                >
               </template>
               <span v-else class="text-muted">未关联</span>
             </template>
           </el-table-column>
-          <el-table-column :label="$t('goose.entryType')" width="120" prop="type" />
+          <el-table-column
+            :label="$t('goose.entryType')"
+            width="120"
+            prop="type"
+          />
           <el-table-column :label="$t('goose.entryValue')">
-            <template #default="{ row }">{{ formatCapturedValue(row) }}</template>
+            <template #default="{ row }">{{
+              formatCapturedValue(row)
+            }}</template>
           </el-table-column>
         </el-table>
 
         <!-- 十六进制转储 -->
-        <h4 style="margin: 16px 0 8px">{{ $t('goose.rawHex') }}</h4>
+        <h4 style="margin: 16px 0 8px">{{ $t("goose.rawHex") }}</h4>
         <div ref="hexDumpRef" class="hex-dump">
-          <div v-for="line in hexDumpLines" :key="line.offset" class="hex-dump-line">
-            <span class="hex-offset">{{ line.offset.toString(16).padStart(4, '0') }}</span>
+          <div
+            v-for="line in hexDumpLines"
+            :key="line.offset"
+            class="hex-dump-line"
+          >
+            <span class="hex-offset">{{
+              line.offset.toString(16).padStart(4, "0")
+            }}</span>
             <span class="hex-bytes">
               <span
                 v-for="item in line.bytes"
@@ -289,202 +416,257 @@
                 :class="{ selected: isRawByteSelected(item.index) }"
                 :data-byte-index="item.index"
                 :title="`字节 ${item.index}`"
-              >{{ item.hex }}</span>
+                >{{ item.hex }}</span
+              >
             </span>
             <span class="hex-ascii">{{ line.ascii }}</span>
           </div>
         </div>
-        <div class="raw-byte-hint">点击协议字段或DataSet数据项可定位并高亮对应字节</div>
+        <div class="raw-byte-hint">
+          点击协议字段或DataSet数据项可定位并高亮对应字节
+        </div>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, markRaw, computed, nextTick, onMounted, onUnmounted } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { showErrorOnce } from '@/api/http'
-import { VideoPlay, VideoPause, Refresh, Delete, Monitor } from '@element-plus/icons-vue'
-import { GooseCaptureWebSocket, WsEventType } from '@/services/GooseCaptureWebSocket'
+import {
+  ref,
+  shallowRef,
+  markRaw,
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+} from "vue";
+import { useI18n } from "vue-i18n";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { showErrorOnce } from "@/api/http";
+import {
+  VideoPlay,
+  VideoPause,
+  Refresh,
+  Delete,
+  Monitor,
+} from "@element-plus/icons-vue";
+import {
+  GooseCaptureWebSocket,
+  WsEventType,
+} from "@/services/GooseCaptureWebSocket";
 import type {
   GooseCapturedDataValue,
   GooseCapturedPacket,
   GooseCaptureStatistics,
   NetworkInterfaceInfo,
-} from '@/api/gooseApi'
-import { getGooseNetworkInterfaces } from '@/api/gooseApi'
-import { formatGooseTime } from './gooseWorkbench'
+} from "@/api/gooseApi";
+import { getGooseNetworkInterfaces } from "@/api/gooseApi";
+import { formatGooseTime } from "./gooseWorkbench";
 
-const props = defineProps<{ channelId: number }>()
+const props = defineProps<{ channelId: number }>();
 
-const ws = GooseCaptureWebSocket.getInstance()
-const { t } = useI18n()
+const ws = GooseCaptureWebSocket.getInstance();
+const { t } = useI18n();
 
 // ===== 状态 =====
-const loading = ref(false)
-const starting = ref(false)
-const stopping = ref(false)
-const captureRunning = ref(false)
-const interfaceName = ref('')
-const networkInterfaces = ref<NetworkInterfaceInfo[]>([])
-const maxPackets = ref(100)
-const filterAppId = ref<number | null>(1)
+const loading = ref(false);
+const starting = ref(false);
+const stopping = ref(false);
+const captureRunning = ref(false);
+const interfaceName = ref("");
+const networkInterfaces = ref<NetworkInterfaceInfo[]>([]);
+const maxPackets = ref(100);
+const filterAppId = ref<number | null>(1);
 
-const packets = shallowRef<GooseCapturedPacket[]>([])
-const statistics = ref<GooseCaptureStatistics | null>(null)
-const hasData = computed(() => packets.value.length > 0)
-const pageSize = ref(200)
-const currentPage = ref(1)
-const pageCount = computed(() => Math.max(1, Math.ceil(packets.value.length / pageSize.value)))
+const packets = shallowRef<GooseCapturedPacket[]>([]);
+const statistics = ref<GooseCaptureStatistics | null>(null);
+const hasData = computed(() => packets.value.length > 0);
+const pageSize = ref(200);
+const currentPage = ref(1);
+const pageCount = computed(() =>
+  Math.max(1, Math.ceil(packets.value.length / pageSize.value)),
+);
 const visiblePackets = computed(() => {
-  const safePage = Math.min(currentPage.value, pageCount.value)
-  const start = (safePage - 1) * pageSize.value
-  return packets.value.slice(start, start + pageSize.value)
-})
-let pendingPackets: GooseCapturedPacket[] = []
-let packetFlushTimer: ReturnType<typeof setTimeout> | null = null
+  const safePage = Math.min(currentPage.value, pageCount.value);
+  const start = (safePage - 1) * pageSize.value;
+  return packets.value.slice(start, start + pageSize.value);
+});
+let pendingPackets: GooseCapturedPacket[] = [];
+let packetFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
 function flushPendingPackets() {
-  packetFlushTimer = null
-  if (!pendingPackets.length) return
-  const oldPageCount = pageCount.value
-  const followLatest = currentPage.value >= oldPageCount
-  const incoming = pendingPackets
-  pendingPackets = []
-  const limit = Math.max(100, maxPackets.value)
-  const merged = packets.value.concat(incoming)
-  packets.value = merged.length > limit ? merged.slice(merged.length - limit) : merged
-  if (followLatest) currentPage.value = Math.max(1, Math.ceil(packets.value.length / pageSize.value))
+  packetFlushTimer = null;
+  if (!pendingPackets.length) return;
+  const oldPageCount = pageCount.value;
+  const followLatest = currentPage.value >= oldPageCount;
+  const incoming = pendingPackets;
+  pendingPackets = [];
+  const limit = Math.max(100, maxPackets.value);
+  const merged = packets.value.concat(incoming);
+  packets.value =
+    merged.length > limit ? merged.slice(merged.length - limit) : merged;
+  if (followLatest)
+    currentPage.value = Math.max(
+      1,
+      Math.ceil(packets.value.length / pageSize.value),
+    );
 }
 
 function queuePacket(packet: GooseCapturedPacket) {
-  pendingPackets.push(markRaw(packet))
-  if (!packetFlushTimer) packetFlushTimer = setTimeout(flushPendingPackets, 100)
+  pendingPackets.push(markRaw(packet));
+  if (!packetFlushTimer)
+    packetFlushTimer = setTimeout(flushPendingPackets, 100);
 }
 
 function queuePackets(incoming: GooseCapturedPacket[]) {
-  if (!incoming.length) return
-  pendingPackets.push(...incoming.map((packet) => markRaw(packet)))
-  if (!packetFlushTimer) packetFlushTimer = setTimeout(flushPendingPackets, 100)
+  if (!incoming.length) return;
+  pendingPackets.push(...incoming.map((packet) => markRaw(packet)));
+  if (!packetFlushTimer)
+    packetFlushTimer = setTimeout(flushPendingPackets, 100);
 }
 
 function formatCapturedValue(value: GooseCapturedDataValue) {
-  if (value.type === 'timestamp' && (typeof value.value === 'number' || typeof value.value === 'string')) {
-    return formatGooseTime(value.value)
+  if (
+    value.type === "timestamp" &&
+    (typeof value.value === "number" || typeof value.value === "string")
+  ) {
+    return formatGooseTime(value.value);
   }
-  return typeof value.value === 'object' ? JSON.stringify(value.value) : String(value.value ?? '-')
+  return typeof value.value === "object"
+    ? JSON.stringify(value.value)
+    : String(value.value ?? "-");
 }
 
 // 详情对话框
-const detailVisible = ref(false)
-const detailPacket = ref<GooseCapturedPacket | null>(null)
-const selectedRawRange = ref<{ offset: number; length: number } | null>(null)
-const detailRawBytes = computed(() => detailPacket.value?.hex_data.match(/.{2}/g)?.map((item) => item.toUpperCase()) ?? [])
-const hexDumpRef = ref<HTMLElement | null>(null)
+const detailVisible = ref(false);
+const detailPacket = ref<GooseCapturedPacket | null>(null);
+const selectedRawRange = ref<{ offset: number; length: number } | null>(null);
+const detailRawBytes = computed(
+  () =>
+    detailPacket.value?.hex_data
+      .match(/.{2}/g)
+      ?.map((item) => item.toUpperCase()) ?? [],
+);
+const hexDumpRef = ref<HTMLElement | null>(null);
 const hexDumpLines = computed(() => {
-  const bytes = detailRawBytes.value
-  const lines: Array<{ offset: number; bytes: Array<{ index: number; hex: string }>; ascii: string }> = []
+  const bytes = detailRawBytes.value;
+  const lines: Array<{
+    offset: number;
+    bytes: Array<{ index: number; hex: string }>;
+    ascii: string;
+  }> = [];
   for (let offset = 0; offset < bytes.length; offset += 16) {
-    const chunk = bytes.slice(offset, offset + 16)
+    const chunk = bytes.slice(offset, offset + 16);
     lines.push({
       offset,
       bytes: chunk.map((hex, index) => ({ index: offset + index, hex })),
-      ascii: chunk.map((hex) => {
-        const value = Number.parseInt(hex, 16)
-        return value >= 32 && value < 127 ? String.fromCharCode(value) : '.'
-      }).join(''),
-    })
+      ascii: chunk
+        .map((hex) => {
+          const value = Number.parseInt(hex, 16);
+          return value >= 32 && value < 127 ? String.fromCharCode(value) : ".";
+        })
+        .join(""),
+    });
   }
-  return lines
-})
+  return lines;
+});
 
 // 请求序列号，用于匹配 response，过滤过期响应
-let cmdSeq = 0
+let cmdSeq = 0;
 
 // 事件取消函数列表
-const cleanups: Array<() => void> = []
+const cleanups: Array<() => void> = [];
 
 // ===== 操作 =====
 
 function startCapture() {
-  if (captureRunning.value || starting.value) return
+  if (captureRunning.value || starting.value) return;
 
-  starting.value = true
-  cmdSeq++
+  starting.value = true;
+  cmdSeq++;
 
   ws.start({
     channel_id: props.channelId,
     interface: interfaceName.value || undefined,
     max_packets: maxPackets.value,
     filter_app_id: filterAppId.value,
-  })
+  });
 }
 
-let stopTimeoutId: ReturnType<typeof setTimeout> | null = null
+let stopTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 function stopCapture() {
-  if ((!captureRunning.value && !starting.value) || stopping.value) return
+  if ((!captureRunning.value && !starting.value) || stopping.value) return;
 
-  stopping.value = true    // 停止按钮显示 loading
-  starting.value = false
-  cmdSeq++
+  stopping.value = true; // 停止按钮显示 loading
+  starting.value = false;
+  cmdSeq++;
 
-  ws.stop(props.channelId)
+  ws.stop(props.channelId);
 
   // ⏱ 兜底超时：3秒后如果还没收到 response，强制清除 loading
-  if (stopTimeoutId) clearTimeout(stopTimeoutId)
+  if (stopTimeoutId) clearTimeout(stopTimeoutId);
   stopTimeoutId = setTimeout(() => {
     if (stopping.value) {
-      stopping.value = false
+      stopping.value = false;
       // 再发一次 status 查询真实状态
-      ws.status(props.channelId)
+      ws.status(props.channelId);
     }
-  }, 3000)
+  }, 3000);
 }
 
 function refreshPackets() {
   if (ws.isConnected) {
-    loading.value = true
-    ws.list({ channel_id: props.channelId })
+    loading.value = true;
+    ws.list({ channel_id: props.channelId });
   }
 }
 
 function clearPackets() {
-  ElMessageBox.confirm(t('goose.clearConfirm'), t('common.confirm'), {
-    confirmButtonText: t('common.confirm'),
-    cancelButtonText: t('common.cancel'),
-    type: 'warning',
+  ElMessageBox.confirm(t("goose.clearConfirm"), t("common.confirm"), {
+    confirmButtonText: t("common.confirm"),
+    cancelButtonText: t("common.cancel"),
+    type: "warning",
   })
     .then(() => {
-      ws.clear(props.channelId)
+      ws.clear(props.channelId);
     })
-    .catch(() => {})
+    .catch(() => {});
 }
 
 function showPacketDetail(row: GooseCapturedPacket) {
-  detailPacket.value = row
-  selectedRawRange.value = null
-  detailVisible.value = true
+  detailPacket.value = row;
+  selectedRawRange.value = null;
+  detailVisible.value = true;
 }
 
 function selectRawRange(row: { offset?: number; length?: number }) {
-  if (typeof row.offset !== 'number' || !row.length) return
-  selectedRawRange.value = { offset: row.offset, length: row.length }
+  if (typeof row.offset !== "number" || !row.length) return;
+  selectedRawRange.value = { offset: row.offset, length: row.length };
   nextTick(() => {
-    const byte = hexDumpRef.value?.querySelector<HTMLElement>(`[data-byte-index="${row.offset}"]`)
-    byte?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
-  })
+    const byte = hexDumpRef.value?.querySelector<HTMLElement>(
+      `[data-byte-index="${row.offset}"]`,
+    );
+    byte?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest",
+    });
+  });
 }
 
 function isRawByteSelected(index: number) {
-  const selected = selectedRawRange.value
-  return !!selected && index >= selected.offset && index < selected.offset + selected.length
+  const selected = selectedRawRange.value;
+  return (
+    !!selected &&
+    index >= selected.offset &&
+    index < selected.offset + selected.length
+  );
 }
 
 function formatByteRange(offset?: number, length?: number) {
-  if (typeof offset !== 'number' || !length) return '-'
-  return length === 1 ? `${offset}` : `${offset}-${offset + length - 1}`
+  if (typeof offset !== "number" || !length) return "-";
+  return length === 1 ? `${offset}` : `${offset}-${offset + length - 1}`;
 }
 
 // ===== WebSocket 事件绑定 (Observer) =====
@@ -492,132 +674,148 @@ function formatByteRange(offset?: number, length?: number) {
 /** 收到实时报文推送 */
 cleanups.push(
   ws.on(WsEventType.PACKET, (pkt: GooseCapturedPacket) => {
-    queuePacket(pkt)
+    queuePacket(pkt);
   }),
-)
+);
 
 /** 收到服务端合并后的实时报文批次 */
 cleanups.push(
   ws.on(WsEventType.PACKET_BATCH, (batch: GooseCapturedPacket[]) => {
-    queuePackets(batch)
+    queuePackets(batch);
   }),
-)
+);
 
 /** 收到指令响应 — 使用 seq 机制过滤过期响应 */
-let lastListSeq = 0
+let lastListSeq = 0;
 cleanups.push(
-  ws.on(WsEventType.RESPONSE, (res: { command: string; success: boolean; data?: any; message?: string }) => {
-    const curSeq = cmdSeq
+  ws.on(
+    WsEventType.RESPONSE,
+    (res: {
+      command: string;
+      success: boolean;
+      data?: any;
+      message?: string;
+    }) => {
+      const curSeq = cmdSeq;
 
-    if (res.command === 'start') {
-      starting.value = false
-      if (res.success) {
-        captureRunning.value = true
-        ElMessage.success(t('goose.captureStarted'))
-        lastListSeq = curSeq
-        ws.list({ channel_id: props.channelId })
-      } else {
-        captureRunning.value = false
-        showErrorOnce(res.message || t('goose.createFailed'))
-      }
-    } else if (res.command === 'stop') {
-      // 清除兜底超时
-      if (stopTimeoutId) {
-        clearTimeout(stopTimeoutId)
-        stopTimeoutId = null
-      }
-      // ⚠️ 只有 seq 未变更时才处理，防止过期 stop 响应把状态改错
-      stopping.value = false
-      if (curSeq !== cmdSeq) return
-      if (res.success) {
-        captureRunning.value = false
-        ElMessage.success(t('goose.captureStopped'))
-      } else {
-        captureRunning.value = true
-        showErrorOnce(res.message || t('goose.publishFailed'))
-      }
-    } else if (res.command === 'list') {
-      loading.value = false
-      if (curSeq !== cmdSeq && lastListSeq !== curSeq) return
-      lastListSeq = curSeq
-      if (res.success && res.data) {
-        pendingPackets = []
-        packets.value = (res.data.packets || []).map((packet: GooseCapturedPacket) => markRaw(packet))
-        currentPage.value = Math.max(1, Math.ceil(packets.value.length / pageSize.value))
-        statistics.value = res.data.statistics || null
-      }
-    } else if (res.command === 'clear') {
-      if (res.success) {
-        packets.value = []
-        pendingPackets = []
-        currentPage.value = 1
-        statistics.value = null
-        ElMessage.success(t('goose.clearSuccess'))
-      }
-    } else if (res.command === 'status') {
-      if (res.success && res.data?.captures?.length > 0) {
-        const c = res.data.captures[0]
-        const wasRunning = captureRunning.value
-        captureRunning.value = c.is_running
-        stopping.value = false
-        starting.value = false
-        // 重连后发现抓包在运行，拉取最新数据
-        if (c.is_running && !wasRunning) {
-          ws.list({ channel_id: props.channelId })
+      if (res.command === "start") {
+        starting.value = false;
+        if (res.success) {
+          captureRunning.value = true;
+          ElMessage.success(t("goose.captureStarted"));
+          lastListSeq = curSeq;
+          ws.list({ channel_id: props.channelId });
+        } else {
+          captureRunning.value = false;
+          showErrorOnce(res.message || t("goose.createFailed"));
+        }
+      } else if (res.command === "stop") {
+        // 清除兜底超时
+        if (stopTimeoutId) {
+          clearTimeout(stopTimeoutId);
+          stopTimeoutId = null;
+        }
+        // ⚠️ 只有 seq 未变更时才处理，防止过期 stop 响应把状态改错
+        stopping.value = false;
+        if (curSeq !== cmdSeq) return;
+        if (res.success) {
+          captureRunning.value = false;
+          ElMessage.success(t("goose.captureStopped"));
+        } else {
+          captureRunning.value = true;
+          showErrorOnce(res.message || t("goose.publishFailed"));
+        }
+      } else if (res.command === "list") {
+        loading.value = false;
+        if (curSeq !== cmdSeq && lastListSeq !== curSeq) return;
+        lastListSeq = curSeq;
+        if (res.success && res.data) {
+          pendingPackets = [];
+          packets.value = (res.data.packets || []).map(
+            (packet: GooseCapturedPacket) => markRaw(packet),
+          );
+          currentPage.value = Math.max(
+            1,
+            Math.ceil(packets.value.length / pageSize.value),
+          );
+          statistics.value = res.data.statistics || null;
+        }
+      } else if (res.command === "clear") {
+        if (res.success) {
+          packets.value = [];
+          pendingPackets = [];
+          currentPage.value = 1;
+          statistics.value = null;
+          ElMessage.success(t("goose.clearSuccess"));
+        }
+      } else if (res.command === "status") {
+        if (res.success && res.data?.captures?.length > 0) {
+          const c = res.data.captures[0];
+          const wasRunning = captureRunning.value;
+          captureRunning.value = c.is_running;
+          stopping.value = false;
+          starting.value = false;
+          // 重连后发现抓包在运行，拉取最新数据
+          if (c.is_running && !wasRunning) {
+            ws.list({ channel_id: props.channelId });
+          }
         }
       }
-    }
-  }),
-)
+    },
+  ),
+);
 
 /** 连接建立后自动检查抓包状态 */
 cleanups.push(
   ws.on(WsEventType.CONNECTED, () => {
-    ws.status(props.channelId)
+    ws.status(props.channelId);
   }),
-)
+);
 
 /** 连接断开 — 只清 loading，不重置 running，等重连后 status 查询 */
 cleanups.push(
   ws.on(WsEventType.DISCONNECTED, () => {
-    stopping.value = false
-    starting.value = false
+    stopping.value = false;
+    starting.value = false;
   }),
-)
+);
 
 /** 错误消息 */
 cleanups.push(
   ws.on(WsEventType.ERROR, (err: { message: string }) => {
-    loading.value = false
-    starting.value = false
-    stopping.value = false
-    showErrorOnce(err.message || t('goose.websocketError'))
+    loading.value = false;
+    starting.value = false;
+    stopping.value = false;
+    showErrorOnce(err.message || t("goose.websocketError"));
   }),
-)
+);
 
 // ===== 生命周期 =====
 
 onMounted(async () => {
-  networkInterfaces.value = (await getGooseNetworkInterfaces()).filter(item => item.supports_raw_ethernet)
-  if (!interfaceName.value && networkInterfaces.value.length) interfaceName.value = networkInterfaces.value[0].id
+  networkInterfaces.value = (await getGooseNetworkInterfaces()).filter(
+    (item) => item.supports_raw_ethernet,
+  );
+  if (!interfaceName.value && networkInterfaces.value.length)
+    interfaceName.value = networkInterfaces.value[0].id;
   // 自动建立 WebSocket 连接，连接后会检查抓包状态
-  ws.connect()
-})
+  ws.connect();
+});
 
 onUnmounted(() => {
   // 清理所有事件订阅 (Observer 解绑)
-  cleanups.forEach((fn) => fn())
-  cleanups.length = 0
+  cleanups.forEach((fn) => fn());
+  cleanups.length = 0;
   if (stopTimeoutId) {
-    clearTimeout(stopTimeoutId)
-    stopTimeoutId = null
+    clearTimeout(stopTimeoutId);
+    stopTimeoutId = null;
   }
   if (packetFlushTimer) {
-    clearTimeout(packetFlushTimer)
-    packetFlushTimer = null
+    clearTimeout(packetFlushTimer);
+    packetFlushTimer = null;
   }
-  pendingPackets = []
-})
+  pendingPackets = [];
+});
 </script>
 
 <style scoped lang="scss">
@@ -724,7 +922,7 @@ onUnmounted(() => {
   text-align: center;
 }
 
-@media (max-width: 900px) {
+@container (max-width: 900px) {
   .toolbar-right {
     width: 100%;
     justify-content: flex-end;
@@ -789,7 +987,7 @@ onUnmounted(() => {
   color: #d4d4d4;
   padding: 12px;
   border-radius: 4px;
-  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
   font-size: 12px;
   line-height: 1.5;
   overflow-x: auto;
@@ -844,16 +1042,38 @@ onUnmounted(() => {
   min-height: auto;
   padding: 4px 12px;
 }
-.el-select-dropdown__item.network-option-item:first-child { padding-top: 0; }
-.el-select-dropdown__item.network-option-item:last-child { padding-bottom: 0; }
+.el-select-dropdown__item.network-option-item:first-child {
+  padding-top: 0;
+}
+.el-select-dropdown__item.network-option-item:last-child {
+  padding-bottom: 0;
+}
 .network-option {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 0;
-  .network-option-icon { font-size: 16px; color: #409eff; flex-shrink: 0; }
-  .network-option-body { display: flex; flex-direction: column; min-width: 0; }
-  .network-option-name { font-size: 13px; color: #303133; line-height: 1.3; }
-  .network-option-mac { font-family: "Cascadia Code","Fira Code","JetBrains Mono",Consolas,monospace; font-size: 11px; color: #909399; line-height: 1.2; }
+  .network-option-icon {
+    font-size: 16px;
+    color: #409eff;
+    flex-shrink: 0;
+  }
+  .network-option-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .network-option-name {
+    font-size: 13px;
+    color: #303133;
+    line-height: 1.3;
+  }
+  .network-option-mac {
+    font-family:
+      "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace;
+    font-size: 11px;
+    color: #909399;
+    line-height: 1.2;
+  }
 }
 </style>
