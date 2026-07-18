@@ -16,6 +16,9 @@ export interface MessageRecord {
   raw_hex: string;
   description: string;
   length: number;
+  protocol_type: string;
+  /** Modbus Unit ID or IEC104 common address; control frames have no slave ID. */
+  slave_id: number | null;
 }
 
 export interface AvgTimeStats {
@@ -38,9 +41,13 @@ export async function getDeviceList(): Promise<Array<string>> {
   }
 }
 
-export async function getDeviceInfo(deviceName: string): Promise<Map<string, any>> {
+export async function getDeviceInfo(
+  deviceName: string,
+): Promise<Map<string, any>> {
   try {
-    const data = await requestApi(DEVICE_API.INFO, "post", { device_name: deviceName });
+    const data = await requestApi(DEVICE_API.INFO, "post", {
+      device_name: deviceName,
+    });
     return new Map<string, any>(Object.entries(data));
   } catch (error) {
     console.error("Error fetching device info:", error);
@@ -50,7 +57,7 @@ export async function getDeviceInfo(deviceName: string): Promise<Map<string, any
 
 export async function startSimulation(
   deviceName: string,
-  simulateMethod: string
+  simulateMethod: string,
 ): Promise<boolean> {
   try {
     const data = await requestApi(DEVICE_API.START_SIMULATION, "post", {
@@ -78,7 +85,9 @@ export async function stopSimulation(deviceName: string): Promise<boolean> {
 
 export async function startDevice(deviceName: string): Promise<boolean> {
   try {
-    const data = await requestApi(DEVICE_API.START, "post", { device_name: deviceName });
+    const data = await requestApi(DEVICE_API.START, "post", {
+      device_name: deviceName,
+    });
     return data;
   } catch (error) {
     console.error("Error starting device:", error);
@@ -88,7 +97,9 @@ export async function startDevice(deviceName: string): Promise<boolean> {
 
 export async function stopDevice(deviceName: string): Promise<boolean> {
   try {
-    const data = await requestApi(DEVICE_API.STOP, "post", { device_name: deviceName });
+    const data = await requestApi(DEVICE_API.STOP, "post", {
+      device_name: deviceName,
+    });
     return data;
   } catch (error) {
     console.error("Error stopping device:", error);
@@ -98,7 +109,9 @@ export async function stopDevice(deviceName: string): Promise<boolean> {
 
 // ===== 从机管理 =====
 
-export async function getSlaveIdList(deviceName: string): Promise<Array<number>> {
+export async function getSlaveIdList(
+  deviceName: string,
+): Promise<Array<number>> {
   try {
     const data = await requestApi(DEVICE_API.SLAVE_ID_LIST, "post", {
       device_name: deviceName,
@@ -118,7 +131,7 @@ export async function getDeviceTable(
   pageSize: number,
   pointTypes: number[],
   orderBy: string | null = null,
-  orderDirection: string | null = null
+  orderDirection: string | null = null,
 ): Promise<Map<string, any>> {
   try {
     const data = await requestApi(DEVICE_API.TABLE, "post", {
@@ -176,7 +189,10 @@ export async function stopAutoRead(deviceName: string): Promise<boolean> {
   }
 }
 
-export async function manualRead(deviceName: string, interval: number = 0): Promise<any> {
+export async function manualRead(
+  deviceName: string,
+  interval: number = 0,
+): Promise<any> {
   try {
     const data = await requestApi(DEVICE_API.MANUAL_READ, "post", {
       device_name: deviceName,
@@ -189,7 +205,9 @@ export async function manualRead(deviceName: string, interval: number = 0): Prom
   }
 }
 
-export async function iec104Interrogation(deviceName: string): Promise<boolean> {
+export async function iec104Interrogation(
+  deviceName: string,
+): Promise<boolean> {
   try {
     const data = await requestApi(DEVICE_API.IEC104_INTERROGATION, "post", {
       device_name: deviceName,
@@ -204,7 +222,7 @@ export async function iec104Interrogation(deviceName: string): Promise<boolean> 
 // ===== 报文捕获 =====
 export async function getMessages(
   deviceName: string,
-  limit: number = 100
+  limit: number = 100,
 ): Promise<MessageRecord[]> {
   try {
     const data = await requestApi(DEVICE_API.MESSAGES, "post", {
@@ -218,7 +236,10 @@ export async function getMessages(
   }
 }
 
-export async function getMessageDetail(deviceName: string, sequenceId: number): Promise<MessageDetail> {
+export async function getMessageDetail(
+  deviceName: string,
+  sequenceId: number,
+): Promise<MessageDetail> {
   return await requestApi(DEVICE_API.MESSAGE_DETAIL, "post", {
     device_name: deviceName,
     sequence_id: sequenceId,
@@ -237,7 +258,9 @@ export async function clearMessages(deviceName: string): Promise<boolean> {
   }
 }
 
-export async function getAvgTime(deviceName: string): Promise<AvgTimeStats | null> {
+export async function getAvgTime(
+  deviceName: string,
+): Promise<AvgTimeStats | null> {
   try {
     const data = await requestApi(DEVICE_API.AVG_TIME, "post", {
       device_name: deviceName,
@@ -260,7 +283,8 @@ export interface IEC61850ConnectProgress {
   operation_id?: number;
   elapsed_seconds?: number;
   message?: string;
-  error_code?: "connection_failed" | "connection_exception" | "model_mismatch" | string;
+  error_code?:
+    "connection_failed" | "connection_exception" | "model_mismatch" | string;
 }
 
 export interface ParsedField {
@@ -336,12 +360,16 @@ export interface MessageDetail {
 }
 
 export async function getIEC61850ConnectProgress(
-  deviceName: string
+  deviceName: string,
 ): Promise<IEC61850ConnectProgress | null> {
   try {
-    const data = await requestApi(DEVICE_API.IEC61850_CONNECT_PROGRESS, "post", {
-      device_name: deviceName,
-    });
+    const data = await requestApi(
+      DEVICE_API.IEC61850_CONNECT_PROGRESS,
+      "post",
+      {
+        device_name: deviceName,
+      },
+    );
     return data;
   } catch (error) {
     console.error("Error getting IEC61850 connect progress:", error);
@@ -351,13 +379,16 @@ export async function getIEC61850ConnectProgress(
 
 // ===== IEC61850 模型加载/导入 =====
 
-export async function loadIEC61850Model(
-  deviceName: string
-): Promise<any> {
+export async function loadIEC61850Model(deviceName: string): Promise<any> {
   try {
-    const data = await requestApi(DEVICE_API.IEC61850_LOAD_MODEL, "post", {
-      device_name: deviceName,
-    }, 60000);
+    const data = await requestApi(
+      DEVICE_API.IEC61850_LOAD_MODEL,
+      "post",
+      {
+        device_name: deviceName,
+      },
+      60000,
+    );
     return data;
   } catch (error) {
     console.error("Error loading IEC61850 model:", error);
@@ -367,13 +398,18 @@ export async function loadIEC61850Model(
 
 export async function importIEC61850Model(
   deviceName: string,
-  icdPath: string
+  icdPath: string,
 ): Promise<boolean> {
   try {
-    const data = await requestApi(DEVICE_API.IEC61850_IMPORT_MODEL, "post", {
-      device_name: deviceName,
-      icd_path: icdPath,
-    }, 60000);
+    const data = await requestApi(
+      DEVICE_API.IEC61850_IMPORT_MODEL,
+      "post",
+      {
+        device_name: deviceName,
+        icd_path: icdPath,
+      },
+      60000,
+    );
     return data;
   } catch (error) {
     console.error("Error importing IEC61850 model:", error);
@@ -383,7 +419,7 @@ export async function importIEC61850Model(
 
 export async function discoverIEC61850Model(
   deviceName: string,
-  timeout?: number
+  timeout?: number,
 ): Promise<boolean> {
   try {
     const data = await requestApi(
@@ -392,7 +428,7 @@ export async function discoverIEC61850Model(
       {
         device_name: deviceName,
       },
-      timeout
+      timeout,
     );
     return data;
   } catch (error) {
@@ -402,12 +438,16 @@ export async function discoverIEC61850Model(
 }
 
 export async function checkIEC61850ModelCache(
-  deviceName: string
+  deviceName: string,
 ): Promise<{ cache_exists: boolean; cache_key: string }> {
   try {
-    const data = await requestApi(DEVICE_API.IEC61850_MODEL_CACHE_STATUS, "post", {
-      device_name: deviceName,
-    });
+    const data = await requestApi(
+      DEVICE_API.IEC61850_MODEL_CACHE_STATUS,
+      "post",
+      {
+        device_name: deviceName,
+      },
+    );
     return data;
   } catch (error) {
     console.error("Error checking IEC61850 model cache:", error);
@@ -416,12 +456,16 @@ export async function checkIEC61850ModelCache(
 }
 
 export async function loadIEC61850ModelFromCache(
-  deviceName: string
+  deviceName: string,
 ): Promise<boolean> {
   try {
-    const data = await requestApi(DEVICE_API.IEC61850_LOAD_MODEL_FROM_CACHE, "post", {
-      device_name: deviceName,
-    });
+    const data = await requestApi(
+      DEVICE_API.IEC61850_LOAD_MODEL_FROM_CACHE,
+      "post",
+      {
+        device_name: deviceName,
+      },
+    );
     return data;
   } catch (error) {
     console.error("Error loading IEC61850 model from cache:", error);
@@ -438,7 +482,7 @@ export async function exportModel(
   exportType: ExportModelType,
   fileHandle: FileSystemFileHandle | null = null,
   defaultFilename: string = "",
-  iedName: string = ""
+  iedName: string = "",
 ): Promise<void> {
   if (!defaultFilename) {
     const extMap: Record<ExportModelType, string> = {
@@ -457,7 +501,10 @@ export async function exportModel(
 
   let response: Response;
   try {
-    const baseURL = (import.meta.env.VUE_APP_API_BASE || "/").replace(/\/+$/, "");
+    const baseURL = (import.meta.env.VUE_APP_API_BASE || "/").replace(
+      /\/+$/,
+      "",
+    );
     const apiPath = DEVICE_API.EXPORT_MODEL.replace(/^\/+/, "");
     response = await fetch(`${baseURL}/${apiPath}`, {
       method: "POST",
@@ -538,7 +585,10 @@ export async function exportModel(
 
 // ===== 动态测点/从机管理 =====
 
-export async function addSlave(deviceName: string, slaveId: number): Promise<boolean> {
+export async function addSlave(
+  deviceName: string,
+  slaveId: number,
+): Promise<boolean> {
   try {
     const data = await requestApi(DEVICE_API.ADD_SLAVE, "post", {
       device_name: deviceName,
@@ -551,7 +601,10 @@ export async function addSlave(deviceName: string, slaveId: number): Promise<boo
   }
 }
 
-export async function deleteSlave(deviceName: string, slaveId: number): Promise<boolean> {
+export async function deleteSlave(
+  deviceName: string,
+  slaveId: number,
+): Promise<boolean> {
   try {
     const data = await requestApi(DEVICE_API.DELETE_SLAVE, "post", {
       device_name: deviceName,
@@ -567,7 +620,7 @@ export async function deleteSlave(deviceName: string, slaveId: number): Promise<
 export async function editSlave(
   deviceName: string,
   oldSlaveId: number,
-  newSlaveId: number
+  newSlaveId: number,
 ): Promise<boolean> {
   try {
     const data = await requestApi(DEVICE_API.EDIT_SLAVE, "post", {

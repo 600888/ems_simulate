@@ -69,6 +69,25 @@ class MessageFormatter:
     def __init__(self, device: Device) -> None:
         self._device = device
 
+    @staticmethod
+    def _extract_slave_id(raw_hex: str, protocol_type: ProtocolType) -> int | None:
+        """Extract the Modbus unit ID or IEC104 common address from one frame."""
+        try:
+            raw = bytes.fromhex(raw_hex)
+        except (TypeError, ValueError):
+            return None
+
+        if protocol_type in _MODBUS_TCP_TYPES:
+            return raw[6] if len(raw) >= 7 else None
+        if protocol_type in _MODBUS_RTU_TYPES:
+            return raw[0] if raw else None
+        if protocol_type in _IEC104_TYPES:
+            # Only I-format frames contain an ASDU and therefore a common address.
+            if len(raw) < 12 or raw[0] != 0x68 or raw[2] & 0x01:
+                return None
+            return int.from_bytes(raw[10:12], "little")
+        return None
+
     @property
     def _handler(self):
         """获取协议处理器"""
@@ -171,6 +190,8 @@ class MessageFormatter:
                     "raw_hex": raw_hex,
                     "description": description,
                     "length": length,
+                    "protocol_type": protocol_type.value,
+                    "slave_id": self._extract_slave_id(raw_hex, protocol_type),
                 }
             )
 

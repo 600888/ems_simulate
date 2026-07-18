@@ -155,14 +155,49 @@ def test_formatter_correlates_modbus_tcp_response_by_transaction_id():
             ]
         )
 
-    detail = MessageFormatter(Device()).get_message_detail(2)
+    formatter = MessageFormatter(Device())
+    messages = formatter.get_messages()
+    detail = formatter.get_message_detail(2)
 
+    assert [message["slave_id"] for message in messages] == [1, 1]
+    assert all(message["protocol_type"] == "ModbusTcpClient" for message in messages)
     assert detail is not None
     assert detail["correlation"]["request_sequence_id"] == 1
     assert [item["address"] for item in detail["objects"]] == [100, 101]
     assert detail["objects"][0]["point"]["name"] == "母线电压"
     assert detail["objects"][0]["decoded_value"] == 100
     assert detail["objects"][0]["engineering_value"] == 11.0
+
+
+def test_formatter_classifies_iec104_i_frames_by_common_address():
+    asdu = bytes.fromhex("2D010600020005000001")
+    i_frame = bytes((0x68, len(asdu) + 4, 0, 0, 0, 0)) + asdu
+    handler = SimpleNamespace(
+        get_captured_messages=lambda _limit: [
+            {
+                "sequence_id": 1,
+                "direction": "RX",
+                "data": "680407000000",
+                "timestamp": 1.0,
+                "time": "t1",
+                "length": 6,
+            },
+            {
+                "sequence_id": 2,
+                "direction": "RX",
+                "data": i_frame.hex(),
+                "timestamp": 2.0,
+                "time": "t2",
+                "length": len(i_frame),
+            },
+        ]
+    )
+    device = SimpleNamespace(protocol_handler=handler, protocol_type=ProtocolType.Iec104Server)
+
+    messages = MessageFormatter(device).get_messages()
+
+    assert [message["slave_id"] for message in messages] == [None, 2]
+    assert all(message["protocol_type"] == "Iec104Server" for message in messages)
 
 
 def test_iec104_integrated_total_decodes_bcr_flags():

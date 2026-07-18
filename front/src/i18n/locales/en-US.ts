@@ -119,7 +119,8 @@ export default {
     simStopped: "Simulation stopped for {name}",
     clientNoSim: "Client device does not support data simulation",
     cacheExistsTitle: "Model Cache Found",
-    cacheExistsMessage: "A cached model exists. Use cache to skip MMS discovery and load faster?",
+    cacheExistsMessage:
+      "A cached model exists. Use cache to skip MMS discovery and load faster?",
     useCache: "Use Cache",
     redoDiscovery: "Re-discover",
     fromCache: "Cache",
@@ -315,6 +316,11 @@ export default {
     clearMessages: "Clear Messages",
     byDescription: "By Description",
     byData: "By Data",
+    bySlave: "By Slave",
+    allSlaves: "All Slaves",
+    slave: "Slave",
+    slaveValue: "Slave {id}",
+    noSlaveAddress: "No Slave Address",
     searchDesc: "Search description...",
     searchData: "Search data...",
     time: "Time",
@@ -725,9 +731,11 @@ export default {
     zh: "简体中文",
     en: "English",
     storage: "Storage",
-    storageHint: "View and change where application data and IEC61850 files are stored.",
+    storageHint:
+      "View and change where application data and IEC61850 files are stored.",
     dataDirectory: "Data Directory",
-    dataDirectoryHint: "Storage location for the database and persistent device files",
+    dataDirectoryHint:
+      "Storage location for the database and persistent device files",
     pointTableCacheDirectory: "Point Table Cache",
     pointTableCacheDirectoryHint:
       "Storage location for imported Excel/CSV point tables and cache files",
@@ -735,7 +743,8 @@ export default {
     iec61850ModelCacheDirectoryHint:
       "Storage location for ICD, SCD, CID models and parsed cache files",
     iec61850FileCacheDirectory: "IEC61850 File Cache",
-    iec61850FileCacheDirectoryHint: "Local cache for files downloaded from remote IEDs",
+    iec61850FileCacheDirectoryHint:
+      "Local cache for files downloaded from remote IEDs",
     iec61850TempDirectory: "IEC61850 Temporary Directory",
     iec61850TempDirectoryHint:
       "Temporary files used for IEC61850 upload, download, and model export",
@@ -748,7 +757,8 @@ export default {
     directoryPickerWebHint:
       "Folder selection is unavailable in browser mode; enter the full path instead",
     directoryPickerFailed: "Failed to open the folder picker",
-    directoryOpenWebHint: "Opening local folders is only available in the desktop app",
+    directoryOpenWebHint:
+      "Opening local folders is only available in the desktop app",
     directoryOpenFailed:
       "Failed to open the folder; make sure it exists and is accessible",
     clearDirectory: "Clear Data",
