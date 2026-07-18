@@ -4,6 +4,8 @@ IEC104 协议处理器
 支持多 Station（多从站/多公共地址）
 """
 
+import asyncio
+import time
 from typing import Any
 
 import c104
@@ -69,9 +71,12 @@ class IEC104ServerHandler(ServerHandler):
         self._server: IEC104Server = IEC104Server(
             ip=ip,
             port=port,
-            connection_timeout=max(1, runtime.get("connection_timeout_ms", 10000) // 1000),
-            message_timeout=max(1, runtime.get("message_timeout_ms", 15000) // 1000),
-            keep_alive_interval=max(1, runtime.get("keep_alive_interval_ms", 20000) // 1000),
+            connection_timeout=runtime.get("t0_timeout_s", 3),
+            message_timeout=runtime.get("t1_timeout_s", 3),
+            confirm_interval=runtime.get("t2_timeout_s", 1),
+            keep_alive_interval=runtime.get("t3_interval_s", 20),
+            send_window_size=runtime.get("send_window_size", 12),
+            receive_window_size=runtime.get("receive_window_size", 8),
             max_connections=runtime.get("max_connections", 0),
             transport_security=build_transport_security(security),
             basic_tls_config=load_basic_tls_config(security),
@@ -305,6 +310,16 @@ class IEC104ClientHandler(ClientHandler):
         self._client = None
         self._log = log
         self._connect_timeout = 3.0
+        self._reconnect_initial_interval = 2.0
+        self._max_reconnect_interval = 30.0
+        self._max_reconnect_attempts = -1
+        self._reconnect_count = 0
+        self._last_reconnect_attempt = 0.0
+        self._loop = None
+        self._clock_sync_interval = 0
+        self._general_interrogation_interval = 0
+        self._counter_interrogation_interval = 0
+        self._maintenance_task = None
 
     def initialize(self, config: dict[str, Any]) -> None:
         """初始化 IEC104 客户端
@@ -322,13 +337,31 @@ class IEC104ClientHandler(ClientHandler):
         port = config.get("port", Config.IEC104_DEFAULT_PORT)
         runtime = config.get("runtime", {})
         security = config.get("security", {})
-        self._connect_timeout = runtime.get("connect_timeout_ms", 3000) / 1000
+        self._connect_timeout = runtime.get("t0_timeout_s", 3)
+        self._reconnect_initial_interval = runtime.get("reconnect_initial_interval_ms", 2000) / 1000
+        self._max_reconnect_interval = runtime.get("reconnect_max_interval_ms", 30000) / 1000
+        self._max_reconnect_attempts = runtime.get("reconnect_max_attempts", -1)
+        self._clock_sync_interval = runtime.get("clock_sync_interval_s", 0)
+        self._general_interrogation_interval = runtime.get("general_interrogation_interval_s", 0)
+        self._counter_interrogation_interval = runtime.get("counter_interrogation_interval_s", 0)
+
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = None
 
         from src.proto.iec104.tls import build_transport_security, load_basic_tls_config
 
         self._client = IEC104Client(
             ip=ip,
             port=port,
+            originator_address=runtime.get("originator_address", 0),
+            connection_timeout=runtime.get("t0_timeout_s", 3),
+            message_timeout=runtime.get("t1_timeout_s", 3),
+            confirm_interval=runtime.get("t2_timeout_s", 1),
+            keep_alive_interval=runtime.get("t3_interval_s", 20),
+            send_window_size=runtime.get("send_window_size", 12),
+            receive_window_size=runtime.get("receive_window_size", 8),
             transport_security=build_transport_security(security, peer_hostname=ip),
             basic_tls_config=load_basic_tls_config(security),
         )
@@ -340,12 +373,65 @@ class IEC104ClientHandler(ClientHandler):
 
     async def start(self) -> bool:
         """启动客户端（连接服务器）"""
-        return await self.connect()
+        self._loop = asyncio.get_running_loop()
+        connected = await self.connect()
+        self._start_maintenance_task()
+        return connected
 
     async def stop(self) -> bool:
         """停止客户端（断开连接）"""
+        await self._stop_maintenance_task()
         self.disconnect()
         return True
+
+    def _start_maintenance_task(self) -> None:
+        intervals = (
+            self._clock_sync_interval,
+            self._general_interrogation_interval,
+            self._counter_interrogation_interval,
+        )
+        if not any(interval > 0 for interval in intervals):
+            return
+        if self._maintenance_task and not self._maintenance_task.done():
+            return
+        self._maintenance_task = asyncio.create_task(self._maintenance_loop())
+
+    async def _stop_maintenance_task(self) -> None:
+        if not self._maintenance_task:
+            return
+        self._maintenance_task.cancel()
+        try:
+            await self._maintenance_task
+        except asyncio.CancelledError:
+            pass
+        self._maintenance_task = None
+
+    async def _maintenance_loop(self) -> None:
+        """按配置周期发送时钟同步、总召唤和累计量召唤命令。"""
+        now = time.monotonic()
+        next_clock_sync = now + self._clock_sync_interval if self._clock_sync_interval > 0 else None
+        next_interrogation = (
+            now + self._general_interrogation_interval if self._general_interrogation_interval > 0 else None
+        )
+        next_counter_interrogation = (
+            now + self._counter_interrogation_interval if self._counter_interrogation_interval > 0 else None
+        )
+
+        while True:
+            await asyncio.sleep(1)
+            if not self.is_running and not await self._try_reconnect():
+                continue
+
+            now = time.monotonic()
+            if next_clock_sync is not None and now >= next_clock_sync:
+                await asyncio.to_thread(self._client.send_clock_sync, None)
+                next_clock_sync = now + self._clock_sync_interval
+            if next_interrogation is not None and now >= next_interrogation:
+                await asyncio.to_thread(self._client.send_interrogation, None)
+                next_interrogation = now + self._general_interrogation_interval
+            if next_counter_interrogation is not None and now >= next_counter_interrogation:
+                await asyncio.to_thread(self._client.send_counter_interrogation, None)
+                next_counter_interrogation = now + self._counter_interrogation_interval
 
     async def connect(self) -> bool:
         """连接到 IEC104 服务器"""
@@ -353,9 +439,12 @@ class IEC104ClientHandler(ClientHandler):
             if self._client:
                 is_connected = await self._client.connect(timeout=self._connect_timeout)
                 self._is_running = is_connected
+                if is_connected:
+                    self._reconnect_count = 0
                 return is_connected
             return False
         except Exception as e:
+            self._is_running = False
             if self._log:
                 self._log.error(f"连接 IEC104 服务器失败: {e}")
             return False
@@ -365,6 +454,51 @@ class IEC104ClientHandler(ClientHandler):
         if self._client:
             self._client.disconnect()
             self._is_running = False
+
+    async def _try_reconnect(self) -> bool:
+        """按与 Modbus 相同的有界指数退避策略尝试重连。"""
+        now = time.monotonic()
+        if self._max_reconnect_attempts == 0:
+            return False
+        if self._max_reconnect_attempts > 0 and self._reconnect_count >= self._max_reconnect_attempts:
+            return False
+
+        min_interval = min(
+            self._reconnect_initial_interval * (2**self._reconnect_count),
+            self._max_reconnect_interval,
+        )
+        if now - self._last_reconnect_attempt < min_interval:
+            return False
+
+        self._last_reconnect_attempt = now
+        self._reconnect_count += 1
+        if self._log:
+            self._log.info(f"尝试重连 IEC104 服务器（第 {self._reconnect_count} 次，当前退避间隔 {min_interval:g} 秒）")
+
+        try:
+            self.disconnect()
+            connected = await self.connect()
+            if connected and self._log:
+                self._log.info("IEC104 客户端重连成功")
+            return connected
+        except Exception as e:
+            self._is_running = False
+            if self._log:
+                self._log.error(f"IEC104 客户端重连失败: {e}")
+            return False
+
+    def _try_reconnect_from_thread(self) -> bool:
+        """从数据工作线程将重连协程调度到客户端事件循环。"""
+        if not self._loop or not self._loop.is_running():
+            return False
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(self._try_reconnect(), self._loop)
+            return future.result(timeout=self._connect_timeout + 1)
+        except Exception as e:
+            if self._log:
+                self._log.debug(f"IEC104 跨线程重连失败: {e}")
+            return False
 
     @property
     def is_running(self) -> bool:
@@ -414,7 +548,9 @@ class IEC104ClientHandler(ClientHandler):
         需要通过系数换算为内部存储值，使得 real_value 正确。
         """
         # 检查客户端是否已连接（使用 is_running 属性实时检测）
-        if not self._client or not self.is_running:
+        if not self._client:
+            return None
+        if not self.is_running and not self._try_reconnect_from_thread():
             if self._log:
                 self._log.error("IEC104 客户端未连接")
             return None
@@ -475,7 +611,9 @@ class IEC104ClientHandler(ClientHandler):
         - 标度化类型: 使用 c104.Int16
         - 短浮点类型: 直接 float
         """
-        if not self._client or not self.is_running:
+        if not self._client:
+            return False
+        if not self.is_running and not self._try_reconnect_from_thread():
             return False
 
         common_address = self._get_station_for_point(point)
@@ -508,6 +646,8 @@ class IEC104ClientHandler(ClientHandler):
 
     async def read_value_async(self, point: BasePoint) -> Any:
         """异步读取测点值（读取本地缓存，不发送网络请求）"""
+        if not self._client or (not self.is_running and not await self._try_reconnect()):
+            return None
         return self.read_value(point)
 
     async def send_interrogation(self) -> bool:
@@ -519,7 +659,7 @@ class IEC104ClientHandler(ClientHandler):
         Returns:
             bool: 是否成功发送
         """
-        if not self._client or not self.is_running:
+        if not self._client or (not self.is_running and not await self._try_reconnect()):
             return False
         # 向所有站发送总召唤
         return self._client.send_interrogation(common_address=None)
@@ -536,7 +676,7 @@ class IEC104ClientHandler(ClientHandler):
         Returns:
             Any: 读取成功返回测点值，失败返回None
         """
-        if not self._client or not self.is_running:
+        if not self._client or (not self.is_running and not await self._try_reconnect()):
             if self._log:
                 self._log.error("IEC104 客户端未连接")
             return None
@@ -586,6 +726,8 @@ class IEC104ClientHandler(ClientHandler):
 
     async def write_value_async(self, point: BasePoint, value: Any) -> bool:
         """异步写入测点值"""
+        if not self._client or (not self.is_running and not await self._try_reconnect()):
+            return False
         return self.write_value(point, value)
 
     def add_points(self, points: list[BasePoint]) -> None:

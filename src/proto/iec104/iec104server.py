@@ -22,7 +22,10 @@ class IEC104Server:
         port=2404,
         connection_timeout: int = 10,
         message_timeout: int = 15,
+        confirm_interval: int = 10,
         keep_alive_interval: int = 20,
+        send_window_size: int = 12,
+        receive_window_size: int = 8,
         max_connections: int = 0,
         transport_security: c104.TransportSecurity | None = None,
         basic_tls_config: IEC104BasicTlsConfig | None = None,
@@ -54,7 +57,10 @@ class IEC104Server:
         )
         self.server.protocol_parameters.connection_timeout = connection_timeout
         self.server.protocol_parameters.message_timeout = message_timeout
+        self.server.protocol_parameters.confirm_interval = confirm_interval
         self.server.protocol_parameters.keep_alive_interval = keep_alive_interval
+        self.server.protocol_parameters.send_window_size = send_window_size
+        self.server.protocol_parameters.receive_window_size = receive_window_size
         self.server.max_connections = max_connections
         # 多 Station 支持：common_address -> c104.Station
         self.stations: dict[int, c104.Station] = {}

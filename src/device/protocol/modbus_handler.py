@@ -229,7 +229,7 @@ class ModbusClientHandler(ClientHandler):
         self._client = None
         self._log = log
         self._reconnect_initial_interval = 2.0
-        self._max_reconnect_attempts = 0
+        self._max_reconnect_attempts = -1
         self._command_timeout = 2.0
         self._loop = None  # 事件循环引用
         # 重连相关状态
@@ -257,7 +257,7 @@ class ModbusClientHandler(ClientHandler):
         self._command_timeout = runtime.get("command_timeout_ms", 2000) / 1000
         self._reconnect_initial_interval = runtime.get("reconnect_initial_interval_ms", 2000) / 1000
         self._max_reconnect_interval = runtime.get("reconnect_max_interval_ms", 30000) / 1000
-        self._max_reconnect_attempts = runtime.get("reconnect_max_attempts", 0)
+        self._max_reconnect_attempts = runtime.get("reconnect_max_attempts", -1)
         connect_timeout = runtime.get("connect_timeout_ms", 3000) / 1000
         retries = runtime.get("command_retry_count", 1)
 
@@ -352,7 +352,9 @@ class ModbusClientHandler(ClientHandler):
         """
         now = time.time()
         # 指数退避：2, 4, 8, 16, 30, 30, 30...
-        if self._max_reconnect_attempts and self._reconnect_count >= self._max_reconnect_attempts:
+        if self._max_reconnect_attempts == 0:
+            return False
+        if self._max_reconnect_attempts > 0 and self._reconnect_count >= self._max_reconnect_attempts:
             return False
         min_interval = min(
             self._reconnect_initial_interval * (2**self._reconnect_count),
@@ -398,7 +400,9 @@ class ModbusClientHandler(ClientHandler):
             bool: 重连是否成功
         """
         now = time.time()
-        if self._max_reconnect_attempts and self._reconnect_count >= self._max_reconnect_attempts:
+        if self._max_reconnect_attempts == 0:
+            return False
+        if self._max_reconnect_attempts > 0 and self._reconnect_count >= self._max_reconnect_attempts:
             return False
         min_interval = min(
             self._reconnect_initial_interval * (2**self._reconnect_count),

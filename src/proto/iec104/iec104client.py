@@ -22,6 +22,13 @@ class IEC104Client:
         self,
         ip: str = "127.0.0.1",
         port: int = 2404,
+        originator_address: int = 0,
+        connection_timeout: int = 10,
+        message_timeout: int = 15,
+        confirm_interval: int = 10,
+        keep_alive_interval: int = 20,
+        send_window_size: int = 12,
+        receive_window_size: int = 8,
         transport_security: c104.TransportSecurity | None = None,
         basic_tls_config: IEC104BasicTlsConfig | None = None,
     ):
@@ -38,11 +45,19 @@ class IEC104Client:
         connection_ip = "127.0.0.1" if self._tls_bridge else self.ip
         connection_port = self._tls_bridge.local_port if self._tls_bridge else self.port
         self.client = c104.Client(transport_security=transport_security)
+        self.client.originator_address = originator_address
         self.connection: c104.Connection = self.client.add_connection(
             ip=connection_ip,
             port=connection_port,
             init=c104.Init.INTERROGATION,  # 连接时触发全召唤
         )
+        self.connection.originator_address = originator_address
+        self.connection.protocol_parameters.connection_timeout = connection_timeout
+        self.connection.protocol_parameters.message_timeout = message_timeout
+        self.connection.protocol_parameters.confirm_interval = confirm_interval
+        self.connection.protocol_parameters.keep_alive_interval = keep_alive_interval
+        self.connection.protocol_parameters.send_window_size = send_window_size
+        self.connection.protocol_parameters.receive_window_size = receive_window_size
         # 多 Station 支持：common_address -> c104.Station
         self.stations: dict[int, c104.Station] = {}
         self.points: list[c104.Point] = []
@@ -208,6 +223,30 @@ class IEC104Client:
             return True
         except Exception as e:
             log.error(f"发送总召唤失败: {e}")
+            return False
+
+    def send_clock_sync(self, common_address: int | None = None) -> bool:
+        """向指定站或全部已注册站发送时钟同步命令。"""
+        if not self.is_connected:
+            return False
+        try:
+            addresses = [common_address] if common_address is not None else list(self.stations)
+            results = [self.connection.clock_sync(common_address=ca) for ca in addresses]
+            return all(results)
+        except Exception as e:
+            log.error(f"发送时钟同步命令失败: {e}")
+            return False
+
+    def send_counter_interrogation(self, common_address: int | None = None) -> bool:
+        """向指定站或全部已注册站发送累计量召唤命令。"""
+        if not self.is_connected:
+            return False
+        try:
+            addresses = [common_address] if common_address is not None else list(self.stations)
+            results = [self.connection.counter_interrogation(common_address=ca) for ca in addresses]
+            return all(results)
+        except Exception as e:
+            log.error(f"发送累计量召唤命令失败: {e}")
             return False
 
     def active_read_point(self, io_address: int, common_address: int = 1) -> float | None:

@@ -33,7 +33,9 @@
           :step="field.step || 100"
           style="width: 100%"
         >
-          <template #suffix>{{ field.unit }}</template>
+          <template v-if="field.unit" #suffix>
+            <span class="field-unit">{{ field.unit }}</span>
+          </template>
         </el-input-number>
         <div v-if="field.tip" class="field-tip">{{ field.tip }}</div>
       </el-form-item>
@@ -58,11 +60,41 @@
             :step="field.step || 100"
             style="width: 100%"
           >
-            <template #suffix>{{ field.unit }}</template>
+            <template v-if="field.unit" #suffix>
+              <span class="field-unit">{{ field.unit }}</span>
+            </template>
           </el-input-number>
           <div v-if="field.tip" class="field-tip">{{ field.tip }}</div>
         </el-form-item>
       </div>
+
+      <el-collapse
+        v-if="protocolSpecificFields.length"
+        v-model="expandedSections"
+        class="protocol-specific-settings"
+      >
+        <el-collapse-item title="IEC 104 专属参数" name="iec104-specific">
+          <el-form-item
+            v-for="field in protocolSpecificFields"
+            :key="field.key"
+            :label="field.label"
+            label-width="180px"
+          >
+            <el-input-number
+              v-model="modelValue.values[field.key]"
+              :min="field.min"
+              :max="field.max"
+              :step="field.step || 1"
+              style="width: 100%"
+            >
+              <template #suffix>
+                <span class="field-unit">{{ field.unit || "" }}</span>
+              </template>
+            </el-input-number>
+            <div v-if="field.tip" class="field-tip">{{ field.tip }}</div>
+          </el-form-item>
+        </el-collapse-item>
+      </el-collapse>
 
       <div class="reset-row">
         <el-button link type="primary" @click="resetDefaults"
@@ -74,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import type { ProtocolParamsConfig } from "@/types/channel";
 
 type FieldDefinition = {
@@ -86,6 +118,7 @@ type FieldDefinition = {
   step?: number;
   unit?: string;
   advanced?: boolean;
+  protocolSpecific?: boolean;
   tip?: string;
   default: number | boolean;
 };
@@ -95,6 +128,8 @@ const props = defineProps<{
   protocolType: number;
   connType: number;
 }>();
+
+const expandedSections = ref<string[]>(["iec104-specific"]);
 
 const modbusClient: FieldDefinition[] = [
   {
@@ -143,13 +178,13 @@ const modbusClient: FieldDefinition[] = [
   {
     key: "reconnect_max_attempts",
     label: "最大重连次数",
-    min: 0,
+    min: -1,
     max: 100,
     step: 1,
     unit: "次",
-    default: 0,
+    default: -1,
     advanced: true,
-    tip: "0 表示持续重连",
+    tip: "-1 表示持续重连，0 表示不自动重连",
   },
 ];
 
@@ -176,47 +211,148 @@ const modbusServer: FieldDefinition[] = [
   },
 ];
 
-const iec104Client: FieldDefinition[] = [
+const iec104LinkFields: FieldDefinition[] = [
   {
-    key: "connect_timeout_ms",
-    label: "连接超时",
+    key: "send_window_size",
+    label: "发送窗口（k）",
+    min: 1,
+    max: 32767,
+    step: 1,
+    unit: "帧",
+    default: 12,
+    protocolSpecific: true,
+  },
+  {
+    key: "receive_window_size",
+    label: "接收窗口（w）",
+    min: 1,
+    max: 32767,
+    step: 1,
+    unit: "帧",
+    default: 8,
+    tip: "w 不能大于 k",
+    protocolSpecific: true,
+  },
+  {
+    key: "t0_timeout_s",
+    label: "连接建立超时（t0）",
+    min: 1,
+    max: 3600,
+    step: 1,
+    unit: "s",
+    default: 3,
+    protocolSpecific: true,
+  },
+  {
+    key: "t1_timeout_s",
+    label: "报文确认超时（t1）",
+    min: 1,
+    max: 3600,
+    step: 1,
+    unit: "s",
+    default: 3,
+    protocolSpecific: true,
+  },
+  {
+    key: "t2_timeout_s",
+    label: "接收确认间隔（t2）",
+    min: 1,
+    max: 3600,
+    step: 1,
+    unit: "s",
+    default: 1,
+    tip: "t2 不能大于 t1",
+    protocolSpecific: true,
+  },
+  {
+    key: "t3_interval_s",
+    label: "空闲链路检测间隔（t3）",
+    min: 1,
+    max: 86400,
+    step: 1,
+    unit: "s",
+    default: 20,
+    protocolSpecific: true,
+  },
+];
+
+const iec104Client: FieldDefinition[] = [
+  ...iec104LinkFields,
+  {
+    key: "originator_address",
+    label: "源发站地址",
+    min: 0,
+    max: 255,
+    step: 1,
+    default: 0,
+    protocolSpecific: true,
+  },
+  {
+    key: "clock_sync_interval_s",
+    label: "时钟同步周期",
+    min: 0,
+    max: 86400,
+    step: 1,
+    unit: "s",
+    default: 0,
+    protocolSpecific: true,
+    tip: "0 表示不定时发送",
+  },
+  {
+    key: "general_interrogation_interval_s",
+    label: "总召唤命令间隔",
+    min: 0,
+    max: 86400,
+    step: 1,
+    unit: "s",
+    default: 0,
+    protocolSpecific: true,
+    tip: "0 表示不定时发送；连接建立时仍自动总召唤",
+  },
+  {
+    key: "counter_interrogation_interval_s",
+    label: "累计量召唤命令间隔",
+    min: 0,
+    max: 86400,
+    step: 1,
+    unit: "s",
+    default: 0,
+    protocolSpecific: true,
+    tip: "0 表示不定时发送",
+  },
+  {
+    key: "reconnect_initial_interval_ms",
+    label: "重连初始间隔",
     min: 100,
     max: 60000,
     unit: "ms",
-    default: 3000,
+    default: 2000,
+    advanced: true,
+  },
+  {
+    key: "reconnect_max_interval_ms",
+    label: "重连最大间隔",
+    min: 1000,
+    max: 300000,
+    unit: "ms",
+    default: 30000,
+    advanced: true,
+  },
+  {
+    key: "reconnect_max_attempts",
+    label: "最大重连次数",
+    min: -1,
+    max: 100,
+    step: 1,
+    unit: "次",
+    default: -1,
+    advanced: true,
+    tip: "-1 表示持续重连，0 表示不自动重连",
   },
 ];
 
 const iec104Server: FieldDefinition[] = [
-  {
-    key: "connection_timeout_ms",
-    label: "连接建立超时",
-    min: 1000,
-    max: 300000,
-    step: 1000,
-    unit: "ms",
-    default: 10000,
-  },
-  {
-    key: "message_timeout_ms",
-    label: "报文确认超时",
-    min: 1000,
-    max: 300000,
-    step: 1000,
-    unit: "ms",
-    default: 15000,
-    tip: "发送报文后超过该时间未收到确认，协议栈将关闭异常连接",
-  },
-  {
-    key: "keep_alive_interval_ms",
-    label: "空闲链路检测间隔",
-    min: 1000,
-    max: 3600000,
-    step: 1000,
-    unit: "ms",
-    default: 20000,
-    tip: "链路持续无通信时发送 TESTFR 检测客户端是否存活",
-  },
+  ...iec104LinkFields,
   {
     key: "max_connections",
     label: "最大客户端连接数",
@@ -307,10 +443,13 @@ const fields = computed<FieldDefinition[]>(() => {
 });
 
 const commonFields = computed(() =>
-  fields.value.filter((field) => !field.advanced),
+  fields.value.filter((field) => !field.advanced && !field.protocolSpecific),
 );
 const advancedFields = computed(() =>
-  fields.value.filter((field) => field.advanced),
+  fields.value.filter((field) => field.advanced && !field.protocolSpecific),
+);
+const protocolSpecificFields = computed(() =>
+  fields.value.filter((field) => field.protocolSpecific),
 );
 
 function resetDefaults() {
@@ -322,7 +461,10 @@ function resetDefaults() {
 
 watch(
   () => [props.protocolType, props.connType],
-  () => resetDefaults(),
+  () => {
+    expandedSections.value = ["iec104-specific"];
+    resetDefaults();
+  },
   { flush: "sync" },
 );
 
@@ -352,6 +494,15 @@ watch(
   color: var(--el-text-color-secondary);
   font-size: 12px;
 }
+.field-unit {
+  display: inline-block;
+  width: 28px;
+  text-align: left;
+}
+.protocol-params-form :deep(.el-input-number .el-input__inner) {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 .protocol-params-form :deep(.el-form-item__label) {
   white-space: nowrap;
 }
@@ -359,6 +510,19 @@ watch(
   margin-top: 18px;
   padding-top: 16px;
   border-top: 1px solid var(--el-border-color-lighter);
+}
+.protocol-specific-settings {
+  margin-top: 18px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+.protocol-specific-settings :deep(.el-collapse-item__header) {
+  padding: 0 18px;
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+.protocol-specific-settings :deep(.el-collapse-item__content) {
+  padding: 16px 0 4px;
 }
 .section-title {
   margin: 0 0 16px 18px;
