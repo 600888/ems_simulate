@@ -28,6 +28,7 @@ class DARef:
     sub_das: tuple[DARef, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
+        """把DARef转换为可序列化字典。"""
         result: dict[str, Any] = {
             "name": self.name,
             "path": self.path,
@@ -41,6 +42,7 @@ class DARef:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DARef:
+        """从字典恢复DARef，缺失字段使用模型默认值。"""
         sub_das = tuple(cls.from_dict(sd) for sd in data.get("subDataAttributes", []))
         return cls(
             name=data.get("name", ""),
@@ -52,6 +54,7 @@ class DARef:
         )
 
     def to_flat_dict(self) -> dict[str, Any]:
+        """把DARef转换为扁平字典。"""
         return {
             "name": self.name,
             "path": self.path,
@@ -62,9 +65,11 @@ class DARef:
 
     @property
     def is_leaf(self) -> bool:
+        """判断DARef是否处于LEAF。"""
         return not self.sub_das
 
     def iter_leaves(self) -> Iterator[DARef]:
+        """深度遍历当前数据属性，并逐个返回叶子属性。"""
         if self.is_leaf:
             yield self
         else:
@@ -83,6 +88,7 @@ class DORef:
     das: tuple[DARef, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
+        """把DORef转换为可序列化字典。"""
         return {
             "name": self.name,
             "ref": self.ref,
@@ -93,6 +99,7 @@ class DORef:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DORef:
+        """从字典恢复DORef，缺失字段使用模型默认值。"""
         das = tuple(DARef.from_dict(da) for da in data.get("dataAttributes", []))
         return cls(
             name=data.get("name", ""),
@@ -147,6 +154,7 @@ class DataSetRef:
     members: tuple[dict[str, str], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
+        """把DataSetRef转换为可序列化字典。"""
         return {
             "name": self.name,
             "ref": self.ref,
@@ -156,6 +164,7 @@ class DataSetRef:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DataSetRef:
+        """从字典恢复DataSetRef，缺失字段使用模型默认值。"""
         members = tuple(dict(m) if isinstance(m, dict) else {"name": m} for m in data.get("members", []))
         return cls(
             name=data.get("name", ""),
@@ -186,6 +195,7 @@ class RCBRef:
     opt_fields: int = 0x4F
 
     def to_dict(self) -> dict[str, Any]:
+        """把RCBRef转换为可序列化字典。"""
         result: dict[str, Any] = {
             "name": self.name,
             "ref": self.ref,
@@ -203,6 +213,7 @@ class RCBRef:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RCBRef:
+        """从字典恢复RCBRef，缺失字段使用模型默认值。"""
         return cls(
             name=data.get("name", ""),
             ref=data.get("ref", ""),
@@ -232,6 +243,7 @@ class GoCBRef:
     attempted_refs: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
+        """把GoCBRef转换为可序列化字典。"""
         return {
             "name": self.name,
             "ref": self.ref,
@@ -248,6 +260,7 @@ class GoCBRef:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GoCBRef:
+        """从字典恢复GoCBRef，缺失字段使用模型默认值。"""
         return cls(
             name=data.get("name", ""),
             ref=data.get("ref", ""),
@@ -276,6 +289,7 @@ class LNModel:
     gocb_list: tuple[GoCBRef, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
+        """把LNModel转换为可序列化字典。"""
         result: dict[str, Any] = {
             "name": self.name,
             "lnClass": self.ln_class,
@@ -293,6 +307,7 @@ class LNModel:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LNModel:
+        """从字典恢复LNModel，缺失字段使用模型默认值。"""
         dos = tuple(DORef.from_dict(do) for do in data.get("dataObjects", []))
         datasets = tuple(DataSetRef.from_dict(ds) for ds in data.get("dataSets", []))
         rcb_list = tuple(RCBRef.from_dict(rcb) for rcb in data.get("reportControlBlocks", []))
@@ -317,6 +332,7 @@ class LDModel:
     lns: tuple[LNModel, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
+        """把LDModel转换为可序列化字典。"""
         return {
             "name": self.name,
             "inst": self.inst,
@@ -325,6 +341,7 @@ class LDModel:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LDModel:
+        """从字典恢复LDModel，缺失字段使用模型默认值。"""
         lns = tuple(LNModel.from_dict(ln) for ln in data.get("logicalNodes", []))
         return cls(
             name=data.get("name", ""),
@@ -360,6 +377,7 @@ class IedModel:
     # ===== 序列化 =====
 
     def to_dict(self) -> dict[str, Any]:
+        """把IedModel转换为可序列化字典。"""
         result = {
             "host": self.host,
             "port": self.port,
@@ -374,6 +392,7 @@ class IedModel:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> IedModel:
+        """从字典恢复IedModel，缺失字段使用模型默认值。"""
         lds = tuple(LDModel.from_dict(ld) for ld in data.get("logicalDevices", []))
         # 使用文件中的预计算测点映射，避免从 LD 重新计算
         point_refs = data["_point_refs"]
@@ -389,6 +408,7 @@ class IedModel:
 
     @property
     def summary(self) -> dict[str, int]:
+        """返回IedModel当前的摘要。"""
         return {
             "totalLDs": len(self.lds),
             "totalLNs": sum(len(ld.lns) for ld in self.lds),
@@ -578,6 +598,7 @@ class IedModel:
     # ===== 遍历工具 =====
 
     def iter_dos(self) -> Iterator[tuple[LDModel, LNModel, DORef]]:
+        """遍历DOS。"""
         for ld in self.lds:
             for ln in ld.lns:
                 for do in ln.dos:
@@ -586,6 +607,7 @@ class IedModel:
     def iter_da_leaves(
         self,
     ) -> Iterator[tuple[LDModel, LNModel, DORef, DARef]]:
+        """遍历数据属性leaves。"""
         for ld in self.lds:
             for ln in ld.lns:
                 for do in ln.dos:

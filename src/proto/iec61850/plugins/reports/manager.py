@@ -101,10 +101,12 @@ class ReportManager:
 
     @property
     def model_changed(self) -> bool:
+        """返回ReportManager当前的模型变更标志。"""
         return self._model_changed
 
     @model_changed.setter
     def model_changed(self, value: bool):
+        """更新ReportManager的模型变更标志，使后续操作使用新值。"""
         self._model_changed = value
 
     def register_rcb(

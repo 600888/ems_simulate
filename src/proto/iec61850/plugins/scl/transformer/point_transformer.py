@@ -47,9 +47,11 @@ class PointTransformResult:
 
     @property
     def total(self) -> int:
+        """返回PointTransformResult当前的total。"""
         return len(self.yc_points) + len(self.yx_points) + len(self.yk_points) + len(self.yt_points)
 
     def to_count_tuple(self) -> tuple[int, int, int, int]:
+        """转换数量tuple。"""
         return (len(self.yc_points), len(self.yx_points), len(self.yk_points), len(self.yt_points))
 
 
@@ -57,6 +59,7 @@ class SclPointTransformer:
     """SCL 测点转换器 — SclDocument → 分类测点列表"""
 
     def __init__(self, doc: SclDocument):
+        """保存 SCL 文档与设备标识，用于把叶子数据属性转换为项目测点。"""
         self._doc = doc
         self._resolver = TypeResolver(doc)
 
@@ -168,6 +171,7 @@ class SclPointTransformer:
 
     @staticmethod
     def _add_point(result: PointTransformResult, point: PointData, category: PointCategory) -> None:
+        """添加测点。"""
         if category == PointCategory.YC:
             result.yc_points.append(point)
         elif category == PointCategory.YX:

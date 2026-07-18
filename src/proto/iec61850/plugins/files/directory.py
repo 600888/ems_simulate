@@ -20,6 +20,7 @@ class DirectoryBrowser:
     """远程 IED 文件目录浏览器"""
 
     def __init__(self, connection: Iec61850Connection):
+        """绑定客户端连接，供 IEC 61850 文件目录浏览操作复用。"""
         self._conn = connection
 
     # ===== 公共 API =====

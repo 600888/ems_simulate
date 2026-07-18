@@ -49,6 +49,7 @@ class SclReportTransformer:
     """SCL Report 转换器"""
 
     def __init__(self, doc: SclDocument):
+        """保存 SCL 文档与设备标识，用于把 ReportControl 转换为报告配置。"""
         self._doc = doc
 
     def transform(self) -> ReportTransformResult:
@@ -169,6 +170,7 @@ class SclReportTransformer:
 
 
 def _default_value_for_type(iec_type: str) -> Any:
+    """返回指定 IEC 数据类型在导入模型中的安全默认值。"""
     defaults = {
         "boolean": False,
         "integer": 0,

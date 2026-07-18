@@ -42,6 +42,7 @@ class PluginRegistry:
     """
 
     def __init__(self, auto_register: bool = True):
+        """创建插件注册表，并建立按名称查找插件的索引。"""
         self._plugins: dict[str, Iec61850Plugin] = {}
         self._factories: dict[str, type[Iec61850Plugin]] = {}
         if auto_register:

@@ -15,11 +15,18 @@ class ValidationRule(Protocol):
     """校验规则协议"""
 
     @property
-    def rule_id(self) -> str: ...
-    @property
-    def description(self) -> str: ...
+    def rule_id(self) -> str:
+        """返回ValidationRule当前的RULE标识。"""
+        ...
 
-    def validate(self, doc: SclDocument) -> ValidationResult: ...
+    @property
+    def description(self) -> str:
+        """返回ValidationRule当前的说明。"""
+        ...
+
+    def validate(self, doc: SclDocument) -> ValidationResult:
+        """按当前校验规则检查 SCL 文档，并返回发现的错误、警告和提示。"""
+        ...
 
 
 # 规则注册表

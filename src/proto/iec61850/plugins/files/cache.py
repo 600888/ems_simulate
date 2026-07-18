@@ -45,6 +45,7 @@ class CacheManager:
 
     @property
     def cache_dir(self) -> Path:
+        """返回CacheManager当前的缓存DIR。"""
         return self._cache_dir
 
     @property

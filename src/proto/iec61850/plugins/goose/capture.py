@@ -58,9 +58,11 @@ class CapturedPacket:
 
     @property
     def formatted_time(self) -> str:
+        """返回CapturedPacket当前的formattedTIME。"""
         return datetime.fromtimestamp(self.timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
     def to_dict(self) -> dict[str, Any]:
+        """把CapturedPacket转换为可序列化字典。"""
         return {
             "src_mac": self.src_mac,
             "dst_mac": self.dst_mac,
@@ -176,6 +178,7 @@ class GooseCaptureEngine:
     """
 
     def __init__(self, interface: str = "", max_packets: int = 500):
+        """保存网卡、过滤和回调配置，并初始化抓包线程控制状态。"""
         self.interface = interface
         self._max_packets = max_packets
         self._packets: deque[CapturedPacket] = deque(maxlen=max_packets)
@@ -252,6 +255,7 @@ class GooseCaptureEngine:
 
     @property
     def is_running(self) -> bool:
+        """判断GooseCaptureEngine是否处于运行状态。"""
         return self._is_running
 
     # ===== 数据访问 =====
@@ -349,7 +353,7 @@ class GooseCaptureEngine:
                     sock.close()
 
     def _capture_loop_scapy(self) -> bool:
-        """Capture Ethernet frames on Windows via Scapy/Npcap."""
+        """使用 Scapy 持续捕获 GOOSE 以太网帧，并把解析结果送入统一回调。"""
         try:
             from scapy.all import sniff
         except ImportError:

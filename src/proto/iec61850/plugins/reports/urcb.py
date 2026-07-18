@@ -34,7 +34,7 @@ class UrcbHandler:
 
     @staticmethod
     def _split_ref(rcb_ref: str) -> tuple[str, str] | None:
-        """Return (LD/LN, rcbName) from dot or dollar RCB refs."""
+        """拆分报告控制块引用，得到逻辑设备、逻辑节点和控制块名称。"""
         if not rcb_ref or "/" not in rcb_ref:
             return None
         ref = rcb_ref.replace("$", ".")
@@ -51,7 +51,7 @@ class UrcbHandler:
 
     @staticmethod
     def _normalize_ref(rcb_ref: str) -> str:
-        """Normalize URCB refs to libiec61850 get/set form: LD/LN.RP.rcbName."""
+        """统一 IEC 61850 对象引用的分隔符和功能约束表示，便于稳定匹配。"""
         parts = UrcbHandler._split_ref(rcb_ref)
         if not parts:
             return rcb_ref
@@ -60,7 +60,7 @@ class UrcbHandler:
 
     @staticmethod
     def _normalize_mms_ref(rcb_ref: str) -> str:
-        """Convert RCB ref to MMS report-handler form: LD/LN$RP$name."""
+        """把报告控制块引用转换为 MMS 变量访问所需的美元符格式。"""
         parts = UrcbHandler._split_ref(rcb_ref)
         if not parts:
             return rcb_ref
@@ -69,13 +69,14 @@ class UrcbHandler:
 
     @staticmethod
     def _strip_report_instance_suffix(name: str) -> str:
-        """Strip a RptEnabled instance suffix such as 01 from an RCB name."""
+        """移除报告实例后缀，恢复配置中使用的控制块基础引用。"""
         if len(name) > 2 and name[-2:].isdigit():
             return name[:-2]
         return name
 
     @staticmethod
     def _without_instance_suffix(rcb_ref: str) -> str:
+        """返回不含报告实例编号的控制块引用。"""
         parts = UrcbHandler._split_ref(rcb_ref)
         if not parts:
             return rcb_ref
@@ -87,7 +88,7 @@ class UrcbHandler:
 
     @staticmethod
     def _candidate_refs(rcb_ref: str) -> list[str]:
-        """Try the exact RCB name first, then the base name without instance suffix."""
+        """生成控制块引用的兼容候选形式，以适配不同服务端命名习惯。"""
         refs = []
         for candidate in (rcb_ref, UrcbHandler._without_instance_suffix(rcb_ref)):
             nref = UrcbHandler._normalize_ref(candidate)
@@ -97,10 +98,12 @@ class UrcbHandler:
 
     @staticmethod
     def _extract_error(result) -> int:
+        """从 pyiec61850 的多种返回结构中提取统一错误码。"""
         return (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
     @staticmethod
     def _gi_attribute_refs(rcb_ref: str) -> list[str]:
+        """生成报告控制块 GI 属性可能使用的 MMS 引用形式。"""
         refs = []
         candidates = (UrcbHandler._without_instance_suffix(rcb_ref), rcb_ref)
         for candidate in candidates:
@@ -115,6 +118,7 @@ class UrcbHandler:
 
     @staticmethod
     def _error_text(error) -> str:
+        """把底层 IED 错误码转换为便于诊断的文本。"""
         if isinstance(error, int):
             with contextlib.suppress(Exception):
                 return f"{error}({iec61850.IedClientError_toString(error)})"
@@ -122,7 +126,7 @@ class UrcbHandler:
 
     @staticmethod
     def _trigger_gi_write_object(conn, rcb_ref: str) -> bool:
-        """Trigger URCB GI by writing the RP/GI attribute directly."""
+        """通过写入 GI 属性触发总召，作为直接接口不可用时的兼容路径。"""
         fc_rp = getattr(iec61850, "IEC61850_FC_RP", None)
         if fc_rp is None:
             return False
@@ -154,7 +158,7 @@ class UrcbHandler:
 
     @staticmethod
     def _trigger_gi_direct(conn, rcb_ref: str) -> bool:
-        """Use libiec61850's dedicated GI API when available."""
+        """调用底层报告控制块接口触发总召，并返回统一错误码。"""
         # The synchronous binding can keep the GIL while the IED immediately
         # sends the GI report. The receive thread then waits for the GIL while
         # this thread waits for the MMS response, deadlocking the backend.
@@ -198,7 +202,7 @@ class UrcbHandler:
 
     @staticmethod
     def get_rcb_values(connection, rcb_ref: str) -> RCBInfo | None:
-        """Read URCB attributes, falling back from instance refs to the base RCB ref."""
+        """获取RCB值并返回结果。"""
         if not HAS_IEC61850:
             return None
         conn = connection.connection
@@ -237,12 +241,7 @@ class UrcbHandler:
 
     @staticmethod
     def set_rpt_id(connection, rcb_ref: str, rpt_id: str) -> bool:
-        """Write a unique RptId to one disabled URCB instance.
-
-        Unlike other URCB operations this deliberately has no base-name
-        fallback: writing the base RCB would make sibling instances share the
-        same RptId again.
-        """
+        """设置报告标识。"""
         if not HAS_IEC61850 or not rpt_id:
             return False
         conn = connection.connection
@@ -293,7 +292,7 @@ class UrcbHandler:
         opt_fields: OptFields | None = None,
         intg_period: int = 0,
     ) -> bool:
-        """Set URCB RptEna and related fields, with base-ref fallback for RptEnabled instances."""
+        """设置报告使能状态。"""
         if not HAS_IEC61850:
             return False
         conn = connection.connection
@@ -397,7 +396,7 @@ class UrcbHandler:
 
     @staticmethod
     def disable_direct(connection, rcb_ref: str) -> bool:
-        """Disable URCB by writing only RptEna=False."""
+        """停用直接操作。"""
         if not HAS_IEC61850:
             return False
         conn = connection.connection
@@ -439,7 +438,7 @@ class UrcbHandler:
 
     @staticmethod
     def trigger_gi(connection, rcb_ref: str) -> bool:
-        """Trigger URCB GI."""
+        """触发一次非缓存报告总召，并返回底层调用的统一结果。"""
         if not HAS_IEC61850:
             return False
         conn = connection.connection

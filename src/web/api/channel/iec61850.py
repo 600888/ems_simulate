@@ -17,7 +17,7 @@ router = APIRouter(tags=["channel"])
 
 
 def _format_goose_app_id(value: Any) -> str:
-    """Format APPID from normalized integers or raw hexadecimal SCL strings."""
+    """把 GOOSE APPID 规范化为前端展示和配置保存使用的十六进制文本。"""
     if value is None or value == "":
         return ""
     if isinstance(value, str):
@@ -33,7 +33,7 @@ def _format_goose_app_id(value: Any) -> str:
 
 
 def _normalize_dataset_ref(value: str) -> str:
-    """Normalize object-style ``LN.DataSet`` and MMS ``LN$DataSet`` refs."""
+    """规范化数据集引用。"""
     ref = str(value or "").strip()
     slash_index = ref.rfind("/")
     if slash_index < 0 or "$" in ref[slash_index:]:
@@ -45,6 +45,7 @@ def _normalize_dataset_ref(value: str) -> str:
 
 
 def _dataset_ref_aliases(value: str) -> tuple[str, ...]:
+    """生成数据集引用的点号、美元符等别名，用于匹配不同来源的配置。"""
     normalized = _normalize_dataset_ref(value)
     aliases = [normalized]
     slash_index = normalized.rfind("/")
@@ -230,18 +231,12 @@ _DIRECT_MMS_WRITE_FCS = frozenset({"SP", "SE", "SV", "CF", "DC", "SG", "BL", "EX
 
 
 def _is_control_value_address(address: str) -> bool:
+    """判断测点地址是否指向可执行控制值，而不是普通状态或测量属性。"""
     return str(address).endswith(_CONTROL_VALUE_SUFFIXES)
 
 
 def _resolve_control_write_code(device, point_code: str) -> str:
-    """Resolve FC=CO writes while preserving directly writable DA points.
-
-    A controllable DO commonly exposes both ``stVal`` (ST) and
-    ``Oper.ctlVal`` (CO). Older frontends submitted the displayed stVal code;
-    accept that request but execute the matching control entry. Set-point and
-    configuration attributes such as ``setMag`` (SP/SE) are direct MMS writes
-    and must not be redirected to a control object.
-    """
+    """根据目标控制属性和值选择 Web 接口返回的控制写入结果码。"""
     point = device.point_manager.get_point_by_code(point_code)
     if point is None:
         return point_code
@@ -369,7 +364,7 @@ def _build_iec61850_tree_from_model(
     offset: int = 0,
     limit: int | None = None,
 ) -> dict[str, Any]:
-    """Build a filtered model tree while materializing only the requested page."""
+    """把扁平 IED 模型组织成逻辑设备、逻辑节点、数据对象和数据属性树。"""
     if category and category != "DataModel":
         return {"items": [], "total": 0}
 
@@ -391,6 +386,7 @@ def _build_iec61850_tree_from_model(
     normalized_limit = None if limit is None else max(limit, 0)
 
     def resolved_mms_type(address: str, fallback: str = "MMS_UNKNOWN") -> str:
+        """优先采用请求中明确指定的 MMS 类型，否则从测点元数据推断。"""
         if registry is not None:
             getter = getattr(registry, "get_mms_type", None)
             if callable(getter):
@@ -642,6 +638,7 @@ def _build_iec61850_tree(
         return mms_type or fallback
 
     def _infer_tree_mms_type(path: str, *, is_struct: bool = False) -> str:
+        """根据树节点的已知类型和标准属性路径补齐 MMS 类型。"""
         if is_struct:
             return MmsType.STRUCTURE.value
         return infer_mms_type_from_path(path).value

@@ -29,10 +29,13 @@ class DatasetBatchReader(Protocol):
         fc_map: Mapping[str, str] | None,
         fallback,
         progress: Callable[[str, int, int, str], None] | None = None,
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, Any]:
+        """批量读取一组测点；优先利用数据集读取能力，失败项再交给单点读取兜底。"""
+        ...
 
 
 def _delete_mms_value(value) -> None:
+    """释放读取操作产生的 MmsValue，避免底层对象泄漏。"""
     if value is None:
         return
     try:
@@ -42,7 +45,7 @@ def _delete_mms_value(value) -> None:
 
 
 def _read_object_typed(conn, ref: str, fc_val) -> tuple[Any, MmsType]:
-    """Read once with readObject and convert according to the returned MMS type."""
+    """只调用一次 readObject，并依据返回的实际 MMS 类型转换结果。"""
     raw_value = None
     try:
         result = call_gil_safe(iec61850, "IedConnection_readObject", conn, ref, fc_val)
@@ -67,7 +70,7 @@ def _read_object_typed(conn, ref: str, fc_val) -> tuple[Any, MmsType]:
 
 
 def _convert_mms_object(value, mms_type: MmsType) -> Any:
-    """Convert one already-read MmsValue using its exact runtime type."""
+    """按 MmsValue 的实际类型转换标量、数组或结构体，不再发起额外网络读取。"""
     if mms_type is MmsType.BOOLEAN:
         return bool(iec61850.MmsValue_getBoolean(value))
     if mms_type is MmsType.BIT_STRING:
@@ -102,6 +105,7 @@ def _convert_mms_object(value, mms_type: MmsType) -> Any:
 
 class FloatReader:
     def read(self, conn, ref: str, fc_val) -> Any:
+        """使用浮点值读取器读取指定对象值，并转换为对应的 Python 类型。"""
         try:
             value, error = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
             if error == iec61850.IED_ERROR_OK:
@@ -112,11 +116,13 @@ class FloatReader:
         return None
 
     def read_batch(self, conn, items: list, results: dict) -> None:
+        """使用当前类型策略批量读取测点，并将成功值写入调用方提供的结果映射。"""
         _read_batch_with_strategy(self, conn, items, results)
 
 
 class BooleanReader:
     def read(self, conn, ref: str, fc_val) -> Any:
+        """使用布尔值读取器读取指定对象值，并转换为对应的 Python 类型。"""
         try:
             value, error = iec61850.IedConnection_readBooleanValue(conn, ref, fc_val)
             if error == iec61850.IED_ERROR_OK:
@@ -127,6 +133,7 @@ class BooleanReader:
         return None
 
     def read_batch(self, conn, items: list, results: dict) -> None:
+        """使用当前类型策略批量读取测点，并将成功值写入调用方提供的结果映射。"""
         _read_batch_with_strategy(self, conn, items, results)
 
 
@@ -134,9 +141,11 @@ class ObjectTypeReader:
     """Single-read MMS object strategy with runtime type validation."""
 
     def __init__(self, *accepted_types: MmsType):
+        """记录当前读取策略允许接受的 MMS 运行时类型集合。"""
         self.accepted_types = frozenset(accepted_types)
 
     def read_typed(self, conn, ref: str, fc_val) -> tuple[Any, MmsType]:
+        """读取一次对象值并返回实际 MMS 类型；类型不在允许集合中时丢弃该值。"""
         value, actual_type = _read_object_typed(conn, ref, fc_val)
         if self.accepted_types and actual_type not in self.accepted_types:
             if actual_type is not MmsType.DATA_ACCESS_ERROR:
@@ -148,34 +157,41 @@ class ObjectTypeReader:
         return value, actual_type
 
     def read(self, conn, ref: str, fc_val) -> Any:
+        """使用运行时类型读取器读取指定对象值，并转换为对应的 Python 类型。"""
         return self.read_typed(conn, ref, fc_val)[0]
 
     def read_batch(self, conn, items: list, results: dict) -> None:
+        """使用当前类型策略批量读取测点，并将成功值写入调用方提供的结果映射。"""
         _read_batch_with_strategy(self, conn, items, results)
 
 
 class IntegerReader(ObjectTypeReader):
     def __init__(self):
+        """创建仅接受 MMS INTEGER 类型的读取策略。"""
         super().__init__(MmsType.INTEGER)
 
 
 class UnsignedReader(ObjectTypeReader):
     def __init__(self):
+        """创建仅接受 MMS UNSIGNED 类型的读取策略。"""
         super().__init__(MmsType.UNSIGNED)
 
 
 class BitStringReader(ObjectTypeReader):
     def __init__(self):
+        """创建仅接受 MMS BIT STRING 类型的读取策略。"""
         super().__init__(MmsType.BIT_STRING)
 
 
 class StringReader(ObjectTypeReader):
     def __init__(self):
+        """创建兼容可见字符串、普通字符串、八位组串和对象标识符的读取策略。"""
         super().__init__(MmsType.VISIBLE_STRING, MmsType.STRING, MmsType.OCTET_STRING, MmsType.OBJ_ID)
 
 
 class TimestampReader(ObjectTypeReader):
     def __init__(self):
+        """创建兼容 UTC Time、Binary Time 和 Generalized Time 的读取策略。"""
         super().__init__(MmsType.UTC_TIME, MmsType.BINARY_TIME, MmsType.GENERALIZED_TIME)
 
 
@@ -183,10 +199,12 @@ class AutoDetectReader(ObjectTypeReader):
     """Unknown-type strategy: exactly one readObject call, never a type cascade."""
 
     def __init__(self):
+        """创建不限制预期类型、以服务端实际 MMS 类型为准的读取策略。"""
         super().__init__()
 
 
 def _read_batch_with_strategy(strategy, conn, items: list, results: dict) -> None:
+    """使用同一类型读取策略处理一批测点，仅把成功结果写入结果映射。"""
     for addr_str, ref, fc_val, _ in items:
         value = strategy.read(conn, ref, fc_val)
         if value is not None:
@@ -218,6 +236,7 @@ class Iec61850Reader:
     """Resolve FC/MMS metadata and execute a single type-specific read strategy."""
 
     def __init__(self, connection, registry=None, dataset_reader: DatasetBatchReader | None = None):
+        """绑定连接、测点注册表和可选数据集读取器，供单点及批量读取复用。"""
         self._connection = connection
         self._registry = registry
         self._dataset_reader = dataset_reader
@@ -227,6 +246,7 @@ class Iec61850Reader:
         self._dataset_reader = dataset_reader
 
     def read(self, address: str, fc: str = "", mms_type: str | MmsType = "") -> Any:
+        """使用MMS 数据读取器读取指定对象值，并转换为对应的 Python 类型。"""
         if not self._connection.ensure_connected():
             return None
 
@@ -246,6 +266,7 @@ class Iec61850Reader:
         return None
 
     def _read_once(self, address: str, ref: str, fc_val, mms_type: MmsType) -> Any:
+        """在当前底层连接上执行一次读取，不在本函数内部触发重连。"""
         strategy = READ_STRATEGIES.get(mms_type, READ_STRATEGIES[MmsType.UNKNOWN])
         with self._connection.native_operation() as conn:
             if conn is None:
@@ -321,6 +342,7 @@ class Iec61850Reader:
         return results
 
     def _build_ref(self, address: str) -> str:
+        """把项目测点地址转换为底层 IED 连接可识别的对象引用。"""
         if self._registry:
             ref = self._registry.get_ref(address)
             if ref:
@@ -344,6 +366,7 @@ class Iec61850Reader:
         return f"{self._connection.model_name}{self._connection.ld_name}/GGIO1.SPS_{safe_addr}.stVal"
 
     def _resolve_fc(self, address: str, fc: str = ""):
+        """优先采用调用方或注册表中的功能约束，缺失时再根据地址推断。"""
         if not fc and self._registry:
             fc = self._registry.get_fc(address)
         if not fc:
@@ -351,6 +374,7 @@ class Iec61850Reader:
         return self._connection.get_fc_value(fc)
 
     def _resolve_mms_type(self, address: str) -> MmsType:
+        """优先使用注册表已知类型，缺失时根据标准数据属性路径推断 MMS 类型。"""
         if self._registry:
             get_mms_type = getattr(self._registry, "get_mms_type", None)
             raw_type = get_mms_type(address) if callable(get_mms_type) else ""
@@ -363,6 +387,7 @@ class Iec61850Reader:
         return mms_type_from_iec_type(infer_iec_type_from_address(address))
 
     def _cache_runtime_type(self, address: str, mms_type: MmsType) -> None:
+        """把在线读取确认的 MMS 类型写回测点注册表，供后续读取直接选择正确策略。"""
         if not self._registry:
             return
         set_mms_type = getattr(self._registry, "set_mms_type", None)

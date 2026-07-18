@@ -74,6 +74,7 @@ class ReportTreeNode:
     children: list[ReportTreeNode] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
+        """把ReportTreeNode转换为可序列化字典。"""
         return {
             "id": self.id,
             "label": self.label,
@@ -98,6 +99,7 @@ class ParsedReportRef:
 
     @property
     def do_ref(self) -> str:
+        """返回ParsedReportRef当前的数据对象引用。"""
         return f"{self.ld}/{self.ln}.{self.do_name}"
 
 
@@ -105,6 +107,7 @@ class ReportTreeBuilder:
     """Build a report value tree from one cached report entry."""
 
     def build(self, entry: dict[str, Any]) -> list[dict[str, Any]]:
+        """构建报告树构建器并返回构建结果。"""
         values = entry.get("data_values") or {}
         reasons = entry.get("reason_codes") or {}
         if not isinstance(values, dict):
@@ -160,6 +163,7 @@ class ReportTreeBuilder:
         reason: str,
         raw_ref: str,
     ) -> None:
+        """追加数据属性路径。"""
         structured_value = parse_structured_value(value)
         if self._is_standard_do_structure(structured_value):
             self._append_standard_do_structure(
@@ -200,14 +204,7 @@ class ReportTreeBuilder:
 
     @staticmethod
     def _is_standard_do_structure(value: Any) -> bool:
-        """Return whether value looks like a common CDC ``value/q/t`` structure.
-
-        Some devices return an entire MMS structure even when the DataSet member
-        reference points at a leaf DA.  The most common layouts are
-        ``[[mag], q, t]`` for measured values and ``[stVal, q, t]`` for status
-        values.  Requiring a nested analogue value or a boolean status keeps
-        arbitrary numeric arrays from being mislabeled as IEC 61850 fields.
-        """
+        """判断数据对象是否属于需要按标准结构展开的品质、时标等复合类型。"""
         if not isinstance(value, (list, tuple)) or len(value) < 3:
             return False
         primary = value[0]
@@ -226,7 +223,7 @@ class ReportTreeBuilder:
         reason: str,
         raw_ref: str,
     ) -> None:
-        """Expand common CDC values into named DA/BDA nodes."""
+        """追加标准数据对象structure。"""
         fc = parsed.fc or None
         primary = value[0]
 
@@ -306,6 +303,7 @@ class ReportTreeBuilder:
             extra_node.value = stringify_value(item)
 
     def _decorate_quality_node(self, node: ReportTreeNode, value: Any) -> None:
+        """为报告树中的品质节点补充有效性、来源和详细位标志。"""
         decoded = decode_quality(value)
         if decoded is None:
             node.value = stringify_value(value)
@@ -365,6 +363,7 @@ class ReportTreeBuilder:
         ]
 
     def _decorate_timestamp_node(self, node: ReportTreeNode, value: Any) -> None:
+        """为报告树中的时标节点补充 UTC 毫秒值和可读时间。"""
         decoded = decode_timestamp(value)
         if decoded is None:
             node.value = stringify_value(value)
@@ -413,6 +412,7 @@ class ReportTreeBuilder:
         label: str,
         node_type: str,
     ) -> ReportTreeNode:
+        """获取子节点并返回结果。"""
         if node_id not in roots:
             roots[node_id] = ReportTreeNode(id=node_id, label=label, node_type=node_type)
         return roots[node_id]
@@ -427,6 +427,7 @@ class ReportTreeBuilder:
         fc: str | None = None,
         raw_ref: str | None = None,
     ) -> ReportTreeNode:
+        """获取子节点BY标识并返回结果。"""
         for child in parent.children:
             if child.id == node_id:
                 if fc and not child.fc:
@@ -447,6 +448,7 @@ class ReportTreeBuilder:
 
     @staticmethod
     def _reason_for_ref(reasons: Any, ref: str) -> str:
+        """查找指定数据引用对应的报告包含原因。"""
         if not isinstance(reasons, dict):
             return ""
         reason = reasons.get(ref)
@@ -464,7 +466,7 @@ def select_report_entry(
     entry_key: str | None,
     latest: bool,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    """Select one cached report entry and return (entry, summary)."""
+    """选择报告条目并返回匹配项。"""
     if not data:
         return None, None
 
@@ -480,7 +482,7 @@ def select_report_entry(
 
 
 def parse_report_ref(raw_ref: str) -> ParsedReportRef | None:
-    """Parse common IEC 61850 report value reference forms."""
+    """解析报告引用并返回结构化结果。"""
     if not raw_ref or raw_ref.startswith("data[") or "/" not in raw_ref:
         return None
 
@@ -493,6 +495,7 @@ def parse_report_ref(raw_ref: str) -> ParsedReportRef | None:
 
 
 def _parse_dollar_ref(raw_ref: str) -> ParsedReportRef | None:
+    """解析美元符格式的数据引用，提取逻辑设备、逻辑节点、功能约束和路径。"""
     ld, rest = raw_ref.split("/", 1)
     tokens = [token for token in rest.split("$") if token]
     if len(tokens) < 3:
@@ -518,6 +521,7 @@ def _parse_dollar_ref(raw_ref: str) -> ParsedReportRef | None:
 
 
 def _parse_dot_ref(raw_ref: str) -> ParsedReportRef | None:
+    """解析点号格式的数据引用，补齐构建报告树所需的层级信息。"""
     ld, rest = raw_ref.split("/", 1)
     parts = [part for part in rest.split(".") if part]
     if len(parts) < 2:
@@ -543,7 +547,7 @@ def _parse_dot_ref(raw_ref: str) -> ParsedReportRef | None:
 
 
 def decode_quality(value: Any) -> dict[str, Any] | None:
-    """Decode IEC 61850 Quality packed bits or quality-like dictionaries."""
+    """解析品质并返回字段含义。"""
     packed = _quality_packed_value(value)
     if packed is None:
         return None
@@ -567,6 +571,7 @@ def decode_quality(value: Any) -> dict[str, Any] | None:
 
 
 def _quality_packed_value(value: Any) -> int | None:
+    """把结构化品质字段重新打包为 IEC 61850 Quality 位串整数。"""
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
@@ -603,7 +608,7 @@ def _quality_packed_value(value: Any) -> int | None:
 
 
 def decode_timestamp(value: Any) -> dict[str, Any] | None:
-    """Decode timestamps represented as Unix milliseconds."""
+    """解析时标并返回字段含义。"""
     ms = _timestamp_ms(value)
     if ms is None:
         return None
@@ -624,6 +629,7 @@ def decode_timestamp(value: Any) -> dict[str, Any] | None:
 
 
 def _timestamp_ms(value: Any) -> int | None:
+    """从报告时间字段中提取 UTC 毫秒时间戳。"""
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
@@ -640,6 +646,7 @@ def _timestamp_ms(value: Any) -> int | None:
 
 
 def stringify_value(value: Any) -> Any:
+    """格式化值。"""
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     # Legacy cache entries can still contain a SWIG MmsValue. Use the runtime
@@ -659,12 +666,7 @@ def stringify_value(value: Any) -> Any:
 
 
 def parse_structured_value(value: Any) -> Any:
-    """Convert a serialized MMS aggregate into safe Python containers.
-
-    ``MmsValue_toString`` commonly returns structures such as
-    ``[[43.0], 0.0, 0.0]``.  ``literal_eval`` accepts only Python literals, so
-    the display layer can recover the hierarchy without evaluating code.
-    """
+    """解析结构化值并返回结构化结果。"""
     if isinstance(value, (list, tuple, dict)):
         return value
     if not isinstance(value, str):
@@ -684,7 +686,7 @@ def parse_structured_value(value: Any) -> Any:
 
 
 def make_entry_summary(entry: dict[str, Any], index: int) -> dict[str, Any]:
-    """Create a stable frontend key for a cached report entry."""
+    """生成条目摘要。"""
     received_at = str(entry.get("received_at") or "")
     seq_num = entry.get("seq_num")
     rpt_id = str(entry.get("rpt_id") or "")

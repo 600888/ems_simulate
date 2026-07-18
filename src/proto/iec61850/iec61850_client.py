@@ -60,6 +60,7 @@ class IEC61850Client:
         ld_name: str = "GenericLD",
         timeouts: Iec61850Timeouts | None = None,
     ):
+        """装配连接、读写、模型发现与插件组件，形成统一的 IEC 61850 客户端入口。"""
         if not HAS_IEC61850:
             raise RuntimeError("pyiec61850 未安装，无法创建 IEC 61850 客户端")
 
@@ -143,6 +144,7 @@ class IEC61850Client:
 
     @_discovered_datasets.setter
     def _discovered_datasets(self, value):
+        """更新IEC 61850 客户端的已发现的数据集，使后续操作使用新值。"""
         self._registry.discovered_datasets = value
 
     # ===== 连接管理 (委托给 Iec61850Connection) =====
@@ -183,6 +185,7 @@ class IEC61850Client:
 
     @property
     def is_connected(self) -> bool:
+        """判断IEC 61850 客户端是否处于连接状态。"""
         return self._conn.is_connected
 
     # ===== 测点管理 (委托给 PointRegistry) =====

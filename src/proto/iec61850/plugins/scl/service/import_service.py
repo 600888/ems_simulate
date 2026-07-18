@@ -38,6 +38,7 @@ class SclImportResult:
 
     @property
     def is_valid(self) -> bool:
+        """判断SclImportResult是否处于有效状态。"""
         return self.validation.is_valid
 
     def to_dict(self) -> dict[str, Any]:
@@ -118,6 +119,7 @@ class SclImportService:
     """
 
     def __init__(self, container: SclServiceContainer | None = None):
+        """装配 SCL 解析、校验、点表转换和服务端模型构建组件。"""
         self._container = container or SclServiceContainer()
 
     def import_file(self, file_path: str, *, validate: bool = True) -> SclImportResult:

@@ -48,6 +48,7 @@ class DataModelsPlugin:
     """
 
     def __init__(self):
+        """保存插件宿主引用；协议能力在 initialize 阶段装配，在 shutdown 阶段统一释放。"""
         self._connection = None
         self._registry = None
         self._client = None
@@ -55,13 +56,16 @@ class DataModelsPlugin:
 
     @property
     def name(self) -> str:
+        """返回DataModelsPlugin当前的名称。"""
         return "datamodels"
 
     @property
     def available(self) -> bool:
+        """返回DataModelsPlugin当前的可用状态。"""
         return HAS_IEC61850
 
     def initialize(self, connection: Any, **kwargs) -> None:
+        """装配依赖并开放插件能力。"""
         self._connection = connection
         self._registry = kwargs.get("registry")
         self._client = kwargs.get("client")
@@ -69,6 +73,7 @@ class DataModelsPlugin:
         log.info("DataModels 插件已初始化")
 
     def shutdown(self) -> None:
+        """停止插件任务并释放其持有的资源。"""
         self._connection = None
         self._registry = None
         self._client = None
@@ -397,13 +402,7 @@ class DataModelsPlugin:
         description_names: dict[str, tuple[str, ...]],
         chunk_size: int = 256,
     ) -> dict[str, str]:
-        """Read DO descriptions with one MMS request per domain/chunk.
-
-        ``IedConnection_readStringValue`` incurs a full request/response for
-        every DO. Large models can contain thousands of dU attributes, so use
-        MMS ReadMultipleVariables for the standard DC form and leave unusual
-        CF/type combinations to the caller's single-value fallback.
-        """
+        """批量读取 DU 功能约束下的描述属性，减少模型构建阶段的逐点请求。"""
         if not description_names or not self._connection or not self._connection.is_connected:
             return {}
 

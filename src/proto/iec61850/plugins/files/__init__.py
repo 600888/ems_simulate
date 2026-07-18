@@ -40,6 +40,7 @@ class FilesPlugin:
     """
 
     def __init__(self):
+        """保存插件宿主引用；协议能力在 initialize 阶段装配，在 shutdown 阶段统一释放。"""
         self._connection: Iec61850Connection | None = None
         self._browser: DirectoryBrowser | None = None
         self._transfer: FileTransfer | None = None
@@ -50,13 +51,16 @@ class FilesPlugin:
 
     @property
     def name(self) -> str:
+        """返回FilesPlugin当前的名称。"""
         return "files"
 
     @property
     def available(self) -> bool:
+        """返回FilesPlugin当前的可用状态。"""
         return HAS_IEC61850
 
     def initialize(self, connection: Any, **kwargs) -> None:
+        """装配依赖并开放插件能力。"""
         if self._initialized:
             return
         self._connection = connection

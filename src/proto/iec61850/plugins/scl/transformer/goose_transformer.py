@@ -124,6 +124,7 @@ class GseControlInfo:
 
     @staticmethod
     def _parse_app_id(val: str) -> int:
+        """解析 SCL 中的 APP标识 元素并构建对应模型对象。"""
         if not val:
             return 0x0001
         try:
@@ -135,6 +136,7 @@ class GseControlInfo:
 
     @staticmethod
     def _parse_mac(mac_str: str) -> list[int] | None:
+        """解析 SCL 中的 MAC 元素并构建对应模型对象。"""
         parts = re.split(r"[-:]", mac_str.strip())
         if len(parts) != 6:
             return None
@@ -157,6 +159,7 @@ class SclGooseTransformer:
     """SCL GOOSE 转换器"""
 
     def __init__(self, doc: SclDocument):
+        """保存 SCL 文档与设备作用域，用于生成 GOOSE 发布和订阅配置。"""
         self._doc = doc
 
     def transform(self) -> GooseTransformResult:

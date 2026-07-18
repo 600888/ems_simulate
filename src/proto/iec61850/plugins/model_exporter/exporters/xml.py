@@ -14,4 +14,5 @@ class XmlExporter:
     """将 IedModel 导出为非 SCL 的通用 XML 树。"""
 
     def export(self, model: IedModel, output_path: str, **kwargs) -> str:
+        """导出XmlExporter。"""
         return IcdExporter().export_xml(model, output_path, **kwargs)

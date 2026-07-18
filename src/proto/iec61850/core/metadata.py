@@ -65,13 +65,16 @@ class QualityInfo:
 
     @property
     def is_valid(self) -> bool:
+        """判断QualityInfo是否处于有效状态。"""
         return self.validity is not None and self.validity == 0 and self.source != 1 and self.test is not True
 
     @property
     def is_readable(self) -> bool:
+        """判断QualityInfo是否处于可读状态。"""
         return self.raw_packed is not None or self.validity is not None
 
     def to_dict(self) -> dict[str, int | bool | None]:
+        """把QualityInfo转换为可序列化字典。"""
         return {
             "validity": self.validity,
             "detailQuality": self.detail_quality,
@@ -82,6 +85,7 @@ class QualityInfo:
 
     @classmethod
     def empty(cls) -> QualityInfo:
+        """返回字段均处于未知状态的空元数据对象，用于读取失败时保持返回结构稳定。"""
         return cls()
 
 
@@ -111,9 +115,11 @@ class TimestampInfo:
 
     @property
     def is_readable(self) -> bool:
+        """判断TimestampInfo是否处于可读状态。"""
         return self.unix_timestamp_ms is not None or self.seconds is not None
 
     def to_dict(self) -> dict[str, int | bool | None]:
+        """把TimestampInfo转换为可序列化字典。"""
         return {
             "seconds": self.seconds,
             "fraction": self.fraction,
@@ -126,6 +132,7 @@ class TimestampInfo:
 
     @classmethod
     def empty(cls) -> TimestampInfo:
+        """返回字段均处于未知状态的空元数据对象，用于读取失败时保持返回结构稳定。"""
         return cls()
 
 
@@ -138,9 +145,11 @@ class MetadataInfo:
 
     @property
     def is_readable(self) -> bool:
+        """判断MetadataInfo是否处于可读状态。"""
         return self.quality.is_readable or self.timestamp.is_readable
 
     def to_dict(self) -> dict:
+        """把MetadataInfo转换为可序列化字典。"""
         return {
             "quality": self.quality.to_dict(),
             "timestamp": self.timestamp.to_dict(),
@@ -266,6 +275,7 @@ class MetadataReader:
         return TimestampInfo.empty()
 
     def _fc_candidates(self, fc: str) -> tuple[str, ...]:
+        """生成元数据读取可尝试的功能约束顺序，并优先使用测点已登记的功能约束。"""
         primary = (fc or self.DEFAULT_FC).upper()
         if primary == "MX":
             return ("MX", "ST")
@@ -274,6 +284,7 @@ class MetadataReader:
         return (primary,)
 
     def _log_data_access_error(self, label: str, ref: str, fc: str, mms_value, value_type: int) -> bool:
+        """按对象引用和功能约束记录一次数据访问错误，避免重复日志刷屏。"""
         if value_type != getattr(iec61850, "MMS_DATA_ACCESS_ERROR", 15):
             return False
         error_code = None
@@ -289,6 +300,7 @@ class MetadataReader:
 
     @staticmethod
     def _delete_mms_value(mms_value) -> None:
+        """释放读取操作产生的 MmsValue，避免底层对象泄漏。"""
         if mms_value is None:
             return
         try:
@@ -322,6 +334,7 @@ class MetadataReader:
         *,
         fc: str = "",
     ) -> MetadataInfo:
+        """使用指定功能约束读取一次品质或时标元数据，并返回解析结果与错误码。"""
         q_info = self.read_quality(connection, do_ref, fc=fc)
         t_info = self.read_timestamp(connection, do_ref, fc=fc)
         return MetadataInfo(quality=q_info, timestamp=t_info)

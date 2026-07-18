@@ -42,6 +42,7 @@ class ReportsPlugin:
     """
 
     def __init__(self):
+        """保存插件宿主引用；协议能力在 initialize 阶段装配，在 shutdown 阶段统一释放。"""
         self._connection = None
         self._browse_connection = None
         self._registry = None
@@ -55,10 +56,12 @@ class ReportsPlugin:
 
     @property
     def name(self) -> str:
+        """返回ReportsPlugin当前的名称。"""
         return "reports"
 
     @property
     def available(self) -> bool:
+        """返回ReportsPlugin当前的可用状态。"""
         return HAS_IEC61850
 
     def initialize(self, connection: Any, **kwargs) -> None:
@@ -630,6 +633,7 @@ class ReportsPlugin:
         opt_fields: dict[str, bool] | None = None,
         on_report: Callable[[ReportDataEntry], None] | None = None,
     ) -> bool:
+        """应用配置。"""
         if not self._connection or not self._connection.is_connected:
             log.warning(f"应用报告配置失败: 连接不可用, ref={rcb_ref}")
             return False
@@ -739,7 +743,7 @@ class ReportsPlugin:
         on_report: Callable[[ReportDataEntry], None] | None = None,
         rcb_detail: dict[str, Any] | None = None,
     ) -> bool:
-        """Enable a report and install its callback before RptEna=True."""
+        """启用报告。"""
         rcb_type = self._infer_rcb_type(rcb_ref)
 
         # 读取 RCB 的 RptId, 用于报告回调匹配。
@@ -861,7 +865,7 @@ class ReportsPlugin:
 
     @staticmethod
     def _derive_instance_rpt_id(rcb_ref: str, rpt_id: str) -> str:
-        """Derive the runtime RptId from an RptEnabled instance name."""
+        """推导实例报告标识。"""
         normalized_ref = (rcb_ref or "").replace("$", ".")
         rcb_name = normalized_ref.rsplit(".", 1)[-1]
         if not rcb_name:
@@ -877,7 +881,7 @@ class ReportsPlugin:
         return rpt_id if rpt_id.endswith(suffix) else f"{rpt_id}{suffix}"
 
     def _disable_report(self, rcb_ref: str) -> bool:
-        """Disable a report and remove its callback subscription."""
+        """停用报告。"""
         rcb_type = self._infer_rcb_type(rcb_ref)
         try:
             if rcb_type == "BRCB":
@@ -1017,7 +1021,7 @@ class ReportsPlugin:
         return ReportCallbackHandler.get_cache_state(rcb_ref, self._connection)
 
     def wait_for_report_after(self, rcb_ref: str, after_uid: int, timeout: float = 3.0) -> bool:
-        """Wait for the GI response to finish parsing and enter the cache."""
+        """等待FOR报告after并返回等待结果。"""
         return ReportCallbackHandler.wait_for_cache_update(
             rcb_ref,
             after_uid,

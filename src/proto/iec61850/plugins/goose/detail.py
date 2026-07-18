@@ -18,6 +18,7 @@ _FC_SEGMENT = re.compile(r"\$(ST|MX|CO|SP|SG|SE|CF|DC|EX|SV|BL|OR)\$", re.IGNORE
 
 
 def _normalize_ref(value: Any) -> str:
+    """统一 IEC 61850 对象引用的分隔符和功能约束表示，便于稳定匹配。"""
     text = str(value or "").strip().replace("\\", "/")
     text = _FC_SEGMENT.sub(".", text)
     text = text.replace("$", ".").replace("..", ".")
@@ -27,6 +28,7 @@ def _normalize_ref(value: Any) -> str:
 def _load_channel_metadata(
     channel_id: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """加载channel元数据。"""
     now = time.monotonic()
     with _CACHE_LOCK:
         cached = _METADATA_CACHE.get(channel_id)
@@ -52,6 +54,7 @@ def _find_dataset_entries(
     data_set_ref: str,
     app_id: int | None,
 ) -> list[dict[str, Any]]:
+    """查找数据集条目并返回匹配结果。"""
     normalized_cb = _normalize_ref(go_cb_ref)
     normalized_dataset = _normalize_ref(data_set_ref)
     dataset_fallback: list[dict[str, Any]] = []
@@ -81,6 +84,7 @@ def _find_dataset_entries(
 
 
 def _find_point(points: list[dict[str, Any]], entry: dict[str, Any]) -> dict[str, Any] | None:
+    """查找测点并返回匹配结果。"""
     reference = _normalize_ref(entry.get("name") or entry.get("ref") or entry.get("fcda_ref"))
     if not reference:
         return None
@@ -101,7 +105,7 @@ def _find_point(points: list[dict[str, Any]], entry: dict[str, Any]) -> dict[str
 
 
 def enrich_goose_packet(packet: dict[str, Any], channel_id: int) -> dict[str, Any]:
-    """Return a safe enriched packet dictionary for REST and WebSocket boundaries."""
+    """补充GOOSE报文。"""
     enriched = dict(packet)
     enriched["data_values"] = [copy.deepcopy(item) for item in packet.get("data_values", [])]
     try:
@@ -140,6 +144,7 @@ def enrich_goose_packet(packet: dict[str, Any], channel_id: int) -> dict[str, An
 
 
 def clear_goose_detail_cache(channel_id: int | None = None) -> None:
+    """清空GOOSEdetail缓存。"""
     with _CACHE_LOCK:
         if channel_id is None:
             _METADATA_CACHE.clear()

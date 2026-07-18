@@ -43,6 +43,7 @@ class IcdMetaData:
     description: str = ""
 
     def to_dict(self) -> dict:
+        """把IcdMetaData转换为可序列化字典。"""
         return {
             "ied_name": self.ied_name,
             "version": self.version,
@@ -56,6 +57,7 @@ class IcdMetaData:
 
     @classmethod
     def from_dict(cls, data: dict) -> IcdMetaData:
+        """从字典恢复IcdMetaData，缺失字段使用模型默认值。"""
         return cls(
             ied_name=data.get("ied_name", ""),
             version=data.get("version", ""),
@@ -80,6 +82,7 @@ class SclFileInfo:
     file_hash: str = ""  # SHA256 摘要
 
     def to_dict(self) -> dict[str, str | int]:
+        """把SclFileInfo转换为可序列化字典。"""
         return {
             "filename": self.filename,
             "file_path": self.file_path,
@@ -109,6 +112,7 @@ class SclFileManager:
     VALID_EXTENSIONS = (".icd", ".scd", ".cid", ".xml")
 
     def __init__(self, base_dir: str | None = None):
+        """确定 SCL 文件存储目录，并初始化文件元数据索引。"""
         if base_dir is None:
             base_dir = get_storage_path("iec61850_model_cache_directory")
         self._base_dir = base_dir
@@ -118,6 +122,7 @@ class SclFileManager:
 
     @property
     def base_dir(self) -> str:
+        """返回SCL 文件管理器当前的BASEDIR。"""
         return self._base_dir
 
     # ===== 文件完整性校验 =====

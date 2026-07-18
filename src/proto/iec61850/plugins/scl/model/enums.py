@@ -156,7 +156,7 @@ _NORMALIZED_BTYPE_TO_IEC_TYPE = {key.upper(): value for key, value in BTYPE_TO_I
 
 
 def iec_type_from_btype(btype: str) -> str:
-    """Map an SCL bType value to the internal IEC type name."""
+    """把 SCL 基础类型映射为项目内部 IEC 数据类型。"""
     return _NORMALIZED_BTYPE_TO_IEC_TYPE.get(str(btype or "").strip().upper(), "unknown")
 
 

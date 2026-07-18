@@ -50,7 +50,7 @@ class BrcbHandler:
 
     @staticmethod
     def _normalize_mms_ref(rcb_ref: str) -> str:
-        """Convert RCB ref to MMS report-handler format: LD/LN$BR$name."""
+        """把报告控制块引用转换为 MMS 变量访问所需的美元符格式。"""
         if not rcb_ref or "/" not in rcb_ref:
             return rcb_ref
         if "$" in rcb_ref:
@@ -64,11 +64,12 @@ class BrcbHandler:
 
     @staticmethod
     def _extract_error(result) -> int:
+        """从 pyiec61850 的多种返回结构中提取统一错误码。"""
         return (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
     @staticmethod
     def _trigger_gi_direct(conn, rcb_ref: str) -> bool:
-        """Use libiec61850's dedicated GI API when available."""
+        """调用底层报告控制块接口触发总召，并返回统一错误码。"""
         # Never call the synchronous raw binding while reports are active. GI
         # can make the receive thread re-enter Python immediately and deadlock
         # if the request thread still owns the GIL. Without the safe wrapper,
@@ -154,7 +155,7 @@ class BrcbHandler:
 
     @staticmethod
     def set_rpt_id(connection, rcb_ref: str, rpt_id: str) -> bool:
-        """Write a unique RptId to one disabled BRCB instance."""
+        """设置报告标识。"""
         if not HAS_IEC61850 or not rpt_id:
             return False
         conn = connection.connection

@@ -29,6 +29,7 @@ class _PyGooseHandler(iec61850.GooseHandler):
     """GooseHandler SWIG director 子类，将 C++ trigger() 回调转发到 Python"""
 
     def __init__(self, receiver: GooseReceiver):
+        """保存 GOOSE 接收器引用，供底层订阅回调安全转交报文。"""
         super().__init__()
         self._receiver = receiver
 
@@ -118,6 +119,7 @@ class GooseReceiver:
     """
 
     def __init__(self, config: ReceiverConfig):
+        """保存订阅与抓包配置，并初始化报文历史、统计和监控线程状态。"""
         if not HAS_IEC61850:
             raise RuntimeError("pyiec61850 未安装，无法创建 GOOSE Receiver")
 
@@ -143,14 +145,17 @@ class GooseReceiver:
 
     @property
     def config(self) -> ReceiverConfig:
+        """返回GOOSE 接收器当前的配置。"""
         return self._config
 
     @property
     def is_running(self) -> bool:
+        """判断GOOSE 接收器是否处于运行状态。"""
         return self._is_running
 
     @property
     def interface(self) -> str:
+        """返回GOOSE 接收器当前的网络接口。"""
         return self._config.interface
 
     # ===== 订阅管理 =====
@@ -212,12 +217,13 @@ class GooseReceiver:
             return self._subscription_to_dict(sub) if sub else None
 
     def _subscription_to_dict(self, sub: GooseSubscriptionInfo) -> dict[str, Any]:
+        """把运行时 GOOSE 订阅对象转换为接口可返回的字典。"""
         result = sub.to_dict()
         result["history_count"] = len(self._history.get(sub.go_cb_ref, ()))
         return result
 
     def update_subscription(self, current_go_cb_ref: str, **changes: Any) -> dict[str, Any] | None:
-        """Update one GOOSE control block subscription configuration."""
+        """更新订阅。"""
         with self._lock:
             sub = self._subscriptions.get(current_go_cb_ref)
             if sub is None:
@@ -255,6 +261,7 @@ class GooseReceiver:
 
     @staticmethod
     def _apply_dataset_metadata(values: list[dict[str, Any]], entries: list[dict[str, Any]]) -> None:
+        """应用数据集元数据。"""
         for index, item in enumerate(values):
             if index >= len(entries):
                 break
@@ -264,6 +271,7 @@ class GooseReceiver:
             item["description"] = metadata.get("description", "")
 
     def get_history(self, go_cb_ref: str, limit: int = 100) -> list[dict[str, Any]]:
+        """获取历史记录并返回结果。"""
         with self._lock:
             history = self._history.get(go_cb_ref)
             if not history:
@@ -357,7 +365,7 @@ class GooseReceiver:
             log.error(f"GOOSE 报文处理异常: {e}")
 
     def _on_captured_packet(self, packet: CapturedPacket) -> None:
-        """Apply a Windows Npcap packet to the matching subscription."""
+        """处理抓包引擎交付的 GOOSE 报文，更新订阅状态、历史记录和业务回调。"""
         try:
             with self._lock:
                 sub = self._subscriptions.get(packet.go_cb_ref)
@@ -509,6 +517,7 @@ class GooseReceiver:
             return False
 
     def _start_monitor(self) -> None:
+        """启动 GOOSE 抓包监控；已有监控线程运行时不重复创建。"""
         self._monitor_stop.clear()
         self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._monitor_thread.start()

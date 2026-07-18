@@ -59,7 +59,9 @@ if HAS_IEC61850:
 class DiscoveryProgress(Protocol):
     """发现进度回调协议"""
 
-    def __call__(self, phase: str, current: int, total: int, message: str) -> None: ...
+    def __call__(self, phase: str, current: int, total: int, message: str) -> None:
+        """上报模型发现阶段、完成数量和提示信息。"""
+        ...
 
 
 # ========== Builder 模式: 可变构建 → 不可变产出 ==========
@@ -69,6 +71,7 @@ class _LNBuilder:
     __slots__ = ("name", "ln_class", "ref", "_dos", "_datasets", "_rcbs", "_gocbs")
 
     def __init__(self, name: str, ln_class: str, ref: str):
+        """为一个逻辑节点收集数据对象、数据集、报告控制块和 GOOSE 控制块。"""
         self.name = name
         self.ln_class = ln_class
         self.ref = ref
@@ -78,18 +81,23 @@ class _LNBuilder:
         self._gocbs: list[GoCBRef] = []
 
     def add_do(self, do: DORef) -> None:
+        """添加数据对象。"""
         self._dos.append(do)
 
     def add_dataset(self, ds: DataSetRef) -> None:
+        """添加数据集。"""
         self._datasets.append(ds)
 
     def add_rcb(self, rcb: RCBRef) -> None:
+        """添加RCB。"""
         self._rcbs.append(rcb)
 
     def add_gocb(self, gocb: GoCBRef) -> None:
+        """添加GOOSE 控制块。"""
         self._gocbs.append(gocb)
 
     def build(self) -> LNModel:
+        """构建_LNBuilder并返回构建结果。"""
         return LNModel(
             name=self.name,
             ln_class=self.ln_class,
@@ -105,16 +113,19 @@ class _LDBuilder:
     __slots__ = ("name", "inst", "_lns")
 
     def __init__(self, name: str, inst: str):
+        """为一个逻辑设备收集逻辑节点。"""
         self.name = name
         self.inst = inst
         self._lns: list[_LNBuilder] = []
 
     def add_ln(self, name: str, ln_class: str, ref: str) -> _LNBuilder:
+        """添加逻辑节点。"""
         ln = _LNBuilder(name=name, ln_class=ln_class, ref=ref)
         self._lns.append(ln)
         return ln
 
     def build(self) -> LDModel:
+        """构建_LDBuilder并返回构建结果。"""
         return LDModel(
             name=self.name,
             inst=self.inst,
@@ -129,16 +140,19 @@ class IedModelBuilder:
     """
 
     def __init__(self, host: str, port: int):
+        """创建可增量装配逻辑设备的 IED 模型构建器。"""
         self._host = host
         self._port = port
         self._lds: list[_LDBuilder] = []
 
     def add_ld(self, name: str, inst: str) -> _LDBuilder:
+        """添加逻辑设备。"""
         ld = _LDBuilder(name=name, inst=inst)
         self._lds.append(ld)
         return ld
 
     def build(self) -> IedModel:
+        """构建IED 模型构建器并返回构建结果。"""
         lds = tuple(ld.build() for ld in self._lds)
         return IedModel(
             host=self._host,
@@ -166,6 +180,7 @@ class ModelDiscoveryService:
     """
 
     def __init__(self, skip_non_lln0: bool = True):
+        """绑定连接与测点注册表，并初始化模型发现进度、缓存和构建状态。"""
         self._model: IedModel | None = None
         self._model_timestamp: float = 0.0
         self._skip_non_lln0 = skip_non_lln0
@@ -204,6 +219,7 @@ class ModelDiscoveryService:
 
     @property
     def is_discovered(self) -> bool:
+        """判断IED 模型发现服务是否处于已发现的。"""
         return self._model is not None
 
     def invalidate(self) -> None:
@@ -287,6 +303,7 @@ class ModelDiscoveryService:
             progress and progress("discovering", i * 1000, total_lds * 1000, f"发现 LD: {ld_name}")
 
             def update_ld_progress(fraction: float, message: str, *, ld_index: int = i) -> None:
+                """更新逻辑设备进度。"""
                 if progress is None:
                     return
                 completed = ld_index * 1000 + round(min(max(fraction, 0.0), 1.0) * 1000)
@@ -316,12 +333,7 @@ class ModelDiscoveryService:
         return self._model
 
     def _probe_mms_type(self, conn, ref: str, fc: str, fallback: MmsType) -> MmsType:
-        """Resolve and cache a native MMS type without unsafe control reads.
-
-        Variable specifications are queried first because they expose the wire
-        type without reading the value and therefore also work for FC=CO. Older
-        bindings that do not expose this API retain the runtime/static fallback.
-        """
+        """通过轻量读取探测数据属性的实际 MMS 类型，并缓存成功结果。"""
         key = (ref, fc)
         cached = self._type_probe_cache.get(key)
         if cached is not None:
@@ -372,14 +384,7 @@ class ModelDiscoveryService:
         return resolved
 
     def _resolve_leaf_mms_type(self, conn, ref: str, fc: str, fallback: MmsType) -> MmsType:
-        """Use deterministic IEC 61850 metadata before doing an MMS round trip.
-
-        Standard DA/BDA paths already identify their wire type precisely.  A
-        remote specification query (and, on failure, a value read) adds no
-        information for those leaves and makes discovery latency proportional
-        to the number of points.  Online probing remains available for unknown
-        or vendor-specific leaves.
-        """
+        """结合 SCL/路径推断与在线探测确定叶子属性的 MMS 类型。"""
         key = (ref, fc)
         cached = self._type_probe_cache.get(key)
         if cached is not None:
@@ -392,15 +397,11 @@ class ModelDiscoveryService:
         return self._probe_mms_type(conn, ref, fc, fallback)
 
     def description_da_names(self, do_ref: str) -> tuple[str, ...] | None:
-        """Return dU/d names advertised by the already-read DO directory.
-
-        ``None`` means the directory was unavailable.  An empty tuple means
-        the server explicitly advertised no description attribute.
-        """
+        """返回当前模型发现流程识别为描述文本的数据属性名称集合。"""
         return self._description_da_cache.get(do_ref)
 
     def _probe_mms_type_across_fcs(self, conn, ref: str, preferred_fc: str) -> tuple[str, MmsType | None]:
-        """Resolve an unknown DA's FC and MMS type from variable specifications."""
+        """依次尝试候选功能约束，探测数据属性的实际 MMS 类型。"""
         candidates = (
             preferred_fc,
             "MX",
@@ -438,6 +439,7 @@ class ModelDiscoveryService:
         return preferred_fc, None
 
     def _probe_variable_spec_type(self, conn, ref: str, fc: str) -> MmsType | None:
+        """读取 MMS 变量规范并提取数据对象类型，不读取对象值。"""
         if self._variable_spec_disabled:
             return None
 
@@ -456,7 +458,7 @@ class ModelDiscoveryService:
 
     @staticmethod
     def _query_variable_spec_type(conn, ref: str, fc: str) -> MmsType | None:
-        """Query the server's MMS variable specification when supported."""
+        """向服务端查询变量规范，返回类型常量并释放临时规范对象。"""
         get_spec = getattr(iec61850, "IedConnection_getVariableSpecification", None)
         get_type = getattr(iec61850, "MmsVariableSpecification_getType", None)
         destroy_spec = getattr(iec61850, "MmsVariableSpecification_destroy", None)
@@ -555,6 +557,7 @@ class ModelDiscoveryService:
                     current_ln_index: int = ln_index,
                     current_ln_ref: str = ln_ref,
                 ) -> None:
+                    """更新数据对象进度。"""
                     if progress is None:
                         return
                     ln_fraction = current / total if total > 0 else 1.0
@@ -603,6 +606,7 @@ class ModelDiscoveryService:
 
     @staticmethod
     def _browse_logical_devices(conn) -> list[str]:
+        """浏览逻辑设备并返回可见条目。"""
         try:
             result = call_gil_safe(iec61850, "IedConnection_getLogicalDeviceList", conn)
             if isinstance(result, (list, tuple)) and len(result) >= 2:
@@ -618,6 +622,7 @@ class ModelDiscoveryService:
 
     @staticmethod
     def _browse_logical_nodes(conn, ld_name: str) -> list[str]:
+        """浏览逻辑节点并返回可见条目。"""
         try:
             result = call_gil_safe(iec61850, "IedConnection_getLogicalDeviceDirectory", conn, ld_name)
             if isinstance(result, (list, tuple)) and len(result) >= 2:

@@ -36,6 +36,7 @@ class IEC61850Server:
         ld_name: str = "GenericLD",
         max_connections: int = 5,
     ):
+        """保存服务端网络与模型配置，并初始化逻辑节点、测点、数据集和 GOOSE 索引。"""
         if not HAS_IEC61850:
             raise RuntimeError("pyiec61850 未安装，无法创建 IEC 61850 服务器")
 
@@ -66,82 +67,101 @@ class IEC61850Server:
 
     @property
     def _model(self):
+        """返回IEC 61850 服务端当前的模型。"""
         return self._builder.model
 
     @property
     def _ld(self):
+        """返回IEC 61850 服务端当前的逻辑设备。"""
         return self._builder._ld
 
     @_ld.setter
     def _ld(self, value):
+        """更新IEC 61850 服务端的逻辑设备，使后续操作使用新值。"""
         self._builder._ld = value
 
     @property
     def _lln0(self):
+        """返回IEC 61850 服务端当前的LLN0。"""
         return self._builder._lln0
 
     @_lln0.setter
     def _lln0(self, value):
+        """更新IEC 61850 服务端的LLN0，使后续操作使用新值。"""
         self._builder._lln0 = value
 
     @property
     def _mmxu(self):
+        """返回IEC 61850 服务端当前的MMXU 逻辑节点。"""
         return self._builder._mmxu
 
     @property
     def _ggio1(self):
+        """返回IEC 61850 服务端当前的GGIO1。"""
         return self._builder._ggio1
 
     @property
     def _ggio2(self):
+        """返回IEC 61850 服务端当前的GGIO2。"""
         return self._builder._ggio2
 
     @property
     def _ld_map(self) -> dict[str, Any]:
+        """返回IEC 61850 服务端当前的逻辑设备映射。"""
         return self._builder.ld_map
 
     @property
     def _ln_map(self) -> dict[str, Any]:
+        """返回IEC 61850 服务端当前的逻辑节点映射。"""
         return self._builder.ln_map
 
     @property
     def _do_map(self) -> dict[str, Any]:
+        """返回IEC 61850 服务端当前的数据对象映射。"""
         return self._builder._do_map
 
     @property
     def _da_map(self) -> dict[str, Any]:
+        """返回IEC 61850 服务端当前的数据属性映射。"""
         return self._builder._da_map
 
     @property
     def _point_refs(self) -> dict[str, str]:
+        """返回IEC 61850 服务端当前的测点引用。"""
         return self._builder.point_refs
 
     @property
     def _point_attrs(self) -> dict[str, Any]:
+        """返回IEC 61850 服务端当前的测点属性。"""
         return self._builder.point_attrs
 
     @property
     def _point_fc(self) -> dict[str, str]:
+        """返回IEC 61850 服务端当前的测点功能约束。"""
         return self._builder.point_fc
 
     @property
     def _point_iec_type(self) -> dict[str, str]:
+        """返回IEC 61850 服务端当前的测点IEC 类型类型。"""
         return self._builder.point_iec_type
 
     @property
     def _point_mms_type(self) -> dict[str, str]:
+        """返回IEC 61850 服务端当前的测点MMS 类型类型。"""
         return self._builder.point_mms_type
 
     @property
     def _standard_bda_list(self) -> list[tuple]:
+        """返回IEC 61850 服务端当前的标准基础数据属性列表。"""
         return self._builder.standard_bda_list
 
     @property
     def _keep_alive(self) -> list[Any]:
+        """返回IEC 61850 服务端当前的保活对象。"""
         return self._builder.keep_alive
 
     def _create_ied_server(self):
-        """Create a native server with the configured MMS connection limit."""
+        """根据当前数据模型创建底层 IedServer，并应用报告、GOOSE 与网络配置。"""
         server_config = iec61850.IedServerConfig_create()
         try:
             iec61850.IedServerConfig_setMaxMmsConnections(server_config, self.max_connections)
@@ -153,34 +173,42 @@ class IEC61850Server:
 
     @property
     def _goose_interface(self) -> str:
+        """返回IEC 61850 服务端当前的GOOSE网络接口。"""
         return self._ds_manager.goose_interface
 
     @_goose_interface.setter
     def _goose_interface(self, value):
+        """更新IEC 61850 服务端的GOOSE网络接口，使后续操作使用新值。"""
         self._ds_manager.goose_interface = value
 
     @property
     def _goose_publishing_enabled(self) -> bool:
+        """返回IEC 61850 服务端当前的GOOSE发布启用状态。"""
         return self._ds_manager.goose_publishing_enabled
 
     @property
     def _goose_cb_list(self) -> list[dict[str, Any]]:
+        """返回IEC 61850 服务端当前的GOOSE控制块列表。"""
         return self._ds_manager.goose_cb_list
 
     @property
     def _dataset_catalog(self) -> list[dict[str, Any]]:
+        """返回IEC 61850 服务端当前的数据集目录。"""
         return self._ds_manager.dataset_catalog
 
     @property
     def _model_changed(self) -> bool:
+        """返回IEC 61850 服务端当前的模型变更标志。"""
         return self._ds_manager.model_changed
 
     @_model_changed.setter
     def _model_changed(self, value):
+        """更新IEC 61850 服务端的模型变更标志，使后续操作使用新值。"""
         self._ds_manager.model_changed = value
 
     @property
     def _pending_goose_registrations(self) -> list[dict[str, Any]]:
+        """返回IEC 61850 服务端当前的待处理GOOSE注册项。"""
         return self._ds_manager.pending_registrations
 
     # ===== 模型构建 (委托给 IedModelBuilder) =====
@@ -241,22 +269,27 @@ class IEC61850Server:
 
     @staticmethod
     def _infer_fc(frame_type: int, top_da: str) -> str:
+        """推断功能约束并返回推断结果。"""
         return IedModelBuilder._infer_fc(frame_type, top_da)
 
     @staticmethod
     def _resolve_fc_const(fc: str):
+        """解析功能约束const并返回规范值。"""
         return IedModelBuilder._resolve_fc_const(fc)
 
     @staticmethod
     def _infer_iec_type(frame_type: int, da_parts: list) -> int:
+        """推断IEC 类型类型并返回推断结果。"""
         return IedModelBuilder._infer_iec_type(frame_type, da_parts)
 
     @staticmethod
     def _infer_iec_type_str(da_parts: list) -> str:
+        """推断IEC 类型类型STR并返回推断结果。"""
         return IedModelBuilder._infer_iec_type_str(da_parts)
 
     @staticmethod
     def _infer_iec_type_from_str(iec_type: str, da_parts: list) -> int:
+        """把配置中的类型文本规范化为项目内部 IEC 数据类型。"""
         return IedModelBuilder._infer_iec_type_from_str(iec_type, da_parts)
 
     def _add_standard_das(self, do_obj, do_key: str, fc: str, frame_type: int, da_parts: list) -> None:
@@ -373,6 +406,7 @@ class IEC61850Server:
         self._loaded_ied_ld_insts = selected_ld_insts
 
         def _point_belongs_to_loaded_ied(point: Any) -> bool:
+            """判断测点地址是否属于当前已加载的 IED 与逻辑设备范围。"""
             ld_inst = point.reg_addr.split("/", 1)[0]
             return not selected_ld_insts or ld_inst in selected_ld_insts
 
@@ -453,6 +487,7 @@ class IEC61850Server:
         registered_count = 0
 
         def _register_point(point, frame_type: int, default_fc: str) -> bool:
+            """把服务端测点引用、功能约束和类型信息登记到运行时索引。"""
             return bool(
                 self._builder._add_point_from_ref(
                     point.reg_addr,
@@ -612,6 +647,7 @@ class IEC61850Server:
         result = self._last_import_result
 
         def _loaded(points: list[Any]) -> list[Any]:
+            """判断服务端模型与基础逻辑设备是否已经创建完成。"""
             if not self._loaded_ied_ld_insts:
                 return points
             return [point for point in points if point.reg_addr.split("/", 1)[0] in self._loaded_ied_ld_insts]
@@ -624,7 +660,7 @@ class IEC61850Server:
         }
 
     def get_discovered_goose_items(self) -> list[dict[str, Any]]:
-        """Return loaded GoCBs in the shape consumed by the discovery API."""
+        """返回当前模型中发现的 GOOSE 发布与订阅配置项。"""
         if not self._model_loaded or self._last_import_result is None:
             return []
         return [
@@ -902,6 +938,7 @@ class IEC61850Server:
 
     @property
     def is_running(self) -> bool:
+        """判断IEC 61850 服务端是否处于运行状态。"""
         if self._server:
             return iec61850.IedServer_isRunning(self._server)
         return False
@@ -1249,15 +1286,19 @@ class IEC61850Server:
     # ===== 浏览方法 (委托给 builder) =====
 
     def browse_logical_devices(self) -> list[str]:
+        """浏览逻辑设备并返回可见条目。"""
         return self._builder.browse_logical_devices()
 
     def browse_logical_nodes(self, ld_inst: str) -> list[str]:
+        """浏览逻辑节点并返回可见条目。"""
         return self._builder.browse_logical_nodes(ld_inst)
 
     def browse_data_objects(self, ld_inst: str, ln_name: str) -> list[dict]:
+        """浏览数据对象并返回可见条目。"""
         return self._builder.browse_data_objects(ld_inst, ln_name)
 
     def browse_data_attributes(self, ld_inst: str, ln_name: str, do_name: str) -> list[dict]:
+        """浏览数据数据属性并返回可见条目。"""
         return self._builder.browse_data_attributes(ld_inst, ln_name, do_name)
 
     # ===== GOOSE / DataSet (委托给 ds_manager) =====

@@ -21,6 +21,7 @@ class GooseClientControl:
 
     @staticmethod
     def _candidate_refs(go_cb_ref: str) -> tuple[str, ...]:
+        """生成控制块引用的兼容候选形式，以适配不同服务端命名习惯。"""
         if "$GO$" in go_cb_ref:
             ln_ref, cb_name = go_cb_ref.split("$GO$", 1)
         elif ".GO." in go_cb_ref:
@@ -33,10 +34,12 @@ class GooseClientControl:
 
     @staticmethod
     def _extract_error(result: Any) -> Any:
+        """从 pyiec61850 的多种返回结构中提取统一错误码。"""
         return (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
     @classmethod
     def set_go_ena(cls, connection: Any, go_cb_ref: str, enabled: bool) -> bool:
+        """设置GO使能状态。"""
         if not HAS_IEC61850 or connection is None:
             return False
         native_connection = getattr(connection, "connection", None)

@@ -20,13 +20,16 @@ class IedExistenceRule:
 
     @property
     def rule_id(self) -> str:
+        """返回IedExistenceRule当前的RULE标识。"""
         return "ied_existence"
 
     @property
     def description(self) -> str:
+        """返回IedExistenceRule当前的说明。"""
         return "检查 SCL 文件是否包含至少一个 IED 定义"
 
     def validate(self, doc: SclDocument) -> ValidationResult:
+        """按当前校验规则检查 SCL 文档，并返回发现的错误、警告和提示。"""
         result = ValidationResult()
         if not doc.ieds:
             result.add_error(self.rule_id, "SCL 文件中未找到任何 IED 定义")
@@ -39,13 +42,16 @@ class TypeReferenceIntegrityRule:
 
     @property
     def rule_id(self) -> str:
+        """返回TypeReferenceIntegrityRule当前的RULE标识。"""
         return "type_reference_integrity"
 
     @property
     def description(self) -> str:
+        """返回TypeReferenceIntegrityRule当前的说明。"""
         return "检查 DataTypeTemplates 中类型引用的完整性"
 
     def validate(self, doc: SclDocument) -> ValidationResult:
+        """按当前校验规则检查 SCL 文档，并返回发现的错误、警告和提示。"""
         result = ValidationResult()
         dtt = doc.data_type_templates
 
@@ -98,13 +104,16 @@ class DataSetNotEmptyRule:
 
     @property
     def rule_id(self) -> str:
+        """返回DataSetNotEmptyRule当前的RULE标识。"""
         return "dataset_not_empty"
 
     @property
     def description(self) -> str:
+        """返回DataSetNotEmptyRule当前的说明。"""
         return "检查 DataSet 至少包含一个 FCDA"
 
     def validate(self, doc: SclDocument) -> ValidationResult:
+        """按当前校验规则检查 SCL 文档，并返回发现的错误、警告和提示。"""
         result = ValidationResult()
         for ied in doc.ieds:
             for ap in ied.access_points:
@@ -128,13 +137,16 @@ class GoCBDataSetReferenceRule:
 
     @property
     def rule_id(self) -> str:
+        """返回GoCBDataSetReferenceRule当前的RULE标识。"""
         return "gocb_dataset_reference"
 
     @property
     def description(self) -> str:
+        """返回GoCBDataSetReferenceRule当前的说明。"""
         return "检查 GSEControl 的 datSet 属性引用的 DataSet 是否存在"
 
     def validate(self, doc: SclDocument) -> ValidationResult:
+        """按当前校验规则检查 SCL 文档，并返回发现的错误、警告和提示。"""
         result = ValidationResult()
         for ied in doc.ieds:
             for ap in ied.access_points:

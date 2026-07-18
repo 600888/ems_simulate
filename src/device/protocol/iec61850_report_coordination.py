@@ -6,7 +6,7 @@ from src.device.protocol.iec61850_handler import IEC61850ServerHandler
 
 
 def pause_matching_local_server_simulations(reports: Any, request: Any, log: Any) -> list[Any]:
-    """Pause only the local server simulator targeted by a report client."""
+    """暂停与目标客户端匹配的本地 IEC 61850 服务端模拟，避免总召协调期间产生竞争报告。"""
     client = getattr(reports, "_client", None)
     target_ip = str(getattr(client, "ip", "") or "").strip().lower()
     target_port = int(getattr(client, "port", 0) or 0)
@@ -43,7 +43,7 @@ def pause_matching_local_server_simulations(reports: Any, request: Any, log: Any
 
 
 def resume_local_server_simulations(simulations: list[Any], log: Any) -> None:
-    """Restart every simulator paused for bulk RCB setup."""
+    """恢复此前为总召协调而暂停的本地 IEC 61850 服务端模拟。"""
     for simulation in simulations:
         try:
             simulation.start_simulation()
@@ -59,13 +59,7 @@ def trigger_gi_with_local_server_coordination(
     *,
     report_timeout: float = 3.0,
 ) -> bool:
-    """Trigger GI without racing an in-process server simulation batch.
-
-    A local server update and a client report callback share the Python
-    process but run on different native threads.  Keeping the simulator
-    paused until the GI report has been copied into Python-owned cache avoids
-    concurrent access to libIEC61850/SWIG report objects.
-    """
+    """在暂停匹配的本地服务端后触发客户端总召，并在结束时恢复原运行状态。"""
     paused = pause_matching_local_server_simulations(reports, request, log)
     try:
         state_getter = getattr(reports, "get_report_data_state", None)

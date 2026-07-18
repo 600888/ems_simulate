@@ -15,6 +15,7 @@ from src.enums.points.base_point import BasePoint
 
 
 def _discovery_timeout_seconds() -> int:
+    """返回模型发现允许使用的总超时时间，并保证结果不低于连接请求超时。"""
     raw_value = os.getenv("EMS_IEC61850_DISCOVERY_TIMEOUT_SECONDS", "600")
     try:
         value = int(raw_value)
@@ -27,6 +28,7 @@ class IEC61850ServerHandler(ServerHandler):
     """IEC 61850 服务端处理器"""
 
     def __init__(self, log=None):
+        """绑定服务端通道与设备对象，准备模型加载、点值更新和生命周期管理状态。"""
         super().__init__()
         self._server = None
         self._log = log
@@ -294,6 +296,7 @@ class IEC61850ClientHandler(ClientHandler):
     PHASE_FAILED = "failed"  # 连接失败
 
     def __init__(self, log=None):
+        """绑定客户端通道与设备对象，准备连接、模型发现、报告和读写协调状态。"""
         super().__init__()
         self._client = None
         self._log = log
@@ -322,6 +325,7 @@ class IEC61850ClientHandler(ClientHandler):
 
     @model_loaded.setter
     def model_loaded(self, value: bool) -> None:
+        """更新IEC61850ClientHandler的模型加载状态，使后续操作使用新值。"""
         self._model_loaded = value
 
     def set_on_points_discovered(self, callback):
@@ -591,6 +595,7 @@ class IEC61850ClientHandler(ClientHandler):
             discovery_deadline = time.monotonic() + discovery_timeout
 
             def on_discovery_progress(phase: str, current: int, total: int, message: str) -> None:
+                """接收模型发现进度，更新通道状态并向前端推送最新阶段与完成数量。"""
                 if time.monotonic() >= discovery_deadline:
                     raise TimeoutError(f"IEC61850 模型发现超过 {discovery_timeout} 秒，任务已终止")
                 ratio = min(max(current / total, 0.0), 1.0) if total > 0 else 0.0

@@ -42,6 +42,7 @@ class GoosePlugin:
     """
 
     def __init__(self):
+        """保存插件宿主引用；协议能力在 initialize 阶段装配，在 shutdown 阶段统一释放。"""
         self._connection: Any = None
         self._manager: GooseResourceManager | None = None
         self._initialized = False
@@ -50,10 +51,12 @@ class GoosePlugin:
 
     @property
     def name(self) -> str:
+        """返回GoosePlugin当前的名称。"""
         return "goose"
 
     @property
     def available(self) -> bool:
+        """返回GoosePlugin当前的可用状态。"""
         return HAS_IEC61850
 
     def initialize(self, connection: Any, **kwargs) -> None:

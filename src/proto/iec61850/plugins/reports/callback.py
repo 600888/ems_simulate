@@ -39,7 +39,7 @@ MAX_REPORT_VALUES_PER_ENTRY = 512
 
 
 def _select_report_value_ref(data_ref: str, dataset_ref: str) -> str:
-    """Prefer a DataSet ref that is more specific or carries missing FC metadata."""
+    """根据报告数据引用与注册信息选择用于值转换的规范测点引用。"""
     if not data_ref:
         return dataset_ref
     if not dataset_ref:
@@ -61,7 +61,7 @@ def _select_report_value_ref(data_ref: str, dataset_ref: str) -> str:
 
 
 def _report_ref_with_fc(ref: str, fc: str) -> str:
-    """Attach DataSet FC metadata to a normalized report reference."""
+    """为报告数据引用补齐功能约束，生成可与注册表匹配的引用。"""
     parsed = parse_report_ref(ref)
     normalized_fc = str(fc or "").upper()
     if parsed is None or parsed.fc or not normalized_fc:
@@ -71,7 +71,7 @@ def _report_ref_with_fc(ref: str, fc: str) -> str:
 
 
 def _infer_report_value_type(ref: str) -> str:
-    """Infer a scalar IEC type from dot or dollar-form report references."""
+    """根据数据引用、注册元数据和运行时值推断报告成员类型。"""
     parsed = parse_report_ref(ref)
     if parsed is None or not parsed.da_parts:
         return IEC_TYPE_UNKNOWN
@@ -110,12 +110,7 @@ class _CallbackInfo:
 
 
 def _normalize_ref(rcb_ref: str, rcb_type: str = "") -> str:
-    """Normalize an RCB ref for report handler registration.
-
-    libIEC61850 uses dot FC form for IedConnection_installReportHandler,
-    e.g. LD/LLN0.RP.EventsRCB. Both BRCB and URCB instances must keep their
-    01/02 suffix so each subscriber is registered against a distinct RCB.
-    """
+    """统一 IEC 61850 对象引用的分隔符和功能约束表示，便于稳定匹配。"""
     if not rcb_ref or "/" not in rcb_ref:
         return rcb_ref
 
@@ -143,7 +138,7 @@ def _normalize_ref(rcb_ref: str, rcb_type: str = "") -> str:
 
 
 def _ref_aliases(rcb_ref: str, rcb_type: str = "") -> set[str]:
-    """Build equivalent cache lookup keys for one RCB reference."""
+    """生成同一数据引用的多种等价写法，用于兼容服务端返回格式差异。"""
     aliases = set()
     if not rcb_ref:
         return aliases
@@ -188,7 +183,7 @@ def _find_registered_info(
     rcb_ref: str,
     connection=None,
 ) -> tuple[Any, "_CallbackInfo"] | tuple[None, None]:
-    """Find callback info by exact key first, then by normalized reference aliases."""
+    """通过引用别名在测点注册表中查找类型与功能约束信息。"""
     connection_key = id(connection) if connection is not None else None
 
     info = _CALLBACK_REGISTRY.get(rcb_ref)
@@ -206,7 +201,7 @@ def _find_registered_info(
 
 
 def _registry_key(connection, rcb_ref: str) -> Any:
-    """Keep legacy string keys when possible, but allow identical refs on other associations."""
+    """生成报告回调状态表使用的连接隔离键。"""
     existing = _CALLBACK_REGISTRY.get(rcb_ref)
     if existing is None or existing.connection is connection:
         return rcb_ref
@@ -220,6 +215,7 @@ def _route_keys_for_ref(rcb_ref: str, connection=None) -> set[str]:
 
 
 def _expire_pending_gi_routes(now: float | None = None) -> None:
+    """清理超时的 GI 路由，防止后续普通报告被误判为总召结果。"""
     now = time.monotonic() if now is None else now
     expired = [key for key, (_, deadline) in _PENDING_GI_ROUTES.items() if deadline <= now]
     for key in expired:
@@ -271,15 +267,7 @@ def _resolve_pending_gi_route(rcb_ref: str, entry: ReportDataEntry, connection=N
 
 
 def _mark_entry_reasons_as_gi(entry: ReportDataEntry) -> None:
-    """Normalize inclusion reasons for a report matched to an explicit GI request.
-
-    Some pyiec61850-ng builds expose the callback's ClientReport as an
-    ``sMmsValue*`` SWIG object. Report values remain readable, but
-    ``ClientReport_getReasonForInclusion`` rejects that wrapper and returns no
-    usable reason. A report matched by the pending GI route is known to be the
-    response to our explicit GI request, so its included values have GI reason
-    by protocol semantics regardless of that binding limitation.
-    """
+    """把本轮总召匹配到的报告条目标记为 GI 原因。"""
     for ref in entry.data_values:
         if not ref.startswith("__"):
             entry.reason_codes[ref] = "gi"
@@ -559,14 +547,7 @@ class ReportCallbackHandler:
 
     @staticmethod
     def suspend_dispatch(connection, timeout: float = 3.0) -> bool:
-        """Temporarily make native report callbacks return without parsing.
-
-        RCBSubscriber registration and SWIG director report parsing are both
-        native operations on the same MMS association.  During a large enable
-        batch an active simulator can otherwise make them overlap repeatedly,
-        which is unsafe in the binding and can terminate the whole process.
-        Suspension is nestable and preserves each RCB's logical active state.
-        """
+        """暂停dispatch。"""
         connection_key = id(connection)
         with _CALLBACK_LOCK:
             depth = _DISPATCH_SUSPEND_DEPTH.get(connection_key, 0) + 1
@@ -583,7 +564,7 @@ class ReportCallbackHandler:
 
     @staticmethod
     def resume_dispatch(connection) -> None:
-        """Resume callbacks suspended by :meth:`suspend_dispatch`."""
+        """恢复dispatch。"""
         connection_key = id(connection)
         with _CALLBACK_LOCK:
             depth = _DISPATCH_SUSPEND_DEPTH.get(connection_key, 0)
@@ -647,7 +628,7 @@ class ReportCallbackHandler:
 
     @staticmethod
     def get_cache_state(rcb_ref: str, connection=None) -> tuple[int, int]:
-        """Return cache size and latest uid without serializing report values."""
+        """获取缓存状态并返回结果。"""
         with _CALLBACK_LOCK:
             _, info = _find_registered_info(rcb_ref, connection)
             if not info or not info.data_cache:
@@ -664,7 +645,7 @@ class ReportCallbackHandler:
 
     @staticmethod
     def append_cache_entry(rcb_ref: str, entry: ReportDataEntry, connection=None) -> bool:
-        """Append one report entry to the matching RCB cache."""
+        """追加缓存条目。"""
         with _CALLBACK_LOCK:
             matched_key, info = _find_registered_info(rcb_ref, connection)
             if not info:
@@ -683,7 +664,7 @@ class ReportCallbackHandler:
         connection=None,
         timeout: float = 3.0,
     ) -> bool:
-        """Wait until a newer report entry is committed to the RCB cache."""
+        """等待FOR缓存update并返回等待结果。"""
         deadline = time.monotonic() + max(timeout, 0.0)
         with _CALLBACK_IDLE:
             while True:
@@ -916,6 +897,7 @@ if HAS_IEC61850:
         """SWIG director 子类, C++ 收到报告时回调 trigger()"""
 
         def __init__(self, rcb_ref: str, connection=None):
+            """保存报告、连接和客户端回调上下文，供底层报告线程安全转交数据。"""
             super().__init__()
             self._rcb_ref = rcb_ref
             self._connection_key = id(connection)
@@ -923,12 +905,15 @@ if HAS_IEC61850:
             self._closing = False
 
         def close(self):
+            """关闭_PyRCBHandler。"""
             self._closing = True
 
         def pause(self):
+            """暂停报告分派；底层回调仍可进入，但不会继续解析和投递报告。"""
             self._closing = True
 
         def resume(self):
+            """恢复_PyRCBHandler。"""
             self._closing = False
 
         def trigger(self):
@@ -959,6 +944,7 @@ else:
 
     class _PyRCBHandler:  # 占位, 不会被使用
         def __init__(self, rcb_ref: str, connection=None):
+            """保存报告、连接和客户端回调上下文，供底层报告线程安全转交数据。"""
             self._rcb_ref = rcb_ref
 
 
@@ -1074,6 +1060,7 @@ def _get_reason_for_inclusion(report, index: int) -> str:
     # ReasonForInclusion is optional in IEC 61850 reports.  Calling the getter
     # when OptFlds.reasonCode is absent makes some SWIG builds raise a type
     # error, which used to be flattened to the misleading value "unknown".
+    """读取报告成员的 ReasonForInclusion，并转换为可读原因名称。"""
     has_reason = getattr(iec61850, "ClientReport_hasReasonForInclusion", None)
     if callable(has_reason):
         try:
@@ -1111,6 +1098,7 @@ def _get_reason_for_inclusion(report, index: int) -> str:
 
 
 def _get_data_reference(report, index: int) -> str:
+    """读取报告成员的数据引用；服务端未携带引用时返回空值。"""
     try:
         ref = iec61850.ClientReport_getDataReference(report, index)
         if ref:

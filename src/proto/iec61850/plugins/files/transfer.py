@@ -63,6 +63,7 @@ class FileTransfer:
     """远程 IED 文件传输器"""
 
     def __init__(self, connection: Iec61850Connection):
+        """绑定客户端连接和缓存管理器，供文件上传、下载与进度上报复用。"""
         self._conn = connection
         self._active_transfers: dict[str, TransferProgress] = {}
 

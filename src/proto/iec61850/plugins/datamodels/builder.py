@@ -27,6 +27,7 @@ class IedModelBuilder:
     """
 
     def __init__(self, model_name: str = "EMS", ied_name: str = "EMSDevice", ld_name: str = "GenericLD"):
+        """创建可增量装配逻辑设备的 IED 模型构建器。"""
         if not HAS_IEC61850:
             raise RuntimeError("pyiec61850 未安装，无法创建 IedModelBuilder")
 
@@ -73,42 +74,51 @@ class IedModelBuilder:
 
     @property
     def point_refs(self) -> dict[str, str]:
+        """返回IED 模型构建器当前的测点引用。"""
         return self._point_refs
 
     @property
     def point_attrs(self) -> dict[str, Any]:
+        """返回IED 模型构建器当前的测点属性。"""
         return self._point_attrs
 
     @property
     def point_fc(self) -> dict[str, str]:
+        """返回IED 模型构建器当前的测点功能约束。"""
         return self._point_fc
 
     @property
     def point_iec_type(self) -> dict[str, str]:
+        """返回IED 模型构建器当前的测点IEC 类型类型。"""
         return self._point_iec_type
 
     @property
     def point_mms_type(self) -> dict[str, str]:
+        """返回IED 模型构建器当前的测点MMS 类型类型。"""
         return self._point_mms_type
 
     @property
     def ld_map(self) -> dict[str, Any]:
+        """返回IED 模型构建器当前的逻辑设备映射。"""
         return self._ld_map
 
     @property
     def ln_map(self) -> dict[str, Any]:
+        """返回IED 模型构建器当前的逻辑节点映射。"""
         return self._ln_map
 
     @property
     def standard_bda_list(self) -> list[tuple]:
+        """返回IED 模型构建器当前的标准基础数据属性列表。"""
         return self._standard_bda_list
 
     @property
     def keep_alive(self) -> list[Any]:
+        """返回IED 模型构建器当前的保活对象。"""
         return self._keep_alive
 
     def _track_standard_bda(self, da: Any, name: str, iec_type: str) -> None:
-        """Register a standard DA once without an O(n) identity scan."""
+        """记录标准基础数据属性，供后续创建模型节点和默认属性使用。"""
         identity = id(da)
         if identity in self._standard_bda_ids:
             return
@@ -118,7 +128,7 @@ class IedModelBuilder:
     # ===== LD/LN 管理 =====
 
     def ensure_base_ld(self):
-        """Default LD creation is intentionally unsupported."""
+        """确保服务端基础逻辑设备与预置逻辑节点已创建并登记。"""
         raise RuntimeError("禁止自动创建默认 LD；请先从 ICD/SCL 加载真实模型")
 
     def get_or_create_ld(self, ld_inst: str):
@@ -416,6 +426,7 @@ class IedModelBuilder:
 
     @staticmethod
     def _infer_fc(frame_type: int, top_da: str) -> str:
+        """推断功能约束并返回推断结果。"""
         DA_FC_MAP = {
             "mag": "MX",
             "instMag": "MX",
@@ -443,6 +454,7 @@ class IedModelBuilder:
 
     @staticmethod
     def _resolve_fc_const(fc: str):
+        """解析功能约束const并返回规范值。"""
         if not HAS_IEC61850:
             return None
         FC_CONST_MAP = {
@@ -467,7 +479,7 @@ class IedModelBuilder:
 
     @staticmethod
     def _build_trigger_options(*, dchg: bool = False, qchg: bool = False, dupd: bool = False) -> int:
-        """Build the libIEC61850 DataAttribute trigger bit mask."""
+        """把数据属性的 dchg、qchg、dupd 标志转换为底层触发选项。"""
         if not HAS_IEC61850:
             return 0
         return (
@@ -478,7 +490,7 @@ class IedModelBuilder:
 
     @staticmethod
     def _infer_da_trigger_options(da_parts: list[str]) -> int:
-        """Fallback trigger semantics for FCDA-created attributes without SCL point metadata."""
+        """依据数据属性名称和功能约束推断缺省触发选项。"""
         leaf = da_parts[-1] if da_parts else ""
         if leaf == "q":
             return IedModelBuilder._build_trigger_options(qchg=True)
@@ -488,6 +500,7 @@ class IedModelBuilder:
 
     @staticmethod
     def _infer_iec_type(frame_type: int, da_parts: list) -> int:
+        """推断IEC 类型类型并返回推断结果。"""
         if not HAS_IEC61850:
             return 0
         leaf = da_parts[-1] if da_parts else ""
@@ -517,6 +530,7 @@ class IedModelBuilder:
 
     @staticmethod
     def _infer_iec_type_str(da_parts: list) -> str:
+        """推断IEC 类型类型STR并返回推断结果。"""
         leaf = da_parts[-1] if da_parts else ""
         parent = da_parts[-2] if len(da_parts) > 1 else ""
         if leaf == "f":
@@ -588,6 +602,7 @@ class IedModelBuilder:
 
     @staticmethod
     def _infer_iec_type_from_str(iec_type: str, da_parts: list) -> int:
+        """把配置中的类型文本规范化为项目内部 IEC 数据类型。"""
         if not HAS_IEC61850:
             return 0
         leaf = da_parts[-1] if da_parts else ""
@@ -739,6 +754,7 @@ class IedModelBuilder:
     # ===== 浏览方法 =====
 
     def browse_logical_devices(self) -> list[str]:
+        """浏览逻辑设备并返回可见条目。"""
         ld_list = []
         for ld_inst in self._ld_map:
             prefix = f"{ld_inst}/"
@@ -747,6 +763,7 @@ class IedModelBuilder:
         return ld_list
 
     def browse_logical_nodes(self, ld_inst: str) -> list[str]:
+        """浏览逻辑节点并返回可见条目。"""
         ln_names = []
         prefix = f"{ld_inst}/"
         for key in self._ln_map:
@@ -755,6 +772,7 @@ class IedModelBuilder:
         return ln_names
 
     def browse_data_objects(self, ld_inst: str, ln_name: str) -> list[dict]:
+        """浏览数据对象并返回可见条目。"""
         do_map: dict[str, int | None] = {}
         for address, _ref in self._point_refs.items():
             if not isinstance(address, str) or "/" not in address:
@@ -767,6 +785,7 @@ class IedModelBuilder:
         return [{"name": name, "frame_type": ft} for name, ft in sorted(do_map.items())]
 
     def browse_data_attributes(self, ld_inst: str, ln_name: str, do_name: str) -> list[dict]:
+        """浏览数据数据属性并返回可见条目。"""
         da_map: dict[str, dict] = {}
         for address, _ref in self._point_refs.items():
             if not isinstance(address, str) or "/" not in address:

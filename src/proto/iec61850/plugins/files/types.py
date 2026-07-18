@@ -45,6 +45,7 @@ class FileEntry:
 
     @property
     def is_directory(self) -> bool:
+        """判断FileEntry是否处于目录。"""
         return self.file_type == FileType.DIRECTORY
 
     def size_human(self) -> str:
@@ -89,9 +90,11 @@ class TransferProgress:
 
     @property
     def is_complete(self) -> bool:
+        """判断TransferProgress是否处于完成状态。"""
         return self.status in (TransferStatus.COMPLETED, TransferStatus.FAILED, TransferStatus.CANCELLED)
 
     def to_dict(self) -> dict[str, object]:
+        """把TransferProgress转换为可序列化字典。"""
         return {
             "filename": self.filename,
             "status": self.status.value,
@@ -114,6 +117,7 @@ class FileMetadata:
     checksum: str | None = None  # 文件校验和 (MD5)
 
     def to_dict(self) -> dict[str, object]:
+        """把FileMetadata转换为可序列化字典。"""
         return {
             "remote_path": self.remote_path,
             "local_path": self.local_path,

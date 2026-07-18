@@ -26,6 +26,7 @@ class PointRegistry:
     """
 
     def __init__(self, model_name: str = "EMS", ld_name: str = "GenericLD"):
+        """创建测点引用、功能约束、IEC/MMS 类型和已发现数据集的线程安全索引。"""
         self.model_name = model_name
         self.ld_name = ld_name
 
@@ -121,6 +122,7 @@ class PointRegistry:
 
     @property
     def point_mms_type(self) -> dict[str, str]:
+        """返回测点注册表当前的测点MMS 类型类型。"""
         return self._point_mms_type
 
     def set_ref(self, address: str, ref: str) -> None:
@@ -136,6 +138,7 @@ class PointRegistry:
         self._point_iec_type[str(address)] = iec_type
 
     def set_mms_type(self, address: str, mms_type: str) -> None:
+        """设置MMS 类型类型。"""
         self._point_mms_type[str(address)] = str(mms_type)
 
     def set_name(self, address: str, name: str) -> None:
@@ -168,6 +171,7 @@ class PointRegistry:
 
     @discovered_datasets.setter
     def discovered_datasets(self, value: list):
+        """更新测点注册表的已发现的数据集，使后续操作使用新值。"""
         self._discovered_datasets = value
 
     def _build_ref(self, address) -> str:

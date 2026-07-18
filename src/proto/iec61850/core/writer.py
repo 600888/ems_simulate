@@ -73,7 +73,7 @@ class Iec61850Writer:
 
     @staticmethod
     def _control_object_ref(ref: str) -> str:
-        """Convert a CO leaf reference to the owning control object reference."""
+        """从控制属性地址提取可执行 Oper 的控制对象引用。"""
         for suffix in (".Oper.ctlVal", ".SBOw.ctlVal", ".Cancel.ctlVal", ".ctlVal"):
             if ref.endswith(suffix):
                 return ref[: -len(suffix)]
@@ -81,7 +81,7 @@ class Iec61850Writer:
 
     @staticmethod
     def _new_control_value(control, value: Any, iec_type: str):
-        """Create the MMS value type required by the remote control object."""
+        """按控制模型的数据类型创建供 ControlObjectClient 使用的 MmsValue。"""
         ctl_type = iec61850.ControlObjectClient_getCtlValType(control)
         if ctl_type == iec61850.MMS_BOOLEAN:
             return iec61850.MmsValue_newBoolean(Iec61850Writer._to_bool(value))
@@ -103,7 +103,7 @@ class Iec61850Writer:
         return None
 
     def _write_control(self, ref: str, value: Any, iec_type: str) -> bool:
-        """Operate an IEC 61850 control object using its configured control model."""
+        """通过 ControlObjectClient 执行控制命令，并确保控制对象和临时值得到释放。"""
         conn = self._connection.connection
         if not conn or not self._connection.is_connected:
             return False
@@ -157,6 +157,7 @@ class Iec61850Writer:
         fc_val,
         mms_type: MmsType,
     ) -> bool:
+        """在当前连接上执行一次 MMS 写入，并确保临时 MmsValue 在结束时释放。"""
         conn = self._connection.connection
         if not conn or not self._connection.is_connected:
             return False
@@ -223,6 +224,7 @@ class Iec61850Writer:
 
     @staticmethod
     def _to_bool(value: Any) -> bool:
+        """把布尔、数字和常见文本表示规范化为布尔值。"""
         if isinstance(value, str):
             normalized = value.strip().lower()
             if normalized in {"1", "true", "on", "yes"}:
@@ -234,18 +236,21 @@ class Iec61850Writer:
 
     @staticmethod
     def _to_int(value: Any) -> int:
+        """把输入转换为整数，并在转换失败时抛出明确的参数错误。"""
         if isinstance(value, str):
             return int(value.strip(), 0)
         return int(value)
 
     @staticmethod
     def _new_bit_string(value: Any, bit_size: int):
+        """按目标位宽创建并填充 MMS BitString 值。"""
         result = iec61850.MmsValue_newBitString(max(bit_size, 1))
         iec61850.MmsValue_setBitStringFromInteger(result, Iec61850Writer._to_int(value))
         return result
 
     @staticmethod
     def _bit_string_size(address: str, value: Any) -> int:
+        """根据 IEC 类型和数值计算 BitString 所需位宽。"""
         leaf = str(address).split(".")[-1]
         if leaf in {"Check", "ctlVal"}:
             return 2
@@ -255,6 +260,7 @@ class Iec61850Writer:
 
     @staticmethod
     def _octets(value: Any) -> bytes:
+        """把输入规范化为可写入 MMS OctetString 的字节序列。"""
         if isinstance(value, bytes):
             return value
         text = str(value).strip()
@@ -267,6 +273,7 @@ class Iec61850Writer:
 
     @classmethod
     def _new_mms_value(cls, address: str, value: Any, mms_type: MmsType):
+        """根据目标 MMS 类型创建底层 MmsValue，并填入待写值。"""
         if mms_type is MmsType.BIT_STRING:
             return cls._new_bit_string(value, cls._bit_string_size(address, value))
         if mms_type is MmsType.OCTET_STRING:
@@ -326,6 +333,7 @@ class Iec61850Writer:
         return iec_type
 
     def _resolve_mms_type(self, address: str, iec_type: str) -> MmsType:
+        """优先使用注册表已知类型，缺失时根据标准数据属性路径推断 MMS 类型。"""
         mms_type = ""
         if self._registry:
             get_mms_type = getattr(self._registry, "get_mms_type", None)

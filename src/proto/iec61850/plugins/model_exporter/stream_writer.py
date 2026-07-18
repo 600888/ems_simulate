@@ -31,35 +31,41 @@ class JsonStreamWriter:
     __slots__ = ("_writer", "_first", "_stack")
 
     def __init__(self, writer: Callable[[str], None]):
+        """绑定输出流，并初始化 JSON 嵌套层级和逗号控制状态。"""
         self._writer = writer
         self._first = True
         self._stack: list[bool] = []
 
     def object_start(self) -> JsonStreamWriter:
+        """写入 JSON 对象起始符，并维护流式输出的嵌套状态。"""
         self._write("{")
         self._first = True
         self._stack.append(True)
         return self
 
     def object_end(self) -> JsonStreamWriter:
+        """写入 JSON 对象结束符，并恢复上一层输出状态。"""
         self._stack.pop()
         self._write("}")
         self._first = not self._stack[-1] if self._stack else True
         return self
 
     def array_start(self) -> JsonStreamWriter:
+        """写入 JSON 数组起始符，并维护流式输出的嵌套状态。"""
         self._write("[")
         self._first = True
         self._stack.append(True)
         return self
 
     def array_end(self) -> JsonStreamWriter:
+        """写入 JSON 数组结束符，并恢复上一层输出状态。"""
         self._stack.pop()
         self._write("]")
         self._first = not self._stack[-1] if self._stack else True
         return self
 
     def key(self, name: str) -> JsonStreamWriter:
+        """写入 JSON 对象键名，并处理同级成员之间的逗号。"""
         if not self._first:
             self._write(",")
         self._write(f'"{name}":')
@@ -67,6 +73,7 @@ class JsonStreamWriter:
         return self
 
     def value(self, val: Any) -> JsonStreamWriter:
+        """写入一个 JSON 值，并处理数组或对象中的分隔符。"""
         if not self._first:
             self._write(",")
         self._write(json.dumps(val, ensure_ascii=False))
@@ -87,4 +94,5 @@ class JsonStreamWriter:
         return self
 
     def _write(self, chunk: str) -> None:
+        """写入JSON 流式写入器。"""
         self._writer(chunk)

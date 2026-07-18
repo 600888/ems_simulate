@@ -18,6 +18,7 @@ class NamespaceHelper:
     __slots__ = ("_ns_prefix",)
 
     def __init__(self, ns_prefix: str = ""):
+        """读取 XML 根节点的命名空间，并生成后续查询使用的标签前缀。"""
         self._ns_prefix = ns_prefix
 
     @classmethod
@@ -31,10 +32,12 @@ class NamespaceHelper:
 
     @property
     def ns_prefix(self) -> str:
+        """返回SCL 命名空间助手当前的NSprefix。"""
         return self._ns_prefix
 
     @property
     def has_namespace(self) -> bool:
+        """判断SCL 命名空间助手是否处于namespace。"""
         return bool(self._ns_prefix)
 
     def tag(self, name: str) -> str:
@@ -44,12 +47,15 @@ class NamespaceHelper:
         return name
 
     def find(self, parent: ET.Element, name: str) -> ET.Element | None:
+        """查找首个匹配节点，并自动为标签补充 SCL XML 命名空间。"""
         return parent.find(self.tag(name))
 
     def findall(self, parent: ET.Element, name: str) -> list[ET.Element]:
+        """查找当前元素下全部匹配节点，并自动处理 SCL XML 命名空间。"""
         return parent.findall(self.tag(name))
 
     def iter(self, parent: ET.Element, name: str):
+        """迭代全部匹配节点，并自动为标签补充 SCL XML 命名空间。"""
         return parent.iter(self.tag(name))
 
     def get_text(self, elem: ET.Element | None, attr: str, default: str = "") -> str:

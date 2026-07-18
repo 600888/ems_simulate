@@ -54,6 +54,7 @@ class SclServerModelBuilder:
     """
 
     def __init__(self, doc: SclDocument):
+        """保存 SCL 文档与目标 IED，用于生成服务端运行模型。"""
         self._doc = doc
 
     def build(self, host: str = "", port: int = 102) -> IedModel:
@@ -82,12 +83,7 @@ class SclServerModelBuilder:
         )
 
     def iter_leaf_attributes(self, ied_name: str = "") -> Iterator[dict[str, Any]]:
-        """Yield every native DA/BDA leaf declared by the selected IED's SCL types.
-
-        This is intentionally broader than the business point transformer: q, t,
-        ctlModel, dU and other intrinsic model attributes belong in the MMS model
-        even though they must not become independently polled business points.
-        """
+        """深度遍历 SCL 数据对象，逐个返回可注册的叶子数据属性。"""
         resolver = TypeResolver(self._doc)
         for ied in self._doc.ieds:
             if ied_name and ied.name != ied_name:

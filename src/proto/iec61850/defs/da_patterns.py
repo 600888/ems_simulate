@@ -99,6 +99,7 @@ INTRINSIC_DO_DA_OVERRIDE: dict[str, dict[str, tuple[str, str]]] = {
 
 
 def get_intrinsic_da_override(do_name: str, da_name: str) -> tuple[str, str] | None:
+    """返回标准内置数据属性的功能约束、IEC 类型和描述覆盖信息。"""
     return INTRINSIC_DO_DA_OVERRIDE.get(do_name, {}).get(da_name)
 
 

@@ -75,6 +75,7 @@ class SclParser:
     """
 
     def __init__(self):
+        """创建 SCL 解析器，并初始化命名空间助手和解析中的类型模板索引。"""
         self._ns = NamespaceHelper()
         self._name_structure: str = ""
         self._ied_name: str = ""
@@ -175,6 +176,7 @@ class SclParser:
     # ===== Header =====
 
     def _parse_header(self, elem: ET.Element) -> SclHeader:
+        """解析 SCL 中的 Header 元素并构建对应模型对象。"""
         self._name_structure = elem.get("nameStructure", "")
         return SclHeader(
             id=elem.get("id", ""),
@@ -187,12 +189,14 @@ class SclParser:
     # ===== Communication =====
 
     def _parse_communication(self, elem: ET.Element) -> SclCommunication:
+        """解析 SCL 中的 Communication 元素并构建对应模型对象。"""
         sub_nets = []
         for sn_elem in self._ns.findall(elem, "SubNetwork"):
             sub_nets.append(self._parse_sub_network(sn_elem))
         return SclCommunication(sub_networks=sub_nets)
 
     def _parse_sub_network(self, elem: ET.Element) -> SclSubNetwork:
+        """解析 SCL 中的 SubNetwork 元素并构建对应模型对象。"""
         conn_aps = []
         for ap_elem in self._ns.findall(elem, "ConnectedAP"):
             conn_aps.append(self._parse_connected_ap(ap_elem))
@@ -204,6 +208,7 @@ class SclParser:
 
     def _parse_connected_ap(self, elem: ET.Element) -> SclConnectedAP:
         # Address
+        """解析 SCL 中的 ConnectedAP 元素并构建对应模型对象。"""
         address = self._parse_p_list(self._ns.find(elem, "Address"))
 
         # GSE
@@ -219,6 +224,7 @@ class SclParser:
         )
 
     def _parse_gse(self, elem: ET.Element) -> SclGSE:
+        """解析 SCL 中的 GSE 元素并构建对应模型对象。"""
         address = self._parse_p_list(self._ns.find(elem, "Address"))
 
         min_time = 10
@@ -273,6 +279,7 @@ class SclParser:
     # ===== DataTypeTemplates =====
 
     def _parse_data_type_templates(self, elem: ET.Element) -> Any:
+        """解析 SCL 中的 DataTypeTemplates 元素并构建对应模型对象。"""
         from ..model.scl_document import SclDataTypeTemplates
 
         dtt = SclDataTypeTemplates()
@@ -300,6 +307,7 @@ class SclParser:
         return dtt
 
     def _parse_ln_node_type(self, elem: ET.Element) -> SclLNodeType:
+        """解析 SCL 中的 LNodeType 元素并构建对应模型对象。"""
         dos = []
         for do_elem in self._ns.findall(elem, "DO"):
             dos.append(
@@ -318,6 +326,7 @@ class SclParser:
         )
 
     def _parse_do_type(self, elem: ET.Element) -> SclDOType:
+        """解析 SCL 中的 DOType 元素并构建对应模型对象。"""
         das = []
         sdos = []
 
@@ -358,6 +367,7 @@ class SclParser:
         )
 
     def _parse_da_type(self, elem: ET.Element) -> SclDAType:
+        """解析 SCL 中的 DAType 元素并构建对应模型对象。"""
         bdas = []
         for bda_elem in self._ns.findall(elem, "BDA"):
             val = ""
@@ -381,6 +391,7 @@ class SclParser:
         )
 
     def _parse_enum_type(self, elem: ET.Element) -> SclEnumType:
+        """解析 SCL 中的 EnumType 元素并构建对应模型对象。"""
         values = []
         for ev_elem in self._ns.findall(elem, "EnumVal"):
             try:
@@ -402,6 +413,7 @@ class SclParser:
     # ===== IED =====
 
     def _parse_ied(self, elem: ET.Element) -> SclIED:
+        """解析 SCL 中的 IED 元素并构建对应模型对象。"""
         self._ied_name = elem.get("name", "")
         access_points = []
         for ap_elem in self._ns.findall(elem, "AccessPoint"):
@@ -416,6 +428,7 @@ class SclParser:
         )
 
     def _parse_access_point(self, elem: ET.Element) -> SclAccessPoint:
+        """解析 SCL 中的 AccessPoint 元素并构建对应模型对象。"""
         server = None
         server_elem = self._ns.find(elem, "Server")
         if server_elem is not None:
@@ -427,12 +440,14 @@ class SclParser:
         )
 
     def _parse_server(self, elem: ET.Element) -> SclServer:
+        """解析 SCL 中的 Server 元素并构建对应模型对象。"""
         ldevices = []
         for ld_elem in self._ns.findall(elem, "LDevice"):
             ldevices.append(self._parse_ldevice(ld_elem))
         return SclServer(ldevices=ldevices)
 
     def _parse_ldevice(self, elem: ET.Element) -> SclLDevice:
+        """解析 SCL 中的 LDevice 元素并构建对应模型对象。"""
         ln0 = None
         lns = []
 
@@ -459,6 +474,7 @@ class SclParser:
 
     def _parse_ln(self, elem: ET.Element, ld_inst: str = "") -> SclLN:
         # DOI
+        """解析 SCL 中的 LN/LN0 元素并构建对应模型对象。"""
         dois = []
         for doi_elem in self._ns.findall(elem, "DOI"):
             dois.append(self._parse_doi(doi_elem))
@@ -503,6 +519,7 @@ class SclParser:
 
     @staticmethod
     def _parse_ext_ref(elem: ET.Element) -> SclExtRef:
+        """解析 SCL 中的 ExtRef 元素并构建对应模型对象。"""
         return SclExtRef(
             ied_name=elem.get("iedName", ""),
             ld_inst=elem.get("ldInst", ""),
@@ -522,6 +539,7 @@ class SclParser:
         )
 
     def _parse_doi(self, elem: ET.Element) -> SclDOI:
+        """解析 SCL 中的 DOI 元素并构建对应模型对象。"""
         dai_values = {}
         for dai_elem in self._ns.findall(elem, "DAI"):
             dai_name = dai_elem.get("name", "")
@@ -535,6 +553,7 @@ class SclParser:
         )
 
     def _parse_dataset(self, elem: ET.Element, ld_inst: str = "") -> SclDataSet:
+        """解析 SCL 中的 DataSet 元素并构建对应模型对象。"""
         members = []
         for fcda_elem in self._ns.findall(elem, "FCDA"):
             da_name = fcda_elem.get("daName", "")
@@ -563,6 +582,7 @@ class SclParser:
         )
 
     def _parse_report_control(self, elem: ET.Element) -> SclReportControl | None:
+        """解析 SCL 中的 ReportControl 元素并构建对应模型对象。"""
         name = elem.get("name", "")
         if not name:
             return None
@@ -629,6 +649,7 @@ class SclParser:
         )
 
     def _parse_gse_control(self, elem: ET.Element) -> SclGSEControl:
+        """解析 SCL 中的 GSEControl 元素并构建对应模型对象。"""
         try:
             conf_rev = int(elem.get("confRev", "1"))
         except ValueError:

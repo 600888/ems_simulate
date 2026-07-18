@@ -47,13 +47,16 @@ class DataSetsPlugin:
 
     @property
     def name(self) -> str:
+        """返回DataSetsPlugin当前的名称。"""
         return "datasets"
 
     @property
     def available(self) -> bool:
+        """返回DataSetsPlugin当前的可用状态。"""
         return HAS_IEC61850
 
     def initialize(self, connection: Any, **kwargs) -> None:
+        """装配依赖并开放插件能力。"""
         self._connection = connection
         self._registry = kwargs.get("registry")
         self._client = kwargs.get("client")
@@ -62,6 +65,7 @@ class DataSetsPlugin:
         log.info("DataSets 插件已初始化")
 
     def shutdown(self) -> None:
+        """停止插件任务并释放其持有的资源。"""
         self.invalidate_catalog()
         self._connection = None
         self._registry = None

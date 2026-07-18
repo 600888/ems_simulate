@@ -93,18 +93,14 @@ class IcdExporter:
 
     @staticmethod
     def _as_list(value: Any) -> list[Any]:
+        """把 XML 字典中的单个节点或空值规范化为列表，统一后续遍历逻辑。"""
         if value is None:
             return []
         return value if isinstance(value, list) else [value]
 
     @classmethod
     def _validate_scl_references(cls, scl_dict: dict[str, Any]) -> None:
-        """Reject an ICD whose report/data-set references cannot resolve.
-
-        The XML schema cannot detect an FCDA that names a missing DO/DA/BDA.
-        Such a file can be parsed successfully while reports using that data
-        set fail later. Validate the generated object graph before writing it.
-        """
+        """校验导出的 SCL 数据集、控制块和类型模板引用是否都能解析。"""
 
         scl = scl_dict.get("SCL", {})
         templates = scl.get("DataTypeTemplates", {})
@@ -119,11 +115,13 @@ class IcdExporter:
         issues: list[str] = []
 
         def named_child(parent: dict[str, Any] | None, tag: str, name: str) -> dict[str, Any] | None:
+            """从 XML 字典节点中查找指定名称的直接子节点。"""
             if not parent:
                 return None
             return next((item for item in cls._as_list(parent.get(tag)) if item.get("@name") == name), None)
 
         def nodes_for(ld: dict[str, Any]) -> list[dict[str, Any]]:
+            """返回 XML 字典节点下指定名称的全部子节点。"""
             return cls._as_list(ld.get("LN0")) + cls._as_list(ld.get("LN"))
 
         for owner_ld in ldevices:
@@ -407,6 +405,7 @@ class IcdExporter:
     }
 
     def _model_to_scl_dict(self, model: IedModel, ied_name: str) -> dict[str, Any]:
+        """把内部 IED 模型转换为可序列化的完整 SCL 字典结构。"""
         type_templates = self._build_data_type_templates(model, ied_name)
         ied = self._build_ied_section(model, ied_name, type_templates)
         connected_ap: dict[str, Any] = {
@@ -447,6 +446,7 @@ class IcdExporter:
         }
 
     def _build_ied_section(self, model: IedModel, ied_name: str, type_templates: dict[str, Any]) -> dict[str, Any]:
+        """构建 ICD 文档中的IEDsection结构。"""
         ldevice_list = []
         for ld in model.lds:
             ld_inst = self._get_ld_inst(ld, ied_name)
@@ -526,6 +526,7 @@ class IcdExporter:
         }
 
     def _build_data_type_templates(self, model: IedModel, ied_name: str) -> dict[str, Any]:
+        """构建 ICD 文档中的数据类型DataTypeTemplates结构。"""
         _reset_type_counters()
         lnode_types = []
         do_types = []
@@ -586,6 +587,7 @@ class IcdExporter:
         return self._assemble_type_templates(lnode_types, do_types, da_types, enum_types)
 
     def _init_enum_types(self, enum_types: dict[str, list[dict[str, str]]]) -> None:
+        """初始化 ICD 导出所需的标准枚举类型模板。"""
         enum_types["ctlModel"] = [
             {"@ord": str(i), "#text": v}
             for i, v in enumerate(
@@ -722,6 +724,7 @@ class IcdExporter:
         return ()
 
     def _make_bda_fingerprint(self, bda) -> tuple:
+        """生成基础数据属性fingerprint。"""
         if bda.sub_das:
             nested = tuple(sorted(self._make_bda_fingerprint(child) for child in bda.sub_das))
             return (bda.name, "Struct", "", nested)
@@ -830,15 +833,7 @@ class IcdExporter:
         return result
 
     def _build_dois(self, ln) -> list[dict[str, Any]]:
-        """Build instance overrides for values known by the client.
-
-        The discovered ``DARef`` objects describe the data *type*.  Merely
-        discovering a DA does not mean that an ICD needs a corresponding
-        empty DAI/SDI in the instance section; the DOType/DAType templates
-        already carry that structure.  At present the client retains only
-        the dU description value, so that is the only instance override that
-        can be exported faithfully.
-        """
+        """构建 ICD 文档中的DOIS结构。"""
         doi_list = []
         for do in ln.dos:
             do_descriptions = getattr(self, "_do_descriptions", {})
@@ -856,6 +851,7 @@ class IcdExporter:
     def _build_datasets(self, datasets, ld_inst: str, ln, discovered_lns) -> Any:
         # 构建 LN 索引: (lnClass, lnInst) → discovered LN
         # 同时构建所有 DO 名称集合用于灵活匹配
+        """构建 ICD 文档中的数据集结构。"""
         ln_index: dict[tuple[str, str, str], Any] = {}
         all_do_names: set[str] = set()
         for dln in discovered_lns:
@@ -940,6 +936,7 @@ class IcdExporter:
         return ds_list if len(ds_list) > 1 else (ds_list[0] if ds_list else [])
 
     def _find_ln_for_fcda(self, fcda: dict[str, Any], ln_index: dict[tuple[str, str, str], Any], discovered_lns):
+        """查找逻辑节点FORFCDA并返回匹配结果。"""
         do_name = fcda.get("@doName", "")
         key = (
             fcda.get("@prefix", ""),
@@ -961,9 +958,11 @@ class IcdExporter:
 
     @staticmethod
     def _ln_has_do(ln, do_name: str) -> bool:
+        """判断逻辑节点类型是否声明了指定数据对象。"""
         return any(do.name == do_name for do in ln.dos)
 
     def _normalize_fcda_fc(self, fcda: dict[str, Any], ln) -> None:
+        """规范化FCDA功能约束。"""
         do_name = fcda.get("@doName", "")
         if not do_name:
             return
@@ -1058,7 +1057,7 @@ class IcdExporter:
 
     @staticmethod
     def _dataset_name_from_ref(data_set_ref: str) -> str:
-        """Convert an MMS DataSet object reference to the local SCL name."""
+        """从数据集完整引用中提取当前逻辑节点下的数据集名称。"""
         if not data_set_ref:
             return ""
         local_ref = data_set_ref.rsplit("/", 1)[-1]
@@ -1069,7 +1068,7 @@ class IcdExporter:
         return local_ref
 
     def _build_gse_controls(self, gocb_list) -> Any:
-        """Build SCL ``GSEControl`` elements from discovered GoCB metadata."""
+        """构建 ICD 文档中的GSEcontrols结构。"""
         items = []
         for gocb in gocb_list:
             item = {
@@ -1088,7 +1087,7 @@ class IcdExporter:
         return items if len(items) > 1 else (items[0] if items else [])
 
     def _build_gse_addresses(self, model: IedModel, ied_name: str) -> Any:
-        """Build Communication/GSE entries from transport data exposed over MMS."""
+        """构建 ICD 文档中的GSEaddresses结构。"""
         items = []
         for ld in model.lds:
             ld_inst = self._get_ld_inst(ld, ied_name)
@@ -1194,6 +1193,7 @@ class IcdExporter:
     # ========== 辅助方法 ==========
 
     def _infer_ied_name(self, model: IedModel) -> str:
+        """推断IED名称并返回推断结果。"""
         ld_names = [ld.name for ld in model.lds if getattr(ld, "name", "")]
         if not ld_names:
             return "IED"
@@ -1228,6 +1228,7 @@ class IcdExporter:
         return ld_names[0]
 
     def _get_ld_inst(self, ld, ied_name: str) -> str:
+        """获取逻辑设备INST并返回结果。"""
         ld_name = getattr(ld, "name", "") or ""
         ld_inst = getattr(ld, "inst", "") or ""
         if ld_inst and ld_inst != ld_name:
@@ -1236,7 +1237,7 @@ class IcdExporter:
 
     @staticmethod
     def _build_ln_type_id(ied_name: str, ld_inst: str, ln_name: str) -> str:
-        """Build a stable LNodeType ID without duplicating the IED prefix."""
+        """构建 ICD 文档中的逻辑节点类型标识结构。"""
         if not ied_name:
             owner = ld_inst
         elif not ld_inst or ld_inst == ied_name:
@@ -1249,12 +1250,14 @@ class IcdExporter:
 
     @staticmethod
     def _looks_like_ld_inst(value: str) -> bool:
+        """判断文本是否符合逻辑设备实例标识的常见格式。"""
         if not value:
             return False
         return bool(re.match(r"^(LD\d+|CTRL\d*|MEAS\d*|PROT\d*|CTMP\d*|BAY\d*|PIGO\d*|GOOSE\d*|MMS\d*)$", value))
 
     @staticmethod
     def _looks_like_named_ld_inst(value: str) -> bool:
+        """判断文本是否为带语义名称的逻辑设备实例标识。"""
         if not value:
             return False
         return bool(re.match(r"^(?=.*[A-Za-z]{2})[A-Za-z][A-Za-z0-9]*$", value))
@@ -1285,12 +1288,14 @@ class IcdExporter:
 
     @staticmethod
     def _extract_ln_prefix(ln_name: str, ln_class: str) -> str:
+        """提取逻辑节点prefix。"""
         if not ln_name or not ln_class or ln_class == "LLN0":
             return ""
         idx = ln_name.find(ln_class)
         return ln_name[:idx] if idx > 0 else ""
 
     def _normalize_fcda_ln(self, fcda: dict[str, Any], ln) -> None:
+        """规范化FCDA逻辑节点。"""
         ln_class = ln.ln_class or self._extract_ln_class_from_name(ln.name) or ""
         fcda["@lnClass"] = ln_class
         fcda["@lnInst"] = self._extract_ln_inst(ln.name)
@@ -1301,6 +1306,7 @@ class IcdExporter:
             fcda.pop("@prefix", None)
 
     def _extract_ld_inst(self, ld_name: str, ied_name: str) -> str:
+        """提取逻辑设备INST。"""
         if not ld_name:
             return ""
         if not ied_name:
@@ -1314,6 +1320,7 @@ class IcdExporter:
         return ld_name
 
     def _extract_ln_inst(self, ln_name: str) -> str:
+        """提取逻辑节点INST。"""
         if ln_name == "LLN0":
             return ""
         m = re.search(r"(\d+)$", ln_name)
@@ -1337,6 +1344,7 @@ class IcdExporter:
         return re.sub(r"\d+$", "", ln_name)
 
     def _infer_cdc_from_do(self, do_name: str, ln_class: str) -> str:
+        """根据数据对象名称和属性结构推断公共数据类 CDC。"""
         if do_name in ("Mod", "Beh", "Health"):
             return "ENC"
         if do_name == "NamPlt":
@@ -1370,6 +1378,7 @@ class IcdExporter:
         return "MV"
 
     def _resolve_fc(self, da, cdc: str) -> str:
+        """优先采用调用方或注册表中的功能约束，缺失时再根据地址推断。"""
         if da.name in ("q", "t"):
             qt_fc = self._CDC_QT_FC_MAP.get(cdc)
             if qt_fc:
@@ -1383,6 +1392,7 @@ class IcdExporter:
         return self._CDC_DEFAULT_FC_MAP.get(cdc, "CF")
 
     def _resolve_btype(self, da, do_name: str, cdc: str, ln_type_id: str) -> tuple:
+        """解析btype并返回规范值。"""
         if da.name == "q":
             return ("Quality", None)
         if da.name == "t":
@@ -1410,6 +1420,7 @@ class IcdExporter:
         return (btype, None)
 
     def _build_fixed_do_type(self, ln_class: str, do_name: str) -> dict[str, Any] | None:
+        """构建 ICD 文档中的fixed数据对象类型结构。"""
         if do_name == "Mod":
             return {
                 "@id": f"_ENC_{ln_class}_Mod",
@@ -1455,6 +1466,7 @@ class IcdExporter:
         return None
 
     def _get_fixed_dos(self, ln_class: str) -> list[dict[str, Any]]:
+        """获取fixedDOS并返回结果。"""
         dos = []
         if ln_class != "LLN0":
             dos.append({"@name": "Mod", "@type": f"_ENC_{ln_class}_Mod"})

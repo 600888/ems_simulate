@@ -31,8 +31,11 @@ def retry_with_backoff(
     """
 
     def decorator(func):
+        """为目标函数安装指数退避重试逻辑。"""
+
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
+            """执行被装饰函数；连接类异常时按指数退避等待并重试。"""
             last_exception = None
             for attempt in range(max_retries + 1):
                 try:
@@ -69,6 +72,7 @@ class ReconnectionManager:
         max_delay: float = 300.0,
         exponential_base: float = 2.0,
     ):
+        """保存重连函数和退避参数，并初始化连续失败与重试计数。"""
         self.max_retries = max_retries
         self.base_delay = base_delay
         self.max_delay = max_delay
@@ -77,6 +81,7 @@ class ReconnectionManager:
 
     @property
     def retry_count(self) -> int:
+        """返回ReconnectionManager当前的retry数量。"""
         return self._retry_count
 
     def reset(self):

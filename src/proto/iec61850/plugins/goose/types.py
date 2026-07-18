@@ -109,9 +109,11 @@ class GooseSubscriptionInfo:
     last_change: float = 0.0
 
     def __post_init__(self) -> None:
+        """完成GooseSubscriptionInfo字段初始化，并规范化需要参与匹配的配置值。"""
         self.dst_mac = normalize_mac_address(self.dst_mac)
 
     def to_dict(self) -> dict[str, Any]:
+        """把GooseSubscriptionInfo转换为可序列化字典。"""
         return {
             "go_cb_ref": self.go_cb_ref,
             "app_id": self.app_id,

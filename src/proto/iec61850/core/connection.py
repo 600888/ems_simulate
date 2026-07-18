@@ -15,7 +15,7 @@ from ..log import log
 
 
 def _positive_timeout_from_env(name: str, default: int) -> int:
-    """Read a positive millisecond timeout without making startup fragile."""
+    """读取并校验环境变量中的正数超时配置；无效或缺失时采用默认值。"""
     raw_value = os.getenv(name)
     if raw_value is None:
         return default
@@ -44,6 +44,7 @@ class Iec61850Timeouts:
 
     @classmethod
     def from_env(cls) -> "Iec61850Timeouts":
+        """从环境变量加载连接、请求和模型发现超时，未配置项沿用默认值。"""
         return cls(
             connect_ms=_positive_timeout_from_env("EMS_IEC61850_CONNECT_TIMEOUT_MS", 3000),
             request_ms=_positive_timeout_from_env("EMS_IEC61850_REQUEST_TIMEOUT_MS", 3000),
@@ -69,6 +70,7 @@ class Iec61850Connection:
         *,
         timeouts: Iec61850Timeouts | None = None,
     ):
+        """保存 IED 地址与超时配置，并创建保护底层连接句柄的可重入锁。"""
         if not HAS_IEC61850:
             raise RuntimeError("pyiec61850 未安装，无法创建 IEC 61850 连接")
 
@@ -93,6 +95,7 @@ class Iec61850Connection:
 
     @property
     def is_connected(self) -> bool:
+        """判断IED 连接管理器是否处于连接状态。"""
         return self._is_connected
 
     @contextlib.contextmanager

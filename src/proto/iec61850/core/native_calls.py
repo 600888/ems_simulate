@@ -4,7 +4,7 @@ from typing import Any
 
 
 def call_gil_safe(native: Any, function_name: str, *args: Any) -> Any:
-    """Use the binding's GIL-releasing wrapper when one is available."""
+    """调用 pyiec61850 原生函数；绑定支持时临时释放 GIL，避免长时间阻塞其他 Python 线程。"""
 
     wrapper = getattr(native, f"pyWrap_{function_name}", None)
     if callable(wrapper):

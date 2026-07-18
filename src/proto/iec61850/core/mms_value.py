@@ -14,12 +14,7 @@ from ..defs.constants import (
 
 
 def mms_value_to_python(mms_value, iec_type: str = IEC_TYPE_UNKNOWN) -> Any:
-    """Convert a SWIG ``MmsValue`` into a JSON-serializable Python value.
-
-    Runtime aggregate types are handled before the configured scalar type.
-    Reports can contain a complete CDC structure even when the configured FCDA
-    points at a leaf such as ``AnIn1.mag.f``.
-    """
+    """根据 MmsValue 的运行时类型转换为等价 Python 值，并递归处理数组与结构体。"""
     if not HAS_IEC61850:
         return None
 
@@ -40,6 +35,7 @@ def mms_value_to_python(mms_value, iec_type: str = IEC_TYPE_UNKNOWN) -> Any:
         pass
 
     def is_mms_type(*names: str) -> bool:
+        """判断底层 MmsValue 是否属于指定 MMS 类型。"""
         return any(mms_type == getattr(iec61850, name, object()) for name in names)
 
     # Calling a scalar accessor on an MMS structure is unsafe. Recursively
@@ -119,7 +115,7 @@ def mms_value_to_python(mms_value, iec_type: str = IEC_TYPE_UNKNOWN) -> Any:
 
 
 def _safe_mms_string(iec61850, mms_value) -> str | None:
-    """Return a readable MMS string without leaking a SWIG object repr."""
+    """安全读取 MmsValue 字符串；底层返回空指针或转换失败时返回空字符串。"""
     try:
         text = str(iec61850.MmsValue_toString(mms_value) or "")
     except Exception:

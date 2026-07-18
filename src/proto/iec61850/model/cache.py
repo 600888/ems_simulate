@@ -37,6 +37,7 @@ _DEFAULT_CACHE_DIR = None
 
 
 def _get_default_cache_dir() -> Path:
+    """返回 IEC 61850 模型缓存目录，并在首次使用时创建目录。"""
     global _DEFAULT_CACHE_DIR
     if _DEFAULT_CACHE_DIR is None:
         try:
@@ -80,6 +81,7 @@ class ModelCache:
     MAX_SIZE = 32
 
     def __init__(self):
+        """确定模型缓存目录与内存容量，并初始化最近使用顺序。"""
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self._cache_lock = threading.Lock()
         self._cache_dir: Path | None = None  # 按需初始化
@@ -97,6 +99,7 @@ class ModelCache:
 
     @property
     def cache_dir(self) -> Path:
+        """返回IED 模型缓存当前的缓存DIR。"""
         if self._cache_dir is None:
             self._cache_dir = _get_default_cache_dir()
         return self._cache_dir
@@ -179,7 +182,7 @@ class ModelCache:
         self._save_to_file(key, model)
 
     def _remember(self, key: str, model: IedModel) -> None:
-        """Insert a model into the in-memory LRU without touching persistence."""
+        """把模型写入内存缓存并维护最近使用顺序，超出上限时淘汰最旧项。"""
         with self._cache_lock:
             if key in self._cache:
                 self._cache.move_to_end(key)

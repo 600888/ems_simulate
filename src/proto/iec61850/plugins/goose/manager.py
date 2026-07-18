@@ -25,6 +25,7 @@ from .types import (
 
 
 def _scoped_key(channel_id: int | None, value: str) -> str:
+    """使用设备作用域与资源标识生成隔离键，避免不同设备间的 GOOSE 资源串扰。"""
     return f"{channel_id}:{value}" if channel_id is not None else value
 
 
@@ -43,6 +44,7 @@ class GooseResourceManager:
     """
 
     def __init__(self, persistence: PersistenceAdapter | None = None):
+        """创建按设备隔离的 GOOSE 发布器、接收器和持久化状态表。"""
         self._publishers: dict[str, GoosePublisher] = {}
         self._receivers: dict[str, GooseReceiver] = {}
         self._capture_engines: dict[str, GooseCaptureEngine] = {}
@@ -306,12 +308,7 @@ class GooseResourceManager:
         return True
 
     def delete_publishers_by_channel(self, channel_id: int, delete_from_db: bool = False) -> int:
-        """Stop and remove every publisher owned by a channel.
-
-        ICD import is a full replacement operation. Keeping this operation on
-        the manager avoids callers depending on its private runtime maps and
-        ensures running publishers are stopped before configuration is replaced.
-        """
+        """删除发布器BYchannel。"""
         publisher_ids = [
             publisher_id
             for publisher_id, owner_channel_id in list(self._channel_map.items())
@@ -401,6 +398,7 @@ class GooseResourceManager:
         return True
 
     def replace_publisher_entries(self, publisher_id: str, entries: list[dict[str, Any]]) -> dict[str, Any] | None:
+        """替换发布器条目。"""
         publisher = self._publishers.get(publisher_id)
         if not publisher or publisher.is_running:
             return None
@@ -586,6 +584,7 @@ class GooseResourceManager:
         description: str = "",
         auto_start: bool = False,
     ) -> dict[str, Any] | None:
+        """更新接收器。"""
         receiver = self._receivers.get(receiver_id)
         if not receiver or receiver.is_running:
             return None
@@ -746,6 +745,7 @@ class GooseResourceManager:
         return removed
 
     def replace_subscriptions(self, receiver_id: str, subscriptions: list[dict[str, Any]]) -> dict[str, Any] | None:
+        """替换订阅。"""
         receiver = self._receivers.get(receiver_id)
         if not receiver or receiver.is_running:
             return None
@@ -775,7 +775,7 @@ class GooseResourceManager:
         current_go_cb_ref: str,
         **changes: Any,
     ) -> dict[str, Any] | None:
-        """Apply subscription configuration and safely rebuild a running receiver."""
+        """更新订阅。"""
         receiver = self._receivers.get(receiver_id)
         if receiver is None:
             return None
@@ -799,12 +799,14 @@ class GooseResourceManager:
         go_cb_ref: str,
         limit: int = 100,
     ) -> list[dict[str, Any]] | None:
+        """获取订阅历史记录并返回结果。"""
         receiver = self._receivers.get(receiver_id)
         if receiver is None or receiver.get_subscription(go_cb_ref) is None:
             return None
         return receiver.get_history(go_cb_ref, limit)
 
     def _persist_receiver(self, receiver_id: str) -> None:
+        """保存接收器的最新订阅状态，使通道重启后能够恢复配置。"""
         channel_id = self._receiver_channel_map.get(receiver_id)
         receiver = self._receivers.get(receiver_id)
         if channel_id is None or receiver is None:

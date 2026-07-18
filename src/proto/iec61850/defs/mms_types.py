@@ -33,7 +33,7 @@ NATIVE_MMS_TYPE_NAMES: tuple[str, ...] = tuple(item.value for item in MmsType if
 
 
 def mms_type_from_native(native_type: int, native_module=None) -> MmsType:
-    """Map a pyiec61850 ``MMS_*`` integer constant to :class:`MmsType`."""
+    """把 pyiec61850 的原生类型常量映射为内部 MmsType。"""
     if native_module is not None:
         for item in MmsType:
             if item is MmsType.UNKNOWN:
@@ -103,7 +103,7 @@ _NORMALIZED_BTYPE_TO_MMS_TYPE = {key.upper(): value for key, value in BTYPE_TO_M
 
 
 def mms_type_from_btype(btype: str) -> MmsType:
-    """Map an SCL ``bType`` value to the corresponding native MMS type."""
+    """把 SCL bType 映射为对应的 MMS 类型。"""
     return _NORMALIZED_BTYPE_TO_MMS_TYPE.get(str(btype or "").strip().upper(), MmsType.UNKNOWN)
 
 
@@ -135,6 +135,7 @@ IEC_TO_DEFAULT_MMS_TYPE: dict[IecType, MmsType] = {
 
 
 def mms_type_from_iec_type(iec_type: str | IecType) -> MmsType:
+    """把项目内部 IEC 数据类型映射为 MMS 类型。"""
     try:
         normalized = IecType(iec_type)
     except (TypeError, ValueError):
@@ -143,6 +144,7 @@ def mms_type_from_iec_type(iec_type: str | IecType) -> MmsType:
 
 
 def iec_type_from_mms_type(mms_type: str | MmsType) -> IecType:
+    """把 MMS 类型映射为项目内部 IEC 数据类型。"""
     try:
         normalized = MmsType(mms_type)
     except (TypeError, ValueError):
@@ -151,7 +153,7 @@ def iec_type_from_mms_type(mms_type: str | MmsType) -> IecType:
 
 
 def infer_mms_type_from_path(path: str, iec_type: str | IecType = IecType.UNKNOWN) -> MmsType:
-    """Infer deterministic MMS leaf types from a DA/BDA path."""
+    """根据标准数据属性路径推断 MMS 类型；无法确定时返回 UNKNOWN。"""
     leaf = str(path or "").split(".")[-1]
     if leaf in ("NamPlt", "PhyNam"):
         return MmsType.STRUCTURE

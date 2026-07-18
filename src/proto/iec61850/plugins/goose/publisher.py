@@ -82,6 +82,7 @@ class GoosePublisher:
     """
 
     def __init__(self, config: PublisherConfig):
+        """保存 GoCB 与链路层配置，并初始化数据集、序号、重发线程和发送锁。"""
         if not HAS_IEC61850:
             raise RuntimeError("pyiec61850 未安装，无法创建 GOOSE Publisher")
 
@@ -114,63 +115,78 @@ class GoosePublisher:
 
     @property
     def config(self) -> PublisherConfig:
+        """返回GOOSE 发布器当前的配置。"""
         return self._config
 
     @property
     def is_running(self) -> bool:
+        """判断GOOSE 发布器是否处于运行状态。"""
         return self._is_running
 
     @property
     def st_num(self) -> int:
+        """返回GOOSE 发布器当前的STNUM。"""
         return self._st_num
 
     @property
     def sq_num(self) -> int:
+        """返回GOOSE 发布器当前的SQNUM。"""
         return self._sq_num
 
     @property
     def dst_mac(self) -> list[int]:
+        """返回GOOSE 发布器当前的DSTMAC。"""
         return self._dst_mac
 
     # 兼容旧属性访问 (过渡期)
     @property
     def interface(self) -> str:
+        """返回GOOSE 发布器当前的网络接口。"""
         return self._config.interface
 
     @property
     def go_cb_ref(self) -> str:
+        """返回GOOSE 发布器当前的GO控制块引用。"""
         return self._config.go_cb_ref
 
     @property
     def go_id(self) -> str:
+        """返回GOOSE 发布器当前的GO标识。"""
         return self._config.go_id
 
     @property
     def data_set_ref(self) -> str:
+        """返回GOOSE 发布器当前的数据SET引用。"""
         return self._config.data_set_ref
 
     @property
     def app_id(self) -> int:
+        """返回GOOSE 发布器当前的APP标识。"""
         return self._config.app_id
 
     @property
     def conf_rev(self) -> int:
+        """返回GOOSE 发布器当前的CONFREV。"""
         return self._config.conf_rev
 
     @property
     def time_allowed_to_live(self) -> int:
+        """返回GOOSE 发布器当前的TIMEallowedTOLIVE。"""
         return self._config.time_allowed_to_live
 
     @property
     def simulation(self) -> bool:
+        """返回GOOSE 发布器当前的simulation。"""
         return self._config.simulation
 
     @property
     def vlan_id(self) -> int:
+        """返回GOOSE 发布器当前的VLAN标识。"""
         return self._config.vlan_id
 
     @property
     def vlan_prio(self) -> int:
+        """返回GOOSE 发布器当前的VLANPRIO。"""
         return self._config.vlan_prio
 
     # ===== 数据集管理 =====
@@ -184,6 +200,7 @@ class GoosePublisher:
             self._is_created = False
 
     def remove_entry(self, index: int) -> None:
+        """移除条目。"""
         with self._lock:
             if 0 <= index < len(self._entries):
                 self._entries.pop(index)
@@ -217,6 +234,7 @@ class GoosePublisher:
         return changed
 
     def get_entries(self) -> list[dict[str, Any]]:
+        """获取条目并返回结果。"""
         return [
             {"index": i, "name": e.name, "value": e.value, "iec_type": e.iec_type.value}
             for i, e in enumerate(self._entries)
@@ -376,6 +394,7 @@ class GoosePublisher:
 
     @staticmethod
     def _ber_length(length: int) -> bytes:
+        """按 BER 规则编码长度字段。"""
         if length < 0x80:
             return bytes([length])
         encoded = length.to_bytes((length.bit_length() + 7) // 8, "big")
@@ -383,10 +402,12 @@ class GoosePublisher:
 
     @classmethod
     def _ber_tlv(cls, tag: int, value: bytes) -> bytes:
+        """按 BER 规则组合标签、长度和值。"""
         return bytes([tag]) + cls._ber_length(len(value)) + value
 
     @staticmethod
     def _unsigned_bytes(value: int) -> bytes:
+        """以最短大端字节序编码无符号整数。"""
         value = max(0, int(value))
         encoded = value.to_bytes(max(1, (value.bit_length() + 7) // 8), "big")
         if encoded[0] & 0x80:
@@ -395,6 +416,7 @@ class GoosePublisher:
 
     @staticmethod
     def _signed_bytes(value: int) -> bytes:
+        """以最短二进制补码字节序编码有符号整数。"""
         value = int(value)
         size = max(1, (value.bit_length() + 8) // 8)
         encoded = value.to_bytes(size, "big", signed=True)
@@ -406,11 +428,13 @@ class GoosePublisher:
 
     @staticmethod
     def _utc_time(timestamp_ms: int) -> bytes:
+        """把毫秒时间戳编码为 IEC 61850 UTC Time 八字节格式。"""
         seconds, milliseconds = divmod(max(0, int(timestamp_ms)), 1000)
         fraction = int(milliseconds / 1000 * (1 << 24))
         return seconds.to_bytes(4, "big") + fraction.to_bytes(3, "big") + b"\x0a"
 
     def _encode_mms_data(self, entry: GooseDataSetEntry) -> bytes:
+        """按 IEC 数据类型把数据集成员编码为 GOOSE allData 项。"""
         if entry.iec_type == IecDataType.BOOLEAN:
             return self._ber_tlv(0x83, b"\xff" if bool(entry.value) else b"\x00")
         if entry.iec_type == IecDataType.INTEGER:
@@ -427,6 +451,7 @@ class GoosePublisher:
         return self._ber_tlv(0x83, b"\x00")
 
     def _build_goose_payload(self) -> bytes:
+        """根据当前 GoCB、序号和数据集内容构造完整 GOOSE APDU。"""
         now_ms = int(time.time() * 1000)
         all_data = b"".join(self._encode_mms_data(entry) for entry in self._entries)
         fields = b"".join(
@@ -451,6 +476,7 @@ class GoosePublisher:
         return header + pdu
 
     def _publish_with_npcap(self) -> bool:
+        """在 Windows 上通过 Npcap 发送带以太网头和可选 VLAN 标签的 GOOSE 帧。"""
         try:
             from scapy.all import Dot1Q, Ether, Raw, sendp
 

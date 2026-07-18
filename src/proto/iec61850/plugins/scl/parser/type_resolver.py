@@ -26,6 +26,7 @@ class TypeResolver:
     """Resolve DO/DA type templates and cache repeated lookups."""
 
     def __init__(self, doc: SclDocument):
+        """索引 SCL 类型模板，供数据属性路径、描述和叶子节点解析复用。"""
         self._dtt = doc.data_type_templates
         self._doc = doc
         self._da_path_cache: dict[tuple[str, str], str | None] = {}
@@ -37,7 +38,7 @@ class TypeResolver:
         self._do_desc_cache: dict[tuple[str, str], str] = {}
 
     def get_value_da_path(self, do_type_id: str, cdc: str) -> str | None:
-        """Return the primary value DA path for a DOType/CDC pair."""
+        """获取值数据属性路径并返回结果。"""
         key = (do_type_id, cdc)
         if key in self._da_path_cache:
             return self._da_path_cache[key]
@@ -46,6 +47,7 @@ class TypeResolver:
         return result
 
     def _get_value_da_path_impl(self, do_type_id: str, cdc: str) -> str | None:
+        """获取值数据属性路径并返回结果。"""
         do_type = self._dtt.do_types.get(do_type_id)
         if do_type is None:
             return CDC_VALUE_DA_PATH.get(cdc)
@@ -75,6 +77,7 @@ class TypeResolver:
         return CDC_VALUE_DA_PATH.get(cdc)
 
     def _find_measurement_path(self, do_type: SclDOType, cdc: str) -> str | None:
+        """查找measurement路径并返回匹配结果。"""
         for da in do_type.das:
             if da.name in ("mag", "instMag", "cVal", "mxVal", "fCVal"):
                 # AnalogueValue is a Struct whose actual wire leaf can be f or
@@ -105,7 +108,7 @@ class TypeResolver:
         return None
 
     def collect_all_das(self, do_type_id: str, cdc: str) -> list[dict[str, Any]]:
-        """Collect all DA/BDA leaf paths for a DOType."""
+        """收集全部资源DAS并返回汇总结果。"""
         key = (do_type_id, cdc)
         if key in self._all_das_cache:
             return list(self._all_das_cache[key])
@@ -121,6 +124,7 @@ class TypeResolver:
         return list(result)
 
     def _collect_all_das_impl(self, do_type: SclDOType) -> list[dict[str, Any]]:
+        """收集全部资源DAS并返回汇总结果。"""
         result: list[dict[str, Any]] = []
         for da in do_type.das:
             self._collect_da(da, result, da.name)
@@ -145,6 +149,7 @@ class TypeResolver:
         path_prefix: str,
         fc_override: str | None = None,
     ) -> None:
+        """收集数据属性并返回汇总结果。"""
         mapped_name = STRUCT_DA_TO_FULL_PATH.get(da.name, da.name)
         if "." in path_prefix:
             parent_path = path_prefix.rsplit(".", 1)[0]
@@ -198,7 +203,7 @@ class TypeResolver:
         do_type: SclDOType,
         doi: SclDOI | None = None,
     ) -> str:
-        """Return the best available display description for a DO."""
+        """获取数据对象描述并返回结果。"""
         # DOI contains instance data.  Two LNs can use the same DO name/type
         # while declaring different <DAI name="dU"><Val> values, so resolve it
         # directly instead of allowing the first instance to poison the cache.
@@ -218,6 +223,7 @@ class TypeResolver:
         do_type: SclDOType,
         doi: SclDOI | None = None,
     ) -> str:
+        """获取数据对象描述并返回结果。"""
         if doi:
             du_val = doi.dai_values.get("du") or doi.dai_values.get("dU")
             if du_val:

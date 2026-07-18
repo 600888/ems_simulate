@@ -25,6 +25,7 @@ class ServerDataSetManager:
     """
 
     def __init__(self, builder, model_name: str = "EMS"):
+        """绑定服务端模型和底层句柄，维护数据集、GoCB 与待注册项状态。"""
         self._builder = builder
         self.model_name = model_name
 
@@ -44,34 +45,42 @@ class ServerDataSetManager:
 
     @property
     def dataset_catalog(self) -> list[dict[str, Any]]:
+        """返回服务端数据集管理器当前的数据集目录。"""
         return self._dataset_catalog
 
     @property
     def goose_cb_list(self) -> list[dict[str, Any]]:
+        """返回服务端数据集管理器当前的GOOSE控制块列表。"""
         return self._goose_cb_list
 
     @property
     def model_changed(self) -> bool:
+        """返回服务端数据集管理器当前的模型变更标志。"""
         return self._model_changed
 
     @model_changed.setter
     def model_changed(self, value: bool):
+        """更新服务端数据集管理器的模型变更标志，使后续操作使用新值。"""
         self._model_changed = value
 
     @property
     def goose_interface(self) -> str:
+        """返回服务端数据集管理器当前的GOOSE网络接口。"""
         return self._goose_interface
 
     @goose_interface.setter
     def goose_interface(self, value: str):
+        """更新服务端数据集管理器的GOOSE网络接口，使后续操作使用新值。"""
         self._goose_interface = value
 
     @property
     def goose_publishing_enabled(self) -> bool:
+        """返回服务端数据集管理器当前的GOOSE发布启用状态。"""
         return self._goose_publishing_enabled
 
     @property
     def pending_registrations(self) -> list[dict[str, Any]]:
+        """返回服务端数据集管理器当前的待处理注册项。"""
         return self._pending_goose_registrations
 
     # ===== DataSet 注册 =====
