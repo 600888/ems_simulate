@@ -25,7 +25,7 @@ from .core import (
     get_list_from_linked_list,
     mms_value_to_python,
 )
-from .core.connection import Iec61850Timeouts
+from .core.connection import Iec61850AssociationParameters, Iec61850Timeouts
 from .core.metadata import MetadataInfo, MetadataReader
 from .defs import (
     HAS_IEC61850,
@@ -59,6 +59,8 @@ class IEC61850Client:
         model_name: str = "EMS",
         ld_name: str = "GenericLD",
         timeouts: Iec61850Timeouts | None = None,
+        association_parameters: Iec61850AssociationParameters | None = None,
+        nonblocking_connect: bool = False,
     ):
         """装配连接、读写、模型发现与插件组件，形成统一的 IEC 61850 客户端入口。"""
         if not HAS_IEC61850:
@@ -70,10 +72,26 @@ class IEC61850Client:
         self.ld_name = ld_name
 
         # ===== 组合核心组件 =====
-        self._conn = Iec61850Connection(ip, port, model_name, ld_name, timeouts=timeouts)
+        self._conn = Iec61850Connection(
+            ip,
+            port,
+            model_name,
+            ld_name,
+            timeouts=timeouts,
+            association_parameters=association_parameters,
+            nonblocking_connect=nonblocking_connect,
+        )
         # 报告回调运行在 libIEC61850 的接收线程中。使用独立 association，
         # 避免 DataModel/DataSet 同步读取占用另一条连接时阻塞报告回调。
-        self._report_conn = Iec61850Connection(ip, port, model_name, ld_name, timeouts=timeouts)
+        self._report_conn = Iec61850Connection(
+            ip,
+            port,
+            model_name,
+            ld_name,
+            timeouts=timeouts,
+            association_parameters=association_parameters,
+            nonblocking_connect=nonblocking_connect,
+        )
         self._registry = PointRegistry(model_name, ld_name)
         self._reader = Iec61850Reader(self._conn, self._registry)
         self._writer = Iec61850Writer(self._conn, self._registry)

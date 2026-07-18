@@ -5,6 +5,7 @@
 """
 
 import contextlib
+import ctypes
 from dataclasses import dataclass
 import os
 import threading
@@ -51,6 +52,24 @@ class Iec61850Timeouts:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class Iec61850AssociationParameters:
+    """ISO/ACSE addressing and optional password authentication for an MMS association."""
+
+    remote_ap_title: str = "1,1,1,999,1"
+    remote_ae_qualifier: int = 12
+    remote_p_selector: str = "00 00 00 01"
+    remote_s_selector: str = "00 01"
+    remote_t_selector: str = "00 01"
+    local_ap_title: str = "1,1,1,999,1"
+    local_ae_qualifier: int = 12
+    local_p_selector: str = "00 00 00 01"
+    local_s_selector: str = "00 01"
+    local_t_selector: str = "00 01"
+    authentication_enabled: bool = False
+    authentication_password: str = ""
+
+
 class Iec61850Connection:
     """连接管理器
 
@@ -69,6 +88,8 @@ class Iec61850Connection:
         ld_name: str = "GenericLD",
         *,
         timeouts: Iec61850Timeouts | None = None,
+        association_parameters: Iec61850AssociationParameters | None = None,
+        nonblocking_connect: bool = False,
     ):
         """保存 IED 地址与超时配置，并创建保护底层连接句柄的可重入锁。"""
         if not HAS_IEC61850:
@@ -79,6 +100,8 @@ class Iec61850Connection:
         self.model_name = model_name
         self.ld_name = ld_name
         self.timeouts = timeouts or Iec61850Timeouts.from_env()
+        self.association_parameters = association_parameters or Iec61850AssociationParameters()
+        self.nonblocking_connect = nonblocking_connect
 
         self._connection = None
         self._is_connected = False
@@ -87,6 +110,7 @@ class Iec61850Connection:
         self._discover_callback = None
         self._last_alive_check = 0.0
         self._alive_check_interval = 5.0
+        self._authentication_parameter = None
 
     @property
     def connection(self):
@@ -126,11 +150,8 @@ class Iec61850Connection:
                 # 必须显式受控，避免单个异常节点让整个任务长期停滞。
                 iec61850.IedConnection_setConnectTimeout(self._connection, self.timeouts.connect_ms)
                 iec61850.IedConnection_setRequestTimeout(self._connection, self.timeouts.request_ms)
-                result = iec61850.IedConnection_connect(self._connection, self.ip, self.port)
-
-                error = result
-                if isinstance(result, (list, tuple)):
-                    error = result[1]
+                self._apply_association_parameters(iec61850)
+                error = self._connect_native(iec61850)
 
                 if error == iec61850.IED_ERROR_OK:
                     self._is_connected = True
@@ -161,6 +182,78 @@ class Iec61850Connection:
                 self._cleanup_connection()
                 return False
 
+    @staticmethod
+    def _selector(iec61850, selector_type: str, value: str):
+        """Build a native selector despite SWIG not exposing uint8 array item assignment."""
+        raw = bytes.fromhex(value)
+        selector = getattr(iec61850, selector_type)()
+        ctypes.memmove(int(selector.value), raw, len(raw))
+        selector.size = len(raw)
+        return selector
+
+    def _apply_association_parameters(self, iec61850) -> None:
+        params = self.association_parameters
+        mms_connection = iec61850.IedConnection_getMmsConnection(self._connection)
+        iso_params = iec61850.MmsConnection_getIsoConnectionParameters(mms_connection)
+
+        remote_ap_title = params.remote_ap_title.replace(",", ".")
+        local_ap_title = params.local_ap_title.replace(",", ".")
+        iec61850.IsoConnectionParameters_setRemoteApTitle(iso_params, remote_ap_title, params.remote_ae_qualifier)
+        iec61850.IsoConnectionParameters_setLocalApTitle(iso_params, local_ap_title, params.local_ae_qualifier)
+        iec61850.IsoConnectionParameters_setRemoteAddresses(
+            iso_params,
+            self._selector(iec61850, "PSelector", params.remote_p_selector),
+            self._selector(iec61850, "SSelector", params.remote_s_selector),
+            self._selector(iec61850, "TSelector", params.remote_t_selector),
+        )
+        iec61850.IsoConnectionParameters_setLocalAddresses(
+            iso_params,
+            self._selector(iec61850, "PSelector", params.local_p_selector),
+            self._selector(iec61850, "SSelector", params.local_s_selector),
+            self._selector(iec61850, "TSelector", params.local_t_selector),
+        )
+
+        if params.authentication_enabled:
+            auth = iec61850.AcseAuthenticationParameter_create()
+            iec61850.AcseAuthenticationParameter_setAuthMechanism(auth, iec61850.ACSE_AUTH_PASSWORD)
+            iec61850.AcseAuthenticationParameter_setPassword(auth, params.authentication_password)
+            iec61850.IsoConnectionParameters_setAcseAuthenticationParameter(iso_params, auth)
+            self._authentication_parameter = auth
+
+    @staticmethod
+    def _native_error(result):
+        """Extract the error output used by the SWIG connection wrappers."""
+        if isinstance(result, (list, tuple)):
+            return result[1]
+        return result
+
+    def _connect_native(self, iec61850):
+        """Connect synchronously, or poll the native async API when requested.
+
+        The blocking SWIG call keeps the Python GIL on Windows. Python-side
+        TLS relays and server authentication callbacks therefore need polling,
+        which releases the GIL between native connection state checks.
+        """
+        if not self.nonblocking_connect:
+            result = iec61850.IedConnection_connect(self._connection, self.ip, self.port)
+            return self._native_error(result)
+
+        result = iec61850.IedConnection_connectAsync(self._connection, self.ip, self.port)
+        error = self._native_error(result)
+        if error != iec61850.IED_ERROR_OK:
+            return error
+
+        deadline = time.monotonic() + self.timeouts.connect_ms / 1000
+        while time.monotonic() < deadline:
+            state = iec61850.IedConnection_getState(self._connection)
+            if state == iec61850.IED_STATE_CONNECTED:
+                return iec61850.IED_ERROR_OK
+            if state == iec61850.IED_STATE_CLOSED:
+                return iec61850.IED_ERROR_CONNECTION_LOST
+            time.sleep(0.01)
+
+        return iec61850.IED_ERROR_TIMEOUT
+
     def disconnect(self):
         """断开连接"""
         with self._lock:
@@ -171,6 +264,7 @@ class Iec61850Connection:
                     iec61850.IedConnection_close(self._connection)
                 with contextlib.suppress(Exception):
                     iec61850.IedConnection_destroy(self._connection)
+                self._release_authentication_parameter(iec61850)
                 self._connection = None
                 self._is_connected = False
                 self._last_alive_check = 0.0
@@ -258,9 +352,17 @@ class Iec61850Connection:
                 from pyiec61850 import pyiec61850 as iec61850
 
                 iec61850.IedConnection_destroy(self._connection)
+                self._release_authentication_parameter(iec61850)
             except Exception:
                 pass
             self._connection = None
+
+    def _release_authentication_parameter(self, iec61850) -> None:
+        if self._authentication_parameter is None:
+            return
+        with contextlib.suppress(Exception):
+            iec61850.AcseAuthenticationParameter_destroy(self._authentication_parameter)
+        self._authentication_parameter = None
 
     def get_fc_value(self, fc: str):
         """将 FC 字符串转换为 pyiec61850 常量值"""

@@ -35,6 +35,8 @@ class IEC61850Server:
         ied_name: str = "EMSDevice",
         ld_name: str = "GenericLD",
         max_connections: int = 5,
+        authentication_enabled: bool = False,
+        authentication_password: str = "",
     ):
         """保存服务端网络与模型配置，并初始化逻辑节点、测点、数据集和 GOOSE 索引。"""
         if not HAS_IEC61850:
@@ -46,6 +48,8 @@ class IEC61850Server:
         self.ied_name = ied_name
         self.ld_name = ld_name
         self.max_connections = max_connections
+        self.authentication_enabled = authentication_enabled
+        self.authentication_password = authentication_password
 
         # ===== 组合核心组件 =====
         self._builder = IedModelBuilder(model_name, ied_name, ld_name)
@@ -62,6 +66,12 @@ class IEC61850Server:
         self._loaded_icd_path: str = ""
         self._last_import_result = None
         self._loaded_ied_ld_insts: set[str] = set()
+        self._password_authenticator = None
+
+        if self.authentication_enabled:
+            from .server_auth import Iec61850ServerPasswordAuthenticator
+
+            self._password_authenticator = Iec61850ServerPasswordAuthenticator(self.authentication_password)
 
     # ===== 向后兼容属性: 委托给 builder =====
 
@@ -165,9 +175,27 @@ class IEC61850Server:
         server_config = iec61850.IedServerConfig_create()
         try:
             iec61850.IedServerConfig_setMaxMmsConnections(server_config, self.max_connections)
-            return iec61850.IedServer_createWithConfig(self._builder.model, None, server_config)
+            try:
+                return iec61850.IedServer_createWithConfig(self._builder.model, None, server_config)
+            except TypeError as exc:
+                # pyiec61850-ng 1.6.1.7 marks the TLSConfiguration argument as
+                # non-null in its SWIG wrapper, even for a plain MMS server.
+                # TLS is terminated by our external bridge, so the native
+                # backend must remain non-TLS and can use the basic creator.
+                if "argument 2 of type 'TLSConfiguration'" not in str(exc):
+                    raise
+                log.warning(
+                    "当前 pyiec61850 绑定不支持为 IedServer_createWithConfig 传入空 TLS 配置，"
+                    "已回退到非 TLS 创建接口；max_connections 配置暂不生效"
+                )
+                return iec61850.IedServer_create(self._builder.model)
         finally:
             iec61850.IedServerConfig_destroy(server_config)
+
+    def _configure_authentication(self) -> None:
+        """Install password validation before accepting MMS associations."""
+        if self._password_authenticator is not None:
+            self._password_authenticator.install(self._server)
 
     # ===== 向后兼容属性: 委托给 ds_manager =====
 
@@ -694,7 +722,9 @@ class IEC61850Server:
             return False
 
         iec61850.IedServer_setServerIdentity(self._server, "EMS", self.model_name, "1.0")
+        self._configure_authentication()
         self._is_running = True
+        iec61850.IedServer_setLocalIpAddress(self._server, self.ip)
         iec61850.IedServer_start(self._server, self.port)
 
         if iec61850.IedServer_isRunning(self._server):
@@ -765,6 +795,8 @@ class IEC61850Server:
                 log.error("重建 IedServer 失败")
                 return False
             iec61850.IedServer_setServerIdentity(self._server, "EMS", self.model_name, "1.0")
+            self._configure_authentication()
+            iec61850.IedServer_setLocalIpAddress(self._server, self.ip)
             iec61850.IedServer_start(self._server, self.port)
             if iec61850.IedServer_isRunning(self._server):
                 log.info("IedServer 重建成功")
@@ -824,7 +856,9 @@ class IEC61850Server:
 
         self._server = self._create_ied_server()
         iec61850.IedServer_setServerIdentity(self._server, "EMS", self.model_name, "1.0")
+        self._configure_authentication()
         self._is_running = True
+        iec61850.IedServer_setLocalIpAddress(self._server, self.ip)
         iec61850.IedServer_start(self._server, self.port)
 
         if iec61850.IedServer_isRunning(self._server):
@@ -914,7 +948,9 @@ class IEC61850Server:
             log.error("重启失败: IedServer_create 返回空")
             return False
         iec61850.IedServer_setServerIdentity(self._server, "EMS", self.model_name, "1.0")
+        self._configure_authentication()
         self._is_running = True
+        iec61850.IedServer_setLocalIpAddress(self._server, self.ip)
         iec61850.IedServer_start(self._server, self.port)
         if iec61850.IedServer_isRunning(self._server):
             log.info(f"IEC 61850 服务器重启成功, 端口: {self.port}")

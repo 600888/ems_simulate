@@ -165,6 +165,9 @@ data/*.icd
 # Development certificate
 devcert.pfx
 
+# Locally generated TLS certificates and private keys
+certs/
+
 Assets/
 build
 dist
@@ -180,3 +183,4 @@ dist_msix
 data/*
 !data/point_csv/
 word/
+tmp/

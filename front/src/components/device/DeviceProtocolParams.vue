@@ -25,6 +25,14 @@
           v-if="field.kind === 'boolean'"
           v-model="modelValue.values[field.key]"
         />
+        <el-input
+          v-else-if="field.kind === 'text' || field.kind === 'password'"
+          v-model="modelValue.values[field.key]"
+          :type="field.kind === 'password' ? 'password' : 'text'"
+          :show-password="field.kind === 'password'"
+          :placeholder="field.placeholder"
+          autocomplete="new-password"
+        />
         <el-input-number
           v-else
           v-model="modelValue.values[field.key]"
@@ -51,6 +59,14 @@
           <el-switch
             v-if="field.kind === 'boolean'"
             v-model="modelValue.values[field.key]"
+          />
+          <el-input
+            v-else-if="field.kind === 'text' || field.kind === 'password'"
+            v-model="modelValue.values[field.key]"
+            :type="field.kind === 'password' ? 'password' : 'text'"
+            :show-password="field.kind === 'password'"
+            :placeholder="field.placeholder"
+            autocomplete="new-password"
           />
           <el-input-number
             v-else
@@ -112,15 +128,17 @@ import type { ProtocolParamsConfig } from "@/types/channel";
 type FieldDefinition = {
   key: string;
   label: string;
-  kind?: "number" | "boolean";
+  kind?: "number" | "boolean" | "text" | "password";
   min?: number;
   max?: number;
   step?: number;
   unit?: string;
   advanced?: boolean;
   protocolSpecific?: boolean;
+  visibleWhen?: { key: string; value: number | boolean | string };
+  placeholder?: string;
   tip?: string;
-  default: number | boolean;
+  default: number | boolean | string;
 };
 
 const props = defineProps<{
@@ -379,6 +397,13 @@ const dlt645Client: FieldDefinition[] = [
 
 const iec61850Client: FieldDefinition[] = [
   {
+    key: "mms_capture_enabled",
+    label: "MMS 报文抓包",
+    kind: "boolean",
+    default: false,
+    tip: "开启后使用 Npcap/libpcap 捕获 MMS 报文，关闭可减少系统资源占用。",
+  },
+  {
     key: "connect_timeout_ms",
     label: "连接超时",
     min: 100,
@@ -404,9 +429,107 @@ const iec61850Client: FieldDefinition[] = [
     default: 600000,
     advanced: true,
   },
+  {
+    key: "authentication_enabled",
+    label: "用户认证",
+    kind: "boolean",
+    default: false,
+    advanced: true,
+    tip: "启用 IEC 61850 ACSE 密码认证。",
+  },
+  {
+    key: "authentication_password",
+    label: "认证密码",
+    kind: "password",
+    default: "",
+    advanced: true,
+    visibleWhen: { key: "authentication_enabled", value: true },
+    placeholder: "请输入 ACSE 认证密码",
+  },
+  {
+    key: "remote_ap_title",
+    label: "Remote AP Title",
+    kind: "text",
+    default: "1,1,1,999,1",
+    advanced: true,
+  },
+  {
+    key: "remote_ae_qualifier",
+    label: "Remote AE Qualifier",
+    min: 0,
+    max: 2147483647,
+    step: 1,
+    default: 12,
+    advanced: true,
+  },
+  {
+    key: "remote_p_selector",
+    label: "Remote P Selector",
+    kind: "text",
+    default: "00 00 00 01",
+    advanced: true,
+  },
+  {
+    key: "remote_s_selector",
+    label: "Remote S Selector",
+    kind: "text",
+    default: "00 01",
+    advanced: true,
+  },
+  {
+    key: "remote_t_selector",
+    label: "Remote T Selector",
+    kind: "text",
+    default: "00 01",
+    advanced: true,
+  },
+  {
+    key: "local_ap_title",
+    label: "Local AP Title",
+    kind: "text",
+    default: "1,1,1,999,1",
+    advanced: true,
+  },
+  {
+    key: "local_ae_qualifier",
+    label: "Local AE Qualifier",
+    min: 0,
+    max: 2147483647,
+    step: 1,
+    default: 12,
+    advanced: true,
+  },
+  {
+    key: "local_p_selector",
+    label: "Local P Selector",
+    kind: "text",
+    default: "00 00 00 01",
+    advanced: true,
+  },
+  {
+    key: "local_s_selector",
+    label: "Local S Selector",
+    kind: "text",
+    default: "00 01",
+    advanced: true,
+  },
+  {
+    key: "local_t_selector",
+    label: "Local T Selector",
+    kind: "text",
+    default: "00 01",
+    advanced: true,
+  },
 ];
 
 const iec61850Server: FieldDefinition[] = [
+  {
+    key: "mms_capture_enabled",
+    label: "MMS 报文抓包",
+    kind: "boolean",
+    default: false,
+    tip: "开启后使用 Npcap/libpcap 捕获 MMS 报文，关闭可减少系统资源占用。",
+  },
   {
     key: "max_connections",
     label: "最大 MMS 连接数",
@@ -415,6 +538,23 @@ const iec61850Server: FieldDefinition[] = [
     step: 1,
     unit: "个",
     default: 5,
+  },
+  {
+    key: "authentication_enabled",
+    label: "用户认证",
+    kind: "boolean",
+    default: false,
+    advanced: true,
+    tip: "启用后仅接受密码正确的 IEC 61850 ACSE 客户端连接。",
+  },
+  {
+    key: "authentication_password",
+    label: "服务端认证密码",
+    kind: "password",
+    default: "",
+    advanced: true,
+    visibleWhen: { key: "authentication_enabled", value: true },
+    placeholder: "请输入服务端 ACSE 认证密码",
   },
 ];
 
@@ -443,14 +583,29 @@ const fields = computed<FieldDefinition[]>(() => {
 });
 
 const commonFields = computed(() =>
-  fields.value.filter((field) => !field.advanced && !field.protocolSpecific),
+  fields.value.filter(
+    (field) =>
+      !field.advanced && !field.protocolSpecific && isFieldVisible(field),
+  ),
 );
 const advancedFields = computed(() =>
-  fields.value.filter((field) => field.advanced && !field.protocolSpecific),
+  fields.value.filter(
+    (field) =>
+      field.advanced && !field.protocolSpecific && isFieldVisible(field),
+  ),
 );
 const protocolSpecificFields = computed(() =>
   fields.value.filter((field) => field.protocolSpecific),
 );
+
+function isFieldVisible(field: FieldDefinition) {
+  if (!field.visibleWhen) return true;
+  return modelValueEquals(field.visibleWhen.key, field.visibleWhen.value);
+}
+
+function modelValueEquals(key: string, value: number | boolean | string) {
+  return props.modelValue.values[key] === value;
+}
 
 function resetDefaults() {
   props.modelValue.schema_version = 1;
@@ -459,11 +614,24 @@ function resetDefaults() {
   );
 }
 
+function fillMissingDefaults() {
+  const currentValues = props.modelValue.values || {};
+  const normalizedValues = Object.fromEntries(
+    fields.value.map((field) => [
+      field.key,
+      Object.prototype.hasOwnProperty.call(currentValues, field.key)
+        ? currentValues[field.key]
+        : field.default,
+    ]),
+  );
+  props.modelValue.schema_version = 1;
+  props.modelValue.values = normalizedValues;
+}
+
 watch(
   () => [props.protocolType, props.connType],
   () => {
     expandedSections.value = ["iec104-specific"];
-    resetDefaults();
   },
   { flush: "sync" },
 );
@@ -483,11 +651,15 @@ watch(
       expectedKeys.length !== currentKeys.length ||
       expectedKeys.some((key) => !currentKeys.includes(key))
     ) {
-      resetDefaults();
+      // 兼容旧数据库只缺少新增字段的情况：仅补默认值，绝不能把
+      // 已持久化的认证开关、密码和 ISO 地址整体恢复为默认配置。
+      fillMissingDefaults();
     }
   },
   { immediate: true },
 );
+
+defineExpose({ resetDefaults });
 </script>
 
 <style scoped lang="scss">

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import platform
 import threading
+import time
 from typing import Any
 
 from src.device.core.message.message_capture import MessageCapture
@@ -11,9 +13,8 @@ from src.device.core.message.message_capture import MessageCapture
 class MmsMessageCapture:
     """Capture TCP payloads and expose complete TPKT frames as message records.
 
-    libIEC61850 does not expose its encoded MMS PDUs.  Keeping capture outside the
-    library also covers association, discovery, reports, and file services without
-    changing every call site in the protocol implementation.
+    libIEC61850 does not expose its encoded MMS PDUs. Keeping capture outside the
+    library also covers association, discovery, reports, and file services.
     """
 
     def __init__(
@@ -31,7 +32,11 @@ class MmsMessageCapture:
         self._log = logger
         self._messages = MessageCapture(max_size=max_size)
         self._stop = threading.Event()
+        self._ready = threading.Event()
         self._thread: threading.Thread | None = None
+        self._startup_timeout = 3.0
+        self._sniffers: list[Any] = []
+        self._sniffers_lock = threading.Lock()
         self._buffers: dict[tuple[str, int, str, int], bytearray] = {}
         self._next_seq: dict[tuple[str, int, str, int], int] = {}
         self._buffer_lock = threading.Lock()
@@ -41,16 +46,23 @@ class MmsMessageCapture:
     def is_running(self) -> bool:
         return self._running
 
-    def start(self) -> None:
-        """Start asynchronously so a missing Npcap/libpcap never delays MMS startup."""
+    def start(self, timeout: float = 3.0) -> bool:
+        """Start capture and wait until libpcap has opened the selected interface(s)."""
         if self._thread and self._thread.is_alive():
-            return
+            return self._ready.wait(timeout=max(timeout, 0.0)) and self._running
         self._stop.clear()
+        self._ready.clear()
+        self._startup_timeout = max(timeout, 0.1)
         self._thread = threading.Thread(target=self._capture_loop, name="mms-capture", daemon=True)
         self._thread.start()
+        if not self._ready.wait(timeout=self._startup_timeout + 0.5):
+            self._write_log("warning", f"MMS报文捕获启动超时: port={self.port}")
+            return False
+        return self._running
 
     def stop(self) -> None:
         self._stop.set()
+        self._stop_sniffers()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
         self._running = False
@@ -72,34 +84,78 @@ class MmsMessageCapture:
 
     def _capture_loop(self) -> None:
         try:
-            from scapy.all import IP, TCP, IPv6, conf, get_if_list, sniff
+            from scapy.all import IP, TCP, AsyncSniffer, IPv6, conf, get_if_list
 
-            self._running = True
             if self.remote_ip:
-                # In particular, 127.0.0.1 must use NPF_Loopback on Windows;
-                # Scapy's default interface is normally WLAN/Ethernet and never
-                # sees local MMS traffic.
-                interface = conf.route.route(self.remote_ip)[0]
+                # 127.0.0.1 must resolve to NPF_Loopback on Windows.
+                interface: Any = conf.route.route(self.remote_ip)[0]
             else:
-                # An MMS server can accept peers on any local address, including
-                # loopback, so listen on every Npcap/libpcap interface.
+                # Servers can accept peers through any local address.
                 interface = get_if_list()
-            self._write_log("info", f"MMS报文捕获已启动: port={self.port}, interface={interface}")
-            while not self._stop.is_set():
-                sniff(
-                    iface=interface,
+
+            # Scapy 2.7/Npcap accepts a list here on Windows but can silently
+            # miss loopback packets. Open one pcap handle per interface instead.
+            if platform.system().lower() == "windows" and isinstance(interface, list):
+                capture_interfaces = interface
+            else:
+                capture_interfaces = [interface]
+
+            started_events: list[threading.Event] = []
+            sniffers: list[Any] = []
+            for capture_interface in capture_interfaces:
+                started = threading.Event()
+                sniffer = AsyncSniffer(
+                    iface=capture_interface,
                     filter=f"tcp port {self.port}",
                     prn=lambda packet: self._process_packet(packet, IP, IPv6, TCP),
                     store=False,
-                    timeout=1.0,
-                    stop_filter=lambda _packet: self._stop.is_set(),
+                    started_callback=started.set,
                 )
+                started_events.append(started)
+                sniffers.append(sniffer)
+
+            with self._sniffers_lock:
+                self._sniffers = sniffers
+            for sniffer in sniffers:
+                sniffer.start()
+
+            deadline = time.monotonic() + self._startup_timeout
+            while not self._stop.is_set() and time.monotonic() < deadline:
+                if all(event.is_set() for event in started_events):
+                    break
+                time.sleep(0.01)
+            if self._stop.is_set():
+                return
+            if not started_events or not any(event.is_set() for event in started_events):
+                raise RuntimeError("Npcap/libpcap 未能打开任何 MMS 抓包网卡")
+
+            self._running = True
+            self._ready.set()
+            ready_count = sum(event.is_set() for event in started_events)
+            self._write_log(
+                "info",
+                f"MMS报文捕获已启动: port={self.port}, interfaces={ready_count}/{len(started_events)}",
+            )
+            self._stop.wait()
         except Exception as exc:
-            # Packet viewing is auxiliary.  Lack of capture permission/Npcap must
-            # not prevent the MMS server or client from operating.
+            # Packet viewing is auxiliary. Capture failure must not stop MMS.
             self._write_log("warning", f"MMS报文捕获不可用: {exc}")
         finally:
+            self._stop_sniffers()
             self._running = False
+            self._ready.set()
+
+    def _stop_sniffers(self) -> None:
+        """Stop active Scapy workers without letting one bad adapter block cleanup."""
+        with self._sniffers_lock:
+            sniffers = self._sniffers
+            self._sniffers = []
+        for sniffer in sniffers:
+            try:
+                if getattr(sniffer, "running", False):
+                    sniffer.stop(join=False)
+            except Exception as exc:
+                self._write_log("warning", f"停止 MMS 抓包网卡失败: {exc}")
 
     def _write_log(self, level: str, message: str) -> None:
         if self._log is None:
@@ -149,8 +205,8 @@ class MmsMessageCapture:
                     payload = payload[overlap:]
                     sequence = expected
                 elif sequence > expected:
-                    # A missing segment makes the old BER stream unusable.  Start
-                    # fresh; the TPKT synchronizer below will find the next frame.
+                    # A missing segment invalidates the old BER stream. The TPKT
+                    # synchronizer will locate the next complete frame.
                     self._buffers.pop(key, None)
             self._next_seq[key] = sequence + len(payload)
             buffer = self._buffers.setdefault(key, bytearray())
