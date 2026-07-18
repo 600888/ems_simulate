@@ -1,5 +1,6 @@
 """Validation and defaults for device-level protocol runtime parameters."""
 
+import re
 from typing import Any
 
 MODBUS_CLIENT_DEFAULTS = {
@@ -50,14 +51,31 @@ IEC61850_CLIENT_DEFAULTS = {
     "connect_timeout_ms": 3000,
     "command_timeout_ms": 3000,
     "model_discovery_timeout_ms": 600000,
+    "mms_capture_enabled": False,
+    "authentication_enabled": False,
+    "authentication_password": "",
+    "remote_ap_title": "1,1,1,999,1",
+    "remote_ae_qualifier": 12,
+    "remote_p_selector": "00 00 00 01",
+    "remote_s_selector": "00 01",
+    "remote_t_selector": "00 01",
+    "local_ap_title": "1,1,1,999,1",
+    "local_ae_qualifier": 12,
+    "local_p_selector": "00 00 00 01",
+    "local_s_selector": "00 01",
+    "local_t_selector": "00 01",
 }
 
 IEC61850_SERVER_DEFAULTS = {
     "max_connections": 5,
+    "mms_capture_enabled": False,
+    "authentication_enabled": False,
+    "authentication_password": "",
+    "file_service_directory": "",
 }
 
 # Keys use the persisted protocol_type and conn_type values.
-_DEFAULTS: dict[tuple[int, int], dict[str, int | bool]] = {
+_DEFAULTS: dict[tuple[int, int], dict[str, int | bool | str]] = {
     (0, 0): MODBUS_CLIENT_DEFAULTS,
     (1, 1): MODBUS_CLIENT_DEFAULTS,
     (1, 2): MODBUS_SERVER_DEFAULTS,
@@ -96,6 +114,18 @@ _RANGES: dict[str, tuple[int, int]] = {
     "general_interrogation_interval_s": (0, 86400),
     "counter_interrogation_interval_s": (0, 86400),
     "max_connections": (0, 1000),
+    "remote_ae_qualifier": (0, 2147483647),
+    "local_ae_qualifier": (0, 2147483647),
+}
+
+_AP_TITLE_FIELDS = {"remote_ap_title", "local_ap_title"}
+_SELECTOR_MAX_BYTES = {
+    "remote_p_selector": 16,
+    "remote_s_selector": 16,
+    "remote_t_selector": 4,
+    "local_p_selector": 16,
+    "local_s_selector": 16,
+    "local_t_selector": 4,
 }
 
 _IEC104_LEGACY_TIME_PARAMS = {
@@ -106,7 +136,7 @@ _IEC104_LEGACY_TIME_PARAMS = {
 }
 
 
-def get_protocol_param_defaults(protocol_type: int, conn_type: int) -> dict[str, int | bool]:
+def get_protocol_param_defaults(protocol_type: int, conn_type: int) -> dict[str, int | bool | str]:
     return dict(_DEFAULTS.get((protocol_type, conn_type), {}))
 
 
@@ -130,6 +160,25 @@ def normalize_protocol_params(protocol_type: int, conn_type: int, values: dict[s
             if not isinstance(value, bool):
                 raise ValueError(f"参数 {name} 必须是布尔值")
             continue
+        if isinstance(defaults[name], str):
+            if not isinstance(value, str):
+                raise ValueError(f"参数 {name} 必须是字符串")
+            value = value.strip()
+            if name in _AP_TITLE_FIELDS:
+                parts = [part.strip() for part in re.split(r"[,.]", value)]
+                if not parts or any(not part.isdigit() for part in parts):
+                    raise ValueError(f"参数 {name} 必须是逗号或点分隔的数字，例如 1,1,1,999,1")
+                value = ",".join(str(int(part)) for part in parts)
+            elif name in _SELECTOR_MAX_BYTES:
+                compact = re.sub(r"[\s:-]", "", value)
+                if not compact or len(compact) % 2 or not re.fullmatch(r"[0-9a-fA-F]+", compact):
+                    raise ValueError(f"参数 {name} 必须是十六进制字节，例如 00 01")
+                byte_count = len(compact) // 2
+                if byte_count > _SELECTOR_MAX_BYTES[name]:
+                    raise ValueError(f"参数 {name} 最多允许 {_SELECTOR_MAX_BYTES[name]} 个字节")
+                value = " ".join(compact[index : index + 2].upper() for index in range(0, len(compact), 2))
+            result[name] = value
+            continue
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError(f"参数 {name} 必须是整数")
         minimum, maximum = _RANGES[name]
@@ -152,4 +201,6 @@ def normalize_protocol_params(protocol_type: int, conn_type: int, values: dict[s
     receive_window = result.get("receive_window_size")
     if send_window is not None and receive_window is not None and receive_window > send_window:
         raise ValueError("IEC104 接收窗口 w 不能大于发送窗口 k")
+    if result.get("authentication_enabled") and not result.get("authentication_password"):
+        raise ValueError("启用 IEC61850 用户认证时必须填写认证密码")
     return result

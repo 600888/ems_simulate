@@ -1,6 +1,5 @@
 # IEC 61850 file service tests
 
-Place IEC 61850 file-directory, upload, download, cache, and transfer lifecycle
-tests in this directory. There are currently no dedicated automated file service
-tests; the directory is reserved so new coverage does not get mixed into MMS or
-model tests.
+IEC 61850 file-directory, upload, download, cache, and transfer lifecycle tests
+live in this directory. Server-side coverage includes local file-store CRUD,
+recursive browsing, path confinement, and the client SetFile basepath contract.

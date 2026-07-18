@@ -428,7 +428,11 @@ class FileTransfer:
             local_name = os.path.basename(local_path)
 
             # Windows: 将反斜杠转为正斜杠，避免 C 层路径解析异常
-            local_dir_fwd = local_dir.replace("\\", "/")
+            # libIEC61850 concatenates the VMD basepath and source filename
+            # directly. Keep the trailing separator (as in its server/client
+            # examples), otherwise ``C:/files`` + ``event.cfg`` becomes the
+            # non-existent path ``C:/filesevent.cfg``.
+            local_dir_fwd = local_dir.replace("\\", "/").rstrip("/") + "/"
 
             log.info(f"准备上传: {local_path} → {remote_filename}, basepath={local_dir_fwd}, sourceName={local_name}")
 

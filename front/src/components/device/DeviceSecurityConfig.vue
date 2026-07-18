@@ -38,59 +38,61 @@
         </el-form-item>
 
         <el-form-item label="本端证书" required>
-          <el-upload
-            ref="certificateUploadRef"
-            action="#"
-            :auto-upload="true"
-            :limit="1"
-            :disabled="disabled"
-            :http-request="handleCertificate"
-            accept=".crt,.cer,.pem"
-          >
-            <el-button type="primary" plain :disabled="disabled"
-              >上传证书</el-button
-            >
-            <template #tip>
-              <div class="el-upload__tip">
-                支持 .crt、.cer、.pem
-                <span
-                  v-if="
-                    modelValue.certificate_configured && !certificateSelected
-                  "
+          <div class="file-config">
+            <div class="file-action-row">
+              <el-upload
+                ref="certificateUploadRef"
+                action="#"
+                :auto-upload="true"
+                :limit="1"
+                :disabled="disabled"
+                :http-request="handleCertificate"
+                accept=".crt,.cer,.pem"
+              >
+                <el-button type="primary" plain :disabled="disabled"
+                  >上传证书</el-button
                 >
-                  ，当前：{{ modelValue.certificate_filename || "已上传" }}
-                </span>
-              </div>
-            </template>
-          </el-upload>
+              </el-upload>
+              <el-tag
+                v-if="modelValue.certificate_configured && !certificateSelected"
+                class="persisted-file"
+                type="success"
+                effect="plain"
+              >
+                已保存：{{ modelValue.certificate_filename || "证书文件" }}
+              </el-tag>
+            </div>
+            <div class="el-upload__tip">支持 .crt、.cer、.pem</div>
+          </div>
         </el-form-item>
 
         <el-form-item label="私钥" required>
-          <el-upload
-            ref="privateKeyUploadRef"
-            action="#"
-            :auto-upload="true"
-            :limit="1"
-            :disabled="disabled"
-            :http-request="handlePrivateKey"
-            accept=".key,.pem"
-          >
-            <el-button type="primary" plain :disabled="disabled"
-              >上传私钥</el-button
-            >
-            <template #tip>
-              <div class="el-upload__tip">
-                支持 .key、.pem
-                <span
-                  v-if="
-                    modelValue.private_key_configured && !privateKeySelected
-                  "
+          <div class="file-config">
+            <div class="file-action-row">
+              <el-upload
+                ref="privateKeyUploadRef"
+                action="#"
+                :auto-upload="true"
+                :limit="1"
+                :disabled="disabled"
+                :http-request="handlePrivateKey"
+                accept=".key,.pem"
+              >
+                <el-button type="primary" plain :disabled="disabled"
+                  >上传私钥</el-button
                 >
-                  ，当前：{{ modelValue.private_key_filename || "已上传" }}
-                </span>
-              </div>
-            </template>
-          </el-upload>
+              </el-upload>
+              <el-tag
+                v-if="modelValue.private_key_configured && !privateKeySelected"
+                class="persisted-file"
+                type="success"
+                effect="plain"
+              >
+                已保存：{{ modelValue.private_key_filename || "私钥文件" }}
+              </el-tag>
+            </div>
+            <div class="el-upload__tip">支持 .key、.pem</div>
+          </div>
         </el-form-item>
 
         <el-form-item
@@ -98,32 +100,38 @@
           label="CA 证书"
           required
         >
-          <el-upload
-            ref="caCertificateUploadRef"
-            action="#"
-            :auto-upload="true"
-            :limit="1"
-            :disabled="disabled"
-            :http-request="handleCaCertificate"
-            accept=".crt,.cer,.pem"
-          >
-            <el-button type="primary" plain :disabled="disabled"
-              >上传 CA 证书</el-button
-            >
-            <template #tip>
-              <div class="el-upload__tip">
-                用于双向校验对端证书，支持 .crt、.cer、.pem
-                <span
-                  v-if="
-                    modelValue.ca_certificate_configured &&
-                    !caCertificateSelected
-                  "
+          <div class="file-config">
+            <div class="file-action-row">
+              <el-upload
+                ref="caCertificateUploadRef"
+                action="#"
+                :auto-upload="true"
+                :limit="1"
+                :disabled="disabled"
+                :http-request="handleCaCertificate"
+                accept=".crt,.cer,.pem"
+              >
+                <el-button type="primary" plain :disabled="disabled"
+                  >上传 CA 证书</el-button
                 >
-                  ，当前：{{ modelValue.ca_certificate_filename || "已上传" }}
-                </span>
-              </div>
-            </template>
-          </el-upload>
+              </el-upload>
+              <el-tag
+                v-if="
+                  modelValue.ca_certificate_configured && !caCertificateSelected
+                "
+                class="persisted-file"
+                type="success"
+                effect="plain"
+              >
+                已保存：{{
+                  modelValue.ca_certificate_filename || "CA 证书文件"
+                }}
+              </el-tag>
+            </div>
+            <div class="el-upload__tip">
+              用于双向校验对端证书，支持 .crt、.cer、.pem
+            </div>
+          </div>
         </el-form-item>
       </template>
     </template>
@@ -142,7 +150,10 @@ const props = defineProps<{
 }>();
 
 const tlsSupported = computed(
-  () => props.protocolType === 1 || props.protocolType === 2,
+  () =>
+    props.protocolType === 1 ||
+    props.protocolType === 2 ||
+    props.protocolType === 4,
 );
 
 const emit = defineEmits<{
@@ -200,5 +211,23 @@ defineExpose({ clearFiles });
   color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.file-config {
+  width: 100%;
+}
+
+.file-action-row {
+  display: grid;
+  grid-template-columns: 116px max-content;
+  align-items: start;
+  column-gap: 12px;
+  min-height: 32px;
+}
+
+.persisted-file {
+  align-self: start;
+  width: fit-content;
+  margin-top: 5.5px;
 }
 </style>

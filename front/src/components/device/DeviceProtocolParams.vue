@@ -21,9 +21,35 @@
         :label="field.label"
         label-width="180px"
       >
-        <el-switch
-          v-if="field.kind === 'boolean'"
+        <el-input
+          v-if="field.kind === 'directory'"
           v-model="modelValue.values[field.key]"
+          class="directory-path-input"
+          :placeholder="field.placeholder"
+        >
+          <template #append>
+            <el-button-group class="directory-path-actions">
+              <el-button
+                class="directory-path-button"
+                :icon="EditPen"
+                @click="chooseDirectory(field.key)"
+              >
+                选择目录
+              </el-button>
+            </el-button-group>
+          </template>
+        </el-input>
+        <el-switch
+          v-else-if="field.kind === 'boolean'"
+          v-model="modelValue.values[field.key]"
+        />
+        <el-input
+          v-else-if="field.kind === 'text' || field.kind === 'password'"
+          v-model="modelValue.values[field.key]"
+          :type="field.kind === 'password' ? 'password' : 'text'"
+          :show-password="field.kind === 'password'"
+          :placeholder="field.placeholder"
+          autocomplete="new-password"
         />
         <el-input-number
           v-else
@@ -37,6 +63,14 @@
             <span class="field-unit">{{ field.unit }}</span>
           </template>
         </el-input-number>
+        <div
+          v-if="
+            field.kind === 'directory' && hasNonAsciiDirectoryPath(field.key)
+          "
+          class="field-error"
+        >
+          文件服务目录路径必须使用英文、数字和英文符号，不能包含中文字符。
+        </div>
         <div v-if="field.tip" class="field-tip">{{ field.tip }}</div>
       </el-form-item>
 
@@ -48,9 +82,35 @@
           :label="field.label"
           label-width="180px"
         >
-          <el-switch
-            v-if="field.kind === 'boolean'"
+          <el-input
+            v-if="field.kind === 'directory'"
             v-model="modelValue.values[field.key]"
+            class="directory-path-input"
+            :placeholder="field.placeholder"
+          >
+            <template #append>
+              <el-button-group class="directory-path-actions">
+                <el-button
+                  class="directory-path-button"
+                  :icon="EditPen"
+                  @click="chooseDirectory(field.key)"
+                >
+                  选择目录
+                </el-button>
+              </el-button-group>
+            </template>
+          </el-input>
+          <el-switch
+            v-else-if="field.kind === 'boolean'"
+            v-model="modelValue.values[field.key]"
+          />
+          <el-input
+            v-else-if="field.kind === 'text' || field.kind === 'password'"
+            v-model="modelValue.values[field.key]"
+            :type="field.kind === 'password' ? 'password' : 'text'"
+            :show-password="field.kind === 'password'"
+            :placeholder="field.placeholder"
+            autocomplete="new-password"
           />
           <el-input-number
             v-else
@@ -64,6 +124,14 @@
               <span class="field-unit">{{ field.unit }}</span>
             </template>
           </el-input-number>
+          <div
+            v-if="
+              field.kind === 'directory' && hasNonAsciiDirectoryPath(field.key)
+            "
+            class="field-error"
+          >
+            文件服务目录路径必须使用英文、数字和英文符号，不能包含中文字符。
+          </div>
           <div v-if="field.tip" class="field-tip">{{ field.tip }}</div>
         </el-form-item>
       </div>
@@ -107,20 +175,25 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { ElMessage } from "element-plus";
+import { EditPen } from "@element-plus/icons-vue";
 import type { ProtocolParamsConfig } from "@/types/channel";
+import { isTauri } from "@/utils/tauri";
 
 type FieldDefinition = {
   key: string;
   label: string;
-  kind?: "number" | "boolean";
+  kind?: "number" | "boolean" | "text" | "password" | "directory";
   min?: number;
   max?: number;
   step?: number;
   unit?: string;
   advanced?: boolean;
   protocolSpecific?: boolean;
+  visibleWhen?: { key: string; value: number | boolean | string };
+  placeholder?: string;
   tip?: string;
-  default: number | boolean;
+  default: number | boolean | string;
 };
 
 const props = defineProps<{
@@ -379,6 +452,13 @@ const dlt645Client: FieldDefinition[] = [
 
 const iec61850Client: FieldDefinition[] = [
   {
+    key: "mms_capture_enabled",
+    label: "MMS 报文抓包",
+    kind: "boolean",
+    default: false,
+    tip: "开启后使用 Npcap/libpcap 捕获 MMS 报文，关闭可减少系统资源占用。",
+  },
+  {
     key: "connect_timeout_ms",
     label: "连接超时",
     min: 100,
@@ -404,9 +484,115 @@ const iec61850Client: FieldDefinition[] = [
     default: 600000,
     advanced: true,
   },
+  {
+    key: "authentication_enabled",
+    label: "用户认证",
+    kind: "boolean",
+    default: false,
+    advanced: true,
+    tip: "启用 IEC 61850 ACSE 密码认证。",
+  },
+  {
+    key: "authentication_password",
+    label: "认证密码",
+    kind: "password",
+    default: "",
+    advanced: true,
+    visibleWhen: { key: "authentication_enabled", value: true },
+    placeholder: "请输入 ACSE 认证密码",
+  },
+  {
+    key: "remote_ap_title",
+    label: "Remote AP Title",
+    kind: "text",
+    default: "1,1,1,999,1",
+    advanced: true,
+  },
+  {
+    key: "remote_ae_qualifier",
+    label: "Remote AE Qualifier",
+    min: 0,
+    max: 2147483647,
+    step: 1,
+    default: 12,
+    advanced: true,
+  },
+  {
+    key: "remote_p_selector",
+    label: "Remote P Selector",
+    kind: "text",
+    default: "00 00 00 01",
+    advanced: true,
+  },
+  {
+    key: "remote_s_selector",
+    label: "Remote S Selector",
+    kind: "text",
+    default: "00 01",
+    advanced: true,
+  },
+  {
+    key: "remote_t_selector",
+    label: "Remote T Selector",
+    kind: "text",
+    default: "00 01",
+    advanced: true,
+  },
+  {
+    key: "local_ap_title",
+    label: "Local AP Title",
+    kind: "text",
+    default: "1,1,1,999,1",
+    advanced: true,
+  },
+  {
+    key: "local_ae_qualifier",
+    label: "Local AE Qualifier",
+    min: 0,
+    max: 2147483647,
+    step: 1,
+    default: 12,
+    advanced: true,
+  },
+  {
+    key: "local_p_selector",
+    label: "Local P Selector",
+    kind: "text",
+    default: "00 00 00 01",
+    advanced: true,
+  },
+  {
+    key: "local_s_selector",
+    label: "Local S Selector",
+    kind: "text",
+    default: "00 01",
+    advanced: true,
+  },
+  {
+    key: "local_t_selector",
+    label: "Local T Selector",
+    kind: "text",
+    default: "00 01",
+    advanced: true,
+  },
 ];
 
 const iec61850Server: FieldDefinition[] = [
+  {
+    key: "file_service_directory",
+    label: "文件服务目录",
+    kind: "directory",
+    default: "",
+    placeholder: "请选择向 MMS 客户端公开的文件目录",
+    tip: "该目录仅对当前设备生效；留空时不开启文件服务。Windows 下目录路径及目录内文件名请使用英文。",
+  },
+  {
+    key: "mms_capture_enabled",
+    label: "MMS 报文抓包",
+    kind: "boolean",
+    default: false,
+    tip: "开启后使用 Npcap/libpcap 捕获 MMS 报文，关闭可减少系统资源占用。",
+  },
   {
     key: "max_connections",
     label: "最大 MMS 连接数",
@@ -415,6 +601,23 @@ const iec61850Server: FieldDefinition[] = [
     step: 1,
     unit: "个",
     default: 5,
+  },
+  {
+    key: "authentication_enabled",
+    label: "用户认证",
+    kind: "boolean",
+    default: false,
+    advanced: true,
+    tip: "启用后仅接受密码正确的 IEC 61850 ACSE 客户端连接。",
+  },
+  {
+    key: "authentication_password",
+    label: "服务端认证密码",
+    kind: "password",
+    default: "",
+    advanced: true,
+    visibleWhen: { key: "authentication_enabled", value: true },
+    placeholder: "请输入服务端 ACSE 认证密码",
   },
 ];
 
@@ -443,14 +646,75 @@ const fields = computed<FieldDefinition[]>(() => {
 });
 
 const commonFields = computed(() =>
-  fields.value.filter((field) => !field.advanced && !field.protocolSpecific),
+  fields.value.filter(
+    (field) =>
+      !field.advanced && !field.protocolSpecific && isFieldVisible(field),
+  ),
 );
 const advancedFields = computed(() =>
-  fields.value.filter((field) => field.advanced && !field.protocolSpecific),
+  fields.value.filter(
+    (field) =>
+      field.advanced && !field.protocolSpecific && isFieldVisible(field),
+  ),
 );
 const protocolSpecificFields = computed(() =>
   fields.value.filter((field) => field.protocolSpecific),
 );
+
+function isFieldVisible(field: FieldDefinition) {
+  if (!field.visibleWhen) return true;
+  return modelValueEquals(field.visibleWhen.key, field.visibleWhen.value);
+}
+
+function modelValueEquals(key: string, value: number | boolean | string) {
+  return props.modelValue.values[key] === value;
+}
+
+function hasNonAsciiDirectoryPath(key: string): boolean {
+  const value = props.modelValue.values[key];
+  if (typeof value !== "string" || !value.trim()) return false;
+  return !/^[\x20-\x7E]+$/.test(value.trim());
+}
+
+function validate(): boolean {
+  if (props.protocolType !== 4 || props.connType !== 2) return true;
+  if (!hasNonAsciiDirectoryPath("file_service_directory")) return true;
+  ElMessage.error(
+    "文件服务目录路径必须使用英文、数字和英文符号，不能包含中文字符",
+  );
+  return false;
+}
+
+async function chooseDirectory(key: string) {
+  if (!isTauri()) {
+    ElMessage.info("浏览器模式不支持目录选择，请直接输入完整路径");
+    return;
+  }
+  try {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const currentValue = props.modelValue.values[key];
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      defaultPath:
+        typeof currentValue === "string" && currentValue.trim()
+          ? currentValue
+          : undefined,
+    });
+    if (typeof selected === "string") {
+      if (!/^[\x20-\x7E]+$/.test(selected.trim())) {
+        ElMessage.error(
+          "文件服务目录路径必须使用英文、数字和英文符号，不能包含中文字符",
+        );
+        return;
+      }
+      props.modelValue.values[key] = selected;
+    }
+  } catch (error) {
+    console.error("选择 IEC61850 文件服务目录失败", error);
+    ElMessage.error("选择目录失败");
+  }
+}
 
 function resetDefaults() {
   props.modelValue.schema_version = 1;
@@ -459,11 +723,24 @@ function resetDefaults() {
   );
 }
 
+function fillMissingDefaults() {
+  const currentValues = props.modelValue.values || {};
+  const normalizedValues = Object.fromEntries(
+    fields.value.map((field) => [
+      field.key,
+      Object.prototype.hasOwnProperty.call(currentValues, field.key)
+        ? currentValues[field.key]
+        : field.default,
+    ]),
+  );
+  props.modelValue.schema_version = 1;
+  props.modelValue.values = normalizedValues;
+}
+
 watch(
   () => [props.protocolType, props.connType],
   () => {
     expandedSections.value = ["iec104-specific"];
-    resetDefaults();
   },
   { flush: "sync" },
 );
@@ -483,11 +760,15 @@ watch(
       expectedKeys.length !== currentKeys.length ||
       expectedKeys.some((key) => !currentKeys.includes(key))
     ) {
-      resetDefaults();
+      // 兼容旧数据库只缺少新增字段的情况：仅补默认值，绝不能把
+      // 已持久化的认证开关、密码和 ISO 地址整体恢复为默认配置。
+      fillMissingDefaults();
     }
   },
   { immediate: true },
 );
+
+defineExpose({ resetDefaults, validate });
 </script>
 
 <style scoped lang="scss">
@@ -499,6 +780,71 @@ watch(
   margin-top: 4px;
   color: var(--el-text-color-secondary);
   font-size: 12px;
+}
+.field-error {
+  width: 100%;
+  margin-top: 4px;
+  color: var(--el-color-danger);
+  font-size: 12px;
+}
+.directory-path-input {
+  :deep(.el-input__wrapper) {
+    padding: 1px 14px;
+    border-radius: 10px 0 0 10px !important;
+    transition: box-shadow 0.2s ease;
+  }
+
+  :deep(.el-input-group__append) {
+    padding: 4px;
+    background: linear-gradient(
+      135deg,
+      rgba(59, 130, 246, 0.08),
+      rgba(14, 165, 233, 0.12)
+    );
+    border-radius: 0 10px 10px 0;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.18) inset;
+  }
+
+  &:hover :deep(.el-input__wrapper),
+  &:focus-within :deep(.el-input__wrapper) {
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.55) inset !important;
+  }
+}
+.directory-path-actions {
+  display: inline-flex;
+  vertical-align: middle;
+
+  :deep(.el-button) {
+    height: 32px;
+    margin: 0;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 7px !important;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      background 0.18s ease;
+  }
+
+  :deep(.directory-path-button) {
+    color: var(--color-primary);
+    background: rgba(59, 130, 246, 0.12);
+
+    &:hover,
+    &:focus {
+      color: #2563eb;
+      background: rgba(59, 130, 246, 0.2);
+      box-shadow: 0 3px 10px rgba(37, 99, 235, 0.14);
+      transform: translateY(-1px);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+  }
 }
 .field-unit {
   display: inline-block;

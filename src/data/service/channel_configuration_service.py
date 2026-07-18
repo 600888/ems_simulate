@@ -33,6 +33,10 @@ class ChannelConfigurationService:
                     record.params_json = values
                 return {"schema_version": 1, "values": values}
             values = normalize_protocol_params(protocol_type, conn_type, record.params_json)
+            # Persist newly introduced defaults so existing databases are
+            # upgraded when their channel configuration is first read.
+            if record.params_json != values:
+                record.params_json = values
             return {"schema_version": record.schema_version, "values": values}
 
     @classmethod

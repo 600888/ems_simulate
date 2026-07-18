@@ -6,6 +6,7 @@ IEC 61850 MMS 服务端封装 (门面模式)
 """
 
 import contextlib
+import os
 from typing import Any
 
 from .defs import (
@@ -14,6 +15,7 @@ from .defs import (
 from .log import log
 from .plugins.datamodels.builder import IedModelBuilder
 from .plugins.datasets.server import ServerDataSetManager
+from .plugins.files.server import ServerFileService
 from .plugins.reports.manager import ReportManager
 
 if HAS_IEC61850:
@@ -35,6 +37,9 @@ class IEC61850Server:
         ied_name: str = "EMSDevice",
         ld_name: str = "GenericLD",
         max_connections: int = 5,
+        authentication_enabled: bool = False,
+        authentication_password: str = "",
+        file_service_directory: str | None = None,
     ):
         """保存服务端网络与模型配置，并初始化逻辑节点、测点、数据集和 GOOSE 索引。"""
         if not HAS_IEC61850:
@@ -46,6 +51,11 @@ class IEC61850Server:
         self.ied_name = ied_name
         self.ld_name = ld_name
         self.max_connections = max_connections
+        self.authentication_enabled = authentication_enabled
+        self.authentication_password = authentication_password
+
+        selected_file_directory = (file_service_directory or "").strip()
+        self._files = ServerFileService(selected_file_directory) if selected_file_directory else None
 
         # ===== 组合核心组件 =====
         self._builder = IedModelBuilder(model_name, ied_name, ld_name)
@@ -62,6 +72,12 @@ class IEC61850Server:
         self._loaded_icd_path: str = ""
         self._last_import_result = None
         self._loaded_ied_ld_insts: set[str] = set()
+        self._password_authenticator = None
+
+        if self.authentication_enabled:
+            from .server_auth import Iec61850ServerPasswordAuthenticator
+
+            self._password_authenticator = Iec61850ServerPasswordAuthenticator(self.authentication_password)
 
     # ===== 向后兼容属性: 委托给 builder =====
 
@@ -165,9 +181,60 @@ class IEC61850Server:
         server_config = iec61850.IedServerConfig_create()
         try:
             iec61850.IedServerConfig_setMaxMmsConnections(server_config, self.max_connections)
-            return iec61850.IedServer_createWithConfig(self._builder.model, None, server_config)
+            if getattr(self, "_files", None) is not None:
+                self._configure_file_service_config(server_config)
+            try:
+                server = iec61850.IedServer_createWithConfig(self._builder.model, None, server_config)
+            except TypeError as exc:
+                # pyiec61850-ng 1.6.1.7 marks the TLSConfiguration argument as
+                # non-null in its SWIG wrapper, even for a plain MMS server.
+                # TLS is terminated by our external bridge, so the native
+                # backend must remain non-TLS and can use the basic creator.
+                if "argument 2 of type 'TLSConfiguration'" not in str(exc):
+                    raise
+                log.warning(
+                    "当前 pyiec61850 绑定不支持为 IedServer_createWithConfig 传入空 TLS 配置，"
+                    "已回退到非 TLS 创建接口；max_connections 配置暂不生效"
+                )
+                server = iec61850.IedServer_create(self._builder.model)
+            if getattr(self, "_files", None) is not None:
+                self._configure_file_service_server(server)
+            return server
         finally:
             iec61850.IedServerConfig_destroy(server_config)
+
+    def _configure_file_service_config(self, server_config) -> None:
+        """Enable MMS file services in bindings that expose config-level APIs."""
+        enable = getattr(iec61850, "IedServerConfig_enableFileService", None)
+        set_base_path = getattr(iec61850, "IedServerConfig_setFileServiceBasePath", None)
+        if enable is not None:
+            enable(server_config, True)
+        if set_base_path is not None:
+            set_base_path(server_config, self._native_file_service_path())
+
+    def _configure_file_service_server(self, server) -> None:
+        """Set the filestore on old and new libIEC61850 server bindings."""
+        if server is None:
+            return
+        set_base_path = getattr(iec61850, "IedServer_setFilestoreBasepath", None)
+        if set_base_path is not None:
+            set_base_path(server, self._native_file_service_path())
+
+    def _native_file_service_path(self) -> str:
+        """Return an absolute native path with the separator expected by libIEC61850."""
+        if self._files is None:
+            raise RuntimeError("IEC61850 文件服务未启用")
+        return str(self._files.base_directory) + os.sep
+
+    @property
+    def files(self) -> ServerFileService | None:
+        """Return the local file store exported to MMS clients."""
+        return self._files
+
+    def _configure_authentication(self) -> None:
+        """Install password validation before accepting MMS associations."""
+        if self._password_authenticator is not None:
+            self._password_authenticator.install(self._server)
 
     # ===== 向后兼容属性: 委托给 ds_manager =====
 
@@ -694,7 +761,9 @@ class IEC61850Server:
             return False
 
         iec61850.IedServer_setServerIdentity(self._server, "EMS", self.model_name, "1.0")
+        self._configure_authentication()
         self._is_running = True
+        iec61850.IedServer_setLocalIpAddress(self._server, self.ip)
         iec61850.IedServer_start(self._server, self.port)
 
         if iec61850.IedServer_isRunning(self._server):
@@ -765,6 +834,8 @@ class IEC61850Server:
                 log.error("重建 IedServer 失败")
                 return False
             iec61850.IedServer_setServerIdentity(self._server, "EMS", self.model_name, "1.0")
+            self._configure_authentication()
+            iec61850.IedServer_setLocalIpAddress(self._server, self.ip)
             iec61850.IedServer_start(self._server, self.port)
             if iec61850.IedServer_isRunning(self._server):
                 log.info("IedServer 重建成功")
@@ -824,7 +895,9 @@ class IEC61850Server:
 
         self._server = self._create_ied_server()
         iec61850.IedServer_setServerIdentity(self._server, "EMS", self.model_name, "1.0")
+        self._configure_authentication()
         self._is_running = True
+        iec61850.IedServer_setLocalIpAddress(self._server, self.ip)
         iec61850.IedServer_start(self._server, self.port)
 
         if iec61850.IedServer_isRunning(self._server):
@@ -914,7 +987,9 @@ class IEC61850Server:
             log.error("重启失败: IedServer_create 返回空")
             return False
         iec61850.IedServer_setServerIdentity(self._server, "EMS", self.model_name, "1.0")
+        self._configure_authentication()
         self._is_running = True
+        iec61850.IedServer_setLocalIpAddress(self._server, self.ip)
         iec61850.IedServer_start(self._server, self.port)
         if iec61850.IedServer_isRunning(self._server):
             log.info(f"IEC 61850 服务器重启成功, 端口: {self.port}")

@@ -106,7 +106,7 @@ async def upload_security_config(
         raise NotFoundError("通道不存在")
     if tls_enabled and channel.get("conn_type") not in (1, 2):
         raise ValidationError("串口模式不支持 TLS")
-    if tls_enabled and channel.get("protocol_type") not in (1, 2):
+    if tls_enabled and channel.get("protocol_type") not in (1, 2, 4):
         raise ValidationError("当前协议暂不支持 TLS")
     if tls_mode not in {"basic", "mutual"}:
         raise ValidationError("TLS 模式必须是基础 TLS 或双向认证 TLS")
@@ -144,7 +144,7 @@ async def upload_security_config(
         raise ValidationError("启用 TLS 后必须上传证书和私钥")
     mutual_tls_without_ca = (
         tls_enabled
-        and channel.get("protocol_type") in (1, 2)
+        and channel.get("protocol_type") in (1, 2, 4)
         and tls_mode == "mutual"
         and ca_certificate_content is None
     )

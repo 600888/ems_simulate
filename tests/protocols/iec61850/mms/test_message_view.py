@@ -1,3 +1,5 @@
+import threading
+import time
 from types import SimpleNamespace
 
 from src.device.core.message.message_formatter import MessageFormatter
@@ -47,6 +49,76 @@ def test_mms_capture_reassembles_and_splits_tpkt_frames():
     messages = capture.get_messages()
     assert [message["direction"] for message in messages] == ["TX", "TX"]
     assert [message["data"] for message in messages] == [first.hex(), second.hex()]
+
+
+def test_mms_capture_opens_each_windows_server_interface(monkeypatch):
+    import scapy.all
+
+    import src.device.core.message.mms_capture as capture_module
+
+    created = []
+
+    class FakeSniffer:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.running = False
+            created.append(self)
+
+        def start(self):
+            self.running = True
+            self.kwargs["started_callback"]()
+
+        def stop(self, join=True):
+            self.running = False
+
+    monkeypatch.setattr(capture_module.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(scapy.all, "get_if_list", lambda: ["ethernet", "loopback"])
+    monkeypatch.setattr(scapy.all, "AsyncSniffer", FakeSniffer)
+
+    capture = MmsMessageCapture(port=102, client=False)
+    assert capture.start(timeout=0.5) is True
+    assert [sniffer.kwargs["iface"] for sniffer in created] == ["ethernet", "loopback"]
+    capture.stop()
+
+
+def test_mms_capture_start_waits_for_pcap_readiness(monkeypatch):
+    import scapy.all
+
+    import src.device.core.message.mms_capture as capture_module
+
+    release = threading.Event()
+
+    class FakeSniffer:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.running = False
+
+        def start(self):
+            self.running = True
+
+            def mark_started():
+                release.wait()
+                self.kwargs["started_callback"]()
+
+            threading.Thread(target=mark_started, daemon=True).start()
+
+        def stop(self, join=True):
+            self.running = False
+
+    monkeypatch.setattr(capture_module.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(scapy.all.conf.route, "route", lambda _ip: ("loopback", "127.0.0.1", "0.0.0.0"))
+    monkeypatch.setattr(scapy.all, "AsyncSniffer", FakeSniffer)
+
+    capture = MmsMessageCapture(port=102, remote_ip="127.0.0.1", client=True)
+    result = []
+    starter = threading.Thread(target=lambda: result.append(capture.start(timeout=1.0)))
+    starter.start()
+    time.sleep(0.05)
+    assert starter.is_alive()
+    release.set()
+    starter.join(timeout=1.0)
+    assert result == [True]
+    capture.stop()
 
 
 def test_formatter_exposes_mms_list_and_detail():

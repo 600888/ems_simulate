@@ -4,7 +4,7 @@ version = "3.4.0"
 description = "电力模拟仿真系统，支持 IEC61850 / IEC104 / Modbus / DLT645 协议"
 requires-python = ">=3.11"
 dependencies = [
-    "pymodbus==3.14.0",
+    "pymodbus==3.12.0",
     "pyserial==3.5",
     "blinker==1.9.0",
     "sqlalchemy==2.0.45",

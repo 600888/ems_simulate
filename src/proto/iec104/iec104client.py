@@ -121,16 +121,49 @@ class IEC104Client:
             self.client.stop()
             return False
 
-    def disconnect(self):
-        """断开与服务器的连接"""
-        if self.connection and self.connection.is_connected:
-            self.connection.disconnect()
+    def disconnect(self) -> None:
+        """断开与服务器的连接，并完整记录连接和资源清理状态。"""
+        was_connected = self.is_connected
+        transport = "TLS" if self._tls_bridge else "TCP"
+        cleanup_results: list[str] = []
+        cleanup_errors: list[str] = []
+
+        if self.connection and was_connected:
+            try:
+                self.connection.disconnect()
+                cleanup_results.append("IEC104连接=已断开")
+            except Exception as e:
+                cleanup_errors.append(f"IEC104连接断开失败({type(e).__name__}: {e})")
+        else:
+            cleanup_results.append("IEC104连接=断开前已处于未连接状态")
 
         if self.client:
-            self.client.stop()
+            try:
+                self.client.stop()
+                cleanup_results.append("IEC104客户端=已停止")
+            except Exception as e:
+                cleanup_errors.append(f"IEC104客户端停止失败({type(e).__name__}: {e})")
+        else:
+            cleanup_results.append("IEC104客户端=不存在")
+
         if self._tls_bridge:
-            self._tls_bridge.stop()
-        log.info("已断开与服务器的连接")
+            try:
+                self._tls_bridge.stop()
+                cleanup_results.append("TLS桥接器=已停止")
+            except Exception as e:
+                cleanup_errors.append(f"TLS桥接器停止失败({type(e).__name__}: {e})")
+        else:
+            cleanup_results.append("TLS桥接器=未启用")
+
+        details = (
+            f"服务器={self.ip}:{self.port}, 传输方式={transport}, "
+            f"断开前状态={'已连接' if was_connected else '未连接'}, "
+            f"清理结果={'; '.join(cleanup_results)}"
+        )
+        if cleanup_errors:
+            log.error(f"断开与 IEC104 服务器的连接时发生异常: {details}, 异常={'; '.join(cleanup_errors)}")
+        else:
+            log.error(f"已断开与 IEC104 服务器的连接: {details}")
 
     @property
     def is_connected(self) -> bool:

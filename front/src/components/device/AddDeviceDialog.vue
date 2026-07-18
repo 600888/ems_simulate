@@ -9,6 +9,7 @@
   >
     <el-form
       ref="formRef"
+      v-loading="loadingChannel"
       :model="form"
       :rules="rules"
       label-width="110px"
@@ -40,6 +41,7 @@
 
         <el-tab-pane label="协议参数" name="protocol">
           <DeviceProtocolParams
+            ref="protocolParamsCompRef"
             :model-value="protocolParams"
             :protocol-type="form.protocol_type"
             :conn-type="form.conn_type"
@@ -52,7 +54,7 @@
             :model-value="securityConfig"
             :network-mode="mediaType === 'network'"
             :protocol-type="form.protocol_type"
-            :disabled="saving"
+            :disabled="saving || loadingChannel"
             @certificate-change="(file) => (certificateFile = file)"
             @private-key-change="(file) => (privateKeyFile = file)"
             @ca-certificate-change="(file) => (caCertificateFile = file)"
@@ -85,12 +87,15 @@
         >
           {{ $t("addDevice.previewIcd") }}
         </el-button>
-        <el-button :disabled="saving" @click="handleClose" round>{{
-          $t("common.cancel")
-        }}</el-button>
+        <el-button
+          :disabled="saving || loadingChannel"
+          @click="handleClose"
+          round
+          >{{ $t("common.cancel") }}</el-button
+        >
         <el-button
           type="primary"
-          :disabled="saving"
+          :disabled="saving || loadingChannel"
           @click="handleSubmit"
           round
           class="submit-btn"
@@ -189,7 +194,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, reactive, watch, onMounted } from "vue";
+import { ref, computed, reactive, watch, onMounted, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { Check, View } from "@element-plus/icons-vue";
@@ -237,6 +242,10 @@ const emit = defineEmits<{
 // 状态
 const formRef = ref<FormInstance>();
 const uploadCompRef = ref();
+const protocolParamsCompRef = ref<{
+  resetDefaults: () => void;
+  validate: () => boolean;
+}>();
 const securityCompRef = ref();
 const activeTab = ref<"basic" | "protocol" | "security">("basic");
 const originalName = ref("");
@@ -251,7 +260,7 @@ const serialPorts = ref<Array<{ device: string; description: string }>>([]);
 const protocols = ref<ProtocolOption[]>([]);
 const protocolParams = reactive({
   schema_version: 1,
-  values: {} as Record<string, number | boolean>,
+  values: {} as Record<string, number | boolean | string>,
 });
 const securityConfig = reactive<SecurityConfig>({
   tls_enabled: false,
@@ -272,9 +281,41 @@ const previewDone = ref(false);
 
 // 操作进度
 const saving = ref(false);
+const loadingChannel = ref(false);
 const progressText = ref("");
 const importElapsed = ref(0);
 let progressTimer: number | null = null;
+let channelLoadRequest = 0;
+
+const defaultSecurityConfig = (): SecurityConfig => ({
+  tls_enabled: false,
+  tls_mode: "mutual",
+  certificate_configured: false,
+  certificate_filename: null,
+  private_key_configured: false,
+  private_key_filename: null,
+  ca_certificate_configured: false,
+  ca_certificate_filename: null,
+});
+
+const applyPersistedSecurityConfig = (persisted?: SecurityConfig) => {
+  const normalized = {
+    ...defaultSecurityConfig(),
+    ...(persisted || {}),
+    // 开关只认后端持久化的布尔值，不根据证书或本地点击状态推断。
+    tls_enabled: persisted?.tls_enabled === true,
+  };
+  Object.assign(securityConfig, normalized);
+};
+
+const applyPersistedProtocolParams = (
+  persisted?: ChannelCreateRequest["protocol_params"],
+) => {
+  protocolParams.schema_version = persisted?.schema_version || 1;
+  // 使用独立对象回填，避免子组件补默认字段时修改接口响应对象，
+  // 同时确保认证开关和密码不会被旧协议字段的监听任务覆盖。
+  protocolParams.values = { ...(persisted?.values || {}) };
+};
 
 const gooseControlList = computed(() => {
   return goosePreviewData.value?.goose?.summary?.gse_controls || [];
@@ -357,15 +398,18 @@ watch(
 
 watch(
   () => [form.protocol_type, form.conn_type],
-  ([protocolType, connType]) => {
-    if (protocolType !== 1 && protocolType !== 2)
-      securityConfig.tls_enabled = false;
+  async ([protocolType, connType]) => {
+    if (![1, 2, 4].includes(protocolType)) securityConfig.tls_enabled = false;
     if (protocolType === 4 && connType === 2) {
       selectedFile.value = null;
     } else {
       icdFile.value = null;
     }
     uploadCompRef.value?.clearFiles();
+    if (!loadingChannel.value) {
+      await nextTick();
+      protocolParamsCompRef.value?.resetDefaults();
+    }
   },
 );
 
@@ -382,33 +426,25 @@ const loadSerialPorts = async () => {
 };
 
 const loadChannelData = async (id: number) => {
+  const requestId = ++channelLoadRequest;
+  loadingChannel.value = true;
   try {
     const data = await getChannel(id);
-    if (!data) return;
+    if (!data || requestId !== channelLoadRequest) return;
     Object.assign(form, data);
-    Object.assign(
-      protocolParams,
-      data.protocol_params || { schema_version: 1, values: {} },
-    );
+    applyPersistedProtocolParams(data.protocol_params);
     form.protocol_params = protocolParams;
-    Object.assign(
-      securityConfig,
-      data.security_config || {
-        tls_enabled: false,
-        tls_mode: "mutual",
-        certificate_configured: false,
-        certificate_filename: null,
-        private_key_configured: false,
-        private_key_filename: null,
-        ca_certificate_configured: false,
-        ca_certificate_filename: null,
-      },
-    );
+    applyPersistedSecurityConfig(data.security_config);
     originalName.value = data.name || "";
     mediaType.value =
       data.conn_type === 0 || data.conn_type === 3 ? "serial" : "network";
+    // 让子组件先在 loading 状态下完成协议类型与持久化参数的同一轮渲染，
+    // 避免协议切换监听器把刚回填的认证配置重置为默认值。
+    await nextTick();
   } catch (e) {
     console.error("加载通道失败", e);
+  } finally {
+    if (requestId === channelLoadRequest) loadingChannel.value = false;
   }
 };
 
@@ -429,17 +465,8 @@ const resetForm = () => {
     group_id: null,
     protocol_params: protocolParams,
   });
-  Object.assign(protocolParams, { schema_version: 1, values: {} });
-  Object.assign(securityConfig, {
-    tls_enabled: false,
-    tls_mode: "mutual",
-    certificate_configured: false,
-    certificate_filename: null,
-    private_key_configured: false,
-    private_key_filename: null,
-    ca_certificate_configured: false,
-    ca_certificate_filename: null,
-  });
+  applyPersistedProtocolParams();
+  applyPersistedSecurityConfig();
   clearPendingPointFiles();
   goosePreviewData.value = null;
   previewDone.value = false;
@@ -494,7 +521,11 @@ const handlePreviewIcd = async () => {
 
 // 提交保存：全程使用进度条，按钮不转圈
 const handleSubmit = async () => {
-  if (!formRef.value || saving.value) return;
+  if (!formRef.value || saving.value || loadingChannel.value) return;
+  if (protocolParamsCompRef.value?.validate() === false) {
+    activeTab.value = "protocol";
+    return;
+  }
   if (securityConfig.tls_enabled) {
     const hasCertificate =
       securityConfig.certificate_configured || !!certificateFile.value;
@@ -541,17 +572,15 @@ const handleSubmit = async () => {
       }
 
       progressText.value = "正在保存 TLS 配置";
-      Object.assign(
-        securityConfig,
-        await uploadChannelSecurity(
-          resultId,
-          securityConfig.tls_enabled,
-          securityConfig.tls_mode,
-          certificateFile.value,
-          privateKeyFile.value,
-          caCertificateFile.value,
-        ),
+      const persistedSecurity = await uploadChannelSecurity(
+        resultId,
+        securityConfig.tls_enabled,
+        securityConfig.tls_mode,
+        certificateFile.value,
+        privateKeyFile.value,
+        caCertificateFile.value,
       );
+      applyPersistedSecurityConfig(persistedSecurity);
 
       // 2. 编辑模式：重载配置
       if (isEditMode.value && props.channelId) {
@@ -589,6 +618,8 @@ const handleSubmit = async () => {
 };
 
 const handleClose = () => {
+  channelLoadRequest++;
+  loadingChannel.value = false;
   clearPendingPointFiles();
   dialogVisible.value = false;
   goosePreviewVisible.value = false;

@@ -1228,7 +1228,7 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
             elif isinstance(protocol_handler, IEC61850ServerHandler):
                 iec61850_client = getattr(protocol_handler, "_server", None)
 
-            if iec61850_client:
+            if iec61850_client and iec61850_client.files:
                 files_plugin = iec61850_client.files
                 root_entries = files_plugin.list_directory("")
                 for entry in root_entries:

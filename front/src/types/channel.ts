@@ -62,7 +62,7 @@ export interface ChannelCreateRequest {
 
 export interface ProtocolParamsConfig {
   schema_version: number;
-  values: Record<string, number | boolean>;
+  values: Record<string, number | boolean | string>;
 }
 
 export interface SecurityConfig {

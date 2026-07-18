@@ -91,6 +91,51 @@ def test_server_runtime_defaults_are_protocol_specific():
     assert iec104_defaults["t3_interval_s"] == 20
     assert get_protocol_param_defaults(3, 2)["session_idle_timeout_ms"] == 30000
     assert get_protocol_param_defaults(4, 2)["max_connections"] == 5
+    assert get_protocol_param_defaults(4, 2)["mms_capture_enabled"] is False
+    assert get_protocol_param_defaults(4, 2)["authentication_enabled"] is False
+    assert get_protocol_param_defaults(4, 2)["authentication_password"] == ""
+    assert get_protocol_param_defaults(4, 2)["file_service_directory"] == ""
+
+
+def test_iec61850_mms_capture_can_be_disabled():
+    client = normalize_protocol_params(4, 1, {"mms_capture_enabled": False})
+    server = normalize_protocol_params(4, 2, {"mms_capture_enabled": False})
+
+    assert client["mms_capture_enabled"] is False
+    assert server["mms_capture_enabled"] is False
+
+
+def test_iec61850_association_defaults_match_iedscout():
+    values = get_protocol_param_defaults(4, 1)
+
+    assert values["authentication_enabled"] is False
+    assert values["authentication_password"] == ""
+    for prefix in ("remote", "local"):
+        assert values[f"{prefix}_ap_title"] == "1,1,1,999,1"
+        assert values[f"{prefix}_ae_qualifier"] == 12
+        assert values[f"{prefix}_p_selector"] == "00 00 00 01"
+        assert values[f"{prefix}_s_selector"] == "00 01"
+        assert values[f"{prefix}_t_selector"] == "00 01"
+
+
+def test_iec61850_password_authentication_requires_a_password():
+    for conn_type in (1, 2):
+        with pytest.raises(ValueError, match="认证密码"):
+            normalize_protocol_params(4, conn_type, {"authentication_enabled": True})
+
+    values = normalize_protocol_params(
+        4,
+        1,
+        {
+            "authentication_enabled": True,
+            "authentication_password": "ied-secret",
+            "remote_ap_title": "1.1.1.999.1",
+            "remote_p_selector": "00:00:00:01",
+        },
+    )
+    assert values["authentication_password"] == "ied-secret"
+    assert values["remote_ap_title"] == "1,1,1,999,1"
+    assert values["remote_p_selector"] == "00 00 00 01"
 
 
 def test_iec104_legacy_millisecond_parameters_are_migrated_to_seconds():
@@ -150,6 +195,110 @@ def test_channel_protocol_params_are_persisted_across_sessions(monkeypatch):
     assert reloaded["values"]["max_connections"] == 12
 
 
+def test_existing_iec61850_params_persist_new_capture_default(monkeypatch):
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(configuration_service_module, "local_session", session_factory)
+
+    with session_factory() as session, session.begin():
+        session.add(
+            ChannelProtocolParams(
+                channel_id=61850,
+                protocol_type=4,
+                conn_type=1,
+                schema_version=1,
+                params_json={
+                    "connect_timeout_ms": 3000,
+                    "command_timeout_ms": 3000,
+                    "model_discovery_timeout_ms": 600000,
+                },
+            )
+        )
+
+    loaded = ChannelConfigurationService.get_protocol_params(61850, 4, 1)
+    assert loaded["values"]["mms_capture_enabled"] is False
+    assert loaded["values"]["remote_ap_title"] == "1,1,1,999,1"
+    assert loaded["values"]["authentication_enabled"] is False
+
+    with session_factory() as session:
+        persisted = session.get(ChannelProtocolParams, 61850)
+        assert persisted is not None
+        assert persisted.params_json["mms_capture_enabled"] is False
+        assert persisted.params_json["remote_p_selector"] == "00 00 00 01"
+        assert persisted.params_json["authentication_password"] == ""
+
+
+def test_iec61850_association_and_authentication_are_persisted(monkeypatch):
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(configuration_service_module, "local_session", session_factory)
+
+    saved = ChannelConfigurationService.save_protocol_params(
+        61851,
+        4,
+        1,
+        {
+            **get_protocol_param_defaults(4, 1),
+            "authentication_enabled": True,
+            "authentication_password": "ied-secret",
+            "remote_ap_title": "1.3.9999.23",
+            "local_t_selector": "00:02",
+        },
+    )
+    assert saved["values"]["remote_ap_title"] == "1,3,9999,23"
+    assert saved["values"]["local_t_selector"] == "00 02"
+
+    reloaded = ChannelConfigurationService.get_protocol_params(61851, 4, 1)
+    assert reloaded["values"]["authentication_enabled"] is True
+    assert reloaded["values"]["authentication_password"] == "ied-secret"
+    assert reloaded["values"]["remote_ap_title"] == "1,3,9999,23"
+
+
+def test_iec61850_server_password_authentication_is_persisted(monkeypatch):
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(configuration_service_module, "local_session", session_factory)
+
+    ChannelConfigurationService.save_protocol_params(
+        61852,
+        4,
+        2,
+        {
+            **get_protocol_param_defaults(4, 2),
+            "authentication_enabled": True,
+            "authentication_password": "server-secret",
+        },
+    )
+
+    reloaded = ChannelConfigurationService.get_protocol_params(61852, 4, 2)
+    assert reloaded["values"]["authentication_enabled"] is True
+    assert reloaded["values"]["authentication_password"] == "server-secret"
+
+
+def test_iec61850_server_file_service_directory_is_persisted(monkeypatch, tmp_path):
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(configuration_service_module, "local_session", session_factory)
+    selected_directory = str(tmp_path / "ied-files")
+
+    ChannelConfigurationService.save_protocol_params(
+        61853,
+        4,
+        2,
+        {
+            **get_protocol_param_defaults(4, 2),
+            "file_service_directory": selected_directory,
+        },
+    )
+
+    reloaded = ChannelConfigurationService.get_protocol_params(61853, 4, 2)
+    assert reloaded["values"]["file_service_directory"] == selected_directory
+
+
 def test_tls_mode_is_persisted_and_exposed_to_runtime(monkeypatch):
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -171,8 +320,12 @@ def test_tls_mode_is_persisted_and_exposed_to_runtime(monkeypatch):
         assert persisted is not None
         assert persisted.tls_mode == "basic"
 
-    assert ChannelConfigurationService.get_security_config(502)["tls_mode"] == "basic"
-    assert ChannelConfigurationService.get_runtime_security(502)["tls_mode"] == "basic"
+    persisted_public = ChannelConfigurationService.get_security_config(502)
+    persisted_runtime = ChannelConfigurationService.get_runtime_security(502)
+    assert persisted_public["tls_enabled"] is True
+    assert persisted_public["tls_mode"] == "basic"
+    assert persisted_runtime["tls_enabled"] is True
+    assert persisted_runtime["tls_mode"] == "basic"
 
 
 def test_reconnect_maximum_must_not_be_less_than_initial_interval():
