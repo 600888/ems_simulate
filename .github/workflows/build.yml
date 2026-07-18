@@ -109,11 +109,6 @@ jobs:
           assert importlib.metadata.version('c104') == '2.2.2';
           assert hasattr(c104.TransportSecurity(), 'set_hostname_verification')"
 
-      - name: Test IEC104 TLS implementation
-        run: >-
-          uv run --no-sync pytest src/tests/iec104_test/test_tls.py
-          src/tests/test_channel_runtime_config.py -q --basetemp build/pytest-tmp
-
       - name: Install frontend dependencies
         working-directory: front
         run: npm ci

@@ -69,7 +69,7 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"src/tests/**" = [
+"tests/**" = [
     "F401",
     "F841",
     "E402",
@@ -111,3 +111,10 @@ force-sort-within-sections = true
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+pythonpath = ["."]
+addopts = ["--import-mode=importlib"]
+norecursedirs = ["diagnostics", "legacy", "manual"]
