@@ -67,8 +67,10 @@ class ModbusServerHandler(ServerHandler):
             stopbits=stopbits,
             parity=parity,
             tls_enabled=bool(security.get("tls_enabled")),
+            tls_mode=str(security.get("tls_mode") or "mutual"),
             certificate_path=security.get("certificate_path"),
             private_key_path=security.get("private_key_path"),
+            ca_certificate_path=security.get("ca_certificate_path"),
             client_idle_timeout=runtime.get("client_idle_timeout_ms", 0) / 1000,
             max_connections=runtime.get("max_connections", 0),
         )
@@ -281,8 +283,10 @@ class ModbusClientHandler(ClientHandler):
                 timeout=connect_timeout,
                 retries=retries,
                 tls_enabled=bool(security.get("tls_enabled")),
+                tls_mode=str(security.get("tls_mode") or "mutual"),
                 certificate_path=security.get("certificate_path"),
                 private_key_path=security.get("private_key_path"),
+                ca_certificate_path=security.get("ca_certificate_path"),
                 log=self._log,
             )
         else:

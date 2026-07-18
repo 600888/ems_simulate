@@ -469,8 +469,14 @@ watch(
 );
 
 watch(
-  fields,
-  (definitions) => {
+  [
+    fields,
+    () =>
+      Object.keys(props.modelValue.values || {})
+        .sort()
+        .join("|"),
+  ],
+  ([definitions]) => {
     const expectedKeys = definitions.map((field) => field.key);
     const currentKeys = Object.keys(props.modelValue.values || {});
     if (

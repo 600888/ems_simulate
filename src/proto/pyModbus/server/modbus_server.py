@@ -27,6 +27,7 @@ from src.enums.modbus_def import ProtocolType
 from src.enums.modbus_register import Decode
 from src.enums.points.change_tracker import change_client_info_ctx
 from src.proto.pyModbus import helper
+from src.proto.pyModbus.tls import create_server_ssl_context
 
 # 从子模块导入捕获Framer
 from .capture import CreateCaptureRtuFramer, CreateCaptureSocketFramer
@@ -148,8 +149,10 @@ class ModbusServer:
         parity: str = "N",
         stopbits: int = 1,
         tls_enabled: bool = False,
+        tls_mode: str = "mutual",
         certificate_path: str | None = None,
         private_key_path: str | None = None,
+        ca_certificate_path: str | None = None,
         client_idle_timeout: float = 0,
         max_connections: int = 0,
     ):
@@ -164,8 +167,10 @@ class ModbusServer:
         self.parity = parity
         self.stopbits = stopbits
         self.tls_enabled = tls_enabled
+        self.tls_mode = tls_mode
         self.certificate_path = certificate_path
         self.private_key_path = private_key_path
+        self.ca_certificate_path = ca_certificate_path
         self.client_idle_timeout = client_idle_timeout
         self.max_connections = max_connections
         self.task = None
@@ -289,13 +294,16 @@ class ModbusServer:
 
         try:
             if self.protocol_type == ProtocolType.ModbusTcp and self.tls_enabled:
-                if not self.certificate_path or not self.private_key_path:
-                    raise ValueError("TLS requires a certificate and private key")
                 address = (self.ip if self.ip else "", self.port if self.port else None)
+                ssl_context = create_server_ssl_context(
+                    tls_mode=self.tls_mode,
+                    certificate_path=self.certificate_path,
+                    private_key_path=self.private_key_path,
+                    ca_certificate_path=self.ca_certificate_path,
+                )
                 self.server = ModbusTlsServer(
                     address=address,
-                    certfile=self.certificate_path,
-                    keyfile=self.private_key_path,
+                    sslctx=ssl_context,
                     **common_params,
                 )
             elif self.protocol_type == ProtocolType.ModbusTcp:

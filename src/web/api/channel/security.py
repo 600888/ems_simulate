@@ -142,8 +142,14 @@ async def upload_security_config(
 
     if tls_enabled and (certificate_content is None or private_key_content is None):
         raise ValidationError("启用 TLS 后必须上传证书和私钥")
-    if tls_enabled and channel.get("protocol_type") == 2 and tls_mode == "mutual" and ca_certificate_content is None:
-        raise ValidationError("IEC104 双向认证 TLS 必须上传 CA 证书")
+    mutual_tls_without_ca = (
+        tls_enabled
+        and channel.get("protocol_type") in (1, 2)
+        and tls_mode == "mutual"
+        and ca_certificate_content is None
+    )
+    if mutual_tls_without_ca:
+        raise ValidationError("双向认证 TLS 必须上传 CA 证书")
 
     parsed_ca_certificate = None
     if ca_certificate_content is not None:

@@ -22,7 +22,7 @@
       </el-form-item>
 
       <template v-if="modelValue.tls_enabled">
-        <el-form-item v-if="protocolType === 2" label="TLS 模式" required>
+        <el-form-item label="TLS 模式" required>
           <el-radio-group v-model="modelValue.tls_mode" :disabled="disabled">
             <el-radio-button value="basic">基础 TLS</el-radio-button>
             <el-radio-button value="mutual">双向认证 TLS</el-radio-button>
@@ -94,7 +94,7 @@
         </el-form-item>
 
         <el-form-item
-          v-if="protocolType === 2 && modelValue.tls_mode === 'mutual'"
+          v-if="modelValue.tls_mode === 'mutual'"
           label="CA 证书"
           required
         >

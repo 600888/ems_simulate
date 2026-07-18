@@ -505,14 +505,12 @@ const handleSubmit = async () => {
     if (
       !hasCertificate ||
       !hasPrivateKey ||
-      (form.protocol_type === 2 &&
-        securityConfig.tls_mode === "mutual" &&
-        !hasCaCertificate)
+      (securityConfig.tls_mode === "mutual" && !hasCaCertificate)
     ) {
       activeTab.value = "security";
       ElMessage.error(
-        form.protocol_type === 2 && securityConfig.tls_mode === "mutual"
-          ? "IEC104 双向认证 TLS 必须上传本端证书、私钥和 CA 证书"
+        securityConfig.tls_mode === "mutual"
+          ? "双向认证 TLS 必须上传本端证书、私钥和 CA 证书"
           : "启用 TLS 后必须上传证书和私钥",
       );
       return;

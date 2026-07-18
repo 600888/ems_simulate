@@ -4,7 +4,6 @@
 """
 
 import asyncio
-import ssl
 import struct
 
 from pymodbus.client import AsyncModbusTcpClient, AsyncModbusTlsClient
@@ -28,6 +27,7 @@ from pymodbus.pdu.register_message import (
 
 from src.device.core.message.message_capture import MessageCapture
 from src.enums.modbus_register import Decode
+from src.proto.pyModbus.tls import create_client_ssl_context
 
 
 class AsyncModbusClient:
@@ -43,8 +43,10 @@ class AsyncModbusClient:
         timeout: float = 3.0,
         retries: int = 1,
         tls_enabled: bool = False,
+        tls_mode: str = "mutual",
         certificate_path: str | None = None,
         private_key_path: str | None = None,
+        ca_certificate_path: str | None = None,
         log=None,
     ):
         self.host = host
@@ -52,8 +54,10 @@ class AsyncModbusClient:
         self.timeout = timeout
         self.retries = retries
         self.tls_enabled = tls_enabled
+        self.tls_mode = tls_mode
         self.certificate_path = certificate_path
         self.private_key_path = private_key_path
+        self.ca_certificate_path = ca_certificate_path
         self.log = log
         self.client: AsyncModbusTcpClient | None = None
         self.connected = False
@@ -63,12 +67,12 @@ class AsyncModbusClient:
         """异步连接到 Modbus 服务器"""
         try:
             if self.tls_enabled:
-                if not self.certificate_path or not self.private_key_path:
-                    raise ValueError("TLS requires a certificate and private key")
-                ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-                ssl_context.check_hostname = False
-                ssl_context.load_verify_locations(cafile=self.certificate_path)
-                ssl_context.load_cert_chain(certfile=self.certificate_path, keyfile=self.private_key_path)
+                ssl_context = create_client_ssl_context(
+                    tls_mode=self.tls_mode,
+                    certificate_path=self.certificate_path,
+                    private_key_path=self.private_key_path,
+                    ca_certificate_path=self.ca_certificate_path,
+                )
                 self.client = AsyncModbusTlsClient(
                     host=self.host,
                     port=self.port,
