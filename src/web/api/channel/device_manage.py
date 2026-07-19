@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Request
 
 from src.config.config import Config
+from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
 from src.enums.modbus_def import ProtocolType
 from src.web.api.channel.helpers import (
@@ -81,6 +82,7 @@ async def reload_device_config(req: ChannelIdRequest, request: Request):
 async def copy_device(req: CopyDeviceRequest, request: Request):
     """复制设备（包括点表）"""
     from src.data.dao.point_dao import PointDao
+    from src.data.service.device_group_service import DeviceGroupService
     from src.data.service.device_service import DeviceService
 
     source_channel = ChannelService.get_channel_by_id(req.channel_id)
@@ -90,6 +92,9 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
     source_device_id = source_channel.get("device_id")
     source_device = DeviceService.get_device_by_id(source_device_id) if source_device_id else None
     source_group_id = source_device.get("group_id") if source_device else None
+    target_group_id = req.target_group_id if "target_group_id" in req.model_fields_set else source_group_id
+    if target_group_id is not None and not DeviceGroupService.get_group_by_id(target_group_id):
+        raise NotFoundError(f"目标设备组 {target_group_id} 不存在")
     source_points = PointDao.get_points_by_channel(req.channel_id)
     source_ip = source_channel.get("ip", Config.DEFAULT_IP)
     source_port = source_channel.get("port", Config.DEFAULT_PORT)
@@ -99,7 +104,7 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
     copied_channels = []
 
     for i in range(1, req.count + 1):
-        ip_offset = req.ip_start_offset + i - 1
+        ip_offset = 0 if req.ip_start_offset == 0 else req.ip_start_offset + i - 1
         new_ip = increment_ip(source_ip, ip_offset)
         new_port = source_port + req.port_offset * i if req.port_offset > 0 else source_port
         new_code = f"{prefix}{source_channel['code']}{suffix}{i}"
@@ -113,12 +118,18 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
         new_device_id = DeviceService.create_device(
             code=new_code,
             name=new_name,
-            device_type=0,
-            group_id=source_group_id,
+            device_type=source_device.get("device_type", 0) if source_device else 0,
+            group_id=target_group_id,
         )
         if new_device_id <= 0:
             log.error(f"创建设备记录失败: {new_code}")
             continue
+        if source_device:
+            DeviceService.update_device(
+                new_device_id,
+                icd_path=source_device.get("icd_path"),
+                icd_file_hash=source_device.get("icd_file_hash"),
+            )
 
         new_channel_id = ChannelService.create_channel(
             code=new_code,
@@ -134,9 +145,26 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
             stop_bits=source_channel.get("stop_bits", 1),
             parity=source_channel.get("parity", "N"),
             rtu_addr=source_channel.get("rtu_addr", "1"),
+            timeout=source_channel.get("timeout", 5),
+            model_name=source_channel.get("model_name"),
+            icd_path=source_channel.get("icd_path"),
+            icd_file_hash=source_channel.get("icd_file_hash"),
         )
         if new_channel_id <= 0:
             log.error(f"创建通道失败: {new_code}")
+            continue
+
+        try:
+            ChannelConfigurationService.clone_for_channel(
+                req.channel_id,
+                new_channel_id,
+                source_channel.get("protocol_type", 1),
+                source_channel.get("conn_type", 2),
+            )
+        except Exception as e:
+            log.error(f"复制通道配置失败: {new_code}: {e}")
+            ChannelConfigurationService.delete_for_channel(new_channel_id)
+            ChannelService.delete_channel(new_channel_id)
             continue
 
         point_suffix = f"{suffix}{i}"
@@ -167,7 +195,16 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
             builder = get_device_builder(new_channel_id, new_code)
             channel_protocol_type = ChannelService.get_protocol_type(source_channel)
             conn_type = source_channel.get("conn_type", 1)
-            configure_builder_network(builder, conn_type, channel_protocol_type, new_ip, new_port, source_channel)
+            new_channel_data = {
+                **source_channel,
+                "id": new_channel_id,
+                "device_id": new_device_id,
+                "code": new_code,
+                "name": new_name,
+                "ip": new_ip,
+                "port": new_port,
+            }
+            configure_builder_network(builder, conn_type, channel_protocol_type, new_ip, new_port, new_channel_data)
             new_device = builder.makeGeneralDevice(
                 device_id=new_channel_id,
                 device_name=new_name,

@@ -63,8 +63,14 @@
                     $t("sidebar.stopAll")
                   }}</el-dropdown-item>
                   <el-dropdown-item command="delete" :icon="Delete" divided>{{
-                    $t("common.delete")
+                    $t("sidebar.deleteGroup")
                   }}</el-dropdown-item>
+                  <el-dropdown-item
+                    command="cascadeDelete"
+                    :icon="Delete"
+                    style="color: var(--el-color-danger)"
+                    >{{ $t("sidebar.cascadeDeleteGroup") }}</el-dropdown-item
+                  >
                 </el-dropdown-menu>
               </template>
             </el-dropdown>

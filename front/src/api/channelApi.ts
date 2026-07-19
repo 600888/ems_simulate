@@ -34,6 +34,7 @@ export interface CopyDeviceRequest {
   suffix?: string;
   ip_start_offset: number;
   port_offset?: number;
+  target_group_id?: number | null;
 }
 
 export interface IEC61850DataSetInfo {

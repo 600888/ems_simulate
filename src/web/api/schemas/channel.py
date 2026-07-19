@@ -68,7 +68,8 @@ class CopyDeviceRequest(BaseModel):
 
     channel_id: int = Field(..., description="源通道ID")
     count: int = Field(2, ge=1, le=100, description="复制数量（1-100）")
-    ip_start_offset: int = Field(1, ge=1, description="IP起始偏移量")
+    ip_start_offset: int = Field(1, ge=0, description="IP起始偏移量")
     prefix: str | None = Field(None, description="编码前缀")
     suffix: str | None = Field(None, description="编码后缀")
     port_offset: int = Field(0, description="端口偏移量")
+    target_group_id: int | None = Field(None, description="目标设备组ID，NULL表示未分组")

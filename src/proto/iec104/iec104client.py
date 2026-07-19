@@ -29,6 +29,7 @@ class IEC104Client:
         keep_alive_interval: int = 20,
         send_window_size: int = 12,
         receive_window_size: int = 8,
+        general_interrogation_on_connect: bool = True,
         transport_security: c104.TransportSecurity | None = None,
         basic_tls_config: IEC104BasicTlsConfig | None = None,
     ):
@@ -49,7 +50,7 @@ class IEC104Client:
         self.connection: c104.Connection = self.client.add_connection(
             ip=connection_ip,
             port=connection_port,
-            init=c104.Init.INTERROGATION,  # 连接时触发全召唤
+            init=c104.Init.INTERROGATION if general_interrogation_on_connect else c104.Init.NONE,
         )
         self.connection.originator_address = originator_address
         self.connection.protocol_parameters.connection_timeout = connection_timeout

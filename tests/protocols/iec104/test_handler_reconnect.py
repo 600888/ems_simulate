@@ -102,4 +102,19 @@ def test_periodic_maintenance_commands_follow_configured_intervals():
     client = asyncio.run(scenario())
     assert client.clock_sync_calls == 1
     assert client.interrogation_calls == 1
-    assert client.counter_interrogation_calls == 1
+    assert client.counter_interrogation_calls == 2
+
+
+def test_counter_interrogation_on_connect_can_be_disabled():
+    async def scenario():
+        handler = IEC104ClientHandler()
+        client = _FakeClient([True])
+        handler._client = client
+        handler._counter_interrogation_on_connect = False
+
+        assert await handler.start() is True
+        await handler.stop()
+        return client
+
+    client = asyncio.run(scenario())
+    assert client.counter_interrogation_calls == 0

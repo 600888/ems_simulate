@@ -98,8 +98,10 @@
     :device-ip="copyingDeviceIp"
     :device-port="copyingDevicePort"
     :point-count="copyingPointCount"
+    :device-group-id="copyingDeviceGroupId"
+    :group-options="groupTreeForSelect"
     @success="handleCopyDeviceSuccess"
-    @close="copyingChannelId = null"
+    @close="handleCopyDeviceClose"
   />
 </template>
 
@@ -210,6 +212,7 @@ const copyingDeviceName = ref<string>("");
 const copyingDeviceIp = ref<string>("");
 const copyingDevicePort = ref<number>(502);
 const copyingPointCount = ref<number>(0);
+const copyingDeviceGroupId = ref<number | null>(null);
 
 const treeData = ref<TreeNode[]>([]);
 const treeKey = ref(0); // 递增计数，强制 el-tree 重建
@@ -487,6 +490,7 @@ const handleGroupCommand = async (command: string, data: TreeNode) => {
     startAll: () => handleBatchOperation(data.id, "start"),
     stopAll: () => handleBatchOperation(data.id, "stop"),
     delete: () => handleDeleteGroup(data),
+    cascadeDelete: () => handleDeleteGroup(data, true),
   };
   actions[command]?.();
 };
@@ -513,17 +517,25 @@ const handleBatchOperation = async (
   );
 };
 
-const handleDeleteGroup = async (data: TreeNode) => {
+const handleDeleteGroup = async (data: TreeNode, cascade = false) => {
   await ElMessageBox.confirm(
-    t("sidebar.confirmDeleteGroup", { name: data.name }),
-    t("common.hint"),
+    t(
+      cascade
+        ? "sidebar.confirmCascadeDeleteGroup"
+        : "sidebar.confirmDeleteGroup",
+      { name: data.name },
+    ),
+    t(cascade ? "sidebar.cascadeDeleteTitle" : "common.hint"),
     {
-      confirmButtonText: t("common.confirm"),
+      confirmButtonText: t(
+        cascade ? "sidebar.confirmCascadeDelete" : "common.confirm",
+      ),
       cancelButtonText: t("common.cancel"),
-      type: "warning",
+      type: cascade ? "error" : "warning",
+      confirmButtonClass: cascade ? "el-button--danger" : "",
     },
   );
-  await deleteDeviceGroup(data.id, false);
+  await deleteDeviceGroup(data.id, cascade);
   ElMessage.success(t("sidebar.success"));
   await fetchDeviceGroupTree();
 };
@@ -584,10 +596,13 @@ const handleDeleteDeviceByName = async (deviceName: string) => {
 };
 
 const handleCopyDevice = async (data: TreeNode) => {
-  await handleCopyDeviceByName(data.name);
+  await handleCopyDeviceByName(data.name, data.groupId || null);
 };
 
-const handleCopyDeviceByName = async (deviceName: string) => {
+const handleCopyDeviceByName = async (
+  deviceName: string,
+  groupId: number | null = null,
+) => {
   try {
     const channelList = await getChannelList();
     const channel = channelList.find((c) => c.name === deviceName);
@@ -597,11 +612,17 @@ const handleCopyDeviceByName = async (deviceName: string) => {
       copyingDeviceIp.value = channel.ip || "0.0.0.0";
       copyingDevicePort.value = channel.port || 502;
       copyingPointCount.value = 0;
+      copyingDeviceGroupId.value = groupId;
       copyDeviceDialogVisible.value = true;
     }
   } catch (error) {
     console.error("获取设备信息失败:", error);
   }
+};
+
+const handleCopyDeviceClose = () => {
+  copyingChannelId.value = null;
+  copyingDeviceGroupId.value = null;
 };
 
 const handleCopyDeviceSuccess = async () => {
@@ -748,7 +769,7 @@ watch(refreshCounter, () => {
     min-width 0.3s ease,
     max-width 0.3s ease,
     flex-basis 0.3s ease;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: var(--sb-shadow);
 
   &.is-resizing {
@@ -760,6 +781,7 @@ watch(refreshCounter, () => {
     flex: 1;
     min-height: 0;
     height: auto;
+    overflow: hidden;
   }
 
   &.sidebar-collapsed {
@@ -854,6 +876,29 @@ watch(refreshCounter, () => {
   outline: none;
 }
 
+.sidebar-resizer::before {
+  content: "⠿";
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 48px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 7px;
+  background: var(--el-bg-color);
+  box-shadow: var(--el-box-shadow-light);
+  color: var(--el-text-color-secondary);
+  font-size: 18px;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  transition:
+    border-color 0.2s,
+    color 0.2s;
+  pointer-events: none;
+}
+
 .sidebar-resizer::after {
   content: "";
   position: absolute;
@@ -870,6 +915,13 @@ watch(refreshCounter, () => {
 .sidebar-resizer:focus-visible::after,
 .sidebar.is-resizing .sidebar-resizer::after {
   opacity: 0.7;
+}
+
+.sidebar-resizer:hover::before,
+.sidebar-resizer:focus-visible::before,
+.sidebar.is-resizing .sidebar-resizer::before {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
 }
 
 /* 主题类定义 */

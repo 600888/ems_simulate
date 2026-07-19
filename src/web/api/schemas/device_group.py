@@ -30,7 +30,7 @@ class DeviceGroupDeleteRequest(BaseModel):
     """删除设备组请求"""
 
     group_id: int = Field(..., description="设备组ID")
-    cascade: bool = Field(False, description="是否级联删除子组，False时将子组和设备移至未分组")
+    cascade: bool = Field(False, description="是否级联硬删除子组及其设备")
 
 
 class DeviceToGroupRequest(BaseModel):

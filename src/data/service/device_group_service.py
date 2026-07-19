@@ -6,6 +6,8 @@
 from src.data.dao.device_group_dao import DeviceGroupDao
 from src.data.log import log
 from src.data.model.device_group import DeviceGroupDict
+from src.data.service.channel_configuration_service import ChannelConfigurationService
+from src.data.service.channel_service import ChannelService
 
 
 class DeviceGroupService:
@@ -115,17 +117,30 @@ class DeviceGroupService:
 
     @classmethod
     def delete_group(cls, group_id: int, cascade: bool = False) -> bool:
-        """删除设备组
+        """硬删除设备组
 
         Args:
             group_id: 设备组ID
-            cascade: 是否级联删除子组，False时将子组和设备移至未分组
+            cascade: 是否级联删除子组和设备
         """
         try:
+            if cascade:
+                for channel_id in DeviceGroupDao.get_channel_ids_for_group_tree(group_id):
+                    ChannelConfigurationService.delete_for_channel(channel_id)
+                    ChannelService.delete_channel(channel_id)
             return DeviceGroupDao.delete_group(group_id, cascade)
         except Exception as e:
             log.error(f"删除设备组失败: {e}")
             return False
+
+    @classmethod
+    def get_channel_ids_for_group_tree(cls, group_id: int) -> list[int]:
+        """获取分组树内全部设备对应的通道 ID。"""
+        try:
+            return DeviceGroupDao.get_channel_ids_for_group_tree(group_id)
+        except Exception as e:
+            log.error(f"获取设备组通道失败: {e}")
+            return []
 
     @classmethod
     def add_device_to_group(cls, device_id: int, group_id: int) -> bool:

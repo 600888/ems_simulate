@@ -142,6 +142,58 @@ class ChannelConfigurationService:
             record.ca_certificate_filename = ca_certificate_filename
 
     @classmethod
+    def clone_for_channel(
+        cls,
+        source_channel_id: int,
+        target_channel_id: int,
+        protocol_type: int,
+        conn_type: int,
+    ) -> None:
+        """复制协议参数、TLS 数据库配置及证书文件到新通道。"""
+        protocol = cls.get_protocol_params(source_channel_id, protocol_type, conn_type)
+        cls.save_protocol_params(
+            target_channel_id,
+            protocol_type,
+            conn_type,
+            protocol["values"],
+            schema_version=protocol["schema_version"],
+        )
+
+        public_security = cls.get_security_config(source_channel_id)
+        runtime_security = cls.get_runtime_security(source_channel_id)
+        security_root = (Path(get_storage_path("data_directory")) / "security").resolve(strict=False)
+        target_dir = (security_root / str(target_channel_id)).resolve(strict=False)
+        if target_dir.parent != security_root:
+            raise ValueError("TLS 文件目标目录无效")
+
+        def copy_security_file(source_path: str | None, target_name: str) -> str | None:
+            if not source_path:
+                return None
+            source = Path(source_path)
+            if not source.is_file():
+                raise FileNotFoundError(f"TLS 配置文件不存在: {source.name}")
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target = target_dir / target_name
+            shutil.copy2(source, target)
+            target.chmod(0o600)
+            return str(target)
+
+        certificate_path = copy_security_file(runtime_security.get("certificate_path"), "certificate.pem")
+        private_key_path = copy_security_file(runtime_security.get("private_key_path"), "private_key.pem")
+        ca_certificate_path = copy_security_file(runtime_security.get("ca_certificate_path"), "ca_certificate.pem")
+        cls.save_security_config(
+            target_channel_id,
+            tls_enabled=bool(runtime_security.get("tls_enabled")),
+            tls_mode=str(runtime_security.get("tls_mode") or "mutual"),
+            certificate_path=certificate_path,
+            certificate_filename=public_security.get("certificate_filename"),
+            private_key_path=private_key_path,
+            private_key_filename=public_security.get("private_key_filename"),
+            ca_certificate_path=ca_certificate_path,
+            ca_certificate_filename=public_security.get("ca_certificate_filename"),
+        )
+
+    @classmethod
     def delete_for_channel(cls, channel_id: int) -> None:
         with local_session() as session, session.begin():
             session.query(ChannelProtocolParams).where(ChannelProtocolParams.channel_id == channel_id).delete()

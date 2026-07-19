@@ -39,6 +39,10 @@
             </el-button-group>
           </template>
         </el-input>
+        <el-checkbox
+          v-else-if="field.kind === 'checkbox'"
+          v-model="modelValue.values[field.key]"
+        />
         <el-switch
           v-else-if="field.kind === 'boolean'"
           v-model="modelValue.values[field.key]"
@@ -100,6 +104,10 @@
               </el-button-group>
             </template>
           </el-input>
+          <el-checkbox
+            v-else-if="field.kind === 'checkbox'"
+            v-model="modelValue.values[field.key]"
+          />
           <el-switch
             v-else-if="field.kind === 'boolean'"
             v-model="modelValue.values[field.key]"
@@ -183,7 +191,7 @@ import { isTauri } from "@/utils/tauri";
 type FieldDefinition = {
   key: string;
   label: string;
-  kind?: "number" | "boolean" | "text" | "password" | "directory";
+  kind?: "number" | "boolean" | "checkbox" | "text" | "password" | "directory";
   min?: number;
   max?: number;
   step?: number;
@@ -350,7 +358,28 @@ const iec104LinkFields: FieldDefinition[] = [
 ];
 
 const iec104Client: FieldDefinition[] = [
-  ...iec104LinkFields,
+  {
+    key: "general_interrogation_on_connect",
+    label: "连接后立即执行总召唤",
+    kind: "checkbox",
+    default: true,
+  },
+  {
+    key: "counter_interrogation_on_connect",
+    label: "连接后立即执行计数量召唤",
+    kind: "checkbox",
+    default: true,
+  },
+  ...iec104LinkFields.map((field) => {
+    const clientDefaults: Record<string, number> = {
+      t0_timeout_s: 10,
+      t1_timeout_s: 15,
+      t2_timeout_s: 10,
+    };
+    return field.key in clientDefaults
+      ? { ...field, default: clientDefaults[field.key] }
+      : field;
+  }),
   {
     key: "originator_address",
     label: "源发站地址",
@@ -380,7 +409,7 @@ const iec104Client: FieldDefinition[] = [
     unit: "s",
     default: 0,
     protocolSpecific: true,
-    tip: "0 表示不定时发送；连接建立时仍自动总召唤",
+    tip: "0 表示不定时发送；是否在连接建立时发送由上方开关控制",
   },
   {
     key: "counter_interrogation_interval_s",

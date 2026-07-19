@@ -104,8 +104,16 @@ async def update_group(body: DeviceGroupUpdateRequest):
 
 
 @device_group_router.post("/delete")
-async def delete_group(body: DeviceGroupDeleteRequest):
+async def delete_group(body: DeviceGroupDeleteRequest, request: Request):
     """删除设备组"""
+    if body.cascade:
+        device_controller = request.app.state.device_controller
+        channel_ids = DeviceGroupService.get_channel_ids_for_group_tree(body.group_id)
+        for channel_id in channel_ids:
+            try:
+                await device_controller.remove_device_by_id(channel_id)
+            except Exception as e:
+                log.warning(f"级联删除分组时停止设备失败: channel_id={channel_id}, error={e}")
     success = DeviceGroupService.delete_group(body.group_id, body.cascade)
     if not success:
         raise NotFoundError("设备组不存在")

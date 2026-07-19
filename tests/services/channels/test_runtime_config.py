@@ -51,14 +51,16 @@ def test_iec104_client_defaults_match_modbus_reconnect_policy():
     values = get_protocol_param_defaults(2, 1)
     assert values["send_window_size"] == 12
     assert values["receive_window_size"] == 8
-    assert values["t0_timeout_s"] == 3
-    assert values["t1_timeout_s"] == 3
-    assert values["t2_timeout_s"] == 1
+    assert values["t0_timeout_s"] == 10
+    assert values["t1_timeout_s"] == 15
+    assert values["t2_timeout_s"] == 10
     assert values["t3_interval_s"] == 20
     assert values["originator_address"] == 0
     assert values["clock_sync_interval_s"] == 0
     assert values["general_interrogation_interval_s"] == 0
     assert values["counter_interrogation_interval_s"] == 0
+    assert values["general_interrogation_on_connect"] is True
+    assert values["counter_interrogation_on_connect"] is True
     assert values["reconnect_initial_interval_ms"] == 2000
     assert values["reconnect_max_interval_ms"] == 30000
     assert values["reconnect_max_attempts"] == -1
@@ -326,6 +328,52 @@ def test_tls_mode_is_persisted_and_exposed_to_runtime(monkeypatch):
     assert persisted_public["tls_mode"] == "basic"
     assert persisted_runtime["tls_enabled"] is True
     assert persisted_runtime["tls_mode"] == "basic"
+
+
+def test_clone_for_channel_persists_protocol_tls_and_independent_files(monkeypatch, tmp_path):
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(configuration_service_module, "local_session", session_factory)
+    monkeypatch.setattr(configuration_service_module, "get_storage_path", lambda _name: str(tmp_path))
+
+    source_dir = tmp_path / "security" / "2"
+    source_dir.mkdir(parents=True)
+    certificate = source_dir / "certificate.pem"
+    private_key = source_dir / "private_key.pem"
+    certificate.write_bytes(b"certificate-data")
+    private_key.write_bytes(b"private-key-data")
+
+    source_protocol = {
+        **get_protocol_param_defaults(2, 1),
+        "originator_address": 7,
+        "reconnect_max_attempts": 9,
+    }
+    ChannelConfigurationService.save_protocol_params(2, 2, 1, source_protocol)
+    ChannelConfigurationService.save_security_config(
+        2,
+        tls_enabled=True,
+        tls_mode="basic",
+        certificate_path=str(certificate),
+        certificate_filename="client.crt",
+        private_key_path=str(private_key),
+        private_key_filename="client.key",
+    )
+
+    ChannelConfigurationService.clone_for_channel(2, 30, 2, 1)
+
+    cloned_protocol = ChannelConfigurationService.get_protocol_params(30, 2, 1)
+    cloned_security = ChannelConfigurationService.get_runtime_security(30)
+    cloned_public_security = ChannelConfigurationService.get_security_config(30)
+    assert cloned_protocol["values"] == source_protocol
+    assert cloned_security["tls_enabled"] is True
+    assert cloned_security["tls_mode"] == "basic"
+    assert cloned_public_security["certificate_filename"] == "client.crt"
+    assert cloned_public_security["private_key_filename"] == "client.key"
+    assert cloned_security["certificate_path"] != str(certificate)
+    assert cloned_security["private_key_path"] != str(private_key)
+    assert (tmp_path / "security" / "30" / "certificate.pem").read_bytes() == b"certificate-data"
+    assert (tmp_path / "security" / "30" / "private_key.pem").read_bytes() == b"private-key-data"
 
 
 def test_reconnect_maximum_must_not_be_less_than_initial_interval():

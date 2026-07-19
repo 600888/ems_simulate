@@ -50,7 +50,14 @@ export default {
     addSubGroup: "添加子分组",
     startAll: "启动全部",
     stopAll: "停止全部",
-    confirmDeleteGroup: '确定删除组 "{name}"？',
+    deleteGroup: "删除分组",
+    cascadeDeleteGroup: "级联删除分组及设备",
+    confirmDeleteGroup:
+      "确定删除分组“{name}”吗？组内设备将移到未分组，子分组将提升一级。",
+    cascadeDeleteTitle: "危险操作：级联删除",
+    confirmCascadeDeleteGroup:
+      "将永久删除分组“{name}”、全部子分组，以及其中的所有设备、通道和测点数据。此操作不可恢复，是否继续？",
+    confirmCascadeDelete: "永久删除",
     confirmDeleteDevice: '确定删除 "{name}"？',
     success: "成功",
     deleteSuccess: "删除成功",
@@ -249,6 +256,9 @@ export default {
   copyDevice: {
     title: "复制设备",
     sourceDevice: "源设备",
+    targetGroup: "目标分组",
+    targetGroupPlaceholder: "请选择复制设备所属分组",
+    ungrouped: "未分组",
     prefix: "前缀",
     prefixPlaceholder: "可选，如: DEV_",
     suffix: "后缀",

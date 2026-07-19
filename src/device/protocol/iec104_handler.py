@@ -309,7 +309,7 @@ class IEC104ClientHandler(ClientHandler):
         super().__init__()
         self._client = None
         self._log = log
-        self._connect_timeout = 3.0
+        self._connect_timeout = 10.0
         self._reconnect_initial_interval = 2.0
         self._max_reconnect_interval = 30.0
         self._max_reconnect_attempts = -1
@@ -319,6 +319,7 @@ class IEC104ClientHandler(ClientHandler):
         self._clock_sync_interval = 0
         self._general_interrogation_interval = 0
         self._counter_interrogation_interval = 0
+        self._counter_interrogation_on_connect = True
         self._maintenance_task = None
 
     def initialize(self, config: dict[str, Any]) -> None:
@@ -337,13 +338,14 @@ class IEC104ClientHandler(ClientHandler):
         port = config.get("port", Config.IEC104_DEFAULT_PORT)
         runtime = config.get("runtime", {})
         security = config.get("security", {})
-        self._connect_timeout = runtime.get("t0_timeout_s", 3)
+        self._connect_timeout = runtime.get("t0_timeout_s", 10)
         self._reconnect_initial_interval = runtime.get("reconnect_initial_interval_ms", 2000) / 1000
         self._max_reconnect_interval = runtime.get("reconnect_max_interval_ms", 30000) / 1000
         self._max_reconnect_attempts = runtime.get("reconnect_max_attempts", -1)
         self._clock_sync_interval = runtime.get("clock_sync_interval_s", 0)
         self._general_interrogation_interval = runtime.get("general_interrogation_interval_s", 0)
         self._counter_interrogation_interval = runtime.get("counter_interrogation_interval_s", 0)
+        self._counter_interrogation_on_connect = runtime.get("counter_interrogation_on_connect", True)
 
         try:
             self._loop = asyncio.get_running_loop()
@@ -356,12 +358,13 @@ class IEC104ClientHandler(ClientHandler):
             ip=ip,
             port=port,
             originator_address=runtime.get("originator_address", 0),
-            connection_timeout=runtime.get("t0_timeout_s", 3),
-            message_timeout=runtime.get("t1_timeout_s", 3),
-            confirm_interval=runtime.get("t2_timeout_s", 1),
+            connection_timeout=runtime.get("t0_timeout_s", 10),
+            message_timeout=runtime.get("t1_timeout_s", 15),
+            confirm_interval=runtime.get("t2_timeout_s", 10),
             keep_alive_interval=runtime.get("t3_interval_s", 20),
             send_window_size=runtime.get("send_window_size", 12),
             receive_window_size=runtime.get("receive_window_size", 8),
+            general_interrogation_on_connect=runtime.get("general_interrogation_on_connect", True),
             transport_security=build_transport_security(security, peer_hostname=ip),
             basic_tls_config=load_basic_tls_config(security),
         )
@@ -441,6 +444,8 @@ class IEC104ClientHandler(ClientHandler):
                 self._is_running = is_connected
                 if is_connected:
                     self._reconnect_count = 0
+                    if self._counter_interrogation_on_connect:
+                        await asyncio.to_thread(self._client.send_counter_interrogation, None)
                 return is_connected
             return False
         except Exception as e:

@@ -18,16 +18,38 @@
         <el-input :value="sourceDeviceName" disabled />
       </el-form-item>
 
+      <el-form-item :label="$t('copyDevice.targetGroup')" prop="targetGroupId">
+        <el-tree-select
+          v-model="form.targetGroupId"
+          :data="groupSelectOptions"
+          :props="{ label: 'name', value: 'id', children: 'children' }"
+          :placeholder="$t('copyDevice.targetGroupPlaceholder')"
+          check-strictly
+          style="width: 100%"
+        />
+      </el-form-item>
+
       <el-form-item :label="$t('copyDevice.prefix')">
-        <el-input v-model="form.prefix" :placeholder="$t('copyDevice.prefixPlaceholder')" />
+        <el-input
+          v-model="form.prefix"
+          :placeholder="$t('copyDevice.prefixPlaceholder')"
+        />
       </el-form-item>
 
       <el-form-item :label="$t('copyDevice.suffix')">
-        <el-input v-model="form.suffix" :placeholder="$t('copyDevice.suffixPlaceholder')" />
+        <el-input
+          v-model="form.suffix"
+          :placeholder="$t('copyDevice.suffixPlaceholder')"
+        />
       </el-form-item>
 
       <el-form-item :label="$t('copyDevice.copyCount')" prop="count">
-        <el-input-number v-model="form.count" :min="1" :max="100" style="width: 100%" />
+        <el-input-number
+          v-model="form.count"
+          :min="1"
+          :max="100"
+          style="width: 100%"
+        />
       </el-form-item>
 
       <el-form-item :label="$t('copyDevice.ipOffset')" prop="ipStartOffset">
@@ -38,7 +60,9 @@
           style="width: 100%"
         />
         <div class="form-tip">
-          {{ $t('copyDevice.ipPreview', { ip: sourceIp, newIp: previewFirstIp }) }}
+          {{
+            $t("copyDevice.ipPreview", { ip: sourceIp, newIp: previewFirstIp })
+          }}
         </div>
       </el-form-item>
 
@@ -50,7 +74,12 @@
           style="width: 100%"
         />
         <div class="form-tip">
-          {{ $t('copyDevice.portPreview', { port: sourcePort, newPort: previewFirstPort }) }}
+          {{
+            $t("copyDevice.portPreview", {
+              port: sourcePort,
+              newPort: previewFirstPort,
+            })
+          }}
         </div>
       </el-form-item>
 
@@ -62,18 +91,24 @@
         style="margin-bottom: 16px"
       >
         <template #title>
-          {{ $t('copyDevice.copyPoints', { count: sourcePointCount }) }}
+          {{ $t("copyDevice.copyPoints", { count: sourcePointCount }) }}
         </template>
       </el-alert>
 
       <el-form-item :label="$t('copyDevice.copyPreview')">
         <div class="preview-list">
-          <div v-for="i in Math.min(form.count, 5)" :key="i" class="preview-item">
+          <div
+            v-for="i in Math.min(form.count, 5)"
+            :key="i"
+            class="preview-item"
+          >
             <span class="preview-name">{{ getPreviewName(i) }}</span>
-            <span class="preview-ip">{{ getPreviewIp(i) }}:{{ getPreviewPort(i) }}</span>
+            <span class="preview-ip"
+              >{{ getPreviewIp(i) }}:{{ getPreviewPort(i) }}</span
+            >
           </div>
           <div v-if="form.count > 5" class="preview-more">
-            {{ $t('copyDevice.moreDevices', { count: form.count - 5 }) }}
+            {{ $t("copyDevice.moreDevices", { count: form.count - 5 }) }}
           </div>
         </div>
       </el-form-item>
@@ -81,7 +116,9 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose" round>{{ $t('common.cancel') }}</el-button>
+        <el-button @click="handleClose" round>{{
+          $t("common.cancel")
+        }}</el-button>
         <el-button
           type="primary"
           :loading="loading"
@@ -90,7 +127,7 @@
           class="submit-btn"
           :icon="Check"
         >
-          {{ $t('copyDevice.startCopy') }}
+          {{ $t("copyDevice.startCopy") }}
         </el-button>
       </div>
     </template>
@@ -98,12 +135,13 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, reactive } from "vue";
+import { ref, computed, reactive, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import type { FormInstance, FormRules } from "element-plus";
 import { Check } from "@element-plus/icons-vue";
 import { copyDevice } from "@/api/channelApi";
+import type { DeviceGroupTreeNode } from "@/api/deviceGroupApi";
 
 const props = defineProps<{
   visible: boolean;
@@ -112,6 +150,8 @@ const props = defineProps<{
   deviceIp: string;
   devicePort?: number;
   pointCount?: number;
+  deviceGroupId?: number | null;
+  groupOptions?: DeviceGroupTreeNode[];
 }>();
 
 const emit = defineEmits<{
@@ -120,7 +160,7 @@ const emit = defineEmits<{
   (e: "close"): void;
 }>();
 
-const { t } = useI18n()
+const { t } = useI18n();
 const formRef = ref<FormInstance>();
 const loading = ref(false);
 
@@ -128,12 +168,15 @@ const form = reactive({
   prefix: "",
   suffix: "_COPY",
   count: 2,
+  targetGroupId: 0,
   ipStartOffset: 1,
   portOffset: 0,
 });
 
 const rules: FormRules = {
-  count: [{ required: true, message: t("copyDevice.countRequired"), trigger: "blur" }],
+  count: [
+    { required: true, message: t("copyDevice.countRequired"), trigger: "blur" },
+  ],
 };
 
 const dialogVisible = computed({
@@ -145,6 +188,24 @@ const sourceDeviceName = computed(() => props.deviceName || "");
 const sourceIp = computed(() => props.deviceIp || "0.0.0.0");
 const sourcePort = computed(() => props.devicePort || 502);
 const sourcePointCount = computed(() => props.pointCount || 0);
+const groupSelectOptions = computed(() => [
+  {
+    id: 0,
+    name: t("copyDevice.ungrouped"),
+    children: [],
+  },
+  ...(props.groupOptions || []),
+]);
+
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible) {
+      form.targetGroupId = props.deviceGroupId || 0;
+    }
+  },
+  { immediate: true },
+);
 
 const previewFirstIp = computed(() => getPreviewIp(1));
 const previewFirstPort = computed(() => getPreviewPort(1));
@@ -189,8 +250,11 @@ const handleSubmit = async () => {
         suffix: form.suffix,
         ip_start_offset: form.ipStartOffset,
         port_offset: form.portOffset,
+        target_group_id: form.targetGroupId === 0 ? null : form.targetGroupId,
       });
-      ElMessage.success(t('copyDevice.copySuccess', { count: result.copied_count }));
+      ElMessage.success(
+        t("copyDevice.copySuccess", { count: result.copied_count }),
+      );
       emit("success");
       dialogVisible.value = false;
       window.location.reload();

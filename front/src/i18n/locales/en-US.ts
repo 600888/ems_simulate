@@ -50,7 +50,14 @@ export default {
     addSubGroup: "Add Sub-group",
     startAll: "Start All",
     stopAll: "Stop All",
-    confirmDeleteGroup: 'Delete group "{name}"?',
+    deleteGroup: "Delete Group",
+    cascadeDeleteGroup: "Delete Group and Devices",
+    confirmDeleteGroup:
+      'Delete group "{name}"? Its devices will become ungrouped and child groups will move up one level.',
+    cascadeDeleteTitle: "Danger: Cascading Deletion",
+    confirmCascadeDeleteGroup:
+      'This will permanently delete group "{name}", all child groups, and every device, channel, and point inside them. This cannot be undone. Continue?',
+    confirmCascadeDelete: "Permanently Delete",
     confirmDeleteDevice: 'Delete "{name}"?',
     success: "Success",
     deleteSuccess: "Deleted successfully",
@@ -247,6 +254,9 @@ export default {
   copyDevice: {
     title: "Copy Device",
     sourceDevice: "Source Device",
+    targetGroup: "Target Group",
+    targetGroupPlaceholder: "Select a group for copied devices",
+    ungrouped: "Ungrouped",
     prefix: "Prefix",
     prefixPlaceholder: "Optional, e.g. DEV_",
     suffix: "Suffix",

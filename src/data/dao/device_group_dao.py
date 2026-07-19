@@ -5,6 +5,7 @@
 
 from src.data.controller.db import local_session
 from src.data.log import log
+from src.data.model.channel import Channel
 from src.data.model.device import Device
 from src.data.model.device_group import DeviceGroup, DeviceGroupDict
 
@@ -154,11 +155,11 @@ class DeviceGroupDao:
 
     @classmethod
     def delete_group(cls, group_id: int, cascade: bool = False) -> bool:
-        """删除设备组
+        """硬删除设备组
 
         Args:
             group_id: 设备组ID
-            cascade: 是否级联删除子组和设备，False时将子组和设备移至未分组
+            cascade: 是否级联删除子组和设备；False 时提升子组并将设备移至未分组
         """
         try:
             with local_session() as session, session.begin():
@@ -167,20 +168,20 @@ class DeviceGroupDao:
                     return False
 
                 if cascade:
-                    # 级联软删除
-                    group.enable = False
-                    # 递归删除子组
-                    for child in group.children:
-                        cls._soft_delete_recursive(session, child)
+                    group_ids = cls._get_descendant_group_ids(session, group_id)
+                    session.query(Device).where(Device.group_id.in_(group_ids)).delete(synchronize_session=False)
+                    for descendant_id in reversed(group_ids):
+                        session.query(DeviceGroup).where(DeviceGroup.id == descendant_id).delete(
+                            synchronize_session=False
+                        )
                 else:
-                    # 将子组移至父级（或变为顶级）
-                    for child in group.children:
-                        child.parent_id = group.parent_id
-                    # 将组内设备设为未分组
-                    for device in group.devices:
-                        device.group_id = None
-                    # 软删除该组
-                    group.enable = False
+                    session.query(DeviceGroup).where(DeviceGroup.parent_id == group_id).update(
+                        {DeviceGroup.parent_id: group.parent_id}, synchronize_session=False
+                    )
+                    session.query(Device).where(Device.group_id == group_id).update(
+                        {Device.group_id: None}, synchronize_session=False
+                    )
+                    session.query(DeviceGroup).where(DeviceGroup.id == group_id).delete(synchronize_session=False)
 
                 return True
         except Exception as e:
@@ -188,11 +189,43 @@ class DeviceGroupDao:
             raise e
 
     @classmethod
-    def _soft_delete_recursive(cls, session, group: DeviceGroup):
-        """递归软删除设备组及其子组"""
-        group.enable = False
-        for child in group.children:
-            cls._soft_delete_recursive(session, child)
+    def get_channel_ids_for_group_tree(cls, group_id: int) -> list[int]:
+        """获取分组及全部子组内设备关联的通道 ID。"""
+        try:
+            with local_session() as session, session.begin():
+                group_ids = cls._get_descendant_group_ids(session, group_id)
+                if not group_ids:
+                    return []
+                rows = (
+                    session.query(Channel.id)
+                    .join(Device, Channel.device_id == Device.id)
+                    .where(Device.group_id.in_(group_ids))
+                    .all()
+                )
+                return [row[0] for row in rows]
+        except Exception as e:
+            log.error(f"获取设备组通道失败: {str(e)}")
+            raise e
+
+    @staticmethod
+    def _get_descendant_group_ids(session, group_id: int) -> list[int]:
+        """按父级在前的顺序返回指定分组及其全部子组 ID。"""
+        rows = session.query(DeviceGroup.id, DeviceGroup.parent_id).all()
+        children_by_parent: dict[int, list[int]] = {}
+        existing_ids = {row.id for row in rows}
+        if group_id not in existing_ids:
+            return []
+        for row in rows:
+            if row.parent_id is not None:
+                children_by_parent.setdefault(row.parent_id, []).append(row.id)
+
+        result: list[int] = []
+        stack = [group_id]
+        while stack:
+            current_id = stack.pop()
+            result.append(current_id)
+            stack.extend(reversed(children_by_parent.get(current_id, [])))
+        return result
 
     @classmethod
     def add_device_to_group(cls, device_id: int, group_id: int) -> bool:
