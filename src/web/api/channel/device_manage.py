@@ -178,10 +178,11 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
             ChannelService.delete_channel(new_channel_id)
             continue
 
-        point_suffix = f"{suffix}{i}"
         for point in source_points:
             point_copy = {
-                "code": f"{prefix}{point['code']}{point_suffix}",
+                # Point codes only need to be unique within the copied device.
+                # Device naming options must not change the point table identity.
+                "code": point["code"],
                 "name": point["name"],
                 "rtu_addr": point.get("rtu_addr", 1),
                 "reg_addr": point.get("reg_addr", "0"),

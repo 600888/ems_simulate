@@ -310,6 +310,7 @@ def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
     copied_by_frame = {call.args[1]: call.args[2] for call in create_point.call_args_list}
     for frame_type, source in enumerate(source_points):
         copied = copied_by_frame[frame_type]
+        assert copied["code"] == source["code"]
         assert copied["iec_type_id"] == source["iec_type_id"]
         assert copied["iec_quality"] == source["iec_quality"]
         assert copied["iec_common_address"] == source["iec_common_address"]
@@ -389,6 +390,7 @@ def test_copy_iec61850_deep_copies_model_resources_and_fc():
     assert create_channel.call_args.kwargs["icd_path"] is None
     assert create_channel.call_args.kwargs["icd_file_hash"] is None
     clone.assert_called_once_with(source_channel, 30, 20, "IED_COPY1")
+    assert create_point.call_args.args[2]["code"] == point["code"]
     assert create_point.call_args.args[2]["fc"] == "MX"
     assert configure_network.call_args.args[5]["icd_path"] == new_channel["icd_path"]
     assert response.data["devices"][0]["iec61850"]["dataset_count"] == 2
