@@ -267,6 +267,10 @@ export default {
     ipPreview: "Source IP: {ip}, first copy IP will be {newIp}",
     portPreview: "Source port: {port}, first copy port will be {newPort}",
     copyPoints: "Will copy {count} points",
+    iec61850Title: "Complete IEC 61850 Copy",
+    iec61850Scope:
+      "Creates an independent ICD/SCD/CID model file and copies protocol parameters, TLS, GOOSE publishers/receivers, DataSets, and subscriptions. New devices remain stopped.",
+    iec61850Model: "Model: {model}",
     copyPreview: "Copy Preview",
     moreDevices: "... and {count} more devices",
     countRequired: "Please enter copy count",

@@ -94,6 +94,9 @@ export interface ChannelInfo {
   rtu_addr: string;
   timeout: number;
   enable: boolean;
+  model_name?: string | null;
+  icd_path?: string | null;
+  icd_file_hash?: string | null;
   protocol_params?: ProtocolParamsConfig;
   security_config?: SecurityConfig;
 }

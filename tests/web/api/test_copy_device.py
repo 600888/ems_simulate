@@ -7,6 +7,7 @@ from unittest.mock import patch
 from pydantic import ValidationError
 import pytest
 
+from src.data.service.iec61850_copy_service import Iec61850CopyResult
 from src.web.api.channel.device_manage import copy_device
 from src.web.api.schemas.channel import CopyDeviceRequest
 
@@ -223,3 +224,81 @@ def test_copy_loads_runtime_and_security_from_new_channel(copy_configuration):
     assert copied_channel_data["id"] == 30
     assert copied_channel_data["device_id"] == 20
     assert copied_channel_data["id"] != source_channel["id"]
+
+
+def test_copy_iec61850_deep_copies_model_resources_and_fc():
+    request = CopyDeviceRequest(channel_id=4, count=1, ip_start_offset=0, suffix="_COPY")
+    source_channel = {
+        "id": 4,
+        "device_id": 10,
+        "code": "IED",
+        "name": "IED",
+        "protocol_type": 4,
+        "conn_type": 2,
+        "ip": "127.0.0.1",
+        "port": 102,
+        "model_name": "SOURCE_IED",
+        "icd_path": "D:/models/source.icd",
+        "icd_file_hash": "abc",
+    }
+    new_channel = {
+        **source_channel,
+        "id": 30,
+        "device_id": 20,
+        "code": "IED_COPY1",
+        "name": "IED_COPY1",
+        "icd_path": "D:/models/IED_COPY1/source.icd",
+    }
+    app_request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(device_controller=SimpleNamespace(device_list=[], device_map={})),
+        ),
+    )
+    point = {
+        "code": "MMXU1.TotW",
+        "name": "Total active power",
+        "rtu_addr": 1,
+        "reg_addr": "SOURCE_IEDLD0/MMXU1.TotW.mag.f",
+        "func_code": 3,
+        "decode_code": "0x41",
+        "mul_coe": 1.0,
+        "add_coe": 0.0,
+        "frame_type": 0,
+        "fc": "MX",
+    }
+    copy_result = Iec61850CopyResult(
+        model_copied=True,
+        model_path=new_channel["icd_path"],
+        model_hash="def",
+        publisher_count=1,
+        dataset_count=2,
+        receiver_count=1,
+        subscription_count=3,
+    )
+
+    with (
+        patch(
+            "src.web.api.channel.device_manage.ChannelService.get_channel_by_id",
+            side_effect=[source_channel, new_channel],
+        ),
+        patch("src.web.api.channel.device_manage.ChannelService.get_channel_by_code", return_value=None),
+        patch("src.web.api.channel.device_manage.ChannelService.create_channel", return_value=30) as create_channel,
+        patch("src.data.service.device_service.DeviceService.get_device_by_id", return_value={"id": 10}),
+        patch("src.data.service.device_service.DeviceService.create_device", return_value=20),
+        patch("src.data.dao.point_dao.PointDao.get_points_by_channel", return_value=[point]),
+        patch("src.data.dao.point_dao.PointDao.create_point") as create_point,
+        patch(
+            "src.web.api.channel.device_manage.Iec61850CopyService.clone_for_channel",
+            return_value=copy_result,
+        ) as clone,
+        patch("src.web.api.channel.device_manage.get_device_builder", return_value=_fake_builder()),
+        patch("src.web.api.channel.device_manage.configure_builder_network") as configure_network,
+    ):
+        response = asyncio.run(copy_device(request, app_request))
+
+    assert create_channel.call_args.kwargs["icd_path"] is None
+    assert create_channel.call_args.kwargs["icd_file_hash"] is None
+    clone.assert_called_once_with(source_channel, 30, 20, "IED_COPY1")
+    assert create_point.call_args.args[2]["fc"] == "MX"
+    assert configure_network.call_args.args[5]["icd_path"] == new_channel["icd_path"]
+    assert response.data["devices"][0]["iec61850"]["dataset_count"] == 2

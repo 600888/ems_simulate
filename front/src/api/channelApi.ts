@@ -20,6 +20,16 @@ export interface CopyDeviceResult {
   name: string;
   code: string;
   ip: string;
+  port: number;
+  iec61850?: {
+    model_copied: boolean;
+    model_path?: string | null;
+    model_hash?: string | null;
+    publisher_count: number;
+    dataset_count: number;
+    receiver_count: number;
+    subscription_count: number;
+  } | null;
 }
 
 export interface CopyDeviceResponse {

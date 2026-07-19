@@ -98,6 +98,9 @@
     :device-ip="copyingDeviceIp"
     :device-port="copyingDevicePort"
     :point-count="copyingPointCount"
+    :protocol-type="copyingProtocolType"
+    :model-name="copyingModelName"
+    :model-path="copyingModelPath"
     :device-group-id="copyingDeviceGroupId"
     :group-options="groupTreeForSelect"
     @success="handleCopyDeviceSuccess"
@@ -212,6 +215,9 @@ const copyingDeviceName = ref<string>("");
 const copyingDeviceIp = ref<string>("");
 const copyingDevicePort = ref<number>(502);
 const copyingPointCount = ref<number>(0);
+const copyingProtocolType = ref<number>(-1);
+const copyingModelName = ref<string>("");
+const copyingModelPath = ref<string>("");
 const copyingDeviceGroupId = ref<number | null>(null);
 
 const treeData = ref<TreeNode[]>([]);
@@ -612,6 +618,9 @@ const handleCopyDeviceByName = async (
       copyingDeviceIp.value = channel.ip || "0.0.0.0";
       copyingDevicePort.value = channel.port || 502;
       copyingPointCount.value = 0;
+      copyingProtocolType.value = channel.protocol_type;
+      copyingModelName.value = channel.model_name || "";
+      copyingModelPath.value = channel.icd_path || "";
       copyingDeviceGroupId.value = groupId;
       copyDeviceDialogVisible.value = true;
     }
@@ -622,6 +631,9 @@ const handleCopyDeviceByName = async (
 
 const handleCopyDeviceClose = () => {
   copyingChannelId.value = null;
+  copyingProtocolType.value = -1;
+  copyingModelName.value = "";
+  copyingModelPath.value = "";
   copyingDeviceGroupId.value = null;
 };
 

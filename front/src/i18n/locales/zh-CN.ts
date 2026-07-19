@@ -269,6 +269,10 @@ export default {
     ipPreview: "源设备IP: {ip}，第一个复制设备的IP将变为 {newIp}",
     portPreview: "源设备端口: {port}，第一个复制设备的端口将变为 {newPort}",
     copyPoints: "将复制 {count} 个测点",
+    iec61850Title: "IEC 61850 完整复制",
+    iec61850Scope:
+      "将独立复制 ICD/SCD/CID 模型文件，并复制协议参数、TLS、GOOSE Publisher/Receiver、DataSet 和订阅配置；新设备默认保持停止。",
+    iec61850Model: "模型：{model}",
     copyPreview: "复制预览",
     moreDevices: "... 还有 {count} 个设备",
     countRequired: "请输入复制数量",

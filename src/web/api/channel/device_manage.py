@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from src.config.config import Config
 from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
+from src.data.service.iec61850_copy_service import Iec61850CopyResult, Iec61850CopyService
 from src.enums.modbus_def import ProtocolType
 from src.web.api.channel.helpers import (
     configure_builder_network,
@@ -98,6 +99,7 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
     source_points = PointDao.get_points_by_channel(req.channel_id)
     source_ip = source_channel.get("ip", Config.DEFAULT_IP)
     source_port = source_channel.get("port", Config.DEFAULT_PORT)
+    is_iec61850 = source_channel.get("protocol_type") == Iec61850CopyService.PROTOCOL_ID
 
     prefix = req.prefix or ""
     suffix = req.suffix or ""
@@ -124,7 +126,7 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
         if new_device_id <= 0:
             log.error(f"创建设备记录失败: {new_code}")
             continue
-        if source_device:
+        if source_device and not is_iec61850:
             DeviceService.update_device(
                 new_device_id,
                 icd_path=source_device.get("icd_path"),
@@ -147,19 +149,28 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
             rtu_addr=source_channel.get("rtu_addr", "1"),
             timeout=source_channel.get("timeout", 5),
             model_name=source_channel.get("model_name"),
-            icd_path=source_channel.get("icd_path"),
-            icd_file_hash=source_channel.get("icd_file_hash"),
+            # IEC 61850 models are deep-copied after both ownership IDs exist.
+            # Never leave a copied device pointing at the source device's file.
+            icd_path=None if is_iec61850 else source_channel.get("icd_path"),
+            icd_file_hash=None if is_iec61850 else source_channel.get("icd_file_hash"),
         )
         if new_channel_id <= 0:
             log.error(f"创建通道失败: {new_code}")
             continue
 
+        iec61850_copy = Iec61850CopyResult()
         try:
             ChannelConfigurationService.clone_for_channel(
                 req.channel_id,
                 new_channel_id,
                 source_channel.get("protocol_type", 1),
                 source_channel.get("conn_type", 2),
+            )
+            iec61850_copy = Iec61850CopyService.clone_for_channel(
+                source_channel,
+                new_channel_id,
+                new_device_id,
+                new_name,
             )
         except Exception as e:
             log.error(f"复制通道配置失败: {new_code}: {e}")
@@ -176,6 +187,9 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
                 "reg_addr": point.get("reg_addr", "0"),
                 "func_code": point.get("func_code", 3),
                 "decode_code": point.get("decode_code", "0x41"),
+                "iec_type_id": point.get("iec_type_id"),
+                "iec_quality": point.get("iec_quality", 0),
+                "fc": point.get("fc"),
             }
             frame_type = point.get("frame_type", 0)
             if frame_type in [0, 3]:
@@ -195,15 +209,19 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
             builder = get_device_builder(new_channel_id, new_code)
             channel_protocol_type = ChannelService.get_protocol_type(source_channel)
             conn_type = source_channel.get("conn_type", 1)
-            new_channel_data = {
-                **source_channel,
-                "id": new_channel_id,
-                "device_id": new_device_id,
-                "code": new_code,
-                "name": new_name,
-                "ip": new_ip,
-                "port": new_port,
-            }
+            new_channel_data = ChannelService.get_channel_by_id(new_channel_id)
+            if not new_channel_data or new_channel_data.get("id") != new_channel_id:
+                new_channel_data = {
+                    **source_channel,
+                    "id": new_channel_id,
+                    "device_id": new_device_id,
+                    "code": new_code,
+                    "name": new_name,
+                    "ip": new_ip,
+                    "port": new_port,
+                    "icd_path": iec61850_copy.model_path,
+                    "icd_file_hash": iec61850_copy.model_hash,
+                }
             configure_builder_network(builder, conn_type, channel_protocol_type, new_ip, new_port, new_channel_data)
             new_device = builder.makeGeneralDevice(
                 device_id=new_channel_id,
@@ -218,6 +236,17 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
         except Exception as e:
             log.error(f"内存同步复制设备失败: {e}")
 
+        if is_iec61850:
+            try:
+                Iec61850CopyService.hydrate_runtime_resources(
+                    new_channel_id,
+                    getattr(request.app.state, "goose_manager", None),
+                )
+            except Exception as e:
+                # Persistence is already complete. Runtime hydration is a
+                # recoverable convenience and must not invalidate the copy.
+                log.warning(f"复制设备 GOOSE 运行态同步失败: {new_name}: {e}")
+
         copied_channels.append(
             {
                 "channel_id": new_channel_id,
@@ -226,6 +255,7 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
                 "code": new_code,
                 "ip": new_ip,
                 "port": new_port,
+                "iec61850": iec61850_copy.to_dict() if is_iec61850 else None,
             }
         )
 

@@ -95,6 +95,20 @@
         </template>
       </el-alert>
 
+      <el-alert
+        v-if="isIec61850"
+        type="success"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+        :title="$t('copyDevice.iec61850Title')"
+      >
+        <div>{{ $t("copyDevice.iec61850Scope") }}</div>
+        <div v-if="modelLabel" class="iec61850-model">
+          {{ $t("copyDevice.iec61850Model", { model: modelLabel }) }}
+        </div>
+      </el-alert>
+
       <el-form-item :label="$t('copyDevice.copyPreview')">
         <div class="preview-list">
           <div
@@ -150,6 +164,9 @@ const props = defineProps<{
   deviceIp: string;
   devicePort?: number;
   pointCount?: number;
+  protocolType?: number;
+  modelName?: string;
+  modelPath?: string;
   deviceGroupId?: number | null;
   groupOptions?: DeviceGroupTreeNode[];
 }>();
@@ -188,6 +205,12 @@ const sourceDeviceName = computed(() => props.deviceName || "");
 const sourceIp = computed(() => props.deviceIp || "0.0.0.0");
 const sourcePort = computed(() => props.devicePort || 502);
 const sourcePointCount = computed(() => props.pointCount || 0);
+const isIec61850 = computed(() => props.protocolType === 4);
+const modelLabel = computed(() => {
+  if (props.modelName) return props.modelName;
+  if (!props.modelPath) return "";
+  return props.modelPath.split(/[\\/]/).pop() || props.modelPath;
+});
 const groupSelectOptions = computed(() => [
   {
     id: 0,
@@ -278,6 +301,12 @@ const handleClose = () => {
   color: #909399;
   margin-top: 4px;
   line-height: 1.4;
+}
+
+.iec61850-model {
+  margin-top: 4px;
+  font-family: monospace;
+  overflow-wrap: anywhere;
 }
 
 .preview-list {
