@@ -150,8 +150,32 @@
         class="protocol-specific-settings"
       >
         <el-collapse-item title="IEC 104 专属参数" name="iec104-specific">
+          <div
+            v-if="protocolSpecificOptionFields.length"
+            class="iec104-connect-options"
+          >
+            <label
+              v-for="field in protocolSpecificOptionFields"
+              :key="field.key"
+              class="iec104-connect-option"
+            >
+              <input
+                v-model="modelValue.values[field.key]"
+                class="iec104-connect-option__input"
+                type="checkbox"
+              />
+              <span class="iec104-connect-option__box" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M4.5 12.5 9.3 17.2 19.5 6.8" />
+                </svg>
+              </span>
+              <span class="iec104-connect-option__label">
+                {{ field.label }}
+              </span>
+            </label>
+          </div>
           <el-form-item
-            v-for="field in protocolSpecificFields"
+            v-for="field in protocolSpecificValueFields"
             :key="field.key"
             :label="field.label"
             label-width="180px"
@@ -363,12 +387,14 @@ const iec104Client: FieldDefinition[] = [
     label: "连接后立即执行总召唤",
     kind: "checkbox",
     default: true,
+    protocolSpecific: true,
   },
   {
     key: "counter_interrogation_on_connect",
     label: "连接后立即执行计数量召唤",
     kind: "checkbox",
     default: true,
+    protocolSpecific: true,
   },
   ...iec104LinkFields.map((field) => {
     const clientDefaults: Record<string, number> = {
@@ -504,13 +530,13 @@ const iec61850Client: FieldDefinition[] = [
     default: 3000,
   },
   {
-    key: "model_discovery_timeout_ms",
+    key: "model_discovery_timeout_s",
     label: "模型发现总超时",
-    min: 10000,
-    max: 3600000,
-    step: 1000,
-    unit: "ms",
-    default: 600000,
+    min: 10,
+    max: 3600,
+    step: 1,
+    unit: "s",
+    default: 60,
     advanced: true,
   },
   {
@@ -688,6 +714,12 @@ const advancedFields = computed(() =>
 );
 const protocolSpecificFields = computed(() =>
   fields.value.filter((field) => field.protocolSpecific),
+);
+const protocolSpecificOptionFields = computed(() =>
+  protocolSpecificFields.value.filter((field) => field.kind === "checkbox"),
+);
+const protocolSpecificValueFields = computed(() =>
+  protocolSpecificFields.value.filter((field) => field.kind !== "checkbox"),
 );
 
 function isFieldVisible(field: FieldDefinition) {
@@ -904,6 +936,95 @@ defineExpose({ resetDefaults, validate });
 }
 .protocol-specific-settings :deep(.el-collapse-item__content) {
   padding: 16px 0 4px;
+}
+.iec104-connect-options {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 32px;
+  margin: 0 18px 20px;
+}
+
+.iec104-connect-option {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: var(--el-text-color-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.iec104-connect-option__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.iec104-connect-option__box {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: var(--el-fill-color-blank);
+  border: 1px solid var(--el-border-color);
+  border-radius: 3px;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+
+  svg {
+    width: 13px;
+    height: 13px;
+    overflow: visible;
+    opacity: 0;
+    transform: scale(0.7);
+    transition:
+      opacity 0.12s ease,
+      transform 0.12s ease;
+  }
+
+  path {
+    fill: none;
+    stroke: #fff;
+    stroke-width: 2.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+}
+
+.iec104-connect-option:hover .iec104-connect-option__box {
+  border-color: var(--el-color-primary);
+}
+
+.iec104-connect-option__input:checked + .iec104-connect-option__box {
+  background: #67aaf4;
+  border-color: #337ecc;
+  box-shadow: 0 1px 3px rgba(51, 126, 204, 0.24);
+
+  svg {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.iec104-connect-option__input:focus-visible + .iec104-connect-option__box {
+  outline: 2px solid rgba(64, 158, 255, 0.32);
+  outline-offset: 2px;
+}
+
+.iec104-connect-option__label {
+  padding-left: 6px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
 }
 .section-title {
   margin: 0 0 16px 18px;

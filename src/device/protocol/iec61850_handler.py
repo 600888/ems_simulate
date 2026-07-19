@@ -388,7 +388,7 @@ class IEC61850ClientHandler(ClientHandler):
         ld_name = config.get("ld_name", "GenericLD")
         runtime = config.get("runtime", {})
         security = config.get("security", {})
-        self._discovery_timeout = runtime.get("model_discovery_timeout_ms", 600000) / 1000
+        self._discovery_timeout = runtime.get("model_discovery_timeout_s", 60)
 
         from src.proto.iec61850.tls import TlsClientBridge, create_client_context
 

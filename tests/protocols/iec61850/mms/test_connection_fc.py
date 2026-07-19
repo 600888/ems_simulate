@@ -140,7 +140,7 @@ def test_handler_passes_persisted_authentication_to_runtime_client():
     runtime = {
         "connect_timeout_ms": 3000,
         "command_timeout_ms": 3000,
-        "model_discovery_timeout_ms": 600000,
+        "model_discovery_timeout_s": 600,
         "mms_capture_enabled": False,
         "authentication_enabled": True,
         "authentication_password": "persisted-secret",

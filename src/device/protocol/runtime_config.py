@@ -52,7 +52,7 @@ DLT645_CLIENT_DEFAULTS = {
 IEC61850_CLIENT_DEFAULTS = {
     "connect_timeout_ms": 3000,
     "command_timeout_ms": 3000,
-    "model_discovery_timeout_ms": 600000,
+    "model_discovery_timeout_s": 60,
     "mms_capture_enabled": False,
     "authentication_enabled": False,
     "authentication_password": "",
@@ -99,7 +99,7 @@ _RANGES: dict[str, tuple[int, int]] = {
     "reconnect_max_interval_ms": (1000, 300000),
     "reconnect_max_attempts": (-1, 100),
     "health_check_interval_ms": (1000, 600000),
-    "model_discovery_timeout_ms": (10000, 3600000),
+    "model_discovery_timeout_s": (10, 3600),
     "session_idle_timeout_ms": (1000, 600000),
     "client_idle_timeout_ms": (0, 86400000),
     "connection_timeout_ms": (1000, 300000),
@@ -191,9 +191,9 @@ def normalize_protocol_params(protocol_type: int, conn_type: int, values: dict[s
     maximum = result.get("reconnect_max_interval_ms")
     if initial is not None and maximum is not None and maximum < initial:
         raise ValueError("重连最大间隔不能小于重连初始间隔")
-    discovery = result.get("model_discovery_timeout_ms")
+    discovery = result.get("model_discovery_timeout_s")
     command = result.get("command_timeout_ms")
-    if discovery is not None and command is not None and discovery < command:
+    if discovery is not None and command is not None and discovery * 1000 < command:
         raise ValueError("模型发现总超时不能小于单条命令超时")
     t1 = result.get("t1_timeout_s")
     t2 = result.get("t2_timeout_s")

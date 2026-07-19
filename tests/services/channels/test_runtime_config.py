@@ -110,6 +110,7 @@ def test_iec61850_mms_capture_can_be_disabled():
 def test_iec61850_association_defaults_match_iedscout():
     values = get_protocol_param_defaults(4, 1)
 
+    assert values["model_discovery_timeout_s"] == 60
     assert values["authentication_enabled"] is False
     assert values["authentication_password"] == ""
     for prefix in ("remote", "local"):
@@ -213,12 +214,13 @@ def test_existing_iec61850_params_persist_new_capture_default(monkeypatch):
                 params_json={
                     "connect_timeout_ms": 3000,
                     "command_timeout_ms": 3000,
-                    "model_discovery_timeout_ms": 600000,
+                    "model_discovery_timeout_s": 600,
                 },
             )
         )
 
     loaded = ChannelConfigurationService.get_protocol_params(61850, 4, 1)
+    assert loaded["values"]["model_discovery_timeout_s"] == 600
     assert loaded["values"]["mms_capture_enabled"] is False
     assert loaded["values"]["remote_ap_title"] == "1,1,1,999,1"
     assert loaded["values"]["authentication_enabled"] is False
@@ -226,6 +228,7 @@ def test_existing_iec61850_params_persist_new_capture_default(monkeypatch):
     with session_factory() as session:
         persisted = session.get(ChannelProtocolParams, 61850)
         assert persisted is not None
+        assert persisted.params_json["model_discovery_timeout_s"] == 600
         assert persisted.params_json["mms_capture_enabled"] is False
         assert persisted.params_json["remote_p_selector"] == "00 00 00 01"
         assert persisted.params_json["authentication_password"] == ""
