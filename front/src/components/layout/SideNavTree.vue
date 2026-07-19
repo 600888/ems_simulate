@@ -238,22 +238,19 @@ watch(() => props.currentNodeKey, setCurrentKey);
 }
 
 /* IEC61850 子节点行高：匹配未分组区域的紧凑样式 */
-.device-tree
-  :deep(.el-tree-node:has(.is-iec61850-category) > .el-tree-node__content) {
+.device-tree :deep(.el-tree-node__content:has(> .is-iec61850-category)) {
   height: 32px;
   border-radius: 8px;
   margin-bottom: 2px;
 }
 
-.device-tree
-  :deep(.el-tree-node:has(.is-iec61850-ld) > .el-tree-node__content) {
+.device-tree :deep(.el-tree-node__content:has(> .is-iec61850-ld)) {
   height: 28px;
   border-radius: 6px;
   margin-bottom: 1px;
 }
 
-.device-tree
-  :deep(.el-tree-node:has(.is-iec61850-ln) > .el-tree-node__content) {
+.device-tree :deep(.el-tree-node__content:has(> .is-iec61850-ln)) {
   height: 26px;
   border-radius: 5px;
   margin-bottom: 1px;
