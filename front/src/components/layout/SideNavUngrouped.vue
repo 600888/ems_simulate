@@ -119,8 +119,7 @@
               </el-icon>
               <span v-else class="expand-arrow-placeholder small" />
               <el-icon class="child-icon">
-                <FolderOpened v-if="child.isGroup" />
-                <Document v-else />
+                <component :is="getIec61850NodeIcon(child)" />
               </el-icon>
               <span class="child-label">{{ child.label }}</span>
             </div>
@@ -157,8 +156,7 @@
                   </el-icon>
                   <span v-else class="expand-arrow-placeholder small" />
                   <el-icon class="sub-icon">
-                    <FolderOpened v-if="subChild.isGroup" />
-                    <Document v-else />
+                    <component :is="getIec61850NodeIcon(subChild)" />
                   </el-icon>
                   <span class="sub-label">{{ subChild.label }}</span>
                 </div>
@@ -199,7 +197,9 @@
                         <ArrowRight />
                       </el-icon>
                       <span v-else class="expand-arrow-placeholder small" />
-                      <el-icon class="ln-icon"><Document /></el-icon>
+                      <el-icon class="ln-icon">
+                        <component :is="getIec61850NodeIcon(lnChild)" />
+                      </el-icon>
                       <span class="ln-label">{{ lnChild.label }}</span>
                     </div>
                     <!-- LN 下的数据集子节点 (第四层) -->
@@ -219,7 +219,9 @@
                         }"
                         @click="handleDsChildClick(dsChild)"
                       >
-                        <el-icon class="ds-icon"><Document /></el-icon>
+                        <el-icon class="ds-icon">
+                          <component :is="getIec61850NodeIcon(dsChild)" />
+                        </el-icon>
                         <span class="ds-label">{{ dsChild.label }}</span>
                       </div>
                     </div>
@@ -236,6 +238,7 @@
 
 <script lang="ts" setup>
 import { ref, watch } from "vue";
+import { getIec61850NodeIcon } from "./iec61850NodeIcons";
 import {
   ArrowRight,
   Cpu,
@@ -247,8 +250,6 @@ import {
   VideoPause,
   DocumentCopy,
   Connection,
-  FolderOpened,
-  Document,
 } from "@element-plus/icons-vue";
 
 interface TreeNode {

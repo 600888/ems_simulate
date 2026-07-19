@@ -31,8 +31,10 @@
           <el-icon class="node-icon">
             <Folder v-if="data.isGroup && !data.isIec61850Child" />
             <Connection v-else-if="data.isIec61850 && !data.isGroup" />
-            <FolderOpened v-else-if="data.isGroup && data.isIec61850Child" />
-            <Document v-else-if="data.isIec61850Child" />
+            <component
+              :is="getIec61850NodeIcon(data)"
+              v-else-if="data.isIec61850Child"
+            />
             <Cpu v-else />
           </el-icon>
         </el-tooltip>
@@ -104,9 +106,9 @@
 <script lang="ts" setup>
 import { onMounted, ref, watch, nextTick } from "vue";
 import { ElTree } from "element-plus";
+import { getIec61850NodeIcon } from "./iec61850NodeIcons";
 import {
   Folder,
-  FolderOpened,
   Cpu,
   MoreFilled,
   Edit,
@@ -117,7 +119,6 @@ import {
   Delete,
   DocumentCopy,
   Connection,
-  Document,
 } from "@element-plus/icons-vue";
 
 const props = defineProps<{

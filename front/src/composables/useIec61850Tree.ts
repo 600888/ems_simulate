@@ -3,10 +3,10 @@
  * 从 SideBar.vue 中提取的 IEC61850 树节点构建与标记逻辑
  */
 
-import { ref } from 'vue';
-import { getChannelList, getIEC61850Structure } from '@/api/channelApi';
-import { IEC61850_CATEGORIES } from '@/constants/protocol';
-import type { DeviceInfo } from '@/api/deviceGroupApi';
+import { ref } from "vue";
+import { getChannelList, getIEC61850Structure } from "@/api/channelApi";
+import { IEC61850_CATEGORIES } from "@/constants/protocol";
+import type { DeviceInfo } from "@/api/deviceGroupApi";
 
 export interface TreeNode {
   nodeKey: string;
@@ -23,14 +23,19 @@ export interface TreeNode {
   deviceName?: string;
   type?: string;
   value?: string;
-  iec61850Level?: 'category' | 'ld' | 'ln';
-  linkTo?: string;  // 导航链接 (如 GOOSE 节点导航到 /goose)
+  iec61850Level?: "category" | "ld" | "ln";
+  linkTo?: string; // 导航链接 (如 GOOSE 节点导航到 /goose)
 }
 
 /**
  * 根据 IEC61850 结构数据构建树节点
  */
-export function buildIEC61850Children(structure: any, deviceName: string, keyPrefix: string, channelId?: number): TreeNode[] {
+export function buildIEC61850Children(
+  structure: any,
+  deviceName: string,
+  keyPrefix: string,
+  channelId?: number,
+): TreeNode[] {
   const children: TreeNode[] = [];
   // 为 Reports/GOOSE/Files 构造带 channel_id 的导航链接
   const makeLinkTo = (basePath: string) => {
@@ -38,18 +43,18 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
   };
   IEC61850_CATEGORIES.forEach((cat) => {
     // "Files" 分类在侧边栏显示为扁平导航项，不展示其下子列表（右侧 FileExplorer 页面已包含文件管理）
-    if (cat.key === 'Files') {
+    if (cat.key === "Files") {
       children.push({
         nodeKey: `${keyPrefix}-${deviceName}-${cat.key}`,
         label: cat.label,
         isGroup: false,
         id: 0,
         isIec61850Child: true,
-        iec61850Level: 'category' as const,
+        iec61850Level: "category" as const,
         name: cat.label,
         deviceName: deviceName,
         type: cat.label,
-        linkTo: makeLinkTo('/files'),
+        linkTo: makeLinkTo("/files"),
       });
       return;
     }
@@ -58,78 +63,35 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
     if (items.length > 0) {
       let categoryChildren: TreeNode[];
 
-      if (cat.key === 'DataModel') {
+      if (cat.key === "DataModel") {
         // DataModel 返回层级结构: [{name: "LD0", children: ["LLN0", "MMXU1"]}, ...]
         categoryChildren = items.map((ldItem: any, ldIndex: number) => {
-          const ldName = typeof ldItem === 'string' ? ldItem : ldItem.name;
-          const lnList = typeof ldItem === 'object' && ldItem.children ? ldItem.children : [];
-          const lnChildren: TreeNode[] = lnList.map((ln: string, lnIndex: number) => ({
-            nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${ldIndex}-${lnIndex}`,
-            label: ln,
-            isGroup: false,
-            id: 0,
-            isIec61850Child: true,
-            iec61850Level: 'ln' as const,
-            name: ln,
-            deviceName: deviceName,
-            type: cat.label,
-            value: `${ldName}/${ln}`,
-          }));
-          return {
-            nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${ldIndex}`,
-            label: ldName,
-            isGroup: lnChildren.length > 0,
-            id: 0,
-            isIec61850Child: true,
-            iec61850Level: 'ld' as const,
-            name: ldName,
-            deviceName: deviceName,
-            type: cat.label,
-            value: ldName,
-            children: lnChildren.length > 0 ? lnChildren : undefined,
-          };
-        });
-      } else if (cat.key === 'DataSets') {
-        // DataSets 返回层级结构: [{name: "LD0", children: [{name: "LLN0", datasets: [...]}]}]
-        categoryChildren = items.map((ldItem: any, ldIndex: number) => {
-          const ldName = typeof ldItem === 'string' ? ldItem : ldItem.name;
-          const lnList = typeof ldItem === 'object' && ldItem.children ? ldItem.children : [];
-          const lnChildren: TreeNode[] = lnList.map((lnItem: any, lnIndex: number) => {
-            const lnName = typeof lnItem === 'string' ? lnItem : lnItem.name;
-            const dsList = typeof lnItem === 'object' && lnItem.datasets ? lnItem.datasets : [];
-            const dsChildren: TreeNode[] = dsList.map((ds: any, dsIndex: number) => ({
-              nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${ldIndex}-${lnIndex}-${dsIndex}`,
-              label: `${ds.name} (${ds.member_count || 0} members)`,
+          const ldName = typeof ldItem === "string" ? ldItem : ldItem.name;
+          const lnList =
+            typeof ldItem === "object" && ldItem.children
+              ? ldItem.children
+              : [];
+          const lnChildren: TreeNode[] = lnList.map(
+            (ln: string, lnIndex: number) => ({
+              nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${ldIndex}-${lnIndex}`,
+              label: ln,
               isGroup: false,
               id: 0,
               isIec61850Child: true,
-              iec61850Level: 'ln' as const,
-              name: ds.name || ds.ref || '',
+              iec61850Level: "ln" as const,
+              name: ln,
               deviceName: deviceName,
               type: cat.label,
-              value: ds.ref || ds.name || '',
-            }));
-            return {
-              nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${ldIndex}-${lnIndex}`,
-              label: lnName,
-              isGroup: dsChildren.length > 0,
-              id: 0,
-              isIec61850Child: true,
-              iec61850Level: 'ln' as const,
-              name: lnName,
-              deviceName: deviceName,
-              type: cat.label,
-              value: `${ldName}/${lnName}`,
-              children: dsChildren.length > 0 ? dsChildren : undefined,
-            };
-          });
+              value: `${ldName}/${ln}`,
+            }),
+          );
           return {
             nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${ldIndex}`,
             label: ldName,
             isGroup: lnChildren.length > 0,
             id: 0,
             isIec61850Child: true,
-            iec61850Level: 'ld' as const,
+            iec61850Level: "ld" as const,
             name: ldName,
             deviceName: deviceName,
             type: cat.label,
@@ -137,7 +99,65 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
             children: lnChildren.length > 0 ? lnChildren : undefined,
           };
         });
-      } else if (cat.key === 'GOOSE') {
+      } else if (cat.key === "DataSets") {
+        // DataSets 返回层级结构: [{name: "LD0", children: [{name: "LLN0", datasets: [...]}]}]
+        categoryChildren = items.map((ldItem: any, ldIndex: number) => {
+          const ldName = typeof ldItem === "string" ? ldItem : ldItem.name;
+          const lnList =
+            typeof ldItem === "object" && ldItem.children
+              ? ldItem.children
+              : [];
+          const lnChildren: TreeNode[] = lnList.map(
+            (lnItem: any, lnIndex: number) => {
+              const lnName = typeof lnItem === "string" ? lnItem : lnItem.name;
+              const dsList =
+                typeof lnItem === "object" && lnItem.datasets
+                  ? lnItem.datasets
+                  : [];
+              const dsChildren: TreeNode[] = dsList.map(
+                (ds: any, dsIndex: number) => ({
+                  nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${ldIndex}-${lnIndex}-${dsIndex}`,
+                  label: `${ds.name} (${ds.member_count || 0} members)`,
+                  isGroup: false,
+                  id: 0,
+                  isIec61850Child: true,
+                  iec61850Level: "ln" as const,
+                  name: ds.name || ds.ref || "",
+                  deviceName: deviceName,
+                  type: cat.label,
+                  value: ds.ref || ds.name || "",
+                }),
+              );
+              return {
+                nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${ldIndex}-${lnIndex}`,
+                label: lnName,
+                isGroup: dsChildren.length > 0,
+                id: 0,
+                isIec61850Child: true,
+                iec61850Level: "ln" as const,
+                name: lnName,
+                deviceName: deviceName,
+                type: cat.label,
+                value: `${ldName}/${lnName}`,
+                children: dsChildren.length > 0 ? dsChildren : undefined,
+              };
+            },
+          );
+          return {
+            nodeKey: `${keyPrefix}-${deviceName}-${cat.key}-${ldIndex}`,
+            label: ldName,
+            isGroup: lnChildren.length > 0,
+            id: 0,
+            isIec61850Child: true,
+            iec61850Level: "ld" as const,
+            name: ldName,
+            deviceName: deviceName,
+            type: cat.label,
+            value: ldName,
+            children: lnChildren.length > 0 ? lnChildren : undefined,
+          };
+        });
+      } else if (cat.key === "GOOSE") {
         // GOOSE 分类: 不展开子项，整个节点点击导航到 /goose 管理页面
         children.push({
           nodeKey: `${keyPrefix}-${deviceName}-${cat.key}`,
@@ -145,14 +165,14 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
           isGroup: false,
           id: 0,
           isIec61850Child: true,
-          iec61850Level: 'category' as const,
+          iec61850Level: "category" as const,
           name: cat.label,
           deviceName: deviceName,
           type: cat.label,
-          linkTo: makeLinkTo('/goose'),
+          linkTo: makeLinkTo("/goose"),
         });
         return;
-      } else if (cat.key === 'Reports') {
+      } else if (cat.key === "Reports") {
         // Reports 分类: 不展开子项，整个节点点击导航到 /reports 管理页面
         children.push({
           nodeKey: `${keyPrefix}-${deviceName}-${cat.key}`,
@@ -160,11 +180,11 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
           isGroup: false,
           id: 0,
           isIec61850Child: true,
-          iec61850Level: 'category' as const,
+          iec61850Level: "category" as const,
           name: cat.label,
           deviceName: deviceName,
           type: cat.label,
-          linkTo: makeLinkTo('/reports'),
+          linkTo: makeLinkTo("/reports"),
         });
         return;
       } else {
@@ -175,7 +195,7 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
           isGroup: false,
           id: 0,
           isIec61850Child: true,
-          iec61850Level: 'ld' as const,
+          iec61850Level: "ld" as const,
           name: item,
           deviceName: deviceName,
           type: cat.label,
@@ -188,11 +208,18 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
         isGroup: true,
         id: 0,
         isIec61850Child: true,
-        iec61850Level: 'category' as const,
+        iec61850Level: "category" as const,
         name: cat.label,
         deviceName: deviceName,
         type: cat.label,
-        linkTo: cat.key === 'GOOSE' ? makeLinkTo('/goose') : cat.key === 'Reports' ? makeLinkTo('/reports') : cat.key === 'Files' ? makeLinkTo('/files') : undefined,
+        linkTo:
+          cat.key === "GOOSE"
+            ? makeLinkTo("/goose")
+            : cat.key === "Reports"
+              ? makeLinkTo("/reports")
+              : cat.key === "Files"
+                ? makeLinkTo("/files")
+                : undefined,
         children: categoryChildren,
       });
     } else {
@@ -202,11 +229,18 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
         isGroup: false,
         id: 0,
         isIec61850Child: true,
-        iec61850Level: 'category' as const,
+        iec61850Level: "category" as const,
         name: cat.label,
         deviceName: deviceName,
         type: cat.label,
-        linkTo: cat.key === 'GOOSE' ? makeLinkTo('/goose') : cat.key === 'Reports' ? makeLinkTo('/reports') : cat.key === 'Files' ? makeLinkTo('/files') : undefined,
+        linkTo:
+          cat.key === "GOOSE"
+            ? makeLinkTo("/goose")
+            : cat.key === "Reports"
+              ? makeLinkTo("/reports")
+              : cat.key === "Files"
+                ? makeLinkTo("/files")
+                : undefined,
       });
     }
   });
@@ -216,13 +250,17 @@ export function buildIEC61850Children(structure: any, deviceName: string, keyPre
 /**
  * 构建空的 IEC61850 回退节点（获取结构失败时使用）
  */
-export function buildFallbackIEC61850Children(deviceName: string, keyPrefix: string): TreeNode[] {
-  return IEC61850_CATEGORIES.map(cat => ({
+export function buildFallbackIEC61850Children(
+  deviceName: string,
+  keyPrefix: string,
+): TreeNode[] {
+  return IEC61850_CATEGORIES.map((cat) => ({
     nodeKey: `${keyPrefix}-${deviceName}-${cat.key}`,
     label: cat.label,
     isGroup: false,
     id: 0,
     isIec61850Child: true,
+    iec61850Level: "category" as const,
     name: cat.label,
     deviceName: deviceName,
     type: cat.label,
@@ -277,14 +315,24 @@ export function useIec61850Tree() {
     return promise;
   };
 
-  const fetchIEC61850Structure = async (channelId: number, deviceName: string, treeData: Ref<TreeNode[]>) => {
-    const updateTreeNode = (nodes: TreeNode[], iec61850Children: TreeNode[]): TreeNode[] => {
-      return nodes.map(node => {
+  const fetchIEC61850Structure = async (
+    channelId: number,
+    deviceName: string,
+    treeData: Ref<TreeNode[]>,
+  ) => {
+    const updateTreeNode = (
+      nodes: TreeNode[],
+      iec61850Children: TreeNode[],
+    ): TreeNode[] => {
+      return nodes.map((node) => {
         if (node.name === deviceName && node.isIec61850) {
           return { ...node, children: iec61850Children };
         }
         if (node.children && node.children.length > 0) {
-          return { ...node, children: updateTreeNode(node.children, iec61850Children) };
+          return {
+            ...node,
+            children: updateTreeNode(node.children, iec61850Children),
+          };
         }
         return node;
       });
@@ -292,19 +340,31 @@ export function useIec61850Tree() {
 
     try {
       const structure = await _fetchStructureDeduped(channelId);
-      const iec61850Children = buildIEC61850Children(structure, deviceName, 'device', channelId);
+      const iec61850Children = buildIEC61850Children(
+        structure,
+        deviceName,
+        "device",
+        channelId,
+      );
 
       try {
         treeData.value = updateTreeNode(treeData.value, iec61850Children);
       } catch (mapErr: any) {
-        console.error(`[TreeUpdate ERROR] updateTreeNode failed:`, mapErr, `deviceName=${deviceName}`);
+        console.error(
+          `[TreeUpdate ERROR] updateTreeNode failed:`,
+          mapErr,
+          `deviceName=${deviceName}`,
+        );
         treeData.value = updateTreeNode(treeData.value, iec61850Children);
       }
 
       _structureLoadedCallback?.();
     } catch (error) {
-      console.error(`[TreeUpdate ERROR] fetchIEC61850Structure outer catch:`, error);
-      const fallback = buildFallbackIEC61850Children(deviceName, 'device');
+      console.error(
+        `[TreeUpdate ERROR] fetchIEC61850Structure outer catch:`,
+        error,
+      );
+      const fallback = buildFallbackIEC61850Children(deviceName, "device");
       treeData.value = updateTreeNode(treeData.value, fallback);
       _structureLoadedCallback?.();
     }
@@ -313,12 +373,15 @@ export function useIec61850Tree() {
   /**
    * 标记分组内的 IEC61850 设备并异步获取结构
    */
-  const markIEC61850Devices = async (nodes: TreeNode[], treeData: Ref<TreeNode[]>) => {
+  const markIEC61850Devices = async (
+    nodes: TreeNode[],
+    treeData: Ref<TreeNode[]>,
+  ) => {
     try {
       const channels = await getChannelList();
       for (const node of nodes) {
         if (!node.isGroup && node.name) {
-          const channel = channels.find(c => c.name === node.name);
+          const channel = channels.find((c) => c.name === node.name);
           if (channel && channel.protocol_type === 4) {
             node.isIec61850 = true;
             node.iec61850ChannelId = channel.id;
@@ -337,7 +400,7 @@ export function useIec61850Tree() {
         }
       }
     } catch (error) {
-      console.error('标记 IEC61850 设备失败:', error);
+      console.error("标记 IEC61850 设备失败:", error);
     }
   };
 
@@ -348,27 +411,38 @@ export function useIec61850Tree() {
     try {
       const channels = await getChannelList();
       for (const device of devices) {
-        const channel = channels.find(c => c.name === device.name);
+        const channel = channels.find((c) => c.name === device.name);
         if (channel && channel.protocol_type === 4) {
           (async () => {
             try {
               const structure = await _fetchStructureDeduped(channel.id);
               iec61850UngroupedMap.value = {
                 ...iec61850UngroupedMap.value,
-                [device.name]: buildIEC61850Children(structure, device.name, 'ungrouped', channel.id),
+                [device.name]: buildIEC61850Children(
+                  structure,
+                  device.name,
+                  "ungrouped",
+                  channel.id,
+                ),
               };
             } catch (error) {
-              console.warn(`获取未分组 IEC61850 结构失败 (设备: ${device.name}):`, error);
+              console.warn(
+                `获取未分组 IEC61850 结构失败 (设备: ${device.name}):`,
+                error,
+              );
               iec61850UngroupedMap.value = {
                 ...iec61850UngroupedMap.value,
-                [device.name]: buildFallbackIEC61850Children(device.name, 'ungrouped'),
+                [device.name]: buildFallbackIEC61850Children(
+                  device.name,
+                  "ungrouped",
+                ),
               };
             }
           })();
         }
       }
     } catch (error) {
-      console.error('标记未分组 IEC61850 设备失败:', error);
+      console.error("标记未分组 IEC61850 设备失败:", error);
     }
   };
 
@@ -391,4 +465,4 @@ export function useIec61850Tree() {
   };
 }
 
-import type { Ref } from 'vue';
+import type { Ref } from "vue";
