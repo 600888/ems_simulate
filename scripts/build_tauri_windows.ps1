@@ -146,6 +146,7 @@ if (-not $SkipBackend) {
         (Join-Path $PROJECT_ROOT "start_back_end.py"),
         (Join-Path $PROJECT_ROOT "src"),
         (Join-Path $PROJECT_ROOT "config.ini"),
+        (Join-Path $PROJECT_ROOT "data\point_csv"),
         (Join-Path $PROJECT_ROOT "pyproject.toml"),
         (Join-Path $PROJECT_ROOT "uv.lock"),
         (Join-Path $SCRIPT_DIR "rthook_numpy_compat.py"),
@@ -180,7 +181,8 @@ if (-not $SkipBackend) {
             "--runtime-hook", $rthookNumpy,
             "--collect-all", "pyiec61850",
             "--add-data", "$ABS\config.ini;.",
-            "--add-data", "$ABS\www;www"
+            "--add-data", "$ABS\www;www",
+            "--add-data", "$ABS\data\point_csv;data\point_csv"
         )
         $hidden = @(
             "uvicorn.logging", "uvicorn.loops", "openpyxl", "uvicorn.loops.auto",
@@ -212,12 +214,17 @@ if (-not $SkipBackend) {
             if (-not $pyiec61850Extension -or -not $iec61850Library) {
                 WriteErr "PyInstaller runtime is missing pyiec61850 native libraries"
             }
+            $packagedPointTables = Get-ChildItem -Path (Join-Path $pyRuntimeDir "data\point_csv") -File -ErrorAction SilentlyContinue
+            if (-not $packagedPointTables) {
+                WriteErr "PyInstaller runtime is missing the bundled point tables"
+            }
             Copy-Item -Force $pyOutExe $BE_SIDECAR_EXE
             Copy-Item -Recurse -Force $pyRuntimeDir $BE_RUNTIME_DIR
             WriteOk "Sidecar binary created: $BE_SIDECAR_EXE"
             WriteOk "Sidecar runtime created: $BE_RUNTIME_DIR"
             WriteOk "c104 native extension verified: $($c104Extension.Name)"
             WriteOk "pyiec61850 native libraries verified"
+            WriteOk "Bundled point tables verified: $($packagedPointTables.Count) file(s)"
         } else {
             WriteErr "PyInstaller output not found: $pyOutExe"
         }

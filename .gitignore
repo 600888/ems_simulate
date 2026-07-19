@@ -182,5 +182,6 @@ dist_msix
 
 data/*
 !data/point_csv/
+!data/point_csv/**
 word/
 tmp/

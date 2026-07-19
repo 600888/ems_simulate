@@ -5,7 +5,11 @@ a = Analysis(
     ['start_back_end.py'],
     pathex=[],
     binaries=[],
-    datas=[('config.ini', '.'), ('www', 'www')],
+    datas=[
+        ('config.ini', '.'),
+        ('www', 'www'),
+        ('data/point_csv', 'data/point_csv'),
+    ],
     hiddenimports=['scapy.all', 'psutil'],
     hookspath=[],
     hooksconfig={},

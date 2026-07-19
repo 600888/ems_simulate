@@ -86,10 +86,10 @@ Write-Info "Project root: $PROJECT_ROOT"
 # Step 1: Build Frontend
 if (-not $SkipBuild) {
     Write-Step "Building frontend..."
-    
+
     $FRONT_DIR = Join-Path $PROJECT_ROOT "front"
     Set-Location $FRONT_DIR
-    
+
     # Check if node_modules exists
     if (-not (Test-Path "node_modules")) {
         Write-Info "Installing npm dependencies..."
@@ -99,7 +99,7 @@ if (-not $SkipBuild) {
             exit 1
         }
     }
-    
+
     # Build frontend
     Write-Info "Running npm run build:fast..."
     npm run build:fast
@@ -107,16 +107,16 @@ if (-not $SkipBuild) {
         Write-Error "Frontend build failed"
         exit 1
     }
-    
+
     Set-Location $PROJECT_ROOT
-    
+
     # Verify www directory exists
     $WWW_DIR = Join-Path $PROJECT_ROOT "www"
     if (-not (Test-Path $WWW_DIR)) {
         Write-Error "Frontend build failed: www directory not found"
         exit 1
     }
-    
+
     Write-Success "Frontend built successfully"
 } else {
     Write-Info "Skipping frontend build"
@@ -162,11 +162,13 @@ $PYINSTALLER_ARGS = @(
     "--specpath", $BUILD_DIR
 )
 
-# Add data files (config and www)
+# Add data files (config, frontend, and bundled point tables)
 $PYINSTALLER_ARGS += "--add-data"
 $PYINSTALLER_ARGS += "${ABS_PROJECT_ROOT}\config.ini;."
 $PYINSTALLER_ARGS += "--add-data"
 $PYINSTALLER_ARGS += "${ABS_PROJECT_ROOT}\www;www"
+$PYINSTALLER_ARGS += "--add-data"
+$PYINSTALLER_ARGS += "${ABS_PROJECT_ROOT}\data\point_csv;data\point_csv"
 
 # Add hidden imports
 $HIDDEN_IMPORTS = @(
@@ -208,6 +210,14 @@ if (-not (Test-Path $PYINSTALLER_APP_DIR)) {
     Write-Error "PyInstaller did not create expected directory: $PYINSTALLER_APP_DIR"
     exit 1
 }
+
+$PACKAGED_POINT_TABLES = Get-ChildItem -Path $PYINSTALLER_APP_DIR -Recurse -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -match '[\\/]data[\\/]point_csv[\\/]' }
+if (-not $PACKAGED_POINT_TABLES) {
+    Write-Error "PyInstaller output is missing the bundled point tables"
+    exit 1
+}
+Write-Success "Bundled point tables verified: $($PACKAGED_POINT_TABLES.Count) file(s)"
 
 Write-Success "Backend built successfully"
 
