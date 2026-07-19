@@ -98,7 +98,7 @@
             :data="logs"
             stripe
             style="width: 100%"
-            height="55vh"
+            height="100%"
             size="small"
             :empty-text="t('log.empty')"
           >
@@ -115,7 +115,11 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="content" :label="t('log.content')" min-width="400" />
+            <el-table-column
+              prop="content"
+              :label="t('log.content')"
+              min-width="400"
+            />
           </el-table>
         </div>
 
@@ -162,7 +166,7 @@ watch(
     if (val) {
       init();
     }
-  }
+  },
 );
 
 // 筛选状态
@@ -324,7 +328,10 @@ onUnmounted(() => {
 .log-layout {
   display: flex;
   gap: 16px;
-  min-height: 60vh;
+  height: 68vh;
+  max-height: calc(90vh - 72px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 // ===== Sidebar 样式 =====
@@ -335,6 +342,7 @@ onUnmounted(() => {
   border-radius: 4px;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 
   .sidebar-header {
@@ -349,7 +357,9 @@ onUnmounted(() => {
 
   .sidebar-device-list {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding-bottom: 4px;
   }
 
@@ -380,8 +390,10 @@ onUnmounted(() => {
 .log-main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .log-filter-bar {
@@ -419,6 +431,8 @@ onUnmounted(() => {
 
 .log-content {
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
   border: 1px solid var(--el-border-color-light);
   border-radius: 4px;
 

@@ -22,7 +22,16 @@
       </el-form-item>
 
       <template v-if="modelValue.tls_enabled">
-        <el-form-item label="TLS 模式" required>
+        <el-alert
+          v-if="isIec61850"
+          class="iec61850-tls-alert"
+          title="IEC 61850 原生 TLS 仅支持双向认证"
+          type="info"
+          :closable="false"
+          show-icon
+        />
+
+        <el-form-item v-else label="TLS 模式" required>
           <el-radio-group v-model="modelValue.tls_mode" :disabled="disabled">
             <el-radio-button value="basic">基础 TLS</el-radio-button>
             <el-radio-button value="mutual">双向认证 TLS</el-radio-button>
@@ -96,7 +105,7 @@
         </el-form-item>
 
         <el-form-item
-          v-if="modelValue.tls_mode === 'mutual'"
+          v-if="isIec61850 || modelValue.tls_mode === 'mutual'"
           label="CA 证书"
           required
         >
@@ -139,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import type { SecurityConfig } from "@/types/channel";
 
 const props = defineProps<{
@@ -154,6 +163,15 @@ const tlsSupported = computed(
     props.protocolType === 1 ||
     props.protocolType === 2 ||
     props.protocolType === 4,
+);
+const isIec61850 = computed(() => props.protocolType === 4);
+
+watch(
+  () => props.protocolType,
+  (protocolType) => {
+    if (protocolType === 4) props.modelValue.tls_mode = "mutual";
+  },
+  { immediate: true },
 );
 
 const emit = defineEmits<{
@@ -211,6 +229,10 @@ defineExpose({ clearFiles });
   color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.iec61850-tls-alert {
+  margin-bottom: 16px;
 }
 
 .file-config {

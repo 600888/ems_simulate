@@ -13,18 +13,19 @@ def _server_with_model(max_connections=5):
     server = object.__new__(server_module.IEC61850Server)
     server._builder = SimpleNamespace(model=object())
     server.max_connections = max_connections
+    server.tls_configuration = None
     return server
 
 
-def test_create_ied_server_uses_config_when_binding_accepts_null_tls(monkeypatch):
+def test_create_plain_ied_server_uses_basic_creator(monkeypatch):
     calls = []
     configured_server = object()
     config = object()
     native = SimpleNamespace(
         IedServerConfig_create=lambda: config,
         IedServerConfig_setMaxMmsConnections=lambda value, limit: calls.append(("limit", value, limit)),
-        IedServer_createWithConfig=lambda model, tls, value: configured_server,
-        IedServer_create=lambda model: pytest.fail("basic creator should not be used"),
+        IedServer_createWithConfig=lambda model, tls, value: pytest.fail("plain server has no TLS configuration"),
+        IedServer_create=lambda model: configured_server,
         IedServerConfig_destroy=lambda value: calls.append(("destroy", value)),
     )
     monkeypatch.setattr(server_module, "iec61850", native)
@@ -35,28 +36,26 @@ def test_create_ied_server_uses_config_when_binding_accepts_null_tls(monkeypatch
     assert calls == [("limit", config, 12), ("destroy", config)]
 
 
-def test_create_ied_server_falls_back_when_binding_rejects_null_tls(monkeypatch):
+def test_create_tls_ied_server_uses_native_configuration(monkeypatch):
     calls = []
-    basic_server = object()
+    configured_server = object()
     config = object()
-
-    def reject_null_tls(model, tls, value):
-        raise TypeError(
-            "invalid null reference in method 'IedServer_createWithConfig', argument 2 of type 'TLSConfiguration'"
-        )
+    tls_native = object()
 
     native = SimpleNamespace(
         IedServerConfig_create=lambda: config,
         IedServerConfig_setMaxMmsConnections=lambda value, limit: calls.append(("limit", value, limit)),
-        IedServer_createWithConfig=reject_null_tls,
-        IedServer_create=lambda model: basic_server,
+        IedServer_createWithConfig=lambda model, tls, value: configured_server,
+        IedServer_create=lambda model: pytest.fail("TLS server must use the configured creator"),
         IedServerConfig_destroy=lambda value: calls.append(("destroy", value)),
     )
     monkeypatch.setattr(server_module, "iec61850", native)
 
-    result = _server_with_model(max_connections=8)._create_ied_server()
+    server = _server_with_model(max_connections=8)
+    server.tls_configuration = SimpleNamespace(native=tls_native)
+    result = server._create_ied_server()
 
-    assert result is basic_server
+    assert result is configured_server
     assert calls == [("limit", config, 8), ("destroy", config)]
 
 
@@ -75,9 +74,11 @@ def test_create_ied_server_does_not_hide_unrelated_type_errors(monkeypatch):
         IedServerConfig_destroy=lambda value: destroyed.append(value),
     )
     monkeypatch.setattr(server_module, "iec61850", native)
+    server = _server_with_model()
+    server.tls_configuration = SimpleNamespace(native=object())
 
     with pytest.raises(TypeError, match="unexpected model type"):
-        _server_with_model()._create_ied_server()
+        server._create_ied_server()
 
     assert destroyed == [config]
 
@@ -101,8 +102,8 @@ def test_create_ied_server_enables_file_service_and_sets_basepath(monkeypatch, t
         IedServerConfig_setMaxMmsConnections=lambda value, limit: None,
         IedServerConfig_enableFileService=lambda value, enabled: calls.append(("enable", value, enabled)),
         IedServerConfig_setFileServiceBasePath=lambda value, path: calls.append(("config_path", value, path)),
-        IedServer_createWithConfig=lambda model, tls, value: configured_server,
-        IedServer_create=lambda model: pytest.fail("basic creator should not be used"),
+        IedServer_createWithConfig=lambda model, tls, value: pytest.fail("plain server has no TLS configuration"),
+        IedServer_create=lambda model: configured_server,
         IedServer_setFilestoreBasepath=lambda value, path: calls.append(("server_path", value, path)),
         IedServerConfig_destroy=lambda value: None,
     )
@@ -134,8 +135,8 @@ def test_create_ied_server_uses_original_path_when_file_directory_is_empty(monke
         IedServerConfig_setFileServiceBasePath=lambda value, path: pytest.fail(
             "empty directory must not configure files"
         ),
-        IedServer_createWithConfig=lambda model, tls, value: configured_server,
-        IedServer_create=lambda model: pytest.fail("basic creator should not be used"),
+        IedServer_createWithConfig=lambda model, tls, value: pytest.fail("plain server has no TLS configuration"),
+        IedServer_create=lambda model: configured_server,
         IedServer_setFilestoreBasepath=lambda value, path: pytest.fail("disabled service has no basepath"),
         IedServerConfig_destroy=lambda value: None,
     )

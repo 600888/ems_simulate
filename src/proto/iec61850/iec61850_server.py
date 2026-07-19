@@ -40,6 +40,7 @@ class IEC61850Server:
         authentication_enabled: bool = False,
         authentication_password: str = "",
         file_service_directory: str | None = None,
+        tls_configuration=None,
     ):
         """保存服务端网络与模型配置，并初始化逻辑节点、测点、数据集和 GOOSE 索引。"""
         if not HAS_IEC61850:
@@ -53,6 +54,7 @@ class IEC61850Server:
         self.max_connections = max_connections
         self.authentication_enabled = authentication_enabled
         self.authentication_password = authentication_password
+        self.tls_configuration = tls_configuration
 
         selected_file_directory = (file_service_directory or "").strip()
         self._files = ServerFileService(selected_file_directory) if selected_file_directory else None
@@ -183,20 +185,17 @@ class IEC61850Server:
             iec61850.IedServerConfig_setMaxMmsConnections(server_config, self.max_connections)
             if getattr(self, "_files", None) is not None:
                 self._configure_file_service_config(server_config)
-            try:
-                server = iec61850.IedServer_createWithConfig(self._builder.model, None, server_config)
-            except TypeError as exc:
-                # pyiec61850-ng 1.6.1.7 marks the TLSConfiguration argument as
-                # non-null in its SWIG wrapper, even for a plain MMS server.
-                # TLS is terminated by our external bridge, so the native
-                # backend must remain non-TLS and can use the basic creator.
-                if "argument 2 of type 'TLSConfiguration'" not in str(exc):
-                    raise
-                log.warning(
-                    "当前 pyiec61850 绑定不支持为 IedServer_createWithConfig 传入空 TLS 配置，"
-                    "已回退到非 TLS 创建接口；max_connections 配置暂不生效"
-                )
+            if getattr(self, "tls_configuration", None) is None:
+                # The 1.6.1.8 wrapper rejects a null TLSConfiguration in
+                # IedServer_createWithConfig, so plain MMS keeps its native
+                # non-TLS creator.
                 server = iec61850.IedServer_create(self._builder.model)
+            else:
+                server = iec61850.IedServer_createWithConfig(
+                    self._builder.model,
+                    self.tls_configuration.native,
+                    server_config,
+                )
             if getattr(self, "_files", None) is not None:
                 self._configure_file_service_server(server)
             return server

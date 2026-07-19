@@ -22,6 +22,13 @@ _CERTIFICATE_SUFFIXES = {".crt", ".cer", ".pem"}
 _PRIVATE_KEY_SUFFIXES = {".key", ".pem"}
 
 
+def _validate_tls_mode(protocol_type: int, tls_mode: str) -> None:
+    if tls_mode not in {"basic", "mutual"}:
+        raise ValidationError("TLS 模式必须是基础 TLS 或双向认证 TLS")
+    if protocol_type == 4 and tls_mode != "mutual":
+        raise ValidationError("IEC 61850 TLS 仅支持双向认证")
+
+
 async def _read_upload(file: UploadFile, suffixes: set[str], label: str) -> bytes:
     filename = Path(file.filename or "").name
     if Path(filename).suffix.lower() not in suffixes:
@@ -108,8 +115,7 @@ async def upload_security_config(
         raise ValidationError("串口模式不支持 TLS")
     if tls_enabled and channel.get("protocol_type") not in (1, 2, 4):
         raise ValidationError("当前协议暂不支持 TLS")
-    if tls_mode not in {"basic", "mutual"}:
-        raise ValidationError("TLS 模式必须是基础 TLS 或双向认证 TLS")
+    _validate_tls_mode(channel.get("protocol_type"), tls_mode)
 
     current = ChannelConfigurationService.get_runtime_security(channel_id)
     certificate_path = current.get("certificate_path")

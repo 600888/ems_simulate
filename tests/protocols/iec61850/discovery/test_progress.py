@@ -79,21 +79,6 @@ def test_remote_discovery_stops_when_fresh_mms_association_cannot_be_created():
     assert progress["message"] == "重新建立 MMS 连接失败"
 
 
-def test_remote_discovery_starts_tls_bridge_before_connecting():
-    events = []
-    client = Mock(is_connected=True)
-    client.connect.side_effect = lambda **kwargs: events.append("connect") or True
-    client.remote_discover_model.return_value = False
-    handler = _make_handler(client)
-    handler._tls_bridge = Mock(last_error=None)
-    handler._tls_bridge.start.side_effect = lambda: events.append("tls_start")
-
-    assert handler.remote_discover_model() is False
-
-    assert events[:2] == ["tls_start", "connect"]
-    handler._tls_bridge.stop.assert_not_called()
-
-
 def test_remote_discovery_starts_mms_capture_before_connecting():
     events = []
     client = Mock(is_connected=True)
@@ -107,24 +92,6 @@ def test_remote_discovery_starts_mms_capture_before_connecting():
 
     assert events[:2] == ["capture_start", "connect"]
     handler._mms_capture.start.assert_called_once_with()
-
-
-def test_remote_discovery_reports_tls_handshake_error():
-    client = Mock(is_connected=True)
-    client.connect.return_value = False
-    logger = Mock()
-    handler = IEC61850ClientHandler(log=logger)
-    handler._client = client
-    handler._tls_bridge = Mock(last_error="certificate verify failed: IP address mismatch")
-
-    assert handler.remote_discover_model() is False
-
-    handler._tls_bridge.start.assert_called_once_with()
-    handler._tls_bridge.stop.assert_called_once_with()
-    progress = handler.get_connect_progress()
-    assert progress["phase"] == "failed"
-    assert "certificate verify failed" in progress["message"]
-    logger.error.assert_any_call("IEC61850 TLS 握手失败: certificate verify failed: IP address mismatch")
 
 
 def test_second_progress_task_is_rejected_while_discovery_is_active():

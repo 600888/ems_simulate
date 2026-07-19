@@ -60,39 +60,32 @@ def test_connect_caches_remote_domains_even_with_configured_model_name():
     assert connection.build_dataset_ref("LC001PCS06/LLN0$dsPcs6Data1") == "LC001PCS06/LLN0$dsPcs6Data1"
 
 
-def test_nonblocking_connect_polls_native_state_for_tls_bridge():
-    """TLS relay threads must be allowed to run while MMS connects."""
+def test_tls_connection_uses_native_creator_and_synchronous_connect():
     native_connection = object()
+    tls_configuration = type("TlsConfiguration", (), {"native": object()})()
     connection = Iec61850Connection(
         "127.0.0.1",
         102,
-        nonblocking_connect=True,
+        tls_configuration=tls_configuration,
         timeouts=Iec61850Timeouts(connect_ms=100, request_ms=100),
     )
 
     with (
-        patch.object(iec61850, "IedConnection_create", return_value=native_connection),
+        patch.object(
+            iec61850,
+            "IedConnection_createWithTlsSupport",
+            return_value=native_connection,
+        ) as create_with_tls,
         patch.object(iec61850, "IedConnection_setConnectTimeout"),
         patch.object(iec61850, "IedConnection_setRequestTimeout"),
         patch.object(connection, "_apply_association_parameters"),
-        patch.object(
-            iec61850,
-            "IedConnection_connectAsync",
-            return_value=(None, iec61850.IED_ERROR_OK),
-        ) as connect_async,
-        patch.object(
-            iec61850,
-            "IedConnection_getState",
-            side_effect=[iec61850.IED_STATE_CONNECTING, iec61850.IED_STATE_CONNECTED],
-        ),
-        patch.object(iec61850, "IedConnection_connect") as connect_sync,
+        patch.object(iec61850, "IedConnection_connect", return_value=iec61850.IED_ERROR_OK) as connect_sync,
         patch.object(connection, "_infer_model_name"),
-        patch("src.proto.iec61850.core.connection.time.sleep"),
     ):
         assert connection.connect(auto_discover=False) is True
 
-    connect_async.assert_called_once_with(native_connection, "127.0.0.1", 102)
-    connect_sync.assert_not_called()
+    create_with_tls.assert_called_once_with(tls_configuration.native)
+    connect_sync.assert_called_once_with(native_connection, "127.0.0.1", 102)
 
 
 def test_connection_applies_iso_addresses_and_password_authentication():
@@ -157,7 +150,7 @@ def test_handler_passes_persisted_authentication_to_runtime_client():
     }
 
     with (
-        patch("src.proto.iec61850.tls.create_client_context", return_value=None),
+        patch("src.proto.iec61850.tls.create_client_tls_configuration", return_value=None),
         patch("src.proto.iec61850.iec61850_client.IEC61850Client") as client_class,
     ):
         handler.initialize(

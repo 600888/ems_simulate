@@ -35,7 +35,7 @@ class IEC61850ServerHandler(ServerHandler):
         self._discovered_goose_items: list[dict[str, Any]] = []
         self._discovered_datasets: list[dict[str, Any]] = []
         self._mms_capture = None
-        self._tls_bridge = None
+        self._tls_configuration = None
 
     def initialize(self, config: dict[str, Any]) -> None:
         """初始化 IEC 61850 服务器
@@ -61,23 +61,17 @@ class IEC61850ServerHandler(ServerHandler):
         runtime = config.get("runtime", {})
         security = config.get("security", {})
 
-        from src.proto.iec61850.tls import TlsServerBridge, allocate_loopback_port, create_server_context
+        from src.proto.iec61850.tls import create_server_tls_configuration
 
-        tls_context = create_server_context(security)
-        server_ip = ip
-        server_port = port
-        if tls_context is not None:
-            server_ip = "127.0.0.1"
-            server_port = allocate_loopback_port()
-            self._tls_bridge = TlsServerBridge(ip, port, server_port, tls_context)
+        self._tls_configuration = create_server_tls_configuration(security)
 
         # model_name 由 Device._build_protocol_config() 从通道配置传入，
         # 对应 ICD 文件的 IED 名称 (如 "PCS001G")，传给 ied_name 参数
         effective_ied = ied_name or model_name or "EMS"
 
         self._server = IEC61850Server(
-            ip=server_ip,
-            port=server_port,
+            ip=ip,
+            port=port,
             model_name=effective_ied,
             ied_name=effective_ied,
             ld_name=ld_name,
@@ -85,11 +79,12 @@ class IEC61850ServerHandler(ServerHandler):
             authentication_enabled=runtime.get("authentication_enabled", False),
             authentication_password=runtime.get("authentication_password", ""),
             file_service_directory=runtime.get("file_service_directory") or None,
+            tls_configuration=self._tls_configuration,
         )
         from src.device.core.message.mms_capture import MmsMessageCapture
 
         if runtime.get("mms_capture_enabled", False):
-            self._mms_capture = MmsMessageCapture(port=server_port, client=False, logger=self._log)
+            self._mms_capture = MmsMessageCapture(port=port, client=False, logger=self._log)
         else:
             self._mms_capture = None
 
@@ -120,12 +115,8 @@ class IEC61850ServerHandler(ServerHandler):
                 self._mms_capture.start()
             await asyncio.to_thread(self._server.start_device)
             self._is_running = self._server.is_running
-            if self._is_running and self._tls_bridge:
-                self._tls_bridge.start()
             return self._is_running
         except Exception as e:
-            if self._tls_bridge:
-                self._tls_bridge.stop()
             if self._server and self._server.is_running:
                 await asyncio.to_thread(self._server.stop)
             if self._mms_capture:
@@ -181,8 +172,6 @@ class IEC61850ServerHandler(ServerHandler):
     async def stop(self) -> bool:
         """停止 IEC 61850 服务器"""
         try:
-            if self._tls_bridge:
-                self._tls_bridge.stop()
             if self._server:
                 await asyncio.to_thread(self._server.stop)
                 if self._mms_capture:
@@ -346,7 +335,7 @@ class IEC61850ClientHandler(ClientHandler):
         self._discovered_rcbs: list[dict[str, Any]] = []  # 发现的报告控制块 (连接时缓存)
         self._model_loaded: bool = False  # 模型是否已加载
         self._mms_capture = None
-        self._tls_bridge = None
+        self._tls_configuration = None
 
     @property
     def model_loaded(self) -> bool:
@@ -390,15 +379,9 @@ class IEC61850ClientHandler(ClientHandler):
         security = config.get("security", {})
         self._discovery_timeout = runtime.get("model_discovery_timeout_s", 60)
 
-        from src.proto.iec61850.tls import TlsClientBridge, create_client_context
+        from src.proto.iec61850.tls import create_client_tls_configuration
 
-        tls_context = create_client_context(security)
-        client_ip = ip
-        client_port = port
-        if tls_context is not None:
-            self._tls_bridge = TlsClientBridge(ip, port, tls_context)
-            client_ip = "127.0.0.1"
-            client_port = self._tls_bridge.local_port
+        self._tls_configuration = create_client_tls_configuration(security)
 
         from src.proto.iec61850.core.connection import Iec61850AssociationParameters, Iec61850Timeouts
 
@@ -422,24 +405,21 @@ class IEC61850ClientHandler(ClientHandler):
         )
 
         self._client = IEC61850Client(
-            ip=client_ip,
-            port=client_port,
+            ip=ip,
+            port=port,
             model_name=model_name,
             ld_name=ld_name,
             timeouts=timeouts,
             association_parameters=association_parameters,
-            # The server-side ACSE authenticator is invoked from a native
-            # server thread and needs the Python interpreter briefly. Polling
-            # the asynchronous connect state prevents a same-process client
-            # from holding the GIL for the whole association handshake.
-            nonblocking_connect=True,
+            tls_configuration=self._tls_configuration,
+            poll_authentication_callback=association_parameters.authentication_enabled,
         )
         from src.device.core.message.mms_capture import MmsMessageCapture
 
         if runtime.get("mms_capture_enabled", False):
             self._mms_capture = MmsMessageCapture(
-                port=client_port,
-                remote_ip=client_ip,
+                port=port,
+                remote_ip=ip,
                 client=True,
                 logger=self._log,
             )
@@ -471,9 +451,6 @@ class IEC61850ClientHandler(ClientHandler):
         self._connect_progress = 0
 
         self._connecting = True
-        if not self._start_tls_bridge():
-            self._connecting = False
-            return False
         self._ensure_mms_capture_started()
         self._begin_progress("connect", self.PHASE_CONNECTING, 10, "正在连接 MMS 服务器")
         import threading
@@ -481,18 +458,6 @@ class IEC61850ClientHandler(ClientHandler):
         thread = threading.Thread(target=self._connect_background, daemon=True)
         thread.start()
         return True  # 立即返回，表示连接任务已受理
-
-    def _start_tls_bridge(self) -> bool:
-        """确保原生 MMS 客户端连接前，本地 TLS 桥已经开始监听。"""
-        if not self._tls_bridge:
-            return True
-        try:
-            self._tls_bridge.start()
-            return True
-        except OSError as exc:
-            if self._log:
-                self._log.error(f"启动 IEC61850 TLS 客户端桥接器失败: {exc}")
-            return False
 
     def _ensure_mms_capture_started(self) -> bool:
         """Ensure every MMS connection entry point has an active packet capture."""
@@ -504,16 +469,6 @@ class IEC61850ClientHandler(ClientHandler):
         if not started and self._log:
             self._log.warning("MMS报文捕获启动失败，连接将继续但查看报文可能为空")
         return started
-
-    def _stop_tls_bridge_after_connect_failure(self) -> str:
-        """停止失败的 TLS 桥并返回可用于界面和日志的握手错误。"""
-        if not self._tls_bridge:
-            return ""
-        tls_error = self._tls_bridge.last_error or ""
-        self._tls_bridge.stop()
-        if tls_error and self._log:
-            self._log.error(f"IEC61850 TLS 握手失败: {tls_error}")
-        return tls_error
 
     def load_model_from_icd(self, icd_path: str, scl_result: Any = None) -> bool:
         """从 ICD 文件加载模型（不依赖 MMS 连接）
@@ -683,18 +638,11 @@ class IEC61850ClientHandler(ClientHandler):
             self._client.disconnect()
             self._is_running = False
             self._update_progress(self.PHASE_CONNECTING, 10, "正在建立新的 MMS 连接")
-            if not self._start_tls_bridge():
-                message = "启动 IEC61850 TLS 客户端桥接器失败"
-                self._finish_progress(False, message)
-                return False
             self._ensure_mms_capture_started()
             is_connected = self._client.connect(auto_discover=False)
             self._is_running = is_connected
             if not is_connected:
-                tls_error = self._stop_tls_bridge_after_connect_failure()
                 message = "重新建立 MMS 连接失败"
-                if tls_error:
-                    message = f"{message}: TLS 握手失败: {tls_error}"
                 self._finish_progress(False, message)
                 if self._log:
                     self._log.error(f"远程发现模型失败: {message}")
@@ -824,25 +772,15 @@ class IEC61850ClientHandler(ClientHandler):
 
         self._connect_phase = self.PHASE_CONNECTING
         self._connect_progress = 10
-        if not self._start_tls_bridge():
-            self._connect_phase = self.PHASE_FAILED
-            self._connect_progress = 0
-            self._progress_error_code = "tls_bridge_start_failed"
-            self._progress_message = "启动 IEC61850 TLS 客户端桥接器失败"
-            return False
         self._ensure_mms_capture_started()
         is_connected = self._client.connect(auto_discover=False)  # 仅连接，不自动发现
         self._is_running = is_connected
 
         if not is_connected:
-            tls_error = self._stop_tls_bridge_after_connect_failure()
             self._connect_phase = self.PHASE_FAILED
             self._connect_progress = 0
             self._progress_error_code = "connection_failed"
-            if tls_error:
-                self._progress_message = f"IEC61850 TLS 握手失败: {tls_error}"
-            else:
-                self._progress_message = "无法连接 IEC61850 服务端，请检查 IP、端口和服务状态"
+            self._progress_message = "无法连接 IEC61850 服务端，请检查 IP、端口和服务状态"
             return False
 
         # 离线模型只能在主 MMS association 建立后确认它
@@ -928,8 +866,6 @@ class IEC61850ClientHandler(ClientHandler):
         self._connect_progress = 0
         if self._client:
             self._client.disconnect()
-        if self._tls_bridge:
-            self._tls_bridge.stop()
         if self._mms_capture:
             self._mms_capture.stop()
         self._is_running = False

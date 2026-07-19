@@ -60,7 +60,8 @@ class IEC61850Client:
         ld_name: str = "GenericLD",
         timeouts: Iec61850Timeouts | None = None,
         association_parameters: Iec61850AssociationParameters | None = None,
-        nonblocking_connect: bool = False,
+        tls_configuration=None,
+        poll_authentication_callback: bool = False,
     ):
         """装配连接、读写、模型发现与插件组件，形成统一的 IEC 61850 客户端入口。"""
         if not HAS_IEC61850:
@@ -79,7 +80,8 @@ class IEC61850Client:
             ld_name,
             timeouts=timeouts,
             association_parameters=association_parameters,
-            nonblocking_connect=nonblocking_connect,
+            tls_configuration=tls_configuration,
+            poll_authentication_callback=poll_authentication_callback,
         )
         # 报告回调运行在 libIEC61850 的接收线程中。使用独立 association，
         # 避免 DataModel/DataSet 同步读取占用另一条连接时阻塞报告回调。
@@ -90,7 +92,8 @@ class IEC61850Client:
             ld_name,
             timeouts=timeouts,
             association_parameters=association_parameters,
-            nonblocking_connect=nonblocking_connect,
+            tls_configuration=tls_configuration,
+            poll_authentication_callback=poll_authentication_callback,
         )
         self._registry = PointRegistry(model_name, ld_name)
         self._reader = Iec61850Reader(self._conn, self._registry)

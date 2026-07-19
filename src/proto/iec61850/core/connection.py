@@ -89,7 +89,8 @@ class Iec61850Connection:
         *,
         timeouts: Iec61850Timeouts | None = None,
         association_parameters: Iec61850AssociationParameters | None = None,
-        nonblocking_connect: bool = False,
+        tls_configuration=None,
+        poll_authentication_callback: bool = False,
     ):
         """保存 IED 地址与超时配置，并创建保护底层连接句柄的可重入锁。"""
         if not HAS_IEC61850:
@@ -101,7 +102,8 @@ class Iec61850Connection:
         self.ld_name = ld_name
         self.timeouts = timeouts or Iec61850Timeouts.from_env()
         self.association_parameters = association_parameters or Iec61850AssociationParameters()
-        self.nonblocking_connect = nonblocking_connect
+        self.tls_configuration = tls_configuration
+        self.poll_authentication_callback = poll_authentication_callback
 
         self._connection = None
         self._is_connected = False
@@ -145,7 +147,10 @@ class Iec61850Connection:
                 self._discover_callback = discover_callback
 
             try:
-                self._connection = iec61850.IedConnection_create()
+                if self.tls_configuration is None:
+                    self._connection = iec61850.IedConnection_create()
+                else:
+                    self._connection = iec61850.IedConnection_createWithTlsSupport(self.tls_configuration.native)
                 # 连接和请求是两套独立超时。发现阶段的大量同步 MMS 请求
                 # 必须显式受控，避免单个异常节点让整个任务长期停滞。
                 iec61850.IedConnection_setConnectTimeout(self._connection, self.timeouts.connect_ms)
@@ -228,13 +233,8 @@ class Iec61850Connection:
         return result
 
     def _connect_native(self, iec61850):
-        """Connect synchronously, or poll the native async API when requested.
-
-        The blocking SWIG call keeps the Python GIL on Windows. Python-side
-        TLS relays and server authentication callbacks therefore need polling,
-        which releases the GIL between native connection state checks.
-        """
-        if not self.nonblocking_connect:
+        """Connect synchronously except for same-process Python ACSE authentication callbacks."""
+        if not self.poll_authentication_callback:
             result = iec61850.IedConnection_connect(self._connection, self.ip, self.port)
             return self._native_error(result)
 
@@ -251,7 +251,6 @@ class Iec61850Connection:
             if state == iec61850.IED_STATE_CLOSED:
                 return iec61850.IED_ERROR_CONNECTION_LOST
             time.sleep(0.01)
-
         return iec61850.IED_ERROR_TIMEOUT
 
     def disconnect(self):

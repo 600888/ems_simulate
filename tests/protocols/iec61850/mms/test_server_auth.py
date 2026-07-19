@@ -47,7 +47,7 @@ def _connect(port: int, password: str | None) -> bool:
         port,
         timeouts=Iec61850Timeouts(connect_ms=1000, request_ms=1000),
         association_parameters=params,
-        nonblocking_connect=True,
+        poll_authentication_callback=True,
     )
     try:
         return connection.connect(auto_discover=False)
