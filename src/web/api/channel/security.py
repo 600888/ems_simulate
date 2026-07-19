@@ -25,8 +25,6 @@ _PRIVATE_KEY_SUFFIXES = {".key", ".pem"}
 def _validate_tls_mode(protocol_type: int, tls_mode: str) -> None:
     if tls_mode not in {"basic", "mutual"}:
         raise ValidationError("TLS 模式必须是基础 TLS 或双向认证 TLS")
-    if protocol_type == 4 and tls_mode != "mutual":
-        raise ValidationError("IEC 61850 TLS 仅支持双向认证")
 
 
 async def _read_upload(file: UploadFile, suffixes: set[str], label: str) -> bytes:

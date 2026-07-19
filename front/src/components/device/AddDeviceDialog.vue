@@ -305,7 +305,6 @@ const applyPersistedSecurityConfig = (persisted?: SecurityConfig) => {
     // 开关只认后端持久化的布尔值，不根据证书或本地点击状态推断。
     tls_enabled: persisted?.tls_enabled === true,
   };
-  if (form.protocol_type === 4) normalized.tls_mode = "mutual";
   Object.assign(securityConfig, normalized);
 };
 
@@ -401,7 +400,6 @@ watch(
   () => [form.protocol_type, form.conn_type],
   async ([protocolType, connType]) => {
     if (![1, 2, 4].includes(protocolType)) securityConfig.tls_enabled = false;
-    if (protocolType === 4) securityConfig.tls_mode = "mutual";
     if (protocolType === 4 && connType === 2) {
       selectedFile.value = null;
     } else {

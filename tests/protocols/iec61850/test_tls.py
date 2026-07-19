@@ -87,8 +87,22 @@ def test_mutual_tls_requires_ca(tls_files):
         create_client_tls_configuration(settings)
 
 
-def test_basic_tls_is_rejected(tls_files):
-    with pytest.raises(IEC61850TlsConfigurationError, match="仅支持 mutual"):
+def test_basic_tls_configurations_load_without_ca(tls_files):
+    server = create_server_tls_configuration(_settings(tls_files, "server", "basic"))
+    client = create_client_tls_configuration(_settings(tls_files, "client", "basic"))
+    try:
+        assert server is not None and server.native is not None
+        assert client is not None and client.native is not None
+    finally:
+        client.close()
+        server.close()
+
+
+def test_basic_tls_requires_1619_insecure_api(tls_files, monkeypatch):
+    from pyiec61850 import pyiec61850 as iec61850
+
+    monkeypatch.delattr(iec61850, "TLSConfiguration_setInsecure")
+    with pytest.raises(IEC61850TlsConfigurationError, match="1.6.1.9"):
         create_client_tls_configuration(_settings(tls_files, "client", "basic"))
 
 

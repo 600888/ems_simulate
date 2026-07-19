@@ -8,6 +8,7 @@ $PROJECT_ROOT = Split-Path -Parent $SCRIPT_DIR
 $TAURI_DIR = Join-Path $PROJECT_ROOT "src-tauri"
 $BUILD_DIR = Join-Path $PROJECT_ROOT "build"
 $BINARIES_DIR = Join-Path $TAURI_DIR "binaries"
+$PYTHON_EXE = Join-Path $PROJECT_ROOT ".venv\Scripts\python.exe"
 
 function WriteStep($m) { Write-Host "[STEP] $m" -ForegroundColor Cyan }
 function WriteOk($m)   { Write-Host "[SUCCESS] $m" -ForegroundColor Green }
@@ -21,7 +22,16 @@ function IsUpToDate($target, [string[]]$references) {
     $targetTime = (Get-Item $target).LastWriteTime
     foreach ($ref in $references) {
         if (-not (Test-Path $ref)) { continue }
-        $refTime = (Get-Item $ref).LastWriteTime
+        $refItem = Get-Item $ref
+        $refTime = $refItem.LastWriteTime
+        if ($refItem.PSIsContainer) {
+            $latestChild = Get-ChildItem -Path $refItem.FullName -Recurse -File -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime -Descending |
+                Select-Object -First 1
+            if ($latestChild -and $latestChild.LastWriteTime -gt $refTime) {
+                $refTime = $latestChild.LastWriteTime
+            }
+        }
         if ($refTime -gt $targetTime) { return $false }
     }
     return $true
@@ -52,9 +62,13 @@ Write-Host ""
 
 Set-Location $PROJECT_ROOT
 
+if (-not (Test-Path -PathType Leaf $PYTHON_EXE)) {
+    WriteErr "Project Python environment not found at $PYTHON_EXE. Run 'uv sync' first."
+}
+
 # Sync version to tauri.conf.json and package.json
 WriteStep "Syncing version to config files..."
-python "$SCRIPT_DIR\sync_version.py"
+& $PYTHON_EXE "$SCRIPT_DIR\sync_version.py"
 if ($LASTEXITCODE -ne 0) { WriteErr "Version sync failed" }
 WriteOk "Version synced from pyproject.toml"
 
@@ -94,7 +108,7 @@ if ($iconsUpToDate) {
     WriteSkip "Tauri icons are up-to-date"
 } else {
     WriteStep "Generating Tauri icons..."
-    python scripts/generate_tauri_icons.py
+    & $PYTHON_EXE scripts/generate_tauri_icons.py
     if ($LASTEXITCODE -ne 0) { WriteErr "Icon generation failed" }
     WriteOk "Tauri icons generated"
 }
@@ -133,7 +147,9 @@ if (-not $SkipBackend) {
         (Join-Path $PROJECT_ROOT "src"),
         (Join-Path $PROJECT_ROOT "config.ini"),
         (Join-Path $PROJECT_ROOT "pyproject.toml"),
-        (Join-Path $SCRIPT_DIR "rthook_numpy_compat.py")
+        (Join-Path $PROJECT_ROOT "uv.lock"),
+        (Join-Path $SCRIPT_DIR "rthook_numpy_compat.py"),
+        (Join-Path $SCRIPT_DIR "build_tauri_windows.ps1")
     )
     if ((Test-Path $BE_RUNTIME_DIR) -and (IsUpToDate $BE_SIDECAR_EXE $beSources)) {
         WriteSkip "Python backend (sidecar) is up-to-date"
@@ -156,10 +172,13 @@ if (-not $SkipBackend) {
             "--name", "ems_simulate_backend", "--clean",
             "--contents-directory", "ems_simulate_backend_runtime",
             "--exclude-module", "numpy",
+            "--exclude-module", "tkinter",
+            "--exclude-module", "_tkinter",
             "--distpath", $pyDist,
             "--workpath", $pyWork,
             "--specpath", $BUILD_DIR,
             "--runtime-hook", $rthookNumpy,
+            "--collect-all", "pyiec61850",
             "--add-data", "$ABS\config.ini;.",
             "--add-data", "$ABS\www;www"
         )
@@ -172,7 +191,7 @@ if (-not $SkipBackend) {
         foreach ($h in $hidden) { $pyArgs += "--hidden-import"; $pyArgs += $h }
         $pyArgs += "$ABS\start_back_end.py"
 
-        pyinstaller @pyArgs
+        & $PYTHON_EXE -m PyInstaller @pyArgs
         if ($LASTEXITCODE -ne 0) { WriteErr "PyInstaller packaging failed" }
 
         # Tauri externalBin requires the target-triple executable name. The
@@ -186,11 +205,19 @@ if (-not $SkipBackend) {
             if (-not $c104Extension) {
                 WriteErr "PyInstaller runtime is missing the c104 native extension"
             }
+            $pyiec61850Extension = Get-ChildItem -Path $pyRuntimeDir -Recurse -File -Filter "_pyiec61850*.pyd" |
+                Select-Object -First 1
+            $iec61850Library = Get-ChildItem -Path $pyRuntimeDir -Recurse -File -Filter "iec61850.dll" |
+                Select-Object -First 1
+            if (-not $pyiec61850Extension -or -not $iec61850Library) {
+                WriteErr "PyInstaller runtime is missing pyiec61850 native libraries"
+            }
             Copy-Item -Force $pyOutExe $BE_SIDECAR_EXE
             Copy-Item -Recurse -Force $pyRuntimeDir $BE_RUNTIME_DIR
             WriteOk "Sidecar binary created: $BE_SIDECAR_EXE"
             WriteOk "Sidecar runtime created: $BE_RUNTIME_DIR"
             WriteOk "c104 native extension verified: $($c104Extension.Name)"
+            WriteOk "pyiec61850 native libraries verified"
         } else {
             WriteErr "PyInstaller output not found: $pyOutExe"
         }
@@ -210,10 +237,11 @@ Get-ChildItem -Path $BINARIES_DIR -Force | Where-Object {
 WriteOk "binaries directory cleaned"
 $tauriExe = Join-Path $TAURI_DIR "target\release\ems-simulate.exe"
 $tauriSrc = Join-Path $TAURI_DIR "src"
+$tauriFrontend = Join-Path $TAURI_DIR "loading"
 $tauriCargo = Join-Path $TAURI_DIR "Cargo.toml"
 $tauriConfig = Join-Path $TAURI_DIR "tauri.conf.json"
 
-if ((Test-Path $tauriExe) -and (IsUpToDate $tauriExe @($tauriSrc, $tauriCargo, $tauriConfig, $BE_SIDECAR_EXE, $BE_RUNTIME_DIR))) {
+if ((Test-Path $tauriExe) -and (IsUpToDate $tauriExe @($tauriSrc, $tauriFrontend, $tauriCargo, $tauriConfig, $BE_SIDECAR_EXE, $BE_RUNTIME_DIR))) {
     WriteSkip "Tauri build is up-to-date"
 } else {
     WriteStep "Building Tauri desktop app..."
@@ -264,7 +292,7 @@ if ($Msix) {
         WriteSkip "MSIX icon assets are up-to-date"
     } else {
         WriteStep "Generating MSIX icon assets..."
-        python $msixAssetScript
+        & $PYTHON_EXE $msixAssetScript
         if ($LASTEXITCODE -ne 0) { WriteErr "MSIX asset generation failed" }
         WriteOk "MSIX icon assets generated"
     }
@@ -284,18 +312,40 @@ if ($Msix) {
         WriteErr "ems-simulate.exe not found at $exePath"
     }
 
+    # Define this before the non-ASCII comment block. Windows PowerShell 5.1 can
+    # misparse the first statement after that block when this UTF-8 file has no BOM.
+    $sidecarDestDir = Join-Path $msixDist "binaries"
+
     # Copy sidecar binary
     # Tauri sidecar API 在 MSIX 下的路径解析: resource_dir/binaries/<name>-<target-triple>.exe
     # MSIX 安装后 resource_dir == exe 所在目录, 所以 sidecar 应放在 exe 同级的 binaries/ 子目录
-    $sidecarDestDir = Join-Path $msixDist "binaries"
-    New-Item -ItemType Directory -Force -Path $sidecarDestDir | Out-Null
-    if (Test-Path $BE_SIDECAR_EXE) {
-        Copy-Item -Force $BE_SIDECAR_EXE (Join-Path $sidecarDestDir "ems_simulate_backend-$SIDECAR_TARGET.exe")
-        Copy-Item -Recurse -Force $BE_RUNTIME_DIR (Join-Path $sidecarDestDir "ems_simulate_backend_runtime")
-        WriteOk "Sidecar binary copied to MSIX dist/binaries/"
-    } else {
+    try {
+        New-Item -ItemType Directory -Force -ErrorAction Stop -Path $sidecarDestDir | Out-Null
+    } catch {
+        WriteErr "Failed to create MSIX sidecar directory: $($_.Exception.Message)"
+    }
+    if (-not (Test-Path -PathType Leaf $BE_SIDECAR_EXE)) {
         WriteErr "Sidecar binary not found at $BE_SIDECAR_EXE"
     }
+    if (-not (Test-Path -PathType Container $BE_RUNTIME_DIR)) {
+        WriteErr "Sidecar runtime not found at $BE_RUNTIME_DIR"
+    }
+
+    $msixSidecarExe = Join-Path $sidecarDestDir "ems_simulate_backend-$SIDECAR_TARGET.exe"
+    $msixRuntimeDir = Join-Path $sidecarDestDir "ems_simulate_backend_runtime"
+    try {
+        Copy-Item -Force -ErrorAction Stop $BE_SIDECAR_EXE $msixSidecarExe
+        Copy-Item -Recurse -Force -ErrorAction Stop $BE_RUNTIME_DIR $msixRuntimeDir
+    } catch {
+        WriteErr "Failed to copy sidecar files into MSIX layout: $($_.Exception.Message)"
+    }
+
+    # Never create an installable package that can only remain on the loading page.
+    $runtimeFile = Get-ChildItem -Path $msixRuntimeDir -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not (Test-Path -LiteralPath $msixSidecarExe -PathType Leaf) -or -not $runtimeFile) {
+        WriteErr "MSIX sidecar layout validation failed under $sidecarDestDir"
+    }
+    WriteOk "Sidecar binary and runtime copied to MSIX dist/binaries/"
 
     # Copy Assets
     if (Test-Path $assetsDir) {
@@ -325,6 +375,9 @@ if ($Msix) {
 
     # Pack MSIX
     WriteStep "Creating MSIX package..."
+    if (-not (Test-Path -LiteralPath $msixSidecarExe -PathType Leaf) -or -not (Test-Path -LiteralPath $msixRuntimeDir -PathType Container)) {
+        WriteErr "Refusing to package MSIX without the backend sidecar and runtime"
+    }
     Set-Location $PROJECT_ROOT
     winapp pack $msixDist --cert $certPath
     if ($LASTEXITCODE -ne 0) { WriteErr "MSIX packaging failed" }

@@ -15,7 +15,6 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from src.config.storage import get_storage_path
 from src.data.service.channel_service import ChannelService
 from src.enums.modbus_def import ProtocolType
-from src.tools.excel_point_importer import ExcelPointImporter
 from src.web.api.channel.helpers import reload_device_instance
 from src.web.api.channel.protocol_guards import require_iec61850_channel, require_tabular_point_channel
 from src.web.api.exceptions import OperationError, ValidationError
@@ -23,6 +22,7 @@ from src.web.api.schemas import BaseResponse
 from src.web.log import log
 
 router = APIRouter(tags=["channel"])
+ExcelPointImporter: Any = None
 
 
 def _resolve_goose_import_mode(goose_import_mode: str, auto_create_goose: bool) -> str:
@@ -97,6 +97,12 @@ async def import_points(
 
     try:
         from src.data.dao.point_dao import PointDao
+
+        global ExcelPointImporter
+        if ExcelPointImporter is None:
+            from src.tools.excel_point_importer import ExcelPointImporter as _ExcelPointImporter
+
+            ExcelPointImporter = _ExcelPointImporter
 
         deleted_count = PointDao.delete_points_by_channel(channel_id)
         if deleted_count > 0:

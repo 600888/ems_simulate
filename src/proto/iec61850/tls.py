@@ -26,8 +26,8 @@ def _required_file(config: dict[str, Any], key: str, label: str) -> str:
 
 def _mode(config: dict[str, Any]) -> str:
     mode = str(config.get("tls_mode") or "mutual")
-    if mode != "mutual":
-        raise IEC61850TlsConfigurationError("IEC61850 TLS 仅支持 mutual 双向认证模式")
+    if mode not in {"basic", "mutual"}:
+        raise IEC61850TlsConfigurationError("IEC61850 TLS 模式必须是 basic 或 mutual")
     return mode
 
 
@@ -81,17 +81,17 @@ def create_native_tls_configuration(
     *,
     client: bool,
 ) -> NativeTlsConfiguration | None:
-    """Build the TLS configuration exported by pyiec61850-ng 1.6.1.8."""
+    """Build the TLS configuration exported by pyiec61850-ng 1.6.1.9."""
     settings = config or {}
     if not settings.get("tls_enabled"):
         return None
 
     from pyiec61850 import pyiec61850 as iec61850
 
-    _mode(settings)
+    mode = _mode(settings)
     certificate = _required_file(settings, "certificate_path", "证书")
     private_key = _required_file(settings, "private_key_path", "私钥")
-    ca_certificate = _required_file(settings, "ca_certificate_path", "CA 证书")
+    ca_certificate = _required_file(settings, "ca_certificate_path", "CA 证书") if mode == "mutual" else None
 
     native = iec61850.TLSConfiguration_create()
     if native is None:
@@ -103,9 +103,17 @@ def create_native_tls_configuration(
             iec61850.TLSConfiguration_setClientMode(native)
         iec61850.TLSConfiguration_setMinTlsVersion(native, iec61850.TLS_VERSION_TLS_1_2)
         iec61850.TLSConfiguration_setMaxTlsVersion(native, iec61850.TLS_VERSION_TLS_1_3)
-        iec61850.TLSConfiguration_setChainValidation(native, True)
+        # basic 与 IEC 104 / Modbus 的现有语义一致：只加密链路，
+        # 不验证对端证书。mutual 才启用 CA 链和有效期校验。
+        validate_peer = mode == "mutual"
+        if not validate_peer:
+            set_insecure = getattr(iec61850, "TLSConfiguration_setInsecure", None)
+            if set_insecure is None:
+                raise IEC61850TlsConfigurationError("IEC61850 基础 TLS 需要 pyiec61850-ng 1.6.1.9 或更高版本")
+            set_insecure(native, True)
+        iec61850.TLSConfiguration_setChainValidation(native, validate_peer)
         iec61850.TLSConfiguration_setAllowOnlyKnownCertificates(native, False)
-        iec61850.TLSConfiguration_setTimeValidation(native, True)
+        iec61850.TLSConfiguration_setTimeValidation(native, validate_peer)
 
         with _native_file_paths(certificate, private_key, ca_certificate) as native_paths:
             native_certificate, native_private_key, native_ca_certificate = native_paths

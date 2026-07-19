@@ -22,16 +22,7 @@
       </el-form-item>
 
       <template v-if="modelValue.tls_enabled">
-        <el-alert
-          v-if="isIec61850"
-          class="iec61850-tls-alert"
-          title="IEC 61850 原生 TLS 仅支持双向认证"
-          type="info"
-          :closable="false"
-          show-icon
-        />
-
-        <el-form-item v-else label="TLS 模式" required>
+        <el-form-item label="TLS 模式" required>
           <el-radio-group v-model="modelValue.tls_mode" :disabled="disabled">
             <el-radio-button value="basic">基础 TLS</el-radio-button>
             <el-radio-button value="mutual">双向认证 TLS</el-radio-button>
@@ -41,7 +32,12 @@
               仅加密链路，不校验对端证书身份。
             </template>
             <template v-else>
-              使用 CA 双向校验证书，并校验服务端主机名或 IP。
+              <template v-if="isIec61850">
+                使用 CA 双向校验证书；IEC 61850 原生库不校验服务端主机名或 IP。
+              </template>
+              <template v-else>
+                使用 CA 双向校验证书，并校验服务端主机名或 IP。
+              </template>
             </template>
           </div>
         </el-form-item>
@@ -105,7 +101,7 @@
         </el-form-item>
 
         <el-form-item
-          v-if="isIec61850 || modelValue.tls_mode === 'mutual'"
+          v-if="modelValue.tls_mode === 'mutual'"
           label="CA 证书"
           required
         >
@@ -166,14 +162,6 @@ const tlsSupported = computed(
 );
 const isIec61850 = computed(() => props.protocolType === 4);
 
-watch(
-  () => props.protocolType,
-  (protocolType) => {
-    if (protocolType === 4) props.modelValue.tls_mode = "mutual";
-  },
-  { immediate: true },
-);
-
 const emit = defineEmits<{
   (event: "certificate-change", file: File): void;
   (event: "private-key-change", file: File): void;
@@ -229,10 +217,6 @@ defineExpose({ clearFiles });
   color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.5;
-}
-
-.iec61850-tls-alert {
-  margin-bottom: 16px;
 }
 
 .file-config {
