@@ -44,7 +44,7 @@ def test_modbus_client_defaults_match_existing_runtime_policy():
     assert values["connect_timeout_ms"] == 3000
     assert values["command_timeout_ms"] == 2000
     assert values["command_retry_count"] == 1
-    assert values["reconnect_max_attempts"] == -1
+    assert values["reconnect_max_attempts"] == 0
 
 
 def test_iec104_client_defaults_match_modbus_reconnect_policy():
@@ -60,10 +60,10 @@ def test_iec104_client_defaults_match_modbus_reconnect_policy():
     assert values["general_interrogation_interval_s"] == 0
     assert values["counter_interrogation_interval_s"] == 0
     assert values["general_interrogation_on_connect"] is True
-    assert values["counter_interrogation_on_connect"] is True
+    assert values["counter_interrogation_on_connect"] is False
     assert values["reconnect_initial_interval_ms"] == 2000
     assert values["reconnect_max_interval_ms"] == 30000
-    assert values["reconnect_max_attempts"] == -1
+    assert values["reconnect_max_attempts"] == 0
 
 
 def test_reconnect_attempt_semantics_accept_minus_one_and_reject_lower_values():
@@ -87,9 +87,9 @@ def test_server_runtime_defaults_are_protocol_specific():
     iec104_defaults = get_protocol_param_defaults(2, 2)
     assert iec104_defaults["send_window_size"] == 12
     assert iec104_defaults["receive_window_size"] == 8
-    assert iec104_defaults["t0_timeout_s"] == 3
-    assert iec104_defaults["t1_timeout_s"] == 3
-    assert iec104_defaults["t2_timeout_s"] == 1
+    assert iec104_defaults["t0_timeout_s"] == 10
+    assert iec104_defaults["t1_timeout_s"] == 15
+    assert iec104_defaults["t2_timeout_s"] == 10
     assert iec104_defaults["t3_interval_s"] == 20
     assert get_protocol_param_defaults(3, 2)["session_idle_timeout_ms"] == 30000
     assert get_protocol_param_defaults(4, 2)["max_connections"] == 5
@@ -147,12 +147,12 @@ def test_iec104_legacy_millisecond_parameters_are_migrated_to_seconds():
         2,
         {
             "connection_timeout_ms": 3000,
-            "message_timeout_ms": 3000,
+            "message_timeout_ms": 15000,
             "keep_alive_interval_ms": 20000,
         },
     )
     assert values["t0_timeout_s"] == 3
-    assert values["t1_timeout_s"] == 3
+    assert values["t1_timeout_s"] == 15
     assert values["t3_interval_s"] == 20
 
 

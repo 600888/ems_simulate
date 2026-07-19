@@ -231,7 +231,7 @@ class ModbusClientHandler(ClientHandler):
         self._client = None
         self._log = log
         self._reconnect_initial_interval = 2.0
-        self._max_reconnect_attempts = -1
+        self._max_reconnect_attempts = 0
         self._command_timeout = 2.0
         self._loop = None  # 事件循环引用
         # 重连相关状态
@@ -259,7 +259,7 @@ class ModbusClientHandler(ClientHandler):
         self._command_timeout = runtime.get("command_timeout_ms", 2000) / 1000
         self._reconnect_initial_interval = runtime.get("reconnect_initial_interval_ms", 2000) / 1000
         self._max_reconnect_interval = runtime.get("reconnect_max_interval_ms", 30000) / 1000
-        self._max_reconnect_attempts = runtime.get("reconnect_max_attempts", -1)
+        self._max_reconnect_attempts = runtime.get("reconnect_max_attempts", 0)
         connect_timeout = runtime.get("connect_timeout_ms", 3000) / 1000
         retries = runtime.get("command_retry_count", 1)
 

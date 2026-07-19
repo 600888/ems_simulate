@@ -90,9 +90,9 @@ class IEC104ServerHandler(ServerHandler):
         self._server: IEC104Server = IEC104Server(
             ip=ip,
             port=port,
-            connection_timeout=runtime.get("t0_timeout_s", 3),
-            message_timeout=runtime.get("t1_timeout_s", 3),
-            confirm_interval=runtime.get("t2_timeout_s", 1),
+            connection_timeout=runtime.get("t0_timeout_s", 10),
+            message_timeout=runtime.get("t1_timeout_s", 15),
+            confirm_interval=runtime.get("t2_timeout_s", 10),
             keep_alive_interval=runtime.get("t3_interval_s", 20),
             send_window_size=runtime.get("send_window_size", 12),
             receive_window_size=runtime.get("receive_window_size", 8),
@@ -319,15 +319,16 @@ class IEC104ClientHandler(ClientHandler):
         self._connect_timeout = 10.0
         self._reconnect_initial_interval = 2.0
         self._max_reconnect_interval = 30.0
-        self._max_reconnect_attempts = -1
+        self._max_reconnect_attempts = 0
         self._reconnect_count = 0
         self._last_reconnect_attempt = 0.0
         self._loop = None
         self._clock_sync_interval = 0
         self._general_interrogation_interval = 0
         self._counter_interrogation_interval = 0
-        self._counter_interrogation_on_connect = True
+        self._counter_interrogation_on_connect = False
         self._maintenance_task = None
+        self._reconnect_lock = asyncio.Lock()
 
     def initialize(self, config: dict[str, Any]) -> None:
         """初始化 IEC104 客户端
@@ -348,11 +349,11 @@ class IEC104ClientHandler(ClientHandler):
         self._connect_timeout = runtime.get("t0_timeout_s", 10)
         self._reconnect_initial_interval = runtime.get("reconnect_initial_interval_ms", 2000) / 1000
         self._max_reconnect_interval = runtime.get("reconnect_max_interval_ms", 30000) / 1000
-        self._max_reconnect_attempts = runtime.get("reconnect_max_attempts", -1)
+        self._max_reconnect_attempts = runtime.get("reconnect_max_attempts", 0)
         self._clock_sync_interval = runtime.get("clock_sync_interval_s", 0)
         self._general_interrogation_interval = runtime.get("general_interrogation_interval_s", 0)
         self._counter_interrogation_interval = runtime.get("counter_interrogation_interval_s", 0)
-        self._counter_interrogation_on_connect = runtime.get("counter_interrogation_on_connect", True)
+        self._counter_interrogation_on_connect = runtime.get("counter_interrogation_on_connect", False)
 
         try:
             self._loop = asyncio.get_running_loop()
@@ -385,7 +386,8 @@ class IEC104ClientHandler(ClientHandler):
         """启动客户端（连接服务器）"""
         self._loop = asyncio.get_running_loop()
         connected = await self.connect()
-        self._start_maintenance_task()
+        if connected:
+            self._start_maintenance_task()
         return connected
 
     async def stop(self) -> bool:
@@ -395,13 +397,6 @@ class IEC104ClientHandler(ClientHandler):
         return True
 
     def _start_maintenance_task(self) -> None:
-        intervals = (
-            self._clock_sync_interval,
-            self._general_interrogation_interval,
-            self._counter_interrogation_interval,
-        )
-        if not any(interval > 0 for interval in intervals):
-            return
         if self._maintenance_task and not self._maintenance_task.done():
             return
         self._maintenance_task = asyncio.create_task(self._maintenance_loop())
@@ -417,7 +412,7 @@ class IEC104ClientHandler(ClientHandler):
         self._maintenance_task = None
 
     async def _maintenance_loop(self) -> None:
-        """按配置周期发送时钟同步、总召唤和累计量召唤命令。"""
+        """持续监控连接，并按配置周期发送链路维护命令。"""
         now = time.monotonic()
         next_clock_sync = now + self._clock_sync_interval if self._clock_sync_interval > 0 else None
         next_interrogation = (
@@ -469,35 +464,41 @@ class IEC104ClientHandler(ClientHandler):
 
     async def _try_reconnect(self) -> bool:
         """按与 Modbus 相同的有界指数退避策略尝试重连。"""
-        now = time.monotonic()
-        if self._max_reconnect_attempts == 0:
-            return False
-        if self._max_reconnect_attempts > 0 and self._reconnect_count >= self._max_reconnect_attempts:
-            return False
+        async with self._reconnect_lock:
+            if self.is_running:
+                return True
 
-        min_interval = min(
-            self._reconnect_initial_interval * (2**self._reconnect_count),
-            self._max_reconnect_interval,
-        )
-        if now - self._last_reconnect_attempt < min_interval:
-            return False
+            now = time.monotonic()
+            if self._max_reconnect_attempts == 0:
+                return False
+            if self._max_reconnect_attempts > 0 and self._reconnect_count >= self._max_reconnect_attempts:
+                return False
 
-        self._last_reconnect_attempt = now
-        self._reconnect_count += 1
-        if self._log:
-            self._log.info(f"尝试重连 IEC104 服务器（第 {self._reconnect_count} 次，当前退避间隔 {min_interval:g} 秒）")
+            min_interval = min(
+                self._reconnect_initial_interval * (2**self._reconnect_count),
+                self._max_reconnect_interval,
+            )
+            if now - self._last_reconnect_attempt < min_interval:
+                return False
 
-        try:
-            self.disconnect()
-            connected = await self.connect()
-            if connected and self._log:
-                self._log.info("IEC104 客户端重连成功")
-            return connected
-        except Exception as e:
-            self._is_running = False
+            self._last_reconnect_attempt = now
+            self._reconnect_count += 1
             if self._log:
-                self._log.error(f"IEC104 客户端重连失败: {e}")
-            return False
+                self._log.info(
+                    f"尝试重连 IEC104 服务器（第 {self._reconnect_count} 次，当前退避间隔 {min_interval:g} 秒）"
+                )
+
+            try:
+                self.disconnect()
+                connected = await self.connect()
+                if connected and self._log:
+                    self._log.info("IEC104 客户端重连成功")
+                return connected
+            except Exception as e:
+                self._is_running = False
+                if self._log:
+                    self._log.error(f"IEC104 客户端重连失败: {e}")
+                return False
 
     def _try_reconnect_from_thread(self) -> bool:
         """从数据工作线程将重连协程调度到客户端事件循环。"""

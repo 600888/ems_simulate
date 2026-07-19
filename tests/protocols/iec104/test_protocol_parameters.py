@@ -55,6 +55,9 @@ def test_client_can_disable_general_interrogation_on_connect(monkeypatch):
         def on_send_raw(self, callable):
             pass
 
+        def on_state_change(self, callable):
+            pass
+
     class FakeClient:
         def __init__(self, transport_security=None):
             self.originator_address = 0

@@ -63,7 +63,12 @@ Write-Host ""
 Set-Location $PROJECT_ROOT
 
 if (-not (Test-Path -PathType Leaf $PYTHON_EXE)) {
-    WriteErr "Project Python environment not found at $PYTHON_EXE. Run 'uv sync' first."
+    WriteErr "Project Python environment not found at $PYTHON_EXE. Run 'uv sync --extra build' first."
+}
+
+& $PYTHON_EXE -c "import PyInstaller" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    WriteErr 'PyInstaller is not installed in .venv. Run: .\.venv\Scripts\python.exe -m pip install -e ".[build]"'
 }
 
 # Sync version to tauri.conf.json and package.json
@@ -323,9 +328,7 @@ if ($Msix) {
     # misparse the first statement after that block when this UTF-8 file has no BOM.
     $sidecarDestDir = Join-Path $msixDist "binaries"
 
-    # Copy sidecar binary
-    # Tauri sidecar API 在 MSIX 下的路径解析: resource_dir/binaries/<name>-<target-triple>.exe
-    # MSIX 安装后 resource_dir == exe 所在目录, 所以 sidecar 应放在 exe 同级的 binaries/ 子目录
+    # Tauri resolves an MSIX sidecar under resource_dir/binaries.
     try {
         New-Item -ItemType Directory -Force -ErrorAction Stop -Path $sidecarDestDir | Out-Null
     } catch {

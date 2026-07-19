@@ -9,7 +9,7 @@ MODBUS_CLIENT_DEFAULTS = {
     "command_retry_count": 1,
     "reconnect_initial_interval_ms": 2000,
     "reconnect_max_interval_ms": 30000,
-    "reconnect_max_attempts": -1,
+    "reconnect_max_attempts": 0,
 }
 
 MODBUS_SERVER_DEFAULTS = {
@@ -29,18 +29,18 @@ IEC104_CLIENT_DEFAULTS = {
     "general_interrogation_interval_s": 0,
     "counter_interrogation_interval_s": 0,
     "general_interrogation_on_connect": True,
-    "counter_interrogation_on_connect": True,
+    "counter_interrogation_on_connect": False,
     "reconnect_initial_interval_ms": 2000,
     "reconnect_max_interval_ms": 30000,
-    "reconnect_max_attempts": -1,
+    "reconnect_max_attempts": 0,
 }
 
 IEC104_SERVER_DEFAULTS = {
     "send_window_size": 12,
     "receive_window_size": 8,
-    "t0_timeout_s": 3,
-    "t1_timeout_s": 3,
-    "t2_timeout_s": 1,
+    "t0_timeout_s": 10,
+    "t1_timeout_s": 15,
+    "t2_timeout_s": 10,
     "t3_interval_s": 20,
     "max_connections": 0,
 }

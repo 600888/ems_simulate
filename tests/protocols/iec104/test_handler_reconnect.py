@@ -42,6 +42,7 @@ def test_reconnect_uses_exponential_backoff_and_resets_after_success():
     handler._client = client
     handler._reconnect_initial_interval = 2
     handler._max_reconnect_interval = 30
+    handler._max_reconnect_attempts = -1
 
     assert asyncio.run(handler._try_reconnect()) is False
     assert handler._reconnect_count == 1
@@ -102,7 +103,7 @@ def test_periodic_maintenance_commands_follow_configured_intervals():
     client = asyncio.run(scenario())
     assert client.clock_sync_calls == 1
     assert client.interrogation_calls == 1
-    assert client.counter_interrogation_calls == 2
+    assert client.counter_interrogation_calls == 1
 
 
 def test_counter_interrogation_on_connect_can_be_disabled():
@@ -118,3 +119,22 @@ def test_counter_interrogation_on_connect_can_be_disabled():
 
     client = asyncio.run(scenario())
     assert client.counter_interrogation_calls == 0
+
+
+def test_connection_supervisor_reconnects_without_periodic_commands():
+    async def scenario():
+        handler = IEC104ClientHandler()
+        client = _FakeClient([True, True])
+        handler._client = client
+        handler._reconnect_initial_interval = 0
+        handler._max_reconnect_attempts = -1
+
+        assert await handler.start() is True
+        assert handler._maintenance_task is not None
+        client.is_connected = False
+        await asyncio.sleep(1.1)
+        await handler.stop()
+        return client
+
+    client = asyncio.run(scenario())
+    assert client.connect_calls == 2

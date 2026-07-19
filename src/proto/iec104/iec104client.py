@@ -64,6 +64,9 @@ class IEC104Client:
         self.points: list[c104.Point] = []
         self._on_data_received: Callable | None = None
         self._on_command_response: Callable | None = None
+        self._disconnect_requested = False
+        self._ever_connected = False
+        self._connect_in_progress = False
 
         # 报文捕获器
         self.message_capture = MessageCapture()
@@ -72,6 +75,36 @@ class IEC104Client:
         if self.connection:
             self.connection.on_receive_raw(callable=self._on_receive_raw)
             self.connection.on_send_raw(callable=self._on_send_raw)
+            self.connection.on_state_change(callable=self._on_state_change)
+
+    def _on_state_change(self, connection: c104.Connection, state: c104.ConnectionState) -> None:
+        """记录 c104 连接状态，并区分主动关闭和非预期掉线。"""
+        endpoint = f"{self.ip}:{self.port}"
+        open_states = {
+            c104.ConnectionState.OPEN,
+            c104.ConnectionState.OPEN_MUTED,
+        }
+        if state in open_states:
+            self._ever_connected = True
+            self._disconnect_requested = False
+            log.info(f"IEC104 连接状态变化: 服务器={endpoint}, 状态={state}")
+            return
+
+        closed_states = {
+            c104.ConnectionState.CLOSED,
+            c104.ConnectionState.CLOSED_AWAIT_OPEN,
+            c104.ConnectionState.CLOSED_AWAIT_RECONNECT,
+        }
+        if (
+            state in closed_states
+            and self._ever_connected
+            and not self._disconnect_requested
+            and not self._connect_in_progress
+        ):
+            log.error(f"IEC104 连接非预期断开: 服务器={endpoint}, 状态={state}")
+            return
+
+        log.info(f"IEC104 连接状态变化: 服务器={endpoint}, 状态={state}")
 
     def _on_receive_raw(self, connection: c104.Connection, data: bytes) -> None:
         """接收原始报文回调"""
@@ -102,6 +135,8 @@ class IEC104Client:
         :return: 是否连接成功
         """
         try:
+            self._connect_in_progress = True
+            self._disconnect_requested = False
             if self._tls_bridge:
                 self._tls_bridge.start()
             self.client.start()
@@ -109,22 +144,32 @@ class IEC104Client:
             while not self.is_connected:
                 if time.time() - start_time > timeout:
                     log.error("连接服务器超时")
+                    self._disconnect_requested = True
                     self.client.stop()
+                    if self._tls_bridge:
+                        self._tls_bridge.stop()
                     if self._tls_bridge and self._tls_bridge.last_error:
                         log.error(f"TLS 握手失败: {self._tls_bridge.last_error}")
+                    self._connect_in_progress = False
                     return False
                 await asyncio.sleep(0.1)
 
             log.info(f"成功连接到服务器 {self.ip}:{self.port}")
+            self._connect_in_progress = False
             return True
         except Exception as e:
             log.error(f"连接服务器失败: {e}")
+            self._disconnect_requested = True
             self.client.stop()
+            if self._tls_bridge:
+                self._tls_bridge.stop()
+            self._connect_in_progress = False
             return False
 
     def disconnect(self) -> None:
         """断开与服务器的连接，并完整记录连接和资源清理状态。"""
         was_connected = self.is_connected
+        self._disconnect_requested = True
         transport = "TLS" if self._tls_bridge else "TCP"
         cleanup_results: list[str] = []
         cleanup_errors: list[str] = []
@@ -132,39 +177,39 @@ class IEC104Client:
         if self.connection and was_connected:
             try:
                 self.connection.disconnect()
-                cleanup_results.append("IEC104连接=已断开")
+                cleanup_results.append("IEC104连接：已断开")
             except Exception as e:
                 cleanup_errors.append(f"IEC104连接断开失败({type(e).__name__}: {e})")
         else:
-            cleanup_results.append("IEC104连接=断开前已处于未连接状态")
+            cleanup_results.append("IEC104连接：断开前已处于未连接状态")
 
         if self.client:
             try:
                 self.client.stop()
-                cleanup_results.append("IEC104客户端=已停止")
+                cleanup_results.append("IEC104客户端：已停止")
             except Exception as e:
                 cleanup_errors.append(f"IEC104客户端停止失败({type(e).__name__}: {e})")
         else:
-            cleanup_results.append("IEC104客户端=不存在")
+            cleanup_results.append("IEC104客户端：不存在")
 
         if self._tls_bridge:
             try:
                 self._tls_bridge.stop()
-                cleanup_results.append("TLS桥接器=已停止")
+                cleanup_results.append("TLS桥接器：已停止")
             except Exception as e:
                 cleanup_errors.append(f"TLS桥接器停止失败({type(e).__name__}: {e})")
         else:
-            cleanup_results.append("TLS桥接器=未启用")
+            cleanup_results.append("TLS桥接器：未启用")
 
         details = (
-            f"服务器={self.ip}:{self.port}, 传输方式={transport}, "
-            f"断开前状态={'已连接' if was_connected else '未连接'}, "
-            f"清理结果={'; '.join(cleanup_results)}"
+            f"服务器：{self.ip}:{self.port}, 传输方式：{transport}, "
+            f"断开前状态：{'已连接' if was_connected else '未连接'}, "
+            f"清理结果：{'; '.join(cleanup_results)}"
         )
         if cleanup_errors:
             log.error(f"断开与 IEC104 服务器的连接时发生异常: {details}, 异常={'; '.join(cleanup_errors)}")
         else:
-            log.error(f"已断开与 IEC104 服务器的连接: {details}")
+            log.info(f"已主动断开与 IEC104 服务器的连接: {details}")
 
     @property
     def is_connected(self) -> bool:
