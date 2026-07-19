@@ -328,6 +328,8 @@ class PointOperator:
 
         # 记录是否需要重新同步值到协议处理器
         need_resync = False
+        protocol_config_changed = False
+        scaling_changed = False
         current_real_value = getattr(point, "real_value", None)
 
         # 1. 更新内存配置
@@ -339,14 +341,17 @@ class PointOperator:
             addr_str = metadata["reg_addr"]
             point.address = int(addr_str, 16) if addr_str.startswith("0x") else int(addr_str)
             need_resync = True  # 地址变更需要重新同步
+            protocol_config_changed = True
         if "func_code" in metadata and str(metadata["func_code"]) != "":
             point.func_code = int(metadata["func_code"])
             need_resync = True  # 功能码变更需要重新同步
+            protocol_config_changed = True
         if "decode_code" in metadata and metadata["decode_code"]:
             old_decode = point.decode
             point.decode = metadata["decode_code"]
             if old_decode != metadata["decode_code"]:
                 need_resync = True  # 解析码变更需要重新同步
+                protocol_config_changed = True
 
         if isinstance(point, (Yk, Yx)) and "bit" in metadata:
             old_bit = getattr(point, "bit", None)
@@ -355,6 +360,7 @@ class PointOperator:
             point.bit = new_bit
             if old_bit != new_bit:
                 need_resync = True
+                protocol_config_changed = True
 
         if isinstance(point, (Yc, Yt)):
             if "mul_coe" in metadata and str(metadata["mul_coe"]) != "":
@@ -362,11 +368,17 @@ class PointOperator:
                 point.mul_coe = float(metadata["mul_coe"])
                 if old_mul_coe != float(metadata["mul_coe"]):
                     need_resync = True
+                    scaling_changed = True
             if "add_coe" in metadata and str(metadata["add_coe"]) != "":
                 old_add_coe = point.add_coe
                 point.add_coe = float(metadata["add_coe"])
                 if old_add_coe != float(metadata["add_coe"]):
                     need_resync = True
+                    scaling_changed = True
+
+            # 与 Modbus 遥测一致：修改系数时保持协议原始值不变，立即重算真实值。
+            if isinstance(point, Yc) and scaling_changed:
+                point.real_value = point.value * point.mul_coe + point.add_coe
 
         # 处理 IEC104 类型标识修改
         if "iec_type_id" in metadata:
@@ -375,6 +387,7 @@ class PointOperator:
             if old_iec_type_id != new_iec_type_id:
                 point.iec_type_id = new_iec_type_id
                 need_resync = True  # IEC104 类型变更需要重新同步
+                protocol_config_changed = True
 
         # 处理 IEC104 品质描述符修改
         if "iec_quality" in metadata:
@@ -382,6 +395,7 @@ class PointOperator:
             if new_quality is not None:
                 point.iec_quality_value = int(new_quality)
                 need_resync = True  # 品质变更需要重新同步
+                protocol_config_changed = True
 
         # 处理 code 修改
         if "code" in metadata and metadata["code"] and metadata["code"] != point_code:
@@ -397,7 +411,16 @@ class PointOperator:
             protocol_type = self._device.protocol_type
             if protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
                 try:
-                    if isinstance(point, (Yc, Yt)) and current_real_value is not None:
+                    if isinstance(point, Yc):
+                        # 遥测的协议值是原始值；系数修改只改变真实值。
+                        # IEC104 客户端的遥测点不可写，仅服务端在协议属性变更时重新同步。
+                        if protocol_config_changed and not isinstance(self._handler, ClientHandler):
+                            result = self._handler.write_value(point, point.value)
+                            if result:
+                                self._log.info(f"测点 {point.code} 元数据更新后已重新同步值到 IEC104 协议处理器")
+                            else:
+                                self._log.warning(f"重新同步测点 {point.code} 值失败")
+                    elif isinstance(point, Yt) and current_real_value is not None:
                         if point.set_real_value(current_real_value):
                             result = self._handler.write_value(point, point.value)
                             if result:

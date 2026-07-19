@@ -497,24 +497,18 @@ class DataReader:
                     # c104 库已内部完成类型解码（归一化值已转为 -1~+1 浮点数）
                     c104_value = float(c104_point.value) if c104_point.value is not None else None
                     if c104_value is not None:
-                        # 遥测点: c104 返回的值是协议层物理值
-                        # 需要通过系数换算为内部存储值，使得 real_value 正确
-                        # real_value = value * mul_coe + add_coe = c104_value
-                        # 即: value = (c104_value - add_coe) / mul_coe
                         if isinstance(point, Yc):
                             try:
                                 from src.enums.points.iec104_type import decode_iec104_value
 
                                 decoded_val = decode_iec104_value(c104_value, point.iec_type_id)
-                                internal_value = (decoded_val - point.add_coe) / point.mul_coe
-                                # 对于浮点解码模式，保留浮点精度；否则取整
                                 from src.enums.modbus_register import Decode
 
                                 info = Decode.get_info(point.decode)
                                 if info.is_float:
-                                    store_value = float(internal_value)
+                                    store_value = float(decoded_val)
                                 else:
-                                    store_value = int(round(internal_value))
+                                    store_value = int(round(decoded_val))
                                 with track_change(
                                     ChangeSource.CLIENT_READ,
                                     f"IEC104客户端同步 {point.code}",
@@ -522,7 +516,7 @@ class DataReader:
                                 ):
                                     point.value = store_value
                                 point.is_valid = True
-                            except (ZeroDivisionError, TypeError) as e:
+                            except (ValueError, TypeError) as e:
                                 self._log.error(f"Error decoding point {point.code}: {e}")
                                 point.is_valid = False
                         else:

@@ -200,6 +200,34 @@ def test_formatter_classifies_iec104_i_frames_by_common_address():
     assert all(message["protocol_type"] == "Iec104Server" for message in messages)
 
 
+def test_formatter_applies_point_coefficients_to_iec104_raw_value():
+    point = SimpleNamespace(
+        rtu_addr=1,
+        func_code=3,
+        address=100,
+        name="Voltage",
+        code="VOLTAGE",
+        frame_type=0,
+        decode="0x41",
+        iec_type_id="M_ME_NB_1",
+        mul_coe=0.1,
+        add_coe=5,
+    )
+    device = SimpleNamespace(
+        protocol_type=ProtocolType.Iec104Server,
+        protocol_handler=SimpleNamespace(),
+        point_manager=SimpleNamespace(get_all_points=lambda: [point]),
+    )
+    detail = {
+        "fields": [{"key": "common_address", "value": 1}],
+        "objects": [{"address": 100, "value": 100}],
+    }
+
+    MessageFormatter(device)._enrich_with_points(detail, ProtocolType.Iec104Server)
+
+    assert detail["objects"][0]["engineering_value"] == 15
+
+
 def test_iec104_integrated_total_decodes_bcr_flags():
     # M_IT_NA_1, counter=-2, BCR sequence=3, carry and invalid flags set.
     asdu = bytes.fromhex("0F0103000100010000FEFFFFFFA3")

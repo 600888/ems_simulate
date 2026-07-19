@@ -366,7 +366,7 @@ def is_short_float_type(type_id: str | None) -> bool:
     )
 
 
-def encode_iec104_value(real_value: float, type_id: str | None):
+def encode_iec104_value(raw_value: float, type_id: str | None):
     """根据 IEC104 ASDU 类型对值进行编码，返回 c104 库可接受的类型
 
     c104 库对不同 ASDU 类型要求不同的值类型：
@@ -376,7 +376,7 @@ def encode_iec104_value(real_value: float, type_id: str | None):
     - 其他类型: 直接使用 Python float/bool
 
     Args:
-        real_value: 物理值（遥测的 real_value）
+        raw_value: 协议原始值（与 Modbus 的寄存器值语义一致）
         type_id: IEC104 ASDU 类型标识
 
     Returns:
@@ -386,14 +386,14 @@ def encode_iec104_value(real_value: float, type_id: str | None):
 
     if is_normalized_type(type_id):
         # 归一化: c104 要求 NormalizedFloat，值域 -1.0 ~ +1.0
-        normalized = max(-1.0, min(1.0, float(real_value)))
+        normalized = max(-1.0, min(1.0, float(raw_value)))
         return c104.NormalizedFloat(normalized)
     elif is_scaled_type(type_id):
         # 标度化: c104 要求 Int16
-        return c104.Int16(int(round(real_value)))
+        return c104.Int16(int(round(raw_value)))
     else:
         # 短浮点或其他: 直接 float
-        return float(real_value)
+        return float(raw_value)
 
 
 def decode_iec104_value(raw_value, type_id: str | None) -> float:
@@ -405,13 +405,13 @@ def decode_iec104_value(raw_value, type_id: str | None) -> float:
     - 短浮点类型: 返回 Python float
 
     注意: c104 库已经在内部完成了 NVA→float 的转换，
-    不需要再除以 32767，直接 float() 即可得到物理值。
+    不需要再除以 32767，直接 float() 即可得到解码后的协议原始值。
 
     Args:
         raw_value: c104 库读取的原始值（可能是 NormalizedFloat、Int16、float 等）
         type_id: IEC104 ASDU 类型标识
 
     Returns:
-        解码后的物理值（Python float）
+        解码后的协议原始值（Python float）
     """
     return float(raw_value)

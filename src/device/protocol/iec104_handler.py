@@ -12,6 +12,7 @@ import c104
 
 from src.config.config import Config
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
+from src.enums.modbus_register import Decode
 from src.enums.point_data import Yc, Yk, Yt, Yx
 from src.enums.points.base_point import BasePoint
 from src.enums.points.iec104_quality import (
@@ -37,6 +38,24 @@ def _resolve_c104_type(point: BasePoint) -> c104.Type:
     iec_type = resolve_iec104_type(point.iec_type_id, point.frame_type)
     # c104 库使用 TypeID 字符串作为属性名映射到 c104.Type
     return getattr(c104.Type, iec_type.value)
+
+
+def _decode_c104_point_value(point: BasePoint, value: Any) -> Any:
+    """Convert a c104 value to the raw value stored by a point.
+
+    This follows the same boundary as Modbus handlers: protocol handlers only
+    encode/decode wire values, while Yc/Yt apply mul_coe/add_coe when their
+    ``value`` property updates ``real_value``.
+    """
+    if isinstance(point, (Yx, Yk)):
+        return int(bool(value))
+    if isinstance(point, (Yc, Yt)):
+        decoded = decode_iec104_value(value, point.iec_type_id)
+        info = Decode.get_info(point.decode)
+        if info.is_float:
+            return float(decoded)
+        return int(round(decoded))
+    return value
 
 
 class IEC104ServerHandler(ServerHandler):
@@ -117,11 +136,14 @@ class IEC104ServerHandler(ServerHandler):
         """读取测点值"""
         if self._server:
             common_address = int(point.rtu_addr) if point.rtu_addr else 1
-            return self._server.get_point_value(
+            value = self._server.get_point_value(
                 io_address=int(point.address),
                 frame_type=point.frame_type,
                 common_address=common_address,
             )
+            if value is not None:
+                return _decode_c104_point_value(point, value)
+            return None
         return 0
 
     def write_value(self, point: BasePoint, value: Any) -> bool:
@@ -137,14 +159,13 @@ class IEC104ServerHandler(ServerHandler):
         if self._server:
             common_address = int(point.rtu_addr) if point.rtu_addr else 1
 
-            # 获取要写入的物理值
             if isinstance(point, (Yc, Yt)):
-                real_value = point.real_value
+                encoded_value = encode_iec104_value(value, point.iec_type_id)
             elif isinstance(point, (Yx, Yk)):
                 # 遥信/遥控: 直接用 bool/int
                 self._server.set_point_value(
                     io_address=int(point.address),
-                    value=bool(point.value),
+                    value=bool(value),
                     frame_type=point.frame_type,
                     common_address=common_address,
                 )
@@ -159,10 +180,7 @@ class IEC104ServerHandler(ServerHandler):
                     )
                 return True
             else:
-                real_value = value
-
-            # 根据 IEC104 类型编码值（返回 c104 原生类型）
-            encoded_value = encode_iec104_value(real_value, point.iec_type_id)
+                encoded_value = value
 
             self._server.set_point_value(
                 io_address=int(point.address),
@@ -246,24 +264,13 @@ class IEC104ServerHandler(ServerHandler):
             return
 
         try:
-            # c104 对不同类型返回不同的值对象，转换为 Python 原生类型
-            if isinstance(point, (Yx, Yk)):
-                new_value = int(bool(value))
-            elif point_type in (c104.Type.C_SE_NA_1, c104.Type.C_SE_TA_1):
-                # 归一化值有 16-bit 精度损失（如 1.0→0.999969），四舍五入恢复
-                new_value = round(float(value))
-            else:
-                new_value = float(value)
-
-            # 通过 set_real_value 更新（会触发 value setter 和变更追踪）
-            if point.set_real_value(new_value):
-                if self._log:
-                    self._log.info(
-                        f"服务端收到命令并更新测点 {point.code}(站={common_address}, IOA={io_address}): {new_value}"
-                    )
-            else:
-                if self._log:
-                    self._log.warning(f"服务端收到命令但测点 {point.code} 值 {new_value} 超出允许范围")
+            new_value = _decode_c104_point_value(point, value)
+            point.value = new_value
+            if self._log:
+                self._log.info(
+                    f"服务端收到命令并更新测点 {point.code}(站={common_address}, IOA={io_address}): "
+                    f"raw={new_value}, real={getattr(point, 'real_value', new_value)}"
+                )
         except Exception as e:
             if self._log:
                 self._log.error(f"更新命令接收后的测点值失败: {e}")
@@ -549,8 +556,8 @@ class IEC104ClientHandler(ClientHandler):
         - 标度化类型: float(point.value) 返回标度值
         - 短浮点类型: float(point.value) 返回浮点数
 
-        对于遥测点(Yc)，c104 返回的值即为协议物理值，
-        需要通过系数换算为内部存储值，使得 real_value 正确。
+        与 Modbus 一致，c104 返回的值作为协议原始值存入 point.value，
+        Yc/Yt 点对象再统一应用 mul_coe/add_coe 计算 real_value。
         """
         # 检查客户端是否已连接（使用 is_running 属性实时检测）
         if not self._client:
@@ -563,7 +570,7 @@ class IEC104ClientHandler(ClientHandler):
         common_address = self._get_station_for_point(point)
 
         # IEC104 客户端通过 read_point 获取值
-        # c104 库已内部完成类型解码，float() 即可得到物理值
+        # c104 库已内部完成 ASDU 类型解码。
         c104_value = self._client.read_point(
             io_address=int(point.address),
             frame_type=point.frame_type,
@@ -588,23 +595,12 @@ class IEC104ClientHandler(ClientHandler):
                 self._log.error(f"IEC104 客户端读取测点值失败 (站={common_address}, IOA={point.address})")
             return None
 
-        # 对于遥测点，c104 返回的值是协议层物理值
-        # 需要通过 mul_coe/add_coe 反向换算为内部存储值
         if isinstance(point, Yc):
-            decoded_val = decode_iec104_value(c104_value, point.iec_type_id)
             try:
-                # 计算内部存储值，使得 real_value = value * mul_coe + add_coe = decoded_val
-                internal_value = (decoded_val - point.add_coe) / point.mul_coe
-                # 对于浮点解码模式，保留浮点精度；否则取整
-                from src.enums.modbus_register import Decode
-
-                info = Decode.get_info(point.decode)
-                if info.is_float:
-                    return float(internal_value)
-                return int(round(internal_value))
-            except (ZeroDivisionError, TypeError):
+                return _decode_c104_point_value(point, c104_value)
+            except (ValueError, TypeError):
                 if self._log:
-                    self._log.error(f"IEC104 客户端读取测点值失败，系数计算失败，地址: {point.address}")
+                    self._log.error(f"IEC104 客户端读取测点值解码失败，地址: {point.address}")
                 return None
         return c104_value
 
@@ -623,12 +619,9 @@ class IEC104ClientHandler(ClientHandler):
 
         common_address = self._get_station_for_point(point)
 
-        # 客户端写入：将内部原始值换算为物理值发送给外部设备
         try:
             if isinstance(point, (Yc, Yt)):
-                real_to_send = value * point.mul_coe + point.add_coe
-                # 根据 IEC104 类型编码值（返回 c104 原生类型）
-                encoded_value = encode_iec104_value(real_to_send, point.iec_type_id)
+                encoded_value = encode_iec104_value(value, point.iec_type_id)
                 return self._client.write_point(
                     io_address=int(point.address),
                     value=encoded_value,
@@ -712,20 +705,12 @@ class IEC104ClientHandler(ClientHandler):
                 self._log.error("IEC104 客户端主动读取测点值失败")
             return None
 
-        # 同 read_value() 一样的系数换算逻辑
         if isinstance(point, Yc):
-            decoded_val = decode_iec104_value(c104_value, point.iec_type_id)
             try:
-                internal_value = (decoded_val - point.add_coe) / point.mul_coe
-                from src.enums.modbus_register import Decode
-
-                info = Decode.get_info(point.decode)
-                if info.is_float:
-                    return float(internal_value)
-                return int(round(internal_value))
-            except (ZeroDivisionError, TypeError):
+                return _decode_c104_point_value(point, c104_value)
+            except (ValueError, TypeError):
                 if self._log:
-                    self._log.error(f"IEC104 客户端主动读取测点值失败，系数计算失败，地址: {point.address}")
+                    self._log.error(f"IEC104 客户端主动读取测点值解码失败，地址: {point.address}")
                 return None
         return c104_value
 

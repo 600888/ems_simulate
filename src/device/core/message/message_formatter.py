@@ -332,9 +332,7 @@ class MessageFormatter:
             item["name"] = point.name or item.get("name", "")
             value = item.get("value")
             if isinstance(value, (int, float)) and not isinstance(value, bool):
-                item["engineering_value"] = (
-                    value if not dlt645 else round(value * metadata["multiplier"] + metadata["addition"], 6)
-                )
+                item["engineering_value"] = round(value * metadata["multiplier"] + metadata["addition"], 6)
 
     @staticmethod
     def _find_modbus_request_context(messages: list[dict], message: dict, is_tcp: bool) -> dict | None:

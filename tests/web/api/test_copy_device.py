@@ -226,6 +226,96 @@ def test_copy_loads_runtime_and_security_from_new_channel(copy_configuration):
     assert copied_channel_data["id"] != source_channel["id"]
 
 
+def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
+    request = CopyDeviceRequest(channel_id=2, count=1, ip_start_offset=0, suffix="_COPY")
+    source_channel = {
+        "id": 2,
+        "device_id": 10,
+        "code": "IEC104",
+        "name": "IEC104",
+        "protocol_type": 2,
+        "conn_type": 2,
+        "ip": "127.0.0.1",
+        "port": 2404,
+    }
+    source_points = [
+        {
+            "code": "YC",
+            "name": "YC",
+            "rtu_addr": 1,
+            "reg_addr": "0x4001",
+            "frame_type": 0,
+            "mul_coe": 0.1,
+            "add_coe": 5,
+            "iec_common_address": 1,
+            "iec_cot": 3,
+            "iec_quality": 0x11,
+            "iec_type_id": "M_ME_NB_1",
+        },
+        {
+            "code": "YX",
+            "name": "YX",
+            "rtu_addr": 1,
+            "reg_addr": "0x0001",
+            "frame_type": 1,
+            "iec_common_address": 1,
+            "iec_cot": 20,
+            "iec_quality": 0x10,
+            "iec_type_id": "M_DP_TB_1",
+        },
+        {
+            "code": "YK",
+            "name": "YK",
+            "rtu_addr": 1,
+            "reg_addr": "0x6001",
+            "frame_type": 2,
+            "iec_common_address": 1,
+            "iec_cot": 6,
+            "iec_quality": 0,
+            "iec_type_id": "C_DC_TA_1",
+        },
+        {
+            "code": "YT",
+            "name": "YT",
+            "rtu_addr": 1,
+            "reg_addr": "0x6201",
+            "frame_type": 3,
+            "mul_coe": 0.1,
+            "add_coe": 0,
+            "iec_common_address": 1,
+            "iec_cot": 6,
+            "iec_quality": 1,
+            "iec_type_id": "C_SE_NC_1",
+        },
+    ]
+    app_request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(device_controller=SimpleNamespace(device_list=[], device_map={})),
+        ),
+    )
+
+    with (
+        patch("src.web.api.channel.device_manage.ChannelService.get_channel_by_id", return_value=source_channel),
+        patch("src.web.api.channel.device_manage.ChannelService.get_channel_by_code", return_value=None),
+        patch("src.web.api.channel.device_manage.ChannelService.create_channel", return_value=30),
+        patch("src.data.service.device_service.DeviceService.get_device_by_id", return_value={"id": 10}),
+        patch("src.data.service.device_service.DeviceService.create_device", return_value=20),
+        patch("src.data.dao.point_dao.PointDao.get_points_by_channel", return_value=source_points),
+        patch("src.data.dao.point_dao.PointDao.create_point") as create_point,
+        patch("src.web.api.channel.device_manage.get_device_builder", return_value=_fake_builder()),
+    ):
+        asyncio.run(copy_device(request, app_request))
+
+    assert create_point.call_count == 4
+    copied_by_frame = {call.args[1]: call.args[2] for call in create_point.call_args_list}
+    for frame_type, source in enumerate(source_points):
+        copied = copied_by_frame[frame_type]
+        assert copied["iec_type_id"] == source["iec_type_id"]
+        assert copied["iec_quality"] == source["iec_quality"]
+        assert copied["iec_common_address"] == source["iec_common_address"]
+        assert copied["iec_cot"] == source["iec_cot"]
+
+
 def test_copy_iec61850_deep_copies_model_resources_and_fc():
     request = CopyDeviceRequest(channel_id=4, count=1, ip_start_offset=0, suffix="_COPY")
     source_channel = {
