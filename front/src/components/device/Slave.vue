@@ -7,7 +7,11 @@
       :before-leave="beforeLeave"
       @tab-remove="handleTabRemove"
     >
-      <el-tab-pane v-for="slave in slaveIdList" :key="slave" :name="slave.toString()">
+      <el-tab-pane
+        v-for="slave in slaveIdList"
+        :key="slave"
+        :name="slave.toString()"
+      >
         <template #label>
           <span class="custom-tab-label">
             <span>{{
@@ -59,7 +63,11 @@
               {{ $t("common.search") }}
             </el-button>
             <template v-if="!(isIec61850 && iec61850Category === 'DataSets')">
-              <el-button class="modern-btn reset-btn" @click="resetPoint" :icon="Refresh">
+              <el-button
+                class="modern-btn reset-btn"
+                @click="resetPoint"
+                :icon="Refresh"
+              >
                 {{ $t("slave.resetPointValue") }}
               </el-button>
               <el-button
@@ -76,7 +84,11 @@
                 @confirm="handleClearPoints"
               >
                 <template #reference>
-                  <el-button class="modern-btn clear-btn" type="danger" :icon="Delete">
+                  <el-button
+                    class="modern-btn clear-btn"
+                    type="danger"
+                    :icon="Delete"
+                  >
                     {{ $t("slave.clearPoints") }}
                   </el-button>
                 </template>
@@ -106,7 +118,9 @@
                 <el-tooltip
                   v-if="!(isIec61850 && iec61850Category === 'DataSets')"
                   :content="
-                    readMode === 'batch' ? $t('slave.batchRead') : $t('slave.singleRead')
+                    readMode === 'batch'
+                      ? $t('slave.batchRead')
+                      : $t('slave.singleRead')
                   "
                   placement="top"
                 >
@@ -159,7 +173,11 @@
 
                 <!-- 手动读取/取消按钮 (仅在非自动读取时显示) -->
                 <el-button
-                  v-if="isIec61850 && iec61850Category === 'DataSets' && !datasetAutoRead"
+                  v-if="
+                    isIec61850 &&
+                    iec61850Category === 'DataSets' &&
+                    !datasetAutoRead
+                  "
                   type="success"
                   class="modern-btn manual-read-btn"
                   @click="handleDatasetManualRead"
@@ -169,7 +187,10 @@
                   {{ $t("slave.readDataset") }}
                 </el-button>
                 <el-button
-                  v-else-if="!(isIec61850 && iec61850Category === 'DataSets') && !isAutoRead"
+                  v-else-if="
+                    !(isIec61850 && iec61850Category === 'DataSets') &&
+                    !isAutoRead
+                  "
                   :type="isReading ? 'danger' : 'success'"
                   class="modern-btn"
                   :class="isReading ? 'cancel-read-btn' : 'manual-read-btn'"
@@ -181,14 +202,18 @@
                     isReading
                       ? $t("common.cancel")
                       : readMode === "batch"
-                      ? $t("common.batchRead")
-                      : $t("common.singleRead")
+                        ? $t("common.batchRead")
+                        : $t("common.singleRead")
                   }}
                 </el-button>
 
                 <!-- 自动读取时显示当前模式 -->
                 <el-tag
-                  v-if="isIec61850 && iec61850Category === 'DataSets' && datasetAutoRead"
+                  v-if="
+                    isIec61850 &&
+                    iec61850Category === 'DataSets' &&
+                    datasetAutoRead
+                  "
                   type="info"
                   size="small"
                   effect="plain"
@@ -196,7 +221,10 @@
                   {{ $t("slave.datasetAutoReading") }}
                 </el-tag>
                 <el-tag
-                  v-else-if="!(isIec61850 && iec61850Category === 'DataSets') && isAutoRead"
+                  v-else-if="
+                    !(isIec61850 && iec61850Category === 'DataSets') &&
+                    isAutoRead
+                  "
                   type="info"
                   size="small"
                   effect="plain"
@@ -329,8 +357,23 @@ import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox, type TabsPaneContext } from "element-plus";
 import { showError } from "@/api/http";
-import { Search, Refresh, Download, Plus, Delete, CircleCloseFilled, MoreFilled, InfoFilled } from "@element-plus/icons-vue";
-import { getSlaveIdList, getDeviceTable, getDeviceInfo, deleteSlave, iec104Interrogation } from "@/api/deviceApi";
+import {
+  Search,
+  Refresh,
+  Download,
+  Plus,
+  Delete,
+  CircleCloseFilled,
+  MoreFilled,
+  InfoFilled,
+} from "@element-plus/icons-vue";
+import {
+  getSlaveIdList,
+  getDeviceTable,
+  getDeviceInfo,
+  deleteSlave,
+  iec104Interrogation,
+} from "@/api/deviceApi";
 import { instance } from "@/api/http";
 import { getIEC61850TreeData } from "@/api/channelApi";
 import type { IEC61850TreeDataResponse } from "@/api/channelApi";
@@ -351,7 +394,9 @@ const routeName = ref(initialDeviceName);
 const activeName = ref("");
 const slaveIdList = ref<number[]>([]);
 const currentSlaveId = ref(1);
-const tableDataMap = ref<Record<number, { tableHeader: string[]; tableData: any[][]; total: number }>>({});
+const tableDataMap = ref<
+  Record<number, { tableHeader: string[]; tableData: any[][]; total: number }>
+>({});
 const searchQuery = ref<Record<number, string>>({});
 const pageSize = ref(10);
 const pageIndex = ref(1);
@@ -364,8 +409,8 @@ const connType = ref<number>(2); // 默认为服务端
 const channelId = ref<number | null>(null);
 
 // IEC61850 树形节点筛选
-const iec61850Category = ref<string>('');
-const iec61850Item = ref<string>('');
+const iec61850Category = ref<string>("");
+const iec61850Item = ref<string>("");
 
 // IEC61850 树形数据 (新接口)
 const iec61850TreeData = ref<IEC61850TreeDataResponse | null>(null);
@@ -377,13 +422,15 @@ const isIec61850 = computed(() => {
 
 // 判断当前是否为 IEC61850 树节点筛选模式
 const isIec61850Filtered = computed(() => {
-  return isIec61850.value && channelId.value !== null && !!iec61850Category.value;
+  return (
+    isIec61850.value && channelId.value !== null && !!iec61850Category.value
+  );
 });
 
 // IEC104 客户端判断
 const isIec104Client = computed(() => {
   const protocolStr = String(protocolType.value);
-  return isIec104Protocol(protocolStr) && protocolStr === 'Iec104Client';
+  return isIec104Protocol(protocolStr) && protocolStr === "Iec104Client";
 });
 
 // 总召唤按钮状态
@@ -392,11 +439,11 @@ const handleInterrogation = async () => {
   interrogating.value = true;
   try {
     await iec104Interrogation(routeName.value);
-    ElMessage.success('总召唤已触发，数据同步完成');
+    ElMessage.success("总召唤已触发，数据同步完成");
     // 刷新表格
     handleSearch(currentSlaveId.value);
   } catch (e: any) {
-    showError(e, '总召唤失败');
+    showError(e, "总召唤失败");
   } finally {
     interrogating.value = false;
   }
@@ -409,11 +456,20 @@ const editSlaveId = ref<number>(0);
 
 const pointTypes = computed<number[]>(() => {
   // 只提取帧类型筛选的数字值，忽略 IEC104类型等字符串筛选
-  const frameTypeFilters = activeFilters.value['帧类型'];
+  const frameTypeFilters = activeFilters.value["帧类型"];
   if (frameTypeFilters && Array.isArray(frameTypeFilters)) {
-    return frameTypeFilters.filter((v: any) => typeof v === 'number');
+    return frameTypeFilters.filter((v: any) => typeof v === "number");
   }
   return [];
+});
+
+const iec104Types = computed<string[]>(() => {
+  const typeFilters = activeFilters.value["IEC104类型"];
+  return Array.isArray(typeFilters)
+    ? typeFilters.filter(
+        (value: unknown): value is string => typeof value === "string",
+      )
+    : [];
 });
 
 const handlePageIndexChange = (idx: number) => {
@@ -425,19 +481,33 @@ const handlePageSizeChange = (size: number) => {
   handleSearch(currentSlaveId.value);
 };
 const handleFilterChange = (filters: Record<string, any>) => {
-  const prevFilters = activeFilters.value;
   activeFilters.value = filters;
-  // 仅帧类型筛选变化时需要重新请求后端，IEC104类型筛选纯前端过滤
-  const prevFrameTypes = ((prevFilters['帧类型'] || []) as any[]).join(',');
-  const newFrameTypes = ((filters['帧类型'] || []) as any[]).join(',');
-  if (prevFrameTypes !== newFrameTypes) {
-    fetchDeviceTable(routeName.value, currentSlaveId.value, searchQuery.value[currentSlaveId.value] || "", pageIndex.value, pageSize.value);
-  }
+  // 筛选必须先于分页执行；切换筛选条件后从筛选结果的第一页开始展示。
+  pageIndex.value = 1;
+  fetchDeviceTable(
+    routeName.value,
+    currentSlaveId.value,
+    searchQuery.value[currentSlaveId.value] || "",
+    1,
+    pageSize.value,
+  );
 };
-const handleSortChange = ({ prop, order }: { prop: string, order: string | null }) => {
+const handleSortChange = ({
+  prop,
+  order,
+}: {
+  prop: string;
+  order: string | null;
+}) => {
   orderBy.value = order ? prop : null;
   orderDirection.value = order;
-  fetchDeviceTable(routeName.value, currentSlaveId.value, searchQuery.value[currentSlaveId.value] || "", pageIndex.value, pageSize.value);
+  fetchDeviceTable(
+    routeName.value,
+    currentSlaveId.value,
+    searchQuery.value[currentSlaveId.value] || "",
+    pageIndex.value,
+    pageSize.value,
+  );
 };
 const handleTableRefresh = () => handleSearch(currentSlaveId.value);
 
@@ -453,7 +523,9 @@ const fetchSlaveList = async () => {
       // 存储 channel_id 用于 IEC61850 表格数据接口
       channelId.value = deviceInfo.get("channel_id") ?? null;
     }
-  } catch (e) { console.warn("设备信息获取失败"); }
+  } catch (e) {
+    console.warn("设备信息获取失败");
+  }
 
   // IEC61850 协议不需要从机列表，使用默认值
   if (isIec61850.value) {
@@ -472,16 +544,27 @@ const fetchSlaveList = async () => {
   }
 };
 
-const fetchDeviceTable = async (name: string, sid: number, q: string, pi: number, ps: number) => {
+const fetchDeviceTable = async (
+  name: string,
+  sid: number,
+  q: string,
+  pi: number,
+  ps: number,
+) => {
   // 导入 ICD 文件期间暂停刷新，避免 404 错误
   if (isAutoRefreshPaused.value) return;
   // IEC61850 使用新的树形接口
   if (isIec61850.value && channelId.value !== null) {
     // DataSets 分类: 使用 tree-data 接口（Table.vue 的 displayData 只认 iec61850TreeData）
-    if (iec61850Category.value === 'DataSets' && iec61850Item.value) {
+    if (iec61850Category.value === "DataSets" && iec61850Item.value) {
       const treeResp = await getIEC61850TreeData(
-        channelId.value, iec61850Category.value, iec61850Item.value,
-        q || null, pointTypes.value, pi, ps,
+        channelId.value,
+        iec61850Category.value,
+        iec61850Item.value,
+        q || null,
+        pointTypes.value,
+        pi,
+        ps,
       );
       // 读取失败时保留上一帧数据，避免表格瞬间清空后再次出现造成闪烁。
       if (treeResp) {
@@ -493,7 +576,7 @@ const fetchDeviceTable = async (name: string, sid: number, q: string, pi: number
       if (!tableDataMap.value[sid]) {
         tableDataMap.value[sid] = { tableHeader: [], tableData: [], total: 0 };
       }
-      tableDataMap.value[sid].tableHeader = ['测点名称', '测点编码', '真实值'];
+      tableDataMap.value[sid].tableHeader = ["测点名称", "测点编码", "真实值"];
       return;
     }
 
@@ -515,14 +598,37 @@ const fetchDeviceTable = async (name: string, sid: number, q: string, pi: number
       tableDataMap.value[sid] = { tableHeader: [], tableData: [], total: 0 };
     }
     tableDataMap.value[sid].tableHeader = [
-      "测点名称", "测点类型", "真实值", "状态",
+      "测点名称",
+      "测点类型",
+      "真实值",
+      "状态",
     ];
     tableDataMap.value[sid].total = total.value;
     return;
   }
 
-  const data = await getDeviceTable(name, sid, q, pi, ps, pointTypes.value, orderBy.value, orderDirection.value);
+  const data = await getDeviceTable(
+    name,
+    sid,
+    q,
+    pi,
+    ps,
+    pointTypes.value,
+    orderBy.value,
+    orderDirection.value,
+    iec104Types.value,
+  );
   if (data) {
+    const fetchedTotal = Number(data.get("total") || 0);
+    const fetchedTotalPages = Math.max(1, Math.ceil(fetchedTotal / ps));
+
+    // 缓存的总数可能因筛选或数据变化而过期；请求后再校验一次当前页。
+    if (sid === currentSlaveId.value && pi > fetchedTotalPages) {
+      pageIndex.value = 1;
+      await fetchDeviceTable(name, sid, q, 1, ps);
+      return;
+    }
+
     // 确保初始化对象
     if (!tableDataMap.value[sid]) {
       tableDataMap.value[sid] = { tableHeader: [], tableData: [], total: 0 };
@@ -531,19 +637,25 @@ const fetchDeviceTable = async (name: string, sid: number, q: string, pi: number
     tableDataMap.value[sid] = {
       tableHeader: TABLE_HEADERS as string[],
       tableData: data.get("table_data"),
-      total: data.get("total"),
+      total: fetchedTotal,
     };
 
     // 如果是当前显示的从机，同时更新全局 total 以防万一（但我们将主要改为从 map 中取值）
     if (sid === currentSlaveId.value) {
-      total.value = data.get("total");
+      total.value = fetchedTotal;
     }
   }
 };
 
 const fetchAllDeviceTables = async () => {
   for (const slave of slaveIdList.value) {
-    await fetchDeviceTable(routeName.value, slave, "", pageIndex.value, pageSize.value);
+    await fetchDeviceTable(
+      routeName.value,
+      slave,
+      "",
+      pageIndex.value,
+      pageSize.value,
+    );
   }
 };
 
@@ -560,45 +672,62 @@ const beforeLeave = (activeName: string, oldActiveName: string) => {
   return true;
 };
 
-const handleClick = (tab: TabsPaneContext) => {
+const handleClick = async (tab: TabsPaneContext) => {
   if (tab.paneName === "add") {
     // 如果当前已经是 add（例如删光了所有从机），再次点击需要弹窗
     if (activeName.value === "add") {
-        showAddSlaveDialog.value = true;
+      showAddSlaveDialog.value = true;
     }
     return;
   }
 
   if (tab.index !== undefined) {
-    currentSlaveId.value = slaveIdList.value[parseInt(tab.index)];
-    fetchDeviceTable(routeName.value, currentSlaveId.value, "", pageIndex.value, pageSize.value);
+    const targetSlaveId = slaveIdList.value[parseInt(tab.index)];
+    currentSlaveId.value = targetSlaveId;
+    // 先尝试沿用当前页；fetchDeviceTable 会根据目标从机的最新总数回退到第一页。
+    await fetchDeviceTable(
+      routeName.value,
+      targetSlaveId,
+      searchQuery.value[targetSlaveId] || "",
+      pageIndex.value,
+      pageSize.value,
+    );
   }
 };
 
 const handleSearch = (slave: number) => {
-  fetchDeviceTable(routeName.value, slave, searchQuery.value[slave] || "", pageIndex.value, pageSize.value);
+  fetchDeviceTable(
+    routeName.value,
+    slave,
+    searchQuery.value[slave] || "",
+    pageIndex.value,
+    pageSize.value,
+  );
 };
 
 const resetPoint = async () => {
   try {
     if (await resetPointData(routeName.value)) {
-      ElMessage.success(t('slave.resetSuccess'));
+      ElMessage.success(t("slave.resetSuccess"));
       handleSearch(currentSlaveId.value);
     }
   } catch (e) {
-    console.error('重置测点失败:', e);
+    console.error("重置测点失败:", e);
   }
 };
 
 const handleClearPoints = async () => {
   try {
-    const deletedCount = await clearPoints(routeName.value, currentSlaveId.value);
+    const deletedCount = await clearPoints(
+      routeName.value,
+      currentSlaveId.value,
+    );
     if (deletedCount >= 0) {
-      ElMessage.success(t('slave.clearSuccess', { count: deletedCount }));
+      ElMessage.success(t("slave.clearSuccess", { count: deletedCount }));
       handleTableRefresh();
     }
   } catch (e) {
-    console.error('清空测点失败:', e);
+    console.error("清空测点失败:", e);
   }
 };
 
@@ -608,7 +737,7 @@ const handleDeleteSlave = async (slaveId: number) => {
   try {
     const success = await deleteSlave(routeName.value, slaveId);
     if (success) {
-      ElMessage.success(t('slave.deleteSuccess', { id: slaveId }));
+      ElMessage.success(t("slave.deleteSuccess", { id: slaveId }));
 
       // 标记为内部切换，防止触发 beforeLeave 的弹窗
       isInternalSwitch.value = true;
@@ -627,7 +756,7 @@ const handleDeleteSlave = async (slaveId: number) => {
           currentSlaveId.value,
           searchQuery.value[currentSlaveId.value] || "",
           1,
-          pageSize.value
+          pageSize.value,
         );
       } else {
         activeName.value = "add";
@@ -640,22 +769,21 @@ const handleDeleteSlave = async (slaveId: number) => {
       }, 100);
     }
   } catch (e) {
-    console.error('删除从机失败:', e);
+    console.error("删除从机失败:", e);
   }
 };
-
 
 const handleTabRemove = (tabName: string | number) => {
   const slaveId = Number(tabName);
 
   ElMessageBox.confirm(
-    t('slave.deleteConfirm', { id: slaveId }),
-    t('common.warning'),
+    t("slave.deleteConfirm", { id: slaveId }),
+    t("common.warning"),
     {
-      confirmButtonText: t('common.confirm'),
-      cancelButtonText: t('common.cancel'),
-      type: 'warning',
-    }
+      confirmButtonText: t("common.confirm"),
+      cancelButtonText: t("common.cancel"),
+      type: "warning",
+    },
   )
     .then(() => {
       handleDeleteSlave(slaveId);
@@ -666,9 +794,9 @@ const handleTabRemove = (tabName: string | number) => {
 };
 
 const handleCommand = (command: string | number | object, slaveId: number) => {
-  if (command === 'delete') {
+  if (command === "delete") {
     handleTabRemove(slaveId);
-  } else if (command === 'edit') {
+  } else if (command === "edit") {
     editSlaveId.value = slaveId;
     showEditSlaveDialog.value = true;
   }
@@ -681,15 +809,14 @@ const handleSlaveEdited = async (newSlaveId: number) => {
     activeName.value = newSlaveId.toString();
     currentSlaveId.value = newSlaveId;
     await fetchDeviceTable(
-        routeName.value,
-        currentSlaveId.value,
-        searchQuery.value[currentSlaveId.value] || "",
-        1,
-        pageSize.value
+      routeName.value,
+      currentSlaveId.value,
+      searchQuery.value[currentSlaveId.value] || "",
+      1,
+      pageSize.value,
     );
   }
 };
-
 
 // ===== 自动读取 composable =====
 const {
@@ -738,44 +865,56 @@ const {
   fetchDeviceTable,
 });
 
-
 // Watch for route param changes
 
-
-watch(() => route.fullPath, async () => {
+watch(
+  () => route.fullPath,
+  async () => {
     // 强制刷新：当 query 参数变化（如添加了 t=timestamp）且属于本组件对应设备时触发
-    if (route.params.deviceName && route.params.deviceName === initialDeviceName) {
+    if (
+      route.params.deviceName &&
+      route.params.deviceName === initialDeviceName
+    ) {
       // 同步 IEC61850 树节点筛选参数
-      const newCategory = (route.query.category as string) || '';
-      const newItem = (route.query.item as string) || '';
-      const filterChanged = newCategory !== iec61850Category.value || newItem !== iec61850Item.value;
+      const newCategory = (route.query.category as string) || "";
+      const newItem = (route.query.item as string) || "";
+      const filterChanged =
+        newCategory !== iec61850Category.value ||
+        newItem !== iec61850Item.value;
       iec61850Category.value = newCategory;
       iec61850Item.value = newItem;
 
       if (routeName.value !== route.params.deviceName) {
-          stopAutoRefresh();
-          routeName.value = route.params.deviceName as string;
-          pageIndex.value = 1;
-          pageSize.value = 10;
-          isAutoRead.value = false;
-          await fetchSlaveList();
-          startAutoRefresh();
+        stopAutoRefresh();
+        routeName.value = route.params.deviceName as string;
+        pageIndex.value = 1;
+        pageSize.value = 10;
+        isAutoRead.value = false;
+        await fetchSlaveList();
+        startAutoRefresh();
       } else {
         // 同一设备，若筛选参数变化则重新加载数据
         if (filterChanged) {
           pageIndex.value = 1;
-          await fetchDeviceTable(routeName.value, currentSlaveId.value, searchQuery.value[currentSlaveId.value] || "", pageIndex.value, pageSize.value);
+          await fetchDeviceTable(
+            routeName.value,
+            currentSlaveId.value,
+            searchQuery.value[currentSlaveId.value] || "",
+            pageIndex.value,
+            pageSize.value,
+          );
         } else {
           handleSearch(currentSlaveId.value);
         }
       }
     }
-});
+  },
+);
 
 onMounted(async () => {
   // 从路由查询参数初始化 IEC61850 筛选条件
-  iec61850Category.value = (route.query.category as string) || '';
-  iec61850Item.value = (route.query.item as string) || '';
+  iec61850Category.value = (route.query.category as string) || "";
+  iec61850Item.value = (route.query.item as string) || "";
 
   await fetchSlaveList();
   // 获取当前自动读取状态
@@ -785,79 +924,84 @@ onMounted(async () => {
   // connectWebSocket();
 });
 
-
 let websocket: WebSocket | null = null;
 let wsReconnectTimer: any = null;
 
 // import { instance } from "@/api/deviceApi"; // Moved to top
 
 const connectWebSocket = () => {
-    if (websocket) return;
+  if (websocket) return;
 
-    // 获取 baseURL
-    let baseURL = instance.defaults.baseURL || '/';
-    if (baseURL.startsWith('/')) {
-        // 如果是相对路径，拼接到当前 host
-        baseURL = window.location.origin + baseURL;
+  // 获取 baseURL
+  let baseURL = instance.defaults.baseURL || "/";
+  if (baseURL.startsWith("/")) {
+    // 如果是相对路径，拼接到当前 host
+    baseURL = window.location.origin + baseURL;
+  }
+
+  // 替换 http/https 为 ws/wss
+  const wsBase = baseURL.replace(/^http/, "ws");
+  // 去除末尾斜杠
+  const wsUrl = `${wsBase.replace(/\/$/, "")}/device/ws/${routeName.value}`;
+
+  console.log("Connecting to WebSocket:", wsUrl); // Debug log
+
+  websocket = new WebSocket(wsUrl);
+
+  websocket.onopen = () => {
+    console.log("WebSocket connected");
+    if (wsReconnectTimer) {
+      clearTimeout(wsReconnectTimer);
+      wsReconnectTimer = null;
     }
+  };
 
-    // 替换 http/https 为 ws/wss
-    const wsBase = baseURL.replace(/^http/, 'ws');
-    // 去除末尾斜杠
-    const wsUrl = `${wsBase.replace(/\/$/, '')}/device/ws/${routeName.value}`;
+  websocket.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.type === "progress") {
+        readProgress.value = data.progress;
+        progressMessage.value = data.message;
 
-    console.log("Connecting to WebSocket:", wsUrl); // Debug log
+        // 实时刷新表格数据
+        // 收到进度更新说明有新数据被读取，立即刷新当前显示的表格
+        handleSearch(currentSlaveId.value);
 
-    websocket = new WebSocket(wsUrl);
-
-    websocket.onopen = () => {
-        console.log("WebSocket connected");
-        if (wsReconnectTimer) {
-            clearTimeout(wsReconnectTimer);
-            wsReconnectTimer = null;
+        if (data.progress >= 100) {
+          setTimeout(() => {
+            readProgress.value = 0;
+            progressMessage.value = "";
+          }, 2000);
         }
-    };
+      }
+    } catch (e) {
+      console.error("WebSocket message error:", e);
+    }
+  };
 
-    websocket.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'progress') {
-                readProgress.value = data.progress;
-                progressMessage.value = data.message;
+  websocket.onclose = () => {
+    console.log("WebSocket disconnected");
+    websocket = null;
+    // 尝试重连
+    wsReconnectTimer = setTimeout(() => {
+      connectWebSocket();
+    }, 3000);
+  };
 
-                // 实时刷新表格数据
-                // 收到进度更新说明有新数据被读取，立即刷新当前显示的表格
-                handleSearch(currentSlaveId.value);
-
-                if (data.progress >= 100) {
-                    setTimeout(() => {
-                        readProgress.value = 0;
-                        progressMessage.value = "";
-                    }, 2000);
-                }
-            }
-        } catch (e) {
-            console.error("WebSocket message error:", e);
-        }
-    };
-
-    websocket.onclose = () => {
-        console.log("WebSocket disconnected");
-        websocket = null;
-        // 尝试重连
-        wsReconnectTimer = setTimeout(() => {
-            connectWebSocket();
-        }, 3000);
-    };
-
-    websocket.onerror = (err) => {
-         console.error("WebSocket error:", err);
-         websocket?.close();
-    };
+  websocket.onerror = (err) => {
+    console.error("WebSocket error:", err);
+    websocket?.close();
+  };
 };
 
 const handlePointAdded = () => {
-  fetchDeviceTable(routeName.value, currentSlaveId.value, searchQuery.value[currentSlaveId.value] || "", pageIndex.value, pageSize.value);
+  fetchDeviceTable(
+    routeName.value,
+    currentSlaveId.value,
+    searchQuery.value[currentSlaveId.value] || "",
+    pageIndex.value,
+    pageSize.value,
+  );
 };
 
 const handleSlaveAdded = async () => {
@@ -869,7 +1013,7 @@ const reloadDatas = async () => {
 };
 
 defineExpose({
-  reloadDatas
+  reloadDatas,
 });
 </script>
 

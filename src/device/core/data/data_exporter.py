@@ -4,7 +4,7 @@
 """
 
 from src.device.core.point.point_manager import PointManager
-from src.enums.point_data import Yc, Yx
+from src.enums.point_data import BasePoint, Yc, Yx
 
 
 class DataExporter:
@@ -43,6 +43,7 @@ class DataExporter:
         mask_error: bool = True,
         order_by: str | None = None,
         order_direction: str | None = None,
+        iec104_types: list[str] | None = None,
     ) -> tuple[list[list[str]], int]:
         """获取表格数据
 
@@ -55,6 +56,7 @@ class DataExporter:
             mask_error: 是否隐藏无效数据(错误/未知)
             order_by: 排序字段 (地址, 功能码, 解析码)
             order_direction: 排序方向 (ascending, descending)
+            iec104_types: IEC104 ASDU 类型标识列表
 
         Returns:
             (数据列表, 总数)
@@ -64,31 +66,34 @@ class DataExporter:
 
         yc_list, yx_list, yt_list, yk_list = self._point_manager.get_points_by_slave(slave_id)
 
+        def matches_iec104_type(point: BasePoint) -> bool:
+            return not iec104_types or point.iec_type_id in iec104_types
+
         table_data: list[list[str]] = []
         frame_type_dict = PointManager.frame_type_dict()
 
         # 处理遥测数据
         if 0 in point_types:
             for yc in yc_list:
-                if name is None or name in str(yc.name):
+                if (name is None or name in str(yc.name)) and matches_iec104_type(yc):
                     table_data.append(self._format_yc_row(yc, frame_type_dict, mask_error))
 
         # 处理遥信数据
         if 1 in point_types:
             for yx in yx_list:
-                if name is None or name in str(yx.name):
+                if (name is None or name in str(yx.name)) and matches_iec104_type(yx):
                     table_data.append(self._format_yx_row(yx, frame_type_dict, mask_error))
 
         # 处理遥控数据
         if 2 in point_types:
             for yk in yk_list:
-                if name is None or name in str(yk.name):
+                if (name is None or name in str(yk.name)) and matches_iec104_type(yk):
                     table_data.append(self._format_yx_row(yk, frame_type_dict, mask_error))
 
         # 处理遥调数据
         if 3 in point_types:
             for yt in yt_list:
-                if name is None or name in str(yt.name):
+                if (name is None or name in str(yt.name)) and matches_iec104_type(yt):
                     table_data.append(self._format_yc_row(yt, frame_type_dict, mask_error))
 
         # Default sorting by address

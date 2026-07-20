@@ -894,6 +894,7 @@ class Device:
         point_types: list[int] | None = None,
         order_by: str | None = None,
         order_direction: str | None = None,
+        iec104_types: list[str] | None = None,
     ) -> tuple[list[list[str]], int]:
         # 对于 IEC104 客户端，在获取表格数据前同步 c104.Point 的值到内部点
         if self.protocol_type == ProtocolType.Iec104Client and self.protocol_handler:
@@ -918,6 +919,7 @@ class Device:
             mask_error=mask_error,
             order_by=order_by,
             order_direction=order_direction,
+            iec104_types=iec104_types,
         )
 
     def _sync_iec104_client_values(self, slave_id: int) -> None:

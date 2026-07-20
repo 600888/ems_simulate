@@ -99,13 +99,14 @@ async def get_table_by_slave_id(req: DeviceTableRequest, request: Request):
     """获取设备表格数据"""
     device = _get_device(req.device_name, request)
     table_data, total = device.get_table_data(
-        req.slave_id,
-        req.point_name,
-        req.page_index,
-        req.page_size,
-        req.point_types,
-        req.order_by,
-        req.order_direction,
+        slave_id=req.slave_id,
+        name=req.point_name,
+        page_index=req.page_index,
+        page_size=req.page_size,
+        point_types=req.point_types,
+        order_by=req.order_by,
+        order_direction=req.order_direction,
+        iec104_types=req.iec104_types,
     )
     data_dict = {"total": total, "table_data": table_data}
     return BaseResponse(message="获取从机信息成功!", data=data_dict)
