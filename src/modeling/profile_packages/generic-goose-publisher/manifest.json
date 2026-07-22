@@ -1,0 +1,14 @@
+{
+  "id": "generic-goose-publisher",
+  "version": "1.0.0",
+  "name": "通用 GOOSE 发布",
+  "description": "提供 DataSet、GSEControl、MAC/APPID/VLAN 联动配置。",
+  "category": "service",
+  "dependencies": ["generic-ied-ed2"],
+  "default": false,
+  "service_capabilities": [
+    {"tag": "GOOSE", "attributes": {"max": 32}},
+    {"tag": "GSESettings", "attributes": {"cbName": "Conf"}}
+  ],
+  "templates": ["GOOSE_PUBLISHER"]
+}

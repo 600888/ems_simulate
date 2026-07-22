@@ -1,0 +1,18 @@
+{
+  "id": "protection-cn",
+  "version": "1.0.0",
+  "name": "国内继电保护",
+  "description": "提供 PTOC、PDIS、PTRC、CSWI、XCBR 等常用保护组合。",
+  "category": "domain",
+  "dependencies": ["generic-ied-ed2", "generic-reporting"],
+  "default": false,
+  "service_capabilities": [],
+  "ln_templates": [
+    {"lnClass": "PTOC", "inst": "1", "desc": "过流保护"},
+    {"lnClass": "PDIS", "inst": "1", "desc": "距离保护"},
+    {"lnClass": "PTRC", "inst": "1", "desc": "保护跳闸条件"},
+    {"lnClass": "CSWI", "inst": "1", "desc": "开关控制"},
+    {"lnClass": "XCBR", "inst": "1", "desc": "断路器"},
+    {"lnClass": "RREC", "inst": "1", "desc": "自动重合闸"}
+  ]
+}

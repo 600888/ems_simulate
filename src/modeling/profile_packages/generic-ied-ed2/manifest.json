@@ -1,0 +1,20 @@
+{
+  "id": "generic-ied-ed2",
+  "version": "1.0.0",
+  "name": "通用 IED（Edition 2）",
+  "description": "创建 Communication、Services、LLN0 和基础 MMS 能力。",
+  "category": "core",
+  "dependencies": [],
+  "default": true,
+  "service_capabilities": [
+    {"tag": "GetDirectory"},
+    {"tag": "GetDataObjectDefinition"},
+    {"tag": "DataSetDirectory"},
+    {"tag": "GetDataSetValue"},
+    {"tag": "ReadWrite"},
+    {"tag": "ConfDataSet", "attributes": {"max": 100, "maxAttributes": 100}}
+  ],
+  "ln_templates": [
+    {"lnClass": "LPHD", "inst": "1", "desc": "物理设备信息"}
+  ]
+}

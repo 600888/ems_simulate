@@ -30,6 +30,7 @@ class ProjectCreateRequest(BaseModel):
     ied: IedSeed
     access_point_name: str = Field(default="AP1", min_length=1, max_length=64)
     logical_devices: list[LogicalDeviceSeed] = Field(default_factory=lambda: [LogicalDeviceSeed(inst="LD0")])
+    profiles: list[str] = Field(default_factory=lambda: ["generic-ied-ed2"])
 
 
 class NodeCreateRequest(BaseModel):
@@ -45,6 +46,10 @@ class NodeUpdateRequest(BaseModel):
     attributes: dict[str, Any] | None = None
     sort_order: int | None = None
     expected_revision: int | None = Field(default=None, ge=1)
+
+
+class CdcTemplateApplyRequest(BaseModel):
+    template_id: str = Field(min_length=1, max_length=128)
 
 
 class VersionCreateRequest(BaseModel):

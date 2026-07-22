@@ -29,6 +29,18 @@
         >
           {{ projectStatusLabel(project.status) }}
         </el-tag>
+        <el-tag
+          v-if="extensionStats.total"
+          size="small"
+          :type="extensionStats.lossy ? 'danger' : 'warning'"
+          effect="plain"
+        >
+          {{
+            extensionStats.lossy
+              ? `有损扩展 ${extensionStats.lossy}`
+              : `保真扩展 ${extensionStats.total}`
+          }}
+        </el-tag>
         <span class="save-state" :class="{ dirty }">
           <span class="save-dot"></span
           >{{
@@ -60,6 +72,10 @@
               <el-dropdown-item @click="downloadScl"
                 ><el-icon><Download /></el-icon>下载
                 {{ project?.file_type || "ICD" }}</el-dropdown-item
+              >
+              <el-dropdown-item divided @click="downloadArtifactBundle"
+                ><el-icon><Files /></el-icon>下载 SCL / CFG / CSV
+                产物包</el-dropdown-item
               >
             </el-dropdown-menu>
           </template>
@@ -174,6 +190,117 @@
               selectedNode.kind_label
             }}</el-tag>
           </div>
+
+          <el-alert
+            v-if="isSelectedExtension"
+            class="extension-notice"
+            :type="selectedExtensionHasLossRisk ? 'error' : 'warning'"
+            :closable="false"
+            show-icon
+          >
+            <template #title>
+              {{
+                selectedExtensionHasLossRisk
+                  ? "该扩展存在有损回写风险"
+                  : "该节点是只读保真扩展"
+              }}
+            </template>
+            <template #default>
+              <p v-if="selectedExtensionHasLossRisk">
+                当前 XML
+                无法确认可以原位、原语义写回，修复保真策略前会阻止正式发布。
+              </p>
+              <p v-else>
+                这是厂商 Private 或尚未结构化支持的原始
+                XML。工具会在导出时按父节点保留，避免静默删除；由于无法完整理解其业务含义，默认不允许直接编辑。
+              </p>
+              <div class="extension-meta">
+                <el-tag size="small" effect="plain"
+                  >元素
+                  {{ selectedNode.attributes.tag || selectedNode.name }}</el-tag
+                >
+                <el-tag
+                  v-if="selectedNode.attributes.namespace"
+                  size="small"
+                  effect="plain"
+                >
+                  命名空间 {{ selectedNode.attributes.namespace }}
+                </el-tag>
+              </div>
+            </template>
+          </el-alert>
+
+          <section v-if="selectedNode.kind === 'DO_TYPE'" class="cdc-assistant">
+            <div class="cdc-assistant-heading">
+              <div>
+                <strong
+                  ><el-icon><SetUp /></el-icon>CDC 数据属性助手</strong
+                >
+                <p>
+                  当前 CDC：<code>{{
+                    selectedNode.attributes.cdc || "未设置"
+                  }}</code
+                  >。模板作用于该
+                  DOType，所有引用它的数据对象都会共享这些属性定义。
+                </p>
+              </div>
+              <el-button
+                type="primary"
+                plain
+                :loading="cdcAssistant.loading"
+                :disabled="dirty"
+                @click="applyCdcTemplate('common-quality-time-description')"
+                >补齐 q / t / dU</el-button
+              >
+            </div>
+            <div class="cdc-template-row">
+              <el-select
+                v-model="cdcAssistant.templateId"
+                placeholder="选择完整 CDC 模板"
+                style="min-width: 220px"
+              >
+                <el-option
+                  v-for="template in fullCdcTemplates"
+                  :key="template.id"
+                  :label="template.name"
+                  :value="template.id"
+                  :disabled="
+                    !!selectedNode.attributes.cdc &&
+                    template.cdc !==
+                      String(selectedNode.attributes.cdc).toUpperCase()
+                  "
+                />
+              </el-select>
+              <el-button
+                :loading="cdcAssistant.loading"
+                :disabled="dirty || !cdcAssistant.templateId"
+                @click="applyCdcTemplate(cdcAssistant.templateId)"
+                >应用完整模板</el-button
+              >
+              <span v-if="selectedCdcTemplate" class="cdc-template-description">
+                {{ selectedCdcTemplate.description }}
+              </span>
+            </div>
+            <div v-if="selectedCdcTemplate" class="cdc-attribute-preview">
+              <el-tag
+                v-for="attribute in selectedCdcTemplate.attributes"
+                :key="attribute.name"
+                size="small"
+                effect="plain"
+              >
+                {{ attribute.name }} · {{ attribute.bType }} ·
+                {{ attribute.fc }}
+              </el-tag>
+            </div>
+            <el-alert
+              v-if="cdcAssistant.conflicts.length"
+              type="warning"
+              :closable="false"
+              show-icon
+              :title="`${cdcAssistant.conflicts.length} 个已有属性与模板不一致，已保留原配置`"
+              description="请在下方子节点中检查冲突属性；系统不会自动覆盖已有 bType、FC 或类型引用。"
+            />
+          </section>
 
           <el-tabs v-model="contentTab" class="content-tabs">
             <el-tab-pane
@@ -404,11 +531,13 @@
                 <el-switch
                   v-if="field.component === 'switch'"
                   v-model="propertyForm.attributes[field.key]"
+                  :disabled="isSelectedExtension"
                 />
                 <el-input-number
                   v-else-if="field.component === 'number'"
                   v-model="propertyForm.attributes[field.key]"
                   :min="0"
+                  :disabled="isSelectedExtension"
                   controls-position="right"
                   style="width: 100%"
                 />
@@ -417,6 +546,7 @@
                   v-model="propertyForm.attributes[field.key]"
                   clearable
                   filterable
+                  :disabled="isSelectedExtension"
                   style="width: 100%"
                 >
                   <el-option
@@ -430,13 +560,15 @@
                   v-else-if="field.key === 'name'"
                   v-model="propertyForm.name"
                   :disabled="selectedNode.kind === 'LN0'"
+                  :readonly="isSelectedExtension"
                 />
                 <el-input
                   v-else
                   v-model="propertyForm.attributes[field.key]"
                   :type="field.component === 'textarea' ? 'textarea' : 'text'"
                   :rows="3"
-                  clearable
+                  :clearable="!isSelectedExtension"
+                  :readonly="isSelectedExtension"
                 />
               </el-form-item>
             </template>
@@ -456,7 +588,7 @@
           <el-button :disabled="!dirty" @click="resetForm">恢复</el-button>
           <el-button
             type="primary"
-            :disabled="!dirty"
+            :disabled="!dirty || isSelectedExtension"
             :loading="saving"
             @click="saveNode"
             ><el-icon><DocumentChecked /></el-icon>应用</el-button
@@ -748,6 +880,23 @@
         show-icon
         title="发布前会重新执行结构校验与 SCL 完整性校验。"
       />
+      <el-alert
+        v-if="extensionStats.total"
+        class="publish-extension-alert"
+        :type="extensionStats.lossy ? 'error' : 'warning'"
+        :closable="false"
+        show-icon
+        :title="
+          extensionStats.lossy
+            ? `存在 ${extensionStats.lossy} 个有损扩展，当前不能发布`
+            : `模型包含 ${extensionStats.total} 个只读保真扩展`
+        "
+        :description="
+          extensionStats.lossy
+            ? '请先处理标记为有损风险的 XML 片段，再执行发布。'
+            : '这些扩展会随 SCL 一并保留；发布校验会再次检查是否存在确认的有损风险。'
+        "
+      />
       <el-form label-position="top" class="publish-form">
         <el-form-item label="发布版本名称" required>
           <el-input
@@ -771,7 +920,7 @@
         <el-button
           type="success"
           :loading="publishDialog.publishing"
-          :disabled="!publishDialog.label.trim()"
+          :disabled="!publishDialog.label.trim() || extensionStats.lossy > 0"
           @click="publishProject"
         >
           校验并发布
@@ -823,7 +972,7 @@ import {
   Tickets,
   View,
 } from "@element-plus/icons-vue";
-import { modelingApi } from "@/api/modelingApi";
+import { modelingApi, type CdcTemplate } from "@/api/modelingApi";
 import type {
   DeleteImpact,
   ModelNode,
@@ -855,6 +1004,12 @@ const propertyForm = reactive<{
 const savedSnapshot = ref("");
 const validationResult = ref<ValidationResult>();
 const validationExpanded = ref(false);
+const cdcTemplates = ref<CdcTemplate[]>([]);
+const cdcAssistant = reactive<{
+  loading: boolean;
+  templateId: string;
+  conflicts: Array<{ name: string }>;
+}>({ loading: false, templateId: "", conflicts: [] });
 const downloading = ref(false);
 const versions = ref<ModelVersion[]>([]);
 const versionsDrawer = reactive({
@@ -899,6 +1054,31 @@ const currentSnapshot = computed(() =>
 const dirty = computed(
   () => !!selectedNode.value && currentSnapshot.value !== savedSnapshot.value,
 );
+const extensionNodes = computed(() =>
+  flattenNodes(treeData.value).filter((node) => node.kind === "EXTENSION"),
+);
+const extensionStats = computed(() => ({
+  total: extensionNodes.value.length,
+  lossy: extensionNodes.value.filter((node) =>
+    isTruthyFlag(node.attributes.lossRisk),
+  ).length,
+}));
+const isSelectedExtension = computed(
+  () => selectedNode.value?.kind === "EXTENSION",
+);
+const selectedExtensionHasLossRisk = computed(
+  () =>
+    isSelectedExtension.value &&
+    isTruthyFlag(selectedNode.value?.attributes.lossRisk),
+);
+const fullCdcTemplates = computed(() =>
+  cdcTemplates.value.filter((template) => template.mode === "CDC"),
+);
+const selectedCdcTemplate = computed(() =>
+  fullCdcTemplates.value.find(
+    (template) => template.id === cdcAssistant.templateId,
+  ),
+);
 const singletonChildKinds = new Set([
   "HEADER",
   "COMMUNICATION",
@@ -907,6 +1087,12 @@ const singletonChildKinds = new Set([
   "SERVER",
   "INPUTS",
   "ADDRESS",
+  "SERVICES",
+  "HISTORY",
+  "TRG_OPS",
+  "OPT_FIELDS",
+  "RPT_ENABLED",
+  "SETTING_CONTROL",
 ]);
 const availableChildOptions = computed(() => {
   const children = selectedNode.value?.children || [];
@@ -1009,6 +1195,10 @@ function flattenNodes(nodes: ModelNode[]): ModelNode[] {
   return nodes.flatMap((node) => [node, ...flattenNodes(node.children || [])]);
 }
 
+function isTruthyFlag(value: unknown) {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
 async function selectNode(data: ModelNode) {
   if (dirty.value && selectedNode.value?.id !== data.id) {
     ElMessage.warning("请先保存或撤销右侧未保存的属性修改");
@@ -1025,7 +1215,15 @@ async function selectNode(data: ModelNode) {
   detail.children = data.children || [];
   selectedNode.value = detail;
   nodeImpact.value = impact;
-  propertyTab.value = "basic";
+  propertyTab.value = detail.kind === "EXTENSION" ? "advanced" : "basic";
+  if (detail.kind === "DO_TYPE") {
+    const cdc = String(detail.attributes.cdc || "").toUpperCase();
+    cdcAssistant.templateId =
+      fullCdcTemplates.value.find((template) => template.cdc === cdc)?.id ||
+      fullCdcTemplates.value[0]?.id ||
+      "";
+  }
+  cdcAssistant.conflicts = [];
   propertyForm.name = detail.name;
   propertyForm.attributes = structuredClone(detail.attributes || {});
   propertyForm.revision = detail.revision;
@@ -1062,6 +1260,8 @@ function resetForm() {
 }
 
 async function saveNode() {
+  if (isSelectedExtension.value)
+    return ElMessage.warning("保真扩展默认只读，不能直接修改原始 XML");
   if (!selectedNode.value || !propertyForm.name.trim())
     return ElMessage.warning("节点名称不能为空");
   saving.value = true;
@@ -1079,6 +1279,34 @@ async function saveNode() {
     await Promise.all([loadProject(), loadTree(updated.id)]);
   } finally {
     saving.value = false;
+  }
+}
+
+async function applyCdcTemplate(templateId: string) {
+  if (!selectedNode.value || selectedNode.value.kind !== "DO_TYPE") return;
+  if (dirty.value)
+    return ElMessage.warning("请先保存或撤销当前 DOType 的属性修改");
+  cdcAssistant.loading = true;
+  try {
+    const nodeId = selectedNode.value.id;
+    const result = await modelingApi.applyCdcTemplate(
+      props.projectId,
+      nodeId,
+      templateId,
+    );
+    await Promise.all([loadProject(), loadTree(nodeId)]);
+    cdcAssistant.conflicts = result.conflicts;
+    if (result.conflicts.length) {
+      ElMessage.warning(
+        `已新增 ${result.created.length} 项，${result.conflicts.length} 项冲突保持原值`,
+      );
+    } else if (result.changed) {
+      ElMessage.success(`已补齐 ${result.created.length} 个数据属性/依赖类型`);
+    } else {
+      ElMessage.info("所需属性已经存在，无需重复创建");
+    }
+  } finally {
+    cdcAssistant.loading = false;
   }
 }
 
@@ -1103,7 +1331,12 @@ function defaultName(kind: string) {
     DAI: "stVal",
     DATASET: "DataSet1",
     REPORT_CONTROL: "Report1",
+    TRG_OPS: "TrgOps",
+    OPT_FIELDS: "OptFields",
+    RPT_ENABLED: "RptEnabled",
+    CLIENT_LN: "ClientLN1",
     GSE_CONTROL: "Goose1",
+    SETTING_CONTROL: "SettingControl",
     INPUTS: "Inputs",
     FCDA: "FCDA1",
     EXT_REF: "ExtRef1",
@@ -1123,6 +1356,12 @@ function defaultName(kind: string) {
     DA_DEF: "stVal",
     SDO_DEF: "SubDo1",
     BDA_DEF: "value",
+    SERVICES: "Services",
+    SERVICE_CAPABILITY: "GetDirectory",
+    HISTORY: "History",
+    HITEM: "Hitem1",
+    AUTHENTICATION: "Authentication",
+    VAL: "Val",
   };
   return counts[kind] || `${kind}1`;
 }
@@ -1201,7 +1440,25 @@ function defaultAttributes(
   if (kind === "FCDA") return { fc: "ST" };
   if (kind === "REPORT_CONTROL")
     return { datSet: "", buffered: false, confRev: 1, bufTime: 0, intgPd: 0 };
+  if (kind === "TRG_OPS")
+    return { dchg: true, qchg: true, dupd: false, period: true, gi: true };
+  if (kind === "OPT_FIELDS")
+    return {
+      seqNum: true,
+      timeStamp: true,
+      reasonCode: true,
+      dataSet: true,
+      dataRef: false,
+      bufOvfl: true,
+      entryID: true,
+      configRef: true,
+      segmentation: false,
+    };
+  if (kind === "RPT_ENABLED") return { max: 1 };
   if (kind === "GSE_CONTROL") return { datSet: "", appID: name, confRev: 1 };
+  if (kind === "SETTING_CONTROL") return { actSG: 1, numOfSGs: 1 };
+  if (kind === "SERVICE_CAPABILITY") return { tag: name };
+  if (kind === "VAL") return { value: "" };
   return {};
 }
 
@@ -1555,6 +1812,23 @@ async function downloadScl() {
   }
 }
 
+async function downloadArtifactBundle() {
+  if (dirty.value) return ElMessage.warning("请先保存或撤销节点属性修改");
+  downloading.value = true;
+  try {
+    const bundle = await modelingApi.downloadArtifacts(props.projectId);
+    const url = URL.createObjectURL(bundle.content);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = bundle.filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    ElMessage.success(`已生成可追溯产物包 ${bundle.filename}`);
+  } finally {
+    downloading.value = false;
+  }
+}
+
 function openPublishDialog() {
   if (dirty.value) return ElMessage.warning("请先保存或撤销节点属性修改");
   publishDialog.label = `现场发布 r${project.value?.revision || 1}`;
@@ -1581,7 +1855,14 @@ async function publishProject() {
 
 onMounted(async () => {
   try {
-    await Promise.all([loadProject(), loadTree()]);
+    const [, , templates] = await Promise.all([
+      loadProject(),
+      loadTree(),
+      modelingApi.listCdcTemplates(),
+    ]);
+    cdcTemplates.value = templates;
+    if (selectedNode.value?.kind === "DO_TYPE")
+      await selectNode(selectedNode.value);
   } finally {
     initialLoading.value = false;
   }
@@ -1963,6 +2244,59 @@ onMounted(async () => {
 }
 .context-heading strong {
   font-size: 14px;
+}
+.extension-notice {
+  flex: 0 0 auto;
+  margin: 12px 14px 0;
+}
+.extension-notice p {
+  margin: 4px 0 8px;
+  line-height: 1.6;
+}
+.extension-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cdc-assistant {
+  display: grid;
+  gap: 10px;
+  flex: 0 0 auto;
+  margin: 12px 14px 0;
+  padding: 12px 14px;
+  border: 1px solid
+    color-mix(in srgb, var(--color-primary) 24%, var(--sidebar-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 5%, var(--panel-bg));
+}
+.cdc-assistant-heading,
+.cdc-template-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cdc-assistant-heading {
+  justify-content: space-between;
+}
+.cdc-assistant-heading strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cdc-assistant-heading p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.cdc-template-description {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.cdc-attribute-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .node-breadcrumb {
   display: flex;
@@ -2527,6 +2861,9 @@ onMounted(async () => {
 }
 .publish-form {
   margin-top: 16px;
+}
+.publish-extension-alert {
+  margin-top: 10px;
 }
 
 @container (max-width: 1399px) {

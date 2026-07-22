@@ -58,30 +58,15 @@ echo ">>> 构建后端 (PyInstaller)..."
 # 获取项目根目录的绝对路径
 PROJECT_ROOT=$(pwd)
 
-pyinstaller --noconfirm --onedir --name "${APP_NAME//-/_}" --clean \
+EMS_PYINSTALLER_MODE=onedir \
+EMS_PYINSTALLER_NAME="${APP_NAME//-/_}" \
+EMS_PYINSTALLER_CONTENTS_DIR=_internal \
+EMS_PYINSTALLER_DATA_SCOPE=all \
+EMS_PYINSTALLER_CONSOLE=1 \
+pyinstaller --noconfirm --clean \
     --distpath "build/dist" \
     --workpath "build/build_pyinstaller" \
-    --specpath "build" \
-    --add-data "${PROJECT_ROOT}/config.ini:." \
-    --add-data "${PROJECT_ROOT}/www:www" \
-    --add-data "${PROJECT_ROOT}/data:data" \
-    --hidden-import="uvicorn.logging" \
-    --hidden-import="uvicorn.loops" \
-    --hidden-import="openpyxl" \
-    --hidden-import="uvicorn.loops.auto" \
-    --hidden-import="uvicorn.loops.asyncio" \
-    --hidden-import="uvicorn.protocols" \
-    --hidden-import="uvicorn.protocols.http" \
-    --hidden-import="uvicorn.protocols.http.auto" \
-    --hidden-import="uvicorn.lifespan" \
-    --hidden-import="uvicorn.lifespan.on" \
-    --hidden-import="pymodbus" \
-    --hidden-import="fastapi" \
-    --hidden-import="sqlalchemy" \
-    --hidden-import="pydantic" \
-    --hidden-import="loguru" \
-    --hidden-import="c104" \
-    start_back_end.py
+    "${PROJECT_ROOT}/ems_simulate_backend.spec"
 
 PYINSTALLER_OUTPUT="build/dist/${APP_NAME//-/_}"
 if ! find "$PYINSTALLER_OUTPUT" -type f -name '*_c104*.so' -print -quit | grep -q .; then
@@ -93,6 +78,12 @@ echo ">>> c104 原生扩展检查通过"
 # 5. 组装内容
 echo ">>> 组装 Debian 包..."
 # 复制 PyInstaller 生成的内容到 /usr/share/ems-simulate-web
+if ! find "$PYINSTALLER_OUTPUT" -type f -path '*/src/modeling/profile_packages/*/manifest.json' -print -quit | grep -q . ||
+   ! find "$PYINSTALLER_OUTPUT" -type f -path '*/src/modeling/standard_packages/*/manifest.json' -print -quit | grep -q .; then
+    echo "Error: PyInstaller output is missing modeling package manifests"
+    exit 1
+fi
+
 cp -r "${PYINSTALLER_OUTPUT}/"* "$INSTALL_DIR/"
 
 # 创建 /usr/bin 下的软链接

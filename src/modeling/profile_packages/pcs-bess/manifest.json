@@ -1,0 +1,15 @@
+{
+  "id": "pcs-bess",
+  "version": "1.0.0",
+  "name": "储能 PCS/BAMS",
+  "description": "提供 GGIO、MMXU、MMXN 等储能设备常用建模建议。",
+  "category": "domain",
+  "dependencies": ["generic-ied-ed2", "generic-reporting"],
+  "default": false,
+  "service_capabilities": [],
+  "ln_templates": [
+    {"lnClass": "GGIO", "inst": "1", "desc": "储能通用状态与告警"},
+    {"lnClass": "MMXU", "inst": "1", "desc": "储能交流测量"},
+    {"lnClass": "MMXN", "inst": "1", "desc": "储能非相量测量"}
+  ]
+}

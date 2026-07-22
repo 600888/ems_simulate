@@ -10,6 +10,9 @@
         <el-button @click="router.push('/scl/manager')">
           <el-icon><FolderOpened /></el-icon>SCL 文件
         </el-button>
+        <el-button @click="openImportDialog">
+          <el-icon><UploadFilled /></el-icon>导入 ICD/CID
+        </el-button>
         <el-button type="primary" @click="router.push('/scl/modeling/new')">
           <el-icon><Plus /></el-icon>从 0 新建模型
         </el-button>
@@ -63,7 +66,7 @@
               <code>{{ project.code }}</code>
             </div>
             <el-dropdown trigger="click" @click.stop>
-              <el-button text circle
+              <el-button text circle aria-label="工程操作" @click.stop
                 ><el-icon><MoreFilled /></el-icon
               ></el-button>
               <template #dropdown>
@@ -112,13 +115,96 @@
       layout="prev, pager, next"
       @current-change="loadProjects"
     />
+
+    <el-dialog
+      v-model="importDialog.visible"
+      title="导入 IEC 61850 模型"
+      width="620px"
+      destroy-on-close
+    >
+      <el-upload
+        drag
+        :auto-upload="false"
+        :limit="1"
+        accept=".icd,.cid,.scd,.iid,.sed,.ssd,.xml"
+        :on-change="handleImportFile"
+        :on-remove="clearImportFile"
+      >
+        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+        <div class="el-upload__text">拖入 ICD/CID，或<em>点击选择</em></div>
+      </el-upload>
+      <div v-if="importDialog.previewing" class="import-job-progress">
+        <el-progress
+          :percentage="importDialog.progress"
+          :status="importDialog.progress >= 100 ? 'success' : undefined"
+        />
+        <span>后台解析中，可关闭或取消而不创建工程</span>
+        <el-button size="small" text type="danger" @click="cancelImportPreview"
+          >取消解析</el-button
+        >
+      </div>
+      <div v-if="importDialog.preview" class="import-preview">
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="文件类型">{{
+            importDialog.preview.project.file_type
+          }}</el-descriptions-item>
+          <el-descriptions-item label="IED">{{
+            importDialog.preview.project.ied_name || "--"
+          }}</el-descriptions-item>
+          <el-descriptions-item label="节点数">{{
+            importDialog.preview.summary.node_count
+          }}</el-descriptions-item>
+          <el-descriptions-item label="保真扩展">{{
+            importDialog.preview.summary.extension_count
+          }}</el-descriptions-item>
+        </el-descriptions>
+        <el-alert
+          v-if="importDialog.preview.summary.extension_count > 0"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="`发现 ${importDialog.preview.summary.extension_count} 个保真扩展片段`"
+          description="这些内容通常来自厂商 Private 或当前工具尚未结构化支持的 XML。导入后会保留原文并默认只读，正常情况下不会影响发布；若后续确认无法原位回写，系统会明确标记为有损风险并阻止发布。"
+        />
+        <el-form label-position="top" class="import-form">
+          <el-form-item label="工程名称"
+            ><el-input v-model="importDialog.name"
+          /></el-form-item>
+          <el-form-item label="工程编码"
+            ><el-input v-model="importDialog.code"
+          /></el-form-item>
+        </el-form>
+        <el-alert
+          v-for="warning in importDialog.preview.warnings"
+          :key="warning.code"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="warning.message"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="importDialog.visible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="importDialog.importing"
+          :disabled="
+            !importDialog.file ||
+            !importDialog.preview ||
+            !importDialog.code.trim()
+          "
+          @click="importModel"
+          >导入并打开</el-button
+        >
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage, ElMessageBox, type UploadFile } from "element-plus";
 import {
   Connection,
   FolderOpened,
@@ -126,8 +212,9 @@ import {
   Plus,
   Refresh,
   Search,
+  UploadFilled,
 } from "@element-plus/icons-vue";
-import { modelingApi } from "@/api/modelingApi";
+import { modelingApi, type ImportPreview } from "@/api/modelingApi";
 import type { ModelProject } from "@/types/modeling";
 
 const router = useRouter();
@@ -135,6 +222,25 @@ const loading = ref(false);
 const projects = ref<ModelProject[]>([]);
 const total = ref(0);
 const filters = reactive({ keyword: "", status: "", page: 1, pageSize: 20 });
+let previewSequence = 0;
+const importDialog = reactive<{
+  visible: boolean;
+  importing: boolean;
+  previewing: boolean;
+  progress: number;
+  jobId?: string;
+  file?: File;
+  preview?: ImportPreview;
+  code: string;
+  name: string;
+}>({
+  visible: false,
+  importing: false,
+  previewing: false,
+  progress: 0,
+  code: "",
+  name: "",
+});
 
 function statusMeta(status: ModelProject["status"]) {
   return (
@@ -196,6 +302,93 @@ async function removeProject(project: ModelProject) {
   }
 }
 
+function openImportDialog() {
+  Object.assign(importDialog, {
+    visible: true,
+    importing: false,
+    previewing: false,
+    progress: 0,
+    jobId: undefined,
+    file: undefined,
+    preview: undefined,
+    code: "",
+    name: "",
+  });
+}
+
+function clearImportFile() {
+  void cancelImportPreview();
+  Object.assign(importDialog, {
+    file: undefined,
+    preview: undefined,
+    code: "",
+    name: "",
+    progress: 0,
+  });
+}
+
+async function handleImportFile(upload: UploadFile) {
+  if (!upload.raw) return;
+  await cancelImportPreview();
+  const sequence = ++previewSequence;
+  importDialog.file = upload.raw;
+  importDialog.preview = undefined;
+  importDialog.previewing = true;
+  importDialog.progress = 0;
+  try {
+    let job = await modelingApi.startImportPreviewJob(upload.raw);
+    importDialog.jobId = job.id;
+    while (
+      sequence === previewSequence &&
+      ["QUEUED", "RUNNING", "CANCELLING"].includes(job.status)
+    ) {
+      importDialog.progress = job.progress;
+      await new Promise((resolve) => window.setTimeout(resolve, 150));
+      job = await modelingApi.getJob<ImportPreview>(job.id);
+    }
+    importDialog.progress = job.progress;
+    if (sequence !== previewSequence) return;
+    if (job.status === "COMPLETED" && job.result) {
+      importDialog.preview = job.result;
+      importDialog.code = job.result.project.code;
+      importDialog.name = job.result.project.name;
+    } else if (job.status === "FAILED") {
+      ElMessage.error(job.error || "SCL 后台解析失败");
+    }
+  } finally {
+    if (sequence === previewSequence) {
+      importDialog.previewing = false;
+      importDialog.jobId = undefined;
+    }
+  }
+}
+
+async function cancelImportPreview() {
+  previewSequence += 1;
+  const jobId = importDialog.jobId;
+  if (!jobId) return;
+  importDialog.jobId = undefined;
+  await modelingApi.cancelJob(jobId);
+  importDialog.previewing = false;
+}
+
+async function importModel() {
+  if (!importDialog.file || !importDialog.preview) return;
+  importDialog.importing = true;
+  try {
+    const result = await modelingApi.importProject(
+      importDialog.file,
+      importDialog.code.trim(),
+      importDialog.name.trim(),
+    );
+    ElMessage.success(`已导入 ${result.summary.node_count} 个模型节点`);
+    importDialog.visible = false;
+    await router.push(`/scl/modeling/${result.project.id}`);
+  } finally {
+    importDialog.importing = false;
+  }
+}
+
 onMounted(loadProjects);
 </script>
 
@@ -236,6 +429,31 @@ h1 {
 .heading-actions {
   display: flex;
   gap: 10px;
+}
+.import-preview {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+.import-job-progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 14px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.import-job-progress .el-progress {
+  grid-column: 1 / -1;
+}
+.import-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.import-form :deep(.el-form-item) {
+  margin-bottom: 0;
 }
 .filter-card {
   display: flex;

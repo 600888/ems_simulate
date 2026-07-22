@@ -1,0 +1,14 @@
+{
+  "id": "generic-reporting",
+  "version": "1.0.0",
+  "name": "通用报告",
+  "description": "提供完整 BRCB/URCB 触发、可选字段和实例数配置。",
+  "category": "service",
+  "dependencies": ["generic-ied-ed2"],
+  "default": false,
+  "service_capabilities": [
+    {"tag": "ConfReportControl", "attributes": {"max": 100}},
+    {"tag": "ReportSettings", "attributes": {"cbName": "Conf", "datSet": "Dyn"}}
+  ],
+  "templates": ["BRCB", "URCB"]
+}

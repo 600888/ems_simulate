@@ -154,6 +154,7 @@ if (-not $SkipBackend) {
         (Join-Path $PROJECT_ROOT "data\point_csv"),
         (Join-Path $PROJECT_ROOT "pyproject.toml"),
         (Join-Path $PROJECT_ROOT "uv.lock"),
+        (Join-Path $PROJECT_ROOT "ems_simulate_backend.spec"),
         (Join-Path $SCRIPT_DIR "rthook_numpy_compat.py"),
         (Join-Path $SCRIPT_DIR "build_tauri_windows.ps1")
     )
@@ -168,35 +169,20 @@ if (-not $SkipBackend) {
         New-Item -ItemType Directory -Force -Path $BINARIES_DIR | Out-Null
         New-Item -ItemType Directory -Force -Path $BUILD_DIR | Out-Null
 
-        $ABS = (Resolve-Path $PROJECT_ROOT).Path
         $pyDist = Join-Path $BUILD_DIR "dist"
         $pyWork = Join-Path $BUILD_DIR "build_pyinstaller_tauri"
 
-        $rthookNumpy = Join-Path $SCRIPT_DIR "rthook_numpy_compat.py"
+        $env:EMS_PYINSTALLER_MODE = "onedir"
+        $env:EMS_PYINSTALLER_NAME = "ems_simulate_backend"
+        $env:EMS_PYINSTALLER_CONTENTS_DIR = "ems_simulate_backend_runtime"
+        $env:EMS_PYINSTALLER_DATA_SCOPE = "point_csv"
+        $env:EMS_PYINSTALLER_CONSOLE = "1"
         $pyArgs = @(
-            "--noconfirm", "--onedir",
-            "--name", "ems_simulate_backend", "--clean",
-            "--contents-directory", "ems_simulate_backend_runtime",
-            "--exclude-module", "numpy",
-            "--exclude-module", "tkinter",
-            "--exclude-module", "_tkinter",
+            "--noconfirm", "--clean",
             "--distpath", $pyDist,
             "--workpath", $pyWork,
-            "--specpath", $BUILD_DIR,
-            "--runtime-hook", $rthookNumpy,
-            "--collect-all", "pyiec61850",
-            "--add-data", "$ABS\config.ini;.",
-            "--add-data", "$ABS\www;www",
-            "--add-data", "$ABS\data\point_csv;data\point_csv"
+            (Join-Path $PROJECT_ROOT "ems_simulate_backend.spec")
         )
-        $hidden = @(
-            "uvicorn.logging", "uvicorn.loops", "openpyxl", "uvicorn.loops.auto",
-            "uvicorn.protocols", "uvicorn.protocols.http", "uvicorn.protocols.http.auto",
-            "uvicorn.lifespan", "uvicorn.lifespan.on", "uvicorn.loops.asyncio",
-            "pymodbus", "fastapi", "sqlalchemy", "pydantic", "loguru", "c104"
-        )
-        foreach ($h in $hidden) { $pyArgs += "--hidden-import"; $pyArgs += $h }
-        $pyArgs += "$ABS\start_back_end.py"
 
         & $PYTHON_EXE -m PyInstaller @pyArgs
         if ($LASTEXITCODE -ne 0) { WriteErr "PyInstaller packaging failed" }
@@ -223,6 +209,11 @@ if (-not $SkipBackend) {
             if (-not $packagedPointTables) {
                 WriteErr "PyInstaller runtime is missing the bundled point tables"
             }
+            $packagedProfiles = Get-ChildItem -Path (Join-Path $pyRuntimeDir "src\modeling\profile_packages") -Recurse -File -Filter "manifest.json" -ErrorAction SilentlyContinue
+            $packagedStandards = Get-ChildItem -Path (Join-Path $pyRuntimeDir "src\modeling\standard_packages") -Recurse -File -Filter "manifest.json" -ErrorAction SilentlyContinue
+            if (-not $packagedProfiles -or -not $packagedStandards) {
+                WriteErr "PyInstaller runtime is missing modeling package manifests"
+            }
             Copy-Item -Force $pyOutExe $BE_SIDECAR_EXE
             Copy-Item -Recurse -Force $pyRuntimeDir $BE_RUNTIME_DIR
             WriteOk "Sidecar binary created: $BE_SIDECAR_EXE"
@@ -230,6 +221,7 @@ if (-not $SkipBackend) {
             WriteOk "c104 native extension verified: $($c104Extension.Name)"
             WriteOk "pyiec61850 native libraries verified"
             WriteOk "Bundled point tables verified: $($packagedPointTables.Count) file(s)"
+            WriteOk "Modeling package manifests verified"
         } else {
             WriteErr "PyInstaller output not found: $pyOutExe"
         }

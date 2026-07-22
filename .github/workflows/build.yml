@@ -168,6 +168,9 @@ jobs:
         if: matrix.target != 'windows'
         run: chmod +x scripts/*.sh
 
+      - name: IEC 61850 modeling regression gate
+        run: uv run --no-sync pytest tests/services/modeling -q
+
       - name: Build ${{ matrix.target }}
         run: |
           ${{ matrix.venv_activate }}

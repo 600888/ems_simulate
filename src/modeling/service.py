@@ -20,6 +20,7 @@ from src.data.model.iec61850_modeling import (
     Iec61850ModelReference,
     Iec61850ModelVersion,
 )
+from src.modeling.artifacts import build_artifact_bundle, list_file_variants, validate_file_variant
 from src.modeling.catalog import (
     CHILD_RULES,
     KIND_LABELS,
@@ -27,6 +28,16 @@ from src.modeling.catalog import (
     SINGLETON_CHILD_KINDS,
     get_kind_schema,
 )
+from src.modeling.cdc_templates import list_cdc_templates, materialize_cdc_template
+from src.modeling.profiles import (
+    list_profiles,
+    logical_node_templates,
+    profile_lock,
+    resolve_profiles,
+    service_capabilities,
+)
+from src.modeling.scl_importer import SclModelImporter
+from src.modeling.standards import list_standards
 import src.proto.iec61850.plugins.scl.validator.builtin_rules  # noqa: F401
 from src.web.api.exceptions import ConflictError, NotFoundError, ValidationError
 
@@ -180,6 +191,11 @@ class Iec61850ModelingService:
         if len(logical_device_names) != len(set(logical_device_names)):
             raise ConflictError("逻辑设备实例标识不能重复")
 
+        try:
+            profile_ids = resolve_profiles(payload.get("profiles"))
+        except KeyError as exc:
+            raise ValidationError(f"未知建模配置档：{exc}") from exc
+
         project_id = str(uuid.uuid4())
         with self.session_factory() as session, session.begin():
             if session.scalar(select(Iec61850ModelProject.id).where(Iec61850ModelProject.code == code)):
@@ -215,8 +231,38 @@ class Iec61850ModelingService:
                 session.add(node)
                 return node
 
-            root = add_node("ROOT", name, None, {"code": code})
-            add_node("HEADER", "Header", root.id, {"id": code, "version": "1", "revision": "1"}, 0)
+            root = add_node(
+                "ROOT",
+                name,
+                None,
+                {
+                    "code": code,
+                    "emitEdition": True,
+                    "schemaLocation": "http://www.iec.ch/61850/2003/SCL SCL.xsd",
+                    "profiles": profile_lock(profile_ids),
+                },
+            )
+            add_node(
+                "HEADER",
+                "Header",
+                root.id,
+                {
+                    "id": code,
+                    "version": "1",
+                    "revision": "1",
+                    "nameStructure": "IEDName",
+                    "toolID": "EMS Simulator IEC61850 Modeler",
+                },
+                0,
+            )
+            communication = add_node("COMMUNICATION", "Communication", root.id, {}, 5)
+            subnet = add_node(
+                "SUBNETWORK",
+                "StationBus",
+                communication.id,
+                {"type": "8-MMS", "bitRate": 100, "multiplier": "M"},
+                0,
+            )
             ied_node = add_node(
                 "IED",
                 ied_name,
@@ -229,10 +275,39 @@ class Iec61850ModelingService:
                 },
                 10,
             )
+            services = add_node("SERVICES", "Services", ied_node.id, {}, 0)
+            for index, (tag, capability_attrs) in enumerate(service_capabilities(profile_ids)):
+                add_node(
+                    "SERVICE_CAPABILITY",
+                    tag,
+                    services.id,
+                    {"tag": tag, **capability_attrs},
+                    index,
+                )
             ap_name = str(payload.get("access_point_name", "AP1")).strip() or "AP1"
-            access_point = add_node("ACCESS_POINT", ap_name, ied_node.id, {}, 0)
+            access_point = add_node("ACCESS_POINT", ap_name, ied_node.id, {}, 10)
             server = add_node("SERVER", "Server", access_point.id, {}, 0)
+            connected_ap = add_node(
+                "CONNECTED_AP",
+                f"{ied_name}_{ap_name}",
+                subnet.id,
+                {"iedName": ied_name, "apName": ap_name},
+                0,
+            )
+            address = add_node("ADDRESS", "Address", connected_ap.id, {}, 0)
+            for index, (parameter_type, value) in enumerate(
+                (
+                    ("IP", "192.168.1.10"),
+                    ("IP-SUBNET", "255.255.255.0"),
+                    ("IP-GATEWAY", "192.168.1.1"),
+                    ("OSI-TSEL", "0001"),
+                    ("OSI-SSEL", "0001"),
+                    ("OSI-PSEL", "00000001"),
+                )
+            ):
+                add_node("P", parameter_type, address.id, {"type": parameter_type, "value": value}, index)
             ln0_type_id = f"{code}_LLN0"
+            ln_templates = logical_node_templates(profile_ids)
             for index, logical_device in enumerate(logical_devices):
                 inst = str(logical_device.get("inst", "")).strip()
                 if not NAME_PATTERN.fullmatch(inst):
@@ -251,6 +326,23 @@ class Iec61850ModelingService:
                     {"lnClass": "LLN0", "inst": "", "lnType": ln0_type_id},
                     0,
                 )
+                for template_index, template in enumerate(ln_templates, start=1):
+                    ln_class = str(template["lnClass"])
+                    ln_inst = str(template.get("inst") or "1")
+                    prefix = str(template.get("prefix") or "")
+                    add_node(
+                        "LN",
+                        f"{prefix}{ln_class}{ln_inst}",
+                        ld.id,
+                        {
+                            "prefix": prefix,
+                            "lnClass": ln_class,
+                            "inst": ln_inst,
+                            "lnType": f"{code}_{prefix}{ln_class}",
+                            "desc": str(template.get("desc") or ""),
+                        },
+                        template_index,
+                    )
 
             templates = add_node("DATA_TYPE_TEMPLATES", "DataTypeTemplates", root.id, {}, 20)
             add_node(
@@ -260,6 +352,17 @@ class Iec61850ModelingService:
                 {"id": ln0_type_id, "lnClass": "LLN0", "desc": "自动生成的 LLN0 基础类型"},
                 0,
             )
+            for index, template in enumerate(ln_templates, start=1):
+                prefix = str(template.get("prefix") or "")
+                ln_class = str(template["lnClass"])
+                type_id = f"{code}_{prefix}{ln_class}"
+                add_node(
+                    "LNODE_TYPE",
+                    type_id,
+                    templates.id,
+                    {"id": type_id, "lnClass": ln_class, "desc": str(template.get("desc") or "")},
+                    index,
+                )
             session.flush()
             node_count = (
                 session.scalar(
@@ -269,6 +372,96 @@ class Iec61850ModelingService:
             )
 
         return {"project": self._project_dict(project, node_count), "tree": self.get_tree(project_id)}
+
+    @staticmethod
+    def list_profiles() -> list[dict[str, Any]]:
+        return list_profiles()
+
+    @staticmethod
+    def list_standards() -> list[dict[str, Any]]:
+        return list_standards()
+
+    @staticmethod
+    def list_file_variants() -> list[dict[str, Any]]:
+        return list_file_variants()
+
+    @staticmethod
+    def list_cdc_templates() -> list[dict[str, Any]]:
+        return list_cdc_templates()
+
+    @staticmethod
+    def preview_import(
+        content: bytes,
+        *,
+        filename: str,
+        progress: Callable[[str, int, int, str], None] | None = None,
+        cancel_check: Callable[[], None] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            imported = SclModelImporter().parse(
+                content,
+                filename=filename,
+                progress=progress,
+                cancel_check=cancel_check,
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+        return {"project": imported.project, "summary": imported.summary, "warnings": imported.warnings}
+
+    def import_scl(
+        self,
+        content: bytes,
+        *,
+        filename: str,
+        code: str = "",
+        name: str = "",
+    ) -> dict[str, Any]:
+        try:
+            imported = SclModelImporter().parse(content, filename=filename)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+        project_data = imported.project
+        target_code = (code or project_data["code"]).strip()
+        target_name = (name or project_data["name"]).strip()
+        if not NAME_PATTERN.fullmatch(target_code):
+            raise ValidationError("导入工程编码格式不正确")
+        project_id = str(uuid.uuid4())
+        with self.session_factory() as session, session.begin():
+            if session.scalar(select(Iec61850ModelProject.id).where(Iec61850ModelProject.code == target_code)):
+                raise ConflictError(f"工程编码 {target_code} 已存在")
+            project = Iec61850ModelProject(
+                id=project_id,
+                name=target_name,
+                code=target_code,
+                description=f"从 {filename} 导入",
+                file_type=project_data["file_type"],
+                standard_version=project_data["standard_version"],
+                namespace=project_data["namespace"],
+                modeling_mode="IMPORTED",
+                status="DRAFT",
+            )
+            session.add(project)
+            for item in imported.nodes:
+                session.add(
+                    Iec61850ModelNode(
+                        id=item["id"],
+                        project_id=project_id,
+                        parent_id=item["parent_id"],
+                        kind=item["kind"],
+                        name=item["name"],
+                        sort_order=item["sort_order"],
+                        attributes_json=_json_dumps(item["attributes"]),
+                    )
+                )
+            session.flush()
+            self._rebuild_references_in_session(session, project_id)
+
+        return {
+            "project": self.get_project(project_id),
+            "tree": self.get_tree(project_id),
+            "summary": imported.summary,
+            "warnings": imported.warnings,
+        }
 
     def get_project(self, project_id: str) -> dict[str, Any]:
         with self.session_factory() as session:
@@ -388,6 +581,7 @@ class Iec61850ModelingService:
             project.revision += 1
             project.status = "DRAFT"
             session.flush()
+            self._rebuild_references_in_session(session, project_id)
             result = self._node_dict(node)
             result["schema"] = get_kind_schema(kind)
             result["path"] = self._node_path(session, node)
@@ -424,10 +618,167 @@ class Iec61850ModelingService:
             if node.kind == "ROOT":
                 project.name = name
             session.flush()
+            self._rebuild_references_in_session(session, project_id)
             result = self._node_dict(node)
             result["schema"] = get_kind_schema(node.kind)
             result["path"] = self._node_path(session, node)
             return result
+
+    def apply_cdc_template(self, project_id: str, do_type_id: str, template_id: str) -> dict[str, Any]:
+        """Merge a declarative CDC template into one DOType as a single project revision."""
+
+        with self.session_factory() as session, session.begin():
+            project = self._require_project(session, project_id)
+            do_type = self._require_node(session, project_id, do_type_id)
+            if do_type.kind != "DO_TYPE":
+                raise ValidationError("CDC 模板只能应用到数据对象类型 DOType")
+            do_type_attrs = _json_loads(do_type.attributes_json)
+            existing = list(
+                session.scalars(
+                    select(Iec61850ModelNode)
+                    .where(
+                        Iec61850ModelNode.project_id == project_id,
+                        Iec61850ModelNode.parent_id == do_type.id,
+                        Iec61850ModelNode.kind == "DA_DEF",
+                    )
+                    .order_by(Iec61850ModelNode.sort_order, Iec61850ModelNode.name)
+                ).all()
+            )
+            existing_payload = [{"name": node.name, **_json_loads(node.attributes_json)} for node in existing]
+            try:
+                template = materialize_cdc_template(
+                    template_id,
+                    do_type_name=str(do_type_attrs.get("id") or do_type.name),
+                    cdc=str(do_type_attrs.get("cdc") or ""),
+                    existing_attributes=existing_payload,
+                )
+            except KeyError as exc:
+                raise ValidationError(f"未知 CDC 模板：{template_id}") from exc
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+
+            created: list[dict[str, str]] = []
+            preserved: list[str] = []
+            conflicts: list[dict[str, Any]] = []
+            changed = False
+            resolved_cdc = str(template.get("resolved_cdc") or "")
+            if resolved_cdc and not do_type_attrs.get("cdc"):
+                do_type_attrs["cdc"] = resolved_cdc
+                do_type.attributes_json = _json_dumps(do_type_attrs)
+                do_type.revision += 1
+                changed = True
+
+            existing_by_name = {node.name: node for node in existing}
+            max_order = max((node.sort_order for node in existing), default=0)
+            for index, definition in enumerate(template.get("attributes", []), start=1):
+                name = str(definition["name"])
+                attributes = {key: value for key, value in definition.items() if key != "name"}
+                current = existing_by_name.get(name)
+                if current:
+                    current_attrs = _json_loads(current.attributes_json)
+                    mismatches = {
+                        key: {"current": current_attrs.get(key), "template": attributes.get(key)}
+                        for key in ("bType", "fc", "type")
+                        if attributes.get(key) not in (None, "") and current_attrs.get(key) != attributes.get(key)
+                    }
+                    if mismatches:
+                        conflicts.append({"name": name, "fields": mismatches})
+                    else:
+                        preserved.append(name)
+                    continue
+                node = Iec61850ModelNode(
+                    id=str(uuid.uuid4()),
+                    project_id=project_id,
+                    parent_id=do_type.id,
+                    kind="DA_DEF",
+                    name=name,
+                    sort_order=max_order + index * 10,
+                    attributes_json=_json_dumps(attributes),
+                )
+                session.add(node)
+                created.append({"kind": "DA_DEF", "name": name})
+                changed = True
+
+            for dependency in template.get("dependencies", []):
+                dependency_kind = str(dependency.get("kind") or "")
+                dependency_id = str(dependency.get("id") or "")
+                target = next(
+                    (
+                        node
+                        for node in session.scalars(
+                            select(Iec61850ModelNode).where(
+                                Iec61850ModelNode.project_id == project_id,
+                                Iec61850ModelNode.parent_id == do_type.parent_id,
+                                Iec61850ModelNode.kind == dependency_kind,
+                            )
+                        ).all()
+                        if str(_json_loads(node.attributes_json).get("id") or node.name) == dependency_id
+                    ),
+                    None,
+                )
+                if target is None:
+                    sibling_order = session.scalar(
+                        select(func.max(Iec61850ModelNode.sort_order)).where(
+                            Iec61850ModelNode.parent_id == do_type.parent_id
+                        )
+                    )
+                    target = Iec61850ModelNode(
+                        id=str(uuid.uuid4()),
+                        project_id=project_id,
+                        parent_id=do_type.parent_id,
+                        kind=dependency_kind,
+                        name=dependency_id,
+                        sort_order=(sibling_order or 0) + 10,
+                        attributes_json=_json_dumps({"id": dependency_id}),
+                    )
+                    session.add(target)
+                    session.flush()
+                    created.append({"kind": dependency_kind, "name": dependency_id})
+                    changed = True
+                dependency_children = {
+                    node.name: node
+                    for node in session.scalars(
+                        select(Iec61850ModelNode).where(Iec61850ModelNode.parent_id == target.id)
+                    ).all()
+                }
+                child_order = max((node.sort_order for node in dependency_children.values()), default=0)
+                for child_index, child in enumerate(dependency.get("children", []), start=1):
+                    child_name = str(child["name"])
+                    if child_name in dependency_children:
+                        preserved.append(f"{dependency_id}.{child_name}")
+                        continue
+                    child_kind = str(child["kind"])
+                    child_attrs = {key: value for key, value in child.items() if key not in {"kind", "name"}}
+                    session.add(
+                        Iec61850ModelNode(
+                            id=str(uuid.uuid4()),
+                            project_id=project_id,
+                            parent_id=target.id,
+                            kind=child_kind,
+                            name=child_name,
+                            sort_order=child_order + child_index * 10,
+                            attributes_json=_json_dumps(child_attrs),
+                        )
+                    )
+                    created.append({"kind": child_kind, "name": f"{dependency_id}.{child_name}"})
+                    changed = True
+
+            if changed:
+                project.revision += 1
+                project.status = "DRAFT"
+                session.flush()
+                self._rebuild_references_in_session(session, project_id)
+            return {
+                "template_id": template_id,
+                "do_type_id": do_type.id,
+                "cdc": str(do_type_attrs.get("cdc") or resolved_cdc),
+                "primary_fc": template["primary_fc"],
+                "created": created,
+                "preserved": sorted(set(preserved)),
+                "conflicts": conflicts,
+                "changed": changed,
+                "project_revision": project.revision,
+            }
 
     @staticmethod
     def _subtree_ids(session: Session, project_id: str, node_id: str) -> list[str]:
@@ -520,6 +871,71 @@ class Iec61850ModelingService:
             project.status = "DRAFT"
             return {"deleted_node_id": node_id, "deleted_count": len(subtree)}
 
+    @staticmethod
+    def _rebuild_references_in_session(session: Session, project_id: str) -> int:
+        """从稳定节点 ID 重建常用 SCL 引用图。"""
+        session.execute(delete(Iec61850ModelReference).where(Iec61850ModelReference.project_id == project_id))
+        nodes = list(session.scalars(select(Iec61850ModelNode).where(Iec61850ModelNode.project_id == project_id)).all())
+        type_indexes: dict[str, dict[str, Iec61850ModelNode]] = {
+            kind: {} for kind in ("LNODE_TYPE", "DO_TYPE", "DA_TYPE", "ENUM_TYPE")
+        }
+        by_parent: dict[str | None, list[Iec61850ModelNode]] = defaultdict(list)
+        ieds: dict[str, Iec61850ModelNode] = {}
+        for node in nodes:
+            by_parent[node.parent_id].append(node)
+            attrs = _json_loads(node.attributes_json)
+            if node.kind in type_indexes:
+                type_indexes[node.kind][str(attrs.get("id") or node.name)] = node
+            elif node.kind == "IED":
+                ieds[node.name] = node
+
+        references: list[Iec61850ModelReference] = []
+
+        def add(source: Iec61850ModelNode, target: Iec61850ModelNode | None, relation: str, external: str) -> None:
+            if not target:
+                return
+            references.append(
+                Iec61850ModelReference(
+                    id=str(uuid.uuid4()),
+                    project_id=project_id,
+                    source_node_id=source.id,
+                    target_node_id=target.id,
+                    relation_type=relation,
+                    attributes_json=_json_dumps({"external_ref": external}),
+                )
+            )
+
+        for node in nodes:
+            attrs = _json_loads(node.attributes_json)
+            if node.kind in ("LN0", "LN") and attrs.get("lnType"):
+                ref = str(attrs["lnType"])
+                add(node, type_indexes["LNODE_TYPE"].get(ref), "LN_TYPE", ref)
+            elif node.kind in ("DO_DEF", "SDO_DEF") and attrs.get("type"):
+                ref = str(attrs["type"])
+                add(node, type_indexes["DO_TYPE"].get(ref), "DO_TYPE", ref)
+            elif node.kind in ("DA_DEF", "BDA_DEF") and attrs.get("type"):
+                ref = str(attrs["type"])
+                target_kind = "DA_TYPE" if attrs.get("bType") == "Struct" else "ENUM_TYPE"
+                add(node, type_indexes[target_kind].get(ref), target_kind, ref)
+            elif node.kind in ("REPORT_CONTROL", "GSE_CONTROL") and attrs.get("datSet"):
+                ref = str(attrs["datSet"])
+                target = next(
+                    (item for item in by_parent.get(node.parent_id, []) if item.kind == "DATASET" and item.name == ref),
+                    None,
+                )
+                add(node, target, "CONTROL_DATASET", ref)
+            elif node.kind == "CONNECTED_AP" and attrs.get("iedName"):
+                ref = str(attrs["iedName"])
+                add(node, ieds.get(ref), "CONNECTED_AP_IED", ref)
+
+        session.add_all(references)
+        return len(references)
+
+    def rebuild_references(self, project_id: str) -> dict[str, int]:
+        with self.session_factory() as session, session.begin():
+            self._require_project(session, project_id)
+            return {"reference_count": self._rebuild_references_in_session(session, project_id)}
+
     def validate_project(self, project_id: str) -> dict[str, Any]:
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
@@ -552,7 +968,7 @@ class Iec61850ModelingService:
                     }
                 )
 
-            for required_kind in ("ROOT", "HEADER", "IED", "DATA_TYPE_TEMPLATES"):
+            for required_kind in ("ROOT", "HEADER", "COMMUNICATION", "IED", "DATA_TYPE_TEMPLATES"):
                 if not by_kind[required_kind]:
                     add("ERROR", f"STRUCTURE_{required_kind}_REQUIRED", f"缺少必需节点：{KIND_LABELS[required_kind]}")
             for singleton_kind in ("ROOT", "HEADER", "DATA_TYPE_TEMPLATES"):
@@ -562,6 +978,8 @@ class Iec61850ModelingService:
                         f"STRUCTURE_{singleton_kind}_SINGLETON",
                         f"模型中只能包含一个{KIND_LABELS[singleton_kind]}",
                     )
+            for variant_issue in validate_file_variant(list(nodes), project.file_type, for_publish=False):
+                add("ERROR", variant_issue["code"], variant_issue["message"])
             if not by_kind["LDEVICE"]:
                 add("ERROR", "STRUCTURE_LDEVICE_REQUIRED", "至少需要一个逻辑设备")
 
@@ -589,6 +1007,16 @@ class Iec61850ModelingService:
                         add("ERROR", "LN_INST_REQUIRED", "逻辑节点实例号不能为空", node, "inst")
                 if node.kind in ("REPORT_CONTROL", "GSE_CONTROL") and not attrs.get("datSet"):
                     add("ERROR", "CONTROL_DATASET_REQUIRED", "控制块必须引用数据集", node, "datSet")
+                if node.kind == "REPORT_CONTROL":
+                    child_kinds = {child.kind for child in by_parent.get(node.id, [])}
+                    for required_child in ("TRG_OPS", "OPT_FIELDS", "RPT_ENABLED"):
+                        if required_child not in child_kinds:
+                            add(
+                                "ERROR",
+                                f"REPORT_{required_child}_REQUIRED",
+                                f"报告控制块缺少 {KIND_LABELS[required_child]}",
+                                node,
+                            )
                 if node.kind in ("LNODE_TYPE", "DO_TYPE", "DA_TYPE", "ENUM_TYPE") and not attrs.get("id"):
                     add("ERROR", "TYPE_ID_REQUIRED", "类型定义 ID 不能为空", node, "id")
                 if node.kind in ("LN0", "LN"):
@@ -606,6 +1034,46 @@ class Iec61850ModelingService:
                         add("ERROR", "NESTED_TYPE_REQUIRED", "Struct/Enum 基础类型必须填写类型引用", node, "type")
                     elif type_ref not in type_ids[target_kind]:
                         add("ERROR", "NESTED_TYPE_REFERENCE_MISSING", f"引用的类型 {type_ref} 不存在", node, "type")
+                if node.kind == "DA_DEF" and node.name in {"q", "t", "dU"}:
+                    b_type = str(attrs.get("bType") or "")
+                    fc = str(attrs.get("fc") or "")
+                    if node.name == "q":
+                        if b_type != "Quality":
+                            add("ERROR", "CDC_Q_BTYPE_INVALID", "品质属性 q 的 bType 必须为 Quality", node, "bType")
+                        if attrs.get("qchg") is not True:
+                            add("WARNING", "CDC_Q_QCHG_RECOMMENDED", "品质属性 q 建议启用 qchg", node, "qchg")
+                    elif node.name == "t" and b_type not in {"Timestamp", "TimeStamp"}:
+                        add("ERROR", "CDC_T_BTYPE_INVALID", "时间戳属性 t 的 bType 必须为 Timestamp", node, "bType")
+                    elif node.name == "dU":
+                        if b_type != "Unicode255":
+                            add(
+                                "ERROR",
+                                "CDC_DU_BTYPE_INVALID",
+                                "数据描述属性 dU 的 bType 必须为 Unicode255",
+                                node,
+                                "bType",
+                            )
+                        if fc != "DC":
+                            add("ERROR", "CDC_DU_FC_INVALID", "数据描述属性 dU 的 FC 必须为 DC", node, "fc")
+                    if node.name in {"q", "t"}:
+                        primary_fc = next(
+                            (
+                                str(_json_loads(sibling.attributes_json).get("fc") or "")
+                                for sibling in by_parent.get(node.parent_id, [])
+                                if sibling.kind == "DA_DEF"
+                                and sibling.name in {"stVal", "mag", "instMag", "actVal", "mxVal", "setVal"}
+                                and _json_loads(sibling.attributes_json).get("fc")
+                            ),
+                            "",
+                        )
+                        if primary_fc and fc != primary_fc:
+                            add(
+                                "ERROR",
+                                "CDC_COMMON_FC_MISMATCH",
+                                f"属性 {node.name} 的 FC 应与主值一致（{primary_fc}）",
+                                node,
+                                "fc",
+                            )
                 if node.kind in ("REPORT_CONTROL", "GSE_CONTROL"):
                     dataset = str(attrs.get("datSet") or "")
                     if dataset and dataset not in datasets_by_parent.get(node.parent_id, set()):
@@ -626,11 +1094,52 @@ class Iec61850ModelingService:
                             node,
                             "iedName",
                         )
+                if node.kind == "EXTENSION":
+                    add(
+                        "ERROR" if attrs.get("lossRisk") else "WARNING",
+                        "LOSSY_EXTENSION_BLOCKED" if attrs.get("lossRisk") else "PRESERVED_EXTENSION_READ_ONLY",
+                        (
+                            "该扩展已确认存在有损风险，修复或明确保真策略前不能发布"
+                            if attrs.get("lossRisk")
+                            else "该节点为保真扩展片段；修改其父结构前请确认厂商兼容性"
+                        ),
+                        node,
+                    )
 
             for logical_device in (node for node in nodes if node.kind == "LDEVICE"):
                 ln0_count = sum(child.kind == "LN0" for child in by_parent.get(logical_device.id, []))
                 if ln0_count != 1:
                     add("ERROR", "LN0_EXACTLY_ONE", "每个逻辑设备必须且只能包含一个 LLN0", logical_device)
+
+            for ied in (node for node in nodes if node.kind == "IED"):
+                services_nodes = [child for child in by_parent.get(ied.id, []) if child.kind == "SERVICES"]
+                if len(services_nodes) != 1:
+                    add("ERROR", "IED_SERVICES_EXACTLY_ONE", "每个 IED 必须且只能包含一个 Services", ied)
+                    continue
+                capability_names = {
+                    str(_json_loads(child.attributes_json).get("tag") or child.name)
+                    for child in by_parent.get(services_nodes[0].id, [])
+                    if child.kind == "SERVICE_CAPABILITY"
+                }
+                ied_descendants = self._subtree_ids(session, project_id, ied.id)
+                ied_nodes = [item for item in nodes if item.id in ied_descendants]
+                if (
+                    any(item.kind == "REPORT_CONTROL" for item in ied_nodes)
+                    and "ConfReportControl" not in capability_names
+                ):
+                    add(
+                        "ERROR",
+                        "SERVICES_REPORT_CAPABILITY_MISSING",
+                        "模型包含报告控制块，但 Services 未声明 ConfReportControl",
+                        services_nodes[0],
+                    )
+                if any(item.kind == "GSE_CONTROL" for item in ied_nodes) and "GOOSE" not in capability_names:
+                    add(
+                        "ERROR",
+                        "SERVICES_GOOSE_CAPABILITY_MISSING",
+                        "模型包含 GOOSE 控制块，但 Services 未声明 GOOSE",
+                        services_nodes[0],
+                    )
 
             for siblings in by_parent.values():
                 seen: set[tuple[str, str]] = set()
@@ -641,17 +1150,16 @@ class Iec61850ModelingService:
                     seen.add(key)
 
             try:
+                from src.modeling.interoperability import validate_interoperability
                 from src.modeling.scl_serializer import SclModelSerializer
-                from src.proto.iec61850.plugins.scl.service.container import SclServiceContainer
 
                 generated = SclModelSerializer().serialize(project, list(nodes))
-                container = SclServiceContainer()
-                scl_validation = container.validate(container.parse_string(generated.xml))
-                for scl_issue in scl_validation.issues:
+                interoperability = validate_interoperability(generated.xml, filename=generated.filename)
+                for scl_issue in interoperability["issues"]:
                     add(
-                        "ERROR" if scl_issue.severity.value == "error" else "WARNING",
-                        f"SCL_{scl_issue.rule_id.upper()}",
-                        scl_issue.message,
+                        scl_issue["level"],
+                        scl_issue["code"],
+                        scl_issue["message"],
                     )
             except Exception as exc:
                 add("ERROR", "SCL_SERIALIZATION_FAILED", f"SCL 生成或解析失败：{exc}")
@@ -667,6 +1175,7 @@ class Iec61850ModelingService:
                 "warning_count": warning_count,
                 "issues": issues,
                 "validated_revision": project.revision,
+                "interoperability": interoperability if "interoperability" in locals() else None,
             }
 
     @staticmethod
@@ -854,7 +1363,7 @@ class Iec61850ModelingService:
                 raise ValidationError("已发布版本不可删除")
             session.delete(version)
 
-    def generate_scl(self, project_id: str) -> dict[str, Any]:
+    def generate_scl(self, project_id: str, *, file_type: str | None = None) -> dict[str, Any]:
         from src.modeling.scl_serializer import SclModelSerializer
 
         with self.session_factory() as session:
@@ -862,7 +1371,11 @@ class Iec61850ModelingService:
             nodes = list(
                 session.scalars(select(Iec61850ModelNode).where(Iec61850ModelNode.project_id == project_id)).all()
             )
-            result = SclModelSerializer().serialize(project, nodes)
+            target_file_type = (file_type or project.file_type).upper()
+            variant_issues = validate_file_variant(nodes, target_file_type, for_publish=False)
+            if variant_issues:
+                raise ValidationError("目标 SCL 文件变体不满足生成契约", {"issues": variant_issues})
+            result = SclModelSerializer().serialize(project, nodes, file_type=target_file_type)
             return {
                 "xml": result.xml,
                 "filename": result.filename,
@@ -871,11 +1384,42 @@ class Iec61850ModelingService:
                 "status": project.status,
             }
 
+    def generate_artifact_bundle(self, project_id: str, *, file_type: str | None = None) -> dict[str, Any]:
+        from src.modeling.scl_serializer import SclModelSerializer
+
+        with self.session_factory() as session:
+            project = self._require_project(session, project_id)
+            nodes = list(
+                session.scalars(select(Iec61850ModelNode).where(Iec61850ModelNode.project_id == project_id)).all()
+            )
+            target_file_type = (file_type or project.file_type).upper()
+            variant_issues = validate_file_variant(nodes, target_file_type, for_publish=False)
+            if variant_issues:
+                raise ValidationError("目标 SCL 文件变体不满足生成契约", {"issues": variant_issues})
+            scl = SclModelSerializer().serialize(project, nodes, file_type=target_file_type)
+            bundle = build_artifact_bundle(project, nodes, scl.xml, scl.filename)
+            return {
+                "content": bundle.content,
+                "filename": bundle.filename,
+                "size": len(bundle.content),
+                "manifest": bundle.manifest,
+                "artifacts": [artifact.metadata() for artifact in bundle.artifacts],
+                "revision": project.revision,
+            }
+
     def publish_project(self, project_id: str, *, label: str = "", description: str = "") -> dict[str, Any]:
         validation = self.validate_project(project_id)
         if not validation["passed"]:
             raise ValidationError("模型校验未通过，不能发布", validation)
-        generated = self.generate_scl(project_id)
+        with self.session_factory() as session:
+            project = self._require_project(session, project_id)
+            nodes = list(
+                session.scalars(select(Iec61850ModelNode).where(Iec61850ModelNode.project_id == project_id)).all()
+            )
+            variant_issues = validate_file_variant(nodes, project.file_type, for_publish=True)
+            if variant_issues:
+                raise ValidationError("当前文件变体不能发布", {"issues": variant_issues})
+        generated = self.generate_artifact_bundle(project_id)
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
             session.execute(
@@ -894,8 +1438,11 @@ class Iec61850ModelingService:
                 status="PUBLISHED",
             )
             project.status = "PUBLISHED"
+            scl_artifact = next(item for item in generated["artifacts"] if item["kind"] == "SCL")
             return {
                 "version": self._version_dict(version),
                 "validation": validation,
-                "artifact": {key: generated[key] for key in ("filename", "size", "revision")},
+                "artifact": {**scl_artifact, "revision": generated["revision"]},
+                "bundle": {key: generated[key] for key in ("filename", "size", "revision")},
+                "manifest": generated["manifest"],
             }

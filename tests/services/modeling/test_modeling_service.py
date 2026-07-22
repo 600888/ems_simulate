@@ -51,9 +51,18 @@ def test_create_from_scratch_builds_minimum_valid_skeleton(service: Iec61850Mode
     project_id = result["project"]["id"]
     nodes = flatten(result["tree"])
 
-    assert {"ROOT", "HEADER", "IED", "ACCESS_POINT", "SERVER", "LDEVICE", "LN0", "DATA_TYPE_TEMPLATES"} <= {
-        node["kind"] for node in nodes
-    }
+    assert {
+        "ROOT",
+        "HEADER",
+        "COMMUNICATION",
+        "IED",
+        "SERVICES",
+        "ACCESS_POINT",
+        "SERVER",
+        "LDEVICE",
+        "LN0",
+        "DATA_TYPE_TEMPLATES",
+    } <= {node["kind"] for node in nodes}
     validation = service.validate_project(project_id)
     assert validation["passed"] is True
     assert validation["error_count"] == 0
@@ -179,43 +188,6 @@ def test_publish_creates_protected_published_version(service: Iec61850ModelingSe
 def test_communication_tree_is_serialized_to_scl(service: Iec61850ModelingService):
     result = create_project(service)
     project_id = result["project"]["id"]
-    root_node = next(node for node in flatten(result["tree"]) if node["kind"] == "ROOT")
-    communication = service.create_node(
-        project_id,
-        {"parent_id": root_node["id"], "kind": "COMMUNICATION", "name": "Communication", "attributes": {}},
-    )
-    subnet = service.create_node(
-        project_id,
-        {
-            "parent_id": communication["id"],
-            "kind": "SUBNETWORK",
-            "name": "StationBus",
-            "attributes": {"type": "8-MMS", "bitRate": 100, "multiplier": "M"},
-        },
-    )
-    connected = service.create_node(
-        project_id,
-        {
-            "parent_id": subnet["id"],
-            "kind": "CONNECTED_AP",
-            "name": "PROT_IED_01_AP1",
-            "attributes": {"iedName": "PROT_IED_01", "apName": "AP1"},
-        },
-    )
-    address = service.create_node(
-        project_id,
-        {"parent_id": connected["id"], "kind": "ADDRESS", "name": "Address", "attributes": {}},
-    )
-    service.create_node(
-        project_id,
-        {
-            "parent_id": address["id"],
-            "kind": "P",
-            "name": "IP",
-            "attributes": {"type": "IP", "value": "192.168.1.10"},
-        },
-    )
-
     xml_root = ET.fromstring(service.generate_scl(project_id)["xml"])
     namespace = {"scl": "http://www.iec.ch/61850/2003/SCL"}
     subnet_xml = xml_root.find(".//scl:SubNetwork", namespace)
@@ -225,3 +197,116 @@ def test_communication_tree_is_serialized_to_scl(service: Iec61850ModelingServic
     assert connected_xml.attrib == {"iedName": "PROT_IED_01", "apName": "AP1"}
     assert parameter_xml.attrib["type"] == "IP"
     assert parameter_xml.text == "192.168.1.10"
+
+
+def test_report_control_serializes_complete_children_and_preserves_zero(service: Iec61850ModelingService):
+    result = create_project(service)
+    project_id = result["project"]["id"]
+    ln0 = next(node for node in flatten(result["tree"]) if node["kind"] == "LN0")
+    dataset = service.create_node(
+        project_id,
+        {"parent_id": ln0["id"], "kind": "DATASET", "name": "dsEvents", "attributes": {}},
+    )
+    assert dataset["name"] == "dsEvents"
+    report = service.create_node(
+        project_id,
+        {
+            "parent_id": ln0["id"],
+            "kind": "REPORT_CONTROL",
+            "name": "urcbEvents",
+            "attributes": {"datSet": "dsEvents", "confRev": 0, "buffered": False, "bufTime": 0},
+        },
+    )
+    service.create_node(
+        project_id,
+        {
+            "parent_id": report["id"],
+            "kind": "TRG_OPS",
+            "name": "TrgOps",
+            "attributes": {"dchg": True, "qchg": True, "dupd": False, "period": False, "gi": True},
+        },
+    )
+    service.create_node(
+        project_id,
+        {
+            "parent_id": report["id"],
+            "kind": "OPT_FIELDS",
+            "name": "OptFields",
+            "attributes": {"seqNum": True, "timeStamp": True, "reasonCode": True},
+        },
+    )
+    service.create_node(
+        project_id,
+        {
+            "parent_id": report["id"],
+            "kind": "RPT_ENABLED",
+            "name": "RptEnabled",
+            "attributes": {"max": 8},
+        },
+    )
+
+    xml_root = ET.fromstring(service.generate_scl(project_id)["xml"])
+    ns = {"scl": "http://www.iec.ch/61850/2003/SCL"}
+    report_xml = xml_root.find(".//scl:ReportControl", ns)
+    assert report_xml is not None
+    assert report_xml.attrib["confRev"] == "0"
+    assert report_xml.attrib["buffered"] == "false"
+    assert report_xml.find("scl:TrgOps", ns).attrib["dupd"] == "false"
+    assert report_xml.find("scl:OptFields", ns).attrib["reasonCode"] == "true"
+    assert report_xml.find("scl:RptEnabled", ns).attrib["max"] == "8"
+
+
+@pytest.mark.parametrize(
+    ("sample_name", "project_code"),
+    [
+        ("simpleIO.icd", "SIMPLE_IO_IMPORTED"),
+        ("KG_BAMS_real.icd", "KG_BAMS_REAL_IMPORTED"),
+        ("GOOSE发布.icd", "GOOSE_IMPORTED"),
+    ],
+)
+def test_import_preview_and_roundtrip_real_sample(
+    service: Iec61850ModelingService,
+    sample_name: str,
+    project_code: str,
+):
+    from pathlib import Path
+
+    sample = Path("tmp/testicd") / sample_name
+    if not sample.exists():
+        pytest.skip("本地黄金样例未提供")
+    preview = service.preview_import(sample.read_bytes(), filename=sample.name)
+    assert preview["summary"]["by_kind"]["SERVICES"] >= 1
+
+    imported = service.import_scl(sample.read_bytes(), filename=sample.name, code=project_code)
+    artifact = service.generate_scl(imported["project"]["id"])
+    root = ET.fromstring(artifact["xml"])
+    ns = {"scl": "http://www.iec.ch/61850/2003/SCL"}
+    assert root.find("scl:Header", ns).attrib["nameStructure"] == "IEDName"
+    original = ET.fromstring(sample.read_bytes())
+    assert len(root.findall(".//scl:ReportControl", ns)) == len(original.findall(".//scl:ReportControl", ns))
+    assert len(root.findall(".//scl:GSEControl", ns)) == len(original.findall(".//scl:GSEControl", ns))
+    assert len(root.findall(".//scl:Services/*", ns)) == len(original.findall(".//scl:Services/*", ns))
+
+
+def test_import_rejects_truncated_xml(service: Iec61850ModelingService):
+    with pytest.raises(ValidationError, match="XML"):
+        service.preview_import(b'>\n<EnumVal ord="1">bad</EnumVal>', filename="broken.icd")
+
+
+def test_selected_profiles_seed_declared_service_capabilities(service: Iec61850ModelingService):
+    result = service.create_project(
+        {
+            "name": "GOOSE 发布模型",
+            "code": "GOOSE_PROFILE_MODEL",
+            "file_type": "ICD",
+            "standard_version": "IEC 61850 Ed2",
+            "ied": {"name": "GOOSE_IED"},
+            "logical_devices": [{"inst": "LD0"}],
+            "profiles": ["generic-goose-publisher", "generic-reporting"],
+        }
+    )
+    root = ET.fromstring(service.generate_scl(result["project"]["id"])["xml"])
+    ns = {"scl": "http://www.iec.ch/61850/2003/SCL"}
+    assert root.find(".//scl:Services/scl:GOOSE", ns).attrib["max"] == "32"
+    assert root.find(".//scl:Services/scl:ConfReportControl", ns).attrib["max"] == "100"
+    assert root.find(".//scl:LN[@lnClass='LPHD']", ns) is not None

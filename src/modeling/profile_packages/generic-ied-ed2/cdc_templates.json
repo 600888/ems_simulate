@@ -1,0 +1,75 @@
+[
+  {
+    "id": "common-quality-time-description",
+    "name": "补齐 q / t / dU",
+    "description": "保留现有主值，只补齐品质、时间戳和数据描述；q/t 的 FC 根据主值或 CDC 自动推断。",
+    "mode": "COMMON",
+    "attributes": [
+      {"name": "q", "bType": "Quality", "fc": "$PRIMARY_FC", "qchg": true},
+      {"name": "t", "bType": "Timestamp", "fc": "$PRIMARY_FC"},
+      {"name": "dU", "bType": "Unicode255", "fc": "DC"}
+    ]
+  },
+  {
+    "id": "sps",
+    "name": "SPS 单点状态",
+    "description": "生成 stVal、q、t、dU。",
+    "mode": "CDC",
+    "cdc": "SPS",
+    "attributes": [
+      {"name": "stVal", "bType": "BOOLEAN", "fc": "ST", "dchg": true},
+      {"name": "q", "bType": "Quality", "fc": "ST", "qchg": true},
+      {"name": "t", "bType": "Timestamp", "fc": "ST"},
+      {"name": "dU", "bType": "Unicode255", "fc": "DC"}
+    ]
+  },
+  {
+    "id": "dps",
+    "name": "DPS 双点状态",
+    "description": "生成 Dbpos 类型的 stVal，以及 q、t、dU。",
+    "mode": "CDC",
+    "cdc": "DPS",
+    "attributes": [
+      {"name": "stVal", "bType": "Dbpos", "fc": "ST", "dchg": true},
+      {"name": "q", "bType": "Quality", "fc": "ST", "qchg": true},
+      {"name": "t", "bType": "Timestamp", "fc": "ST"},
+      {"name": "dU", "bType": "Unicode255", "fc": "DC"}
+    ]
+  },
+  {
+    "id": "ins",
+    "name": "INS 整数状态",
+    "description": "生成 INT32 类型的 stVal，以及 q、t、dU。",
+    "mode": "CDC",
+    "cdc": "INS",
+    "attributes": [
+      {"name": "stVal", "bType": "INT32", "fc": "ST", "dchg": true},
+      {"name": "q", "bType": "Quality", "fc": "ST", "qchg": true},
+      {"name": "t", "bType": "Timestamp", "fc": "ST"},
+      {"name": "dU", "bType": "Unicode255", "fc": "DC"}
+    ]
+  },
+  {
+    "id": "mv",
+    "name": "MV 模拟量",
+    "description": "生成结构化 mag、q、t、dU，并自动创建 AnalogueValue DAType。",
+    "mode": "CDC",
+    "cdc": "MV",
+    "attributes": [
+      {"name": "mag", "bType": "Struct", "type": "$ANALOGUE_VALUE_TYPE", "fc": "MX", "dchg": true},
+      {"name": "q", "bType": "Quality", "fc": "MX", "qchg": true},
+      {"name": "t", "bType": "Timestamp", "fc": "MX"},
+      {"name": "dU", "bType": "Unicode255", "fc": "DC"}
+    ],
+    "dependencies": [
+      {
+        "kind": "DA_TYPE",
+        "id": "$ANALOGUE_VALUE_TYPE",
+        "children": [
+          {"kind": "BDA_DEF", "name": "f", "bType": "FLOAT32"},
+          {"kind": "BDA_DEF", "name": "i", "bType": "INT32"}
+        ]
+      }
+    ]
+  }
+]

@@ -174,6 +174,7 @@ if ! $SKIP_BACKEND; then
         "${PROJECT_ROOT}/config.ini"
         "${PROJECT_ROOT}/data"
         "${PROJECT_ROOT}/pyproject.toml"
+        "${PROJECT_ROOT}/ems_simulate_backend.spec"
     )
 
     BE_UP_TO_DATE=false
@@ -197,38 +198,25 @@ if ! $SKIP_BACKEND; then
         mkdir -p "$BINARIES_DIR"
         mkdir -p "$BUILD_DIR"
 
-        pyinstaller --noconfirm --onefile \
-            --name "ems_simulate_backend" \
+        EMS_PYINSTALLER_MODE=onefile \
+        EMS_PYINSTALLER_NAME=ems_simulate_backend \
+        EMS_PYINSTALLER_DATA_SCOPE=all \
+        EMS_PYINSTALLER_CONSOLE=1 \
+        pyinstaller --noconfirm \
             --clean \
             --distpath "$BINARIES_DIR" \
             --workpath "${BUILD_DIR}/build_pyinstaller_tauri" \
-            --specpath "$BUILD_DIR" \
-            --add-data "${PROJECT_ROOT}/config.ini:." \
-            --add-data "${PROJECT_ROOT}/www:www" \
-            --add-data "${PROJECT_ROOT}/data:data" \
-            --hidden-import="uvicorn.logging" \
-            --hidden-import="uvicorn.loops" \
-            --hidden-import="openpyxl" \
-            --hidden-import="uvicorn.loops.auto" \
-            --hidden-import="uvicorn.loops.asyncio" \
-            --hidden-import="uvicorn.protocols" \
-            --hidden-import="uvicorn.protocols.http" \
-            --hidden-import="uvicorn.protocols.http.auto" \
-            --hidden-import="uvicorn.lifespan" \
-            --hidden-import="uvicorn.lifespan.on" \
-            --hidden-import="pymodbus" \
-            --hidden-import="fastapi" \
-            --hidden-import="sqlalchemy" \
-            --hidden-import="pydantic" \
-            --hidden-import="loguru" \
-            --hidden-import="c104" \
-            start_back_end.py
+            "${PROJECT_ROOT}/ems_simulate_backend.spec"
 
         # PyInstaller --onefile 直接输出到 distpath，需重命名为 sidecar 格式
         PYINSTALLER_OUTPUT="${BINARIES_DIR}/ems_simulate_backend"
         if [ -f "$PYINSTALLER_OUTPUT" ]; then
             mv "$PYINSTALLER_OUTPUT" "$BE_SIDECAR_BINARY"
             chmod +x "$BE_SIDECAR_BINARY"
+            if ! pyi-archive_viewer -l "$BE_SIDECAR_BINARY" | grep 'src/modeling/profile_packages/.*/manifest.json' >/dev/null ||
+               ! pyi-archive_viewer -l "$BE_SIDECAR_BINARY" | grep 'src/modeling/standard_packages/.*/manifest.json' >/dev/null; then
+                WriteErr "PyInstaller sidecar is missing modeling package manifests"
+            fi
             if ! pyi-archive_viewer -l "$BE_SIDECAR_BINARY" | grep '_c104' >/dev/null; then
                 WriteErr "PyInstaller sidecar 缺少 c104 原生扩展"
             fi

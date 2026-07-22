@@ -81,6 +81,29 @@
                   placeholder="说明模型用途、站点或装置范围"
                 />
               </el-form-item>
+              <el-form-item label="建模配置档" class="full-row">
+                <el-select
+                  v-model="form.profiles"
+                  multiple
+                  style="width: 100%"
+                  placeholder="选择配置档"
+                >
+                  <el-option
+                    v-for="profile in profiles"
+                    :key="profile.id"
+                    :label="`${profile.name} · ${profile.version}`"
+                    :value="profile.id"
+                  >
+                    <span>{{ profile.name }}</span>
+                    <span class="profile-description">{{
+                      profile.description
+                    }}</span>
+                  </el-option>
+                </el-select>
+                <div class="field-tip">
+                  依赖项会自动解析并锁定版本；通用 IED 配置档始终建议启用。
+                </div>
+              </el-form-item>
             </div>
           </section>
 
@@ -190,6 +213,10 @@
                     <dt>逻辑设备</dt>
                     <dd>{{ form.logical_devices.length }} 个</dd>
                   </div>
+                  <div>
+                    <dt>配置档</dt>
+                    <dd>{{ form.profiles.length }} 个</dd>
+                  </div>
                 </dl>
                 <el-alert
                   type="info"
@@ -251,16 +278,21 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { ArrowLeft, Delete, Plus, Share } from "@element-plus/icons-vue";
-import { modelingApi, type CreateProjectPayload } from "@/api/modelingApi";
+import {
+  modelingApi,
+  type CreateProjectPayload,
+  type ModelingProfile,
+} from "@/api/modelingApi";
 
 const router = useRouter();
 const formRef = ref<FormInstance>();
 const activeStep = ref(0);
 const creating = ref(false);
+const profiles = ref<ModelingProfile[]>([]);
 const namePattern = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 
 const form = reactive<CreateProjectPayload>({
@@ -272,6 +304,7 @@ const form = reactive<CreateProjectPayload>({
   ied: { name: "", manufacturer: "", type: "", configVersion: "1.0" },
   access_point_name: "AP1",
   logical_devices: [{ inst: "LD0", desc: "默认逻辑设备" }],
+  profiles: ["generic-ied-ed2"],
 });
 
 const identifierValidator = (
@@ -343,6 +376,10 @@ async function createProject() {
     creating.value = false;
   }
 }
+
+onMounted(async () => {
+  profiles.value = await modelingApi.listProfiles();
+});
 </script>
 
 <style scoped lang="scss">
@@ -438,6 +475,12 @@ h1 {
   margin-top: 5px;
   color: var(--text-secondary);
   font-size: 11px;
+}
+.profile-description {
+  float: right;
+  max-width: 58%;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 .file-type-group {
   width: 100%;

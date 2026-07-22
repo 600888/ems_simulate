@@ -1,10 +1,13 @@
 """IEC 61850 图形化建模 REST API。"""
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, File, Form, Query, UploadFile
 from fastapi.responses import Response
 
+from src.modeling.jobs import ModelingJobManager
 from src.modeling.service import Iec61850ModelingService
+from src.web.api.exceptions import ConflictError, NotFoundError, ValidationError
 from src.web.api.modeling.schemas import (
+    CdcTemplateApplyRequest,
     NodeCreateRequest,
     NodeUpdateRequest,
     ProjectCreateRequest,
@@ -15,6 +18,15 @@ from src.web.api.schemas import BaseResponse
 
 router = APIRouter(prefix="/api/modeling", tags=["IEC 61850 Modeling"])
 service = Iec61850ModelingService()
+job_manager = ModelingJobManager()
+MAX_SCL_UPLOAD_BYTES = 25 * 1024 * 1024
+
+
+async def _read_scl_upload(file: UploadFile) -> bytes:
+    content = await file.read(MAX_SCL_UPLOAD_BYTES + 1)
+    if len(content) > MAX_SCL_UPLOAD_BYTES:
+        raise ValidationError("SCL 文件超过 25 MiB 导入上限")
+    return content
 
 
 @router.get("/projects")
@@ -30,6 +42,81 @@ def list_projects(
 @router.post("/projects")
 def create_project(request: ProjectCreateRequest) -> BaseResponse:
     return BaseResponse.success(service.create_project(request.model_dump(by_alias=True)), "模型工程创建成功")
+
+
+@router.get("/profiles")
+def list_profiles() -> BaseResponse:
+    return BaseResponse.success(service.list_profiles())
+
+
+@router.get("/standards")
+def list_standards() -> BaseResponse:
+    return BaseResponse.success(service.list_standards())
+
+
+@router.get("/file-variants")
+def list_file_variants() -> BaseResponse:
+    return BaseResponse.success(service.list_file_variants())
+
+
+@router.get("/cdc-templates")
+def list_cdc_templates() -> BaseResponse:
+    return BaseResponse.success(service.list_cdc_templates())
+
+
+@router.post("/projects/import-preview")
+async def preview_import(file: UploadFile = File(...)) -> BaseResponse:
+    content = await _read_scl_upload(file)
+    return BaseResponse.success(service.preview_import(content, filename=file.filename or "model.icd"))
+
+
+@router.post("/jobs/import-preview")
+async def create_import_preview_job(file: UploadFile = File(...)) -> BaseResponse:
+    content = await _read_scl_upload(file)
+    filename = file.filename or "model.icd"
+
+    def run(progress, cancel_check):
+        return service.preview_import(
+            content,
+            filename=filename,
+            progress=progress,
+            cancel_check=cancel_check,
+        )
+
+    try:
+        job = job_manager.submit("IMPORT_PREVIEW", run, input_size=len(content))
+    except RuntimeError as exc:
+        raise ConflictError(str(exc)) from exc
+    return BaseResponse.success(job)
+
+
+@router.get("/jobs/{job_id}")
+def get_job(job_id: str) -> BaseResponse:
+    job = job_manager.get(job_id)
+    if job is None:
+        raise NotFoundError("建模后台任务不存在或已过期")
+    return BaseResponse.success(job)
+
+
+@router.delete("/jobs/{job_id}")
+def cancel_job(job_id: str) -> BaseResponse:
+    job = job_manager.cancel(job_id)
+    if job is None:
+        raise NotFoundError("建模后台任务不存在或已过期")
+    return BaseResponse.success(job, "已请求取消建模任务")
+
+
+@router.post("/projects/import")
+async def import_project(
+    file: UploadFile = File(...),
+    code: str = Form(default=""),
+    name: str = Form(default=""),
+) -> BaseResponse:
+    content = await _read_scl_upload(file)
+    return BaseResponse.success(
+        service.import_scl(content, filename=file.filename or "model.icd", code=code, name=name),
+        "SCL 模型导入成功",
+    )
 
 
 @router.get("/projects/{project_id}")
@@ -62,6 +149,14 @@ def get_node(project_id: str, node_id: str) -> BaseResponse:
 def update_node(project_id: str, node_id: str, request: NodeUpdateRequest) -> BaseResponse:
     payload = request.model_dump(exclude_unset=True)
     return BaseResponse.success(service.update_node(project_id, node_id, payload), "节点已保存")
+
+
+@router.post("/projects/{project_id}/nodes/{node_id}/apply-cdc-template")
+def apply_cdc_template(project_id: str, node_id: str, request: CdcTemplateApplyRequest) -> BaseResponse:
+    return BaseResponse.success(
+        service.apply_cdc_template(project_id, node_id, request.template_id),
+        "CDC 数据属性模板已应用",
+    )
 
 
 @router.get("/projects/{project_id}/nodes/{node_id}/delete-impact")
@@ -104,17 +199,33 @@ def delete_version(project_id: str, version_id: str) -> BaseResponse:
 
 
 @router.get("/projects/{project_id}/scl-preview")
-def preview_scl(project_id: str) -> BaseResponse:
-    return BaseResponse.success(service.generate_scl(project_id))
+def preview_scl(project_id: str, file_type: str = "") -> BaseResponse:
+    return BaseResponse.success(service.generate_scl(project_id, file_type=file_type or None))
 
 
 @router.get("/projects/{project_id}/scl-download")
-def download_scl(project_id: str) -> Response:
-    artifact = service.generate_scl(project_id)
+def download_scl(project_id: str, file_type: str = "") -> Response:
+    artifact = service.generate_scl(project_id, file_type=file_type or None)
     return Response(
         content=artifact["xml"].encode("utf-8"),
         media_type="application/xml; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{artifact["filename"]}"'},
+    )
+
+
+@router.get("/projects/{project_id}/artifacts")
+def preview_artifacts(project_id: str, file_type: str = "") -> BaseResponse:
+    bundle = service.generate_artifact_bundle(project_id, file_type=file_type or None)
+    return BaseResponse.success({key: bundle[key] for key in ("filename", "size", "revision", "manifest", "artifacts")})
+
+
+@router.get("/projects/{project_id}/artifacts-download")
+def download_artifacts(project_id: str, file_type: str = "") -> Response:
+    bundle = service.generate_artifact_bundle(project_id, file_type=file_type or None)
+    return Response(
+        content=bundle["content"],
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{bundle["filename"]}"'},
     )
 
 

@@ -148,54 +148,19 @@ if (Test-Path (Join-Path $PROJECT_ROOT_DIR "pyproject.toml")) {
 # Step 4: Build backend with PyInstaller
 Write-Step "Building backend with PyInstaller..."
 
-# Get absolute path
-$ABS_PROJECT_ROOT = (Resolve-Path $PROJECT_ROOT).Path
-
-# Build PyInstaller command
+# Build through the shared spec while retaining this script's output contract.
+$env:EMS_PYINSTALLER_MODE = "onedir"
+$env:EMS_PYINSTALLER_NAME = "ems_simulate"
+$env:EMS_PYINSTALLER_CONTENTS_DIR = "_internal"
+$env:EMS_PYINSTALLER_DATA_SCOPE = "point_csv"
+$env:EMS_PYINSTALLER_CONSOLE = "1"
 $PYINSTALLER_ARGS = @(
     "--noconfirm",
-    "--onedir",
-    "--name", "ems_simulate",
     "--clean",
     "--distpath", $PYINSTALLER_DIR,
     "--workpath", (Join-Path $BUILD_DIR "build_pyinstaller"),
-    "--specpath", $BUILD_DIR
+    (Join-Path $PROJECT_ROOT "ems_simulate_backend.spec")
 )
-
-# Add data files (config, frontend, and bundled point tables)
-$PYINSTALLER_ARGS += "--add-data"
-$PYINSTALLER_ARGS += "${ABS_PROJECT_ROOT}\config.ini;."
-$PYINSTALLER_ARGS += "--add-data"
-$PYINSTALLER_ARGS += "${ABS_PROJECT_ROOT}\www;www"
-$PYINSTALLER_ARGS += "--add-data"
-$PYINSTALLER_ARGS += "${ABS_PROJECT_ROOT}\data\point_csv;data\point_csv"
-
-# Add hidden imports
-$HIDDEN_IMPORTS = @(
-    "uvicorn.logging",
-    "uvicorn.loops",
-    "openpyxl",
-    "uvicorn.loops.auto",
-    "uvicorn.protocols",
-    "uvicorn.protocols.http",
-    "uvicorn.protocols.http.auto",
-    "uvicorn.lifespan",
-    "uvicorn.lifespan.on",
-    "uvicorn.loops.asyncio",
-    "pymodbus",
-    "fastapi",
-    "sqlalchemy",
-    "pydantic",
-    "loguru"
-)
-
-foreach ($import in $HIDDEN_IMPORTS) {
-    $PYINSTALLER_ARGS += "--hidden-import"
-    $PYINSTALLER_ARGS += $import
-}
-
-# Add the start script
-$PYINSTALLER_ARGS += "$ABS_PROJECT_ROOT\start_back_end.py"
 
 Write-Info "Running PyInstaller..."
 pyinstaller @PYINSTALLER_ARGS
@@ -218,6 +183,16 @@ if (-not $PACKAGED_POINT_TABLES) {
     exit 1
 }
 Write-Success "Bundled point tables verified: $($PACKAGED_POINT_TABLES.Count) file(s)"
+
+$PACKAGED_PROFILES = Get-ChildItem -Path $PYINSTALLER_APP_DIR -Recurse -File -Filter "manifest.json" -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -match '[\\/]src[\\/]modeling[\\/]profile_packages[\\/]' }
+$PACKAGED_STANDARDS = Get-ChildItem -Path $PYINSTALLER_APP_DIR -Recurse -File -Filter "manifest.json" -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -match '[\\/]src[\\/]modeling[\\/]standard_packages[\\/]' }
+if (-not $PACKAGED_PROFILES -or -not $PACKAGED_STANDARDS) {
+    Write-Error "PyInstaller output is missing modeling package manifests"
+    exit 1
+}
+Write-Success "Modeling package manifests verified"
 
 Write-Success "Backend built successfully"
 
