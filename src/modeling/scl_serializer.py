@@ -7,7 +7,8 @@ from dataclasses import dataclass
 import json
 import xml.etree.ElementTree as ET
 
-from src.data.model.iec61850_modeling import Iec61850ModelNode, Iec61850ModelProject
+from src.data.model.iec61850_modeling import Iec61850ModelProject
+from src.modeling.document import ModelNode as Iec61850ModelNode
 
 SCL_NS = "http://www.iec.ch/61850/2003/SCL"
 XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"

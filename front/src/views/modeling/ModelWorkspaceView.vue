@@ -83,8 +83,28 @@
       </div>
     </header>
 
-    <div class="workspace-grid">
+    <div
+      ref="workspaceGridRef"
+      class="workspace-grid"
+      :class="{ 'is-resizing': resizingPanel !== null }"
+      :style="workspaceGridStyle"
+    >
       <aside class="tree-panel panel">
+        <div
+          class="panel-resizer panel-resizer-right"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整模型结构栏宽度"
+          :aria-valuenow="leftPanelWidth"
+          :aria-valuemin="LEFT_PANEL_MIN_WIDTH"
+          :aria-valuemax="LEFT_PANEL_MAX_WIDTH"
+          tabindex="0"
+          title="拖动调整模型结构栏宽度，双击恢复默认宽度"
+          @pointerdown="startPanelResize('left', $event)"
+          @dblclick="resetPanelWidth('left')"
+          @keydown.left.prevent="adjustPanelWidth('left', -10)"
+          @keydown.right.prevent="adjustPanelWidth('left', 10)"
+        />
         <div class="panel-heading">
           <div>
             <strong>模型结构</strong
@@ -127,7 +147,7 @@
             :data="treeData"
             node-key="id"
             highlight-current
-            default-expand-all
+            :default-expanded-keys="defaultExpandedKeys"
             :expand-on-click-node="false"
             :filter-node-method="filterTreeNode"
             @node-click="selectNode"
@@ -493,6 +513,21 @@
       </main>
 
       <aside class="property-panel panel">
+        <div
+          class="panel-resizer panel-resizer-left"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整属性编辑栏宽度"
+          :aria-valuenow="rightPanelWidth"
+          :aria-valuemin="RIGHT_PANEL_MIN_WIDTH"
+          :aria-valuemax="RIGHT_PANEL_MAX_WIDTH"
+          tabindex="0"
+          title="拖动调整属性编辑栏宽度，双击恢复默认宽度"
+          @pointerdown="startPanelResize('right', $event)"
+          @dblclick="resetPanelWidth('right')"
+          @keydown.left.prevent="adjustPanelWidth('right', 10)"
+          @keydown.right.prevent="adjustPanelWidth('right', -10)"
+        />
         <div class="panel-heading property-heading">
           <div>
             <strong>属性编辑</strong
@@ -931,7 +966,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  shallowRef,
+  toRaw,
+  watch,
+} from "vue";
 import type { Component } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, type ElTree } from "element-plus";
@@ -988,10 +1033,137 @@ const initialLoading = ref(true);
 const saving = ref(false);
 const validating = ref(false);
 const project = ref<ModelProject>();
-const treeData = ref<ModelNode[]>([]);
-const selectedNode = ref<ModelNode>();
-const nodeImpact = ref<DeleteImpact>();
+// Large imported models can contain tens of thousands of nodes. Keeping the
+// tree shallow avoids Vue recursively proxying every node during assignment.
+const treeData = shallowRef<ModelNode[]>([]);
+const selectedNode = shallowRef<ModelNode>();
+const nodeImpact = shallowRef<DeleteImpact>();
 const treeRef = ref<InstanceType<typeof ElTree>>();
+const workspaceGridRef = ref<HTMLElement>();
+const LEFT_PANEL_DEFAULT_WIDTH = 300;
+const LEFT_PANEL_MIN_WIDTH = 220;
+const LEFT_PANEL_MAX_WIDTH = 560;
+const RIGHT_PANEL_DEFAULT_WIDTH = 370;
+const RIGHT_PANEL_MIN_WIDTH = 280;
+const RIGHT_PANEL_MAX_WIDTH = 640;
+const CENTER_PANEL_MIN_WIDTH = 340;
+const LEFT_PANEL_STORAGE_KEY = "model-workspace-left-panel-width";
+const RIGHT_PANEL_STORAGE_KEY = "model-workspace-right-panel-width";
+
+function storedPanelWidth(key: string, fallback: number) {
+  const value = Number(localStorage.getItem(key));
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+const leftPanelWidth = ref(
+  storedPanelWidth(LEFT_PANEL_STORAGE_KEY, LEFT_PANEL_DEFAULT_WIDTH),
+);
+const rightPanelWidth = ref(
+  storedPanelWidth(RIGHT_PANEL_STORAGE_KEY, RIGHT_PANEL_DEFAULT_WIDTH),
+);
+const resizingPanel = ref<"left" | "right" | null>(null);
+const workspaceGridStyle = computed(() => ({
+  "--left-panel-width": `${leftPanelWidth.value}px`,
+  "--right-panel-width": `${rightPanelWidth.value}px`,
+}));
+
+function panelWidthLimits(side: "left" | "right") {
+  const gridWidth = workspaceGridRef.value?.getBoundingClientRect().width;
+  const configuredMax =
+    side === "left" ? LEFT_PANEL_MAX_WIDTH : RIGHT_PANEL_MAX_WIDTH;
+  const oppositeWidth =
+    side === "left" ? rightPanelWidth.value : leftPanelWidth.value;
+  const availableMax = gridWidth
+    ? gridWidth - oppositeWidth - CENTER_PANEL_MIN_WIDTH - 2
+    : configuredMax;
+  return {
+    min: side === "left" ? LEFT_PANEL_MIN_WIDTH : RIGHT_PANEL_MIN_WIDTH,
+    max: Math.max(
+      side === "left" ? LEFT_PANEL_MIN_WIDTH : RIGHT_PANEL_MIN_WIDTH,
+      Math.min(configuredMax, availableMax),
+    ),
+  };
+}
+
+function setPanelWidth(side: "left" | "right", width: number, persist = true) {
+  const limits = panelWidthLimits(side);
+  const nextWidth = Math.round(
+    Math.min(limits.max, Math.max(limits.min, width)),
+  );
+  if (side === "left") leftPanelWidth.value = nextWidth;
+  else rightPanelWidth.value = nextWidth;
+  if (persist) {
+    localStorage.setItem(
+      side === "left" ? LEFT_PANEL_STORAGE_KEY : RIGHT_PANEL_STORAGE_KEY,
+      String(nextWidth),
+    );
+  }
+}
+
+function handlePanelResize(event: PointerEvent) {
+  const side = resizingPanel.value;
+  const bounds = workspaceGridRef.value?.getBoundingClientRect();
+  if (!side || !bounds) return;
+  setPanelWidth(
+    side,
+    side === "left"
+      ? event.clientX - bounds.left
+      : bounds.right - event.clientX,
+    false,
+  );
+}
+
+function stopPanelResize() {
+  const side = resizingPanel.value;
+  if (!side) return;
+  localStorage.setItem(
+    side === "left" ? LEFT_PANEL_STORAGE_KEY : RIGHT_PANEL_STORAGE_KEY,
+    String(side === "left" ? leftPanelWidth.value : rightPanelWidth.value),
+  );
+  resizingPanel.value = null;
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+  window.removeEventListener("pointermove", handlePanelResize);
+  window.removeEventListener("pointerup", stopPanelResize);
+  window.removeEventListener("pointercancel", stopPanelResize);
+}
+
+function startPanelResize(side: "left" | "right", event: PointerEvent) {
+  if (event.button !== 0) return;
+  resizingPanel.value = side;
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+  window.addEventListener("pointermove", handlePanelResize);
+  window.addEventListener("pointerup", stopPanelResize);
+  window.addEventListener("pointercancel", stopPanelResize);
+}
+
+function adjustPanelWidth(side: "left" | "right", delta: number) {
+  setPanelWidth(
+    side,
+    (side === "left" ? leftPanelWidth.value : rightPanelWidth.value) + delta,
+  );
+}
+
+function resetPanelWidth(side: "left" | "right") {
+  setPanelWidth(
+    side,
+    side === "left" ? LEFT_PANEL_DEFAULT_WIDTH : RIGHT_PANEL_DEFAULT_WIDTH,
+  );
+}
+
+function fitPanelWidthsToGrid() {
+  // Clamp both sides when the workspace becomes narrower while preserving the
+  // minimum width needed by the central editor.
+  setPanelWidth("right", rightPanelWidth.value, false);
+  setPanelWidth("left", leftPanelWidth.value, false);
+}
+const treeNodeIndex = new Map<string, ModelNode>();
+const treeKindLabels = new Map<string, string>();
+const treeKinds = shallowRef<string[]>([]);
+const defaultExpandedKeys = shallowRef<string[]>([]);
+const extensionStats = reactive({ total: 0, lossy: 0 });
+const nodeSchemaCache = new Map<string, NonNullable<ModelNode["schema"]>>();
 const treeKeyword = ref("");
 const treeTypeFilter = ref("");
 const contentTab = ref("children");
@@ -1045,24 +1217,30 @@ const deleteDialog = reactive<{
   impact?: DeleteImpact;
 }>({ visible: false, loading: false, deleting: false });
 
-const currentSnapshot = computed(() =>
-  JSON.stringify({
+function createFormSnapshot() {
+  const attributes = { ...propertyForm.attributes };
+  for (const field of selectedNode.value?.schema?.fields || []) {
+    if (field.key === "name" || attributes[field.key] != null) continue;
+    // Element Plus represents an untouched empty control with a component
+    // specific value. Treat those values as equivalent to a missing JSON key.
+    if (field.component === "switch") attributes[field.key] = false;
+    else if (field.component === "number") attributes[field.key] = null;
+    else attributes[field.key] = "";
+  }
+  const canonicalAttributes = Object.fromEntries(
+    Object.entries(attributes).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  );
+  return JSON.stringify({
     name: propertyForm.name,
-    attributes: propertyForm.attributes,
-  }),
-);
+    attributes: canonicalAttributes,
+  });
+}
+const currentSnapshot = computed(createFormSnapshot);
 const dirty = computed(
   () => !!selectedNode.value && currentSnapshot.value !== savedSnapshot.value,
 );
-const extensionNodes = computed(() =>
-  flattenNodes(treeData.value).filter((node) => node.kind === "EXTENSION"),
-);
-const extensionStats = computed(() => ({
-  total: extensionNodes.value.length,
-  lossy: extensionNodes.value.filter((node) =>
-    isTruthyFlag(node.attributes.lossRisk),
-  ).length,
-}));
 const isSelectedExtension = computed(
   () => selectedNode.value?.kind === "EXTENSION",
 );
@@ -1146,18 +1324,20 @@ const advancedFields = computed(
 const visiblePropertyFields = computed(() =>
   propertyTab.value === "basic" ? basicFields.value : advancedFields.value,
 );
-const treeKinds = computed(() =>
-  Array.from(
-    new Set(flattenNodes(treeData.value).map((node) => node.kind)),
-  ).sort(),
-);
 const addActionLabel = computed(() => {
   const children = availableChildOptions.value;
   return children.length === 1 ? `添加${children[0].label}` : "添加子节点";
 });
 
-watch([treeKeyword, treeTypeFilter], ([keyword, kind]) =>
-  treeRef.value?.filter({ keyword, kind }),
+watch(
+  [treeKeyword, treeTypeFilter],
+  ([keyword, kind], _previous, onCleanup) => {
+    const timer = window.setTimeout(
+      () => treeRef.value?.filter({ keyword, kind }),
+      200,
+    );
+    onCleanup(() => window.clearTimeout(timer));
+  },
 );
 
 function filterTreeNode(
@@ -1178,21 +1358,34 @@ async function loadProject() {
 }
 
 async function loadTree(selectId?: string) {
-  treeData.value = await modelingApi.getTree(props.projectId);
-  if (project.value) project.value.node_count = countNodes(treeData.value);
-  const target = selectId || selectedNode.value?.id || treeData.value[0]?.id;
+  const nodes = await modelingApi.getTree(props.projectId);
+  treeData.value = nodes;
+  rebuildTreeMetadata(nodes);
+  const rootId = nodes[0]?.id;
+  defaultExpandedKeys.value = rootId ? [rootId] : [];
+  const target = selectId || selectedNode.value?.id || rootId;
   if (target) await focusNode(target);
 }
 
-function countNodes(nodes: ModelNode[]): number {
-  return nodes.reduce(
-    (sum, node) => sum + 1 + countNodes(node.children || []),
-    0,
-  );
-}
-
-function flattenNodes(nodes: ModelNode[]): ModelNode[] {
-  return nodes.flatMap((node) => [node, ...flattenNodes(node.children || [])]);
+function rebuildTreeMetadata(nodes: ModelNode[]) {
+  treeNodeIndex.clear();
+  treeKindLabels.clear();
+  extensionStats.total = 0;
+  extensionStats.lossy = 0;
+  const stack = [...nodes];
+  while (stack.length) {
+    const node = stack.pop()!;
+    treeNodeIndex.set(node.id, node);
+    if (!treeKindLabels.has(node.kind)) {
+      treeKindLabels.set(node.kind, node.kind_label);
+    }
+    if (node.kind === "EXTENSION") {
+      extensionStats.total += 1;
+      if (isTruthyFlag(node.attributes.lossRisk)) extensionStats.lossy += 1;
+    }
+    if (node.children?.length) stack.push(...node.children);
+  }
+  treeKinds.value = Array.from(treeKindLabels.keys()).sort();
 }
 
 function isTruthyFlag(value: unknown) {
@@ -1206,15 +1399,24 @@ async function selectNode(data: ModelNode) {
     treeRef.value?.setCurrentKey(selectedNode.value?.id || "");
     return;
   }
-  const [detail, impact] = await Promise.all([
-    modelingApi.getNode(props.projectId, data.id),
-    modelingApi
-      .getDeleteImpact(props.projectId, data.id)
-      .catch(() => undefined),
-  ]);
-  detail.children = data.children || [];
+  let schema = nodeSchemaCache.get(data.kind);
+  if (!schema) {
+    schema = await modelingApi.getNodeSchema(data.kind);
+    nodeSchemaCache.set(data.kind, schema);
+  }
+  const detail: ModelNode = { ...data, schema };
   selectedNode.value = detail;
-  nodeImpact.value = impact;
+  nodeImpact.value = undefined;
+  // Protected structural nodes cannot be deleted. Avoid an expensive subtree
+  // impact scan for the root selected automatically when a large model opens.
+  if (!detail.protected) {
+    void modelingApi
+      .getDeleteImpact(props.projectId, detail.id)
+      .then((impact) => {
+        if (selectedNode.value?.id === detail.id) nodeImpact.value = impact;
+      })
+      .catch(() => undefined);
+  }
   propertyTab.value = detail.kind === "EXTENSION" ? "advanced" : "basic";
   if (detail.kind === "DO_TYPE") {
     const cdc = String(detail.attributes.cdc || "").toUpperCase();
@@ -1225,24 +1427,25 @@ async function selectNode(data: ModelNode) {
   }
   cdcAssistant.conflicts = [];
   propertyForm.name = detail.name;
-  propertyForm.attributes = structuredClone(detail.attributes || {});
+  propertyForm.attributes = structuredClone(toRaw(detail.attributes || {}));
   propertyForm.revision = detail.revision;
-  savedSnapshot.value = currentSnapshot.value;
-}
-
-function findNode(nodes: ModelNode[], nodeId: string): ModelNode | undefined {
-  for (const node of nodes) {
-    if (node.id === nodeId) return node;
-    const nested = findNode(node.children || [], nodeId);
-    if (nested) return nested;
-  }
+  // Element Plus controls normalize some initially missing values while they
+  // mount (for example undefined switch/number values). Capture the baseline
+  // after that render so this normalization is not mistaken for a user edit.
+  await nextTick();
+  savedSnapshot.value = createFormSnapshot();
 }
 
 async function focusNode(nodeId: string) {
-  const node = findNode(treeData.value, nodeId);
+  const node = treeNodeIndex.get(nodeId);
   if (!node) return;
   await selectNode(node);
   await nextTick();
+  let treeNode = treeRef.value?.getNode(nodeId);
+  while (treeNode?.parent) {
+    treeNode.parent.expanded = true;
+    treeNode = treeNode.parent;
+  }
   treeRef.value?.setCurrentKey(nodeId);
 }
 
@@ -1250,13 +1453,14 @@ function focusChildRow(row: ModelNode) {
   void focusNode(row.id);
 }
 
-function resetForm() {
+async function resetForm() {
   if (!selectedNode.value) return;
   propertyForm.name = selectedNode.value.name;
   propertyForm.attributes = structuredClone(
-    selectedNode.value.attributes || {},
+    toRaw(selectedNode.value.attributes || {}),
   );
-  savedSnapshot.value = currentSnapshot.value;
+  await nextTick();
+  savedSnapshot.value = createFormSnapshot();
 }
 
 async function saveNode() {
@@ -1609,10 +1813,7 @@ function nodeKindShort(kind: string) {
 }
 
 function kindLabel(kind: string) {
-  return (
-    flattenNodes(treeData.value).find((node) => node.kind === kind)
-      ?.kind_label || kind
-  );
+  return treeKindLabels.get(kind) || kind;
 }
 
 function displayPath(path?: string) {
@@ -1853,7 +2054,15 @@ async function publishProject() {
   }
 }
 
+onBeforeUnmount(() => {
+  stopPanelResize();
+  window.removeEventListener("resize", fitPanelWidthsToGrid);
+});
+
 onMounted(async () => {
+  await nextTick();
+  fitPanelWidthsToGrid();
+  window.addEventListener("resize", fitPanelWidthsToGrid);
   try {
     const [, , templates] = await Promise.all([
       loadProject(),
@@ -1941,9 +2150,16 @@ onMounted(async () => {
   min-height: 0;
   flex: 1;
   display: grid;
-  grid-template-columns: 300px minmax(400px, 1fr) 370px;
+  grid-template-columns:
+    minmax(220px, var(--left-panel-width, 300px))
+    minmax(340px, 1fr)
+    minmax(280px, var(--right-panel-width, 370px));
   gap: 1px;
   background: var(--sidebar-border);
+}
+.workspace-grid.is-resizing,
+.workspace-grid.is-resizing * {
+  cursor: col-resize !important;
 }
 .panel {
   min-width: 0;
@@ -1953,8 +2169,41 @@ onMounted(async () => {
 .tree-panel,
 .property-panel,
 .context-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
+}
+.panel-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 20;
+  width: 9px;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+.panel-resizer-left {
+  left: -5px;
+}
+.panel-resizer-right {
+  right: -5px;
+}
+.panel-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: var(--el-color-primary);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.panel-resizer:hover::after,
+.panel-resizer:focus-visible::after,
+.workspace-grid.is-resizing .panel-resizer::after {
+  opacity: 0.72;
 }
 .panel-heading {
   height: 54px;
@@ -2868,7 +3117,10 @@ onMounted(async () => {
 
 @container (max-width: 1399px) {
   .workspace-grid {
-    grid-template-columns: 260px minmax(360px, 1fr) 320px;
+    grid-template-columns:
+      minmax(220px, var(--left-panel-width, 260px))
+      minmax(340px, 1fr)
+      minmax(280px, var(--right-panel-width, 320px));
   }
   .toolbar-actions .el-button {
     padding-inline: 9px;
@@ -2882,7 +3134,10 @@ onMounted(async () => {
 }
 @container (max-width: 1200px) {
   .workspace-grid {
-    grid-template-columns: 235px minmax(340px, 1fr) 290px;
+    grid-template-columns:
+      minmax(220px, var(--left-panel-width, 235px))
+      minmax(340px, 1fr)
+      minmax(280px, var(--right-panel-width, 290px));
   }
   .metric-grid {
     grid-template-columns: 1fr 1fr;

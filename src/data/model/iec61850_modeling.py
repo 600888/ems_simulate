@@ -26,54 +26,14 @@ class Iec61850ModelProject(Base):
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     validation_errors: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     validation_warnings: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    model_json: Mapped[str] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=False, default="{}")
+    model_format_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    model_node_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    model_checksum: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )
-
-
-class Iec61850ModelNode(Base):
-    """通用模型节点；不同节点的业务字段保存在 attributes_json 中。"""
-
-    __tablename__ = "iec61850_model_node"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    project_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("iec61850_model_project.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    parent_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("iec61850_model_node.id", ondelete="CASCADE"), nullable=True, index=True
-    )
-    kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
-    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    attributes_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
-    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-    __table_args__ = (UniqueConstraint("project_id", "parent_id", "kind", "name", name="uq_iec61850_model_sibling"),)
-
-
-class Iec61850ModelReference(Base):
-    """节点间显式引用，用于删除影响分析和后续 FCDA/类型引用。"""
-
-    __tablename__ = "iec61850_model_reference"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    project_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("iec61850_model_project.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    source_node_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("iec61850_model_node.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    target_node_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("iec61850_model_node.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    relation_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    attributes_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
 
 
 class Iec61850ModelVersion(Base):

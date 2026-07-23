@@ -194,7 +194,6 @@ export const modelingApi = {
     data.append("name", name);
     return unwrap<{
       project: ModelProject;
-      tree: ModelNode[];
       summary: ImportPreview["summary"];
       warnings: ImportPreview["warnings"];
     }>(

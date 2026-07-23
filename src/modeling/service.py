@@ -15,9 +15,7 @@ from sqlalchemy.orm import Session
 
 from src.data.controller.db import local_session
 from src.data.model.iec61850_modeling import (
-    Iec61850ModelNode,
     Iec61850ModelProject,
-    Iec61850ModelReference,
     Iec61850ModelVersion,
 )
 from src.modeling.artifacts import build_artifact_bundle, list_file_variants, validate_file_variant
@@ -29,6 +27,7 @@ from src.modeling.catalog import (
     get_kind_schema,
 )
 from src.modeling.cdc_templates import list_cdc_templates, materialize_cdc_template
+from src.modeling.document import ModelDocument, ModelNode, ModelReference
 from src.modeling.profiles import (
     list_profiles,
     logical_node_templates,
@@ -78,16 +77,26 @@ class Iec61850ModelingService:
         return project
 
     @staticmethod
-    def _require_node(session: Session, project_id: str, node_id: str) -> Iec61850ModelNode:
-        node = session.scalar(
-            select(Iec61850ModelNode).where(
-                Iec61850ModelNode.id == node_id,
-                Iec61850ModelNode.project_id == project_id,
-            )
-        )
+    def _require_node(document: ModelDocument, node_id: str) -> ModelNode:
+        node = document.get(node_id)
         if not node:
             raise NotFoundError("模型节点不存在或已被删除")
         return node
+
+    @staticmethod
+    def _load_document(project: Iec61850ModelProject) -> ModelDocument:
+        try:
+            return ModelDocument.from_json(project.id, project.model_json)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValidationError("模型文档损坏或格式不受支持") from exc
+
+    @staticmethod
+    def _save_document(project: Iec61850ModelProject, document: ModelDocument) -> None:
+        content = document.to_json()
+        project.model_json = content
+        project.model_format_version = document.FORMAT_VERSION
+        project.model_node_count = len(document.nodes)
+        project.model_checksum = document.checksum(content)
 
     @staticmethod
     def _project_dict(project: Iec61850ModelProject, node_count: int | None = None) -> dict[str, Any]:
@@ -107,12 +116,11 @@ class Iec61850ModelingService:
             "created_at": _iso(project.created_at),
             "updated_at": _iso(project.updated_at),
         }
-        if node_count is not None:
-            result["node_count"] = node_count
+        result["node_count"] = project.model_node_count if node_count is None else node_count
         return result
 
     @staticmethod
-    def _node_dict(node: Iec61850ModelNode, *, child_count: int = 0) -> dict[str, Any]:
+    def _node_dict(node: ModelNode, *, child_count: int = 0) -> dict[str, Any]:
         return {
             "id": node.id,
             "project_id": node.project_id,
@@ -122,7 +130,7 @@ class Iec61850ModelingService:
             "name": node.name,
             "label": node.name,
             "sort_order": node.sort_order,
-            "attributes": _json_loads(node.attributes_json),
+            "attributes": dict(node.attributes),
             "revision": node.revision,
             "child_count": child_count,
             "protected": node.kind in PROTECTED_KINDS,
@@ -154,19 +162,8 @@ class Iec61850ModelingService:
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             ).all()
-            counts = (
-                dict(
-                    session.execute(
-                        select(Iec61850ModelNode.project_id, func.count(Iec61850ModelNode.id))
-                        .where(Iec61850ModelNode.project_id.in_([p.id for p in projects]))
-                        .group_by(Iec61850ModelNode.project_id)
-                    ).all()
-                )
-                if projects
-                else {}
-            )
             return {
-                "items": [self._project_dict(project, counts.get(project.id, 0)) for project in projects],
+                "items": [self._project_dict(project) for project in projects],
                 "total": total,
                 "page": page,
                 "page_size": page_size,
@@ -211,6 +208,7 @@ class Iec61850ModelingService:
                 modeling_mode="FROM_SCRATCH",
             )
             session.add(project)
+            document = ModelDocument.empty(project_id)
 
             def add_node(
                 kind: str,
@@ -218,18 +216,14 @@ class Iec61850ModelingService:
                 parent_id: str | None,
                 attributes: dict[str, Any] | None = None,
                 sort_order: int = 0,
-            ) -> Iec61850ModelNode:
-                node = Iec61850ModelNode(
-                    id=str(uuid.uuid4()),
-                    project_id=project_id,
+            ) -> ModelNode:
+                return document.add_node(
                     parent_id=parent_id,
                     kind=kind,
                     name=node_name,
-                    attributes_json=_json_dumps(attributes),
+                    attributes=attributes,
                     sort_order=sort_order,
                 )
-                session.add(node)
-                return node
 
             root = add_node(
                 "ROOT",
@@ -363,15 +357,10 @@ class Iec61850ModelingService:
                     {"id": type_id, "lnClass": ln_class, "desc": str(template.get("desc") or "")},
                     index,
                 )
-            session.flush()
-            node_count = (
-                session.scalar(
-                    select(func.count(Iec61850ModelNode.id)).where(Iec61850ModelNode.project_id == project_id)
-                )
-                or 0
-            )
+            document.rebuild_references()
+            self._save_document(project, document)
 
-        return {"project": self._project_dict(project, node_count), "tree": self.get_tree(project_id)}
+        return {"project": self._project_dict(project), "tree": self.get_tree(project_id)}
 
     @staticmethod
     def list_profiles() -> list[dict[str, Any]]:
@@ -441,24 +430,21 @@ class Iec61850ModelingService:
                 status="DRAFT",
             )
             session.add(project)
+            document = ModelDocument.empty(project_id)
             for item in imported.nodes:
-                session.add(
-                    Iec61850ModelNode(
-                        id=item["id"],
-                        project_id=project_id,
-                        parent_id=item["parent_id"],
-                        kind=item["kind"],
-                        name=item["name"],
-                        sort_order=item["sort_order"],
-                        attributes_json=_json_dumps(item["attributes"]),
-                    )
+                document.add_node(
+                    node_id=item["id"],
+                    parent_id=item["parent_id"],
+                    kind=item["kind"],
+                    name=item["name"],
+                    sort_order=item["sort_order"],
+                    attributes=item["attributes"],
                 )
-            session.flush()
-            self._rebuild_references_in_session(session, project_id)
+            document.rebuild_references()
+            self._save_document(project, document)
 
         return {
             "project": self.get_project(project_id),
-            "tree": self.get_tree(project_id),
             "summary": imported.summary,
             "warnings": imported.warnings,
         }
@@ -466,75 +452,40 @@ class Iec61850ModelingService:
     def get_project(self, project_id: str) -> dict[str, Any]:
         with self.session_factory() as session:
             project = self._require_project(session, project_id)
-            count = (
-                session.scalar(
-                    select(func.count(Iec61850ModelNode.id)).where(Iec61850ModelNode.project_id == project_id)
-                )
-                or 0
-            )
-            kinds = dict(
-                session.execute(
-                    select(Iec61850ModelNode.kind, func.count(Iec61850ModelNode.id))
-                    .where(Iec61850ModelNode.project_id == project_id)
-                    .group_by(Iec61850ModelNode.kind)
-                ).all()
-            )
-            result = self._project_dict(project, count)
-            result["summary"] = {"by_kind": kinds}
-            return result
+            # Keep project metadata reads independent of model size. The tree
+            # endpoint already supplies node kinds to the workspace, so parsing
+            # a multi-megabyte document here only duplicates startup work.
+            return self._project_dict(project)
 
     def delete_project(self, project_id: str) -> None:
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
             session.execute(delete(Iec61850ModelVersion).where(Iec61850ModelVersion.project_id == project_id))
-            session.execute(delete(Iec61850ModelReference).where(Iec61850ModelReference.project_id == project_id))
-            session.execute(delete(Iec61850ModelNode).where(Iec61850ModelNode.project_id == project_id))
             session.delete(project)
 
     def get_tree(self, project_id: str) -> list[dict[str, Any]]:
         with self.session_factory() as session:
-            self._require_project(session, project_id)
-            nodes = session.scalars(
-                select(Iec61850ModelNode)
-                .where(Iec61850ModelNode.project_id == project_id)
-                .order_by(Iec61850ModelNode.sort_order, Iec61850ModelNode.name)
-            ).all()
-            children: dict[str | None, list[Iec61850ModelNode]] = defaultdict(list)
-            for node in nodes:
-                children[node.parent_id].append(node)
+            project = self._require_project(session, project_id)
+            document = self._load_document(project)
 
-            def build(node: Iec61850ModelNode, parent_path: str = "") -> dict[str, Any]:
-                node_children = children.get(node.id, [])
+            def build(node: ModelNode, parent_path: str = "") -> dict[str, Any]:
+                node_children = document.children(node.id)
                 result = self._node_dict(node, child_count=len(node_children))
                 result["path"] = f"{parent_path}/{node.name}" if parent_path else node.name
                 result["children"] = [build(child, result["path"]) for child in node_children]
                 return result
 
-            return [build(root) for root in children.get(None, [])]
+            return [build(root) for root in document.children(None)]
 
     def get_node(self, project_id: str, node_id: str) -> dict[str, Any]:
         with self.session_factory() as session:
-            node = self._require_node(session, project_id, node_id)
-            child_count = (
-                session.scalar(select(func.count(Iec61850ModelNode.id)).where(Iec61850ModelNode.parent_id == node.id))
-                or 0
-            )
-            result = self._node_dict(node, child_count=child_count)
+            project = self._require_project(session, project_id)
+            document = self._load_document(project)
+            node = self._require_node(document, node_id)
+            result = self._node_dict(node, child_count=len(document.children(node.id)))
             result["schema"] = get_kind_schema(node.kind)
-            result["path"] = self._node_path(session, node)
+            result["path"] = document.node_path(node)
             return result
-
-    @staticmethod
-    def _node_path(session: Session, node: Iec61850ModelNode) -> str:
-        names = [node.name]
-        parent_id = node.parent_id
-        while parent_id:
-            parent = session.get(Iec61850ModelNode, parent_id)
-            if not parent:
-                break
-            names.append(parent.name)
-            parent_id = parent.parent_id
-        return "/".join(reversed(names))
 
     def create_node(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         parent_id = str(payload.get("parent_id", ""))
@@ -544,67 +495,49 @@ class Iec61850ModelingService:
             raise ValidationError("节点名称不能为空")
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
-            parent = self._require_node(session, project_id, parent_id)
+            document = self._load_document(project)
+            parent = self._require_node(document, parent_id)
             if kind not in CHILD_RULES.get(parent.kind, ()):
                 parent_label = KIND_LABELS.get(parent.kind, parent.kind)
                 child_label = KIND_LABELS.get(kind, kind)
                 raise ValidationError(f"{parent_label} 下不能添加 {child_label}")
-            if session.scalar(
-                select(Iec61850ModelNode.id).where(
-                    Iec61850ModelNode.project_id == project_id,
-                    Iec61850ModelNode.parent_id == parent_id,
-                    Iec61850ModelNode.kind == kind,
-                    Iec61850ModelNode.name == name,
-                )
-            ):
+            siblings = document.children(parent_id)
+            if any(item.kind == kind and item.name == name for item in siblings):
                 raise ConflictError("同一父节点下已存在同类型、同名节点")
-            if kind in SINGLETON_CHILD_KINDS and session.scalar(
-                select(Iec61850ModelNode.id).where(
-                    Iec61850ModelNode.parent_id == parent_id, Iec61850ModelNode.kind == kind
-                )
-            ):
+            if kind in SINGLETON_CHILD_KINDS and any(item.kind == kind for item in siblings):
                 raise ConflictError(f"每个父节点只能包含一个 {KIND_LABELS.get(kind, kind)}")
-            max_order = session.scalar(
-                select(func.max(Iec61850ModelNode.sort_order)).where(Iec61850ModelNode.parent_id == parent_id)
-            )
+            max_order = max((item.sort_order for item in siblings), default=0)
             requested_order = payload.get("sort_order")
-            node = Iec61850ModelNode(
-                id=str(uuid.uuid4()),
-                project_id=project_id,
+            node = document.add_node(
                 parent_id=parent_id,
                 kind=kind,
                 name=name,
-                attributes_json=_json_dumps(payload.get("attributes")),
-                sort_order=int(requested_order if requested_order is not None else (max_order or 0) + 10),
+                attributes=payload.get("attributes"),
+                sort_order=int(requested_order if requested_order is not None else max_order + 10),
             )
-            session.add(node)
             project.revision += 1
             project.status = "DRAFT"
-            session.flush()
-            self._rebuild_references_in_session(session, project_id)
+            document.rebuild_references()
+            self._save_document(project, document)
             result = self._node_dict(node)
             result["schema"] = get_kind_schema(kind)
-            result["path"] = self._node_path(session, node)
+            result["path"] = document.node_path(node)
             return result
 
     def update_node(self, project_id: str, node_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
-            node = self._require_node(session, project_id, node_id)
+            document = self._load_document(project)
+            node = self._require_node(document, node_id)
             expected_revision = payload.get("expected_revision")
             if expected_revision is not None and int(expected_revision) != node.revision:
                 raise ConflictError("该节点已被其他操作修改，请刷新后重试", {"current_revision": node.revision})
             name = str(payload.get("name", node.name)).strip()
             if not name:
                 raise ValidationError("节点名称不能为空")
-            if name != node.name and session.scalar(
-                select(Iec61850ModelNode.id).where(
-                    Iec61850ModelNode.project_id == project_id,
-                    Iec61850ModelNode.parent_id == node.parent_id,
-                    Iec61850ModelNode.kind == node.kind,
-                    Iec61850ModelNode.name == name,
-                    Iec61850ModelNode.id != node.id,
-                )
+            if name != node.name and any(
+                item.id != node.id and item.kind == node.kind and item.name == name
+                for item in document.children(node.parent_id)
             ):
                 raise ConflictError("同一父节点下已存在同类型、同名节点")
             node.name = name
@@ -617,11 +550,11 @@ class Iec61850ModelingService:
             project.status = "DRAFT"
             if node.kind == "ROOT":
                 project.name = name
-            session.flush()
-            self._rebuild_references_in_session(session, project_id)
+            document.rebuild_references()
+            self._save_document(project, document)
             result = self._node_dict(node)
             result["schema"] = get_kind_schema(node.kind)
-            result["path"] = self._node_path(session, node)
+            result["path"] = document.node_path(node)
             return result
 
     def apply_cdc_template(self, project_id: str, do_type_id: str, template_id: str) -> dict[str, Any]:
@@ -629,21 +562,12 @@ class Iec61850ModelingService:
 
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
-            do_type = self._require_node(session, project_id, do_type_id)
+            document = self._load_document(project)
+            do_type = self._require_node(document, do_type_id)
             if do_type.kind != "DO_TYPE":
                 raise ValidationError("CDC 模板只能应用到数据对象类型 DOType")
             do_type_attrs = _json_loads(do_type.attributes_json)
-            existing = list(
-                session.scalars(
-                    select(Iec61850ModelNode)
-                    .where(
-                        Iec61850ModelNode.project_id == project_id,
-                        Iec61850ModelNode.parent_id == do_type.id,
-                        Iec61850ModelNode.kind == "DA_DEF",
-                    )
-                    .order_by(Iec61850ModelNode.sort_order, Iec61850ModelNode.name)
-                ).all()
-            )
+            existing = [node for node in document.children(do_type.id) if node.kind == "DA_DEF"]
             existing_payload = [{"name": node.name, **_json_loads(node.attributes_json)} for node in existing]
             try:
                 template = materialize_cdc_template(
@@ -686,16 +610,13 @@ class Iec61850ModelingService:
                     else:
                         preserved.append(name)
                     continue
-                node = Iec61850ModelNode(
-                    id=str(uuid.uuid4()),
-                    project_id=project_id,
+                document.add_node(
                     parent_id=do_type.id,
                     kind="DA_DEF",
                     name=name,
                     sort_order=max_order + index * 10,
-                    attributes_json=_json_dumps(attributes),
+                    attributes=attributes,
                 )
-                session.add(node)
                 created.append({"kind": "DA_DEF", "name": name})
                 changed = True
 
@@ -705,42 +626,26 @@ class Iec61850ModelingService:
                 target = next(
                     (
                         node
-                        for node in session.scalars(
-                            select(Iec61850ModelNode).where(
-                                Iec61850ModelNode.project_id == project_id,
-                                Iec61850ModelNode.parent_id == do_type.parent_id,
-                                Iec61850ModelNode.kind == dependency_kind,
-                            )
-                        ).all()
-                        if str(_json_loads(node.attributes_json).get("id") or node.name) == dependency_id
+                        for node in document.children(do_type.parent_id)
+                        if node.kind == dependency_kind and str(node.attributes.get("id") or node.name) == dependency_id
                     ),
                     None,
                 )
                 if target is None:
-                    sibling_order = session.scalar(
-                        select(func.max(Iec61850ModelNode.sort_order)).where(
-                            Iec61850ModelNode.parent_id == do_type.parent_id
-                        )
+                    sibling_order = max(
+                        (node.sort_order for node in document.children(do_type.parent_id)),
+                        default=0,
                     )
-                    target = Iec61850ModelNode(
-                        id=str(uuid.uuid4()),
-                        project_id=project_id,
+                    target = document.add_node(
                         parent_id=do_type.parent_id,
                         kind=dependency_kind,
                         name=dependency_id,
-                        sort_order=(sibling_order or 0) + 10,
-                        attributes_json=_json_dumps({"id": dependency_id}),
+                        sort_order=sibling_order + 10,
+                        attributes={"id": dependency_id},
                     )
-                    session.add(target)
-                    session.flush()
                     created.append({"kind": dependency_kind, "name": dependency_id})
                     changed = True
-                dependency_children = {
-                    node.name: node
-                    for node in session.scalars(
-                        select(Iec61850ModelNode).where(Iec61850ModelNode.parent_id == target.id)
-                    ).all()
-                }
+                dependency_children = {node.name: node for node in document.children(target.id)}
                 child_order = max((node.sort_order for node in dependency_children.values()), default=0)
                 for child_index, child in enumerate(dependency.get("children", []), start=1):
                     child_name = str(child["name"])
@@ -749,16 +654,12 @@ class Iec61850ModelingService:
                         continue
                     child_kind = str(child["kind"])
                     child_attrs = {key: value for key, value in child.items() if key not in {"kind", "name"}}
-                    session.add(
-                        Iec61850ModelNode(
-                            id=str(uuid.uuid4()),
-                            project_id=project_id,
-                            parent_id=target.id,
-                            kind=child_kind,
-                            name=child_name,
-                            sort_order=child_order + child_index * 10,
-                            attributes_json=_json_dumps(child_attrs),
-                        )
+                    document.add_node(
+                        parent_id=target.id,
+                        kind=child_kind,
+                        name=child_name,
+                        sort_order=child_order + child_index * 10,
+                        attributes=child_attrs,
                     )
                     created.append({"kind": child_kind, "name": f"{dependency_id}.{child_name}"})
                     changed = True
@@ -766,8 +667,8 @@ class Iec61850ModelingService:
             if changed:
                 project.revision += 1
                 project.status = "DRAFT"
-                session.flush()
-                self._rebuild_references_in_session(session, project_id)
+                document.rebuild_references()
+                self._save_document(project, document)
             return {
                 "template_id": template_id,
                 "do_type_id": do_type.id,
@@ -780,42 +681,18 @@ class Iec61850ModelingService:
                 "project_revision": project.revision,
             }
 
-    @staticmethod
-    def _subtree_ids(session: Session, project_id: str, node_id: str) -> list[str]:
-        rows = session.execute(
-            select(Iec61850ModelNode.id, Iec61850ModelNode.parent_id).where(Iec61850ModelNode.project_id == project_id)
-        ).all()
-        children: dict[str | None, list[str]] = defaultdict(list)
-        for item_id, parent_id in rows:
-            children[parent_id].append(item_id)
-        result: list[str] = []
-        stack = [node_id]
-        while stack:
-            current = stack.pop()
-            result.append(current)
-            stack.extend(children.get(current, []))
-        return result
-
     def get_delete_impact(self, project_id: str, node_id: str) -> dict[str, Any]:
         with self.session_factory() as session:
-            node = self._require_node(session, project_id, node_id)
-            subtree = self._subtree_ids(session, project_id, node_id)
-            inbound = session.scalars(
-                select(Iec61850ModelReference).where(
-                    Iec61850ModelReference.project_id == project_id,
-                    Iec61850ModelReference.target_node_id.in_(subtree),
-                    Iec61850ModelReference.source_node_id.not_in(subtree),
-                )
-            ).all()
-            outbound_count = (
-                session.scalar(
-                    select(func.count(Iec61850ModelReference.id)).where(
-                        Iec61850ModelReference.project_id == project_id,
-                        Iec61850ModelReference.source_node_id.in_(subtree),
-                    )
-                )
-                or 0
-            )
+            project = self._require_project(session, project_id)
+            document = self._load_document(project)
+            node = self._require_node(document, node_id)
+            subtree = set(document.subtree_ids(node_id))
+            inbound = [
+                reference
+                for reference in document.references
+                if reference.target_node_id in subtree and reference.source_node_id not in subtree
+            ]
+            outbound_count = sum(reference.source_node_id in subtree for reference in document.references)
             protected = node.kind in PROTECTED_KINDS
             return {
                 "node": self._node_dict(node),
@@ -843,105 +720,38 @@ class Iec61850ModelingService:
     def delete_node(self, project_id: str, node_id: str, *, force: bool = False) -> dict[str, Any]:
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
-            node = self._require_node(session, project_id, node_id)
+            document = self._load_document(project)
+            node = self._require_node(document, node_id)
             if node.kind in PROTECTED_KINDS:
                 raise ValidationError("IEC 61850 必需结构节点不可删除")
-            subtree = self._subtree_ids(session, project_id, node_id)
-            inbound_count = (
-                session.scalar(
-                    select(func.count(Iec61850ModelReference.id)).where(
-                        Iec61850ModelReference.target_node_id.in_(subtree),
-                        Iec61850ModelReference.source_node_id.not_in(subtree),
-                    )
-                )
-                or 0
+            subtree = set(document.subtree_ids(node_id))
+            inbound_count = sum(
+                reference.target_node_id in subtree and reference.source_node_id not in subtree
+                for reference in document.references
             )
             if inbound_count and not force:
                 raise ConflictError("节点仍被其他配置引用，请先解除引用或确认强制删除")
-            session.execute(
-                delete(Iec61850ModelReference).where(
-                    or_(
-                        Iec61850ModelReference.source_node_id.in_(subtree),
-                        Iec61850ModelReference.target_node_id.in_(subtree),
-                    )
-                )
-            )
-            session.execute(delete(Iec61850ModelNode).where(Iec61850ModelNode.id.in_(subtree)))
+            deleted_count = document.remove_subtree(node_id)
             project.revision += 1
             project.status = "DRAFT"
-            return {"deleted_node_id": node_id, "deleted_count": len(subtree)}
-
-    @staticmethod
-    def _rebuild_references_in_session(session: Session, project_id: str) -> int:
-        """从稳定节点 ID 重建常用 SCL 引用图。"""
-        session.execute(delete(Iec61850ModelReference).where(Iec61850ModelReference.project_id == project_id))
-        nodes = list(session.scalars(select(Iec61850ModelNode).where(Iec61850ModelNode.project_id == project_id)).all())
-        type_indexes: dict[str, dict[str, Iec61850ModelNode]] = {
-            kind: {} for kind in ("LNODE_TYPE", "DO_TYPE", "DA_TYPE", "ENUM_TYPE")
-        }
-        by_parent: dict[str | None, list[Iec61850ModelNode]] = defaultdict(list)
-        ieds: dict[str, Iec61850ModelNode] = {}
-        for node in nodes:
-            by_parent[node.parent_id].append(node)
-            attrs = _json_loads(node.attributes_json)
-            if node.kind in type_indexes:
-                type_indexes[node.kind][str(attrs.get("id") or node.name)] = node
-            elif node.kind == "IED":
-                ieds[node.name] = node
-
-        references: list[Iec61850ModelReference] = []
-
-        def add(source: Iec61850ModelNode, target: Iec61850ModelNode | None, relation: str, external: str) -> None:
-            if not target:
-                return
-            references.append(
-                Iec61850ModelReference(
-                    id=str(uuid.uuid4()),
-                    project_id=project_id,
-                    source_node_id=source.id,
-                    target_node_id=target.id,
-                    relation_type=relation,
-                    attributes_json=_json_dumps({"external_ref": external}),
-                )
-            )
-
-        for node in nodes:
-            attrs = _json_loads(node.attributes_json)
-            if node.kind in ("LN0", "LN") and attrs.get("lnType"):
-                ref = str(attrs["lnType"])
-                add(node, type_indexes["LNODE_TYPE"].get(ref), "LN_TYPE", ref)
-            elif node.kind in ("DO_DEF", "SDO_DEF") and attrs.get("type"):
-                ref = str(attrs["type"])
-                add(node, type_indexes["DO_TYPE"].get(ref), "DO_TYPE", ref)
-            elif node.kind in ("DA_DEF", "BDA_DEF") and attrs.get("type"):
-                ref = str(attrs["type"])
-                target_kind = "DA_TYPE" if attrs.get("bType") == "Struct" else "ENUM_TYPE"
-                add(node, type_indexes[target_kind].get(ref), target_kind, ref)
-            elif node.kind in ("REPORT_CONTROL", "GSE_CONTROL") and attrs.get("datSet"):
-                ref = str(attrs["datSet"])
-                target = next(
-                    (item for item in by_parent.get(node.parent_id, []) if item.kind == "DATASET" and item.name == ref),
-                    None,
-                )
-                add(node, target, "CONTROL_DATASET", ref)
-            elif node.kind == "CONNECTED_AP" and attrs.get("iedName"):
-                ref = str(attrs["iedName"])
-                add(node, ieds.get(ref), "CONNECTED_AP_IED", ref)
-
-        session.add_all(references)
-        return len(references)
+            self._save_document(project, document)
+            return {"deleted_node_id": node_id, "deleted_count": deleted_count}
 
     def rebuild_references(self, project_id: str) -> dict[str, int]:
         with self.session_factory() as session, session.begin():
-            self._require_project(session, project_id)
-            return {"reference_count": self._rebuild_references_in_session(session, project_id)}
+            project = self._require_project(session, project_id)
+            document = self._load_document(project)
+            count = document.rebuild_references()
+            self._save_document(project, document)
+            return {"reference_count": count}
 
     def validate_project(self, project_id: str) -> dict[str, Any]:
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
-            nodes = session.scalars(select(Iec61850ModelNode).where(Iec61850ModelNode.project_id == project_id)).all()
+            document = self._load_document(project)
+            nodes = document.nodes
             by_kind = Counter(node.kind for node in nodes)
-            by_parent: dict[str | None, list[Iec61850ModelNode]] = defaultdict(list)
+            by_parent: dict[str | None, list[ModelNode]] = defaultdict(list)
             for node in nodes:
                 by_parent[node.parent_id].append(node)
             issues: list[dict[str, Any]] = []
@@ -956,13 +766,13 @@ class Iec61850ModelingService:
                 for parent_id, siblings in by_parent.items()
             }
 
-            def add(level: str, code: str, message: str, node: Iec61850ModelNode | None = None, field: str = ""):
+            def add(level: str, code: str, message: str, node: ModelNode | None = None, field: str = ""):
                 issues.append(
                     {
                         "level": level,
                         "rule_code": code,
                         "node_id": node.id if node else None,
-                        "path": self._node_path(session, node) if node else project.name,
+                        "path": document.node_path(node) if node else project.name,
                         "field": field,
                         "message": message,
                     }
@@ -1121,7 +931,7 @@ class Iec61850ModelingService:
                     for child in by_parent.get(services_nodes[0].id, [])
                     if child.kind == "SERVICE_CAPABILITY"
                 }
-                ied_descendants = self._subtree_ids(session, project_id, ied.id)
+                ied_descendants = set(document.subtree_ids(ied.id))
                 ied_nodes = [item for item in nodes if item.id in ied_descendants]
                 if (
                     any(item.kind == "REPORT_CONTROL" for item in ied_nodes)
@@ -1201,8 +1011,7 @@ class Iec61850ModelingService:
     @staticmethod
     def _build_snapshot(
         project: Iec61850ModelProject,
-        nodes: list[Iec61850ModelNode],
-        references: list[Iec61850ModelReference],
+        document: ModelDocument,
     ) -> dict[str, Any]:
         return {
             "format_version": 1,
@@ -1214,28 +1023,8 @@ class Iec61850ModelingService:
                 "namespace": project.namespace,
                 "modeling_mode": project.modeling_mode,
             },
-            "nodes": [
-                {
-                    "id": node.id,
-                    "parent_id": node.parent_id,
-                    "kind": node.kind,
-                    "name": node.name,
-                    "sort_order": node.sort_order,
-                    "attributes": _json_loads(node.attributes_json),
-                    "revision": node.revision,
-                }
-                for node in nodes
-            ],
-            "references": [
-                {
-                    "id": reference.id,
-                    "source_node_id": reference.source_node_id,
-                    "target_node_id": reference.target_node_id,
-                    "relation_type": reference.relation_type,
-                    "attributes": _json_loads(reference.attributes_json),
-                }
-                for reference in references
-            ],
+            "nodes": [node.to_dict() for node in document.nodes],
+            "references": [reference.to_dict() for reference in document.references],
         }
 
     def _create_version_in_session(
@@ -1247,10 +1036,7 @@ class Iec61850ModelingService:
         description: str,
         status: str = "SNAPSHOT",
     ) -> Iec61850ModelVersion:
-        nodes = list(session.scalars(select(Iec61850ModelNode).where(Iec61850ModelNode.project_id == project.id)).all())
-        references = list(
-            session.scalars(select(Iec61850ModelReference).where(Iec61850ModelReference.project_id == project.id)).all()
-        )
+        document = self._load_document(project)
         next_number = (
             session.scalar(
                 select(func.max(Iec61850ModelVersion.version_number)).where(
@@ -1267,7 +1053,7 @@ class Iec61850ModelingService:
             description=description.strip(),
             status=status,
             source_revision=project.revision,
-            snapshot_json=_json_dumps(self._build_snapshot(project, nodes, references)),
+            snapshot_json=_json_dumps(self._build_snapshot(project, document)),
         )
         session.add(version)
         session.flush()
@@ -1309,37 +1095,32 @@ class Iec61850ModelingService:
             if snapshot.get("format_version") != 1:
                 raise ValidationError("不支持的模型快照格式")
 
-            session.execute(delete(Iec61850ModelReference).where(Iec61850ModelReference.project_id == project_id))
-            session.execute(delete(Iec61850ModelNode).where(Iec61850ModelNode.project_id == project_id))
             project_data = snapshot.get("project") or {}
             for key in ("name", "description", "file_type", "standard_version", "namespace", "modeling_mode"):
                 if key in project_data:
                     setattr(project, key, project_data[key])
+            document = ModelDocument.empty(project_id)
             for item in snapshot.get("nodes") or []:
-                session.add(
-                    Iec61850ModelNode(
-                        id=item["id"],
-                        project_id=project_id,
-                        parent_id=item.get("parent_id"),
-                        kind=item["kind"],
-                        name=item["name"],
-                        sort_order=int(item.get("sort_order", 0)),
-                        attributes_json=_json_dumps(item.get("attributes")),
-                        revision=int(item.get("revision", 1)),
-                    )
+                document.add_node(
+                    node_id=item["id"],
+                    parent_id=item.get("parent_id"),
+                    kind=item["kind"],
+                    name=item["name"],
+                    sort_order=int(item.get("sort_order", 0)),
+                    attributes=item.get("attributes"),
+                    revision=int(item.get("revision", 1)),
                 )
-            session.flush()
-            for item in snapshot.get("references") or []:
-                session.add(
-                    Iec61850ModelReference(
-                        id=item["id"],
-                        project_id=project_id,
-                        source_node_id=item["source_node_id"],
-                        target_node_id=item["target_node_id"],
-                        relation_type=item["relation_type"],
-                        attributes_json=_json_dumps(item.get("attributes")),
-                    )
+            document.references = [
+                ModelReference(
+                    id=item["id"],
+                    source_node_id=item["source_node_id"],
+                    target_node_id=item["target_node_id"],
+                    relation_type=item["relation_type"],
+                    attributes=dict(item.get("attributes") or {}),
                 )
+                for item in snapshot.get("references") or []
+            ]
+            self._save_document(project, document)
             project.revision += 1
             project.status = "DRAFT"
             return {
@@ -1368,9 +1149,7 @@ class Iec61850ModelingService:
 
         with self.session_factory() as session:
             project = self._require_project(session, project_id)
-            nodes = list(
-                session.scalars(select(Iec61850ModelNode).where(Iec61850ModelNode.project_id == project_id)).all()
-            )
+            nodes = self._load_document(project).nodes
             target_file_type = (file_type or project.file_type).upper()
             variant_issues = validate_file_variant(nodes, target_file_type, for_publish=False)
             if variant_issues:
@@ -1389,9 +1168,7 @@ class Iec61850ModelingService:
 
         with self.session_factory() as session:
             project = self._require_project(session, project_id)
-            nodes = list(
-                session.scalars(select(Iec61850ModelNode).where(Iec61850ModelNode.project_id == project_id)).all()
-            )
+            nodes = self._load_document(project).nodes
             target_file_type = (file_type or project.file_type).upper()
             variant_issues = validate_file_variant(nodes, target_file_type, for_publish=False)
             if variant_issues:
@@ -1413,9 +1190,7 @@ class Iec61850ModelingService:
             raise ValidationError("模型校验未通过，不能发布", validation)
         with self.session_factory() as session:
             project = self._require_project(session, project_id)
-            nodes = list(
-                session.scalars(select(Iec61850ModelNode).where(Iec61850ModelNode.project_id == project_id)).all()
-            )
+            nodes = self._load_document(project).nodes
             variant_issues = validate_file_variant(nodes, project.file_type, for_publish=True)
             if variant_issues:
                 raise ValidationError("当前文件变体不能发布", {"issues": variant_issues})
