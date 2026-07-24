@@ -202,6 +202,81 @@ def test_importer_honors_cooperative_cancellation():
         SclModelImporter().parse(content, cancel_check=cancel_check)
 
 
+def test_importer_uses_standard_fcda_reference_as_node_name():
+    content = b"""
+    <SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+      <Header id="FCDA_NAME"/>
+      <IED name="PCS001">
+        <AccessPoint name="S1">
+          <Server>
+            <LDevice inst="CTRL">
+              <LN0 lnClass="LLN0" inst="" lnType="LLN0_TYPE">
+                <DataSet name="dsAlarm">
+                  <FCDA ldInst="CTRL" prefix="kr" lnClass="GGIO"
+                        lnInst="1" doName="Alm1" fc="ST"/>
+                </DataSet>
+              </LN0>
+              <LN prefix="kr" lnClass="GGIO" inst="1" lnType="GGIO_TYPE"/>
+            </LDevice>
+          </Server>
+        </AccessPoint>
+      </IED>
+    </SCL>
+    """
+
+    result = SclModelImporter().parse(content, filename="fcda.icd")
+    fcda = next(node for node in result.nodes if node["kind"] == "FCDA")
+
+    assert fcda["name"] == "krGGIO1.Alm1"
+    assert fcda["attributes"]["fc"] == "ST"
+
+
+def test_importer_exposes_inherited_quality_and_timestamp_without_rewriting_scl(
+    service: Iec61850ModelingService,
+):
+    content = b"""
+    <SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+      <Header id="INHERITED_DA"/>
+      <IED name="BAMS">
+        <AccessPoint name="S1"><Server><LDevice inst="CTMP01">
+          <LN lnClass="MMCL" inst="1" lnType="MMCL_TYPE">
+            <DOI name="Temp001"><DAI name="dU"><Val>temperature</Val></DAI></DOI>
+          </LN>
+        </LDevice></Server></AccessPoint>
+      </IED>
+      <DataTypeTemplates>
+        <LNodeType id="MMCL_TYPE" lnClass="MMCL">
+          <DO name="Temp001" type="TEMP_TYPE"/>
+        </LNodeType>
+        <DOType id="TEMP_TYPE" cdc="MV">
+          <DA name="mag" fc="MX" bType="FLOAT32"/>
+          <DA name="q" fc="MX" bType="Quality"/>
+          <DA name="t" fc="MX" bType="Timestamp"/>
+          <DA name="dU" fc="DC" bType="Unicode255"/>
+        </DOType>
+      </DataTypeTemplates>
+    </SCL>
+    """
+
+    parsed = SclModelImporter().parse(content, filename="bams.icd")
+    doi = next(node for node in parsed.nodes if node["kind"] == "DOI")
+    children = [node for node in parsed.nodes if node["parent_id"] == doi["id"] and node["kind"] == "DAI"]
+
+    assert {node["name"] for node in children} == {"dU", "q", "t"}
+    assert all(node["attributes"].get("_templateInherited") is True for node in children if node["name"] in {"q", "t"})
+
+    imported = service.import_scl(
+        content,
+        filename="bams.icd",
+        code="INHERITED_DA",
+    )
+    generated = service.generate_scl(imported["project"]["id"])["xml"]
+    doi_xml = generated.split('<DOI name="Temp001">', 1)[1].split("</DOI>", 1)[0]
+    assert '<DAI name="dU">' in doi_xml
+    assert '<DAI name="q"' not in doi_xml
+    assert '<DAI name="t"' not in doi_xml
+
+
 def test_large_sample_has_bounded_regression_budget():
     sample = Path("tmp/testicd/TEMPLATE_114.icd")
     if not sample.is_file():

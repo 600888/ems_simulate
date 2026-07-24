@@ -83,6 +83,7 @@ declare module 'vue' {
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
     ElTree: typeof import('element-plus/es')['ElTree']
     ElTreeSelect: typeof import('element-plus/es')['ElTreeSelect']
+    ElTreeV2: typeof import('element-plus/es')['ElTreeV2']
     ElUpload: typeof import('element-plus/es')['ElUpload']
     FileExplorer: typeof import('./src/components/files/FileExplorer.vue')['default']
     FloatRegister: typeof import('./src/components/register/FloatRegister.vue')['default']

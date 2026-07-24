@@ -19,6 +19,43 @@ function unwrap<T>(response: { data: ApiEnvelope<T> }): T {
   return response.data.data;
 }
 
+function parseJsonOffMainThread<T>(source: string): Promise<T> {
+  if (typeof Worker === "undefined") {
+    return Promise.resolve(JSON.parse(source) as T);
+  }
+  return new Promise<T>((resolve, reject) => {
+    const workerSource = `
+      self.onmessage = ({ data }) => {
+        try {
+          self.postMessage({ value: JSON.parse(data) });
+        } catch (error) {
+          self.postMessage({ error: error instanceof Error ? error.message : String(error) });
+        }
+      };
+    `;
+    const workerUrl = URL.createObjectURL(
+      new Blob([workerSource], { type: "text/javascript" }),
+    );
+    const worker = new Worker(workerUrl);
+    const cleanup = () => {
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+    };
+    worker.onmessage = ({
+      data,
+    }: MessageEvent<{ value?: T; error?: string }>) => {
+      cleanup();
+      if (data.error) reject(new Error(data.error));
+      else resolve(data.value as T);
+    };
+    worker.onerror = (event) => {
+      cleanup();
+      reject(new Error(event.message || "模型树解析失败"));
+    };
+    worker.postMessage(source);
+  });
+}
+
 const multipartConfig = { headers: { "Content-Type": undefined } };
 
 export interface CreateProjectPayload {
@@ -217,15 +254,36 @@ export const modelingApi = {
     );
   },
 
-  async getTree(projectId: string) {
-    return unwrap<ModelNode[]>(
-      await instance.get(`/api/modeling/projects/${projectId}/tree`),
+  async getTree(projectId: string, compact = false) {
+    // Axios' default JSON transform runs JSON.parse on the UI thread. A large
+    // SCL tree can keep the WebView event loop busy long enough for Windows to
+    // mark the window as unresponsive, so transfer it as text and parse it in
+    // a short-lived worker.
+    const response = await instance.get<string>(
+      `/api/modeling/projects/${projectId}/tree`,
+      {
+        params: compact ? { compact: true } : undefined,
+        responseType: "text",
+        transformResponse: [(data) => data],
+      },
     );
+    const envelope = await parseJsonOffMainThread<ApiEnvelope<ModelNode[]>>(
+      response.data,
+    );
+    if (envelope.code !== 200) {
+      throw new Error(envelope.message || "模型树加载失败");
+    }
+    return envelope.data;
   },
 
-  async getNode(projectId: string, nodeId: string) {
+  async getNode(projectId: string, nodeId: string, includeChildren = false) {
     return unwrap<ModelNode>(
-      await instance.get(`/api/modeling/projects/${projectId}/nodes/${nodeId}`),
+      await instance.get(
+        `/api/modeling/projects/${projectId}/nodes/${nodeId}`,
+        {
+          params: includeChildren ? { include_children: true } : undefined,
+        },
+      ),
     );
   },
 

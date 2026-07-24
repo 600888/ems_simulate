@@ -131,8 +131,8 @@ def delete_project(project_id: str) -> BaseResponse:
 
 
 @router.get("/projects/{project_id}/tree")
-def get_tree(project_id: str) -> BaseResponse:
-    return BaseResponse.success(service.get_tree(project_id))
+def get_tree(project_id: str, compact: bool = False) -> BaseResponse:
+    return BaseResponse.success(service.get_tree(project_id, compact=compact))
 
 
 @router.post("/projects/{project_id}/nodes")
@@ -141,8 +141,8 @@ def create_node(project_id: str, request: NodeCreateRequest) -> BaseResponse:
 
 
 @router.get("/projects/{project_id}/nodes/{node_id}")
-def get_node(project_id: str, node_id: str) -> BaseResponse:
-    return BaseResponse.success(service.get_node(project_id, node_id))
+def get_node(project_id: str, node_id: str, include_children: bool = False) -> BaseResponse:
+    return BaseResponse.success(service.get_node(project_id, node_id, include_children=include_children))
 
 
 @router.patch("/projects/{project_id}/nodes/{node_id}")

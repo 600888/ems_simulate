@@ -56,6 +56,9 @@
         <el-button :loading="validating" @click="runValidation"
           ><el-icon><CircleCheck /></el-icon>校验</el-button
         >
+        <el-button :loading="previewDialog.loading" @click="openSclPreview"
+          ><el-icon><View /></el-icon>预览</el-button
+        >
         <el-button type="success" plain @click="openPublishDialog"
           ><el-icon><Promotion /></el-icon>发布</el-button
         >
@@ -66,9 +69,6 @@
           ></el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item @click="openSclPreview"
-                ><el-icon><View /></el-icon>预览 SCL</el-dropdown-item
-              >
               <el-dropdown-item @click="downloadScl"
                 ><el-icon><Download /></el-icon>下载
                 {{ project?.file_type || "ICD" }}</el-dropdown-item
@@ -141,15 +141,18 @@
             />
           </el-select>
         </div>
-        <el-scrollbar class="tree-scroll">
-          <el-tree
+        <div ref="treeViewportRef" class="tree-scroll">
+          <el-tree-v2
             ref="treeRef"
             :data="treeData"
-            node-key="id"
+            :props="treeProps"
+            :height="treeViewportHeight"
+            :item-size="40"
+            :indent="18"
             highlight-current
             :default-expanded-keys="defaultExpandedKeys"
             :expand-on-click-node="false"
-            :filter-node-method="filterTreeNode"
+            :filter-method="filterTreeNode"
             @node-click="selectNode"
           >
             <template #default="{ data }">
@@ -159,12 +162,12 @@
                   `kind-${data.kind.toLowerCase()}`,
                   `status-${childStatus(data).toLowerCase()}`,
                 ]"
-                :title="`${data.kind_label} · ${data.name}`"
+                :title="`${kindLabel(data.kind)} · ${data.name}`"
               >
                 <span class="tree-icon" aria-hidden="true">
                   <el-icon><component :is="treeNodeIcon(data.kind)" /></el-icon>
                 </span>
-                <span class="tree-label">{{ data.label }}</span>
+                <span class="tree-label">{{ data.name }}</span>
                 <span
                   v-if="childStatus(data) !== 'NORMAL'"
                   class="tree-problem-dot"
@@ -174,8 +177,8 @@
                 }}</span>
               </div>
             </template>
-          </el-tree>
-        </el-scrollbar>
+          </el-tree-v2>
+        </div>
         <div class="tree-footer">
           <el-button
             size="small"
@@ -329,8 +332,8 @@
             >
               <el-table
                 v-if="selectedNode.children?.length"
-                :data="selectedNode.children"
-                height="100%"
+                :data="pagedChildNodes"
+                :height="childTableHeight"
                 row-key="id"
                 highlight-current-row
                 class="children-table"
@@ -389,6 +392,23 @@
                   ><el-icon><Plus /></el-icon>添加第一个子节点</el-button
                 >
               </el-empty>
+              <div
+                v-if="(selectedNode.children?.length || 0) > CHILD_PAGE_SIZE"
+                class="children-pagination"
+              >
+                <span
+                  >共 {{ selectedNode.children?.length || 0 }} 个子节点</span
+                >
+                <el-pagination
+                  v-model:current-page="childPage"
+                  small
+                  background
+                  layout="prev, pager, next"
+                  :page-size="CHILD_PAGE_SIZE"
+                  :total="selectedNode.children?.length || 0"
+                  :pager-count="5"
+                />
+              </div>
             </el-tab-pane>
 
             <el-tab-pane
@@ -899,7 +919,12 @@
         >
       </div>
       <el-scrollbar class="xml-preview">
-        <pre>{{ previewDialog.artifact?.xml }}</pre>
+        <div class="xml-preview-content">
+          <pre class="xml-line-numbers" aria-hidden="true">{{
+            previewLineNumbers
+          }}</pre>
+          <pre class="xml-source">{{ previewDialog.artifact?.xml }}</pre>
+        </div>
       </el-scrollbar>
     </el-dialog>
 
@@ -979,7 +1004,7 @@ import {
 } from "vue";
 import type { Component } from "vue";
 import { useRouter } from "vue-router";
-import { ElMessage, ElMessageBox, type ElTree } from "element-plus";
+import { ElMessage, ElMessageBox, type TreeV2Instance } from "element-plus";
 import {
   ArrowDown,
   ArrowLeft,
@@ -1018,6 +1043,7 @@ import {
   View,
 } from "@element-plus/icons-vue";
 import { modelingApi, type CdcTemplate } from "@/api/modelingApi";
+import { createModelingFormSnapshot } from "@/utils/modelingFormSnapshot";
 import type {
   DeleteImpact,
   ModelNode,
@@ -1038,7 +1064,15 @@ const project = ref<ModelProject>();
 const treeData = shallowRef<ModelNode[]>([]);
 const selectedNode = shallowRef<ModelNode>();
 const nodeImpact = shallowRef<DeleteImpact>();
-const treeRef = ref<InstanceType<typeof ElTree>>();
+const treeRef = ref<TreeV2Instance>();
+const treeViewportRef = ref<HTMLElement>();
+const treeViewportHeight = ref(400);
+const treeProps = {
+  children: "children",
+  label: "name",
+  value: "id",
+};
+let treeResizeObserver: ResizeObserver | undefined;
 const workspaceGridRef = ref<HTMLElement>();
 const LEFT_PANEL_DEFAULT_WIDTH = 300;
 const LEFT_PANEL_MIN_WIDTH = 220;
@@ -1158,15 +1192,34 @@ function fitPanelWidthsToGrid() {
   setPanelWidth("right", rightPanelWidth.value, false);
   setPanelWidth("left", leftPanelWidth.value, false);
 }
+
+function updateTreeViewportHeight() {
+  const height = treeViewportRef.value?.clientHeight;
+  if (height) treeViewportHeight.value = Math.max(120, height);
+}
 const treeNodeIndex = new Map<string, ModelNode>();
 const treeKindLabels = new Map<string, string>();
 const treeKinds = shallowRef<string[]>([]);
 const defaultExpandedKeys = shallowRef<string[]>([]);
 const extensionStats = reactive({ total: 0, lossy: 0 });
 const nodeSchemaCache = new Map<string, NonNullable<ModelNode["schema"]>>();
+const nodeDetailCache = new Map<string, ModelNode>();
+let nodeSelectionRequest = 0;
 const treeKeyword = ref("");
 const treeTypeFilter = ref("");
 const contentTab = ref("children");
+const CHILD_PAGE_SIZE = 100;
+const childPage = ref(1);
+const pagedChildNodes = computed(() => {
+  const children = selectedNode.value?.children || [];
+  const start = (childPage.value - 1) * CHILD_PAGE_SIZE;
+  return children.slice(start, start + CHILD_PAGE_SIZE);
+});
+const childTableHeight = computed(() =>
+  (selectedNode.value?.children?.length || 0) > CHILD_PAGE_SIZE
+    ? "calc(100% - 44px)"
+    : "100%",
+);
 const propertyTab = ref<"basic" | "advanced">("basic");
 const propertyForm = reactive<{
   name: string;
@@ -1196,6 +1249,12 @@ const previewDialog = reactive<{
   loading: boolean;
   artifact?: SclArtifact;
 }>({ visible: false, loading: false });
+const previewLineNumbers = computed(() => {
+  const xml = previewDialog.artifact?.xml;
+  if (!xml) return "";
+  const lineCount = xml.split(/\r\n|\r|\n/).length;
+  return Array.from({ length: lineCount }, (_, index) => index + 1).join("\n");
+});
 const publishDialog = reactive({
   visible: false,
   publishing: false,
@@ -1218,24 +1277,10 @@ const deleteDialog = reactive<{
 }>({ visible: false, loading: false, deleting: false });
 
 function createFormSnapshot() {
-  const attributes = { ...propertyForm.attributes };
-  for (const field of selectedNode.value?.schema?.fields || []) {
-    if (field.key === "name" || attributes[field.key] != null) continue;
-    // Element Plus represents an untouched empty control with a component
-    // specific value. Treat those values as equivalent to a missing JSON key.
-    if (field.component === "switch") attributes[field.key] = false;
-    else if (field.component === "number") attributes[field.key] = null;
-    else attributes[field.key] = "";
-  }
-  const canonicalAttributes = Object.fromEntries(
-    Object.entries(attributes).sort(([left], [right]) =>
-      left.localeCompare(right),
-    ),
+  return createModelingFormSnapshot(
+    propertyForm,
+    selectedNode.value?.schema?.fields || [],
   );
-  return JSON.stringify({
-    name: propertyForm.name,
-    attributes: canonicalAttributes,
-  });
 }
 const currentSnapshot = computed(createFormSnapshot);
 const dirty = computed(
@@ -1333,23 +1378,21 @@ watch(
   [treeKeyword, treeTypeFilter],
   ([keyword, kind], _previous, onCleanup) => {
     const timer = window.setTimeout(
-      () => treeRef.value?.filter({ keyword, kind }),
+      () => treeRef.value?.filter(`${keyword}\u0000${kind}`),
       200,
     );
     onCleanup(() => window.clearTimeout(timer));
   },
 );
 
-function filterTreeNode(
-  value: { keyword: string; kind: string },
-  data: ModelNode,
-) {
-  const keyword = value?.keyword?.trim().toLowerCase() || "";
+function filterTreeNode(_query: string, data: ModelNode) {
+  const keyword = treeKeyword.value.trim().toLowerCase();
   const matchesKeyword =
     !keyword ||
     data.name.toLowerCase().includes(keyword) ||
     data.kind.toLowerCase().includes(keyword);
-  const matchesKind = !value?.kind || data.kind === value.kind;
+  const matchesKind =
+    !treeTypeFilter.value || data.kind === treeTypeFilter.value;
   return matchesKeyword && matchesKind;
 }
 
@@ -1358,32 +1401,45 @@ async function loadProject() {
 }
 
 async function loadTree(selectId?: string) {
-  const nodes = await modelingApi.getTree(props.projectId);
-  treeData.value = nodes;
-  rebuildTreeMetadata(nodes);
+  const nodes = await modelingApi.getTree(props.projectId, true);
+  nodeDetailCache.clear();
+  await rebuildTreeMetadata(nodes);
   const rootId = nodes[0]?.id;
   defaultExpandedKeys.value = rootId ? [rootId] : [];
+  treeData.value = nodes;
+  // Give Vue and Element Plus a paint boundary before selecting/fetching the
+  // first node. This keeps the loading animation and window message pump live.
+  await yieldToBrowser();
   const target = selectId || selectedNode.value?.id || rootId;
   if (target) await focusNode(target);
 }
 
-function rebuildTreeMetadata(nodes: ModelNode[]) {
+function yieldToBrowser() {
+  return new Promise<void>((resolve) =>
+    window.requestAnimationFrame(() => resolve()),
+  );
+}
+
+async function rebuildTreeMetadata(nodes: ModelNode[]) {
   treeNodeIndex.clear();
   treeKindLabels.clear();
   extensionStats.total = 0;
   extensionStats.lossy = 0;
   const stack = [...nodes];
+  let processed = 0;
   while (stack.length) {
     const node = stack.pop()!;
     treeNodeIndex.set(node.id, node);
-    if (!treeKindLabels.has(node.kind)) {
+    if (node.kind_label && !treeKindLabels.has(node.kind)) {
       treeKindLabels.set(node.kind, node.kind_label);
     }
     if (node.kind === "EXTENSION") {
       extensionStats.total += 1;
-      if (isTruthyFlag(node.attributes.lossRisk)) extensionStats.lossy += 1;
+      if (isTruthyFlag(node.attributes?.lossRisk)) extensionStats.lossy += 1;
     }
     if (node.children?.length) stack.push(...node.children);
+    processed += 1;
+    if (processed % 1500 === 0) await yieldToBrowser();
   }
   treeKinds.value = Array.from(treeKindLabels.keys()).sort();
 }
@@ -1399,13 +1455,24 @@ async function selectNode(data: ModelNode) {
     treeRef.value?.setCurrentKey(selectedNode.value?.id || "");
     return;
   }
-  let schema = nodeSchemaCache.get(data.kind);
-  if (!schema) {
-    schema = await modelingApi.getNodeSchema(data.kind);
-    nodeSchemaCache.set(data.kind, schema);
+  const requestId = ++nodeSelectionRequest;
+  let detail = data;
+  if (!data.detail_loaded) {
+    const cached = nodeDetailCache.get(data.id);
+    detail =
+      cached || (await modelingApi.getNode(props.projectId, data.id, true));
+    nodeDetailCache.set(data.id, detail);
+    if (requestId !== nodeSelectionRequest) return;
   }
-  const detail: ModelNode = { ...data, schema };
+  let schema = detail.schema || nodeSchemaCache.get(detail.kind);
+  if (!schema) {
+    schema = await modelingApi.getNodeSchema(detail.kind);
+    nodeSchemaCache.set(detail.kind, schema);
+    if (requestId !== nodeSelectionRequest) return;
+  }
+  detail = { ...detail, schema };
   selectedNode.value = detail;
+  childPage.value = 1;
   nodeImpact.value = undefined;
   // Protected structural nodes cannot be deleted. Avoid an expensive subtree
   // impact scan for the root selected automatically when a large model opens.
@@ -1441,12 +1508,16 @@ async function focusNode(nodeId: string) {
   if (!node) return;
   await selectNode(node);
   await nextTick();
-  let treeNode = treeRef.value?.getNode(nodeId);
-  while (treeNode?.parent) {
-    treeNode.parent.expanded = true;
-    treeNode = treeNode.parent;
+  const treeNode = treeRef.value?.getNode(nodeId);
+  const parents = [];
+  let parent = treeNode?.parent;
+  while (parent) {
+    parents.push(parent);
+    parent = parent.parent;
   }
+  for (const ancestor of parents.reverse()) treeRef.value?.expandNode(ancestor);
   treeRef.value?.setCurrentKey(nodeId);
+  treeRef.value?.scrollToNode(nodeId, "center");
 }
 
 function focusChildRow(row: ModelNode) {
@@ -1722,17 +1793,7 @@ async function runValidation() {
 }
 
 function nodeAbbr(kind: string) {
-  return (
-    (
-      {
-        DATA_TYPE_TEMPLATES: "DT",
-        ACCESS_POINT: "AP",
-        REPORT_CONTROL: "RCB",
-        GSE_CONTROL: "GCB",
-        LDEVICE: "LD",
-      } as Record<string, string>
-    )[kind] || kind.slice(0, 3)
-  );
+  return nodeKindShort(kind) || kind.replace(/_/g, "").slice(0, 3);
 }
 
 const treeNodeIcons: Record<string, Component> = {
@@ -1807,6 +1868,8 @@ function nodeKindShort(kind: string) {
         ENUM_TYPE: "ENUM",
         DO_DEF: "DO",
         DA_DEF: "DA",
+        SDO_DEF: "SDO",
+        BDA_DEF: "BDA",
       } as Record<string, string>
     )[kind] || ""
   );
@@ -2056,25 +2119,35 @@ async function publishProject() {
 
 onBeforeUnmount(() => {
   stopPanelResize();
+  treeResizeObserver?.disconnect();
   window.removeEventListener("resize", fitPanelWidthsToGrid);
 });
 
 onMounted(async () => {
   await nextTick();
   fitPanelWidthsToGrid();
+  updateTreeViewportHeight();
+  if (treeViewportRef.value) {
+    treeResizeObserver = new ResizeObserver(updateTreeViewportHeight);
+    treeResizeObserver.observe(treeViewportRef.value);
+  }
   window.addEventListener("resize", fitPanelWidthsToGrid);
   try {
-    const [, , templates] = await Promise.all([
-      loadProject(),
-      loadTree(),
-      modelingApi.listCdcTemplates(),
-    ]);
-    cdcTemplates.value = templates;
-    if (selectedNode.value?.kind === "DO_TYPE")
-      await selectNode(selectedNode.value);
+    await Promise.all([loadProject(), loadTree()]);
   } finally {
     initialLoading.value = false;
   }
+  // CDC templates are only needed when editing a DOType. Do not keep the
+  // entire workspace behind the initial loading mask while this helper catalog
+  // is transferred and parsed.
+  void modelingApi
+    .listCdcTemplates()
+    .then(async (templates) => {
+      cdcTemplates.value = templates;
+      if (selectedNode.value?.kind === "DO_TYPE")
+        await selectNode(selectedNode.value);
+    })
+    .catch(() => undefined);
 });
 </script>
 
@@ -2106,6 +2179,9 @@ onMounted(async () => {
   align-items: center;
   gap: 9px;
   min-width: 0;
+}
+.toolbar-actions .el-button + .el-button {
+  margin-left: 0;
 }
 .back-button {
   padding-inline: 4px;
@@ -2241,7 +2317,11 @@ onMounted(async () => {
   min-height: 0;
   flex: 1;
 }
-:deep(.el-tree) {
+.tree-scroll {
+  overflow: hidden;
+}
+:deep(.el-tree),
+:deep(.el-tree-v2) {
   padding: 9px 9px 16px;
   background: transparent;
   color: var(--text-primary);
@@ -2249,9 +2329,12 @@ onMounted(async () => {
 }
 :deep(.el-tree-node__content) {
   position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
   height: 38px;
   margin: 1px 0;
-  padding-left: 3px !important;
+  padding-left: 3px;
   border: 1px solid transparent;
   border-radius: 8px;
   box-sizing: border-box;
@@ -2276,6 +2359,11 @@ onMounted(async () => {
     inset 3px 0 0 var(--color-primary);
 }
 :deep(.el-tree-node__expand-icon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  flex: 0 0 18px;
   width: 18px;
   height: 18px;
   margin-right: 2px;
@@ -2325,10 +2413,13 @@ onMounted(async () => {
   --node-bg: #f1f5f9;
   position: relative;
   z-index: 1;
+  flex: 1 1 auto;
   min-width: 0;
   width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 8px;
   padding-right: 7px;
 }
@@ -2591,6 +2682,18 @@ onMounted(async () => {
   --el-table-row-hover-bg-color: var(--item-hover-bg);
   cursor: pointer;
 }
+.children-pagination {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  border-top: 1px solid var(--sidebar-border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  box-sizing: border-box;
+}
 .children-table :deep(th.el-table__cell) {
   height: 38px;
   color: var(--text-secondary);
@@ -2601,21 +2704,44 @@ onMounted(async () => {
   height: 44px;
   font-size: 12px;
 }
-.table-node-name {
+.children-table :deep(.el-table__body td:first-child > .cell) {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
+}
+.children-table :deep(.el-table__body td:first-child .el-table__expand-icon),
+.children-table :deep(.el-table__body td:first-child .el-table__placeholder) {
+  flex: 0 0 20px;
+}
+.table-node-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
   gap: 8px;
+}
+.table-node-name strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .node-mini {
   display: grid;
   place-items: center;
   width: 28px;
+  min-width: 28px;
   height: 28px;
+  flex: 0 0 28px;
+  box-sizing: border-box;
   border-radius: 7px;
   color: var(--color-primary);
   background: var(--item-active-bg);
   font-size: 9px;
   font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
 }
 .node-status {
   display: inline-flex;
@@ -3098,15 +3224,35 @@ onMounted(async () => {
   border-radius: 10px;
   background: #0f172a;
 }
+.xml-preview-content {
+  display: flex;
+  align-items: flex-start;
+  min-width: max-content;
+}
 .xml-preview pre {
   margin: 0;
-  padding: 18px;
-  color: #dbeafe;
   font:
     12px/1.7 Consolas,
     "Courier New",
     monospace;
   white-space: pre;
+}
+.xml-line-numbers {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 64px;
+  padding: 18px 12px 18px 8px;
+  box-sizing: border-box;
+  border-right: 1px solid #334155;
+  color: #64748b;
+  background: #111c31;
+  text-align: right;
+  user-select: none;
+}
+.xml-source {
+  padding: 18px;
+  color: #dbeafe;
 }
 .publish-form {
   margin-top: 16px;

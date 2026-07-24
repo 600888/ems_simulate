@@ -69,6 +69,33 @@ def test_create_from_scratch_builds_minimum_valid_skeleton(service: Iec61850Mode
     assert service.get_project(project_id)["status"] == "VALID"
 
 
+def test_compact_tree_defers_deep_node_details(service: Iec61850ModelingService):
+    result = create_project(service)
+    project_id = result["project"]["id"]
+
+    compact_tree = service.get_tree(project_id, compact=True)
+    compact_nodes = flatten(compact_tree)
+    root = compact_tree[0]
+    deep_node = next(node for node in compact_nodes if node.get("detail_loaded") is None)
+
+    assert root["detail_loaded"] is True
+    assert "attributes" in root
+    assert "attributes" not in deep_node
+    assert "path" not in deep_node
+    assert "project_id" not in deep_node
+
+    detail = service.get_node(
+        project_id,
+        deep_node["id"],
+        include_children=True,
+    )
+    assert detail["detail_loaded"] is True
+    assert "attributes" in detail
+    assert "schema" in detail
+    assert "children" in detail
+    assert all("attributes" in child for child in detail["children"])
+
+
 def test_node_crud_and_optimistic_revision(service: Iec61850ModelingService):
     result = create_project(service)
     project_id = result["project"]["id"]

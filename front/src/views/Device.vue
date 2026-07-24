@@ -44,17 +44,24 @@
       >
         <span class="tooltip-wrapper">
           <el-button
-            :class="['button', deviceStatus ? 'btn-stop' : 'btn-primary-action']"
+            :class="[
+              'button',
+              deviceStatus ? 'btn-stop' : 'btn-primary-action',
+            ]"
             @click="toggleDevice"
             :disabled="isDeviceProcessing || isDeviceStartDisabled"
             :loading="isDeviceProcessing"
           >
             <template #icon v-if="!isDeviceProcessing">
-              <el-icon v-if="!deviceStatus" class="icon"><CaretRight /></el-icon>
+              <el-icon v-if="!deviceStatus" class="icon"
+                ><CaretRight
+              /></el-icon>
               <el-icon v-else class="icon"><VideoPause /></el-icon>
             </template>
             <span>
-              {{ $t(deviceStatus ? "device.stopDevice" : "device.startDevice") }}
+              {{
+                $t(deviceStatus ? "device.stopDevice" : "device.startDevice")
+              }}
             </span>
           </el-button>
         </span>
@@ -74,7 +81,11 @@
           <TextNode
             iconType="model"
             :label="$t('device.modelStatus')"
-            :name="modelLoaded ? $t('device.modelLoaded') : $t('device.modelNotLoaded')"
+            :name="
+              modelLoaded
+                ? $t('device.modelLoaded')
+                : $t('device.modelNotLoaded')
+            "
             :status="modelLoaded"
           />
 
@@ -181,11 +192,15 @@
                 :loading="isSimProcessing"
               >
                 <template #icon v-if="!isSimProcessing">
-                  <el-icon v-if="!simulationStatus" class="icon"><CaretRight /></el-icon>
+                  <el-icon v-if="!simulationStatus" class="icon"
+                    ><CaretRight
+                  /></el-icon>
                   <el-icon v-else class="icon"><VideoPause /></el-icon>
                 </template>
                 <span>
-                  {{ $t(simulationStatus ? "device.stopSim" : "device.startSim") }}
+                  {{
+                    $t(simulationStatus ? "device.stopSim" : "device.startSim")
+                  }}
                 </span>
               </el-button>
             </span>
@@ -260,6 +275,7 @@ import {
   Download,
   Refresh,
   Search,
+  Upload,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { HTTP_TIMEOUT_MODEL_DISCOVERY } from "@/constants";
@@ -326,7 +342,9 @@ const simulationStatusStr = computed(() => {
 const isSerialMode = computed(() => {
   const type = communicationType.value;
   return (
-    type && (type.includes("Dlt645") || type.startsWith("ModbusRtu")) && serialPort.value
+    type &&
+    (type.includes("Dlt645") || type.startsWith("ModbusRtu")) &&
+    serialPort.value
   );
 });
 
@@ -340,7 +358,10 @@ const isClientDevice = computed(() => {
 // IEC61850 协议检测
 const isIec61850Protocol = computed(() => {
   const type = communicationType.value;
-  return type && (String(type) === "Iec61850Client" || String(type) === "Iec61850Server");
+  return (
+    type &&
+    (String(type) === "Iec61850Client" || String(type) === "Iec61850Server")
+  );
 });
 
 // IEC61850: 模型未加载时不允许开启设备（禁用启动按钮）
@@ -351,7 +372,8 @@ const isDeviceStartDisabled = computed(() => {
 // 模拟按钮禁用的工具提示
 const simTooltipText = computed(() => {
   if (isClientDevice.value) return t("device.clientNoSim");
-  if (isIec61850Protocol.value && !modelLoaded.value) return t("device.modelNotLoaded");
+  if (isIec61850Protocol.value && !modelLoaded.value)
+    return t("device.modelNotLoaded");
   if (!deviceStatus.value) return t("device.deviceNotStarted");
   return "";
 });
@@ -379,7 +401,7 @@ const isAnyModelProcessing = computed(
     modelLoading.value ||
     modelImporting.value ||
     modelDiscovering.value ||
-    iec61850Connecting.value
+    iec61850Connecting.value,
 );
 
 const simulateOptions = computed(() => [
@@ -410,7 +432,10 @@ const iec61850PhaseLabel: Record<string, string> = {
 };
 
 const isIec61850Client = computed(() => {
-  return communicationType.value && String(communicationType.value) === "Iec61850Client";
+  return (
+    communicationType.value &&
+    String(communicationType.value) === "Iec61850Client"
+  );
 });
 
 const iec61850ProgressPercent = computed(() => {
@@ -429,7 +454,7 @@ const modelProgressVisible = computed(
     iec61850Connecting.value ||
     modelLoading.value ||
     modelImporting.value ||
-    modelDiscovering.value
+    modelDiscovering.value,
 );
 const modelProgressPercent = computed(() => {
   if (modelLoading.value) return 50;
@@ -457,11 +482,12 @@ let iec61850ProgressRunId = 0;
 
 const startIec61850ProgressPolling = (
   mode: "connect" | "discover" = "connect",
-  initialProgress: IEC61850ConnectProgress | null = null
+  initialProgress: IEC61850ConnectProgress | null = null,
 ) => {
   stopIec61850ProgressPolling();
   const runId = ++iec61850ProgressRunId;
-  const initialActive = initialProgress?.active ?? initialProgress?.connecting ?? false;
+  const initialActive =
+    initialProgress?.active ?? initialProgress?.connecting ?? false;
   let observedCurrentDiscovery = mode === "discover" && initialActive;
   let observedOperationId = observedCurrentDiscovery
     ? initialProgress?.operation_id
@@ -481,7 +507,7 @@ const startIec61850ProgressPolling = (
   iec61850ElapsedTimer = window.setInterval(() => {
     iec61850Elapsed.value = Math.max(
       iec61850Elapsed.value,
-      Math.floor((Date.now() - iec61850ProgressStartedAt) / 1000)
+      Math.floor((Date.now() - iec61850ProgressStartedAt) / 1000),
     );
   }, 250);
   const pollProgress = async () => {
@@ -492,12 +518,14 @@ const startIec61850ProgressPolling = (
       if (runId !== iec61850ProgressRunId) return;
       if (progress) {
         const active = progress.active ?? progress.connecting;
-        const operationMatches = !progress.operation || progress.operation === mode;
+        const operationMatches =
+          !progress.operation || progress.operation === mode;
         if (mode === "discover" && !observedCurrentDiscovery) {
           if (
             operationMatches &&
             active &&
-            (progress.phase === "connecting" || progress.phase === "discovering")
+            (progress.phase === "connecting" ||
+              progress.phase === "discovering")
           ) {
             observedCurrentDiscovery = true;
             observedOperationId = progress.operation_id;
@@ -517,7 +545,7 @@ const startIec61850ProgressPolling = (
         if (progress.elapsed_seconds !== undefined) {
           iec61850Elapsed.value = Math.max(
             iec61850Elapsed.value,
-            progress.elapsed_seconds
+            progress.elapsed_seconds,
           );
         }
         if (progress.phase === "done" || progress.phase === "failed") {
@@ -540,7 +568,8 @@ const startIec61850ProgressPolling = (
               triggerSidebarRefresh(routeName.value);
             }
             showErrorOnce(
-              progress.message?.trim() || t("device.iec61850DeviceConnectFailed")
+              progress.message?.trim() ||
+                t("device.iec61850DeviceConnectFailed"),
             );
           }
         }
@@ -702,7 +731,9 @@ const onIcdFileChange = () => {
     showErrorOnce(t("device.modelLoadFailed"));
     return;
   }
-  icdImportUploadRef.value?.importIcd(channelId.value, "model_only").catch(() => {});
+  icdImportUploadRef.value
+    ?.importIcd(channelId.value, "model_only")
+    .catch(() => {});
 };
 
 // IEC61850 模型导入：点击按钮打开文件选择框
@@ -726,7 +757,7 @@ const handleDiscoverModel = async () => {
           distinguishCancelAndClose: true,
           type: "info",
           roundButton: true,
-        }
+        },
       ).catch((action: string | null) => action);
 
       if (action === "confirm") {
@@ -750,7 +781,9 @@ const handleDiscoverModel = async () => {
       const success = await loadIEC61850ModelFromCache(routeName.value);
       if (success) {
         modelLoaded.value = true;
-        ElMessage.success(t("device.modelLoadSuccess") + ` (${t("device.fromCache")})`);
+        ElMessage.success(
+          t("device.modelLoadSuccess") + ` (${t("device.fromCache")})`,
+        );
         await slaveRef.value?.reloadDatas();
         triggerSidebarRefresh(routeName.value);
       } else {
@@ -770,11 +803,13 @@ const handleDiscoverModel = async () => {
   modelDiscovering.value = true;
   // 先让初始进度真正绘制一帧，避免极快任务在浏览器首次渲染前就结束。
   await nextTick();
-  await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+  await new Promise<void>((resolve) =>
+    window.requestAnimationFrame(() => resolve()),
+  );
   // 先发起发现请求，让后端先开始跟踪进度（避免首次轮询的竞态条件）
   const discoverPromise = discoverIEC61850Model(
     routeName.value,
-    HTTP_TIMEOUT_MODEL_DISCOVERY
+    HTTP_TIMEOUT_MODEL_DISCOVERY,
   );
   // 等后端 _begin_progress 执行完毕，确保首次轮询能通过守卫
   await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
@@ -919,9 +954,13 @@ const fetchDeviceStatus = async () => {
     ) {
       lastNotifyServerStatus = serverStatus;
       if (serverStatus === true) {
-        ElMessage.success(t("device.deviceConnected", { name: routeName.value }));
+        ElMessage.success(
+          t("device.deviceConnected", { name: routeName.value }),
+        );
       } else {
-        ElMessage.warning(t("device.deviceDisconnected", { name: routeName.value }));
+        ElMessage.warning(
+          t("device.deviceDisconnected", { name: routeName.value }),
+        );
       }
     }
 
@@ -994,7 +1033,7 @@ watch(
       await fetchDeviceInfo();
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 </script>
 
@@ -1163,7 +1202,9 @@ watch(
     line-height: 18px;
     white-space: nowrap;
     text-overflow: ellipsis;
-    text-shadow: 0 0 3px var(--el-bg-color), 0 0 3px var(--el-bg-color);
+    text-shadow:
+      0 0 3px var(--el-bg-color),
+      0 0 3px var(--el-bg-color);
     pointer-events: none;
   }
 

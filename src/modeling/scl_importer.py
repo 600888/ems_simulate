@@ -23,6 +23,21 @@ def _namespace(tag: str) -> str:
     return match.group(1) if match else ""
 
 
+def fcda_reference_name(attrs: dict[str, Any]) -> str:
+    """Build the human-readable FCDA reference without mixing in its FC."""
+
+    logical_node = "".join(str(attrs.get(key) or "") for key in ("prefix", "lnClass", "lnInst"))
+    return ".".join(
+        part
+        for part in (
+            logical_node,
+            str(attrs.get("doName") or ""),
+            str(attrs.get("daName") or ""),
+        )
+        if part
+    )
+
+
 @dataclass(slots=True)
 class SclImportResult:
     project: dict[str, Any]
@@ -176,6 +191,7 @@ class SclModelImporter:
         self._nodes.append({"id": root_id, "kind": "ROOT"})
         for index, child in enumerate(root):
             self._import_element(child, root_id, index, add, warnings)
+        self._materialize_common_instance_attributes(nodes, add)
 
         counts = Counter(item["kind"] for item in nodes)
         extensions = counts["EXTENSION"]
@@ -199,6 +215,77 @@ class SclModelImporter:
             summary={"node_count": len(nodes), "by_kind": dict(sorted(counts.items())), "extension_count": extensions},
             warnings=warnings,
         )
+
+    @staticmethod
+    def _materialize_common_instance_attributes(nodes, add) -> None:
+        """Expose type-inherited ``q``/``t`` below DOI nodes.
+
+        SCL normally declares quality and timestamp in DOType and omits empty
+        DAI elements from each DOI. The modeling tree is an effective-model
+        view, however, so hiding those inherited attributes makes a complete
+        MV instance look as if it only contains its explicitly configured dU.
+        Synthetic nodes are marked read-only and omitted again by the
+        serializer, preserving the source SCL representation.
+        """
+
+        by_parent: dict[str | None, list[dict[str, Any]]] = defaultdict(list)
+        for node in nodes:
+            by_parent[node["parent_id"]].append(node)
+
+        do_types = {
+            str(node["attributes"].get("id") or node["name"]): node for node in nodes if node["kind"] == "DO_TYPE"
+        }
+        ln_types = {
+            str(node["attributes"].get("id") or node["name"]): node for node in nodes if node["kind"] == "LNODE_TYPE"
+        }
+
+        for logical_node in (node for node in nodes if node["kind"] in ("LN0", "LN")):
+            ln_type = ln_types.get(str(logical_node["attributes"].get("lnType") or ""))
+            if ln_type is None:
+                continue
+            do_definitions = {
+                child["name"]: child for child in by_parent.get(ln_type["id"], []) if child["kind"] == "DO_DEF"
+            }
+            for doi in (child for child in by_parent.get(logical_node["id"], []) if child["kind"] == "DOI"):
+                do_definition = do_definitions.get(doi["name"])
+                if do_definition is None:
+                    continue
+                type_id = str(do_definition["attributes"].get("type") or "")
+                do_type = do_types.get(type_id)
+                if do_type is None:
+                    continue
+                existing = {child["name"] for child in by_parent.get(doi["id"], []) if child["kind"] == "DAI"}
+                definitions = {
+                    child["name"]: child for child in by_parent.get(do_type["id"], []) if child["kind"] == "DA_DEF"
+                }
+                next_order = (
+                    max(
+                        (child["sort_order"] for child in by_parent.get(doi["id"], [])),
+                        default=-1,
+                    )
+                    + 1
+                )
+                for name in ("q", "t"):
+                    definition = definitions.get(name)
+                    if definition is None or name in existing:
+                        continue
+                    definition_attrs = definition["attributes"]
+                    add(
+                        "DAI",
+                        name,
+                        doi["id"],
+                        {
+                            "_templateInherited": True,
+                            "sourceType": type_id,
+                            "fc": definition_attrs.get("fc", ""),
+                            "bType": definition_attrs.get("bType", ""),
+                        },
+                        next_order,
+                    )
+                    inherited = nodes[-1]
+                    by_parent[doi["id"]].append(inherited)
+                    existing.add(name)
+                    next_order += 1
 
     def _import_element(self, elem, parent_id, order, add, warnings) -> None:
         self._imported_elements = getattr(self, "_imported_elements", 0) + 1
@@ -274,9 +361,7 @@ class SclModelImporter:
         if kind == "P":
             return str(attrs.get("type") or "P")
         if kind == "FCDA":
-            return ".".join(str(attrs.get(key, "")) for key in ("lnClass", "lnInst", "doName", "daName", "fc")).strip(
-                "."
-            )
+            return fcda_reference_name(attrs) or tag
         if kind == "ENUM_VALUE":
             return str(attrs.get("value") or attrs.get("ord") or "EnumVal")
         if kind == "VAL":

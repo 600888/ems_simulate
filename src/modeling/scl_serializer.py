@@ -351,7 +351,8 @@ class SclModelSerializer:
         attrs = _json_loads(node.attributes_json)
         doi = ET.SubElement(parent, _tag("DOI"), {"name": node.name, **_attrs(attrs, ("desc", "accessControl"))})
         for child in children.get(node.id, []):
-            if child.kind == "DAI":
+            child_attrs = _json_loads(child.attributes_json)
+            if child.kind == "DAI" and not child_attrs.get("_templateInherited"):
                 self._append_dai(doi, child, children)
             elif child.kind == "SDI":
                 self._append_sdi(doi, child, children)
@@ -366,7 +367,8 @@ class SclModelSerializer:
         attrs = _json_loads(node.attributes_json)
         sdi = ET.SubElement(parent, _tag("SDI"), {"name": node.name, **_attrs(attrs, ("desc",))})
         for child in children.get(node.id, []):
-            if child.kind == "DAI":
+            child_attrs = _json_loads(child.attributes_json)
+            if child.kind == "DAI" and not child_attrs.get("_templateInherited"):
                 self._append_dai(sdi, child, children)
             elif child.kind == "SDI":
                 self._append_sdi(sdi, child, children)
