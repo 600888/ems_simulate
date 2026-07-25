@@ -70,6 +70,9 @@ class DbController:
             self.db_config.set_db_path(db_path)
             self.db_config.create_engine()
 
+            # 新旧 IEC 61850 建模存储结构不兼容，先按升级策略清理旧表。
+            self._reset_legacy_iec61850_modeling_schema()
+
             # 创建所有表
             Base.metadata.create_all(self.db_config.engine)
             self._migrate_goose_schema()
@@ -151,6 +154,7 @@ class DbController:
             self.db_config = DbMysqlConfig()
             self.db_config.set_db_config(ip, port, user_name, pass_word)
             self.db_config.create_engine(database, is_create_db=False)
+            self._reset_legacy_iec61850_modeling_schema()
             Base.metadata.create_all(self.db_config.engine)
             self._migrate_goose_schema()
             self._migrate_channel_security_schema()
@@ -168,6 +172,47 @@ class DbController:
     def is_mysql(self) -> bool:
         """是否使用 MySQL"""
         return self._db_type == "mysql"
+
+    def _reset_legacy_iec61850_modeling_schema(self) -> None:
+        """检测并重建不兼容的旧版 IEC 61850 建模表。
+
+        旧版模型节点分散存储在 ``iec61850_model_node`` 和
+        ``iec61850_model_reference`` 中；新版将完整模型存入
+        ``iec61850_model_project.model_json``。这里按产品升级策略丢弃旧建模
+        数据，仅在 project 表缺少新版必需列时执行，因此可安全重复启动。
+        """
+        if not self.db_config:
+            return
+
+        from sqlalchemy import inspect, text
+
+        engine = self.db_config.engine
+        inspector = inspect(engine)
+        project_table = "iec61850_model_project"
+        if project_table not in inspector.get_table_names():
+            return
+
+        existing_columns = {column["name"] for column in inspector.get_columns(project_table)}
+        required_columns = {
+            "model_json",
+            "model_format_version",
+            "model_node_count",
+            "model_checksum",
+        }
+        if required_columns.issubset(existing_columns):
+            return
+
+        # 先删有外键依赖的子表，最后删 project。IF EXISTS 同时兼容结构不完整
+        # 或升级中断后再次启动的场景。
+        table_names = (
+            "iec61850_model_reference",
+            "iec61850_model_node",
+            "iec61850_model_version",
+            project_table,
+        )
+        with engine.begin() as conn:
+            for table_name in table_names:
+                conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
 
     def _migrate_goose_schema(self) -> None:
         """补齐 create_all 无法添加的 GOOSE Publisher 新列。
