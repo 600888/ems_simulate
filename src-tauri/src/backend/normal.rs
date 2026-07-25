@@ -14,7 +14,7 @@ use tauri_plugin_shell::ShellExt;
 // ── 全局状态 ──
 
 static BACKEND_PROCESS: Mutex<Option<ProcessHandle>> = Mutex::new(None);
-static BACKEND_PORT: Mutex<u16> = Mutex::new(8991);
+static BACKEND_PORT: Mutex<u16> = Mutex::new(0);
 static BACKEND_READY: Mutex<bool> = Mutex::new(false);
 static HEALTH_FAILURES: Mutex<u8> = Mutex::new(0);
 
@@ -106,16 +106,6 @@ fn kill_process_tree(pid: u32) {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
-    }
-}
-
-fn get_available_port(start: u16) -> u16 {
-    let mut port = start;
-    loop {
-        if std::net::TcpListener::bind(format!("127.0.0.1:{port}")).is_ok() {
-            return port;
-        }
-        port += 1;
     }
 }
 
@@ -261,44 +251,6 @@ fn try_spawn_python_direct(port: u16) -> Result<Child, String> {
     Err(format!("没有可用的 Python 解释器 ({})", errors.join("; ")))
 }
 
-fn kill_processes_on_port(port: u16) {
-    #[cfg(target_os = "windows")]
-    {
-        let output = new_detached_cmd("netstat")
-            .args(["-ano"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .ok();
-        if let Some(out) = output {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            let port_str = format!(":{port}");
-            for line in stdout.lines() {
-                if line.contains(&port_str) && line.contains("LISTENING") {
-                    if let Some(pid_str) = line.split_whitespace().last() {
-                        if let Ok(pid) = pid_str.parse::<u32>() {
-                            eprintln!("[EMS] killing process {pid} on port {port}");
-                            let _ = new_detached_cmd("taskkill")
-                                .args(["/F", "/PID", &pid.to_string()])
-                                .stdout(Stdio::null())
-                                .stderr(Stdio::null())
-                                .status();
-                        }
-                    }
-                }
-            }
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = new_detached_cmd("fuser")
-            .args(["-k", &format!("{port}/tcp")])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-}
-
 // ── 公开 API ──
 
 fn spawn_backend_checked(app: &AppHandle, port: u16) -> Result<String, String> {
@@ -323,7 +275,13 @@ fn spawn_backend_checked(app: &AppHandle, port: u16) -> Result<String, String> {
 }
 
 pub fn spawn_backend(app: &AppHandle) -> String {
-    let port = get_available_port(8991);
+    let port = match super::get_available_port() {
+        Ok(port) => port,
+        Err(error) => {
+            eprintln!("[EMS] cannot allocate backend port: {error}");
+            return health_url(0);
+        }
+    };
     match spawn_backend_checked(app, port) {
         Ok(url) => url,
         Err(error) => {
@@ -395,6 +353,9 @@ pub fn refresh_process_status() {
 
 pub fn get_backend_url() -> Result<String, String> {
     let port = BACKEND_PORT.lock().map_err(|e| e.to_string())?;
+    if *port == 0 {
+        return Err("后端端口尚未分配".to_string());
+    }
     Ok(backend_base_url(*port))
 }
 
@@ -408,11 +369,6 @@ pub fn cleanup() {
 
 pub fn stop() {
     cleanup();
-
-    let port = *BACKEND_PORT.lock().unwrap();
-    if port > 0 {
-        kill_processes_on_port(port);
-    }
 
     *BACKEND_READY.lock().unwrap() = false;
     *HEALTH_FAILURES.lock().unwrap() = 0;

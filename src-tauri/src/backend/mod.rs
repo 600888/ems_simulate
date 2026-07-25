@@ -4,6 +4,41 @@ mod normal;
 use tauri::AppHandle;
 
 const HEALTH_FAILURE_LIMIT: u8 = 3;
+const DYNAMIC_PORT_MIN: u16 = 50_000;
+const DYNAMIC_PORT_MAX: u16 = u16::MAX;
+
+/// 从高位非特权端口范围的随机位置开始查找空闲回环端口。
+///
+/// 这里的 bind 只是快速探测，后端进程随后会立即执行实际绑定。
+fn get_available_port() -> Result<u16, String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let port_count = u32::from(DYNAMIC_PORT_MAX) - u32::from(DYNAMIC_PORT_MIN) + 1;
+    let time_seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let seed = time_seed ^ (u64::from(std::process::id()) << 32);
+    let start_offset = (seed % u64::from(port_count)) as u32;
+
+    find_available_port_from(start_offset)
+}
+
+fn find_available_port_from(start_offset: u32) -> Result<u16, String> {
+    let port_count = u32::from(DYNAMIC_PORT_MAX) - u32::from(DYNAMIC_PORT_MIN) + 1;
+
+    for scanned in 0..port_count {
+        let offset = (start_offset + scanned) % port_count;
+        let port = (u32::from(DYNAMIC_PORT_MIN) + offset) as u16;
+        if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return Ok(port);
+        }
+    }
+
+    Err(format!(
+        "端口范围 {DYNAMIC_PORT_MIN}-{DYNAMIC_PORT_MAX} 内没有可用的回环端口"
+    ))
+}
 
 /// 根据进程与健康检查结果计算服务状态。
 ///
@@ -64,7 +99,7 @@ pub async fn is_backend_ready() -> Result<bool, String> {
 #[tauri::command]
 pub fn get_backend_url() -> Result<String, String> {
     if is_msix_env() {
-        Ok("http://127.0.0.1:8991".to_string())
+        msix::get_backend_url()
     } else {
         normal::get_backend_url()
     }
@@ -97,7 +132,7 @@ pub fn spawn_backend(app: &AppHandle) -> String {
 
 pub async fn wait_backend_ready(url: &str) -> bool {
     if is_msix_env() {
-        msix::wait_backend_ready().await
+        msix::wait_backend_ready(url).await
     } else {
         normal::wait_backend_ready(url).await
     }
@@ -134,7 +169,20 @@ pub fn stop_backend() {
 
 #[cfg(test)]
 mod tests {
-    use super::evaluate_backend_status;
+    use super::{evaluate_backend_status, get_available_port, DYNAMIC_PORT_MAX, DYNAMIC_PORT_MIN};
+
+    #[test]
+    fn dynamic_backend_port_is_in_high_port_range() {
+        let port = get_available_port().unwrap();
+        assert!((DYNAMIC_PORT_MIN..=DYNAMIC_PORT_MAX).contains(&port));
+    }
+
+    #[test]
+    fn dynamic_backend_port_skips_an_occupied_port() {
+        let _reservation = std::net::TcpListener::bind(("127.0.0.1", DYNAMIC_PORT_MIN)).ok();
+        let port = super::find_available_port_from(0).unwrap();
+        assert_ne!(port, DYNAMIC_PORT_MIN);
+    }
 
     #[test]
     fn missing_process_is_immediately_unhealthy() {

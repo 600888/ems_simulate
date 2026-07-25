@@ -12,7 +12,7 @@ use tauri::Manager;
 
 // ── 全局状态 ──
 
-const MSIX_PORT: u16 = 8991;
+static MSIX_PORT: Mutex<u16> = Mutex::new(0);
 static MSIX_HANDLE: Mutex<Option<Child>> = Mutex::new(None);
 static MSIX_READY: Mutex<bool> = Mutex::new(false);
 static HEALTH_FAILURES: Mutex<u8> = Mutex::new(0);
@@ -26,8 +26,12 @@ fn new_detached_cmd(program: &str) -> Command {
     cmd
 }
 
-fn health_url() -> String {
-    format!("http://127.0.0.1:{MSIX_PORT}/api/health")
+fn health_url(port: u16) -> String {
+    format!("http://127.0.0.1:{port}/api/health")
+}
+
+fn backend_base_url(port: u16) -> String {
+    format!("http://127.0.0.1:{port}")
 }
 
 fn is_process_alive() -> bool {
@@ -111,9 +115,9 @@ fn find_in_dir(dir: &std::path::Path, base_name: &str) -> Option<PathBuf> {
     None
 }
 
-fn try_spawn(data_dir: &str) -> Result<Child, String> {
+fn try_spawn(data_dir: &str, selected_port: u16) -> Result<Child, String> {
     let binary_path = find_sidecar().ok_or_else(|| "未找到后端 sidecar 可执行文件".to_string())?;
-    let port = MSIX_PORT.to_string();
+    let port = selected_port.to_string();
 
     let log_dir = std::path::Path::new(data_dir).join("log");
     let _ = std::fs::create_dir_all(&log_dir);
@@ -151,7 +155,8 @@ fn try_spawn(data_dir: &str) -> Result<Child, String> {
 
 // ── 公开 API ──
 
-fn spawn_backend_checked(app: &AppHandle) -> Result<String, String> {
+fn spawn_backend_checked(app: &AppHandle, port: u16) -> Result<String, String> {
+    *MSIX_PORT.lock().unwrap() = port;
     *MSIX_READY.lock().unwrap() = false;
     *HEALTH_FAILURES.lock().unwrap() = 0;
 
@@ -170,30 +175,36 @@ fn spawn_backend_checked(app: &AppHandle) -> Result<String, String> {
         ".".to_string()
     };
 
-    let child = try_spawn(&data_dir)?;
+    let child = try_spawn(&data_dir, port)?;
     *MSIX_HANDLE.lock().unwrap() = Some(child);
     eprintln!("[EMS:msix] backend process spawned");
 
-    Ok(health_url())
+    Ok(health_url(port))
 }
 
 pub fn spawn_backend(app: &AppHandle) -> String {
-    match spawn_backend_checked(app) {
+    let port = match super::get_available_port() {
+        Ok(port) => port,
+        Err(error) => {
+            eprintln!("[EMS:msix] cannot allocate backend port: {error}");
+            return health_url(0);
+        }
+    };
+    match spawn_backend_checked(app, port) {
         Ok(url) => url,
         Err(error) => {
             eprintln!("[EMS:msix] cannot start backend binary: {error}");
-            health_url()
+            health_url(port)
         }
     }
 }
 
-pub async fn wait_backend_ready() -> bool {
+pub async fn wait_backend_ready(url: &str) -> bool {
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(1))
         .timeout(Duration::from_secs(2))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
-    let url = health_url();
     let start = std::time::Instant::now();
     let timeout = Duration::from_secs(15);
 
@@ -203,7 +214,7 @@ pub async fn wait_backend_ready() -> bool {
             *MSIX_READY.lock().unwrap() = false;
             return false;
         }
-        match client.get(&url).send().await {
+        match client.get(url).send().await {
             Ok(resp) if resp.status().is_success() => {
                 *MSIX_READY.lock().unwrap() = true;
                 *HEALTH_FAILURES.lock().unwrap() = 0;
@@ -217,13 +228,14 @@ pub async fn wait_backend_ready() -> bool {
 
 pub async fn is_backend_ready() -> bool {
     let process_alive = is_process_alive();
+    let port = *MSIX_PORT.lock().unwrap();
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(1))
         .timeout(Duration::from_secs(2))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
     let health_ok = matches!(
-        client.get(health_url()).send().await,
+        client.get(health_url(port)).send().await,
         Ok(resp) if resp.status().is_success()
     );
     let was_ready = *MSIX_READY.lock().unwrap();
@@ -253,50 +265,27 @@ pub fn cleanup() {
 
 pub fn stop() {
     cleanup();
-    kill_processes_on_port(MSIX_PORT);
     *MSIX_READY.lock().unwrap() = false;
     *HEALTH_FAILURES.lock().unwrap() = 0;
 }
 
 pub fn restart(app: &AppHandle) -> Result<String, String> {
+    let port = *MSIX_PORT.lock().map_err(|e| e.to_string())?;
     stop();
     std::thread::sleep(Duration::from_millis(800));
-    spawn_backend_checked(app)
+    for _ in 0..20 {
+        if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return spawn_backend_checked(app, port);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    Err(format!("后端端口 {port} 未能释放，无法重启"))
 }
 
-fn kill_processes_on_port(port: u16) {
-    #[cfg(target_os = "windows")]
-    {
-        let output = new_detached_cmd("netstat")
-            .args(["-ano"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .ok();
-        if let Some(out) = output {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            let port_str = format!(":{port}");
-            for line in stdout.lines() {
-                if line.contains(&port_str) && line.contains("LISTENING") {
-                    if let Some(pid_str) = line.split_whitespace().last() {
-                        if let Ok(pid) = pid_str.parse::<u32>() {
-                            let _ = new_detached_cmd("taskkill")
-                                .args(["/F", "/PID", &pid.to_string()])
-                                .stdout(Stdio::null())
-                                .stderr(Stdio::null())
-                                .status();
-                        }
-                    }
-                }
-            }
-        }
+pub fn get_backend_url() -> Result<String, String> {
+    let port = *MSIX_PORT.lock().map_err(|e| e.to_string())?;
+    if port == 0 {
+        return Err("后端端口尚未分配".to_string());
     }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = new_detached_cmd("fuser")
-            .args(["-k", &format!("{port}/tcp")])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
+    Ok(backend_base_url(port))
 }
