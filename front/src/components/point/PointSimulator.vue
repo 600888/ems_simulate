@@ -1,13 +1,17 @@
 <template>
   <div class="register">
     <div class="simple-title">
-      <span>{{ $t('pointSimulator.title') }}</span>
+      <span>{{ $t("pointSimulator.title") }}</span>
       <el-divider></el-divider>
     </div>
     <el-form label-width="auto" :model="simulateForm">
       <el-row>
         <el-col :span="12">
-          <el-form-item :label="$t('pointSimulator.method')" label-position="right" class="form-item">
+          <el-form-item
+            :label="$t('pointSimulator.method')"
+            label-position="right"
+            class="form-item"
+          >
             <el-select
               v-model="simulateForm.simulateMethod"
               :placeholder="$t('pointSimulator.selectMethod')"
@@ -24,7 +28,11 @@
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item :label="$t('pointSimulator.step')" label-position="right" class="form-item">
+          <el-form-item
+            :label="$t('pointSimulator.step')"
+            label-position="right"
+            class="form-item"
+          >
             <el-input
               v-model.number="simulateForm.step"
               type="number"
@@ -36,7 +44,11 @@
       </el-row>
       <el-row>
         <el-col :span="12">
-          <el-form-item :label="$t('pointSimulator.minValue')" label-position="right" class="form-item">
+          <el-form-item
+            :label="$t('pointSimulator.minValue')"
+            label-position="right"
+            class="form-item"
+          >
             <el-input
               v-model.number="simulateForm.minValue"
               type="number"
@@ -46,7 +58,11 @@
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item :label="$t('pointSimulator.maxValue')" label-position="right" class="form-item">
+          <el-form-item
+            :label="$t('pointSimulator.maxValue')"
+            label-position="right"
+            class="form-item"
+          >
             <el-input
               v-model.number="simulateForm.maxValue"
               type="number"
@@ -58,7 +74,11 @@
       </el-row>
       <el-row>
         <el-col :span="24">
-          <el-form-item :label="$t('pointSimulator.specialParams')" label-position="right" class="form-item">
+          <el-form-item
+            :label="$t('pointSimulator.specialParams')"
+            label-position="right"
+            class="form-item"
+          >
             <div class="special-params" v-if="showSpecialParams">
               <el-input
                 v-if="simulateForm.simulateMethod === 'SineWave'"
@@ -101,13 +121,19 @@
       </el-row>
       <el-row class="custom-row">
         <el-form-item class="custom-form-item">
-          <el-button type="primary" @click="saveSettings">{{ $t('pointSimulator.saveSettings') }}</el-button>
+          <el-button type="primary" @click="saveSettings">{{
+            $t("pointSimulator.saveSettings")
+          }}</el-button>
         </el-form-item>
         <el-form-item class="custom-form-item">
-          <el-button @click="loadPointInfo">{{ $t('pointSimulator.loadPointInfo') }}</el-button>
+          <el-button @click="loadPointInfo">{{
+            $t("pointSimulator.loadPointInfo")
+          }}</el-button>
         </el-form-item>
         <el-form-item class="custom-form-item">
-          <el-button @click="resetSettings">{{ $t('pointSimulator.reset') }}</el-button>
+          <el-button @click="resetSettings">{{
+            $t("pointSimulator.reset")
+          }}</el-button>
         </el-form-item>
       </el-row>
     </el-form>
@@ -115,16 +141,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, computed } from 'vue';
-import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus';
-import { showErrorOnce } from '@/api/http';
-import { 
-  getPointInfo, 
-  setSinglePointSimulateMethod, 
-  setSinglePointStep, 
-  setPointSimulationRange 
-} from '@/api/pointApi';
+import { ref, reactive, watch, computed } from "vue";
+import { useI18n } from "vue-i18n";
+import { ElMessage } from "element-plus";
+import { showErrorOnce } from "@/api/http";
+import {
+  getPointInfo,
+  setSinglePointSimulateMethod,
+  setSinglePointStep,
+  setPointSimulationRange,
+} from "@/api/pointApi";
 
 interface Props {
   deviceName: string;
@@ -133,46 +159,53 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  active: true
+  active: true,
 });
-const emit = defineEmits(['update-success']);
+const emit = defineEmits(["update-success"]);
 
-const { t } = useI18n()
+const { t } = useI18n();
 
 const simulateOptions = computed(() => [
-  { value: 'Random', label: t('device.random') },
-  { value: 'AutoIncrement', label: t('device.autoIncrement') },
-  { value: 'AutoDecrement', label: t('device.autoDecrement') },
-  { value: 'SineWave', label: t('device.sineWave') },
-  { value: 'Ramp', label: t('device.ramp') },
-  { value: 'Pulse', label: t('device.pulse') }
+  { value: "Random", label: t("device.random") },
+  { value: "AutoIncrement", label: t("device.autoIncrement") },
+  { value: "AutoDecrement", label: t("device.autoDecrement") },
+  { value: "SineWave", label: t("device.sineWave") },
+  { value: "Ramp", label: t("device.ramp") },
+  { value: "Pulse", label: t("device.pulse") },
 ]);
 
 const simulateForm = reactive({
-  simulateMethod: 'Random',
+  simulateMethod: "Random",
   step: 1,
   minValue: 0,
   maxValue: 100,
   period: 10, // 正弦波周期(秒)
-  phase: 0,   // 正弦波相位(度)
+  phase: 0, // 正弦波相位(度)
   rampTime: 5, // 斜坡时间(秒)
   pulseWidth: 2, // 脉冲宽度(秒)
-  pulseInterval: 5 // 脉冲间隔(秒)
+  pulseInterval: 5, // 脉冲间隔(秒)
 });
 
 const showSpecialParams = ref(false);
 
 // 监听模拟方法变化，显示/隐藏特殊参数
-watch(() => simulateForm.simulateMethod, (newMethod) => {
-  showSpecialParams.value = ['SineWave', 'Ramp', 'Pulse'].includes(newMethod);
-});
+watch(
+  () => simulateForm.simulateMethod,
+  (newMethod) => {
+    showSpecialParams.value = ["SineWave", "Ramp", "Pulse"].includes(newMethod);
+  },
+);
 
 // 监听激活状态，激活时加载数据
-watch(() => props.active, (newVal) => {
-  if (newVal) {
-    loadPointInfo();
-  }
-}, { immediate: true });
+watch(
+  () => props.active,
+  (newVal) => {
+    if (newVal) {
+      loadPointInfo();
+    }
+  },
+  { immediate: true },
+);
 
 // 监听测点或设备变化，如果处于激活状态则重新加载数据
 watch([() => props.deviceName, () => props.pointCode], () => {
@@ -189,18 +222,18 @@ const loadPointInfo = async () => {
       simulateForm.step = info.step || 1;
       simulateForm.minValue = info.min_value || 0;
       simulateForm.maxValue = info.max_value || 100;
-      simulateForm.simulateMethod = info.simulate_method || 'Random';
+      simulateForm.simulateMethod = info.simulate_method || "Random";
       // 加载特殊参数
       if (info.period) simulateForm.period = info.period;
       if (info.phase) simulateForm.phase = info.phase;
       if (info.ramp_time) simulateForm.rampTime = info.ramp_time;
       if (info.pulse_width) simulateForm.pulseWidth = info.pulse_width;
       if (info.pulse_interval) simulateForm.pulseInterval = info.pulse_interval;
-      
-      ElMessage.success(t('pointSimulator.loaded'));
+
+      ElMessage.success(t("pointSimulator.loaded"));
     }
   } catch (error) {
-    console.error('加载点信息失败:', error);
+    console.error("加载点信息失败:", error);
     // error message is handled by global interceptor
   }
 };
@@ -210,47 +243,47 @@ const saveSettings = async () => {
   try {
     // 验证表单
     if (simulateForm.minValue >= simulateForm.maxValue) {
-      ElMessage.warning(t('pointSimulator.minLtMax'));
+      ElMessage.warning(t("pointSimulator.minLtMax"));
       return;
     }
-    
+
     // 保存模拟方法
     const methodResult = await setSinglePointSimulateMethod(
       props.deviceName,
       props.pointCode,
-      simulateForm.simulateMethod
+      simulateForm.simulateMethod,
     );
-    
+
     // 保存步长
     const stepResult = await setSinglePointStep(
       props.deviceName,
       props.pointCode,
-      simulateForm.step
+      simulateForm.step,
     );
-    
+
     // 保存模拟范围
     const rangeResult = await setPointSimulationRange(
       props.deviceName,
       props.pointCode,
       simulateForm.minValue,
-      simulateForm.maxValue
+      simulateForm.maxValue,
     );
-    
+
     if (methodResult && stepResult && rangeResult) {
-      ElMessage.success(t('pointSimulator.saved'));
-      emit('update-success');
+      ElMessage.success(t("pointSimulator.saved"));
+      emit("update-success");
     } else {
-      showErrorOnce(t('pointSimulator.saveFailed'));
+      showErrorOnce(t("pointSimulator.saveFailed"));
     }
   } catch (error) {
-    console.error('保存设置失败:', error);
+    console.error("保存设置失败:", error);
     // error message is handled by global interceptor
   }
 };
 
 // 重置设置
 const resetSettings = () => {
-  simulateForm.simulateMethod = 'Random';
+  simulateForm.simulateMethod = "Random";
   simulateForm.step = 1;
   simulateForm.minValue = 0;
   simulateForm.maxValue = 100;
@@ -259,7 +292,7 @@ const resetSettings = () => {
   simulateForm.rampTime = 5;
   simulateForm.pulseWidth = 2;
   simulateForm.pulseInterval = 5;
-  ElMessage.success(t('pointSimulator.resetDone'));
+  ElMessage.success(t("pointSimulator.resetDone"));
 };
 
 // 处理模拟方法变化
@@ -276,10 +309,10 @@ const handleSimulateMethodChange = () => {
   height: auto;
   min-height: 350px;
   font-family: Arial, sans-serif;
-  background-color: white;
+  background-color: var(--panel-bg);
   border-radius: 8px; /* Match SingleRegister */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); /* Match SingleRegister */
-  border: 1px solid #e4e7ed; /* Match SingleRegister */
+  border: 1px solid var(--border-color); /* Match SingleRegister */
 }
 
 .simple-title {

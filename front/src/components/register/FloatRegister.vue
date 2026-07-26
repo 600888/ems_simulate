@@ -1,10 +1,14 @@
 <template>
   <div class="register">
     <div class="simple-title">
-      <span>{{ $t('register.registerParse') }}</span>
+      <span>{{ $t("register.registerParse") }}</span>
       <el-divider></el-divider>
     </div>
-    <el-form label-width="auto" :model="floatRegister" @submit.native.prevent="">
+    <el-form
+      label-width="auto"
+      :model="floatRegister"
+      @submit.native.prevent=""
+    >
       <el-form-item label="Float AB CD:" class="form-item">
         <el-input v-model.number="floatRegister.floatABCD" disabled>
           <template #append>
@@ -39,10 +43,12 @@
     </el-form>
     <el-row class="custom-row">
       <el-form-item class="custom-form-item">
-        <el-button type="primary" @click="editRegisterValue">{{ $t('register.set') }}</el-button>
+        <el-button type="primary" @click="editRegisterValue">{{
+          $t("register.set")
+        }}</el-button>
       </el-form-item>
       <el-form-item class="custom-form-item">
-        <el-button @click="reset">{{ $t('common.reset') }}</el-button>
+        <el-button @click="reset">{{ $t("common.reset") }}</el-button>
       </el-form-item>
     </el-row>
   </div>
@@ -51,10 +57,10 @@
 <script setup name="LongRegister" lang="ts">
 import { onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import {type FloatPointRegister } from "@/types/register";
+import { type FloatPointRegister } from "@/types/register";
 import { editPointData } from "@/api/pointApi";
 import { ElMessage } from "element-plus";
-import 'element-plus/dist/index.css'
+import "element-plus/dist/index.css";
 
 const { t } = useI18n();
 
@@ -65,7 +71,7 @@ const props = defineProps({
   realValue: { type: Number, required: true },
   mulCoe: { type: Number, default: 1.0 },
   addCoe: { type: Number, default: 0.0 },
-  slaveId: { type: Number, default: undefined }
+  slaveId: { type: Number, default: undefined },
 });
 
 const floatRegister = ref<FloatPointRegister>({
@@ -88,10 +94,10 @@ const reset = () => {
     mulCoe: 1,
     addCoe: 0,
   };
-}
+};
 
 const emit = defineEmits(["editSuccess"]);
-const editRegisterValue = async() => {
+const editRegisterValue = async () => {
   try {
     const isSuccess = await editPointData(
       props.deviceName,
@@ -100,32 +106,39 @@ const editRegisterValue = async() => {
       props.slaveId,
     );
     if (isSuccess) {
-      emit("editSuccess",props.rowIndex, parseFloat(floatRegister.value.real.toString()), getFloatHex(floatRegister.value.floatABCD));
+      emit(
+        "editSuccess",
+        props.rowIndex,
+        parseFloat(floatRegister.value.real.toString()),
+        getFloatHex(floatRegister.value.floatABCD),
+      );
       ElMessage({
-        message: t('register.editSuccess'),
-        type: 'success'
-      })
+        message: t("register.editSuccess"),
+        type: "success",
+      });
     }
   } catch (error) {
-    console.error('Edit float register failed:', error);
+    console.error("Edit float register failed:", error);
   }
-}
+};
 
 // 浮点数转16进制（处理负数和小数）
-const getFloatHex = (value:number) =>{
+const getFloatHex = (value: number) => {
   const buffer = new ArrayBuffer(4);
   const view = new DataView(buffer);
   view.setFloat32(0, value, false); // 大端序写入
-  const hex = view.getUint32(0, false) // 保持大端序读取
+  const hex = view
+    .getUint32(0, false) // 保持大端序读取
     .toString(16)
     .toUpperCase()
-    .padStart(8, '0');
+    .padStart(8, "0");
   return "0x" + hex;
-}
+};
 
 function updateFromReal(value: number) {
   // 计算原始浮点数值
-  const floatValue = (value - floatRegister.value.addCoe) / floatRegister.value.mulCoe;
+  const floatValue =
+    (value - floatRegister.value.addCoe) / floatRegister.value.mulCoe;
 
   // 将浮点数转换为32位二进制表示（IEEE 754标准）
   const buffer = new ArrayBuffer(4);
@@ -137,10 +150,10 @@ function updateFromReal(value: number) {
 
   // 生成四种字节序排列（仅操作二进制位，不改变浮点结构）
   floatRegister.value = {
-    floatABCD: view.getFloat32(0, false),  // 原始大端序浮点值
-    floatCDAB: new DataView(reorderBytes(buffer, 'CDAB')).getFloat32(0, false),
-    floatBADC: new DataView(reorderBytes(buffer, 'BADC')).getFloat32(0, false),
-    floatDCBA: new DataView(reorderBytes(buffer, 'DCBA')).getFloat32(0, false),
+    floatABCD: view.getFloat32(0, false), // 原始大端序浮点值
+    floatCDAB: new DataView(reorderBytes(buffer, "CDAB")).getFloat32(0, false),
+    floatBADC: new DataView(reorderBytes(buffer, "BADC")).getFloat32(0, false),
+    floatDCBA: new DataView(reorderBytes(buffer, "DCBA")).getFloat32(0, false),
     real: value,
     mulCoe: props.mulCoe,
     addCoe: props.addCoe,
@@ -148,41 +161,54 @@ function updateFromReal(value: number) {
 }
 
 // 字节序重排工具函数
-function reorderBytes(buffer: ArrayBuffer, type: 'CDAB' | 'BADC' | 'DCBA') {
+function reorderBytes(buffer: ArrayBuffer, type: "CDAB" | "BADC" | "DCBA") {
   const view = new DataView(buffer);
   const uint32 = view.getUint32(0, false);
   const newBuffer = new ArrayBuffer(4);
   const newView = new DataView(newBuffer);
 
-  switch(type) {
-    case 'CDAB':
-      newView.setUint32(0,
-        ((uint32 & 0xFFFF0000) >>> 16) |
-        ((uint32 & 0x0000FFFF) << 16), false);
+  switch (type) {
+    case "CDAB":
+      newView.setUint32(
+        0,
+        ((uint32 & 0xffff0000) >>> 16) | ((uint32 & 0x0000ffff) << 16),
+        false,
+      );
       break;
-    case 'BADC':
-      newView.setUint32(0,
-        ((uint32 & 0xFF00FF00) >>> 8) |
-        ((uint32 & 0x00FF00FF) << 8), false);
+    case "BADC":
+      newView.setUint32(
+        0,
+        ((uint32 & 0xff00ff00) >>> 8) | ((uint32 & 0x00ff00ff) << 8),
+        false,
+      );
       break;
-    case 'DCBA':
-      newView.setUint32(0,
-        ((uint32 & 0xFF000000) >>> 24) |
-        ((uint32 & 0x00FF0000) >>> 8) |
-        ((uint32 & 0x0000FF00) << 8) |
-        ((uint32 & 0x000000FF) << 24), false);
+    case "DCBA":
+      newView.setUint32(
+        0,
+        ((uint32 & 0xff000000) >>> 24) |
+          ((uint32 & 0x00ff0000) >>> 8) |
+          ((uint32 & 0x0000ff00) << 8) |
+          ((uint32 & 0x000000ff) << 24),
+        false,
+      );
   }
   return newBuffer;
 }
 
-watch(()=>props.realValue, (newVal, oldVal) => {
-  updateFromReal(newVal);
-})
+watch(
+  () => props.realValue,
+  (newVal, oldVal) => {
+    updateFromReal(newVal);
+  },
+);
 
 // 监听所有字段的变化
-watch(() => floatRegister.value.real, (newVal, oldVal) => {
-  updateFromReal(newVal);
-});
+watch(
+  () => floatRegister.value.real,
+  (newVal, oldVal) => {
+    updateFromReal(newVal);
+  },
+);
 
 onMounted(() => {
   floatRegister.value.mulCoe = props.mulCoe;
@@ -199,9 +225,10 @@ onMounted(() => {
   padding: 20px;
   width: 500px;
   font-family: Arial, sans-serif;
-  background-color: white;
+  background-color: var(--panel-bg);
   border-radius: 5px;
-  box-shadow: 0 1px 3px rgba(0.2, 0.2, 0.2, 0.2);
+  box-shadow: var(--box-shadow-base);
+  border: 1px solid var(--border-color);
 }
 
 .simple-title {

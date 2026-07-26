@@ -4042,10 +4042,10 @@ onMounted(async () => {
   min-width: 0;
   padding: 7px 9px;
   text-align: left;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 7px;
   color: var(--text-primary);
-  background: #ffffff;
+  background: var(--panel-bg);
   cursor: pointer;
 }
 .reference-endpoint:hover {
@@ -4237,7 +4237,7 @@ onMounted(async () => {
 }
 .inherited-node-card span {
   margin-top: 3px;
-  color: #475569;
+  color: var(--text-secondary);
   font-size: 10px;
   line-height: 16px;
 }
@@ -4445,7 +4445,7 @@ onMounted(async () => {
   padding: 14px;
   border: 1px solid #bfdbfe;
   border-radius: 10px;
-  background: #f8fbff;
+  background: var(--bg-subtle);
 }
 .ln-type-preview-card > div:first-child {
   min-width: 0;
@@ -4542,7 +4542,7 @@ onMounted(async () => {
   border: 1px dashed #bfdbfe;
   border-radius: 7px;
   color: var(--text-secondary);
-  background: #f8fbff;
+  background: var(--bg-subtle);
   font-size: 10px;
 }
 .lnode-template-example code {
@@ -4563,7 +4563,7 @@ onMounted(async () => {
   gap: 12px;
   padding: 0 12px;
   border-bottom: 1px solid var(--sidebar-border);
-  background: #f8fafc;
+  background: var(--bg-subtle);
 }
 .lnode-template-preview header strong,
 .lnode-template-preview header span {
@@ -4733,7 +4733,7 @@ onMounted(async () => {
   padding: 18px 12px 18px 8px;
   box-sizing: border-box;
   border-right: 1px solid #334155;
-  color: #64748b;
+  color: var(--text-secondary);
   background: #111c31;
   text-align: right;
   user-select: none;

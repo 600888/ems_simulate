@@ -1,10 +1,14 @@
 <template>
   <div class="register">
     <div class="simple-title">
-      <span>{{ $t('register.registerParse') }}</span>
+      <span>{{ $t("register.registerParse") }}</span>
       <el-divider></el-divider>
     </div>
-    <el-form label-width="auto" :model="pointRegister" @submit.native.prevent="">
+    <el-form
+      label-width="auto"
+      :model="pointRegister"
+      @submit.native.prevent=""
+    >
       <el-form-item label="Signed:" label-position="right" class="form-item">
         <el-input v-model.number="pointRegister.signed" disabled></el-input>
       </el-form-item>
@@ -23,10 +27,12 @@
     </el-form>
     <el-row class="custom-row">
       <el-form-item class="custom-form-item">
-        <el-button type="primary" @click="editRegisterValue">{{ $t('register.set') }}</el-button>
+        <el-button type="primary" @click="editRegisterValue">{{
+          $t("register.set")
+        }}</el-button>
       </el-form-item>
       <el-form-item class="custom-form-item">
-        <el-button @click="reset">{{ $t('common.reset') }}</el-button>
+        <el-button @click="reset">{{ $t("common.reset") }}</el-button>
       </el-form-item>
     </el-row>
   </div>
@@ -34,13 +40,13 @@
 
 <script setup name="SingleRegister" lang="ts">
 import { onMounted, ref, watch } from "vue";
-import { useI18n } from 'vue-i18n';
-import {type IntPointRegister } from "@/types/register";
+import { useI18n } from "vue-i18n";
+import { type IntPointRegister } from "@/types/register";
 import { editPointData } from "@/api/pointApi";
 import { ElMessage } from "element-plus";
 
 const { t } = useI18n();
-import 'element-plus/dist/index.css'
+import "element-plus/dist/index.css";
 
 const getIntHex = (value: number) => {
   // 参数校验（确保是16位整数）
@@ -56,10 +62,9 @@ const getIntHex = (value: number) => {
   view.setUint16(0, uintValue, false); // 大端序写入
 
   // 修正补零长度（16位对应4字符十六进制）
-  return "0x" + view.getUint16(0, false)
-    .toString(16)
-    .toUpperCase()
-    .padStart(4, '0');
+  return (
+    "0x" + view.getUint16(0, false).toString(16).toUpperCase().padStart(4, "0")
+  );
 };
 
 const props = defineProps({
@@ -69,7 +74,7 @@ const props = defineProps({
   realValue: { type: Number, required: true },
   mulCoe: { type: Number, default: 1.0 },
   addCoe: { type: Number, default: 0.0 },
-  slaveId: { type: Number, default: undefined }
+  slaveId: { type: Number, default: undefined },
 });
 
 const pointRegister = ref<IntPointRegister>({
@@ -92,10 +97,10 @@ const reset = () => {
     mulCoe: 1,
     addCoe: 0,
   };
-}
+};
 
 const emit = defineEmits(["editSuccess"]);
-const editRegisterValue = async() => {
+const editRegisterValue = async () => {
   try {
     const isSuccess = await editPointData(
       props.deviceName,
@@ -104,20 +109,30 @@ const editRegisterValue = async() => {
       props.slaveId,
     );
     if (isSuccess) {
-      emit("editSuccess",props.rowIndex, parseFloat(pointRegister.value.real.toString()), getIntHex(pointRegister.value.signed));
+      emit(
+        "editSuccess",
+        props.rowIndex,
+        parseFloat(pointRegister.value.real.toString()),
+        getIntHex(pointRegister.value.signed),
+      );
       ElMessage({
-        message: '修改成功!',
-        type: 'success'
-      })
+        message: "修改成功!",
+        type: "success",
+      });
     }
   } catch (error) {
     // 全局拦截器已处理错误显示，此处仅捕获以防控制台未捕获错误
-    console.error('Edit register failed:', error);
+    console.error("Edit register failed:", error);
   }
-}
+};
 
 function updateFromReal(value: number) {
-  const registerValue = parseInt(((value - pointRegister.value.addCoe) / pointRegister.value.mulCoe).toString());
+  const registerValue = parseInt(
+    (
+      (value - pointRegister.value.addCoe) /
+      pointRegister.value.mulCoe
+    ).toString(),
+  );
 
   // 检查16位有符号数范围
   if (registerValue < -32768 || registerValue > 65535) {
@@ -144,22 +159,28 @@ function updateFromReal(value: number) {
   pointRegister.value = {
     signed: signed,
     unsigned: unsigned,
-    hex: unsigned.toString(16).toUpperCase().padStart(4, '0'),
-    bin: unsigned.toString(2).padStart(16, '0'),
+    hex: unsigned.toString(16).toUpperCase().padStart(4, "0"),
+    bin: unsigned.toString(2).padStart(16, "0"),
     real: value,
     mulCoe: pointRegister.value.mulCoe,
     addCoe: pointRegister.value.addCoe,
   };
 }
 
-watch(()=>props.realValue, (newVal, oldVal) => {
-  updateFromReal(newVal);
-})
+watch(
+  () => props.realValue,
+  (newVal, oldVal) => {
+    updateFromReal(newVal);
+  },
+);
 
 // 监听所有字段的变化
-watch(() => pointRegister.value.real, (newVal, oldVal) => {
-  updateFromReal(newVal);
-});
+watch(
+  () => pointRegister.value.real,
+  (newVal, oldVal) => {
+    updateFromReal(newVal);
+  },
+);
 
 onMounted(() => {
   pointRegister.value.mulCoe = props.mulCoe;
@@ -174,10 +195,10 @@ onMounted(() => {
   padding: 16px;
   width: 340px;
   font-family: Arial, sans-serif;
-  background-color: white;
+  background-color: var(--panel-bg);
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e4e7ed;
+  box-shadow: var(--box-shadow-base);
+  border: 1px solid var(--border-color);
 }
 
 .simple-title {

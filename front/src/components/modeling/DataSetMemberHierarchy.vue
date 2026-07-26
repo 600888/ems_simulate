@@ -337,7 +337,7 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   height: 100%;
   min-height: 180px;
   overflow: hidden;
-  background: #ffffff;
+  background: var(--panel-bg);
 }
 .hierarchy-columns {
   height: 38px;
@@ -346,16 +346,16 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   align-items: center;
   gap: 8px;
   padding: 0 14px;
-  border-bottom: 1px solid #e2e8f0;
-  color: #64748b;
-  background: #f8fafc;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
   font-size: 11px;
   font-weight: 600;
   box-sizing: border-box;
 }
 .dataset-hierarchy :deep(.el-tree-v2) {
   padding: 7px 8px 14px;
-  background: #ffffff;
+  background: var(--panel-bg);
   box-sizing: border-box;
 }
 .dataset-hierarchy :deep(.el-tree-node__content) {
@@ -366,7 +366,7 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
 }
 .dataset-hierarchy :deep(.el-tree-node__content:hover) {
   border-color: #dbeafe;
-  background: #f8fbff;
+  background: var(--bg-subtle);
 }
 .dataset-hierarchy :deep(.el-tree-node.is-current .el-tree-node__content) {
   border-color: #bfdbfe;
@@ -398,12 +398,12 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   white-space: nowrap;
 }
 .hierarchy-name strong {
-  color: #1e293b;
+  color: var(--text-primary);
   font-size: 12px;
 }
 .hierarchy-name small {
   margin-top: 3px;
-  color: #64748b;
+  color: var(--text-secondary);
   font:
     9px "Geist Mono",
     monospace;
@@ -439,7 +439,7 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
 }
 .hierarchy-type {
   overflow: hidden;
-  color: #64748b;
+  color: var(--text-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 10px;
@@ -458,7 +458,7 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   background: #22c55e;
 }
 .hierarchy-status.group {
-  color: #64748b;
+  color: var(--text-secondary);
 }
 .hierarchy-status.group i {
   background: #94a3b8;

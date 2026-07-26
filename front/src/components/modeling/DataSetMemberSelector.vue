@@ -899,7 +899,7 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   gap: 14px;
   padding: 14px 16px;
   overflow: hidden;
-  background: #f1f5f9;
+  background: var(--bg-muted);
   box-sizing: border-box;
 }
 .selector-page-header,
@@ -908,9 +908,9 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--panel-bg);
   box-shadow: 0 3px 12px rgba(15, 23, 42, 0.045);
   box-sizing: border-box;
 }
@@ -951,7 +951,7 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
 }
 .selector-title small,
 .selector-title > span {
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 11px;
 }
 .member-selector {
@@ -978,7 +978,7 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   overflow: hidden;
   border: 1px solid #dbe3ee;
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--panel-bg);
   box-shadow: 0 3px 12px rgba(15, 23, 42, 0.045);
 }
 .selector-card > header {
@@ -988,8 +988,8 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   justify-content: space-between;
   gap: 12px;
   padding: 0 15px;
-  border-bottom: 1px solid #e2e8f0;
-  background: #ffffff;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--panel-bg);
 }
 .selector-card > header strong,
 .selector-card > header small {
@@ -1009,14 +1009,14 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  background: #ffffff;
+  background: var(--panel-bg);
 }
 .candidate-filters :deep(.el-input__wrapper),
 .candidate-filters :deep(.el-select__wrapper) {
   min-height: 36px;
   border-radius: 7px;
-  background: #f8fafc;
-  box-shadow: 0 0 0 1px #d1d5db inset;
+  background: var(--bg-subtle);
+  box-shadow: 0 0 0 1px var(--border-color) inset;
 }
 .candidate-summary,
 .selection-options {
@@ -1025,10 +1025,10 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   align-items: center;
   gap: 9px;
   padding: 0 13px;
-  border-top: 1px solid #e5e7eb;
-  border-bottom: 1px solid #e5e7eb;
-  color: #64748b;
-  background: #f8fafc;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
   font-size: 11px;
 }
 .candidate-summary {
@@ -1042,11 +1042,11 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
 .candidate-tree-scroll {
   padding: 7px 8px;
   overflow: hidden;
-  background: #ffffff;
+  background: var(--panel-bg);
 }
 .candidate-tree-scroll :deep(.el-tree-v2) {
   background: transparent;
-  color: #334155;
+  color: var(--text-primary);
 }
 .candidate-tree-scroll :deep(.el-tree-node__content) {
   position: relative;
@@ -1057,7 +1057,7 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
 }
 .candidate-tree-scroll :deep(.el-tree-node__content:hover) {
   border-color: #dbeafe;
-  background: #f8fbff;
+  background: var(--bg-subtle);
 }
 .candidate-tree-scroll
   :deep(.el-tree-node__content:has(.el-checkbox.is-checked)) {
@@ -1065,12 +1065,12 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   background: #eff6ff;
 }
 .candidate-tree-scroll :deep(.el-tree-node__expand-icon) {
-  color: #64748b;
+  color: var(--text-secondary);
 }
 .candidate-tree-scroll :deep(.el-checkbox__inner) {
   width: 16px;
   height: 16px;
-  border-color: #cbd5e1;
+  border-color: var(--border-color);
   border-radius: 3px;
 }
 .candidate-tree-scroll
@@ -1110,19 +1110,19 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
 }
 .candidate-node small {
   margin-left: auto;
-  color: #64748b;
+  color: var(--text-secondary);
   font:
     10px "Geist Mono",
     monospace;
 }
 .candidate-node em {
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 10px;
   font-style: normal;
 }
 .level-ld .candidate-label,
 .level-ln .candidate-label {
-  color: #1e293b;
+  color: var(--text-primary);
   font-weight: 700;
 }
 .level-ln .candidate-kind-mark {
@@ -1131,7 +1131,7 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   background: #f5f3ff;
 }
 .level-do .candidate-label {
-  color: #475569;
+  color: var(--text-secondary);
   font-weight: 600;
 }
 .level-do .candidate-kind-mark {
@@ -1153,7 +1153,7 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
 }
 .selected-list-scroll {
   padding: 8px 10px;
-  background: #ffffff;
+  background: var(--panel-bg);
 }
 .selected-list {
   min-height: 1px;
@@ -1166,9 +1166,9 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   gap: 8px;
   margin-bottom: 6px;
   padding: 7px 9px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 7px;
-  background: #ffffff;
+  background: var(--panel-bg);
   box-sizing: border-box;
   transition:
     border-color 0.16s ease,
@@ -1186,7 +1186,7 @@ function fcTagType(fc: string): "primary" | "success" | "danger" | "info" {
   padding: 0;
   border: 0;
   border-radius: 6px;
-  color: #64748b;
+  color: var(--text-secondary);
   background: transparent;
   cursor: grab;
   touch-action: none;

@@ -7,7 +7,10 @@
           {{ rcb.name }}
         </el-descriptions-item>
         <el-descriptions-item :label="`${t('report.rcbType')} (Type)`">
-          <el-tag :type="rcb.rcb_type === 'BRCB' ? 'primary' : 'warning'" size="small">
+          <el-tag
+            :type="rcb.rcb_type === 'BRCB' ? 'primary' : 'warning'"
+            size="small"
+          >
             {{ rcb.rcb_type }}
           </el-tag>
         </el-descriptions-item>
@@ -155,10 +158,13 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: "apply", payload: { rptEna: boolean; trgOps: TrgOps; optFields: OptFields }): void;
+  (
+    e: "apply",
+    payload: { rptEna: boolean; trgOps: TrgOps; optFields: OptFields },
+  ): void;
   (
     e: "batchApply",
-    payload: { rptEna: boolean; trgOps: TrgOps; optFields: OptFields }
+    payload: { rptEna: boolean; trgOps: TrgOps; optFields: OptFields },
   ): void;
   (e: "gi"): void;
 }>();
@@ -192,7 +198,7 @@ watch(
   // 仅在真正切换到另一个报告实例时初始化表单。
   () => props.rcb?.ref,
   () => syncModels(),
-  { immediate: true }
+  { immediate: true },
 );
 
 function formatOwner(owner: string): string {
@@ -266,17 +272,17 @@ function handleApply() {
 .control-section {
   margin-top: 14px;
   padding: 12px;
-  border: 1px solid #e3e8ef;
-  background: #fbfcfe;
+  border: 1px solid var(--border-color);
+  background: var(--bg-subtle);
 }
 
 .control-section.is-disabled {
-  background: #f3f5f8;
+  background: var(--bg-muted);
 }
 
 .section-title {
   margin: 0 0 8px;
-  color: #263241;
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 700;
 }
@@ -332,7 +338,7 @@ function handleApply() {
   gap: 10px;
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid #e3e8ef;
+  border-top: 1px solid var(--border-color);
 }
 
 @include bp.respond-to("small") {

@@ -955,18 +955,18 @@ watch(refreshCounter, () => {
 }
 
 .sidebar-theme-dark {
-  --sb-bg-main: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+  --sb-bg-main: linear-gradient(180deg, #293241 0%, #252e3d 100%);
   --sb-logo-bg: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   --sb-logo-shadow: rgba(37, 99, 235, 0.3);
-  --sb-text-primary: #f8fafc;
-  --sb-text-secondary: #94a3b8;
+  --sb-text-primary: #edf2f8;
+  --sb-text-secondary: #aebcce;
   --sb-btn-primary-bg: rgba(59, 130, 246, 0.2);
   --sb-btn-primary-hover: #3b82f6;
-  --sb-item-hover: rgba(255, 255, 255, 0.03);
-  --sb-item-active: rgba(59, 130, 246, 0.15);
-  --sb-border: rgba(255, 255, 255, 0.05);
-  --sb-shadow: 10px 0 30px rgba(0, 0, 0, 0.15);
-  --sb-icon-color: #94a3b8;
+  --sb-item-hover: rgba(148, 181, 224, 0.1);
+  --sb-item-active: rgba(96, 165, 250, 0.2);
+  --sb-border: rgba(184, 199, 219, 0.16);
+  --sb-shadow: 8px 0 24px rgba(7, 12, 20, 0.16);
+  --sb-icon-color: #aebcce;
   --sb-btn-text: #fff;
   --sb-scrollbar: rgba(255, 255, 255, 0.1);
 }

@@ -6,15 +6,22 @@
  * UI 风格与 GooseManager / ReportsManager 保持一致。
  */
 
-import { ref, computed, onMounted, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { showError, showErrorOnce } from '@/api/http'
-import type { UploadFile } from 'element-plus'
+import { ref, computed, onMounted, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { showError, showErrorOnce } from "@/api/http";
+import type { UploadFile } from "element-plus";
 import {
-  Folder, Document, Download, Upload, Delete, Refresh, Files,
-  ArrowLeft, Search,
-} from '@element-plus/icons-vue'
+  Folder,
+  Document,
+  Download,
+  Upload,
+  Delete,
+  Refresh,
+  Files,
+  ArrowLeft,
+  Search,
+} from "@element-plus/icons-vue";
 import {
   getFileDirectory,
   downloadRemoteFile,
@@ -24,68 +31,75 @@ import {
   clearFileCache,
   type FileEntry,
   type FileCacheEntry,
-} from '@/api/channelApi'
+} from "@/api/channelApi";
 
-const { t } = useI18n()
+const { t } = useI18n();
 
 const props = defineProps<{
-  channelId: number
-}>()
+  channelId: number;
+}>();
 
 // ===== 状态 =====
-const loading = ref(false)
-const currentDirectory = ref('')
-const directoryStack = ref<{ path: string; name: string }[]>([])
-const entries = ref<FileEntry[]>([])
-const selectedEntry = ref<FileEntry | null>(null)
-const downloading = ref(false)
-const uploadDialogVisible = ref(false)
-const uploading = ref(false)
-const searchFilter = ref('')
-const cacheList = ref<FileCacheEntry[]>([])
-const cacheDialogVisible = ref(false)
-const uploadRef = ref()
+const loading = ref(false);
+const currentDirectory = ref("");
+const directoryStack = ref<{ path: string; name: string }[]>([]);
+const entries = ref<FileEntry[]>([]);
+const selectedEntry = ref<FileEntry | null>(null);
+const downloading = ref(false);
+const uploadDialogVisible = ref(false);
+const uploading = ref(false);
+const searchFilter = ref("");
+const cacheList = ref<FileCacheEntry[]>([]);
+const cacheDialogVisible = ref(false);
+const uploadRef = ref();
 
 // ===== 计算属性 =====
 const breadcrumbs = computed(() => {
-  const crumbs = [{ path: '', name: '/' }]
+  const crumbs = [{ path: "", name: "/" }];
   for (const item of directoryStack.value) {
-    crumbs.push(item)
+    crumbs.push(item);
   }
-  return crumbs
-})
+  return crumbs;
+});
 
 const filteredEntries = computed(() => {
-  if (!searchFilter.value) return entries.value
-  const keyword = searchFilter.value.toLowerCase()
-  return entries.value.filter(e => e.name.toLowerCase().includes(keyword))
-})
+  if (!searchFilter.value) return entries.value;
+  const keyword = searchFilter.value.toLowerCase();
+  return entries.value.filter((e) => e.name.toLowerCase().includes(keyword));
+});
 
-const directoryEntries = computed(() => filteredEntries.value.filter(e => e.type === 'directory'))
-const fileEntries = computed(() => filteredEntries.value.filter(e => e.type === 'file'))
+const directoryEntries = computed(() =>
+  filteredEntries.value.filter((e) => e.type === "directory"),
+);
+const fileEntries = computed(() =>
+  filteredEntries.value.filter((e) => e.type === "file"),
+);
 
-const sortedEntries = computed(() => [...directoryEntries.value, ...fileEntries.value])
+const sortedEntries = computed(() => [
+  ...directoryEntries.value,
+  ...fileEntries.value,
+]);
 
-const selectedIsFile = computed(() => selectedEntry.value?.type === 'file')
+const selectedIsFile = computed(() => selectedEntry.value?.type === "file");
 
 // ===== 目录浏览 =====
 
-async function loadDirectory(directory: string = '') {
-  loading.value = true
+async function loadDirectory(directory: string = "") {
+  loading.value = true;
   try {
-    const result = await getFileDirectory(props.channelId, directory)
+    const result = await getFileDirectory(props.channelId, directory);
     if (result) {
-      entries.value = result.entries
-      currentDirectory.value = result.directory
+      entries.value = result.entries;
+      currentDirectory.value = result.directory;
     } else {
-      entries.value = []
+      entries.value = [];
     }
   } catch (e) {
-    console.error('加载文件目录失败:', e)
-    entries.value = []
+    console.error("加载文件目录失败:", e);
+    entries.value = [];
   } finally {
-    loading.value = false
-    selectedEntry.value = null
+    loading.value = false;
+    selectedEntry.value = null;
   }
 }
 
@@ -93,182 +107,198 @@ function navigateToDirectory(entry: FileEntry) {
   directoryStack.value.push({
     path: currentDirectory.value,
     name: entry.name,
-  })
-  loadDirectory(entry.full_path)
+  });
+  loadDirectory(entry.full_path);
 }
 
 function navigateToBreadcrumb(path: string, index: number) {
-  directoryStack.value = directoryStack.value.slice(0, index)
-  loadDirectory(path)
+  directoryStack.value = directoryStack.value.slice(0, index);
+  loadDirectory(path);
 }
 
 function goBack() {
-  if (directoryStack.value.length === 0) return
-  directoryStack.value.pop()
-  const parentPath = directoryStack.value.length > 0
-    ? directoryStack.value[directoryStack.value.length - 1].path
-    : ''
-  loadDirectory(parentPath)
+  if (directoryStack.value.length === 0) return;
+  directoryStack.value.pop();
+  const parentPath =
+    directoryStack.value.length > 0
+      ? directoryStack.value[directoryStack.value.length - 1].path
+      : "";
+  loadDirectory(parentPath);
 }
 
 function selectEntry(row: FileEntry) {
-  selectedEntry.value = row
+  selectedEntry.value = row;
 }
 
 function handleRowDblClick(entry: FileEntry) {
-  if (entry.type === 'directory') {
-    navigateToDirectory(entry)
+  if (entry.type === "directory") {
+    navigateToDirectory(entry);
   }
 }
 
 function formatTime(ts: string | null): string {
-  if (!ts) return '-'
-  return new Date(ts).toLocaleString()
+  if (!ts) return "-";
+  return new Date(ts).toLocaleString();
 }
 
 // ===== 文件下载 =====
 
 /** 将 Base64 解码为 Uint8Array */
 function base64ToUint8Array(base64: string): Uint8Array {
-  const byteChars = atob(base64)
-  const byteArray = new Uint8Array(byteChars.length)
+  const byteChars = atob(base64);
+  const byteArray = new Uint8Array(byteChars.length);
   for (let i = 0; i < byteChars.length; i++) {
-    byteArray[i] = byteChars.charCodeAt(i)
+    byteArray[i] = byteChars.charCodeAt(i);
   }
-  return byteArray
+  return byteArray;
 }
 
 /** 使用系统保存对话框写入文件（File System Access API） */
-async function saveWithPicker(fileName: string, data: Uint8Array): Promise<boolean> {
-  const blob = new Blob([data])
+async function saveWithPicker(
+  fileName: string,
+  data: Uint8Array,
+): Promise<boolean> {
+  const blob = new Blob([data]);
   try {
     const handle = await (window as any).showSaveFilePicker({
       suggestedName: fileName,
-    })
-    const writable = await handle.createWritable()
-    await writable.write(blob)
-    await writable.close()
-    return true
+    });
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return true;
   } catch (e: any) {
     // 用户取消选择
-    if (e?.name === 'AbortError') return false
-    throw e
+    if (e?.name === "AbortError") return false;
+    throw e;
   }
 }
 
 /** 回退方式：自动下载到默认目录 */
 function saveWithFallback(fileName: string, data: Uint8Array) {
-  const blob = new Blob([data])
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = fileName
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  const blob = new Blob([data]);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 async function handleDownload() {
-  if (!selectedEntry.value || selectedEntry.value.type === 'directory') {
-    ElMessage.warning('请选择一个文件进行下载')
-    return
+  if (!selectedEntry.value || selectedEntry.value.type === "directory") {
+    ElMessage.warning("请选择一个文件进行下载");
+    return;
   }
 
-  downloading.value = true
+  downloading.value = true;
   try {
-    const result = await downloadRemoteFile(props.channelId, selectedEntry.value.full_path)
+    const result = await downloadRemoteFile(
+      props.channelId,
+      selectedEntry.value.full_path,
+    );
     if (result && result.data) {
-      const byteArray = base64ToUint8Array(result.data)
-      const fileName = selectedEntry.value.name
+      const byteArray = base64ToUint8Array(result.data);
+      const fileName = selectedEntry.value.name;
 
       // 优先使用系统保存对话框，不支持时回退到自动下载
       if (window.showSaveFilePicker) {
-        const saved = await saveWithPicker(fileName, byteArray)
+        const saved = await saveWithPicker(fileName, byteArray);
         if (!saved) {
           // 用户取消了保存
-          return
+          return;
         }
       } else {
-        saveWithFallback(fileName, byteArray)
+        saveWithFallback(fileName, byteArray);
       }
-      ElMessage.success(`文件下载成功: ${fileName}${result.cached ? ' (缓存)' : ''}`)
+      ElMessage.success(
+        `文件下载成功: ${fileName}${result.cached ? " (缓存)" : ""}`,
+      );
     } else {
-      showErrorOnce('文件下载失败')
+      showErrorOnce("文件下载失败");
     }
   } catch (e) {
-    console.error('文件下载失败:', e)
-    showError(e, '文件下载失败')
+    console.error("文件下载失败:", e);
+    showError(e, "文件下载失败");
   } finally {
-    downloading.value = false
+    downloading.value = false;
   }
 }
 
 // ===== 文件上传 =====
 
 async function handleUploadRequest(param: { file: File }) {
-  uploading.value = true
+  uploading.value = true;
   try {
-    const reader = new FileReader()
+    const reader = new FileReader();
     const base64Promise = new Promise<string>((resolve) => {
       reader.onload = () => {
-        const result = reader.result as string
-        const base64 = result.split(',')[1] || result
-        resolve(base64)
-      }
-      reader.readAsDataURL(param.file)
-    })
+        const result = reader.result as string;
+        const base64 = result.split(",")[1] || result;
+        resolve(base64);
+      };
+      reader.readAsDataURL(param.file);
+    });
 
-    const base64Data = await base64Promise
+    const base64Data = await base64Promise;
     const remoteName = currentDirectory.value
       ? `${currentDirectory.value}/${param.file.name}`
-      : `/${param.file.name}`
+      : `/${param.file.name}`;
 
-    const success = await uploadRemoteFile(props.channelId, remoteName, base64Data)
+    const success = await uploadRemoteFile(
+      props.channelId,
+      remoteName,
+      base64Data,
+    );
     if (success) {
-      ElMessage.success('文件上传成功')
-      uploadDialogVisible.value = false
-      loadDirectory(currentDirectory.value)
+      ElMessage.success("文件上传成功");
+      uploadDialogVisible.value = false;
+      loadDirectory(currentDirectory.value);
     } else {
-      showErrorOnce('文件上传失败')
+      showErrorOnce("文件上传失败");
     }
   } catch (e) {
-    console.error('文件上传失败:', e)
-    showError(e, '文件上传失败')
+    console.error("文件上传失败:", e);
+    showError(e, "文件上传失败");
   } finally {
-    uploading.value = false
+    uploading.value = false;
   }
 }
 
 function handleUploadExceed() {
-  ElMessage.warning('一次只能上传一个文件')
+  ElMessage.warning("一次只能上传一个文件");
 }
 
 // ===== 文件删除 =====
 
 async function handleDelete() {
   if (!selectedEntry.value) {
-    ElMessage.warning('请选择一个文件或目录')
-    return
+    ElMessage.warning("请选择一个文件或目录");
+    return;
   }
 
   try {
     await ElMessageBox.confirm(
       `确定删除远程文件 "${selectedEntry.value.name}" 吗？此操作不可撤销。`,
-      '确认删除',
+      "确认删除",
       {
-        confirmButtonText: t('common.delete'),
-        cancelButtonText: t('common.cancel'),
-        type: 'warning',
+        confirmButtonText: t("common.delete"),
+        cancelButtonText: t("common.cancel"),
+        type: "warning",
       },
-    )
+    );
 
-    const success = await deleteRemoteFile(props.channelId, selectedEntry.value.full_path)
+    const success = await deleteRemoteFile(
+      props.channelId,
+      selectedEntry.value.full_path,
+    );
     if (success) {
-      ElMessage.success('文件已删除')
-      loadDirectory(currentDirectory.value)
+      ElMessage.success("文件已删除");
+      loadDirectory(currentDirectory.value);
     } else {
-      showErrorOnce('删除失败')
+      showErrorOnce("删除失败");
     }
   } catch {
     // 用户取消
@@ -278,20 +308,20 @@ async function handleDelete() {
 // ===== 缓存管理 =====
 
 async function handleCacheManage() {
-  cacheDialogVisible.value = true
-  cacheList.value = await getFileCacheList(props.channelId)
+  cacheDialogVisible.value = true;
+  cacheList.value = await getFileCacheList(props.channelId);
 }
 
 async function handleClearCache() {
   try {
-    await ElMessageBox.confirm('确定清空所有本地缓存文件吗？', '确认', {
-      confirmButtonText: t('common.clear'),
-      cancelButtonText: t('common.cancel'),
-      type: 'warning',
-    })
-    const count = await clearFileCache(props.channelId)
-    ElMessage.success(`已清理 ${count} 个缓存文件`)
-    cacheList.value = await getFileCacheList(props.channelId)
+    await ElMessageBox.confirm("确定清空所有本地缓存文件吗？", "确认", {
+      confirmButtonText: t("common.clear"),
+      cancelButtonText: t("common.cancel"),
+      type: "warning",
+    });
+    const count = await clearFileCache(props.channelId);
+    ElMessage.success(`已清理 ${count} 个缓存文件`);
+    cacheList.value = await getFileCacheList(props.channelId);
   } catch {
     // 用户取消
   }
@@ -302,19 +332,19 @@ watch(
   () => props.channelId,
   (newId) => {
     if (newId) {
-      directoryStack.value = []
-      selectedEntry.value = null
-      loadDirectory('')
+      directoryStack.value = [];
+      selectedEntry.value = null;
+      loadDirectory("");
     }
   },
-)
+);
 
 // ===== 初始化 =====
 onMounted(() => {
   if (props.channelId) {
-    loadDirectory('')
+    loadDirectory("");
   }
-})
+});
 </script>
 
 <template>
@@ -323,18 +353,33 @@ onMounted(() => {
     <div class="file-header">
       <h3>文件浏览器</h3>
       <div class="header-actions">
-        <el-button type="primary" :icon="Refresh" @click="loadDirectory(currentDirectory)" :loading="loading">
+        <el-button
+          type="primary"
+          :icon="Refresh"
+          @click="loadDirectory(currentDirectory)"
+          :loading="loading"
+        >
           刷新
         </el-button>
-        <el-button type="success" :icon="Download" @click="handleDownload"
-          :loading="downloading" :disabled="!selectedIsFile">
+        <el-button
+          type="success"
+          :icon="Download"
+          @click="handleDownload"
+          :loading="downloading"
+          :disabled="!selectedIsFile"
+        >
           下载
         </el-button>
         <el-button :icon="Upload" @click="uploadDialogVisible = true">
           上传
         </el-button>
-        <el-button type="danger" :icon="Delete" plain @click="handleDelete"
-          :disabled="!selectedEntry">
+        <el-button
+          type="danger"
+          :icon="Delete"
+          plain
+          @click="handleDelete"
+          :disabled="!selectedEntry"
+        >
           删除
         </el-button>
         <el-button :icon="Files" @click="handleCacheManage">
@@ -346,7 +391,12 @@ onMounted(() => {
     <!-- 工具条：面包屑 + 返回 + 搜索 -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-button :icon="ArrowLeft" :disabled="directoryStack.length === 0" @click="goBack" text>
+        <el-button
+          :icon="ArrowLeft"
+          :disabled="directoryStack.length === 0"
+          @click="goBack"
+          text
+        >
           返回
         </el-button>
         <div class="breadcrumb-bar">
@@ -356,7 +406,7 @@ onMounted(() => {
               :key="idx"
               @click="navigateToBreadcrumb(crumb.path, idx)"
             >
-              <span class="breadcrumb-link">{{ crumb.name || '/' }}</span>
+              <span class="breadcrumb-link">{{ crumb.name || "/" }}</span>
             </el-breadcrumb-item>
           </el-breadcrumb>
         </div>
@@ -387,19 +437,27 @@ onMounted(() => {
         <el-table-column label="名称" min-width="280">
           <template #default="{ row }">
             <div class="file-name-cell">
-              <el-icon :size="18" :color="row.type === 'directory' ? '#e6a23c' : '#409eff'">
+              <el-icon
+                :size="18"
+                :color="row.type === 'directory' ? '#e6a23c' : '#409eff'"
+              >
                 <Folder v-if="row.type === 'directory'" />
                 <Document v-else />
               </el-icon>
-              <span :class="{ 'dir-name': row.type === 'directory' }">{{ row.name }}</span>
+              <span :class="{ 'dir-name': row.type === 'directory' }">{{
+                row.name
+              }}</span>
             </div>
           </template>
         </el-table-column>
         <el-table-column label="大小" width="100" prop="size_human" />
         <el-table-column label="类型" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.type === 'directory' ? 'warning' : 'info'" size="small">
-              {{ row.type === 'directory' ? '目录' : '文件' }}
+            <el-tag
+              :type="row.type === 'directory' ? 'warning' : 'info'"
+              size="small"
+            >
+              {{ row.type === "directory" ? "目录" : "文件" }}
             </el-tag>
           </template>
         </el-table-column>
@@ -408,7 +466,12 @@ onMounted(() => {
             {{ formatTime(row.last_modified) }}
           </template>
         </el-table-column>
-        <el-table-column label="路径" min-width="200" prop="full_path" show-overflow-tooltip />
+        <el-table-column
+          label="路径"
+          min-width="200"
+          prop="full_path"
+          show-overflow-tooltip
+        />
         <el-table-column label="操作" width="140" fixed="right" align="center">
           <template #default="{ row }">
             <el-button-group>
@@ -417,13 +480,19 @@ onMounted(() => {
                 size="small"
                 :icon="Download"
                 :disabled="row.type === 'directory'"
-                @click.stop="selectedEntry = row; handleDownload()"
+                @click.stop="
+                  selectedEntry = row;
+                  handleDownload();
+                "
               />
               <el-button
                 type="danger"
                 size="small"
                 :icon="Delete"
-                @click.stop="selectedEntry = row; handleDelete()"
+                @click.stop="
+                  selectedEntry = row;
+                  handleDelete();
+                "
               />
             </el-button-group>
           </template>
@@ -437,7 +506,12 @@ onMounted(() => {
     </div>
 
     <!-- 上传对话框 -->
-    <el-dialog v-model="uploadDialogVisible" title="上传文件到 IED" width="500px" destroy-on-close>
+    <el-dialog
+      v-model="uploadDialogVisible"
+      title="上传文件到 IED"
+      width="500px"
+      destroy-on-close
+    >
       <el-upload
         ref="uploadRef"
         :auto-upload="false"
@@ -456,14 +530,29 @@ onMounted(() => {
       </el-upload>
       <template #footer>
         <el-button @click="uploadDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="uploadRef?.submit()" :loading="uploading">上传</el-button>
+        <el-button
+          type="primary"
+          @click="uploadRef?.submit()"
+          :loading="uploading"
+          >上传</el-button
+        >
       </template>
     </el-dialog>
 
     <!-- 缓存管理对话框 -->
-    <el-dialog v-model="cacheDialogVisible" title="本地缓存管理" width="600px" destroy-on-close>
+    <el-dialog
+      v-model="cacheDialogVisible"
+      title="本地缓存管理"
+      width="600px"
+      destroy-on-close
+    >
       <el-table :data="cacheList" border stripe size="small" max-height="400">
-        <el-table-column label="远程路径" prop="remote_path" min-width="200" show-overflow-tooltip />
+        <el-table-column
+          label="远程路径"
+          prop="remote_path"
+          min-width="200"
+          show-overflow-tooltip
+        />
         <el-table-column label="文件大小" width="100">
           <template #default="{ row }">
             {{ (row.file_size / 1024).toFixed(1) }} KB
@@ -488,7 +577,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #fff;
+  background: var(--panel-bg);
   border-radius: 4px;
 }
 
@@ -498,7 +587,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--border-color);
 
   h3 {
     margin: 0;
@@ -510,7 +599,7 @@ onMounted(() => {
     display: flex;
     gap: 8px;
 
-    @include bp.respond-to('small') {
+    @include bp.respond-to("small") {
       flex-wrap: wrap;
     }
   }
@@ -525,7 +614,7 @@ onMounted(() => {
   gap: 12px;
   border-bottom: 1px solid #f0f0f0;
 
-  @include bp.respond-to('small') {
+  @include bp.respond-to("small") {
     flex-wrap: wrap;
   }
 
@@ -606,7 +695,7 @@ onMounted(() => {
 }
 
 // ===== 小屏适配 =====
-@include bp.respond-to('small') {
+@include bp.respond-to("small") {
   .file-header {
     flex-direction: column;
     align-items: flex-start;

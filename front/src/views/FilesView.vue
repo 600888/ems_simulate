@@ -6,21 +6,21 @@
  * 侧边栏的 Files 分类节点点击后导航到本页面。
  */
 
-import { ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import FileExplorer from '@/components/files/FileExplorer.vue'
+import { ref, watch } from "vue";
+import { useRoute } from "vue-router";
+import FileExplorer from "@/components/files/FileExplorer.vue";
 
-const route = useRoute()
-const channelId = ref<number>(0)
+const route = useRoute();
+const channelId = ref<number>(0);
 
 watch(
   () => [route.path, route.query.channel_id] as const,
   ([path, newVal]) => {
-    if (path !== '/files') return;
+    if (path !== "/files") return;
     channelId.value = Number(newVal) || 0;
   },
   { immediate: true },
-)
+);
 </script>
 
 <template>
@@ -44,7 +44,7 @@ watch(
 .files-content {
   flex: 1;
   padding: 16px;
-  background: #f5f7fa;
+  background: var(--bg-main);
   overflow: auto;
 }
 
@@ -53,6 +53,6 @@ watch(
   align-items: center;
   justify-content: center;
   height: 100%;
-  background: #f5f7fa;
+  background: var(--bg-main);
 }
 </style>

@@ -48,7 +48,7 @@ function handleTabClick() {
   flex: 1;
   padding: 16px;
   box-sizing: border-box;
-  background: #f5f7fa;
+  background: var(--bg-main);
   overflow: hidden;
 }
 </style>

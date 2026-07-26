@@ -7,15 +7,30 @@
       </el-tab-pane>
 
       <!-- 已发现的远端控制块 -->
-      <el-tab-pane :label="`${$t('goose.discovered')} (${discovered.length})`" name="discovered">
+      <el-tab-pane
+        :label="`${$t('goose.discovered')} (${discovered.length})`"
+        name="discovered"
+      >
         <div class="tab-header">
-          <el-button type="primary" :disabled="!selectedDiscovered.length" @click="addDiscoveredAsPublisher">
+          <el-button
+            type="primary"
+            :disabled="!selectedDiscovered.length"
+            @click="addDiscoveredAsPublisher"
+          >
             添加到发布
           </el-button>
-          <el-button type="success" :disabled="!selectedDiscovered.length" @click="importDiscoveredSubscriptions">
+          <el-button
+            type="success"
+            :disabled="!selectedDiscovered.length"
+            @click="importDiscoveredSubscriptions"
+          >
             添加到订阅
           </el-button>
-          <el-button :icon="Refresh" @click="refreshDiscovered" :loading="loading">
+          <el-button
+            :icon="Refresh"
+            @click="refreshDiscovered"
+            :loading="loading"
+          >
             {{ $t("goose.refresh") }}
           </el-button>
         </div>
@@ -35,12 +50,18 @@
             min-width="240"
             show-overflow-tooltip
           />
-          <el-table-column prop="go_id" label="GOOSE标识符 (GoID)" min-width="260" show-overflow-tooltip />
+          <el-table-column
+            prop="go_id"
+            label="GOOSE标识符 (GoID)"
+            min-width="260"
+            show-overflow-tooltip
+          />
           <el-table-column prop="app_id" label="APPID" width="100">
             <template #default="{ row }">
               {{
                 row.app_id != null
-                  ? "0x" + row.app_id.toString(16).toUpperCase().padStart(4, "0")
+                  ? "0x" +
+                    row.app_id.toString(16).toUpperCase().padStart(4, "0")
                   : "-"
               }}
             </template>
@@ -51,14 +72,24 @@
             min-width="200"
             show-overflow-tooltip
           />
-          <el-table-column prop="conf_rev" label="confRev" width="90" align="center" />
+          <el-table-column
+            prop="conf_rev"
+            label="confRev"
+            width="90"
+            align="center"
+          />
           <el-table-column label="发现状态" width="120" align="center">
             <template #default="{ row }">
               <el-tooltip
                 :content="row.discovery_error || ''"
                 :disabled="!row.discovery_error"
               >
-                <el-tag :type="row.detail_status === 'partial' ? 'warning' : 'success'" size="small">
+                <el-tag
+                  :type="
+                    row.detail_status === 'partial' ? 'warning' : 'success'
+                  "
+                  size="small"
+                >
                   {{ row.detail_status === "partial" ? "部分信息" : "完整" }}
                 </el-tag>
               </el-tooltip>
@@ -119,7 +150,9 @@
               <div class="network-option">
                 <el-icon class="network-option-icon"><Monitor /></el-icon>
                 <div class="network-option-body">
-                  <span class="network-option-name">{{ item.display_name }}</span>
+                  <span class="network-option-name">{{
+                    item.display_name
+                  }}</span>
                   <span class="network-option-mac"
                     >MAC: {{ (item.mac || "-").replace(/-/g, ":") }}</span
                   >
@@ -210,7 +243,10 @@
                   :value="opt.value"
                 />
               </el-select>
-              <el-switch v-if="entry.iec_type === 'boolean'" v-model="entry.value" />
+              <el-switch
+                v-if="entry.iec_type === 'boolean'"
+                v-model="entry.value"
+              />
               <el-input-number
                 v-else-if="entry.iec_type === 'integer'"
                 v-model="entry.value"
@@ -243,9 +279,14 @@
         <el-button @click="createPublisherVisible = false">{{
           $t("goose.cancel")
         }}</el-button>
-        <el-button type="primary" @click="savePublisherConfig" :loading="creating">{{
-          configEditingId ? $t("common.save") : $t("goose.create")
-        }}</el-button>
+        <el-button
+          type="primary"
+          @click="savePublisherConfig"
+          :loading="creating"
+          >{{
+            configEditingId ? $t("common.save") : $t("goose.create")
+          }}</el-button
+        >
       </template>
     </el-dialog>
 
@@ -278,7 +319,9 @@
               <div class="network-option">
                 <el-icon class="network-option-icon"><Monitor /></el-icon>
                 <div class="network-option-body">
-                  <span class="network-option-name">{{ item.display_name }}</span>
+                  <span class="network-option-name">{{
+                    item.display_name
+                  }}</span>
                   <span class="network-option-mac"
                     >MAC: {{ (item.mac || "-").replace(/-/g, ":") }}</span
                   >
@@ -314,9 +357,12 @@
                 @click="receiverForm.subscriptions.splice(idx, 1)"
               />
             </div>
-            <el-button :icon="Plus" size="small" @click="addReceiverSubscription">{{
-              $t("goose.addSub")
-            }}</el-button>
+            <el-button
+              :icon="Plus"
+              size="small"
+              @click="addReceiverSubscription"
+              >{{ $t("goose.addSub") }}</el-button
+            >
           </div>
         </el-form-item>
         <el-form-item label="自动启动">
@@ -327,9 +373,14 @@
         <el-button @click="createReceiverVisible = false">{{
           $t("goose.cancel")
         }}</el-button>
-        <el-button type="primary" @click="saveReceiverConfig" :loading="creating">{{
-          receiverEditingId ? $t("common.save") : $t("goose.create")
-        }}</el-button>
+        <el-button
+          type="primary"
+          @click="saveReceiverConfig"
+          :loading="creating"
+          >{{
+            receiverEditingId ? $t("common.save") : $t("goose.create")
+          }}</el-button
+        >
       </template>
     </el-dialog>
 
@@ -398,7 +449,11 @@
             />
           </template>
         </el-table-column>
-        <el-table-column :label="$t('goose.entryOperation')" width="90" align="center">
+        <el-table-column
+          :label="$t('goose.entryOperation')"
+          width="90"
+          align="center"
+        >
           <template #default="{ $index }">
             <el-button
               type="danger"
@@ -421,7 +476,9 @@
         >
       </div>
       <template #footer>
-        <el-button @click="entryEditorVisible = false">{{ $t("goose.close") }}</el-button>
+        <el-button @click="entryEditorVisible = false">{{
+          $t("goose.close")
+        }}</el-button>
         <el-button
           type="primary"
           :disabled="editingPublisher?.is_running"
@@ -436,7 +493,9 @@
     <el-dialog
       v-model="subManagerVisible"
       :title="
-        $t('goose.subscriptionManager') + ' - ' + (editingReceiver?.interface || '')
+        $t('goose.subscriptionManager') +
+        ' - ' +
+        (editingReceiver?.interface || '')
       "
       width="700px"
       destroy-on-close
@@ -450,7 +509,12 @@
         >
           {{ $t("goose.addSub") }}
         </el-button>
-        <el-alert v-else type="warning" :closable="false" style="margin-bottom: 12px">
+        <el-alert
+          v-else
+          type="warning"
+          :closable="false"
+          style="margin-bottom: 12px"
+        >
           {{ $t("goose.receiverRunning") }}
         </el-alert>
       </div>
@@ -460,7 +524,7 @@
         style="
           margin-bottom: 14px;
           padding: 16px 20px;
-          border: 1px solid #dcdfe6;
+          border: 1px solid var(--border-color);
           border-radius: 4px;
         "
       >
@@ -529,9 +593,13 @@
               >{{ $t("goose.goId") }}:</span
             >
             <span class="sub-card__value">{{ sub.go_id || "-" }}</span>
-            <span class="sub-card__label" style="margin-left: 16px">状态号:</span>
+            <span class="sub-card__label" style="margin-left: 16px"
+              >状态号:</span
+            >
             <span class="sub-card__value">{{ sub.st_num }}</span>
-            <span class="sub-card__label" style="margin-left: 16px">顺序号:</span>
+            <span class="sub-card__label" style="margin-left: 16px"
+              >顺序号:</span
+            >
             <span class="sub-card__value">{{ sub.sq_num }}</span>
           </div>
           <div class="sub-card__row">
@@ -599,7 +667,10 @@
           {{
             selectedSubscription.app_id != null
               ? "0x" +
-                selectedSubscription.app_id.toString(16).toUpperCase().padStart(4, "0")
+                selectedSubscription.app_id
+                  .toString(16)
+                  .toUpperCase()
+                  .padStart(4, "0")
               : "-"
           }}
         </el-descriptions-item>
@@ -622,7 +693,8 @@
             size="small"
           >
             {{
-              GOOSE_STATE_LABEL[selectedSubscription.state] || selectedSubscription.state
+              GOOSE_STATE_LABEL[selectedSubscription.state] ||
+              selectedSubscription.state
             }}
           </el-tag>
         </el-descriptions-item>
@@ -637,14 +709,22 @@
         }}</el-descriptions-item>
       </el-descriptions>
       <h4 style="margin: 16px 0 8px">{{ $t("goose.dataSetValues") }}</h4>
-      <el-table :data="selectedSubscription?.data_values || []" border size="small">
+      <el-table
+        :data="selectedSubscription?.data_values || []"
+        border
+        size="small"
+      >
         <el-table-column
           :label="$t('goose.seqNum')"
           width="75"
           align="center"
           prop="index"
         />
-        <el-table-column :label="$t('goose.entryType')" width="100" prop="type" />
+        <el-table-column
+          :label="$t('goose.entryType')"
+          width="100"
+          prop="type"
+        />
         <el-table-column :label="$t('goose.entryValue')" prop="value" />
       </el-table>
     </el-dialog>
@@ -737,8 +817,12 @@ const publisherForm = reactive({
   entries: [] as { name: string; value: any; iec_type: string }[],
 });
 const publisherRules = {
-  go_cb_ref: [{ required: true, message: t("goose.goCbRefRequired"), trigger: "blur" }],
-  interface: [{ required: true, message: t("goose.interfaceRequired"), trigger: "blur" }],
+  go_cb_ref: [
+    { required: true, message: t("goose.goCbRefRequired"), trigger: "blur" },
+  ],
+  interface: [
+    { required: true, message: t("goose.interfaceRequired"), trigger: "blur" },
+  ],
 };
 
 // ===== Receiver 状态 =====
@@ -815,13 +899,19 @@ async function refreshDiscovered() {
   }
   try {
     const selectedRefs = loadDiscoveredSelection();
-    selectedDiscovered.value.forEach((item) => selectedRefs.add(item.go_cb_ref));
+    selectedDiscovered.value.forEach((item) =>
+      selectedRefs.add(item.go_cb_ref),
+    );
     restoringDiscoveredSelection = true;
     discovered.value = await getDiscoveredGoose(props.channelId);
     await nextTick();
     discoveredTableRef.value?.clearSelection();
-    const restored = discovered.value.filter((item) => selectedRefs.has(item.go_cb_ref));
-    restored.forEach((item) => discoveredTableRef.value?.toggleRowSelection(item, true));
+    const restored = discovered.value.filter((item) =>
+      selectedRefs.has(item.go_cb_ref),
+    );
+    restored.forEach((item) =>
+      discoveredTableRef.value?.toggleRowSelection(item, true),
+    );
     selectedDiscovered.value = restored;
   } catch (e) {
     console.error("刷新发现的 GOOSE 控制块失败:", e);
@@ -836,8 +926,14 @@ function discoveredSelectionKey() {
 
 function loadDiscoveredSelection(): Set<string> {
   try {
-    const value = JSON.parse(localStorage.getItem(discoveredSelectionKey()) || "[]");
-    return new Set(Array.isArray(value) ? value.filter((item) => typeof item === "string") : []);
+    const value = JSON.parse(
+      localStorage.getItem(discoveredSelectionKey()) || "[]",
+    );
+    return new Set(
+      Array.isArray(value)
+        ? value.filter((item) => typeof item === "string")
+        : [],
+    );
   } catch {
     return new Set();
   }
@@ -853,7 +949,11 @@ function handleDiscoveredSelectionChange(rows: DiscoveredGooseItem[]) {
 }
 
 async function refreshAll() {
-  await Promise.all([refreshPublishers(), refreshReceivers(), refreshDiscovered()]);
+  await Promise.all([
+    refreshPublishers(),
+    refreshReceivers(),
+    refreshDiscovered(),
+  ]);
 }
 
 // channelId 变化时只刷新当前设备；导入必须由用户显式确认。
@@ -863,7 +963,7 @@ watch(
     if (!id) return;
     await refreshAll();
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 // ===== Publisher 操作 =====
@@ -897,7 +997,8 @@ async function importDiscoveredSubscriptions() {
         cancelButtonText: t("common.cancel"),
       },
     );
-    const interfaceId = receiverForm.interface || networkInterfaces.value[0]?.id;
+    const interfaceId =
+      receiverForm.interface || networkInterfaces.value[0]?.id;
     if (!interfaceId) throw new Error(t("goose.interfaceRequired"));
     await importDiscoveredGoose(
       props.channelId,
@@ -912,7 +1013,8 @@ async function importDiscoveredSubscriptions() {
 }
 
 function initialDiscoveredValue(iecType?: string): boolean | number | string {
-  if (iecType === "integer" || iecType === "float" || iecType === "timestamp") return 0;
+  if (iecType === "integer" || iecType === "float" || iecType === "timestamp")
+    return 0;
   if (iecType === "string") return "";
   return false;
 }
@@ -939,7 +1041,8 @@ async function addDiscoveredAsPublisher() {
         data_set_ref: item.data_set_ref || "",
         app_id: parseGooseAppId(item.app_id) ?? 1,
         conf_rev: item.conf_rev || 1,
-        time_allowed_to_live: item.max_time || item.time_allowed_to_live || 1000,
+        time_allowed_to_live:
+          item.max_time || item.time_allowed_to_live || 1000,
         dst_mac: parseMac(item.dst_mac || ""),
         vlan_id: item.vlan_id || 0,
         vlan_prio: item.vlan_prio ?? 4,
@@ -947,7 +1050,14 @@ async function addDiscoveredAsPublisher() {
         entries: (item.dataset_entries || []).map((entry) => ({
           name: entry.name,
           value: initialDiscoveredValue(entry.type),
-          iec_type: ["boolean", "integer", "float", "string", "bitstring", "timestamp"].includes(entry.type || "")
+          iec_type: [
+            "boolean",
+            "integer",
+            "float",
+            "string",
+            "bitstring",
+            "timestamp",
+          ].includes(entry.type || "")
             ? entry.type!
             : "boolean",
         })),
@@ -980,9 +1090,14 @@ function showEditPublisherDialog(pub: GoosePublisherStatus) {
   createPublisherVisible.value = true;
 }
 
-function parseMac(value: string | number[] | null | undefined): number[] | null {
+function parseMac(
+  value: string | number[] | null | undefined,
+): number[] | null {
   if (Array.isArray(value)) {
-    if (value.length !== 6 || value.some((part) => !Number.isInteger(part) || part < 0 || part > 0xff)) {
+    if (
+      value.length !== 6 ||
+      value.some((part) => !Number.isInteger(part) || part < 0 || part > 0xff)
+    ) {
       throw new Error("目标MAC地址格式错误");
     }
     return [...value];
@@ -990,7 +1105,10 @@ function parseMac(value: string | number[] | null | undefined): number[] | null 
   const text = String(value ?? "").trim();
   if (!text) return null;
   const parts = text.split(/[:-]/);
-  if (parts.length !== 6 || parts.some((part) => !/^[0-9a-fA-F]{2}$/.test(part))) {
+  if (
+    parts.length !== 6 ||
+    parts.some((part) => !/^[0-9a-fA-F]{2}$/.test(part))
+  ) {
     throw new Error("目标MAC地址格式错误");
   }
   return parts.map((part) => Number.parseInt(part, 16));
@@ -998,7 +1116,10 @@ function parseMac(value: string | number[] | null | undefined): number[] | null 
 
 function defaultGooseMulticastMac(appId: number): string {
   const normalized = Number(appId || 0) & 0xffff;
-  const high = ((normalized >> 8) & 0xff).toString(16).toUpperCase().padStart(2, "0");
+  const high = ((normalized >> 8) & 0xff)
+    .toString(16)
+    .toUpperCase()
+    .padStart(2, "0");
   const low = (normalized & 0xff).toString(16).toUpperCase().padStart(2, "0");
   return `01:0C:CD:01:${high}:${low}`;
 }
@@ -1028,7 +1149,7 @@ async function savePublisherConfig() {
     ElMessage.success(
       publisherForm.dst_mac
         ? t("common.success")
-        : `保存成功，目标地址留空，自动使用 GOOSE 组播地址 ${defaultGooseMulticastMac(publisherForm.app_id)}`
+        : `保存成功，目标地址留空，自动使用 GOOSE 组播地址 ${defaultGooseMulticastMac(publisherForm.app_id)}`,
     );
     createPublisherVisible.value = false;
     await refreshPublishers();
@@ -1064,7 +1185,7 @@ async function createPublisher() {
     ElMessage.success(
       publisherForm.dst_mac
         ? t("goose.createSuccess")
-        : `创建成功，目标地址留空，自动使用 GOOSE 组播地址 ${defaultGooseMulticastMac(publisherForm.app_id)}`
+        : `创建成功，目标地址留空，自动使用 GOOSE 组播地址 ${defaultGooseMulticastMac(publisherForm.app_id)}`,
     );
     createPublisherVisible.value = false;
     await refreshPublishers();
@@ -1125,7 +1246,10 @@ async function deletePublisher(id: string) {
 // ===== 数据集编辑 =====
 function editPublisherEntries(pub: GoosePublisherStatus) {
   editingPublisher.value = pub;
-  editingEntries.value = (pub.entries || []).map((e) => ({ ...e, _new: false }));
+  editingEntries.value = (pub.entries || []).map((e) => ({
+    ...e,
+    _new: false,
+  }));
   entryEditorVisible.value = true;
 }
 
@@ -1138,7 +1262,12 @@ function addEntryToEditor() {
     ElMessage.warning(t("goose.addEntryNameRequired"));
     return;
   }
-  editingEntries.value.push({ name: "", value: false, iec_type: "boolean", _new: true });
+  editingEntries.value.push({
+    name: "",
+    value: false,
+    iec_type: "boolean",
+    _new: true,
+  });
 }
 
 async function removeEntry(index: number) {
@@ -1162,7 +1291,11 @@ async function removeEntry(index: number) {
 async function onEntryValueChange(row: any) {
   if (editingPublisher.value && row._new !== true && row.index !== undefined) {
     try {
-      await updateGoosePublisherEntry(editingPublisher.value.id, row.index, row.value);
+      await updateGoosePublisherEntry(
+        editingPublisher.value.id,
+        row.index,
+        row.value,
+      );
     } catch (e: any) {
       showError(e, t("goose.updateValueFailed"));
     }
@@ -1187,14 +1320,25 @@ async function saveNewEntries() {
     await replaceGoosePublisherEntries(
       props.channelId || 0,
       editingPublisher.value.id,
-      editingEntries.value.map(({ name, value, iec_type }) => ({ name, value, iec_type }))
+      editingEntries.value.map(({ name, value, iec_type }) => ({
+        name,
+        value,
+        iec_type,
+      })),
     );
-    ElMessage.success(t("goose.entriesSaved", { count: editingEntries.value.length }));
+    ElMessage.success(
+      t("goose.entriesSaved", { count: editingEntries.value.length }),
+    );
     await refreshPublishers();
     // 重新打开编辑器刷新数据
-    const pub = publishers.value.find((p) => p.id === editingPublisher.value?.id);
+    const pub = publishers.value.find(
+      (p) => p.id === editingPublisher.value?.id,
+    );
     if (pub) {
-      editingEntries.value = (pub.entries || []).map((e) => ({ ...e, _new: false }));
+      editingEntries.value = (pub.entries || []).map((e) => ({
+        ...e,
+        _new: false,
+      }));
     }
   } catch (e: any) {
     showError(e, t("goose.saveEntriesFailed"));
@@ -1217,7 +1361,11 @@ function showCreateReceiverDialog() {
 }
 
 function addReceiverSubscription() {
-  receiverForm.subscriptions.push({ go_cb_ref: "", app_id: null, description: "" });
+  receiverForm.subscriptions.push({
+    go_cb_ref: "",
+    app_id: null,
+    description: "",
+  });
 }
 
 async function createReceiver() {
@@ -1269,11 +1417,15 @@ async function stopReceiver(id: string) {
 
 async function deleteReceiver(id: string) {
   try {
-    await ElMessageBox.confirm(t("goose.receiverDeleteConfirm"), t("common.confirm"), {
-      confirmButtonText: t("common.confirm"),
-      cancelButtonText: t("common.cancel"),
-      type: "warning",
-    });
+    await ElMessageBox.confirm(
+      t("goose.receiverDeleteConfirm"),
+      t("common.confirm"),
+      {
+        confirmButtonText: t("common.confirm"),
+        cancelButtonText: t("common.cancel"),
+        type: "warning",
+      },
+    );
     await deleteGooseReceiver(props.channelId || 0, id);
     ElMessage.success(t("goose.deleted"));
     await refreshReceivers();
@@ -1358,12 +1510,12 @@ async function addSubscription() {
               description: sub.description,
               data_set_ref: sub.data_set_ref,
               conf_rev: sub.conf_rev,
-            }
+            },
       );
       await replaceGooseSubscriptions(
         props.channelId || 0,
         editingReceiver.value.id,
-        subscriptions
+        subscriptions,
       );
       editingSubRef.value = null;
       await refreshReceivers();
@@ -1423,7 +1575,7 @@ function showSubscriptionDetail(sub: GooseSubscriptionStatus) {
 // ===== 生命周期 =====
 onMounted(async () => {
   networkInterfaces.value = (await getGooseNetworkInterfaces()).filter(
-    (item) => item.supports_raw_ethernet
+    (item) => item.supports_raw_ethernet,
   );
   const firstInterface = networkInterfaces.value[0]?.id;
   if (firstInterface) {
@@ -1441,7 +1593,6 @@ onUnmounted(() => {
     refreshTimer = null;
   }
 });
-
 </script>
 
 <style scoped lang="scss">
@@ -1529,7 +1680,7 @@ onUnmounted(() => {
 }
 
 .sub-card {
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--border-color);
   border-radius: 4px;
   padding: 16px 20px;
   margin-bottom: 14px;
@@ -1556,7 +1707,7 @@ onUnmounted(() => {
 
 .sub-card__value {
   font-size: 14px;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .cell-wrap {
@@ -1568,7 +1719,7 @@ onUnmounted(() => {
 .data-value-item {
   display: inline-block;
   padding: 3px 10px;
-  background: #f0f2f5;
+  background: var(--bg-muted);
   border-radius: 4px;
   font-size: 14px;
   font-family: monospace;
@@ -1628,12 +1779,13 @@ onUnmounted(() => {
 
   .network-option-name {
     font-size: 13px;
-    color: #303133;
+    color: var(--text-primary);
     line-height: 1.3;
   }
 
   .network-option-mac {
-    font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace;
+    font-family:
+      "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace;
     font-size: 11px;
     color: #909399;
     line-height: 1.2;

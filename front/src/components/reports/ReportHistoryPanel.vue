@@ -1,10 +1,13 @@
 <template>
   <div class="report-history-panel">
     <div class="history-header">
-      <span>{{ t('report.history') }}</span>
+      <span>{{ t("report.history") }}</span>
       <el-tag size="small" type="info">{{ entries.length }}</el-tag>
     </div>
-    <el-empty v-if="!loading && entries.length === 0" :description="t('report.noData')" />
+    <el-empty
+      v-if="!loading && entries.length === 0"
+      :description="t('report.noData')"
+    />
     <el-table
       v-else
       v-loading="loading"
@@ -15,17 +18,30 @@
       :row-class-name="rowClassName"
       @row-click="handleRowClick"
     >
-      <el-table-column prop="seq_num" :label="t('report.seqNumShort')" width="58" />
-      <el-table-column prop="display_time" :label="t('report.time')" min-width="150" />
-      <el-table-column prop="value_count" :label="t('report.values')" width="72" align="right" />
+      <el-table-column
+        prop="seq_num"
+        :label="t('report.seqNumShort')"
+        width="58"
+      />
+      <el-table-column
+        prop="display_time"
+        :label="t('report.time')"
+        min-width="150"
+      />
+      <el-table-column
+        prop="value_count"
+        :label="t('report.values')"
+        width="72"
+        align="right"
+      />
     </el-table>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useI18n } from 'vue-i18n';
-import type { ReportEntrySummary } from '@/api/reportApi';
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+import type { ReportEntrySummary } from "@/api/reportApi";
 
 export interface ReportHistoryRow {
   entry_key: string;
@@ -42,7 +58,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'select', row: ReportHistoryRow): void;
+  (e: "select", row: ReportHistoryRow): void;
 }>();
 
 const { t } = useI18n();
@@ -51,20 +67,19 @@ const rows = computed<ReportHistoryRow[]>(() =>
   props.entries.map((entry, index) => ({
     entry_key: entry.entry_key,
     index: entry.index ?? index,
-    seq_num: entry.seq_num ?? '-',
-    display_time: entry.received_at || entry.time_stamp || '-',
+    seq_num: entry.seq_num ?? "-",
+    display_time: entry.received_at || entry.time_stamp || "-",
     value_count: entry.value_count,
   })),
 );
 
 function handleRowClick(row: ReportHistoryRow) {
-  emit('select', row);
+  emit("select", row);
 }
 
 function rowClassName({ row }: { row: ReportHistoryRow }) {
-  return row.entry_key === props.selectedEntryKey ? 'is-selected-report' : '';
+  return row.entry_key === props.selectedEntryKey ? "is-selected-report" : "";
 }
-
 </script>
 
 <style scoped lang="scss">
@@ -73,8 +88,8 @@ function rowClassName({ row }: { row: ReportHistoryRow }) {
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  border-right: 1px solid #d8dde5;
-  background: #f6f8fb;
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-subtle);
 }
 
 .history-header {
@@ -83,8 +98,8 @@ function rowClassName({ row }: { row: ReportHistoryRow }) {
   justify-content: space-between;
   height: 38px;
   padding: 0 10px;
-  border-bottom: 1px solid #d8dde5;
-  color: #263241;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 600;
 }

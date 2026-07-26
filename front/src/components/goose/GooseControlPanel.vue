@@ -247,12 +247,12 @@ function apply() {
 }
 .config-section {
   padding: 14px 16px;
-  border: 1px solid #d8dde5;
-  background: #fbfcfe;
+  border: 1px solid var(--border-color);
+  background: var(--bg-subtle);
 }
 .section-title {
   margin-bottom: 14px;
-  color: #263241;
+  color: var(--text-primary);
   font-weight: 700;
 }
 .config-form {
@@ -311,7 +311,7 @@ function apply() {
   }
   .network-option-name {
     font-size: 13px;
-    color: #303133;
+    color: var(--text-primary);
     line-height: 1.3;
   }
   .network-option-mac {

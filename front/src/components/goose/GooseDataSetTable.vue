@@ -11,8 +11,15 @@
       class="ied-table"
     >
       <el-table-column prop="index" label="#" width="55" align="center" />
-      <el-table-column prop="name" label="数据引用" min-width="260" show-overflow-tooltip>
-        <template #default="{ row }">{{ row.name || `Entry[${row.index}]` }}</template>
+      <el-table-column
+        prop="name"
+        label="数据引用"
+        min-width="260"
+        show-overflow-tooltip
+      >
+        <template #default="{ row }">{{
+          row.name || `Entry[${row.index}]`
+        }}</template>
       </el-table-column>
       <el-table-column
         prop="description"
@@ -37,7 +44,11 @@
               @change="updateValue(row)"
             />
             <el-input-number
-              v-else-if="row.type === 'integer' || row.type === 'float' || row.type === 'timestamp'"
+              v-else-if="
+                row.type === 'integer' ||
+                row.type === 'float' ||
+                row.type === 'timestamp'
+              "
               v-model="row.value"
               :step="row.type === 'float' ? 0.1 : 1"
               :precision="row.type === 'float' ? 6 : 0"
@@ -55,7 +66,12 @@
           </template>
           <template v-else>
             <strong>{{ formatValue(row.value, row.type) }}</strong>
-            <el-tag v-if="row.changed" type="warning" size="small" class="changed-tag">
+            <el-tag
+              v-if="row.changed"
+              type="warning"
+              size="small"
+              class="changed-tag"
+            >
               已变化
             </el-tag>
           </template>
@@ -73,10 +89,16 @@ const props = defineProps<{
   updatingIndex?: number | null;
 }>();
 const emit = defineEmits<{
-  (event: "update-value", payload: { index: number; value: string | number | boolean }): void;
+  (
+    event: "update-value",
+    payload: { index: number; value: string | number | boolean },
+  ): void;
 }>();
 function updateValue(row: GooseSubscriptionDataValue) {
-  if (props.editable && ["string", "number", "boolean"].includes(typeof row.value)) {
+  if (
+    props.editable &&
+    ["string", "number", "boolean"].includes(typeof row.value)
+  ) {
     emit("update-value", {
       index: row.index,
       value: row.value as string | number | boolean,
@@ -85,7 +107,10 @@ function updateValue(row: GooseSubscriptionDataValue) {
 }
 function formatValue(value: unknown, type?: string) {
   if (value === null || value === undefined) return "-";
-  if (type === "timestamp" && (typeof value === "number" || typeof value === "string")) {
+  if (
+    type === "timestamp" &&
+    (typeof value === "number" || typeof value === "string")
+  ) {
     return formatGooseTime(value);
   }
   return typeof value === "object" ? JSON.stringify(value) : String(value);
@@ -100,17 +125,17 @@ function rowClass({ row }: { row: GooseSubscriptionDataValue }) {
   min-height: 260px;
 }
 .ied-table {
-  --el-table-border-color: #eef2f6;
-  --el-table-header-bg-color: #cfd5dd;
-  --el-table-tr-bg-color: #d9dee5;
-  --el-table-row-hover-bg-color: #cbd8e6;
-  color: #151c24;
+  --el-table-border-color: var(--border-color);
+  --el-table-header-bg-color: var(--table-header-bg);
+  --el-table-tr-bg-color: var(--table-row-bg);
+  --el-table-row-hover-bg-color: var(--table-hover-bg);
+  color: var(--text-primary);
   font-size: 14px;
 }
 :deep(.el-table__header th) {
   height: 32px;
-  background: #c4cbd4 !important;
-  color: #101820;
+  background: var(--table-header-bg) !important;
+  color: var(--text-primary);
   font-weight: 600;
 }
 :deep(.el-table__row) {
@@ -131,7 +156,11 @@ function rowClass({ row }: { row: GooseSubscriptionDataValue }) {
 @keyframes changedFlash {
   0%,
   45% {
-    background: #fff1b8;
+    background: color-mix(
+      in srgb,
+      var(--color-warning) 28%,
+      var(--table-row-bg)
+    );
   }
   100% {
     background: transparent;

@@ -1,6 +1,9 @@
 <template>
   <div class="report-tree-table" v-loading="loading">
-    <el-empty v-if="!loading && treeItems.length === 0" :description="t('report.noData')" />
+    <el-empty
+      v-if="!loading && treeItems.length === 0"
+      :description="t('report.noData')"
+    />
     <el-table
       v-else
       :data="treeItems"
@@ -12,17 +15,28 @@
       :tree-props="{ children: 'children' }"
       class="ied-table"
     >
-      <el-table-column :label="t('report.treeName')" prop="label" min-width="260">
+      <el-table-column
+        :label="t('report.treeName')"
+        prop="label"
+        min-width="260"
+      >
         <template #default="{ row }">
           <span class="name-cell">
             <span class="node-badge" :class="`type-${row.node_type}`">
               {{ nodeBadge(row.node_type) }}
             </span>
-            <span class="node-label" :title="row.raw_ref || row.label">{{ row.label }}</span>
+            <span class="node-label" :title="row.raw_ref || row.label">{{
+              row.label
+            }}</span>
           </span>
         </template>
       </el-table-column>
-      <el-table-column :label="t('table.fc')" prop="fc" width="78" align="center">
+      <el-table-column
+        :label="t('table.fc')"
+        prop="fc"
+        width="78"
+        align="center"
+      >
         <template #default="{ row }">
           <span v-if="row.fc" class="fc-badge">{{ row.fc }}</span>
         </template>
@@ -46,8 +60,8 @@
 </template>
 
 <script setup lang="ts">
-import { useI18n } from 'vue-i18n';
-import type { ReportTreeNode } from '@/api/reportApi';
+import { useI18n } from "vue-i18n";
+import type { ReportTreeNode } from "@/api/reportApi";
 
 defineProps<{
   treeItems: ReportTreeNode[];
@@ -58,28 +72,30 @@ const { t } = useI18n();
 
 function nodeBadge(type: string): string {
   const map: Record<string, string> = {
-    ld: 'LD',
-    ln: 'LN',
-    do: 'DO',
-    da: 'DA',
-    bda: '',
-    group: '',
-    value: '',
+    ld: "LD",
+    ln: "LN",
+    do: "DO",
+    da: "DA",
+    bda: "",
+    group: "",
+    value: "",
   };
-  return map[type] ?? '';
+  return map[type] ?? "";
 }
 
-function reasonType(reason: string): 'success' | 'warning' | 'primary' | 'info' {
-  if (reason === 'gi') return 'success';
-  if (reason === 'data-change') return 'warning';
-  if (reason === 'integrity') return 'primary';
-  return 'info';
+function reasonType(
+  reason: string,
+): "success" | "warning" | "primary" | "info" {
+  if (reason === "gi") return "success";
+  if (reason === "data-change") return "warning";
+  if (reason === "integrity") return "primary";
+  return "info";
 }
 
 function formatValue(value: any): string {
-  if (value === null || value === undefined || value === '') return '';
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  if (typeof value === 'object') return JSON.stringify(value);
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
 </script>
@@ -91,18 +107,18 @@ function formatValue(value: any): string {
 }
 
 .ied-table {
-  --el-table-border-color: #eef2f6;
-  --el-table-header-bg-color: #cfd5dd;
-  --el-table-tr-bg-color: #d9dee5;
-  --el-table-row-hover-bg-color: #cbd8e6;
-  color: #151c24;
+  --el-table-border-color: var(--border-color);
+  --el-table-header-bg-color: var(--table-header-bg);
+  --el-table-tr-bg-color: var(--table-row-bg);
+  --el-table-row-hover-bg-color: var(--table-hover-bg);
+  color: var(--text-primary);
   font-size: 14px;
 }
 
 :deep(.el-table__header th) {
   height: 32px;
-  background: #c4cbd4 !important;
-  color: #101820;
+  background: var(--table-header-bg) !important;
+  color: var(--text-primary);
   font-weight: 600;
 }
 

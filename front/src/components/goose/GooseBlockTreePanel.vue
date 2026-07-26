@@ -171,23 +171,23 @@ function stateClass(block?: GooseBlockItem) {
   width: 330px;
   min-width: 280px;
   height: 100%;
-  border-right: 1px solid #d8dde5;
+  border-right: 1px solid var(--border-color);
   overflow-y: auto;
-  background: #f7f9fc;
+  background: var(--bg-subtle);
 }
 .tree-header {
   position: sticky;
   top: 0;
   z-index: 2;
   padding: 12px;
-  border-bottom: 1px solid #d8dde5;
-  background: #fff;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--panel-bg);
 }
 .batch-row {
   display: flex;
   justify-content: space-between;
   margin-top: 8px;
-  color: #687385;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .tree-node {
@@ -242,7 +242,7 @@ function stateClass(block?: GooseBlockItem) {
 }
 .enabled {
   font-weight: 700;
-  color: #1e5f42;
+  color: var(--color-success);
 }
 .message-count {
   margin-left: auto;
@@ -261,7 +261,7 @@ function stateClass(block?: GooseBlockItem) {
     width: 100%;
     max-height: 280px;
     border-right: 0;
-    border-bottom: 1px solid #d8dde5;
+    border-bottom: 1px solid var(--border-color);
   }
 }
 </style>

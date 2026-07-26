@@ -31,6 +31,61 @@ body,
   background-color: transparent !important;
 }
 
+/* 表格统一使用主题语义色，避免暗色页面中出现突兀的浅灰表格。 */
+.el-table {
+  --el-table-bg-color: var(--table-row-bg);
+  --el-table-tr-bg-color: var(--table-row-bg);
+  --el-table-header-bg-color: var(--table-header-bg);
+  --el-table-row-hover-bg-color: var(--table-hover-bg);
+  --el-table-current-row-bg-color: var(--item-active-bg);
+  --el-table-border-color: var(--border-color);
+  --el-table-header-text-color: var(--text-primary);
+  --el-table-text-color: var(--text-primary);
+  background-color: var(--table-row-bg);
+}
+
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background-color: var(--table-stripe-bg);
+}
+
+.el-card,
+.el-dialog,
+.el-drawer,
+.el-message-box,
+.el-popper,
+.el-dropdown-menu {
+  color: var(--text-primary);
+}
+
+body.theme-dark {
+  .el-card,
+  .el-dialog,
+  .el-drawer,
+  .el-message-box,
+  .el-popper,
+  .el-dropdown-menu,
+  .el-tabs,
+  .el-collapse-item__wrap,
+  .el-collapse-item__header {
+    background-color: var(--panel-bg);
+  }
+
+  .el-input__wrapper,
+  .el-select__wrapper,
+  .el-textarea__inner,
+  .el-input-number,
+  .el-date-editor {
+    background-color: var(--bg-subtle) !important;
+  }
+
+  .el-descriptions__body,
+  .el-descriptions__cell,
+  .el-empty,
+  .el-pagination {
+    color: var(--text-primary);
+  }
+}
+
 /* 统一按钮造型 */
 .el-button {
   border-radius: 8px;

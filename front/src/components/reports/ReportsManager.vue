@@ -688,7 +688,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #fff;
+  background: var(--panel-bg);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -698,12 +698,12 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid #d8dde5;
-  background: #fbfcfe;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-subtle);
 
   h3 {
     margin: 0;
-    color: #263241;
+    color: var(--text-primary);
     font-size: 16px;
     font-weight: 700;
   }
@@ -720,7 +720,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   padding-right: 12px;
-  border-right: 1px solid #d8dde5;
+  border-right: 1px solid var(--border-color);
 }
 
 .auto-refresh-label {
@@ -779,7 +779,7 @@ onBeforeUnmount(() => {
   grid-template-columns: 340px minmax(0, 1fr);
   height: 100%;
   min-height: 0;
-  border: 1px solid #d8dde5;
+  border: 1px solid var(--border-color);
 }
 
 .history-list {
@@ -798,9 +798,9 @@ onBeforeUnmount(() => {
   gap: 8px 16px;
   min-height: 34px;
   padding: 8px 10px;
-  border: 1px solid #d8dde5;
-  background: #f6f8fb;
-  color: #263241;
+  border: 1px solid var(--border-color);
+  background: var(--bg-muted);
+  color: var(--text-primary);
   font-size: 13px;
 }
 

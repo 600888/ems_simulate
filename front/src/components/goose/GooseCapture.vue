@@ -938,7 +938,7 @@ onUnmounted(() => {
   gap: 16px;
   margin-bottom: 12px;
   padding: 8px 12px;
-  background: #f5f7fa;
+  background: var(--bg-muted);
   border-radius: 4px;
   flex-wrap: wrap;
 
@@ -1065,7 +1065,7 @@ onUnmounted(() => {
   }
   .network-option-name {
     font-size: 13px;
-    color: #303133;
+    color: var(--text-primary);
     line-height: 1.3;
   }
   .network-option-mac {

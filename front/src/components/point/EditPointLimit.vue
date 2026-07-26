@@ -1,23 +1,33 @@
 <template>
   <div class="register">
     <div class="simple-title">
-      <span>{{ $t('register.limitSettings') }}</span>
+      <span>{{ $t("register.limitSettings") }}</span>
       <el-divider></el-divider>
     </div>
     <el-form label-width="auto" :model="pointLimit" @submit.native.prevent="">
-      <el-form-item :label="$t('register.maxValueLimit')" label-position="right" class="form-item">
+      <el-form-item
+        :label="$t('register.maxValueLimit')"
+        label-position="right"
+        class="form-item"
+      >
         <el-input v-model.number="pointLimit.maxValueLimit"></el-input>
       </el-form-item>
-      <el-form-item :label="$t('register.minValueLimit')" label-position="right" class="form-item">
+      <el-form-item
+        :label="$t('register.minValueLimit')"
+        label-position="right"
+        class="form-item"
+      >
         <el-input v-model.number="pointLimit.minValueLimit"></el-input>
       </el-form-item>
     </el-form>
     <el-row class="custom-row">
       <el-form-item class="custom-form-item">
-        <el-button type="primary" @click="editPointLimitValue">{{ $t('register.set') }}</el-button>
+        <el-button type="primary" @click="editPointLimitValue">{{
+          $t("register.set")
+        }}</el-button>
       </el-form-item>
       <el-form-item class="custom-form-item">
-        <el-button @click="reset">{{ $t('common.reset') }}</el-button>
+        <el-button @click="reset">{{ $t("common.reset") }}</el-button>
       </el-form-item>
     </el-row>
   </div>
@@ -36,7 +46,7 @@ const { t } = useI18n();
 const props = defineProps({
   deviceName: { type: String, required: true },
   pointCode: { type: String, required: true },
-  active: { type: Boolean, default: true }
+  active: { type: Boolean, default: true },
 });
 
 const pointLimit = ref<PointLimit>({
@@ -53,7 +63,7 @@ const reset = () => {
 const editPointLimitValue = async () => {
   if (pointLimit.value.minValueLimit > pointLimit.value.maxValueLimit) {
     ElMessage({
-      message: t('register.minLtMax'),
+      message: t("register.minLtMax"),
       type: "error",
     });
     return;
@@ -64,16 +74,16 @@ const editPointLimitValue = async () => {
       props.deviceName,
       props.pointCode,
       pointLimit.value.minValueLimit,
-      pointLimit.value.maxValueLimit
+      pointLimit.value.maxValueLimit,
     );
     if (isSuccess) {
       ElMessage({
-        message: t('register.editSuccess'),
+        message: t("register.editSuccess"),
         type: "success",
       });
     }
   } catch (error) {
-    console.error('Edit point limit failed:', error);
+    console.error("Edit point limit failed:", error);
   }
 };
 
@@ -83,11 +93,15 @@ const loadLimits = async () => {
   pointLimit.value.minValueLimit = limit.minValueLimit;
 };
 
-watch(() => props.active, (newVal) => {
-  if (newVal) {
-    loadLimits();
-  }
-}, { immediate: true });
+watch(
+  () => props.active,
+  (newVal) => {
+    if (newVal) {
+      loadLimits();
+    }
+  },
+  { immediate: true },
+);
 
 // 监听测点或设备变化，重新加载数据
 watch([() => props.deviceName, () => props.pointCode], () => {
@@ -103,10 +117,10 @@ watch([() => props.deviceName, () => props.pointCode], () => {
   padding: 16px;
   width: 340px;
   font-family: Arial, sans-serif;
-  background-color: white;
+  background-color: var(--panel-bg);
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--border-color);
 }
 
 .simple-title {

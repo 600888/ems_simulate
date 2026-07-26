@@ -18,7 +18,9 @@
                 v-for="item in availableIec104Types"
                 :key="item.type_id"
                 :label="
-                  locale === 'en-US' ? item.type_id : `${t(item.label)} (${item.type_id})`
+                  locale === 'en-US'
+                    ? item.type_id
+                    : `${t(item.label)} (${item.type_id})`
                 "
                 :value="item.type_id"
               />
@@ -55,7 +57,9 @@
                 :disabled="!isIec104Server"
                 label="无效(IV)"
               />
-              <span v-if="!isIec104Server" class="readonly-hint">（客户端只读）</span>
+              <span v-if="!isIec104Server" class="readonly-hint"
+                >（客户端只读）</span
+              >
             </div>
           </el-form-item>
         </el-col>
@@ -131,7 +135,10 @@ const loadIec104Info = async () => {
       iec104Form.frame_type = info.frame_type ?? 0;
       iec104Form.iec_type_id = info.iec_type_id ?? null;
       iec104Form.iec_quality = info.iec_quality ?? 0;
-      const qd = decodeIec104Quality(iec104Form.iec_quality, iec104Form.frame_type);
+      const qd = decodeIec104Quality(
+        iec104Form.iec_quality,
+        iec104Form.frame_type,
+      );
       qualityFlags.ov = qd.ov;
       qualityFlags.bl = qd.bl;
       qualityFlags.sb = qd.sb;
@@ -189,7 +196,10 @@ const loadIec104Quality = async () => {
     if (info) {
       iec104Form.frame_type = info.frame_type ?? 0;
       iec104Form.iec_quality = info.iec_quality ?? 0;
-      const qd = decodeIec104Quality(iec104Form.iec_quality, iec104Form.frame_type);
+      const qd = decodeIec104Quality(
+        iec104Form.iec_quality,
+        iec104Form.frame_type,
+      );
       qualityFlags.ov = qd.ov;
       qualityFlags.bl = qd.bl;
       qualityFlags.sb = qd.sb;
@@ -215,7 +225,7 @@ watch(
       stopRefresh();
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch([() => props.deviceName, () => props.pointCode], () => {
@@ -233,10 +243,10 @@ watch([() => props.deviceName, () => props.pointCode], () => {
   padding: 16px;
   width: 420px;
   font-family: Arial, sans-serif;
-  background-color: white;
+  background-color: var(--panel-bg);
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
 }

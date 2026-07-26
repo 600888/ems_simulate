@@ -119,7 +119,8 @@ const rcbRefSet = computed(() => new Set(rcbRefs.value));
 
 const selectAllModel = computed(
   () =>
-    (props.checkedRefs || []).length === rcbRefs.value.length && rcbRefs.value.length > 0
+    (props.checkedRefs || []).length === rcbRefs.value.length &&
+    rcbRefs.value.length > 0,
 );
 
 const isIndeterminate = computed(() => {
@@ -174,7 +175,7 @@ watch(
   () => props.selectedRef,
   (value) => {
     if (value) treeRef.value?.setCurrentKey(value);
-  }
+  },
 );
 
 function filterNode(value: string, data: RcbTreeNode): boolean {
@@ -215,13 +216,16 @@ const instanceOptions = computed<RcbInstanceOption[]>(() => {
     const suffixMatch = rcb.name.match(/^(.*?)(\d{2})$/);
     const baseName = suffixMatch?.[1] || rcb.name;
     const candidateIndex = suffixMatch ? Number(suffixMatch[2]) : 1;
-    const candidateGroup = [rcb.ld, rcb.ln, rcb.rcb_type, baseName].join("\u0000");
+    const candidateGroup = [rcb.ld, rcb.ln, rcb.rcb_type, baseName].join(
+      "\u0000",
+    );
     return {
       rcb,
       candidateIndex,
       candidateGroup,
       hasInstanceSuffix: !!suffixMatch && candidateIndex > 0,
-      matchesReportId: !!suffixMatch && getReportIdName(rcb.rpt_id || "") === baseName,
+      matchesReportId:
+        !!suffixMatch && getReportIdName(rcb.rpt_id || "") === baseName,
     };
   });
 
@@ -229,7 +233,7 @@ const instanceOptions = computed<RcbInstanceOption[]>(() => {
   for (const candidate of candidates) {
     candidateGroupSizes.set(
       candidate.candidateGroup,
-      (candidateGroupSizes.get(candidate.candidateGroup) || 0) + 1
+      (candidateGroupSizes.get(candidate.candidateGroup) || 0) + 1,
     );
   }
 
@@ -254,7 +258,7 @@ const selectedInstanceIndex = computed<number | undefined>(() => {
   const checkedRefs = props.checkedRefs || [];
   if (checkedRefs.length === 0) return undefined;
   return instanceOptions.value.find((option) =>
-    isSameRefSelection(option.refs, checkedRefs)
+    isSameRefSelection(option.refs, checkedRefs),
   )?.index;
 });
 
@@ -271,7 +275,7 @@ function isSameRefSelection(left: string[], right: string[]): boolean {
 function hasSameCheckedRefs(refs: string[]): boolean {
   if (!treeRef.value) return false;
   const currentRefs = getRcbKeys(
-    treeRef.value.getCheckedKeys(false) as Array<string | number>
+    treeRef.value.getCheckedKeys(false) as Array<string | number>,
   );
   return isSameRefSelection(currentRefs, refs);
 }
@@ -302,7 +306,8 @@ function handleSelectAllChange(value: boolean) {
 }
 
 function handleInstanceSelect(index?: number) {
-  const refs = instanceOptions.value.find((option) => option.index === index)?.refs || [];
+  const refs =
+    instanceOptions.value.find((option) => option.index === index)?.refs || [];
   syncTreeCheckedRefs(refs);
   emit("update:checkedRefs", [...refs]);
 }
@@ -313,8 +318,8 @@ function handleInstanceSelect(index?: number) {
   width: 320px;
   min-width: 320px;
   min-height: 0;
-  border-right: 1px solid #d8dde5;
-  background: #f7f9fc;
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-subtle);
   padding: 10px;
   overflow: auto;
 }
@@ -375,7 +380,7 @@ function handleInstanceSelect(index?: number) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #263241;
+  color: var(--text-primary);
 }
 
 .rcb-label.is-enabled {
@@ -437,7 +442,7 @@ function handleInstanceSelect(index?: number) {
     min-width: 0;
     max-height: 220px;
     border-right: none;
-    border-bottom: 1px solid #d8dde5;
+    border-bottom: 1px solid var(--border-color);
   }
 }
 </style>

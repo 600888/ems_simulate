@@ -310,7 +310,7 @@ const handleClose = () => {
 }
 
 .preview-list {
-  background: #f5f7fa;
+  background: var(--bg-subtle);
   border-radius: 8px;
   padding: 12px;
   max-height: 200px;
@@ -323,7 +323,7 @@ const handleClose = () => {
   justify-content: space-between;
   align-items: center;
   padding: 6px 0;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--border-color);
 
   &:last-child {
     border-bottom: none;
@@ -366,7 +366,7 @@ const handleClose = () => {
 
   .el-dialog__header {
     padding: 20px 24px 16px;
-    border-bottom: 1px solid #ebeef5;
+    border-bottom: 1px solid var(--border-color);
     margin-right: 0;
 
     .el-dialog__title {
@@ -382,7 +382,7 @@ const handleClose = () => {
 
   .el-dialog__footer {
     padding: 16px 24px 20px;
-    border-top: 1px solid #ebeef5;
+    border-top: 1px solid var(--border-color);
   }
 }
 </style>

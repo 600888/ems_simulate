@@ -723,19 +723,19 @@ onUnmounted(() => {
   height: 100%;
   overflow: hidden;
   border-radius: 4px;
-  background: #fff;
+  background: var(--panel-bg);
 }
 .manager-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid #d8dde5;
-  background: #fbfcfe;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-subtle);
 }
 .manager-header h3 {
   margin: 0;
-  color: #263241;
+  color: var(--text-primary);
   font-size: 16px;
   font-weight: 700;
 }
@@ -788,8 +788,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px 18px;
   padding: 9px 11px;
-  border: 1px solid #d8dde5;
-  background: #f6f8fb;
+  border: 1px solid var(--border-color);
+  background: var(--bg-muted);
   font-size: 13px;
 }
 .history-pane {
