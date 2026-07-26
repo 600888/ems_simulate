@@ -1650,7 +1650,10 @@ import {
 import { modelingApi, type CdcTemplate } from "@/api/modelingApi";
 import DataSetMemberSelector from "@/components/modeling/DataSetMemberSelector.vue";
 import DataSetMemberHierarchy from "@/components/modeling/DataSetMemberHierarchy.vue";
-import { createModelingFormSnapshot } from "@/utils/modelingFormSnapshot";
+import {
+  createModelingFormSnapshot,
+  normalizeModelingFormAttributes,
+} from "@/utils/modelingFormSnapshot";
 import type {
   DeleteImpact,
   LNodeDoTemplatePreview,
@@ -2340,7 +2343,10 @@ async function selectNode(data: ModelNode) {
   }
   cdcAssistant.conflicts = [];
   propertyForm.name = detail.name;
-  propertyForm.attributes = structuredClone(toRaw(detail.attributes || {}));
+  propertyForm.attributes = normalizeModelingFormAttributes(
+    structuredClone(toRaw(detail.attributes || {})),
+    schema.fields,
+  );
   propertyForm.revision = detail.revision;
   // Element Plus controls normalize some initially missing values while they
   // mount (for example undefined switch/number values). Capture the baseline
@@ -2384,8 +2390,9 @@ function focusChildRow(row: ModelNode) {
 async function resetForm() {
   if (!selectedNode.value) return;
   propertyForm.name = selectedNode.value.name;
-  propertyForm.attributes = structuredClone(
-    toRaw(selectedNode.value.attributes || {}),
+  propertyForm.attributes = normalizeModelingFormAttributes(
+    structuredClone(toRaw(selectedNode.value.attributes || {})),
+    selectedNode.value.schema?.fields || [],
   );
   await nextTick();
   savedSnapshot.value = createFormSnapshot();

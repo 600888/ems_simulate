@@ -13,19 +13,33 @@ function normalizeFieldValue(field: NodeFieldSchema, value: unknown): unknown {
       if (normalized === "false" || normalized === "0" || normalized === "")
         return false;
     }
-    return value == null ? false : value;
+    return value === true || value === 1;
   }
 
   if (field.component === "number") {
     if (value == null || value === "") return null;
-    if (typeof value === "string") {
-      const normalized = Number(value);
-      if (Number.isFinite(normalized)) return normalized;
-    }
-    return value;
+    const normalized = Number(value);
+    return Number.isFinite(normalized) ? normalized : null;
   }
 
   return value == null ? "" : value;
+}
+
+/**
+ * Convert persisted SCL attribute strings into the value types expected by
+ * Element Plus before controls mount. In particular, el-switch treats the
+ * string "true" as an invalid value and emits false during setup.
+ */
+export function normalizeModelingFormAttributes(
+  attributes: Record<string, unknown>,
+  fields: NodeFieldSchema[],
+): Record<string, unknown> {
+  const normalized = { ...attributes };
+  for (const field of fields) {
+    if (field.key === "name" || !(field.key in normalized)) continue;
+    normalized[field.key] = normalizeFieldValue(field, normalized[field.key]);
+  }
+  return normalized;
 }
 
 /**

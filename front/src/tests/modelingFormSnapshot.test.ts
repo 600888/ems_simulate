@@ -1,4 +1,7 @@
-import { createModelingFormSnapshot } from "@/utils/modelingFormSnapshot";
+import {
+  createModelingFormSnapshot,
+  normalizeModelingFormAttributes,
+} from "@/utils/modelingFormSnapshot";
 import type { NodeFieldSchema } from "@/types/modeling";
 
 const fields: NodeFieldSchema[] = [
@@ -44,6 +47,25 @@ describe("modeling property form snapshot", () => {
 
     expect(unchanged).toBe(imported);
     expect(changed).not.toBe(imported);
+  });
+
+  it("normalizes imported values before Element Plus controls mount", () => {
+    const attributes = normalizeModelingFormAttributes(
+      {
+        modify: "true",
+        max: "34",
+        desc: null,
+        vendorExtension: "preserved",
+      },
+      fields,
+    );
+
+    expect(attributes).toEqual({
+      modify: true,
+      max: 34,
+      desc: "",
+      vendorExtension: "preserved",
+    });
   });
 
   it("does not mutate the form while filling missing control defaults", () => {
