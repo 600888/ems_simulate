@@ -1,6 +1,7 @@
 import { instance } from "@/api/http";
 import type {
   DeleteImpact,
+  DataSetMemberDiscovery,
   ModelNode,
   ModelProject,
   ModelVersion,
@@ -254,7 +255,16 @@ export const modelingApi = {
     );
   },
 
-  async getTree(projectId: string, compact = false) {
+  async getTree(
+    projectId: string,
+    compact = false,
+    options: {
+      maxDepth?: number;
+      focusId?: string;
+      keyword?: string;
+      kind?: string;
+    } = {},
+  ) {
     // Axios' default JSON transform runs JSON.parse on the UI thread. A large
     // SCL tree can keep the WebView event loop busy long enough for Windows to
     // mark the window as unresponsive, so transfer it as text and parse it in
@@ -262,7 +272,13 @@ export const modelingApi = {
     const response = await instance.get<string>(
       `/api/modeling/projects/${projectId}/tree`,
       {
-        params: compact ? { compact: true } : undefined,
+        params: {
+          ...(compact ? { compact: true } : {}),
+          ...(options.maxDepth != null ? { max_depth: options.maxDepth } : {}),
+          ...(options.focusId ? { focus_id: options.focusId } : {}),
+          ...(options.keyword ? { keyword: options.keyword } : {}),
+          ...(options.kind ? { kind: options.kind } : {}),
+        },
         responseType: "text",
         transformResponse: [(data) => data],
       },
@@ -285,6 +301,17 @@ export const modelingApi = {
         },
       ),
     );
+  },
+
+  async getTreeKinds(projectId: string) {
+    return unwrap<
+      Array<{
+        kind: string;
+        label: string;
+        count: number;
+        lossy_count: number;
+      }>
+    >(await instance.get(`/api/modeling/projects/${projectId}/tree-kinds`));
   },
 
   async createNode(
@@ -342,6 +369,62 @@ export const modelingApi = {
         {
           template_id: templateId,
         },
+      ),
+    );
+  },
+
+  async getDataSetMemberCandidates(projectId: string, dataSetId: string) {
+    const response = await instance.get<string>(
+      `/api/modeling/projects/${projectId}/datasets/${dataSetId}/member-candidates`,
+      {
+        responseType: "text",
+        transformResponse: [(data) => data],
+      },
+    );
+    const envelope = await parseJsonOffMainThread<
+      ApiEnvelope<DataSetMemberDiscovery>
+    >(response.data);
+    if (envelope.code !== 200) {
+      throw new Error(envelope.message || "DataSet 候选成员加载失败");
+    }
+    return envelope.data;
+  },
+
+  async createDataSetMembers(
+    projectId: string,
+    dataSetId: string,
+    candidateIds: string[],
+    orderedCandidateIds?: string[],
+  ) {
+    return unwrap<{
+      dataset_id: string;
+      created: ModelNode[];
+      created_count: number;
+      skipped_count: number;
+      skipped_candidate_ids: string[];
+      reordered_count: number;
+      project_revision: number;
+    }>(
+      await instance.post(
+        `/api/modeling/projects/${projectId}/datasets/${dataSetId}/members`,
+        {
+          candidate_ids: candidateIds,
+          ordered_candidate_ids: orderedCandidateIds,
+        },
+      ),
+    );
+  },
+
+  async repairDataSetMember(
+    projectId: string,
+    dataSetId: string,
+    fcdaId: string,
+    candidateId: string,
+  ) {
+    return unwrap<ModelNode>(
+      await instance.patch(
+        `/api/modeling/projects/${projectId}/datasets/${dataSetId}/members/${fcdaId}`,
+        { candidate_id: candidateId },
       ),
     );
   },

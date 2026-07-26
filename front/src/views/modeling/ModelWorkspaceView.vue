@@ -83,7 +83,16 @@
       </div>
     </header>
 
+    <DataSetMemberSelector
+      v-if="selectedNode?.kind === 'DATASET'"
+      v-model="datasetSelectorVisible"
+      :project-id="projectId"
+      :data-set="selectedNode"
+      @changed="handleDataSetMembersChanged"
+    />
+
     <div
+      v-show="!datasetSelectorVisible"
       ref="workspaceGridRef"
       class="workspace-grid"
       :class="{ 'is-resizing': resizingPanel !== null }"
@@ -141,7 +150,11 @@
             />
           </el-select>
         </div>
-        <div ref="treeViewportRef" class="tree-scroll">
+        <div
+          ref="treeViewportRef"
+          v-loading="treeFiltering"
+          class="tree-scroll"
+        >
           <el-tree-v2
             ref="treeRef"
             :data="treeData"
@@ -154,9 +167,18 @@
             :expand-on-click-node="false"
             :filter-method="filterTreeNode"
             @node-click="selectNode"
+            @node-expand="handleTreeNodeExpand"
           >
             <template #default="{ data }">
               <div
+                v-if="isTreeLoadingPlaceholder(data)"
+                class="tree-node tree-node-loading"
+              >
+                <span class="tree-loading-dot"></span>
+                <span class="tree-label">加载中...</span>
+              </div>
+              <div
+                v-else
                 class="tree-node"
                 :class="[
                   `kind-${data.kind.toLowerCase()}`,
@@ -325,90 +347,123 @@
             />
           </section>
 
+          <section
+            v-if="selectedNode.kind === 'DATASET'"
+            class="dataset-assistant"
+          >
+            <div>
+              <strong
+                ><el-icon><CollectionTag /></el-icon>DataSet 成员配置</strong
+              >
+              <p>
+                从已完成的 DataModel 按 DO 整组或 DA 精确两种粒度批量选择，
+                系统自动填写 ldInst、LN、DO、DA 和 FC，并在写入前去重与校验。
+              </p>
+            </div>
+            <el-button
+              type="primary"
+              :disabled="dirty"
+              @click="datasetSelectorVisible = true"
+            >
+              批量选择成员
+            </el-button>
+          </section>
+
           <el-tabs v-model="contentTab" class="content-tabs">
             <el-tab-pane
-              :label="`子节点 ${selectedNode.children?.length || 0}`"
+              :label="
+                selectedNode.kind === 'DATASET'
+                  ? `成员层级 ${selectedNode.children?.length || 0}`
+                  : `子节点 ${selectedNode.children?.length || 0}`
+              "
               name="children"
             >
-              <el-table
-                v-if="selectedNode.children?.length"
-                :data="pagedChildNodes"
-                :height="childTableHeight"
-                row-key="id"
-                highlight-current-row
-                class="children-table"
-                @row-click="focusChildRow"
-              >
-                <el-table-column label="名称" min-width="150">
-                  <template #default="{ row }">
-                    <div class="table-node-name">
-                      <span class="node-mini">{{ nodeAbbr(row.kind) }}</span
-                      ><strong>{{ row.name }}</strong>
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column
-                  prop="kind_label"
-                  label="类型"
-                  min-width="105"
-                />
-                <el-table-column label="CDC" width="72"
-                  ><template #default="{ row }">{{
-                    attributeValue(row, ["cdc"]) || "—"
-                  }}</template></el-table-column
+              <DataSetMemberHierarchy
+                v-if="selectedNode.kind === 'DATASET'"
+                :members="selectedNode.children || []"
+                @select="focusChildRow"
+              />
+              <template v-else>
+                <el-table
+                  v-if="selectedNode.children?.length"
+                  :data="pagedChildNodes"
+                  :height="childTableHeight"
+                  row-key="id"
+                  highlight-current-row
+                  class="children-table"
+                  @row-click="focusChildRow"
                 >
-                <el-table-column label="FC" width="64"
-                  ><template #default="{ row }">{{
-                    attributeValue(row, ["fc"]) || "—"
-                  }}</template></el-table-column
-                >
-                <el-table-column
-                  label="描述"
-                  min-width="150"
-                  show-overflow-tooltip
-                  ><template #default="{ row }">{{
-                    attributeValue(row, ["desc", "description"]) || "—"
-                  }}</template></el-table-column
-                >
-                <el-table-column label="状态" width="86">
-                  <template #default="{ row }"
-                    ><span
-                      class="node-status"
-                      :class="childStatus(row).toLowerCase()"
-                      ><span></span>{{ statusText(childStatus(row)) }}</span
-                    ></template
+                  <el-table-column label="名称" min-width="150">
+                    <template #default="{ row }">
+                      <div class="table-node-name">
+                        <span class="node-mini">{{ nodeAbbr(row.kind) }}</span
+                        ><strong>{{ row.name }}</strong>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column
+                    prop="kind_label"
+                    label="类型"
+                    min-width="105"
+                  />
+                  <el-table-column label="CDC" width="72"
+                    ><template #default="{ row }">{{
+                      attributeValue(row, ["cdc"]) || "—"
+                    }}</template></el-table-column
                   >
-                </el-table-column>
-              </el-table>
-              <el-empty
-                v-else
-                :image-size="72"
-                description="当前节点还没有下级内容"
-              >
-                <el-button
-                  v-if="canAdd"
-                  type="primary"
-                  @click="openAddDialog('single')"
-                  ><el-icon><Plus /></el-icon>添加第一个子节点</el-button
+                  <el-table-column label="FC" width="64"
+                    ><template #default="{ row }">{{
+                      attributeValue(row, ["fc"]) || "—"
+                    }}</template></el-table-column
+                  >
+                  <el-table-column
+                    label="描述"
+                    min-width="150"
+                    show-overflow-tooltip
+                    ><template #default="{ row }">{{
+                      attributeValue(row, ["desc", "description"]) || "—"
+                    }}</template></el-table-column
+                  >
+                  <el-table-column label="状态" width="86">
+                    <template #default="{ row }"
+                      ><span
+                        class="node-status"
+                        :class="childStatus(row).toLowerCase()"
+                        ><span></span>{{ statusText(childStatus(row)) }}</span
+                      ></template
+                    >
+                  </el-table-column>
+                </el-table>
+                <el-empty
+                  v-else
+                  :image-size="72"
+                  description="当前节点还没有下级内容"
                 >
-              </el-empty>
-              <div
-                v-if="(selectedNode.children?.length || 0) > CHILD_PAGE_SIZE"
-                class="children-pagination"
-              >
-                <span
-                  >共 {{ selectedNode.children?.length || 0 }} 个子节点</span
+                  <el-button
+                    v-if="canAdd"
+                    type="primary"
+                    @click="openAddDialog('single')"
+                    ><el-icon><Plus /></el-icon>添加第一个子节点</el-button
+                  >
+                </el-empty>
+                <div
+                  v-if="(selectedNode.children?.length || 0) > CHILD_PAGE_SIZE"
+                  class="children-pagination"
                 >
-                <el-pagination
-                  v-model:current-page="childPage"
-                  small
-                  background
-                  layout="prev, pager, next"
-                  :page-size="CHILD_PAGE_SIZE"
-                  :total="selectedNode.children?.length || 0"
-                  :pager-count="5"
-                />
-              </div>
+                  <span
+                    >共 {{ selectedNode.children?.length || 0 }} 个子节点</span
+                  >
+                  <el-pagination
+                    v-model:current-page="childPage"
+                    small
+                    background
+                    layout="prev, pager, next"
+                    :page-size="CHILD_PAGE_SIZE"
+                    :total="selectedNode.children?.length || 0"
+                    :pager-count="5"
+                  />
+                </div>
+              </template>
             </el-tab-pane>
 
             <el-tab-pane
@@ -510,12 +565,18 @@
           <div class="context-actions">
             <div>
               <el-button
-                type="primary"
+                :type="selectedNode.kind === 'DATASET' ? 'default' : 'primary'"
                 :disabled="!canAdd"
                 @click="openAddDialog('single')"
-                ><el-icon><Plus /></el-icon>{{ addActionLabel }}</el-button
+                ><el-icon><Plus /></el-icon
+                >{{
+                  selectedNode.kind === "DATASET"
+                    ? "手动添加 FCDA"
+                    : addActionLabel
+                }}</el-button
               >
               <el-button
+                v-if="selectedNode.kind !== 'DATASET'"
                 :disabled="!canBatchAdd"
                 @click="openAddDialog('batch')"
                 >批量添加</el-button
@@ -652,7 +713,11 @@
       </aside>
     </div>
 
-    <section class="validation-bar" :class="{ expanded: validationExpanded }">
+    <section
+      v-show="!datasetSelectorVisible"
+      class="validation-bar"
+      :class="{ expanded: validationExpanded }"
+    >
       <button
         class="validation-summary"
         @click="validationExpanded = !validationExpanded"
@@ -1043,6 +1108,8 @@ import {
   View,
 } from "@element-plus/icons-vue";
 import { modelingApi, type CdcTemplate } from "@/api/modelingApi";
+import DataSetMemberSelector from "@/components/modeling/DataSetMemberSelector.vue";
+import DataSetMemberHierarchy from "@/components/modeling/DataSetMemberHierarchy.vue";
 import { createModelingFormSnapshot } from "@/utils/modelingFormSnapshot";
 import type {
   DeleteImpact,
@@ -1058,6 +1125,7 @@ const router = useRouter();
 const initialLoading = ref(true);
 const saving = ref(false);
 const validating = ref(false);
+const datasetSelectorVisible = ref(false);
 const project = ref<ModelProject>();
 // Large imported models can contain tens of thousands of nodes. Keeping the
 // tree shallow avoids Vue recursively proxying every node during assignment.
@@ -1072,6 +1140,7 @@ const treeProps = {
   label: "name",
   value: "id",
 };
+const TREE_LOADING_KIND = "__TREE_LOADING__";
 let treeResizeObserver: ResizeObserver | undefined;
 const workspaceGridRef = ref<HTMLElement>();
 const LEFT_PANEL_DEFAULT_WIDTH = 300;
@@ -1202,11 +1271,15 @@ const treeKindLabels = new Map<string, string>();
 const treeKinds = shallowRef<string[]>([]);
 const defaultExpandedKeys = shallowRef<string[]>([]);
 const extensionStats = reactive({ total: 0, lossy: 0 });
+let treeSummaryLoaded = false;
 const nodeSchemaCache = new Map<string, NonNullable<ModelNode["schema"]>>();
 const nodeDetailCache = new Map<string, ModelNode>();
+const nodeDetailRequests = new Map<string, Promise<ModelNode>>();
 let nodeSelectionRequest = 0;
 const treeKeyword = ref("");
 const treeTypeFilter = ref("");
+const treeFiltering = ref(false);
+let treeFilterRequest = 0;
 const contentTab = ref("children");
 const CHILD_PAGE_SIZE = 100;
 const childPage = ref(1);
@@ -1316,6 +1389,7 @@ const singletonChildKinds = new Set([
   "OPT_FIELDS",
   "RPT_ENABLED",
   "SETTING_CONTROL",
+  "SMV_OPTS",
 ]);
 const availableChildOptions = computed(() => {
   const children = selectedNode.value?.children || [];
@@ -1377,10 +1451,9 @@ const addActionLabel = computed(() => {
 watch(
   [treeKeyword, treeTypeFilter],
   ([keyword, kind], _previous, onCleanup) => {
-    const timer = window.setTimeout(
-      () => treeRef.value?.filter(`${keyword}\u0000${kind}`),
-      200,
-    );
+    const timer = window.setTimeout(() => {
+      void loadFilteredTree(keyword, kind);
+    }, 250);
     onCleanup(() => window.clearTimeout(timer));
   },
 );
@@ -1401,8 +1474,13 @@ async function loadProject() {
 }
 
 async function loadTree(selectId?: string) {
-  const nodes = await modelingApi.getTree(props.projectId, true);
+  const nodes = await modelingApi.getTree(props.projectId, true, {
+    maxDepth: 1,
+    focusId: selectId,
+  });
   nodeDetailCache.clear();
+  nodeDetailRequests.clear();
+  prepareLazyTree(nodes);
   await rebuildTreeMetadata(nodes);
   const rootId = nodes[0]?.id;
   defaultExpandedKeys.value = rootId ? [rootId] : [];
@@ -1414,6 +1492,107 @@ async function loadTree(selectId?: string) {
   if (target) await focusNode(target);
 }
 
+async function loadFilteredTree(keyword: string, kind: string) {
+  const requestId = ++treeFilterRequest;
+  treeFiltering.value = true;
+  try {
+    const nodes = await modelingApi.getTree(props.projectId, true, {
+      maxDepth: 1,
+      keyword: keyword.trim(),
+      kind,
+    });
+    if (requestId !== treeFilterRequest) return;
+    prepareLazyTree(nodes);
+    await rebuildTreeMetadata(nodes);
+    treeData.value = nodes;
+    defaultExpandedKeys.value =
+      keyword.trim() || kind
+        ? Array.from(treeNodeIndex.keys())
+        : nodes[0]?.id
+          ? [nodes[0].id]
+          : [];
+  } finally {
+    if (requestId === treeFilterRequest) treeFiltering.value = false;
+  }
+}
+
+function isTreeLoadingPlaceholder(node: ModelNode) {
+  return node.kind === TREE_LOADING_KIND;
+}
+
+function createTreeLoadingPlaceholder(parentId: string): ModelNode {
+  return {
+    id: `${TREE_LOADING_KIND}:${parentId}`,
+    project_id: props.projectId,
+    parent_id: parentId,
+    kind: TREE_LOADING_KIND,
+    kind_label: "",
+    name: "",
+    label: "",
+    sort_order: 0,
+    attributes: {},
+    revision: 0,
+    child_count: 0,
+    protected: true,
+  };
+}
+
+function prepareLazyTree(nodes: ModelNode[]) {
+  const stack = [...nodes];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (isTreeLoadingPlaceholder(node)) continue;
+    if (node.children?.length) {
+      stack.push(...node.children);
+      if (node.children_partial) {
+        node.children.push(createTreeLoadingPlaceholder(node.id));
+      }
+    } else if (node.child_count > 0) {
+      node.children = [createTreeLoadingPlaceholder(node.id)];
+    }
+  }
+}
+
+function replaceDisplayedChildren(nodeId: string, children: ModelNode[]) {
+  const displayed = treeRef.value?.getNode(nodeId)?.data as
+    ModelNode | undefined;
+  if (!displayed) return;
+  prepareLazyTree(children);
+  displayed.children = children;
+  treeData.value = [...treeData.value];
+}
+
+function loadNodeDetail(node: ModelNode) {
+  const cached = nodeDetailCache.get(node.id);
+  if (cached) return Promise.resolve(cached);
+  const active = nodeDetailRequests.get(node.id);
+  if (active) return active;
+  const request = modelingApi
+    .getNode(props.projectId, node.id, true)
+    .then((detail) => {
+      nodeDetailCache.set(node.id, detail);
+      for (const child of detail.children || []) {
+        treeNodeIndex.set(child.id, child);
+      }
+      return detail;
+    })
+    .finally(() => nodeDetailRequests.delete(node.id));
+  nodeDetailRequests.set(node.id, request);
+  return request;
+}
+
+async function handleTreeNodeExpand(data: ModelNode) {
+  if (
+    isTreeLoadingPlaceholder(data) ||
+    data.child_count === 0 ||
+    !data.children?.some(isTreeLoadingPlaceholder)
+  ) {
+    return;
+  }
+  const detail = await loadNodeDetail(data);
+  replaceDisplayedChildren(data.id, detail.children || []);
+}
+
 function yieldToBrowser() {
   return new Promise<void>((resolve) =>
     window.requestAnimationFrame(() => resolve()),
@@ -1422,18 +1601,20 @@ function yieldToBrowser() {
 
 async function rebuildTreeMetadata(nodes: ModelNode[]) {
   treeNodeIndex.clear();
-  treeKindLabels.clear();
-  extensionStats.total = 0;
-  extensionStats.lossy = 0;
+  if (!treeSummaryLoaded) {
+    extensionStats.total = 0;
+    extensionStats.lossy = 0;
+  }
   const stack = [...nodes];
   let processed = 0;
   while (stack.length) {
     const node = stack.pop()!;
+    if (isTreeLoadingPlaceholder(node)) continue;
     treeNodeIndex.set(node.id, node);
     if (node.kind_label && !treeKindLabels.has(node.kind)) {
       treeKindLabels.set(node.kind, node.kind_label);
     }
-    if (node.kind === "EXTENSION") {
+    if (!treeSummaryLoaded && node.kind === "EXTENSION") {
       extensionStats.total += 1;
       if (isTruthyFlag(node.attributes?.lossRisk)) extensionStats.lossy += 1;
     }
@@ -1444,11 +1625,23 @@ async function rebuildTreeMetadata(nodes: ModelNode[]) {
   treeKinds.value = Array.from(treeKindLabels.keys()).sort();
 }
 
+async function loadTreeKinds() {
+  const kinds = await modelingApi.getTreeKinds(props.projectId);
+  for (const item of kinds) treeKindLabels.set(item.kind, item.label);
+  treeKinds.value = kinds.map((item) => item.kind);
+  const extensions = kinds.find((item) => item.kind === "EXTENSION");
+  extensionStats.total = extensions?.count || 0;
+  extensionStats.lossy = extensions?.lossy_count || 0;
+  treeSummaryLoaded = true;
+}
+
 function isTruthyFlag(value: unknown) {
   return value === true || value === 1 || value === "1" || value === "true";
 }
 
 async function selectNode(data: ModelNode) {
+  if (isTreeLoadingPlaceholder(data)) return;
+  data = treeNodeIndex.get(data.id) || data;
   if (dirty.value && selectedNode.value?.id !== data.id) {
     ElMessage.warning("请先保存或撤销右侧未保存的属性修改");
     await nextTick();
@@ -1458,11 +1651,9 @@ async function selectNode(data: ModelNode) {
   const requestId = ++nodeSelectionRequest;
   let detail = data;
   if (!data.detail_loaded) {
-    const cached = nodeDetailCache.get(data.id);
-    detail =
-      cached || (await modelingApi.getNode(props.projectId, data.id, true));
-    nodeDetailCache.set(data.id, detail);
+    detail = await loadNodeDetail(data);
     if (requestId !== nodeSelectionRequest) return;
+    replaceDisplayedChildren(detail.id, detail.children || []);
   }
   let schema = detail.schema || nodeSchemaCache.get(detail.kind);
   if (!schema) {
@@ -1557,6 +1748,11 @@ async function saveNode() {
   }
 }
 
+async function handleDataSetMembersChanged(dataSetId: string) {
+  validationResult.value = undefined;
+  await Promise.all([loadProject(), loadTree(dataSetId)]);
+}
+
 async function applyCdcTemplate(templateId: string) {
   if (!selectedNode.value || selectedNode.value.kind !== "DO_TYPE") return;
   if (dirty.value)
@@ -1611,6 +1807,8 @@ function defaultName(kind: string) {
     RPT_ENABLED: "RptEnabled",
     CLIENT_LN: "ClientLN1",
     GSE_CONTROL: "Goose1",
+    SAMPLED_VALUE_CONTROL: "Smv1",
+    SMV_OPTS: "SmvOpts",
     SETTING_CONTROL: "SettingControl",
     INPUTS: "Inputs",
     FCDA: "FCDA1",
@@ -1731,6 +1929,26 @@ function defaultAttributes(
     };
   if (kind === "RPT_ENABLED") return { max: 1 };
   if (kind === "GSE_CONTROL") return { datSet: "", appID: name, confRev: 1 };
+  if (kind === "SAMPLED_VALUE_CONTROL")
+    return {
+      datSet: "",
+      smvID: name,
+      confRev: 1,
+      smpRate: 4000,
+      nofASDU: 1,
+      multicast: true,
+      securityEnable: "None",
+    };
+  if (kind === "SMV_OPTS")
+    return {
+      refreshTime: false,
+      sampleSynchronized: true,
+      sampleRate: true,
+      dataSet: true,
+      security: false,
+      timestamp: false,
+      synchSourceId: false,
+    };
   if (kind === "SETTING_CONTROL") return { actSG: 1, numOfSGs: 1 };
   if (kind === "SERVICE_CAPABILITY") return { tag: name };
   if (kind === "VAL") return { value: "" };
@@ -1818,6 +2036,8 @@ const treeNodeIcons: Record<string, Component> = {
   DATASET: SetUp,
   REPORT_CONTROL: Bell,
   GSE_CONTROL: Promotion,
+  SAMPLED_VALUE_CONTROL: DataLine,
+  SMV_OPTS: SetUp,
   INPUTS: Download,
   FCDA: Link,
   EXT_REF: Share,
@@ -1858,6 +2078,8 @@ function nodeKindShort(kind: string) {
         DATASET: "DS",
         REPORT_CONTROL: "RCB",
         GSE_CONTROL: "GCB",
+        SAMPLED_VALUE_CONTROL: "SVCB",
+        SMV_OPTS: "OPT",
         INPUTS: "IN",
         FCDA: "FCDA",
         EXT_REF: "EXT",
@@ -1926,13 +2148,13 @@ function operationHint(kind: string) {
   return (
     (
       {
-        ROOT: "通常先完善 IED 结构，再维护 DataTypeTemplates；通信配置可在需要生成 SCD 时补充。",
+        ROOT: "建议先选择标准配置档并完善类型模板，再实例化 IED；Communication 可在生成 CID 时补充。",
         IED: "一个 IED 可以包含多个 AccessPoint。现场常见装置可从一个 AP1 开始。",
         LDEVICE:
           "LLN0 已自动创建。请按装置功能添加 PTOC、XCBR、MMXU 等逻辑节点。",
         LN0: "报告与 GOOSE 控制块应先创建 DataSet，再填写 datSet 引用。",
         DATA_TYPE_TEMPLATES:
-          "建议先创建 LNodeType，并通过 DOType、DAType、EnumType 补齐类型链。",
+          "按依赖关系维护 EnumType/DAType、DOType、LNodeType；引用字段会提供当前工程中的可选目标。",
       } as Record<string, string>
     )[kind] ||
     "使用左下角“添加子节点”，右侧保存属性；删除前系统会先展示影响范围。"
@@ -2148,6 +2370,7 @@ onMounted(async () => {
         await selectNode(selectedNode.value);
     })
     .catch(() => undefined);
+  void loadTreeKinds().catch(() => undefined);
 });
 </script>
 
@@ -2423,6 +2646,27 @@ onMounted(async () => {
   gap: 8px;
   padding-right: 7px;
 }
+.tree-node-loading {
+  color: var(--text-secondary);
+}
+.tree-loading-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  animation: tree-loading-pulse 0.8s ease-in-out infinite alternate;
+}
+@keyframes tree-loading-pulse {
+  from {
+    opacity: 0.35;
+    transform: scale(0.75);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
 .tree-icon {
   display: grid;
   place-items: center;
@@ -2608,6 +2852,33 @@ onMounted(async () => {
     color-mix(in srgb, var(--color-primary) 24%, var(--sidebar-border));
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-primary) 5%, var(--panel-bg));
+}
+.dataset-assistant {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex: 0 0 auto;
+  margin: 12px 14px 0;
+  padding: 12px 14px;
+  border: 1px solid
+    color-mix(in srgb, var(--color-primary) 24%, var(--sidebar-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 5%, var(--panel-bg));
+}
+.dataset-assistant strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dataset-assistant p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 19px;
+}
+.dataset-assistant .el-button {
+  flex: 0 0 auto;
 }
 .cdc-assistant-heading,
 .cdc-template-row {

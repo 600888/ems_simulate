@@ -127,5 +127,22 @@ def test_existing_incompatible_q_is_reported_and_not_overwritten(service: Iec618
 def test_template_catalog_is_declarative_and_exposed(service: Iec61850ModelingService):
     templates = {item["id"]: item for item in service.list_cdc_templates()}
 
-    assert {"common-quality-time-description", "sps", "dps", "ins", "mv"} <= templates.keys()
+    assert {"common-quality-time-description", "sps", "dps", "ins", "mv", "sav"} <= templates.keys()
     assert [item["name"] for item in templates["sps"]["attributes"]] == ["stVal", "q", "t", "dU"]
+
+
+def test_sav_template_creates_sampled_analogue_value(service: Iec61850ModelingService):
+    project_id, do_type_id = _create_do_type(service, cdc="SAV")
+
+    result = service.apply_cdc_template(project_id, do_type_id, "sav")
+    node = service.get_node(project_id, do_type_id, include_children=True)
+    attributes = {child["name"]: child["attributes"] for child in node["children"]}
+
+    assert result["primary_fc"] == "MX"
+    assert attributes["instMag"] == {
+        "bType": "Struct",
+        "type": "SAV_Type_AnalogueValue",
+        "fc": "MX",
+        "dchg": True,
+    }
+    assert attributes["q"]["bType"] == "Quality"

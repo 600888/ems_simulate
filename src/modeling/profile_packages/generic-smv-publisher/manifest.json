@@ -1,0 +1,17 @@
+{
+  "id": "generic-smv-publisher",
+  "version": "1.0.0",
+  "name": "通用采样值发布",
+  "description": "提供 SampledValueControl、SmvOpts、SMV 地址与数据集联动建模能力。",
+  "category": "service",
+  "dependencies": ["generic-ied-ed2"],
+  "default": false,
+  "service_capabilities": [
+    {"tag": "SMVsc", "attributes": {"max": 16}},
+    {
+      "tag": "SMVSettings",
+      "attributes": {"cbName": "Conf", "datSet": "Fix", "svID": "Conf", "smpRate": "Conf"}
+    }
+  ],
+  "templates": ["SMV_PUBLISHER"]
+}

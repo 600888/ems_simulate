@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 from typing import Any
 import xml.etree.ElementTree as ET
@@ -72,18 +73,26 @@ def validate_interoperability(xml: str, *, filename: str) -> dict[str, Any]:
 def _validate_optional_xsd(xml: str) -> dict[str, Any]:
     schema = default_standard().get("schema") or {}
     expected = str(schema.get("expectedPath") or "")
-    path = Path(expected)
+    path, source = _resolve_xsd_path(schema)
     if not expected or not path.is_file():
         return {
             "status": "UNAVAILABLE",
-            "path": expected,
+            "path": str(path),
+            "source": source,
             "message": "Official project-approved SCL XSD is not installed; no XSD compliance claim was made.",
-            "issues": [],
+            "issues": [
+                {
+                    "level": "WARNING",
+                    "code": "XSD_VALIDATION_UNAVAILABLE",
+                    "message": (f"未找到经项目批准的 SCL XSD：{path}；当前结果不代表通过官方 Schema 校验"),
+                }
+            ],
         }
     if importlib.util.find_spec("lxml") is None:
         return {
             "status": "ENGINE_UNAVAILABLE",
             "path": str(path),
+            "source": source,
             "message": "The XSD exists but the lxml validation engine is not installed.",
             "issues": [
                 {
@@ -104,6 +113,7 @@ def _validate_optional_xsd(xml: str) -> dict[str, Any]:
         return {
             "status": "FAILED",
             "path": str(path),
+            "source": source,
             "message": str(exc),
             "issues": [{"level": "ERROR", "code": "XSD_LOAD_FAILED", "message": str(exc)}],
         }
@@ -113,6 +123,30 @@ def _validate_optional_xsd(xml: str) -> dict[str, Any]:
     return {
         "status": "PASSED" if passed else "FAILED",
         "path": str(path),
+        "source": source,
         "message": "Official XSD validation passed." if passed else "Official XSD validation failed.",
         "issues": xsd_issues,
     }
+
+
+def xsd_required_for_publish() -> bool:
+    """Return whether publishing must be blocked unless the approved XSD passes."""
+
+    schema = default_standard().get("schema") or {}
+    environment = str(schema.get("requiredEnvironment") or "EMS_REQUIRE_SCL_XSD")
+    configured = os.getenv(environment)
+    if configured is not None:
+        return configured.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(schema.get("requiredForPublish"))
+
+
+def _resolve_xsd_path(schema: dict[str, Any]) -> tuple[Path, str]:
+    environment = str(schema.get("pathEnvironment") or "EMS_SCL_XSD_PATH")
+    override = os.getenv(environment, "").strip()
+    if override:
+        return Path(override).expanduser().resolve(), f"environment:{environment}"
+    expected = str(schema.get("expectedPath") or "")
+    path = Path(expected)
+    if not path.is_absolute():
+        path = Path(__file__).resolve().parents[2] / path
+    return path.resolve(), "standard-package"

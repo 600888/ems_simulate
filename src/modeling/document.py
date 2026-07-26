@@ -243,7 +243,7 @@ class ModelDocument:
                 ref = str(attrs["type"])
                 target_kind = "DA_TYPE" if attrs.get("bType") == "Struct" else "ENUM_TYPE"
                 add(node, type_indexes[target_kind].get(ref), target_kind, ref)
-            elif node.kind in ("REPORT_CONTROL", "GSE_CONTROL") and attrs.get("datSet"):
+            elif node.kind in ("REPORT_CONTROL", "GSE_CONTROL", "SAMPLED_VALUE_CONTROL") and attrs.get("datSet"):
                 ref = str(attrs["datSet"])
                 target = next(
                     (item for item in self.children(node.parent_id) if item.kind == "DATASET" and item.name == ref),

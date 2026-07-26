@@ -185,3 +185,4 @@ data/*
 !data/point_csv/**
 word/
 tmp/
+plan/

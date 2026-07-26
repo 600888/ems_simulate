@@ -52,6 +52,15 @@ class CdcTemplateApplyRequest(BaseModel):
     template_id: str = Field(min_length=1, max_length=128)
 
 
+class DataSetMembersCreateRequest(BaseModel):
+    candidate_ids: list[str] = Field(default_factory=list, max_length=5000)
+    ordered_candidate_ids: list[str] | None = Field(default=None, max_length=5000)
+
+
+class DataSetMemberRepairRequest(BaseModel):
+    candidate_id: str = Field(min_length=1, max_length=512)
+
+
 class VersionCreateRequest(BaseModel):
     label: str = Field(default="", max_length=128)
     description: str = Field(default="", max_length=512)

@@ -335,6 +335,8 @@ class SclModelSerializer:
                 self._append_report_control(element, child, children)
             elif child.kind == "GSE_CONTROL":
                 self._append_gse_control(element, child)
+            elif child.kind == "SAMPLED_VALUE_CONTROL":
+                self._append_sampled_value_control(element, child, children)
             elif child.kind == "INPUTS":
                 self._append_inputs(element, child, children)
             elif child.kind == "SETTING_CONTROL":
@@ -468,6 +470,53 @@ class SclModelSerializer:
             **_attrs(attrs, ("desc", "datSet", "appID", "fixedOffs", "type")),
         }
         ET.SubElement(parent, _tag("GSEControl"), values)
+
+    def _append_sampled_value_control(
+        self,
+        parent: ET.Element,
+        node: Iec61850ModelNode,
+        children: dict[str | None, list[Iec61850ModelNode]],
+    ) -> None:
+        attrs = _json_loads(node.attributes_json)
+        values = {
+            "name": node.name,
+            "confRev": str(_value_or_default(attrs, "confRev", 1)),
+            **_attrs(
+                attrs,
+                (
+                    "desc",
+                    "datSet",
+                    "smvID",
+                    "multicast",
+                    "smpRate",
+                    "nofASDU",
+                    "securityEnable",
+                ),
+            ),
+        }
+        control = ET.SubElement(parent, _tag("SampledValueControl"), values)
+        options = next(
+            (child for child in children.get(node.id, []) if child.kind == "SMV_OPTS"),
+            None,
+        )
+        if options is not None:
+            ET.SubElement(
+                control,
+                _tag("SmvOpts"),
+                _attrs(
+                    _json_loads(options.attributes_json),
+                    (
+                        "refreshTime",
+                        "sampleSynchronized",
+                        "sampleRate",
+                        "dataSet",
+                        "security",
+                        "timestamp",
+                        "synchSourceId",
+                    ),
+                ),
+            )
+        self._append_extensions(control, children.get(node.id, []))
 
     @staticmethod
     def _append_inputs(

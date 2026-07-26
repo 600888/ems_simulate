@@ -71,5 +71,28 @@
         ]
       }
     ]
+  },
+  {
+    "id": "sav",
+    "name": "SAV 采样模拟量",
+    "description": "生成结构化 instMag、q、t、dU，并自动创建 AnalogueValue DAType。",
+    "mode": "CDC",
+    "cdc": "SAV",
+    "attributes": [
+      {"name": "instMag", "bType": "Struct", "type": "$ANALOGUE_VALUE_TYPE", "fc": "MX", "dchg": true},
+      {"name": "q", "bType": "Quality", "fc": "MX", "qchg": true},
+      {"name": "t", "bType": "Timestamp", "fc": "MX"},
+      {"name": "dU", "bType": "Unicode255", "fc": "DC"}
+    ],
+    "dependencies": [
+      {
+        "kind": "DA_TYPE",
+        "id": "$ANALOGUE_VALUE_TYPE",
+        "children": [
+          {"kind": "BDA_DEF", "name": "f", "bType": "FLOAT32"},
+          {"kind": "BDA_DEF", "name": "i", "bType": "INT32"}
+        ]
+      }
+    ]
   }
 ]

@@ -31,6 +31,7 @@ export interface ModelNode {
   child_count: number;
   protected: boolean;
   detail_loaded?: boolean;
+  children_partial?: boolean;
   children?: ModelNode[];
   schema?: NodeSchema;
 }
@@ -101,4 +102,49 @@ export interface SclArtifact {
   size: number;
   revision: number;
   status: ModelProject["status"];
+}
+
+export interface DataSetMemberCandidate {
+  id: string;
+  reference: string;
+  logical_device: string;
+  logical_node: string;
+  data_object: string;
+  data_attribute: string;
+  fc: string;
+  b_type: string;
+  description: string;
+  group_key: string;
+  selection_level: "DO" | "DA";
+  is_companion: boolean;
+  existing: boolean;
+  existing_node_id: string | null;
+  attributes: Record<string, string>;
+}
+
+export interface ExistingDataSetMember {
+  node_id: string;
+  name: string;
+  reference: string;
+  candidate_id: string | null;
+  valid: boolean;
+  reason: string;
+  attributes: Record<string, unknown>;
+  sort_order: number;
+}
+
+export interface DataSetMemberDiscovery {
+  dataset: {
+    id: string;
+    name: string;
+    path: string;
+    revision: number;
+  };
+  candidates: DataSetMemberCandidate[];
+  existing_members: ExistingDataSetMember[];
+  summary: {
+    candidate_count: number;
+    existing_count: number;
+    invalid_count: number;
+  };
 }

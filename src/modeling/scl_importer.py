@@ -79,6 +79,8 @@ class SclModelImporter:
         "RptEnabled": "RPT_ENABLED",
         "ClientLN": "CLIENT_LN",
         "GSEControl": "GSE_CONTROL",
+        "SampledValueControl": "SAMPLED_VALUE_CONTROL",
+        "SmvOpts": "SMV_OPTS",
         "SettingControl": "SETTING_CONTROL",
         "Inputs": "INPUTS",
         "ExtRef": "EXT_REF",

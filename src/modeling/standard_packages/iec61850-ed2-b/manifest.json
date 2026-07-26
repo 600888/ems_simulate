@@ -8,6 +8,12 @@
   "default": true,
   "fileTypes": ["ICD", "CID", "SCD"],
   "functionalConstraints": ["ST", "MX", "SP", "SV", "CF", "DC", "SG", "SE", "SR", "OR", "BL", "EX", "CO", "US", "MS", "RP", "BR", "LG", "GO"],
-  "basicTypes": ["BOOLEAN", "INT8", "INT16", "INT32", "INT64", "INT8U", "INT16U", "INT24U", "INT32U", "FLOAT32", "FLOAT64", "Enum", "Struct", "Quality", "Timestamp", "VisString32", "VisString64", "VisString65", "VisString255", "Unicode255", "Octet64", "ObjRef", "Dbpos", "INT128", "TimeStamp"],
-  "schema": {"bundled": false, "expectedPath": "resources/iec61850/xsd/SCL.xsd"}
+  "basicTypes": ["BOOLEAN", "INT8", "INT16", "INT32", "INT64", "INT8U", "INT16U", "INT24U", "INT32U", "FLOAT32", "FLOAT64", "Enum", "Struct", "Quality", "Timestamp", "VisString32", "VisString64", "VisString65", "VisString255", "Unicode255", "Octet64", "ObjRef", "Dbpos", "INT128"],
+  "schema": {
+    "bundled": false,
+    "expectedPath": "resources/iec61850/xsd/SCL.xsd",
+    "pathEnvironment": "EMS_SCL_XSD_PATH",
+    "requiredForPublish": false,
+    "requiredEnvironment": "EMS_REQUIRE_SCL_XSD"
+  }
 }

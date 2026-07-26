@@ -28,6 +28,7 @@ from src.modeling.catalog import (
     get_kind_schema,
 )
 from src.modeling.cdc_templates import list_cdc_templates, materialize_cdc_template
+from src.modeling.dataset_members import list_dataset_member_candidates
 from src.modeling.document import ModelDocument, ModelNode, ModelReference
 from src.modeling.profiles import (
     list_profiles,
@@ -36,7 +37,9 @@ from src.modeling.profiles import (
     resolve_profiles,
     service_capabilities,
 )
+from src.modeling.reference_options import contextualize_node_schema
 from src.modeling.scl_importer import SclModelImporter, fcda_reference_name
+from src.modeling.semantic_validation import validate_semantic_references
 from src.modeling.standards import list_standards
 import src.proto.iec61850.plugins.scl.validator.builtin_rules  # noqa: F401
 from src.web.api.exceptions import ConflictError, NotFoundError, ValidationError
@@ -580,19 +583,56 @@ class Iec61850ModelingService:
         with self._document_cache_lock:
             self._document_cache.pop(project_id, None)
 
-    def get_tree(self, project_id: str, *, compact: bool = False) -> list[dict[str, Any]]:
+    def get_tree(
+        self,
+        project_id: str,
+        *,
+        compact: bool = False,
+        max_depth: int | None = None,
+        focus_id: str = "",
+        keyword: str = "",
+        kind: str = "",
+    ) -> list[dict[str, Any]]:
         with self.session_factory() as session:
             project = self._require_project(session, project_id)
             document = self._load_document(project)
             emitted_kind_labels: set[str] = set()
+            focus_ancestors: set[str] = set()
+            focus_node = document.get(focus_id) if focus_id else None
+            while focus_node is not None:
+                focus_ancestors.add(focus_node.id)
+                focus_node = document.get(focus_node.parent_id) if focus_node.parent_id else None
+            normalized_keyword = keyword.strip().lower()
+            normalized_kind = kind.strip().upper()
+            filtered_ids: set[str] | None = None
+            if normalized_keyword or normalized_kind:
+                filtered_ids = set()
+                for candidate in document.nodes:
+                    matches_keyword = not normalized_keyword or (
+                        normalized_keyword in candidate.name.lower() or normalized_keyword in candidate.kind.lower()
+                    )
+                    matches_kind = not normalized_kind or candidate.kind == normalized_kind
+                    if not (matches_keyword and matches_kind):
+                        continue
+                    current: ModelNode | None = candidate
+                    while current is not None and current.id not in filtered_ids:
+                        filtered_ids.add(current.id)
+                        current = document.get(current.parent_id) if current.parent_id else None
 
             def build(node: ModelNode, parent_path: str = "", depth: int = 0) -> dict[str, Any]:
                 node_children = document.children(node.id)
+                visible_children = (
+                    node_children
+                    if filtered_ids is None
+                    else [child for child in node_children if child.id in filtered_ids]
+                )
                 if compact and depth > 1:
                     result = {
                         "id": node.id,
+                        "parent_id": node.parent_id,
                         "kind": node.kind,
                         "name": node.name,
+                        "child_count": len(node_children),
                     }
                     if node.kind not in emitted_kind_labels:
                         result["kind_label"] = KIND_LABELS.get(node.kind, node.kind)
@@ -607,10 +647,19 @@ class Iec61850ModelingService:
                     if not compact:
                         result["path"] = path
                 emitted_kind_labels.add(node.kind)
-                result["children"] = [build(child, path, depth + 1) for child in node_children]
+                should_expand = (
+                    filtered_ids is not None or max_depth is None or depth < max_depth or node.id in focus_ancestors
+                )
+                if should_expand:
+                    result["children"] = [build(child, path, depth + 1) for child in visible_children]
+                    if len(visible_children) < len(node_children):
+                        result["children_partial"] = True
                 return result
 
-            return [build(root) for root in document.children(None)]
+            roots = document.children(None)
+            if filtered_ids is not None:
+                roots = [root for root in roots if root.id in filtered_ids]
+            return [build(root) for root in roots]
 
     def get_node(
         self,
@@ -624,7 +673,7 @@ class Iec61850ModelingService:
             document = self._load_document(project)
             node = self._require_node(document, node_id)
             result = self._node_dict(node, child_count=len(document.children(node.id)))
-            result["schema"] = get_kind_schema(node.kind)
+            result["schema"] = contextualize_node_schema(document, node, get_kind_schema(node.kind))
             result["path"] = document.node_path(node)
             result["detail_loaded"] = True
             if include_children:
@@ -639,6 +688,31 @@ class Iec61850ModelingService:
                     for child in document.children(node.id)
                 ]
             return result
+
+    def get_tree_kinds(self, project_id: str) -> list[dict[str, Any]]:
+        with self.session_factory() as session:
+            project = self._require_project(session, project_id)
+            document = self._load_document(project)
+            counts: dict[str, int] = {}
+            for node in document.nodes:
+                counts[node.kind] = counts.get(node.kind, 0) + 1
+            return [
+                {
+                    "kind": kind,
+                    "label": KIND_LABELS.get(kind, kind),
+                    "count": count,
+                    "lossy_count": (
+                        sum(
+                            1
+                            for node in document.nodes
+                            if node.kind == kind and node.attributes.get("lossRisk") in (True, 1, "1", "true")
+                        )
+                        if kind == "EXTENSION"
+                        else 0
+                    ),
+                }
+                for kind, count in sorted(counts.items())
+            ]
 
     def create_node(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         parent_id = str(payload.get("parent_id", ""))
@@ -676,6 +750,180 @@ class Iec61850ModelingService:
             result["schema"] = get_kind_schema(kind)
             result["path"] = document.node_path(node)
             return result
+
+    def get_dataset_member_candidates(
+        self,
+        project_id: str,
+        dataset_id: str,
+    ) -> dict[str, Any]:
+        with self.session_factory() as session:
+            project = self._require_project(session, project_id)
+            document = self._load_document(project)
+            dataset = self._require_node(document, dataset_id)
+            if dataset.kind != "DATASET":
+                raise ValidationError("批量选择成员只能用于 DataSet 节点")
+            try:
+                return list_dataset_member_candidates(document, dataset)
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+
+    def create_dataset_members(
+        self,
+        project_id: str,
+        dataset_id: str,
+        candidate_ids: list[str],
+        ordered_candidate_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        if not candidate_ids and ordered_candidate_ids is None:
+            raise ValidationError("请至少选择一个 DataSet 成员")
+        if len(candidate_ids) > 5000 or len(ordered_candidate_ids or []) > 5000:
+            raise ValidationError("单次最多保存 5000 个 FCDA")
+
+        with self.session_factory() as session, session.begin():
+            project = self._require_project(session, project_id)
+            document = self._load_document(project)
+            dataset = self._require_node(document, dataset_id)
+            if dataset.kind != "DATASET":
+                raise ValidationError("批量选择成员只能用于 DataSet 节点")
+
+            discovery = list_dataset_member_candidates(document, dataset)
+            candidates = {item["id"]: item for item in discovery["candidates"]}
+            unique_ids = list(dict.fromkeys(candidate_ids))
+            ordered_ids = list(dict.fromkeys(ordered_candidate_ids)) if ordered_candidate_ids is not None else None
+            requested_ids = list(dict.fromkeys([*unique_ids, *(ordered_ids or [])]))
+            unknown = [candidate_id for candidate_id in requested_ids if candidate_id not in candidates]
+            if unknown:
+                raise ValidationError(f"有 {len(unknown)} 个候选成员已失效，请刷新 DataModel 后重试")
+
+            existing_keys = {item["id"] for item in discovery["candidates"] if item["existing"]}
+            siblings = document.children(dataset.id)
+            used_names = {item.name for item in siblings if item.kind == "FCDA"}
+            next_order = max(
+                (item.sort_order for item in siblings),
+                default=0,
+            )
+            created: list[ModelNode] = []
+            nodes_by_candidate_id: dict[str, ModelNode] = {}
+            for member in discovery["existing_members"]:
+                candidate_id = member.get("candidate_id")
+                if candidate_id and candidate_id not in nodes_by_candidate_id:
+                    nodes_by_candidate_id[candidate_id] = self._require_node(
+                        document,
+                        member["node_id"],
+                    )
+            skipped: list[str] = []
+            for candidate_id in unique_ids:
+                if candidate_id in existing_keys:
+                    skipped.append(candidate_id)
+                    continue
+                attributes = dict(candidates[candidate_id]["attributes"])
+                base_name = fcda_reference_name(attributes) or "FCDA"
+                name = base_name
+                suffix = 2
+                while name in used_names:
+                    name = f"{base_name}_{suffix}"
+                    suffix += 1
+                next_order += 10
+                node = document.add_node(
+                    parent_id=dataset.id,
+                    kind="FCDA",
+                    name=name,
+                    attributes=attributes,
+                    sort_order=next_order,
+                )
+                used_names.add(name)
+                created.append(node)
+                nodes_by_candidate_id[candidate_id] = node
+
+            reordered_count = 0
+            if ordered_ids is not None:
+                ordered_nodes = [
+                    nodes_by_candidate_id[candidate_id]
+                    for candidate_id in ordered_ids
+                    if candidate_id in nodes_by_candidate_id
+                ]
+                ordered_node_ids = {node.id for node in ordered_nodes}
+                remaining_nodes = [
+                    node for node in [*siblings, *created] if node.kind == "FCDA" and node.id not in ordered_node_ids
+                ]
+                for index, node in enumerate(
+                    [*ordered_nodes, *remaining_nodes],
+                    start=1,
+                ):
+                    sort_order = index * 10
+                    if node.sort_order != sort_order:
+                        node.sort_order = sort_order
+                        node.revision += 1
+                        reordered_count += 1
+
+            if created or reordered_count:
+                project.revision += 1
+                project.status = "DRAFT"
+                document.rebuild_references()
+                self._save_document(project, document)
+            return {
+                "dataset_id": dataset.id,
+                "created": [
+                    {
+                        **self._node_dict(node),
+                        "path": document.node_path(node),
+                    }
+                    for node in created
+                ],
+                "created_count": len(created),
+                "skipped_count": len(skipped),
+                "skipped_candidate_ids": skipped,
+                "reordered_count": reordered_count,
+                "project_revision": project.revision,
+            }
+
+    def repair_dataset_member(
+        self,
+        project_id: str,
+        dataset_id: str,
+        fcda_id: str,
+        candidate_id: str,
+    ) -> dict[str, Any]:
+        with self.session_factory() as session, session.begin():
+            project = self._require_project(session, project_id)
+            document = self._load_document(project)
+            dataset = self._require_node(document, dataset_id)
+            fcda = self._require_node(document, fcda_id)
+            if dataset.kind != "DATASET" or fcda.kind != "FCDA" or fcda.parent_id != dataset.id:
+                raise ValidationError("待修复节点不是该 DataSet 的 FCDA 成员")
+
+            discovery = list_dataset_member_candidates(document, dataset)
+            candidate = next(
+                (item for item in discovery["candidates"] if item["id"] == candidate_id),
+                None,
+            )
+            if candidate is None:
+                raise ValidationError("替代候选项已失效，请刷新 DataModel 后重试")
+            if candidate["existing"] and candidate["existing_node_id"] != fcda.id:
+                raise ConflictError("该 FCDA 引用已经存在于当前 DataSet")
+
+            attributes = dict(candidate["attributes"])
+            base_name = fcda_reference_name(attributes) or "FCDA"
+            used_names = {
+                item.name for item in document.children(dataset.id) if item.kind == "FCDA" and item.id != fcda.id
+            }
+            name = base_name
+            suffix = 2
+            while name in used_names:
+                name = f"{base_name}_{suffix}"
+                suffix += 1
+            fcda.name = name
+            fcda.attributes_json = _json_dumps(attributes)
+            fcda.revision += 1
+            project.revision += 1
+            project.status = "DRAFT"
+            document.rebuild_references()
+            self._save_document(project, document)
+            return {
+                **self._node_dict(fcda),
+                "path": document.node_path(fcda),
+                "project_revision": project.revision,
+            }
 
     def update_node(self, project_id: str, node_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         with self.session_factory() as session, session.begin():
@@ -970,18 +1218,8 @@ class Iec61850ModelingService:
                         add("ERROR", "LN_CLASS_INVALID", "逻辑节点类应为 4 位大写字母或数字", node, "lnClass")
                     if attrs.get("inst") in (None, ""):
                         add("ERROR", "LN_INST_REQUIRED", "逻辑节点实例号不能为空", node, "inst")
-                if node.kind in ("REPORT_CONTROL", "GSE_CONTROL") and not attrs.get("datSet"):
+                if node.kind in ("REPORT_CONTROL", "GSE_CONTROL", "SAMPLED_VALUE_CONTROL") and not attrs.get("datSet"):
                     add("ERROR", "CONTROL_DATASET_REQUIRED", "控制块必须引用数据集", node, "datSet")
-                if node.kind == "REPORT_CONTROL":
-                    child_kinds = {child.kind for child in by_parent.get(node.id, [])}
-                    for required_child in ("TRG_OPS", "OPT_FIELDS", "RPT_ENABLED"):
-                        if required_child not in child_kinds:
-                            add(
-                                "ERROR",
-                                f"REPORT_{required_child}_REQUIRED",
-                                f"报告控制块缺少 {KIND_LABELS[required_child]}",
-                                node,
-                            )
                 if node.kind in ("LNODE_TYPE", "DO_TYPE", "DA_TYPE", "ENUM_TYPE") and not attrs.get("id"):
                     add("ERROR", "TYPE_ID_REQUIRED", "类型定义 ID 不能为空", node, "id")
                 if node.kind in ("LN0", "LN"):
@@ -1039,7 +1277,7 @@ class Iec61850ModelingService:
                                 node,
                                 "fc",
                             )
-                if node.kind in ("REPORT_CONTROL", "GSE_CONTROL"):
+                if node.kind in ("REPORT_CONTROL", "GSE_CONTROL", "SAMPLED_VALUE_CONTROL"):
                     dataset = str(attrs.get("datSet") or "")
                     if dataset and dataset not in datasets_by_parent.get(node.parent_id, set()):
                         add(
@@ -1105,6 +1343,13 @@ class Iec61850ModelingService:
                         "模型包含 GOOSE 控制块，但 Services 未声明 GOOSE",
                         services_nodes[0],
                     )
+                if any(item.kind == "SAMPLED_VALUE_CONTROL" for item in ied_nodes) and "SMVsc" not in capability_names:
+                    add(
+                        "ERROR",
+                        "SERVICES_SMV_CAPABILITY_MISSING",
+                        "模型包含采样值控制块，但 Services 未声明 SMVsc",
+                        services_nodes[0],
+                    )
 
             for siblings in by_parent.values():
                 seen: set[tuple[str, str]] = set()
@@ -1113,6 +1358,9 @@ class Iec61850ModelingService:
                     if key in seen:
                         add("ERROR", "SIBLING_NAME_DUPLICATE", "同级存在同类型、同名节点", node, "name")
                     seen.add(key)
+
+            for issue in validate_semantic_references(document):
+                add(issue.level, issue.code, issue.message, issue.node, issue.field)
 
             try:
                 from src.modeling.interoperability import validate_interoperability
@@ -1343,6 +1591,14 @@ class Iec61850ModelingService:
         validation = self.validate_project(project_id)
         if not validation["passed"]:
             raise ValidationError("模型校验未通过，不能发布", validation)
+        from src.modeling.interoperability import xsd_required_for_publish
+
+        xsd = (validation.get("interoperability") or {}).get("xsd") or {}
+        if xsd_required_for_publish() and xsd.get("status") != "PASSED":
+            raise ValidationError(
+                "当前环境要求通过官方 SCL XSD 后才能发布",
+                {"xsd": xsd},
+            )
         with self.session_factory() as session:
             project = self._require_project(session, project_id)
             nodes = self._load_document(project).nodes

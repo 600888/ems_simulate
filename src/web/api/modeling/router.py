@@ -8,6 +8,8 @@ from src.modeling.service import Iec61850ModelingService
 from src.web.api.exceptions import ConflictError, NotFoundError, ValidationError
 from src.web.api.modeling.schemas import (
     CdcTemplateApplyRequest,
+    DataSetMemberRepairRequest,
+    DataSetMembersCreateRequest,
     NodeCreateRequest,
     NodeUpdateRequest,
     ProjectCreateRequest,
@@ -131,8 +133,24 @@ def delete_project(project_id: str) -> BaseResponse:
 
 
 @router.get("/projects/{project_id}/tree")
-def get_tree(project_id: str, compact: bool = False) -> BaseResponse:
-    return BaseResponse.success(service.get_tree(project_id, compact=compact))
+def get_tree(
+    project_id: str,
+    compact: bool = False,
+    max_depth: int | None = None,
+    focus_id: str = "",
+    keyword: str = "",
+    kind: str = "",
+) -> BaseResponse:
+    return BaseResponse.success(
+        service.get_tree(
+            project_id,
+            compact=compact,
+            max_depth=max_depth,
+            focus_id=focus_id,
+            keyword=keyword,
+            kind=kind,
+        )
+    )
 
 
 @router.post("/projects/{project_id}/nodes")
@@ -143,6 +161,11 @@ def create_node(project_id: str, request: NodeCreateRequest) -> BaseResponse:
 @router.get("/projects/{project_id}/nodes/{node_id}")
 def get_node(project_id: str, node_id: str, include_children: bool = False) -> BaseResponse:
     return BaseResponse.success(service.get_node(project_id, node_id, include_children=include_children))
+
+
+@router.get("/projects/{project_id}/tree-kinds")
+def get_tree_kinds(project_id: str) -> BaseResponse:
+    return BaseResponse.success(service.get_tree_kinds(project_id))
 
 
 @router.patch("/projects/{project_id}/nodes/{node_id}")
@@ -156,6 +179,46 @@ def apply_cdc_template(project_id: str, node_id: str, request: CdcTemplateApplyR
     return BaseResponse.success(
         service.apply_cdc_template(project_id, node_id, request.template_id),
         "CDC 数据属性模板已应用",
+    )
+
+
+@router.get("/projects/{project_id}/datasets/{dataset_id}/member-candidates")
+def get_dataset_member_candidates(project_id: str, dataset_id: str) -> BaseResponse:
+    return BaseResponse.success(service.get_dataset_member_candidates(project_id, dataset_id))
+
+
+@router.post("/projects/{project_id}/datasets/{dataset_id}/members")
+def create_dataset_members(
+    project_id: str,
+    dataset_id: str,
+    request: DataSetMembersCreateRequest,
+) -> BaseResponse:
+    return BaseResponse.success(
+        service.create_dataset_members(
+            project_id,
+            dataset_id,
+            request.candidate_ids,
+            request.ordered_candidate_ids,
+        ),
+        "DataSet 成员已保存",
+    )
+
+
+@router.patch("/projects/{project_id}/datasets/{dataset_id}/members/{fcda_id}")
+def repair_dataset_member(
+    project_id: str,
+    dataset_id: str,
+    fcda_id: str,
+    request: DataSetMemberRepairRequest,
+) -> BaseResponse:
+    return BaseResponse.success(
+        service.repair_dataset_member(
+            project_id,
+            dataset_id,
+            fcda_id,
+            request.candidate_id,
+        ),
+        "FCDA 引用已修复",
     )
 
 

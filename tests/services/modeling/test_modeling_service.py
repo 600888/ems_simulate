@@ -96,6 +96,55 @@ def test_compact_tree_defers_deep_node_details(service: Iec61850ModelingService)
     assert all("attributes" in child for child in detail["children"])
 
 
+def test_compact_tree_can_limit_initial_depth_and_keep_focus_path(
+    service: Iec61850ModelingService,
+):
+    result = create_project(service)
+    project_id = result["project"]["id"]
+    full_nodes = flatten(result["tree"])
+    target = next(node for node in full_nodes if node["kind"] == "LN0")
+
+    shallow_tree = service.get_tree(project_id, compact=True, max_depth=1)
+    shallow_nodes = flatten(shallow_tree)
+
+    assert target["id"] not in {node["id"] for node in shallow_nodes}
+    assert any(node.get("child_count", 0) > 0 and "children" not in node for node in shallow_nodes)
+
+    focused_tree = service.get_tree(
+        project_id,
+        compact=True,
+        max_depth=1,
+        focus_id=target["id"],
+    )
+    focused_nodes = flatten(focused_tree)
+
+    assert target["id"] in {node["id"] for node in focused_nodes}
+    assert all("parent_id" in node for node in focused_nodes if node["id"] != focused_tree[0]["id"])
+
+
+def test_compact_tree_search_returns_matches_with_ancestor_paths(
+    service: Iec61850ModelingService,
+):
+    result = create_project(service)
+    project_id = result["project"]["id"]
+    target = next(node for node in flatten(result["tree"]) if node["kind"] == "LN0")
+
+    filtered_tree = service.get_tree(
+        project_id,
+        compact=True,
+        max_depth=1,
+        keyword=target["name"],
+        kind="LN0",
+    )
+    filtered_nodes = flatten(filtered_tree)
+
+    assert target["id"] in {node["id"] for node in filtered_nodes}
+    assert all(node["id"] == target["id"] or node["kind"] != "LN0" for node in filtered_nodes)
+    assert any(node.get("children_partial") for node in filtered_nodes)
+    kinds = service.get_tree_kinds(project_id)
+    assert next(item for item in kinds if item["kind"] == "LN0")["count"] >= 1
+
+
 def test_node_crud_and_optimistic_revision(service: Iec61850ModelingService):
     result = create_project(service)
     project_id = result["project"]["id"]
