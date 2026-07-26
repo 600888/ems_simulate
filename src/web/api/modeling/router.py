@@ -10,6 +10,8 @@ from src.web.api.modeling.schemas import (
     CdcTemplateApplyRequest,
     DataSetMemberRepairRequest,
     DataSetMembersCreateRequest,
+    InstanceOverrideCreateRequest,
+    LNodeDoTemplateRequest,
     NodeCreateRequest,
     NodeUpdateRequest,
     ProjectCreateRequest,
@@ -161,6 +163,75 @@ def create_node(project_id: str, request: NodeCreateRequest) -> BaseResponse:
 @router.get("/projects/{project_id}/nodes/{node_id}")
 def get_node(project_id: str, node_id: str, include_children: bool = False) -> BaseResponse:
     return BaseResponse.success(service.get_node(project_id, node_id, include_children=include_children))
+
+
+@router.get("/projects/{project_id}/nodes/{node_id}/effective-data-model")
+def get_effective_instance_tree(project_id: str, node_id: str) -> BaseResponse:
+    return BaseResponse.success(service.get_effective_instance_tree(project_id, node_id))
+
+
+@router.get("/projects/{project_id}/lnode-type-options")
+def get_lnode_type_options(
+    project_id: str,
+    ln_class: str = "",
+) -> BaseResponse:
+    return BaseResponse.success(service.get_lnode_type_options(project_id, ln_class=ln_class))
+
+
+@router.post("/projects/{project_id}/nodes/{node_id}/instance-overrides")
+def create_instance_override(
+    project_id: str,
+    node_id: str,
+    request: InstanceOverrideCreateRequest,
+) -> BaseResponse:
+    return BaseResponse.success(
+        service.create_instance_override(
+            project_id,
+            node_id,
+            request.template_path,
+            expected_project_revision=request.expected_project_revision,
+        ),
+        "实例覆盖已创建",
+    )
+
+
+@router.get("/projects/{project_id}/lnode-types/{lnode_type_id}/do-template-options")
+def get_lnode_do_template_options(
+    project_id: str,
+    lnode_type_id: str,
+) -> BaseResponse:
+    return BaseResponse.success(service.get_lnode_do_template_options(project_id, lnode_type_id))
+
+
+@router.post("/projects/{project_id}/lnode-types/{lnode_type_id}/do-template-preview")
+def preview_lnode_do_template(
+    project_id: str,
+    lnode_type_id: str,
+    request: LNodeDoTemplateRequest,
+) -> BaseResponse:
+    return BaseResponse.success(
+        service.preview_lnode_do_template(
+            project_id,
+            lnode_type_id,
+            request.model_dump(),
+        )
+    )
+
+
+@router.post("/projects/{project_id}/lnode-types/{lnode_type_id}/do-template-apply")
+def apply_lnode_do_template(
+    project_id: str,
+    lnode_type_id: str,
+    request: LNodeDoTemplateRequest,
+) -> BaseResponse:
+    return BaseResponse.success(
+        service.apply_lnode_do_template(
+            project_id,
+            lnode_type_id,
+            request.model_dump(),
+        ),
+        "LNodeType 参数化 DO 模板已应用",
+    )
 
 
 @router.get("/projects/{project_id}/tree-kinds")

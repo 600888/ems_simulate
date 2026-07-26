@@ -183,13 +183,26 @@
                 :class="[
                   `kind-${data.kind.toLowerCase()}`,
                   `status-${childStatus(data).toLowerCase()}`,
+                  {
+                    'is-template-inherited': data.inherited,
+                    'is-instance-override': data.instance_override,
+                  },
                 ]"
-                :title="`${kindLabel(data.kind)} · ${data.name}`"
+                :title="
+                  data.inherited
+                    ? `${kindLabel(data.kind)} · ${data.name} · ${
+                        data.virtual ? '继承自类型模板' : '实例覆盖'
+                      }`
+                    : `${kindLabel(data.kind)} · ${data.name}`
+                "
               >
                 <span class="tree-icon" aria-hidden="true">
                   <el-icon><component :is="treeNodeIcon(data.kind)" /></el-icon>
                 </span>
                 <span class="tree-label">{{ data.name }}</span>
+                <span v-if="data.inherited" class="inheritance-badge">
+                  {{ data.virtual ? "模板" : "覆盖" }}
+                </span>
                 <span
                   v-if="childStatus(data) !== 'NORMAL'"
                   class="tree-problem-dot"
@@ -497,11 +510,32 @@
                     v-for="reference in nodeImpact.inbound_references"
                     :key="reference.id"
                   >
-                    <el-tag size="small" effect="plain">{{
-                      reference.relation_type
-                    }}</el-tag>
-                    <code>{{ reference.source_node_id }}</code
-                    ><span>→</span><code>{{ reference.target_node_id }}</code>
+                    <el-tag size="small" effect="plain">
+                      {{ reference.relation_label }}
+                    </el-tag>
+                    <button
+                      class="reference-endpoint"
+                      @click="focusReferenceNode(reference.source.id)"
+                    >
+                      <small>{{ reference.source.kind_label }}</small>
+                      <strong>{{ reference.source.name }}</strong>
+                      <code>{{ reference.source.path }}</code>
+                    </button>
+                    <span class="reference-arrow">→</span>
+                    <button
+                      class="reference-endpoint"
+                      @click="focusReferenceNode(reference.target.id)"
+                    >
+                      <small>{{ reference.target.kind_label }}</small>
+                      <strong>{{ reference.target.name }}</strong>
+                      <code>{{ reference.target.path }}</code>
+                    </button>
+                    <span
+                      v-if="reference.reference_value"
+                      class="reference-value"
+                    >
+                      引用值：<code>{{ reference.reference_value }}</code>
+                    </span>
                   </div>
                 </div>
                 <el-empty
@@ -581,11 +615,6 @@
                 @click="openAddDialog('batch')"
                 >批量添加</el-button
               >
-              <el-tooltip content="模板库接口尚未接入当前版本"
-                ><span
-                  ><el-button disabled>从模板添加</el-button></span
-                ></el-tooltip
-              >
             </div>
             <span>{{ selectedNode.children?.length || 0 }} 个直接子节点</span>
           </div>
@@ -633,6 +662,44 @@
           </button>
         </div>
         <el-scrollbar class="property-scroll">
+          <div
+            v-if="selectedNode?.effective_model_summary"
+            class="effective-model-summary"
+          >
+            <strong>类型模板展开</strong>
+            <span>
+              {{ selectedNode.effective_model_summary.data_objects }} 个 DO ·
+              {{ selectedNode.effective_model_summary.data_attributes }} 个 DA ·
+              {{ selectedNode.effective_model_summary.overrides }} 个实例覆盖
+            </span>
+          </div>
+          <el-alert
+            v-if="selectedNode?.effective_model_warnings?.length"
+            class="inherited-node-alert"
+            type="warning"
+            :closable="false"
+            show-icon
+            :title="`类型模板展开存在 ${selectedNode.effective_model_warnings.length} 个问题`"
+          />
+          <section v-if="selectedNode?.virtual" class="inherited-node-card">
+            <div>
+              <strong>继承自 DataTypeTemplates</strong>
+              <span>
+                当前为只读虚拟节点，不会写入
+                SCL。创建实例覆盖后，可配置初始值、短地址等实例属性。
+              </span>
+              <code>{{ selectedNode.template_path }}</code>
+            </div>
+            <el-button
+              type="primary"
+              plain
+              size="small"
+              :loading="materializingOverride"
+              @click="materializeSelectedOverride"
+            >
+              创建实例覆盖
+            </el-button>
+          </section>
           <el-form
             v-if="selectedNode && selectedNode.schema"
             label-position="top"
@@ -647,13 +714,13 @@
                 <el-switch
                   v-if="field.component === 'switch'"
                   v-model="propertyForm.attributes[field.key]"
-                  :disabled="isSelectedExtension"
+                  :disabled="isSelectedReadOnly"
                 />
                 <el-input-number
                   v-else-if="field.component === 'number'"
                   v-model="propertyForm.attributes[field.key]"
                   :min="0"
-                  :disabled="isSelectedExtension"
+                  :disabled="isSelectedReadOnly"
                   controls-position="right"
                   style="width: 100%"
                 />
@@ -662,7 +729,7 @@
                   v-model="propertyForm.attributes[field.key]"
                   clearable
                   filterable
-                  :disabled="isSelectedExtension"
+                  :disabled="isSelectedReadOnly"
                   style="width: 100%"
                 >
                   <el-option
@@ -676,15 +743,15 @@
                   v-else-if="field.key === 'name'"
                   v-model="propertyForm.name"
                   :disabled="selectedNode.kind === 'LN0'"
-                  :readonly="isSelectedExtension"
+                  :readonly="isSelectedReadOnly"
                 />
                 <el-input
                   v-else
                   v-model="propertyForm.attributes[field.key]"
                   :type="field.component === 'textarea' ? 'textarea' : 'text'"
                   :rows="3"
-                  :clearable="!isSelectedExtension"
-                  :readonly="isSelectedExtension"
+                  :clearable="!isSelectedReadOnly"
+                  :readonly="isSelectedReadOnly"
                 />
               </el-form-item>
             </template>
@@ -704,7 +771,7 @@
           <el-button :disabled="!dirty" @click="resetForm">恢复</el-button>
           <el-button
             type="primary"
-            :disabled="!dirty || isSelectedExtension"
+            :disabled="!dirty || isSelectedReadOnly"
             :loading="saving"
             @click="saveNode"
             ><el-icon><DocumentChecked /></el-icon>应用</el-button
@@ -771,11 +838,41 @@
 
     <el-dialog
       v-model="addDialog.visible"
-      :title="addDialog.batch ? '批量添加模型节点' : '添加模型节点'"
-      width="500px"
+      :title="
+        addDialog.templateMode
+          ? '批量生成数据对象'
+          : isAddingLogicalNode
+            ? addDialog.kind === 'LN0'
+              ? '新增零逻辑节点'
+              : '从 LNodeType 新增逻辑节点'
+            : addDialog.batch
+              ? '批量添加模型节点'
+              : '添加模型节点'
+      "
+      :width="
+        addDialog.templateMode
+          ? '780px'
+          : isAddingLogicalNode
+            ? '640px'
+            : '500px'
+      "
       destroy-on-close
     >
-      <el-form label-position="top">
+      <div
+        v-if="selectedNode?.kind === 'LNODE_TYPE' && !addDialog.batch"
+        class="node-creation-mode"
+      >
+        <el-segmented
+          :model-value="addDialog.templateMode ? 'template' : 'manual'"
+          :options="[
+            { label: '手动添加', value: 'manual' },
+            { label: '批量生成数据对象', value: 'template' },
+          ]"
+          @change="switchNodeCreationMode"
+        />
+      </div>
+
+      <el-form v-if="!addDialog.templateMode" label-position="top">
         <el-form-item label="父节点"
           ><el-input :model-value="selectedNode?.path" disabled
         /></el-form-item>
@@ -783,7 +880,7 @@
           <el-select
             v-model="addDialog.kind"
             style="width: 100%"
-            @change="suggestNodeName"
+            @change="handleAddKindChange"
           >
             <el-option
               v-for="item in addDialogChildOptions"
@@ -793,14 +890,118 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="节点名称" required>
+        <template v-if="isAddingLogicalNode">
+          <el-alert
+            class="ln-create-alert"
+            type="info"
+            :closable="false"
+            show-icon
+            title="逻辑节点通过 lnType 引用 LNodeType；模板中的 DO/DA 会动态继承，不会复制为 DOI/DAI。"
+          />
+          <el-form-item label="LNodeType 模板" required>
+            <el-select
+              v-model="addDialog.lnType"
+              :loading="addDialog.lnodeTypesLoading"
+              filterable
+              style="width: 100%"
+              placeholder="选择逻辑节点类型"
+              @change="handleLNodeTypeChange"
+            >
+              <el-option
+                v-for="item in addDialog.lnodeTypes"
+                :key="item.node_id"
+                :label="`${item.id} · ${item.lnClass}`"
+                :value="item.id"
+              >
+                <div class="ln-type-option">
+                  <span>
+                    <strong>{{ item.id }}</strong>
+                    <small>{{ item.lnClass }}</small>
+                  </span>
+                  <em
+                    >{{ item.data_objects }} DO ·
+                    {{ item.data_attributes }} DA</em
+                  >
+                </div>
+              </el-option>
+            </el-select>
+            <small
+              v-if="
+                !addDialog.lnodeTypesLoading && !addDialog.lnodeTypes.length
+              "
+              class="form-warning"
+            >
+              {{
+                addDialog.kind === "LN0"
+                  ? "DataTypeTemplates 中没有 LLN0 类型，请先创建 LNodeType。"
+                  : "DataTypeTemplates 中没有可用的逻辑节点类型。"
+              }}
+            </small>
+          </el-form-item>
+          <div v-if="addDialog.kind === 'LN'" class="ln-instance-fields">
+            <el-form-item label="前缀 prefix">
+              <el-input
+                v-model="addDialog.prefix"
+                maxlength="11"
+                placeholder="可选"
+                @input="syncLogicalNodeName"
+              />
+            </el-form-item>
+            <el-form-item label="实例号 inst" required>
+              <el-input
+                v-model="addDialog.inst"
+                maxlength="12"
+                placeholder="例如 1"
+                @input="syncLogicalNodeName"
+                @keyup.enter="createNode"
+              />
+            </el-form-item>
+          </div>
+          <el-form-item label="逻辑节点标识">
+            <el-input :model-value="logicalNodeDisplayName" disabled />
+          </el-form-item>
+          <section v-if="selectedLNodeType" class="ln-type-preview-card">
+            <div>
+              <span>关联关系</span>
+              <strong>
+                {{ logicalNodeDisplayName || "逻辑节点" }}
+                <i>→</i>
+                {{ selectedLNodeType.id }}
+              </strong>
+              <small>{{
+                selectedLNodeType.description || "未填写模板说明"
+              }}</small>
+            </div>
+            <div class="ln-type-preview-counts">
+              <span
+                ><strong>{{ selectedLNodeType.data_objects }}</strong
+                >DO</span
+              >
+              <span
+                ><strong>{{ selectedLNodeType.data_attributes }}</strong
+                >DA</span
+              >
+            </div>
+            <el-alert
+              v-if="selectedLNodeType.warnings.length"
+              type="warning"
+              :closable="false"
+              :title="`模板存在 ${selectedLNodeType.warnings.length} 项未解析引用`"
+            />
+          </section>
+        </template>
+        <el-form-item v-else label="节点名称" required>
           <el-input
             v-model="addDialog.name"
             maxlength="128"
             @keyup.enter="createNode"
           />
         </el-form-item>
-        <el-form-item v-if="addDialog.batch" label="创建数量" required>
+        <el-form-item
+          v-if="addDialog.batch && !isAddingLogicalNode"
+          label="创建数量"
+          required
+        >
           <el-input-number
             v-model="addDialog.quantity"
             :min="2"
@@ -812,20 +1013,359 @@
           >
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="addDialog.visible = false">取消</el-button>
-        <el-button
-          type="primary"
-          :loading="addDialog.loading"
-          :disabled="!addDialog.kind || !addDialog.name.trim()"
-          @click="createNode"
+
+      <div
+        v-else
+        v-loading="lnodeTemplateDialog.loadingOptions"
+        class="lnode-template-dialog"
+      >
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="批量创建的 DO 保存在 LNodeType 中；所有引用该类型的 LN 会动态显示这些对象，不会复制 DOI。"
+        />
+        <el-form label-position="top">
+          <div class="lnode-template-fields">
+            <el-form-item label="名称格式" required>
+              <el-input
+                v-model="lnodeTemplateDialog.namePattern"
+                placeholder="例如 Temp{index}"
+                @input="invalidateLNodeTemplatePreview"
+              />
+              <small>必须包含一个 <code>{index}</code> 占位符</small>
+            </el-form-item>
+            <el-form-item label="DOType 引用" required>
+              <el-select
+                v-model="lnodeTemplateDialog.doTypeRef"
+                filterable
+                style="width: 100%"
+                @change="invalidateLNodeTemplatePreview"
+              >
+                <el-option
+                  v-for="item in lnodeTemplateDialog.doTypes"
+                  :key="item.id"
+                  :label="`${item.id}${item.cdc ? ` · ${item.cdc}` : ''}`"
+                  :value="item.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="起始序号" required>
+              <el-input-number
+                v-model="lnodeTemplateDialog.startIndex"
+                :min="0"
+                :max="99999999"
+                controls-position="right"
+                @change="invalidateLNodeTemplatePreview"
+              />
+            </el-form-item>
+            <el-form-item label="创建数量" required>
+              <el-input-number
+                v-model="lnodeTemplateDialog.quantity"
+                :min="1"
+                :max="500"
+                controls-position="right"
+                @change="invalidateLNodeTemplatePreview"
+              />
+            </el-form-item>
+            <el-form-item label="序号宽度" required>
+              <el-input-number
+                v-model="lnodeTemplateDialog.indexWidth"
+                :min="1"
+                :max="8"
+                controls-position="right"
+                @change="invalidateLNodeTemplatePreview"
+              />
+            </el-form-item>
+            <div class="lnode-template-example">
+              <span>格式示例</span>
+              <code>{{ lnodeTemplateExample }}</code>
+            </div>
+          </div>
+        </el-form>
+
+        <section
+          v-if="lnodeTemplateDialog.preview"
+          class="lnode-template-preview"
         >
-          {{
-            addDialog.batch ? `创建 ${addDialog.quantity} 个节点` : "确认添加"
-          }}
-        </el-button>
+          <header>
+            <div>
+              <strong>生成预览</strong>
+              <span>
+                {{ lnodeTemplateDialog.preview.target.name }} ·
+                {{ lnodeTemplateDialog.preview.do_type.id }}
+              </span>
+            </div>
+            <div class="template-preview-counts">
+              <el-tag type="primary">
+                新增 {{ lnodeTemplateDialog.preview.summary.create }}
+              </el-tag>
+              <el-tag type="success">
+                复用 {{ lnodeTemplateDialog.preview.summary.keep }}
+              </el-tag>
+              <el-tag
+                :type="
+                  lnodeTemplateDialog.preview.summary.conflict
+                    ? 'danger'
+                    : 'info'
+                "
+              >
+                冲突 {{ lnodeTemplateDialog.preview.summary.conflict }}
+              </el-tag>
+            </div>
+          </header>
+          <el-table
+            :data="lnodeTemplateDialog.preview.items"
+            height="280"
+            size="small"
+          >
+            <el-table-column prop="name" label="DO 名称" min-width="180" />
+            <el-table-column
+              prop="attributes.type"
+              label="DOType"
+              min-width="180"
+            />
+            <el-table-column label="处理" width="90">
+              <template #default="{ row }">
+                <el-tag
+                  size="small"
+                  :type="
+                    row.action === 'CREATE'
+                      ? 'primary'
+                      : row.action === 'KEEP'
+                        ? 'success'
+                        : 'danger'
+                  "
+                >
+                  {{
+                    row.action === "CREATE"
+                      ? "新增"
+                      : row.action === "KEEP"
+                        ? "复用"
+                        : "冲突"
+                  }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="reason" label="说明" min-width="220" />
+          </el-table>
+        </section>
+      </div>
+
+      <template #footer>
+        <div class="add-dialog-footer">
+          <el-button @click="addDialog.visible = false">取消</el-button>
+          <div v-if="addDialog.templateMode" class="template-footer-actions">
+            <el-button
+              :loading="lnodeTemplateDialog.previewing"
+              :disabled="!canPreviewLNodeTemplate"
+              @click="previewLNodeTemplate"
+            >
+              生成预览
+            </el-button>
+            <el-tooltip
+              :content="lNodeTemplateApplyHint"
+              placement="top"
+              :show-after="300"
+            >
+              <span>
+                <el-button
+                  type="primary"
+                  :loading="lnodeTemplateDialog.applying"
+                  :disabled="!canApplyLNodeTemplate"
+                  @click="applyLNodeTemplate"
+                >
+                  应用
+                </el-button>
+              </span>
+            </el-tooltip>
+          </div>
+          <el-button
+            v-else
+            type="primary"
+            :loading="addDialog.loading"
+            :disabled="!canCreateNode"
+            @click="createNode"
+          >
+            {{
+              addDialog.batch ? `创建 ${addDialog.quantity} 个节点` : "确认添加"
+            }}
+          </el-button>
+        </div>
       </template>
     </el-dialog>
+
+    <!-- 已整合进“添加模型节点”弹窗，保留结构仅用于本次迁移对照。
+    <el-dialog
+      v-model="lnodeTemplateDialog.visible"
+      title="从参数化模板添加数据对象"
+      width="780px"
+      destroy-on-close
+    >
+      <div
+        v-loading="lnodeTemplateDialog.loadingOptions"
+        class="lnode-template-dialog"
+      >
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="批量创建的 DO 保存在 LNodeType 中；所有引用该类型的 LN 会动态显示这些对象，不会复制 DOI。"
+        />
+        <el-form label-position="top">
+          <div class="lnode-template-fields">
+            <el-form-item label="名称格式" required>
+              <el-input
+                v-model="lnodeTemplateDialog.namePattern"
+                placeholder="例如 Temp{index}"
+                @input="invalidateLNodeTemplatePreview"
+              />
+              <small>必须包含一个 <code>{index}</code> 占位符</small>
+            </el-form-item>
+            <el-form-item label="DOType 引用" required>
+              <el-select
+                v-model="lnodeTemplateDialog.doTypeRef"
+                filterable
+                style="width: 100%"
+                @change="invalidateLNodeTemplatePreview"
+              >
+                <el-option
+                  v-for="item in lnodeTemplateDialog.doTypes"
+                  :key="item.id"
+                  :label="`${item.id}${item.cdc ? ` · ${item.cdc}` : ''}`"
+                  :value="item.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="起始序号" required>
+              <el-input-number
+                v-model="lnodeTemplateDialog.startIndex"
+                :min="0"
+                :max="99999999"
+                controls-position="right"
+                @change="invalidateLNodeTemplatePreview"
+              />
+            </el-form-item>
+            <el-form-item label="创建数量" required>
+              <el-input-number
+                v-model="lnodeTemplateDialog.quantity"
+                :min="1"
+                :max="500"
+                controls-position="right"
+                @change="invalidateLNodeTemplatePreview"
+              />
+            </el-form-item>
+            <el-form-item label="序号宽度" required>
+              <el-input-number
+                v-model="lnodeTemplateDialog.indexWidth"
+                :min="1"
+                :max="8"
+                controls-position="right"
+                @change="invalidateLNodeTemplatePreview"
+              />
+            </el-form-item>
+            <div class="lnode-template-example">
+              <span>格式示例</span>
+              <code>{{ lnodeTemplateExample }}</code>
+            </div>
+          </div>
+        </el-form>
+
+        <section
+          v-if="lnodeTemplateDialog.preview"
+          class="lnode-template-preview"
+        >
+          <header>
+            <div>
+              <strong>生成预览</strong>
+              <span>
+                {{ lnodeTemplateDialog.preview.target.name }} ·
+                {{ lnodeTemplateDialog.preview.do_type.id }}
+              </span>
+            </div>
+            <div class="template-preview-counts">
+              <el-tag type="primary">
+                新增 {{ lnodeTemplateDialog.preview.summary.create }}
+              </el-tag>
+              <el-tag type="success">
+                复用 {{ lnodeTemplateDialog.preview.summary.keep }}
+              </el-tag>
+              <el-tag
+                :type="
+                  lnodeTemplateDialog.preview.summary.conflict
+                    ? 'danger'
+                    : 'info'
+                "
+              >
+                冲突 {{ lnodeTemplateDialog.preview.summary.conflict }}
+              </el-tag>
+            </div>
+          </header>
+          <el-table
+            :data="lnodeTemplateDialog.preview.items"
+            height="280"
+            size="small"
+          >
+            <el-table-column prop="name" label="DO 名称" min-width="180" />
+            <el-table-column
+              prop="attributes.type"
+              label="DOType"
+              min-width="180"
+            />
+            <el-table-column label="处理" width="90">
+              <template #default="{ row }">
+                <el-tag
+                  size="small"
+                  :type="
+                    row.action === 'CREATE'
+                      ? 'primary'
+                      : row.action === 'KEEP'
+                        ? 'success'
+                        : 'danger'
+                  "
+                >
+                  {{
+                    row.action === "CREATE"
+                      ? "新增"
+                      : row.action === "KEEP"
+                        ? "复用"
+                        : "冲突"
+                  }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="reason" label="说明" min-width="220" />
+          </el-table>
+        </section>
+      </div>
+      <template #footer>
+        <el-button @click="lnodeTemplateDialog.visible = false">取消</el-button>
+        <el-button
+          :loading="lnodeTemplateDialog.previewing"
+          :disabled="!canPreviewLNodeTemplate"
+          @click="previewLNodeTemplate"
+        >
+          生成预览
+        </el-button>
+        <el-tooltip
+          :content="lNodeTemplateApplyHint"
+          placement="top"
+          :show-after="300"
+        >
+          <span>
+            <el-button
+              type="primary"
+              :loading="lnodeTemplateDialog.applying"
+              :disabled="!canApplyLNodeTemplate"
+              @click="applyLNodeTemplate"
+            >
+              应用
+            </el-button>
+          </span>
+        </el-tooltip>
+      </template>
+    </el-dialog>
+    -->
 
     <el-dialog
       v-model="deleteDialog.visible"
@@ -1113,6 +1653,8 @@ import DataSetMemberHierarchy from "@/components/modeling/DataSetMemberHierarchy
 import { createModelingFormSnapshot } from "@/utils/modelingFormSnapshot";
 import type {
   DeleteImpact,
+  LNodeDoTemplatePreview,
+  LNodeTypeOption,
   ModelNode,
   ModelProject,
   ModelVersion,
@@ -1124,6 +1666,7 @@ const props = defineProps<{ projectId: string }>();
 const router = useRouter();
 const initialLoading = ref(true);
 const saving = ref(false);
+const materializingOverride = ref(false);
 const validating = ref(false);
 const datasetSelectorVisible = ref(false);
 const project = ref<ModelProject>();
@@ -1338,9 +1881,42 @@ const addDialog = reactive({
   visible: false,
   loading: false,
   batch: false,
+  templateMode: false,
+  lnodeTypesLoading: false,
+  lnodeTypes: [] as LNodeTypeOption[],
+  lnType: "",
+  prefix: "",
+  inst: "1",
   quantity: 2,
   kind: "",
   name: "",
+});
+const lnodeTemplateDialog = reactive<{
+  loadingOptions: boolean;
+  previewing: boolean;
+  applying: boolean;
+  namePattern: string;
+  startIndex: number;
+  quantity: number;
+  indexWidth: number;
+  doTypeRef: string;
+  doTypes: Array<{
+    id: string;
+    name: string;
+    cdc: string;
+    description: string;
+  }>;
+  preview?: LNodeDoTemplatePreview;
+}>({
+  loadingOptions: false,
+  previewing: false,
+  applying: false,
+  namePattern: "Do{index}",
+  startIndex: 1,
+  quantity: 50,
+  indexWidth: 3,
+  doTypeRef: "",
+  doTypes: [],
 });
 const deleteDialog = reactive<{
   visible: boolean;
@@ -1362,6 +1938,9 @@ const dirty = computed(
 const isSelectedExtension = computed(
   () => selectedNode.value?.kind === "EXTENSION",
 );
+const isSelectedReadOnly = computed(
+  () => isSelectedExtension.value || Boolean(selectedNode.value?.virtual),
+);
 const selectedExtensionHasLossRisk = computed(
   () =>
     isSelectedExtension.value &&
@@ -1375,6 +1954,23 @@ const selectedCdcTemplate = computed(() =>
     (template) => template.id === cdcAssistant.templateId,
   ),
 );
+const isAddingLogicalNode = computed(() =>
+  ["LN0", "LN"].includes(addDialog.kind),
+);
+const selectedLNodeType = computed(() =>
+  addDialog.lnodeTypes.find((item) => item.id === addDialog.lnType),
+);
+const logicalNodeDisplayName = computed(() => {
+  if (addDialog.kind === "LN0") return "LLN0";
+  const lnClass = selectedLNodeType.value?.lnClass || "";
+  return `${addDialog.prefix.trim()}${lnClass}${addDialog.inst.trim()}`;
+});
+const canCreateNode = computed(() => {
+  if (!addDialog.kind || !addDialog.name.trim()) return false;
+  if (!isAddingLogicalNode.value) return true;
+  if (!addDialog.lnType || !selectedLNodeType.value) return false;
+  return addDialog.kind === "LN0" || Boolean(addDialog.inst.trim());
+});
 const singletonChildKinds = new Set([
   "HEADER",
   "COMMUNICATION",
@@ -1391,27 +1987,62 @@ const singletonChildKinds = new Set([
   "SETTING_CONTROL",
   "SMV_OPTS",
 ]);
+const instanceOnlyChildKinds = new Set(["DOI", "SDI", "DAI"]);
 const availableChildOptions = computed(() => {
+  if (selectedNode.value?.virtual) return [];
   const children = selectedNode.value?.children || [];
   return (selectedNode.value?.schema?.allowed_children || []).filter(
     (option) =>
-      !singletonChildKinds.has(option.kind) ||
-      !children.some((child) => child.kind === option.kind),
+      !instanceOnlyChildKinds.has(option.kind) &&
+      (!singletonChildKinds.has(option.kind) ||
+        !children.some((child) => child.kind === option.kind)),
   );
 });
 const canAdd = computed(() => availableChildOptions.value.length > 0);
 const canBatchAdd = computed(() =>
   availableChildOptions.value.some(
-    (option) => !singletonChildKinds.has(option.kind),
+    (option) =>
+      !singletonChildKinds.has(option.kind) &&
+      !["LN0", "LN"].includes(option.kind),
   ),
 );
 const addDialogChildOptions = computed(() =>
   addDialog.batch
     ? availableChildOptions.value.filter(
-        (option) => !singletonChildKinds.has(option.kind),
+        (option) =>
+          !singletonChildKinds.has(option.kind) &&
+          !["LN0", "LN"].includes(option.kind),
       )
     : availableChildOptions.value,
 );
+const lnodeTemplateExample = computed(() => {
+  const formattedIndex = String(lnodeTemplateDialog.startIndex).padStart(
+    lnodeTemplateDialog.indexWidth,
+    "0",
+  );
+  return lnodeTemplateDialog.namePattern.replace("{index}", formattedIndex);
+});
+const canPreviewLNodeTemplate = computed(
+  () =>
+    lnodeTemplateDialog.namePattern.includes("{index}") &&
+    Boolean(lnodeTemplateDialog.doTypeRef) &&
+    lnodeTemplateDialog.quantity > 0,
+);
+const canApplyLNodeTemplate = computed(
+  () =>
+    Boolean(lnodeTemplateDialog.preview) &&
+    !lnodeTemplateDialog.preview?.summary.conflict &&
+    Boolean(lnodeTemplateDialog.preview?.summary.create),
+);
+const lNodeTemplateApplyHint = computed(() => {
+  const preview = lnodeTemplateDialog.preview;
+  if (!preview) return "请先生成预览";
+  if (preview.summary.conflict) {
+    return `存在 ${preview.summary.conflict} 个同名异构冲突，请调整参数后重新预览`;
+  }
+  if (!preview.summary.create) return "所有 DO 已存在，无需重复创建";
+  return `一次性创建 ${preview.summary.create} 个 DO，复用 ${preview.summary.keep} 个已有 DO`;
+});
 const referenceTotal = computed(
   () =>
     (nodeImpact.value?.inbound_references.length || 0) +
@@ -1558,6 +2189,12 @@ function replaceDisplayedChildren(nodeId: string, children: ModelNode[]) {
     ModelNode | undefined;
   if (!displayed) return;
   prepareLazyTree(children);
+  const stack = [...children];
+  while (stack.length) {
+    const child = stack.pop()!;
+    treeNodeIndex.set(child.id, child);
+    if (child.children?.length) stack.push(...child.children);
+  }
   displayed.children = children;
   treeData.value = [...treeData.value];
 }
@@ -1569,10 +2206,28 @@ function loadNodeDetail(node: ModelNode) {
   if (active) return active;
   const request = modelingApi
     .getNode(props.projectId, node.id, true)
-    .then((detail) => {
+    .then(async (detail) => {
+      if (detail.kind === "LN0" || detail.kind === "LN") {
+        const effective = await modelingApi.getEffectiveInstanceTree(
+          props.projectId,
+          detail.id,
+        );
+        if (effective.resolved) {
+          const nonDataChildren = (detail.children || []).filter(
+            (child) => child.kind !== "DOI",
+          );
+          detail.children = [...nonDataChildren, ...effective.nodes];
+          detail.child_count = detail.children.length;
+          detail.effective_model_warnings = effective.warnings;
+          detail.effective_model_summary = effective.summary;
+        }
+      }
       nodeDetailCache.set(node.id, detail);
-      for (const child of detail.children || []) {
+      const stack = [...(detail.children || [])];
+      while (stack.length) {
+        const child = stack.pop()!;
         treeNodeIndex.set(child.id, child);
+        if (child.children?.length) stack.push(...child.children);
       }
       return detail;
     })
@@ -1711,6 +2366,17 @@ async function focusNode(nodeId: string) {
   treeRef.value?.scrollToNode(nodeId, "center");
 }
 
+async function focusReferenceNode(nodeId: string) {
+  if (dirty.value) {
+    return ElMessage.warning("请先保存或撤销当前属性修改");
+  }
+  if (treeNodeIndex.has(nodeId)) {
+    await focusNode(nodeId);
+    return;
+  }
+  await loadTree(nodeId);
+}
+
 function focusChildRow(row: ModelNode) {
   void focusNode(row.id);
 }
@@ -1726,6 +2392,10 @@ async function resetForm() {
 }
 
 async function saveNode() {
+  if (selectedNode.value?.virtual)
+    return ElMessage.warning(
+      "继承节点由 DataTypeTemplates 定义，不能在实例模型中直接修改",
+    );
   if (isSelectedExtension.value)
     return ElMessage.warning("保真扩展默认只读，不能直接修改原始 XML");
   if (!selectedNode.value || !propertyForm.name.trim())
@@ -1745,6 +2415,31 @@ async function saveNode() {
     await Promise.all([loadProject(), loadTree(updated.id)]);
   } finally {
     saving.value = false;
+  }
+}
+
+async function materializeSelectedOverride() {
+  const node = selectedNode.value;
+  if (!node?.virtual || !node.logical_node_id || !node.template_path) {
+    return ElMessage.warning("当前节点没有可物化的类型模板路径");
+  }
+  materializingOverride.value = true;
+  try {
+    const result = await modelingApi.createInstanceOverride(
+      props.projectId,
+      node.logical_node_id,
+      node.template_path,
+      project.value?.revision,
+    );
+    ElMessage.success(
+      result.created_count
+        ? `已创建 ${result.created_count} 个必要实例节点`
+        : "实例覆盖已存在",
+    );
+    validationResult.value = undefined;
+    await Promise.all([loadProject(), loadTree(result.node.id)]);
+  } finally {
+    materializingOverride.value = false;
   }
 }
 
@@ -1781,14 +2476,132 @@ async function applyCdcTemplate(templateId: string) {
   }
 }
 
+function invalidateLNodeTemplatePreview() {
+  lnodeTemplateDialog.preview = undefined;
+}
+
+function lnodeTemplatePayload() {
+  return {
+    name_pattern: lnodeTemplateDialog.namePattern.trim(),
+    start_index: lnodeTemplateDialog.startIndex,
+    quantity: lnodeTemplateDialog.quantity,
+    index_width: lnodeTemplateDialog.indexWidth,
+    do_type_ref: lnodeTemplateDialog.doTypeRef,
+  };
+}
+
+async function switchNodeCreationMode(value: string | number | boolean) {
+  addDialog.templateMode = value === "template";
+  if (addDialog.templateMode) {
+    await prepareLNodeTemplateMode();
+  }
+}
+
+async function prepareLNodeTemplateMode() {
+  const target = selectedNode.value;
+  if (!target || target.kind !== "LNODE_TYPE") return;
+  if (dirty.value) {
+    addDialog.templateMode = false;
+    return ElMessage.warning("请先保存或撤销当前节点的属性修改");
+  }
+  lnodeTemplateDialog.loadingOptions = true;
+  lnodeTemplateDialog.preview = undefined;
+  lnodeTemplateDialog.namePattern = "Do{index}";
+  lnodeTemplateDialog.startIndex = 1;
+  lnodeTemplateDialog.quantity = 50;
+  lnodeTemplateDialog.indexWidth = 3;
+  try {
+    const result = await modelingApi.getLNodeDoTemplateOptions(
+      props.projectId,
+      target.id,
+    );
+    if (
+      !lnodeTemplateDialog.doTypeRef ||
+      !result.do_types.some((item) => item.id === lnodeTemplateDialog.doTypeRef)
+    ) {
+      lnodeTemplateDialog.doTypeRef = result.do_types[0]?.id || "";
+    }
+    lnodeTemplateDialog.doTypes = result.do_types;
+    if (!result.do_types.length) {
+      ElMessage.warning("当前 DataTypeTemplates 中还没有可引用的 DOType");
+    }
+  } finally {
+    lnodeTemplateDialog.loadingOptions = false;
+  }
+}
+
+async function previewLNodeTemplate() {
+  const target = selectedNode.value;
+  if (
+    !target ||
+    target.kind !== "LNODE_TYPE" ||
+    !canPreviewLNodeTemplate.value
+  ) {
+    return;
+  }
+  lnodeTemplateDialog.previewing = true;
+  try {
+    lnodeTemplateDialog.preview = await modelingApi.previewLNodeDoTemplate(
+      props.projectId,
+      target.id,
+      lnodeTemplatePayload(),
+    );
+  } finally {
+    lnodeTemplateDialog.previewing = false;
+  }
+}
+
+async function applyLNodeTemplate() {
+  const target = selectedNode.value;
+  const preview = lnodeTemplateDialog.preview;
+  if (
+    !target ||
+    target.kind !== "LNODE_TYPE" ||
+    !preview ||
+    !canApplyLNodeTemplate.value
+  ) {
+    return;
+  }
+  lnodeTemplateDialog.applying = true;
+  try {
+    const result = await modelingApi.applyLNodeDoTemplate(
+      props.projectId,
+      target.id,
+      {
+        ...lnodeTemplatePayload(),
+        expected_project_revision: preview.project_revision,
+      },
+    );
+    addDialog.visible = false;
+    addDialog.templateMode = false;
+    validationResult.value = undefined;
+    ElMessage.success(
+      `已创建 ${result.created_count} 个 DO${
+        result.kept_count ? `，复用 ${result.kept_count} 个已有 DO` : ""
+      }`,
+    );
+    await Promise.all([loadProject(), loadTree(target.id)]);
+  } finally {
+    lnodeTemplateDialog.applying = false;
+  }
+}
+
 function openAddDialog(mode: "single" | "batch" = "single") {
   addDialog.batch = mode === "batch";
+  addDialog.templateMode = false;
+  addDialog.lnodeTypes = [];
+  addDialog.lnType = "";
+  addDialog.prefix = "";
+  addDialog.inst = "1";
   const first = addDialogChildOptions.value[0];
   if (!first) return;
   addDialog.quantity = 2;
   addDialog.kind = first.kind;
   addDialog.name = nextAvailableName(first.kind);
   addDialog.visible = true;
+  if (["LN0", "LN"].includes(first.kind)) {
+    void prepareLogicalNodeCreation();
+  }
 }
 
 function defaultName(kind: string) {
@@ -1856,26 +2669,94 @@ function nextAvailableName(kind: string) {
   return `${match[1]}${maxSuffix + 1}`;
 }
 
-function suggestNodeName(kind: string) {
+async function handleAddKindChange(kind: string) {
   addDialog.name = nextAvailableName(kind);
+  addDialog.lnType = "";
+  addDialog.lnodeTypes = [];
+  addDialog.prefix = "";
+  addDialog.inst = "1";
+  if (["LN0", "LN"].includes(kind)) {
+    await prepareLogicalNodeCreation();
+  }
+}
+
+function nextLogicalNodeInst(lnClass: string, prefix: string) {
+  const used = (selectedNode.value?.children || [])
+    .filter(
+      (node) =>
+        node.kind === "LN" &&
+        String(node.attributes.lnClass || "") === lnClass &&
+        String(node.attributes.prefix || "") === prefix,
+    )
+    .map((node) => Number(node.attributes.inst))
+    .filter((value) => Number.isInteger(value) && value >= 0);
+  return String(used.length ? Math.max(...used) + 1 : 1);
+}
+
+async function prepareLogicalNodeCreation() {
+  addDialog.lnodeTypesLoading = true;
+  try {
+    const requestedClass = addDialog.kind === "LN0" ? "LLN0" : "";
+    const options = await modelingApi.getLNodeTypeOptions(
+      props.projectId,
+      requestedClass,
+    );
+    addDialog.lnodeTypes =
+      addDialog.kind === "LN"
+        ? options.filter((item) => item.lnClass !== "LLN0")
+        : options;
+    if (addDialog.lnodeTypes.length === 1) {
+      addDialog.lnType = addDialog.lnodeTypes[0].id;
+      handleLNodeTypeChange(addDialog.lnType);
+    } else {
+      syncLogicalNodeName();
+    }
+  } finally {
+    addDialog.lnodeTypesLoading = false;
+  }
+}
+
+function handleLNodeTypeChange(typeId: string) {
+  const option = addDialog.lnodeTypes.find((item) => item.id === typeId);
+  if (option && addDialog.kind === "LN") {
+    addDialog.inst = nextLogicalNodeInst(option.lnClass, addDialog.prefix);
+  }
+  syncLogicalNodeName();
+}
+
+function syncLogicalNodeName() {
+  addDialog.name = logicalNodeDisplayName.value;
 }
 
 async function createNode() {
-  if (!selectedNode.value || !addDialog.kind || !addDialog.name.trim()) return;
+  if (!selectedNode.value || !canCreateNode.value) return;
   addDialog.loading = true;
   try {
-    const quantity = addDialog.batch ? addDialog.quantity : 1;
+    const quantity =
+      addDialog.batch && !isAddingLogicalNode.value ? addDialog.quantity : 1;
     let node: ModelNode | undefined;
     for (let index = 0; index < quantity; index += 1) {
-      const name =
-        quantity === 1
+      const name = isAddingLogicalNode.value
+        ? logicalNodeDisplayName.value
+        : quantity === 1
           ? addDialog.name.trim()
           : incrementNodeName(addDialog.name.trim(), index);
+      const attributes = isAddingLogicalNode.value
+        ? {
+            prefix: addDialog.kind === "LN" ? addDialog.prefix.trim() : "",
+            lnClass:
+              addDialog.kind === "LN0"
+                ? "LLN0"
+                : selectedLNodeType.value?.lnClass || "",
+            inst: addDialog.kind === "LN" ? addDialog.inst.trim() : "",
+            lnType: addDialog.lnType,
+          }
+        : defaultAttributes(addDialog.kind, name);
       node = await modelingApi.createNode(props.projectId, {
         parent_id: selectedNode.value.id,
         kind: addDialog.kind,
         name,
-        attributes: defaultAttributes(addDialog.kind, name),
+        attributes,
       });
     }
     addDialog.visible = false;
@@ -1900,7 +2781,6 @@ function defaultAttributes(
 ): Record<string, unknown> {
   const lnClass = name.slice(0, 4).toUpperCase();
   if (kind === "LDEVICE") return { inst: name };
-  if (kind === "LN") return { lnClass, inst: name.slice(4) || "1", lnType: "" };
   if (kind === "SUBNETWORK")
     return { type: "8-MMS", bitRate: 100, multiplier: "M" };
   if (kind === "P") return { type: name, value: "" };
@@ -2701,6 +3581,28 @@ onMounted(async () => {
   font-size: 12px;
   line-height: 1;
 }
+.tree-node.is-template-inherited {
+  opacity: 0.9;
+}
+.tree-node.is-template-inherited .tree-icon {
+  border-style: dashed;
+}
+.inheritance-badge {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border: 1px solid #bfdbfe;
+  border-radius: 5px;
+  color: #2563eb;
+  background: #eff6ff;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+}
+.tree-node.is-instance-override .inheritance-badge {
+  border-color: #fed7aa;
+  color: #c2410c;
+  background: #fff7ed;
+}
 .kind-root .tree-label,
 .kind-ied .tree-label,
 .kind-ldevice .tree-label,
@@ -3072,8 +3974,10 @@ onMounted(async () => {
 .reference-view {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   align-content: start;
   gap: 12px;
+  overflow: hidden;
 }
 .reference-card {
   padding: 16px;
@@ -3101,13 +4005,17 @@ onMounted(async () => {
 }
 .reference-list {
   grid-column: 1 / -1;
+  min-height: 0;
   border: 1px solid var(--sidebar-border);
   border-radius: 10px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 .reference-list > div {
   display: grid;
-  grid-template-columns: 90px minmax(0, 1fr) 16px minmax(0, 1fr);
+  grid-template-columns: 132px minmax(0, 1fr) 20px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
@@ -3122,6 +4030,47 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 10px;
+}
+.reference-endpoint {
+  min-width: 0;
+  padding: 7px 9px;
+  text-align: left;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  color: var(--text-primary);
+  background: #ffffff;
+  cursor: pointer;
+}
+.reference-endpoint:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+.reference-endpoint small,
+.reference-endpoint strong,
+.reference-endpoint code {
+  display: block;
+}
+.reference-endpoint small {
+  color: var(--text-secondary);
+  font-size: 9px;
+}
+.reference-endpoint strong {
+  margin: 3px 0;
+  font-size: 11px;
+}
+.reference-arrow {
+  color: #2563eb;
+  text-align: center;
+  font-weight: 700;
+}
+.reference-value {
+  grid-column: 2 / -1;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+.reference-value code {
+  display: inline;
+  color: #2563eb;
 }
 .summary-hero {
   display: flex;
@@ -3255,6 +4204,56 @@ onMounted(async () => {
 .property-form {
   padding: 15px;
 }
+.inherited-node-alert {
+  margin: 12px 14px 0;
+  width: auto;
+}
+.inherited-node-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 12px 14px 0;
+  padding: 11px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+.inherited-node-card strong,
+.inherited-node-card span,
+.inherited-node-card code {
+  display: block;
+}
+.inherited-node-card strong {
+  color: #1d4ed8;
+  font-size: 11px;
+}
+.inherited-node-card span {
+  margin-top: 3px;
+  color: #475569;
+  font-size: 10px;
+  line-height: 16px;
+}
+.inherited-node-card code {
+  margin-top: 5px;
+  color: #2563eb;
+  font-size: 9px;
+}
+.inherited-node-card .el-button {
+  flex: 0 0 auto;
+}
+.effective-model-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 14px 0;
+  padding: 9px 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 7px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-size: 10px;
+}
 .property-form :deep(.el-form-item) {
   margin-bottom: 15px;
 }
@@ -3363,6 +4362,217 @@ onMounted(async () => {
   margin-left: 10px;
   color: var(--text-secondary);
   font-size: 11px;
+}
+.node-creation-mode {
+  display: flex;
+  justify-content: center;
+  margin: -4px 0 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+.node-creation-mode :deep(.el-segmented) {
+  width: min(100%, 440px);
+}
+.node-creation-mode :deep(.el-segmented__item) {
+  min-width: 0;
+  flex: 1;
+}
+.node-creation-mode :deep(.el-segmented__item-label) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+.add-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.template-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.template-footer-actions > span {
+  display: inline-flex;
+}
+.ln-create-alert {
+  margin-bottom: 16px;
+}
+.ln-type-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+.ln-type-option span {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.ln-type-option small,
+.ln-type-option em {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-style: normal;
+}
+.form-warning {
+  display: block;
+  margin-top: 6px;
+  color: var(--color-warning);
+  font-size: 11px;
+}
+.ln-instance-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.ln-type-preview-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+.ln-type-preview-card > div:first-child {
+  min-width: 0;
+}
+.ln-type-preview-card span,
+.ln-type-preview-card small,
+.ln-type-preview-card strong {
+  display: block;
+}
+.ln-type-preview-card > div > span,
+.ln-type-preview-card small {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+.ln-type-preview-card > div > strong {
+  margin: 4px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.ln-type-preview-card i {
+  margin: 0 5px;
+  color: #2563eb;
+  font-style: normal;
+}
+.ln-type-preview-counts {
+  display: flex;
+  gap: 8px;
+}
+.ln-type-preview-counts span {
+  min-width: 56px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  color: var(--text-secondary);
+  background: #eff6ff;
+  text-align: center;
+  font-size: 9px;
+}
+.ln-type-preview-counts strong {
+  color: #2563eb;
+  font-size: 15px;
+}
+.ln-type-preview-card > .el-alert {
+  grid-column: 1 / -1;
+}
+.lnode-template-dialog {
+  min-height: 260px;
+}
+.lnode-template-dialog > .el-alert {
+  margin-bottom: 16px;
+}
+.lnode-template-fields {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0 12px;
+  align-items: start;
+}
+.lnode-template-fields .el-form-item:nth-child(1),
+.lnode-template-fields .el-form-item:nth-child(2) {
+  grid-column: span 3;
+}
+.lnode-template-fields .el-form-item:nth-child(3),
+.lnode-template-fields .el-form-item:nth-child(4),
+.lnode-template-fields .el-form-item:nth-child(5) {
+  grid-column: span 2;
+}
+.lnode-template-fields .el-form-item {
+  margin-bottom: 14px;
+}
+.lnode-template-fields :deep(.el-form-item__label) {
+  white-space: nowrap;
+}
+.lnode-template-fields :deep(.el-input-number),
+.lnode-template-fields :deep(.el-select),
+.lnode-template-fields :deep(.el-input) {
+  width: 100%;
+}
+.lnode-template-fields small {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+.lnode-template-example {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  margin-bottom: 14px;
+  padding: 0 10px;
+  border: 1px dashed #bfdbfe;
+  border-radius: 7px;
+  color: var(--text-secondary);
+  background: #f8fbff;
+  font-size: 10px;
+}
+.lnode-template-example code {
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 700;
+}
+.lnode-template-preview {
+  overflow: hidden;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 9px;
+}
+.lnode-template-preview > header {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--sidebar-border);
+  background: #f8fafc;
+}
+.lnode-template-preview header strong,
+.lnode-template-preview header span {
+  display: block;
+}
+.lnode-template-preview header strong {
+  font-size: 12px;
+}
+.lnode-template-preview header span {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+.template-preview-counts {
+  display: flex;
+  gap: 6px;
 }
 .delete-impact .el-alert {
   margin-bottom: 14px;

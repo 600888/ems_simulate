@@ -30,10 +30,94 @@ export interface ModelNode {
   revision: number;
   child_count: number;
   protected: boolean;
+  virtual?: boolean;
+  inherited?: boolean;
+  instance_override?: boolean;
+  source_node_id?: string | null;
+  source_kind?: string;
+  template_path?: string;
+  logical_node_id?: string;
+  effective_fc?: string;
+  cdc?: string;
+  effective_model_warnings?: EffectiveInstanceTree["warnings"];
+  effective_model_summary?: EffectiveInstanceTree["summary"];
   detail_loaded?: boolean;
   children_partial?: boolean;
   children?: ModelNode[];
   schema?: NodeSchema;
+}
+
+export interface EffectiveInstanceTree {
+  logical_node_id: string;
+  ln_type: string;
+  ln_type_node_id?: string;
+  resolved: boolean;
+  nodes: ModelNode[];
+  warnings: Array<{
+    code: string;
+    path: string;
+    message: string;
+  }>;
+  summary: {
+    data_objects: number;
+    data_attributes: number;
+    overrides: number;
+  };
+}
+
+export interface LNodeTypeOption {
+  node_id: string;
+  id: string;
+  name: string;
+  lnClass: string;
+  description: string;
+  data_objects: number;
+  data_attributes: number;
+  warnings: Array<{
+    code: string;
+    path: string;
+    message: string;
+  }>;
+}
+
+export interface LNodeDoTemplateParameters {
+  name_pattern: string;
+  start_index: number;
+  quantity: number;
+  index_width: number;
+  do_type_ref: string;
+  expected_project_revision?: number;
+}
+
+export interface LNodeDoTemplatePreview {
+  target: {
+    id: string;
+    name: string;
+    lnClass: string;
+    revision: number;
+  };
+  do_type: {
+    id: string;
+    name: string;
+    cdc: string;
+    description: string;
+  };
+  parameters: LNodeDoTemplateParameters;
+  items: Array<{
+    name: string;
+    index: number;
+    action: "CREATE" | "KEEP" | "CONFLICT";
+    reason: string;
+    existing_node_id: string | null;
+    attributes: { type: string };
+  }>;
+  summary: {
+    total: number;
+    create: number;
+    keep: number;
+    conflict: number;
+  };
+  project_revision: number;
 }
 
 export interface NodeFieldSchema {
@@ -61,6 +145,22 @@ export interface DeleteImpact {
     source_node_id: string;
     target_node_id: string;
     relation_type: string;
+    relation_label: string;
+    reference_value: string;
+    source: {
+      id: string;
+      kind: string;
+      kind_label: string;
+      name: string;
+      path: string;
+    };
+    target: {
+      id: string;
+      kind: string;
+      kind_label: string;
+      name: string;
+      path: string;
+    };
   }>;
   outbound_reference_count: number;
   protected: boolean;

@@ -1,5 +1,6 @@
 """IEC 61850 图形化建模服务的核心闭环测试。"""
 
+from time import perf_counter
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -9,6 +10,8 @@ from sqlalchemy.pool import StaticPool
 
 import src.data.model  # noqa: F401
 from src.data.model.base import Base
+from src.modeling.document import ModelDocument, ModelNode
+from src.modeling.effective_instance import build_effective_instance_tree
 from src.modeling.service import Iec61850ModelingService
 from src.web.api.exceptions import ConflictError, ValidationError
 
@@ -44,6 +47,70 @@ def flatten(nodes: list[dict]) -> list[dict]:
         result.append(node)
         result.extend(flatten(node.get("children", [])))
     return result
+
+
+def test_effective_data_model_expands_hundreds_of_template_objects_quickly():
+    project_id = "performance-project"
+    logical_node = ModelNode(
+        id="ln-1",
+        project_id=project_id,
+        parent_id=None,
+        kind="LN",
+        name="MMCL1",
+        attributes={
+            "lnClass": "MMCL",
+            "inst": "1",
+            "lnType": "MMCL_Type",
+        },
+    )
+    ln_type = ModelNode(
+        id="lnt-1",
+        project_id=project_id,
+        parent_id=None,
+        kind="LNODE_TYPE",
+        name="MMCL_Type",
+        attributes={"id": "MMCL_Type", "lnClass": "MMCL"},
+    )
+    do_type = ModelNode(
+        id="dot-1",
+        project_id=project_id,
+        parent_id=None,
+        kind="DO_TYPE",
+        name="MV_Type",
+        attributes={"id": "MV_Type", "cdc": "MV"},
+    )
+    value = ModelNode(
+        id="da-1",
+        project_id=project_id,
+        parent_id=do_type.id,
+        kind="DA_DEF",
+        name="mag",
+        attributes={"bType": "FLOAT32", "fc": "MX"},
+    )
+    definitions = [
+        ModelNode(
+            id=f"do-{index}",
+            project_id=project_id,
+            parent_id=ln_type.id,
+            kind="DO_DEF",
+            name=f"Temp{index:03d}",
+            sort_order=index,
+            attributes={"type": "MV_Type"},
+        )
+        for index in range(1, 501)
+    ]
+    document = ModelDocument(
+        project_id,
+        [logical_node, ln_type, do_type, value, *definitions],
+    )
+
+    started = perf_counter()
+    effective = build_effective_instance_tree(document, logical_node)
+    elapsed = perf_counter() - started
+
+    assert len(effective["nodes"]) == 500
+    assert effective["summary"]["data_attributes"] == 500
+    assert elapsed < 2.0
 
 
 def test_create_from_scratch_builds_minimum_valid_skeleton(service: Iec61850ModelingService):
@@ -145,10 +212,457 @@ def test_compact_tree_search_returns_matches_with_ancestor_paths(
     assert next(item for item in kinds if item["kind"] == "LN0")["count"] >= 1
 
 
+def test_ln_effective_data_model_is_resolved_from_type_templates(
+    service: Iec61850ModelingService,
+):
+    result = create_project(service)
+    project_id = result["project"]["id"]
+    nodes = flatten(result["tree"])
+    ln0 = next(node for node in nodes if node["kind"] == "LN0")
+    templates = next(node for node in nodes if node["kind"] == "DATA_TYPE_TEMPLATES")
+    ln_type = next(
+        node
+        for node in nodes
+        if node["kind"] == "LNODE_TYPE" and node["attributes"]["id"] == ln0["attributes"]["lnType"]
+    )
+    analogue = service.create_node(
+        project_id,
+        {
+            "parent_id": templates["id"],
+            "kind": "DA_TYPE",
+            "name": "AnalogueValue",
+            "attributes": {"id": "AnalogueValue"},
+        },
+    )
+    service.create_node(
+        project_id,
+        {
+            "parent_id": analogue["id"],
+            "kind": "BDA_DEF",
+            "name": "f",
+            "attributes": {"bType": "FLOAT32"},
+        },
+    )
+    mv_type = service.create_node(
+        project_id,
+        {
+            "parent_id": templates["id"],
+            "kind": "DO_TYPE",
+            "name": "MV_Type",
+            "attributes": {"id": "MV_Type", "cdc": "MV"},
+        },
+    )
+    service.create_node(
+        project_id,
+        {
+            "parent_id": mv_type["id"],
+            "kind": "DA_DEF",
+            "name": "mag",
+            "attributes": {
+                "bType": "Struct",
+                "type": "AnalogueValue",
+                "fc": "MX",
+            },
+        },
+    )
+    service.create_node(
+        project_id,
+        {
+            "parent_id": mv_type["id"],
+            "kind": "DA_DEF",
+            "name": "q",
+            "attributes": {"bType": "Quality", "fc": "MX"},
+        },
+    )
+    service.create_node(
+        project_id,
+        {
+            "parent_id": ln_type["id"],
+            "kind": "DO_DEF",
+            "name": "Hz",
+            "attributes": {"type": "MV_Type"},
+        },
+    )
+
+    effective = service.get_effective_instance_tree(project_id, ln0["id"])
+    hz = effective["nodes"][0]
+    mag = next(child for child in hz["children"] if child["name"] == "mag")
+    refreshed_ln0 = service.get_node(project_id, ln0["id"])
+    compact_ln0 = next(
+        node for node in flatten(service.get_tree(project_id, compact=True, max_depth=8)) if node["id"] == ln0["id"]
+    )
+
+    assert effective["resolved"] is True
+    assert effective["summary"] == {
+        "data_objects": 1,
+        "data_attributes": 3,
+        "overrides": 0,
+    }
+    assert hz["kind"] == "DOI"
+    assert hz["virtual"] is True
+    assert mag["kind"] == "SDI"
+    assert mag["children"][0]["name"] == "f"
+    assert mag["children"][0]["effective_fc"] == "MX"
+    assert refreshed_ln0["child_count"] == 1
+    assert compact_ln0["child_count"] == 1
+    assert compact_ln0["children_partial"] is True
+    assert '<DOI name="Hz"' not in service.generate_scl(project_id)["xml"]
+
+    materialized = service.create_instance_override(
+        project_id,
+        ln0["id"],
+        "Hz.mag.f",
+        expected_project_revision=service.get_project(project_id)["revision"],
+    )
+    materialized_again = service.create_instance_override(
+        project_id,
+        ln0["id"],
+        "Hz.mag.f",
+        expected_project_revision=materialized["project_revision"],
+    )
+    refreshed_effective = service.get_effective_instance_tree(
+        project_id,
+        ln0["id"],
+    )
+    materialized_xml = service.generate_scl(project_id)["xml"]
+
+    assert materialized["created_count"] == 3
+    assert materialized["node"]["kind"] == "DAI"
+    assert materialized["node"]["name"] == "f"
+    assert materialized_again["created_count"] == 0
+    assert materialized_again["node"]["id"] == materialized["node"]["id"]
+    assert refreshed_effective["summary"]["overrides"] == 3
+    assert '<DOI name="Hz">' in materialized_xml
+    assert '<SDI name="mag">' in materialized_xml
+    assert '<DAI name="f"' in materialized_xml
+    with pytest.raises(ConflictError):
+        service.create_instance_override(
+            project_id,
+            ln0["id"],
+            "Hz.q",
+            expected_project_revision=materialized["project_revision"] - 1,
+        )
+
+
+def test_logical_node_creation_requires_and_resolves_lnode_type(
+    service: Iec61850ModelingService,
+):
+    result = create_project(service)
+    project_id = result["project"]["id"]
+    nodes = flatten(result["tree"])
+    templates = next(node for node in nodes if node["kind"] == "DATA_TYPE_TEMPLATES")
+    logical_device = next(node for node in nodes if node["kind"] == "LDEVICE")
+    lnode_type = service.create_node(
+        project_id,
+        {
+            "parent_id": templates["id"],
+            "kind": "LNODE_TYPE",
+            "name": "CustomGGIO",
+            "attributes": {
+                "id": "CUSTOM_GGIO",
+                "lnClass": "GGIO",
+                "desc": "自定义通用输入输出",
+            },
+        },
+    )
+
+    options = service.get_lnode_type_options(project_id, ln_class="GGIO")
+
+    assert options == [
+        {
+            "node_id": lnode_type["id"],
+            "id": "CUSTOM_GGIO",
+            "name": "CustomGGIO",
+            "lnClass": "GGIO",
+            "description": "自定义通用输入输出",
+            "data_objects": 0,
+            "data_attributes": 0,
+            "warnings": [],
+        }
+    ]
+
+    logical_node = service.create_node(
+        project_id,
+        {
+            "parent_id": logical_device["id"],
+            "kind": "LN",
+            "name": "GGIO99",
+            "attributes": {
+                "prefix": "",
+                "lnClass": "GGIO",
+                "inst": "99",
+                "lnType": "CUSTOM_GGIO",
+            },
+        },
+    )
+
+    assert logical_node["attributes"]["lnType"] == "CUSTOM_GGIO"
+    assert (
+        service.get_effective_instance_tree(
+            project_id,
+            logical_node["id"],
+        )["resolved"]
+        is True
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="必须选择有效的 LNodeType",
+    ):
+        service.create_node(
+            project_id,
+            {
+                "parent_id": logical_device["id"],
+                "kind": "LN",
+                "name": "GGIO100",
+                "attributes": {
+                    "lnClass": "GGIO",
+                    "inst": "100",
+                    "lnType": "",
+                },
+            },
+        )
+
+    with pytest.raises(ValidationError, match="创建实例覆盖"):
+        service.create_node(
+            project_id,
+            {
+                "parent_id": logical_node["id"],
+                "kind": "DOI",
+                "name": "Orphan",
+                "attributes": {},
+            },
+        )
+
+
+def test_real_instance_overrides_are_merged_into_effective_template_tree(
+    service: Iec61850ModelingService,
+):
+    result = create_project(service)
+    project_id = result["project"]["id"]
+    nodes = flatten(result["tree"])
+    ln0 = next(node for node in nodes if node["kind"] == "LN0")
+    templates = next(node for node in nodes if node["kind"] == "DATA_TYPE_TEMPLATES")
+    ln_type = next(
+        node
+        for node in nodes
+        if node["kind"] == "LNODE_TYPE" and node["attributes"]["id"] == ln0["attributes"]["lnType"]
+    )
+    sps_type = service.create_node(
+        project_id,
+        {
+            "parent_id": templates["id"],
+            "kind": "DO_TYPE",
+            "name": "SPS_Type",
+            "attributes": {"id": "SPS_Type", "cdc": "SPS"},
+        },
+    )
+    for name, b_type in (("stVal", "BOOLEAN"), ("q", "Quality")):
+        service.create_node(
+            project_id,
+            {
+                "parent_id": sps_type["id"],
+                "kind": "DA_DEF",
+                "name": name,
+                "attributes": {"bType": b_type, "fc": "ST"},
+            },
+        )
+    service.create_node(
+        project_id,
+        {
+            "parent_id": ln_type["id"],
+            "kind": "DO_DEF",
+            "name": "Beh",
+            "attributes": {"type": "SPS_Type"},
+        },
+    )
+    doi = service.create_node(
+        project_id,
+        {
+            "parent_id": ln0["id"],
+            "kind": "DOI",
+            "name": "Beh",
+            "attributes": {},
+        },
+    )
+    service.create_node(
+        project_id,
+        {
+            "parent_id": doi["id"],
+            "kind": "DAI",
+            "name": "stVal",
+            "attributes": {"value": "true"},
+        },
+    )
+
+    effective = service.get_effective_instance_tree(project_id, ln0["id"])
+    beh = effective["nodes"][0]
+    st_val = next(child for child in beh["children"] if child["name"] == "stVal")
+    quality = next(child for child in beh["children"] if child["name"] == "q")
+
+    assert beh["id"] == doi["id"]
+    assert beh["virtual"] is False
+    assert beh["instance_override"] is True
+    assert st_val["virtual"] is False
+    assert st_val["attributes"]["value"] == "true"
+    assert quality["virtual"] is True
+    assert effective["summary"]["overrides"] == 2
+
+
+def test_parameterized_lnode_template_previews_and_creates_do_definitions_atomically(
+    service: Iec61850ModelingService,
+):
+    result = create_project(service)
+    project_id = result["project"]["id"]
+    nodes = flatten(result["tree"])
+    ln0 = next(node for node in nodes if node["kind"] == "LN0")
+    templates = next(node for node in nodes if node["kind"] == "DATA_TYPE_TEMPLATES")
+    ln_type = next(
+        node
+        for node in nodes
+        if node["kind"] == "LNODE_TYPE" and node["attributes"]["id"] == ln0["attributes"]["lnType"]
+    )
+    mv_type = service.create_node(
+        project_id,
+        {
+            "parent_id": templates["id"],
+            "kind": "DO_TYPE",
+            "name": "MV_Batch",
+            "attributes": {"id": "MV_Batch", "cdc": "MV"},
+        },
+    )
+    service.create_node(
+        project_id,
+        {
+            "parent_id": mv_type["id"],
+            "kind": "DA_DEF",
+            "name": "mag",
+            "attributes": {"bType": "FLOAT32", "fc": "MX"},
+        },
+    )
+    payload = {
+        "name_pattern": "Temp{index}",
+        "start_index": 1,
+        "quantity": 50,
+        "index_width": 3,
+        "do_type_ref": "MV_Batch",
+    }
+
+    options = service.get_lnode_do_template_options(
+        project_id,
+        ln_type["id"],
+    )
+    preview = service.preview_lnode_do_template(
+        project_id,
+        ln_type["id"],
+        payload,
+    )
+    applied = service.apply_lnode_do_template(
+        project_id,
+        ln_type["id"],
+        {
+            **payload,
+            "expected_project_revision": preview["project_revision"],
+        },
+    )
+    repeated = service.apply_lnode_do_template(
+        project_id,
+        ln_type["id"],
+        {
+            **payload,
+            "expected_project_revision": applied["project_revision"],
+        },
+    )
+    effective = service.get_effective_instance_tree(project_id, ln0["id"])
+
+    assert options["do_types"][0]["id"] == "MV_Batch"
+    assert preview["items"][0]["name"] == "Temp001"
+    assert preview["items"][-1]["name"] == "Temp050"
+    assert preview["summary"] == {
+        "total": 50,
+        "create": 50,
+        "keep": 0,
+        "conflict": 0,
+    }
+    assert applied["created_count"] == 50
+    assert repeated["created_count"] == 0
+    assert repeated["kept_count"] == 50
+    assert effective["summary"]["data_objects"] == 50
+
+
+def test_parameterized_lnode_template_conflict_prevents_partial_creation(
+    service: Iec61850ModelingService,
+):
+    result = create_project(service)
+    project_id = result["project"]["id"]
+    nodes = flatten(result["tree"])
+    templates = next(node for node in nodes if node["kind"] == "DATA_TYPE_TEMPLATES")
+    ln_type = next(node for node in nodes if node["kind"] == "LNODE_TYPE")
+    for type_id, cdc in (("MV_A", "MV"), ("SPS_B", "SPS")):
+        service.create_node(
+            project_id,
+            {
+                "parent_id": templates["id"],
+                "kind": "DO_TYPE",
+                "name": type_id,
+                "attributes": {"id": type_id, "cdc": cdc},
+            },
+        )
+    service.create_node(
+        project_id,
+        {
+            "parent_id": ln_type["id"],
+            "kind": "DO_DEF",
+            "name": "Temp002",
+            "attributes": {"type": "SPS_B"},
+        },
+    )
+    payload = {
+        "name_pattern": "Temp{index}",
+        "start_index": 1,
+        "quantity": 3,
+        "index_width": 3,
+        "do_type_ref": "MV_A",
+    }
+    preview = service.preview_lnode_do_template(
+        project_id,
+        ln_type["id"],
+        payload,
+    )
+
+    assert preview["summary"]["conflict"] == 1
+    with pytest.raises(ConflictError):
+        service.apply_lnode_do_template(
+            project_id,
+            ln_type["id"],
+            {
+                **payload,
+                "expected_project_revision": preview["project_revision"],
+            },
+        )
+    refreshed = service.get_node(
+        project_id,
+        ln_type["id"],
+        include_children=True,
+    )
+    assert [child["name"] for child in refreshed["children"]] == ["Temp002"]
+
+
 def test_node_crud_and_optimistic_revision(service: Iec61850ModelingService):
     result = create_project(service)
     project_id = result["project"]["id"]
-    logical_device = next(node for node in flatten(result["tree"]) if node["kind"] == "LDEVICE")
+    nodes = flatten(result["tree"])
+    logical_device = next(node for node in nodes if node["kind"] == "LDEVICE")
+    templates = next(node for node in nodes if node["kind"] == "DATA_TYPE_TEMPLATES")
+    service.create_node(
+        project_id,
+        {
+            "parent_id": templates["id"],
+            "kind": "LNODE_TYPE",
+            "name": "PTOC_TYPE",
+            "attributes": {"id": "PTOC_TYPE", "lnClass": "PTOC"},
+        },
+    )
 
     created = service.create_node(
         project_id,
@@ -196,6 +710,32 @@ def test_protected_structure_cannot_be_deleted(service: Iec61850ModelingService)
         service.delete_node(project_id, ln0["id"])
 
 
+def test_reference_impact_exposes_business_endpoints_instead_of_only_ids(
+    service: Iec61850ModelingService,
+):
+    result = create_project(service)
+    project_id = result["project"]["id"]
+    nodes = flatten(result["tree"])
+    ln0 = next(node for node in nodes if node["kind"] == "LN0")
+    ln_type = next(
+        node
+        for node in nodes
+        if node["kind"] == "LNODE_TYPE" and node["attributes"]["id"] == ln0["attributes"]["lnType"]
+    )
+
+    impact = service.get_delete_impact(project_id, ln_type["id"])
+    reference = impact["inbound_references"][0]
+
+    assert reference["relation_type"] == "LN_TYPE"
+    assert reference["relation_label"] == "逻辑节点类型引用"
+    assert reference["reference_value"] == ln0["attributes"]["lnType"]
+    assert reference["source"]["name"] == "LLN0"
+    assert reference["source"]["kind_label"].startswith("零逻辑节点")
+    assert reference["source"]["path"].endswith("/LD0/LLN0")
+    assert reference["target"]["name"] == ln_type["name"]
+    assert reference["target"]["kind_label"] == "逻辑节点类型"
+
+
 def test_singleton_child_is_rejected(service: Iec61850ModelingService):
     result = create_project(service)
     project_id = result["project"]["id"]
@@ -225,8 +765,19 @@ def test_scl_generation_is_parseable_and_uses_project_extension(service: Iec6185
 def test_version_snapshot_can_restore_full_tree(service: Iec61850ModelingService):
     result = create_project(service)
     project_id = result["project"]["id"]
-    original_count = result["project"]["node_count"]
-    logical_device = next(node for node in flatten(result["tree"]) if node["kind"] == "LDEVICE")
+    nodes = flatten(result["tree"])
+    logical_device = next(node for node in nodes if node["kind"] == "LDEVICE")
+    templates = next(node for node in nodes if node["kind"] == "DATA_TYPE_TEMPLATES")
+    service.create_node(
+        project_id,
+        {
+            "parent_id": templates["id"],
+            "kind": "LNODE_TYPE",
+            "name": "PTOC_TYPE",
+            "attributes": {"id": "PTOC_TYPE", "lnClass": "PTOC"},
+        },
+    )
+    original_count = service.get_project(project_id)["node_count"]
     version = service.create_version(project_id, label="初始骨架", description="恢复测试")
 
     service.create_node(
@@ -235,7 +786,11 @@ def test_version_snapshot_can_restore_full_tree(service: Iec61850ModelingService
             "parent_id": logical_device["id"],
             "kind": "LN",
             "name": "PTOC1",
-            "attributes": {"lnClass": "PTOC", "inst": "1"},
+            "attributes": {
+                "lnClass": "PTOC",
+                "inst": "1",
+                "lnType": "PTOC_TYPE",
+            },
         },
     )
     assert len(flatten(service.get_tree(project_id))) == original_count + 1

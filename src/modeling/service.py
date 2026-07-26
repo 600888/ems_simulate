@@ -30,6 +30,10 @@ from src.modeling.catalog import (
 from src.modeling.cdc_templates import list_cdc_templates, materialize_cdc_template
 from src.modeling.dataset_members import list_dataset_member_candidates
 from src.modeling.document import ModelDocument, ModelNode, ModelReference
+from src.modeling.effective_instance import build_effective_instance_tree
+from src.modeling.parameterized_templates import (
+    preview_lnode_do_generation,
+)
 from src.modeling.profiles import (
     list_profiles,
     logical_node_templates,
@@ -47,6 +51,14 @@ from src.web.api.exceptions import ConflictError, NotFoundError, ValidationError
 SessionFactory = Callable[[], Session]
 NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_\-]{0,63}$")
 LN_CLASS_PATTERN = re.compile(r"^[A-Z][A-Z0-9]{3}$")
+REFERENCE_RELATION_LABELS = {
+    "LN_TYPE": "逻辑节点类型引用",
+    "DO_TYPE": "数据对象类型引用",
+    "DA_TYPE": "数据属性类型引用",
+    "ENUM_TYPE": "枚举类型引用",
+    "CONTROL_DATASET": "控制块数据集引用",
+    "CONNECTED_AP_IED": "访问点 IED 引用",
+}
 
 
 def _json_loads(value: str | None) -> dict[str, Any]:
@@ -604,6 +616,28 @@ class Iec61850ModelingService:
                 focus_node = document.get(focus_node.parent_id) if focus_node.parent_id else None
             normalized_keyword = keyword.strip().lower()
             normalized_kind = kind.strip().upper()
+            lnode_type_data_objects = {
+                str(node.attributes.get("id") or node.name): {
+                    child.name for child in document.children(node.id) if child.kind == "DO_DEF"
+                }
+                for node in document.nodes
+                if node.kind == "LNODE_TYPE"
+            }
+
+            def displayed_child_count(
+                node: ModelNode,
+                children: list[ModelNode],
+            ) -> int:
+                if node.kind not in {"LN0", "LN"}:
+                    return len(children)
+                template_names = lnode_type_data_objects.get(
+                    str(node.attributes.get("lnType") or ""),
+                    set(),
+                )
+                non_data_count = sum(child.kind != "DOI" for child in children)
+                extra_instances = sum(child.kind == "DOI" and child.name not in template_names for child in children)
+                return non_data_count + len(template_names) + extra_instances
+
             filtered_ids: set[str] | None = None
             if normalized_keyword or normalized_kind:
                 filtered_ids = set()
@@ -621,6 +655,10 @@ class Iec61850ModelingService:
 
             def build(node: ModelNode, parent_path: str = "", depth: int = 0) -> dict[str, Any]:
                 node_children = document.children(node.id)
+                effective_child_count = displayed_child_count(
+                    node,
+                    node_children,
+                )
                 visible_children = (
                     node_children
                     if filtered_ids is None
@@ -632,7 +670,7 @@ class Iec61850ModelingService:
                         "parent_id": node.parent_id,
                         "kind": node.kind,
                         "name": node.name,
-                        "child_count": len(node_children),
+                        "child_count": effective_child_count,
                     }
                     if node.kind not in emitted_kind_labels:
                         result["kind_label"] = KIND_LABELS.get(node.kind, node.kind)
@@ -640,7 +678,10 @@ class Iec61850ModelingService:
                         result["attributes"] = {"lossRisk": node.attributes["lossRisk"]}
                     path = ""
                 else:
-                    result = self._node_dict(node, child_count=len(node_children))
+                    result = self._node_dict(
+                        node,
+                        child_count=effective_child_count,
+                    )
                     if compact:
                         result["detail_loaded"] = depth == 0
                     path = f"{parent_path}/{node.name}" if parent_path else node.name
@@ -652,7 +693,7 @@ class Iec61850ModelingService:
                 )
                 if should_expand:
                     result["children"] = [build(child, path, depth + 1) for child in visible_children]
-                    if len(visible_children) < len(node_children):
+                    if len(visible_children) < len(node_children) or effective_child_count != len(node_children):
                         result["children_partial"] = True
                 return result
 
@@ -672,7 +713,27 @@ class Iec61850ModelingService:
             project = self._require_project(session, project_id)
             document = self._load_document(project)
             node = self._require_node(document, node_id)
-            result = self._node_dict(node, child_count=len(document.children(node.id)))
+            node_children = document.children(node.id)
+            child_count = len(node_children)
+            if node.kind in {"LN0", "LN"}:
+                ln_type_id = str(node.attributes.get("lnType") or "")
+                ln_type = next(
+                    (
+                        candidate
+                        for candidate in document.nodes
+                        if candidate.kind == "LNODE_TYPE"
+                        and str(candidate.attributes.get("id") or candidate.name) == ln_type_id
+                    ),
+                    None,
+                )
+                if ln_type is not None:
+                    template_names = {child.name for child in document.children(ln_type.id) if child.kind == "DO_DEF"}
+                    child_count = (
+                        sum(child.kind != "DOI" for child in node_children)
+                        + len(template_names)
+                        + sum(child.kind == "DOI" and child.name not in template_names for child in node_children)
+                    )
+            result = self._node_dict(node, child_count=child_count)
             result["schema"] = contextualize_node_schema(document, node, get_kind_schema(node.kind))
             result["path"] = document.node_path(node)
             result["detail_loaded"] = True
@@ -688,6 +749,323 @@ class Iec61850ModelingService:
                     for child in document.children(node.id)
                 ]
             return result
+
+    def get_effective_instance_tree(
+        self,
+        project_id: str,
+        logical_node_id: str,
+    ) -> dict[str, Any]:
+        with self.session_factory() as session:
+            project = self._require_project(session, project_id)
+            document = self._load_document(project)
+            logical_node = self._require_node(document, logical_node_id)
+            if logical_node.kind not in {"LN0", "LN"}:
+                raise ValidationError("只有 LN0 或 LN 可以展开类型模板数据模型")
+            return build_effective_instance_tree(document, logical_node)
+
+    def get_lnode_type_options(
+        self,
+        project_id: str,
+        *,
+        ln_class: str = "",
+    ) -> list[dict[str, Any]]:
+        """Return business-facing LNodeType choices with inherited model counts."""
+
+        normalized_class = ln_class.strip().upper()
+        with self.session_factory() as session:
+            project = self._require_project(session, project_id)
+            document = self._load_document(project)
+            options: list[dict[str, Any]] = []
+            for lnode_type in document.nodes:
+                if lnode_type.kind != "LNODE_TYPE":
+                    continue
+                type_id = str(lnode_type.attributes.get("id") or lnode_type.name)
+                declared_class = str(lnode_type.attributes.get("lnClass") or "").upper()
+                if normalized_class and declared_class != normalized_class:
+                    continue
+                preview_node = ModelNode(
+                    id=f"lnode-type-preview:{lnode_type.id}",
+                    project_id=project_id,
+                    parent_id=None,
+                    kind="LN0" if declared_class == "LLN0" else "LN",
+                    name="LLN0" if declared_class == "LLN0" else f"{declared_class}1",
+                    attributes={
+                        "lnType": type_id,
+                        "lnClass": declared_class,
+                        "inst": "" if declared_class == "LLN0" else "1",
+                    },
+                )
+                effective = build_effective_instance_tree(
+                    document,
+                    preview_node,
+                )
+                options.append(
+                    {
+                        "node_id": lnode_type.id,
+                        "id": type_id,
+                        "name": lnode_type.name,
+                        "lnClass": declared_class,
+                        "description": str(lnode_type.attributes.get("desc") or ""),
+                        "data_objects": effective["summary"]["data_objects"],
+                        "data_attributes": effective["summary"]["data_attributes"],
+                        "warnings": effective["warnings"],
+                    }
+                )
+            options.sort(
+                key=lambda item: (
+                    item["lnClass"],
+                    item["id"],
+                )
+            )
+            return options
+
+    def create_instance_override(
+        self,
+        project_id: str,
+        logical_node_id: str,
+        template_path: str,
+        *,
+        expected_project_revision: int | None = None,
+    ) -> dict[str, Any]:
+        normalized_path = template_path.strip(". ")
+        if not normalized_path:
+            raise ValidationError("模板路径不能为空")
+
+        with self.session_factory() as session, session.begin():
+            project = self._require_project(session, project_id)
+            if expected_project_revision is not None and project.revision != expected_project_revision:
+                raise ConflictError("模型已被其他操作修改，请刷新类型模板后重试")
+            document = self._load_document(project)
+            logical_node = self._require_node(document, logical_node_id)
+            if logical_node.kind not in {"LN0", "LN"}:
+                raise ValidationError("实例覆盖只能创建在 LN0 或 LN 下")
+
+            effective = build_effective_instance_tree(
+                document,
+                logical_node,
+            )
+            if not effective["resolved"]:
+                raise ValidationError("当前逻辑节点的 LNodeType 无法解析")
+
+            target_chain: list[dict[str, Any]] | None = None
+
+            def find_target(
+                nodes: list[dict[str, Any]],
+                ancestors: list[dict[str, Any]],
+            ) -> None:
+                nonlocal target_chain
+                for candidate in nodes:
+                    chain = [*ancestors, candidate]
+                    if candidate.get("template_path") == normalized_path:
+                        target_chain = chain
+                        return
+                    find_target(candidate.get("children") or [], chain)
+                    if target_chain is not None:
+                        return
+
+            find_target(effective["nodes"], [])
+            if target_chain is None:
+                raise ValidationError(f"类型模板中不存在路径：{normalized_path}")
+            if not target_chain[-1].get("inherited"):
+                raise ValidationError("该节点不是类型模板继承节点")
+
+            current_parent = logical_node
+            changed_nodes: list[ModelNode] = []
+            for effective_node in target_chain:
+                expected_kind = str(effective_node.get("kind") or "")
+                if expected_kind not in {"DOI", "SDI", "DAI"}:
+                    raise ValidationError(f"不支持物化的实例节点类型：{expected_kind}")
+                if not effective_node.get("virtual"):
+                    actual = document.get(str(effective_node["id"]))
+                    if actual is None or actual.parent_id != current_parent.id:
+                        raise ConflictError("实例覆盖结构已变化，请刷新后重试")
+                    current_parent = actual
+                    continue
+
+                same_name = next(
+                    (
+                        child
+                        for child in document.children(current_parent.id)
+                        if child.name == effective_node["name"] and child.kind in {"DOI", "SDI", "DAI"}
+                    ),
+                    None,
+                )
+                if same_name is not None:
+                    if same_name.kind != expected_kind:
+                        raise ConflictError(f"{same_name.name} 已存在，但实例节点类型不是 {expected_kind}")
+                    if same_name.attributes.get("_templateInherited"):
+                        same_name.attributes = {
+                            key: value
+                            for key, value in same_name.attributes.items()
+                            if key
+                            not in {
+                                "_templateInherited",
+                                "sourceType",
+                                "fc",
+                                "bType",
+                            }
+                        }
+                        same_name.revision += 1
+                        changed_nodes.append(same_name)
+                    current_parent = same_name
+                    continue
+
+                current_parent = document.add_node(
+                    parent_id=current_parent.id,
+                    kind=expected_kind,
+                    name=str(effective_node["name"]),
+                    sort_order=int(effective_node.get("sort_order") or 0),
+                    attributes={},
+                )
+                changed_nodes.append(current_parent)
+
+            if changed_nodes:
+                project.revision += 1
+                project.status = "DRAFT"
+                document.rebuild_references()
+                self._save_document(project, document)
+
+            result_node = self._node_dict(
+                current_parent,
+                child_count=len(document.children(current_parent.id)),
+            )
+            result_node["schema"] = contextualize_node_schema(
+                document,
+                current_parent,
+                get_kind_schema(current_parent.kind),
+            )
+            result_node["path"] = document.node_path(current_parent)
+            result_node["detail_loaded"] = True
+            return {
+                "logical_node_id": logical_node.id,
+                "template_path": normalized_path,
+                "node": result_node,
+                "created_count": len(changed_nodes),
+                "project_revision": project.revision,
+            }
+
+    def get_lnode_do_template_options(
+        self,
+        project_id: str,
+        lnode_type_id: str,
+    ) -> dict[str, Any]:
+        with self.session_factory() as session:
+            project = self._require_project(session, project_id)
+            document = self._load_document(project)
+            lnode_type = self._require_node(document, lnode_type_id)
+            if lnode_type.kind != "LNODE_TYPE":
+                raise ValidationError("参数化 DO 模板只能应用到 LNodeType")
+            do_types = [
+                {
+                    "id": str(node.attributes.get("id") or node.name),
+                    "name": node.name,
+                    "cdc": str(node.attributes.get("cdc") or ""),
+                    "description": str(node.attributes.get("desc") or ""),
+                }
+                for node in document.nodes
+                if node.kind == "DO_TYPE"
+            ]
+            do_types.sort(key=lambda item: (item["cdc"], item["id"]))
+            return {
+                "target": {
+                    "id": lnode_type.id,
+                    "name": lnode_type.name,
+                    "lnClass": str(lnode_type.attributes.get("lnClass") or ""),
+                },
+                "do_types": do_types,
+            }
+
+    def preview_lnode_do_template(
+        self,
+        project_id: str,
+        lnode_type_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        with self.session_factory() as session:
+            project = self._require_project(session, project_id)
+            document = self._load_document(project)
+            lnode_type = self._require_node(document, lnode_type_id)
+            try:
+                result = preview_lnode_do_generation(
+                    document,
+                    lnode_type,
+                    name_pattern=str(payload.get("name_pattern") or ""),
+                    start_index=int(payload.get("start_index", 1)),
+                    quantity=int(payload.get("quantity", 1)),
+                    index_width=int(payload.get("index_width", 3)),
+                    do_type_ref=str(payload.get("do_type_ref") or ""),
+                )
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+            result["project_revision"] = project.revision
+            return result
+
+    def apply_lnode_do_template(
+        self,
+        project_id: str,
+        lnode_type_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        with self.session_factory() as session, session.begin():
+            project = self._require_project(session, project_id)
+            expected_revision = payload.get("expected_project_revision")
+            if expected_revision is not None and project.revision != int(expected_revision):
+                raise ConflictError("模型已被其他操作修改，请重新预览模板后再应用")
+            document = self._load_document(project)
+            lnode_type = self._require_node(document, lnode_type_id)
+            try:
+                preview = preview_lnode_do_generation(
+                    document,
+                    lnode_type,
+                    name_pattern=str(payload.get("name_pattern") or ""),
+                    start_index=int(payload.get("start_index", 1)),
+                    quantity=int(payload.get("quantity", 1)),
+                    index_width=int(payload.get("index_width", 3)),
+                    do_type_ref=str(payload.get("do_type_ref") or ""),
+                )
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+            if preview["summary"]["conflict"]:
+                raise ConflictError(f"存在 {preview['summary']['conflict']} 个同名异构 DO，请调整名称格式或起始序号")
+
+            max_order = max(
+                (child.sort_order for child in document.children(lnode_type.id) if child.kind == "DO_DEF"),
+                default=0,
+            )
+            created: list[ModelNode] = []
+            for item in preview["items"]:
+                if item["action"] != "CREATE":
+                    continue
+                max_order += 10
+                created.append(
+                    document.add_node(
+                        parent_id=lnode_type.id,
+                        kind="DO_DEF",
+                        name=item["name"],
+                        sort_order=max_order,
+                        attributes=dict(item["attributes"]),
+                    )
+                )
+
+            if created:
+                lnode_type.revision += 1
+                project.revision += 1
+                project.status = "DRAFT"
+                document.rebuild_references()
+                self._save_document(project, document)
+            return {
+                "target_id": lnode_type.id,
+                "created": [
+                    {
+                        **self._node_dict(node),
+                        "path": document.node_path(node),
+                    }
+                    for node in created
+                ],
+                "created_count": len(created),
+                "kept_count": preview["summary"]["keep"],
+                "project_revision": project.revision,
+            }
 
     def get_tree_kinds(self, project_id: str) -> list[dict[str, Any]]:
         with self.session_factory() as session:
@@ -728,6 +1106,56 @@ class Iec61850ModelingService:
                 parent_label = KIND_LABELS.get(parent.kind, parent.kind)
                 child_label = KIND_LABELS.get(kind, kind)
                 raise ValidationError(f"{parent_label} 下不能添加 {child_label}")
+            attributes = dict(payload.get("attributes") or {})
+            if kind in {"LN0", "LN"}:
+                ln_type_id = str(attributes.get("lnType") or "")
+                lnode_type = next(
+                    (
+                        item
+                        for item in document.nodes
+                        if item.kind == "LNODE_TYPE" and str(item.attributes.get("id") or item.name) == ln_type_id
+                    ),
+                    None,
+                )
+                if lnode_type is None:
+                    raise ValidationError("新增逻辑节点时必须选择有效的 LNodeType")
+                declared_class = str(lnode_type.attributes.get("lnClass") or "")
+                actual_class = "LLN0" if kind == "LN0" else str(attributes.get("lnClass") or "")
+                if declared_class and actual_class != declared_class:
+                    raise ValidationError(
+                        f"逻辑节点类 {actual_class or '（空）'} 与模板 {ln_type_id} 声明的 {declared_class} 不一致"
+                    )
+                attributes["lnType"] = ln_type_id
+                attributes["lnClass"] = actual_class
+            if kind in {"DOI", "SDI", "DAI"}:
+                instance_path = [name]
+                logical_node = parent
+                while logical_node.kind not in {"LN0", "LN"}:
+                    if logical_node.kind in {"DOI", "SDI"}:
+                        instance_path.insert(0, logical_node.name)
+                    if not logical_node.parent_id:
+                        break
+                    logical_node = self._require_node(
+                        document,
+                        logical_node.parent_id,
+                    )
+                matched: dict[str, Any] | None = None
+                if logical_node.kind in {"LN0", "LN"}:
+                    effective = build_effective_instance_tree(
+                        document,
+                        logical_node,
+                    )
+                    candidates = effective["nodes"]
+                    for path_part in instance_path:
+                        matched = next(
+                            (item for item in candidates if item["name"] == path_part),
+                            None,
+                        )
+                        if matched is None:
+                            break
+                        candidates = matched.get("children") or []
+                if matched is None or matched["kind"] != kind:
+                    raise ValidationError("实例数据节点必须对应类型模板路径，请从继承节点创建实例覆盖")
             siblings = document.children(parent_id)
             if any(item.kind == kind and item.name == name for item in siblings):
                 raise ConflictError("同一父节点下已存在同类型、同名节点")
@@ -739,7 +1167,7 @@ class Iec61850ModelingService:
                 parent_id=parent_id,
                 kind=kind,
                 name=name,
-                attributes=payload.get("attributes"),
+                attributes=attributes,
                 sort_order=int(requested_order if requested_order is not None else max_order + 10),
             )
             project.revision += 1
@@ -1097,6 +1525,28 @@ class Iec61850ModelingService:
             ]
             outbound_count = sum(reference.source_node_id in subtree for reference in document.references)
             protected = node.kind in PROTECTED_KINDS or bool(node.attributes.get("_templateInherited"))
+
+            def endpoint_payload(node_id: str) -> dict[str, Any]:
+                endpoint = document.get(node_id)
+                if endpoint is None:
+                    return {
+                        "id": node_id,
+                        "kind": "",
+                        "kind_label": "未知节点",
+                        "name": "已删除节点",
+                        "path": "",
+                    }
+                return {
+                    "id": endpoint.id,
+                    "kind": endpoint.kind,
+                    "kind_label": KIND_LABELS.get(
+                        endpoint.kind,
+                        endpoint.kind,
+                    ),
+                    "name": endpoint.name,
+                    "path": document.node_path(endpoint),
+                }
+
             return {
                 "node": self._node_dict(node),
                 "subtree_count": len(subtree),
@@ -1107,6 +1557,13 @@ class Iec61850ModelingService:
                         "source_node_id": ref.source_node_id,
                         "target_node_id": ref.target_node_id,
                         "relation_type": ref.relation_type,
+                        "relation_label": REFERENCE_RELATION_LABELS.get(
+                            ref.relation_type,
+                            ref.relation_type,
+                        ),
+                        "reference_value": str(ref.attributes.get("external_ref") or ""),
+                        "source": endpoint_payload(ref.source_node_id),
+                        "target": endpoint_payload(ref.target_node_id),
                     }
                     for ref in inbound
                 ],

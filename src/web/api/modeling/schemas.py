@@ -61,6 +61,20 @@ class DataSetMemberRepairRequest(BaseModel):
     candidate_id: str = Field(min_length=1, max_length=512)
 
 
+class InstanceOverrideCreateRequest(BaseModel):
+    template_path: str = Field(min_length=1, max_length=1024)
+    expected_project_revision: int | None = Field(default=None, ge=1)
+
+
+class LNodeDoTemplateRequest(BaseModel):
+    name_pattern: str = Field(min_length=1, max_length=128)
+    start_index: int = Field(default=1, ge=0, le=99999999)
+    quantity: int = Field(default=10, ge=1, le=500)
+    index_width: int = Field(default=3, ge=1, le=8)
+    do_type_ref: str = Field(min_length=1, max_length=128)
+    expected_project_revision: int | None = Field(default=None, ge=1)
+
+
 class VersionCreateRequest(BaseModel):
     label: str = Field(default="", max_length=128)
     description: str = Field(default="", max_length=512)

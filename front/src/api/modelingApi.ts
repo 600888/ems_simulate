@@ -2,6 +2,10 @@ import { instance } from "@/api/http";
 import type {
   DeleteImpact,
   DataSetMemberDiscovery,
+  EffectiveInstanceTree,
+  LNodeDoTemplateParameters,
+  LNodeDoTemplatePreview,
+  LNodeTypeOption,
   ModelNode,
   ModelProject,
   ModelVersion,
@@ -299,6 +303,96 @@ export const modelingApi = {
         {
           params: includeChildren ? { include_children: true } : undefined,
         },
+      ),
+    );
+  },
+
+  async getEffectiveInstanceTree(projectId: string, nodeId: string) {
+    return unwrap<EffectiveInstanceTree>(
+      await instance.get(
+        `/api/modeling/projects/${projectId}/nodes/${nodeId}/effective-data-model`,
+      ),
+    );
+  },
+
+  async getLNodeTypeOptions(projectId: string, lnClass = "") {
+    return unwrap<LNodeTypeOption[]>(
+      await instance.get(
+        `/api/modeling/projects/${projectId}/lnode-type-options`,
+        {
+          params: lnClass ? { ln_class: lnClass } : undefined,
+        },
+      ),
+    );
+  },
+
+  async createInstanceOverride(
+    projectId: string,
+    logicalNodeId: string,
+    templatePath: string,
+    expectedProjectRevision?: number,
+  ) {
+    return unwrap<{
+      logical_node_id: string;
+      template_path: string;
+      node: ModelNode;
+      created_count: number;
+      project_revision: number;
+    }>(
+      await instance.post(
+        `/api/modeling/projects/${projectId}/nodes/${logicalNodeId}/instance-overrides`,
+        {
+          template_path: templatePath,
+          expected_project_revision: expectedProjectRevision,
+        },
+      ),
+    );
+  },
+
+  async getLNodeDoTemplateOptions(projectId: string, lNodeTypeId: string) {
+    return unwrap<{
+      target: { id: string; name: string; lnClass: string };
+      do_types: Array<{
+        id: string;
+        name: string;
+        cdc: string;
+        description: string;
+      }>;
+    }>(
+      await instance.get(
+        `/api/modeling/projects/${projectId}/lnode-types/${lNodeTypeId}/do-template-options`,
+      ),
+    );
+  },
+
+  async previewLNodeDoTemplate(
+    projectId: string,
+    lNodeTypeId: string,
+    payload: LNodeDoTemplateParameters,
+  ) {
+    return unwrap<LNodeDoTemplatePreview>(
+      await instance.post(
+        `/api/modeling/projects/${projectId}/lnode-types/${lNodeTypeId}/do-template-preview`,
+        payload,
+      ),
+    );
+  },
+
+  async applyLNodeDoTemplate(
+    projectId: string,
+    lNodeTypeId: string,
+    payload: LNodeDoTemplateParameters,
+  ) {
+    return unwrap<{
+      target_id: string;
+      created: ModelNode[];
+      created_count: number;
+      kept_count: number;
+      project_revision: number;
+    }>(
+      await instance.post(
+        `/api/modeling/projects/${projectId}/lnode-types/${lNodeTypeId}/do-template-apply`,
+        payload,
       ),
     );
   },
