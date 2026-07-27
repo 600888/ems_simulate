@@ -30,63 +30,74 @@ export const PROTOCOL_DEFAULT_PORTS: Record<number, number> = {
 
 // 协议客户端默认 IP 映射（仅 TCP 客户端模式使用）
 export const PROTOCOL_DEFAULT_CLIENT_IP: Record<number, string> = {
-  [PROTOCOL_TYPE.IEC104]: '127.0.0.1',
-  [PROTOCOL_TYPE.DLT645]: '127.0.0.1',
-  [PROTOCOL_TYPE.IEC61850]: '127.0.0.1',
+  [PROTOCOL_TYPE.IEC104]: "127.0.0.1",
+  [PROTOCOL_TYPE.DLT645]: "127.0.0.1",
+  [PROTOCOL_TYPE.IEC61850]: "127.0.0.1",
 } as const;
 
 // 标准波特率列表
-export const BAUD_RATES = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200] as const;
+export const BAUD_RATES = [
+  1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200,
+] as const;
 
 // IEC61850 分类列表
-export const IEC61850_CATEGORIES: ReadonlyArray<{ key: string; label: string }> = [
-  { key: 'GOOSE', label: 'GOOSE' },
-  { key: 'Reports', label: 'Reports' },
-  { key: 'SettingGroups', label: 'SettingGroups' },
-  { key: 'Files', label: 'Files' },
-  { key: 'DataSets', label: 'DataSets' },
-  { key: 'DataModel', label: 'DataModel' },
+export const IEC61850_CATEGORIES: ReadonlyArray<{
+  key: string;
+  label: string;
+}> = [
+  { key: "GOOSE", label: "GOOSE" },
+  { key: "Reports", label: "Reports" },
+  { key: "SettingGroups", label: "SettingGroups" },
+  { key: "Files", label: "Files" },
+  { key: "DataSets", label: "DataSets" },
+  { key: "DataModel", label: "DataModel" },
 ] as const;
 
 // GOOSE 订阅状态
 export const GOOSE_SUB_STATE = {
-  INIT: 'init',
-  CONNECTED: 'connected',
-  LOST: 'lost',
-  ERROR: 'error',
+  INIT: "init",
+  CONNECTED: "connected",
+  LOST: "lost",
+  ERROR: "error",
 } as const;
 
 // GOOSE 订阅状态颜色映射
 export const GOOSE_STATE_COLOR: Record<string, string> = {
-  init: '#909399',
-  connected: '#67C23A',
-  lost: '#E6A23C',
-  error: '#F56C6C',
+  init: "#909399",
+  connected: "#67C23A",
+  lost: "#E6A23C",
+  error: "#F56C6C",
 } as const;
 
 // GOOSE 订阅状态标签映射
 export const GOOSE_STATE_LABEL: Record<string, string> = {
-  init: '未接收',
-  connected: '已连接',
-  lost: '超时',
-  error: '错误',
+  init: "gooseStateLabels.init",
+  connected: "gooseStateLabels.connected",
+  lost: "gooseStateLabels.lost",
+  error: "gooseStateLabels.error",
 } as const;
 
 // GOOSE IEC 数据类型选项
-export const GOOSE_IEC_TYPE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: 'boolean', label: '布尔 (Boolean)' },
-  { value: 'integer', label: '整数 (Integer)' },
-  { value: 'float', label: '浮点 (Float)' },
-  { value: 'string', label: '字符串 (String)' },
-  { value: 'bitstring', label: '位串 (BitString)' },
-  { value: 'timestamp', label: '时标 (Timestamp)' },
+export const GOOSE_IEC_TYPE_OPTIONS: ReadonlyArray<{
+  value: string;
+  label: string;
+}> = [
+  { value: "boolean", label: "gooseIecTypes.boolean" },
+  { value: "integer", label: "gooseIecTypes.integer" },
+  { value: "float", label: "gooseIecTypes.float" },
+  { value: "string", label: "gooseIecTypes.string" },
+  { value: "bitstring", label: "gooseIecTypes.bitstring" },
+  { value: "timestamp", label: "gooseIecTypes.timestamp" },
 ] as const;
 
 // 判断 IEC61850 协议的字符串标识
-export const IEC61850_PROTOCOL_NAMES = ['Iec61850Client', 'Iec61850Server'] as const;
+export const IEC61850_PROTOCOL_NAMES = [
+  "Iec61850Client",
+  "Iec61850Server",
+] as const;
 
 // 判断 IEC104 协议的字符串标识
-export const IEC104_PROTOCOL_NAMES = ['Iec104Client', 'Iec104Server'] as const;
+export const IEC104_PROTOCOL_NAMES = ["Iec104Client", "Iec104Server"] as const;
 
 // 判断是否为 IEC61850 协议
 export function isIec61850Protocol(protocolStr: string | number): boolean {

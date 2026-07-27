@@ -27,23 +27,25 @@
         :title="$t('slave.existingSlaves', { list: existingSlaves.join(', ') })"
         type="info"
         :closable="false"
-        style="margin-bottom: 10px;"
+        style="margin-bottom: 10px"
       />
     </el-form>
 
     <template #footer>
-      <el-button @click="handleClose">{{ $t('common.cancel') }}</el-button>
-      <el-button type="primary" :loading="loading" @click="handleSubmit">{{ $t('common.confirm') }}</el-button>
+      <el-button @click="handleClose">{{ $t("common.cancel") }}</el-button>
+      <el-button type="primary" :loading="loading" @click="handleSubmit">{{
+        $t("common.confirm")
+      }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue';
-import { useI18n } from 'vue-i18n';
-import type { FormInstance, FormRules } from 'element-plus';
-import { ElMessage } from 'element-plus';
-import { addSlave } from '@/api/deviceApi';
+import { ref, reactive, computed } from "vue";
+import { useI18n } from "vue-i18n";
+import type { FormInstance, FormRules } from "element-plus";
+import { ElMessage } from "element-plus";
+import { addSlave } from "@/api/deviceApi";
 
 const { t } = useI18n();
 
@@ -54,13 +56,13 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: boolean): void;
-  (e: 'success'): void;
+  (e: "update:modelValue", value: boolean): void;
+  (e: "success"): void;
 }>();
 
 const visible = computed({
   get: () => props.modelValue,
-  set: (val) => emit('update:modelValue', val)
+  set: (val) => emit("update:modelValue", val),
 });
 
 const formRef = ref<FormInstance>();
@@ -72,7 +74,7 @@ const formData = reactive({
 
 const validateSlaveId = (_rule: any, value: number, callback: any) => {
   if (props.existingSlaves.includes(value)) {
-    callback(new Error(`从机 ${value} 已存在`));
+    callback(new Error(t("editSlave.slaveExists", { id: value })));
   } else {
     callback();
   }
@@ -80,9 +82,15 @@ const validateSlaveId = (_rule: any, value: number, callback: any) => {
 
 const rules: FormRules = {
   slave_id: [
-    { required: true, message: '请输入从机地址', trigger: 'blur' },
-    { type: 'number', min: 0, max: 255, message: '从机地址范围: 0-255', trigger: 'blur' },
-    { validator: validateSlaveId, trigger: 'blur' }
+    { required: true, message: t("editSlave.idRequired"), trigger: "blur" },
+    {
+      type: "number",
+      min: 0,
+      max: 255,
+      message: t("editSlave.idRange"),
+      trigger: "blur",
+    },
+    { validator: validateSlaveId, trigger: "blur" },
   ],
 };
 
@@ -95,15 +103,15 @@ const handleSubmit = async () => {
   try {
     await formRef.value?.validate();
     loading.value = true;
-    
+
     const success = await addSlave(props.deviceName, formData.slave_id);
     if (success) {
-      ElMessage.success('添加从机成功');
-      emit('success');
+      ElMessage.success(t("slave.addSlaveSuccess"));
+      emit("success");
       handleClose();
     }
   } catch (error) {
-    console.error('添加从机失败:', error);
+    console.error("添加从机失败:", error);
   } finally {
     loading.value = false;
   }

@@ -21,11 +21,17 @@
       <el-icon
         :size="24"
         class="icon-link clickable"
-        :title="currentLocale === 'zh-CN' ? 'Switch to English' : '切换到中文'"
+        :title="
+          currentLocale === 'zh-CN'
+            ? $t('layout.header.switchToEnglish')
+            : $t('layout.header.switchToChinese')
+        "
         @click="toggleLang"
       >
         <span class="lang-text">{{
-          currentLocale === "zh-CN" ? "EN" : "中"
+          currentLocale === "zh-CN"
+            ? $t("layout.header.en")
+            : $t("layout.header.zh")
         }}</span>
       </el-icon>
 
@@ -153,11 +159,20 @@ const updateBreadcrumb = () => {
   } else if (route.path.startsWith("/scl")) {
     const items = [{ path: "/scl/modeling", meta: { title: t("scl.title") } }];
     if (route.path.startsWith("/scl/modeling/new")) {
-      items.push({ path: route.path, meta: { title: "从 0 新建模型" } });
+      items.push({
+        path: route.path,
+        meta: { title: t("layout.header.modelingNew") },
+      });
     } else if (route.name === "model-workspace") {
-      items.push({ path: route.path, meta: { title: "模型工作台" } });
+      items.push({
+        path: route.path,
+        meta: { title: t("layout.header.modelingWorkspace") },
+      });
     } else if (route.path.startsWith("/scl/manager")) {
-      items.push({ path: route.path, meta: { title: "SCL 文件" } });
+      items.push({
+        path: route.path,
+        meta: { title: t("layout.header.sclFiles") },
+      });
     }
     breadList.value = items;
   } else {

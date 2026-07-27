@@ -3,9 +3,10 @@
  * 提取 SingleRegister / LongRegister / FloatRegister 共享的逻辑
  */
 
-import { ref, watch, onMounted, type Ref } from 'vue';
-import { ElMessage } from 'element-plus';
-import { editPointData } from '@/api/pointApi';
+import { ref, watch, onMounted, type Ref } from "vue";
+import { ElMessage } from "element-plus";
+import { useI18n } from "vue-i18n";
+import { editPointData } from "@/api/pointApi";
 
 export interface RegisterBase {
   real: number;
@@ -32,8 +33,14 @@ export function useRegisterEdit<T extends RegisterBase>(
   },
   updateFromReal: (value: number, register: Ref<T>) => void,
   defaultValue: T,
-  emit: (event: 'editSuccess', rowIndex: number, realValue: number, hexStr?: string) => void,
+  emit: (
+    event: "editSuccess",
+    rowIndex: number,
+    realValue: number,
+    hexStr?: string,
+  ) => void,
 ) {
+  const { t } = useI18n();
   const register = ref<T>({ ...defaultValue }) as Ref<T>;
 
   const reset = () => {
@@ -49,21 +56,32 @@ export function useRegisterEdit<T extends RegisterBase>(
         props.slaveId,
       );
       if (isSuccess) {
-        emit('editSuccess', props.rowIndex, parseFloat(register.value.real.toString()), hexStr);
-        ElMessage({ message: '修改成功!', type: 'success' });
+        emit(
+          "editSuccess",
+          props.rowIndex,
+          parseFloat(register.value.real.toString()),
+          hexStr,
+        );
+        ElMessage({ message: t("register.editSuccess"), type: "success" });
       }
     } catch (error) {
-      console.error('Edit register failed:', error);
+      console.error("Edit register failed:", error);
     }
   };
 
-  watch(() => props.realValue, (newVal) => {
-    updateFromReal(newVal, register);
-  });
+  watch(
+    () => props.realValue,
+    (newVal) => {
+      updateFromReal(newVal, register);
+    },
+  );
 
-  watch(() => register.value.real, (newVal) => {
-    updateFromReal(newVal, register);
-  });
+  watch(
+    () => register.value.real,
+    (newVal) => {
+      updateFromReal(newVal, register);
+    },
+  );
 
   onMounted(() => {
     register.value.mulCoe = props.mulCoe ?? 1;

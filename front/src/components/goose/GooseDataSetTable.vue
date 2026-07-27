@@ -1,6 +1,6 @@
 <template>
   <div class="dataset-table">
-    <el-empty v-if="!values.length" description="暂无 DataSet 数据" />
+    <el-empty v-if="!values.length" :description="$t('goose.noDataSetData')" />
     <el-table
       v-else
       :data="values"
@@ -13,7 +13,7 @@
       <el-table-column prop="index" label="#" width="55" align="center" />
       <el-table-column
         prop="name"
-        label="数据引用"
+        :label="$t('goose.dataRef')"
         min-width="260"
         show-overflow-tooltip
       >
@@ -23,18 +23,18 @@
       </el-table-column>
       <el-table-column
         prop="description"
-        label="描述"
+        :label="$t('goose.description')"
         min-width="150"
         show-overflow-tooltip
       />
       <el-table-column prop="fc" label="FC" width="70" align="center" />
-      <el-table-column prop="type" label="类型" width="105" />
-      <el-table-column label="前值" min-width="120"
+      <el-table-column prop="type" :label="$t('goose.type')" width="105" />
+      <el-table-column :label="$t('goose.prevValue')" min-width="120"
         ><template #default="{ row }">{{
           formatValue(row.previous_value, row.type)
         }}</template></el-table-column
       >
-      <el-table-column label="当前值" min-width="180">
+      <el-table-column :label="$t('goose.currentValue')" min-width="180">
         <template #default="{ row }">
           <template v-if="editable">
             <el-switch
@@ -72,7 +72,7 @@
               size="small"
               class="changed-tag"
             >
-              已变化
+              {{ $t("goose.changed") }}
             </el-tag>
           </template>
         </template>
@@ -81,8 +81,10 @@
   </div>
 </template>
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import type { GooseSubscriptionDataValue } from "@/api/gooseApi";
 import { formatGooseTime } from "./gooseWorkbench";
+const { t } = useI18n();
 const props = defineProps<{
   values: GooseSubscriptionDataValue[];
   editable?: boolean;

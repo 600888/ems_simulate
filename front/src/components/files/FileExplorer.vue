@@ -1,9 +1,10 @@
 <script lang="ts" setup>
 /**
- * IEC 61850 文件浏览器组件
+ * IEC 61850 File Explorer Component
  *
- * 提供远程 IED 文件目录浏览、文件下载/上传/删除、本地缓存管理功能。
- * UI 风格与 GooseManager / ReportsManager 保持一致。
+ * Provides remote IED file directory browsing, file download/upload/delete,
+ * and local cache management.
+ * UI style consistent with GooseManager / ReportsManager.
  */
 
 import { ref, computed, onMounted, watch } from "vue";
@@ -39,7 +40,7 @@ const props = defineProps<{
   channelId: number;
 }>();
 
-// ===== 状态 =====
+// ===== State =====
 const loading = ref(false);
 const currentDirectory = ref("");
 const directoryStack = ref<{ path: string; name: string }[]>([]);
@@ -53,7 +54,7 @@ const cacheList = ref<FileCacheEntry[]>([]);
 const cacheDialogVisible = ref(false);
 const uploadRef = ref();
 
-// ===== 计算属性 =====
+// ===== Computed =====
 const breadcrumbs = computed(() => {
   const crumbs = [{ path: "", name: "/" }];
   for (const item of directoryStack.value) {
@@ -82,7 +83,7 @@ const sortedEntries = computed(() => [
 
 const selectedIsFile = computed(() => selectedEntry.value?.type === "file");
 
-// ===== 目录浏览 =====
+// ===== Directory browsing =====
 
 async function loadDirectory(directory: string = "") {
   loading.value = true;
@@ -95,7 +96,7 @@ async function loadDirectory(directory: string = "") {
       entries.value = [];
     }
   } catch (e) {
-    console.error("加载文件目录失败:", e);
+    console.error("Failed to load file directory:", e);
     entries.value = [];
   } finally {
     loading.value = false;
@@ -141,9 +142,9 @@ function formatTime(ts: string | null): string {
   return new Date(ts).toLocaleString();
 }
 
-// ===== 文件下载 =====
+// ===== File download =====
 
-/** 将 Base64 解码为 Uint8Array */
+/** Decode Base64 to Uint8Array */
 function base64ToUint8Array(base64: string): Uint8Array {
   const byteChars = atob(base64);
   const byteArray = new Uint8Array(byteChars.length);
@@ -153,7 +154,7 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return byteArray;
 }
 
-/** 使用系统保存对话框写入文件（File System Access API） */
+/** Save using system save picker (File System Access API) */
 async function saveWithPicker(
   fileName: string,
   data: Uint8Array,
@@ -168,13 +169,13 @@ async function saveWithPicker(
     await writable.close();
     return true;
   } catch (e: any) {
-    // 用户取消选择
+    // User cancelled
     if (e?.name === "AbortError") return false;
     throw e;
   }
 }
 
-/** 回退方式：自动下载到默认目录 */
+/** Fallback: auto-download to default directory */
 function saveWithFallback(fileName: string, data: Uint8Array) {
   const blob = new Blob([data]);
   const url = URL.createObjectURL(blob);
@@ -189,7 +190,7 @@ function saveWithFallback(fileName: string, data: Uint8Array) {
 
 async function handleDownload() {
   if (!selectedEntry.value || selectedEntry.value.type === "directory") {
-    ElMessage.warning("请选择一个文件进行下载");
+    ElMessage.warning(t("fileExplorer.selectFileFirst"));
     return;
   }
 
@@ -203,31 +204,33 @@ async function handleDownload() {
       const byteArray = base64ToUint8Array(result.data);
       const fileName = selectedEntry.value.name;
 
-      // 优先使用系统保存对话框，不支持时回退到自动下载
+      // Prefer system save dialog, fall back to auto-download
       if (window.showSaveFilePicker) {
         const saved = await saveWithPicker(fileName, byteArray);
         if (!saved) {
-          // 用户取消了保存
+          // User cancelled save
           return;
         }
       } else {
         saveWithFallback(fileName, byteArray);
       }
       ElMessage.success(
-        `文件下载成功: ${fileName}${result.cached ? " (缓存)" : ""}`,
+        result.cached
+          ? t("fileExplorer.downloadSuccessCached", { name: fileName })
+          : t("fileExplorer.downloadSuccess", { name: fileName }),
       );
     } else {
-      showErrorOnce("文件下载失败");
+      showErrorOnce(t("fileExplorer.downloadFailed"));
     }
   } catch (e) {
-    console.error("文件下载失败:", e);
-    showError(e, "文件下载失败");
+    console.error("File download failed:", e);
+    showError(e, t("fileExplorer.downloadFailed"));
   } finally {
     downloading.value = false;
   }
 }
 
-// ===== 文件上传 =====
+// ===== File upload =====
 
 async function handleUploadRequest(param: { file: File }) {
   uploading.value = true;
@@ -253,36 +256,36 @@ async function handleUploadRequest(param: { file: File }) {
       base64Data,
     );
     if (success) {
-      ElMessage.success("文件上传成功");
+      ElMessage.success(t("fileExplorer.uploadSuccess"));
       uploadDialogVisible.value = false;
       loadDirectory(currentDirectory.value);
     } else {
-      showErrorOnce("文件上传失败");
+      showErrorOnce(t("fileExplorer.uploadFailed"));
     }
   } catch (e) {
-    console.error("文件上传失败:", e);
-    showError(e, "文件上传失败");
+    console.error("File upload failed:", e);
+    showError(e, t("fileExplorer.uploadFailed"));
   } finally {
     uploading.value = false;
   }
 }
 
 function handleUploadExceed() {
-  ElMessage.warning("一次只能上传一个文件");
+  ElMessage.warning(t("fileExplorer.uploadSingleOnly"));
 }
 
-// ===== 文件删除 =====
+// ===== File delete =====
 
 async function handleDelete() {
   if (!selectedEntry.value) {
-    ElMessage.warning("请选择一个文件或目录");
+    ElMessage.warning(t("fileExplorer.selectFileOrDir"));
     return;
   }
 
   try {
     await ElMessageBox.confirm(
-      `确定删除远程文件 "${selectedEntry.value.name}" 吗？此操作不可撤销。`,
-      "确认删除",
+      t("fileExplorer.deleteConfirm", { name: selectedEntry.value.name }),
+      t("fileExplorer.deleteConfirmTitle"),
       {
         confirmButtonText: t("common.delete"),
         cancelButtonText: t("common.cancel"),
@@ -295,17 +298,17 @@ async function handleDelete() {
       selectedEntry.value.full_path,
     );
     if (success) {
-      ElMessage.success("文件已删除");
+      ElMessage.success(t("fileExplorer.deleted"));
       loadDirectory(currentDirectory.value);
     } else {
-      showErrorOnce("删除失败");
+      showErrorOnce(t("fileExplorer.deleteFailed"));
     }
   } catch {
-    // 用户取消
+    // User cancelled
   }
 }
 
-// ===== 缓存管理 =====
+// ===== Cache management =====
 
 async function handleCacheManage() {
   cacheDialogVisible.value = true;
@@ -314,20 +317,24 @@ async function handleCacheManage() {
 
 async function handleClearCache() {
   try {
-    await ElMessageBox.confirm("确定清空所有本地缓存文件吗？", "确认", {
-      confirmButtonText: t("common.clear"),
-      cancelButtonText: t("common.cancel"),
-      type: "warning",
-    });
+    await ElMessageBox.confirm(
+      t("fileExplorer.clearCacheConfirm"),
+      t("fileExplorer.clearCacheTitle"),
+      {
+        confirmButtonText: t("common.clear"),
+        cancelButtonText: t("common.cancel"),
+        type: "warning",
+      },
+    );
     const count = await clearFileCache(props.channelId);
-    ElMessage.success(`已清理 ${count} 个缓存文件`);
+    ElMessage.success(t("fileExplorer.cacheCleared", { count }));
     cacheList.value = await getFileCacheList(props.channelId);
   } catch {
-    // 用户取消
+    // User cancelled
   }
 }
 
-// ===== 监听 channelId =====
+// ===== Watch channelId =====
 watch(
   () => props.channelId,
   (newId) => {
@@ -339,7 +346,7 @@ watch(
   },
 );
 
-// ===== 初始化 =====
+// ===== Init =====
 onMounted(() => {
   if (props.channelId) {
     loadDirectory("");
@@ -349,9 +356,9 @@ onMounted(() => {
 
 <template>
   <div class="file-explorer">
-    <!-- 头部 -->
+    <!-- Header -->
     <div class="file-header">
-      <h3>文件浏览器</h3>
+      <h3>{{ $t("fileExplorer.title") }}</h3>
       <div class="header-actions">
         <el-button
           type="primary"
@@ -359,7 +366,7 @@ onMounted(() => {
           @click="loadDirectory(currentDirectory)"
           :loading="loading"
         >
-          刷新
+          {{ $t("fileExplorer.refresh") }}
         </el-button>
         <el-button
           type="success"
@@ -368,10 +375,10 @@ onMounted(() => {
           :loading="downloading"
           :disabled="!selectedIsFile"
         >
-          下载
+          {{ $t("fileExplorer.download") }}
         </el-button>
         <el-button :icon="Upload" @click="uploadDialogVisible = true">
-          上传
+          {{ $t("fileExplorer.upload") }}
         </el-button>
         <el-button
           type="danger"
@@ -380,15 +387,15 @@ onMounted(() => {
           @click="handleDelete"
           :disabled="!selectedEntry"
         >
-          删除
+          {{ $t("fileExplorer.deleteAction") }}
         </el-button>
         <el-button :icon="Files" @click="handleCacheManage">
-          缓存管理
+          {{ $t("fileExplorer.cacheManagement") }}
         </el-button>
       </div>
     </div>
 
-    <!-- 工具条：面包屑 + 返回 + 搜索 -->
+    <!-- Toolbar: breadcrumb + back + search -->
     <div class="toolbar">
       <div class="toolbar-left">
         <el-button
@@ -397,7 +404,7 @@ onMounted(() => {
           @click="goBack"
           text
         >
-          返回
+          {{ $t("fileExplorer.back") }}
         </el-button>
         <div class="breadcrumb-bar">
           <el-breadcrumb separator="/">
@@ -415,14 +422,14 @@ onMounted(() => {
         <el-input
           v-model="searchFilter"
           :prefix-icon="Search"
-          placeholder="搜索文件名"
+          :placeholder="$t('fileExplorer.searchPlaceholder')"
           clearable
           style="width: 200px"
         />
       </div>
     </div>
 
-    <!-- 文件列表 -->
+    <!-- File list -->
     <div class="file-body" v-loading="loading">
       <el-table
         :data="sortedEntries"
@@ -434,7 +441,7 @@ onMounted(() => {
         @row-click="selectEntry"
         @row-dblclick="handleRowDblClick"
       >
-        <el-table-column label="名称" min-width="280">
+        <el-table-column :label="$t('fileExplorer.colName')" min-width="280">
           <template #default="{ row }">
             <div class="file-name-cell">
               <el-icon
@@ -450,29 +457,46 @@ onMounted(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="大小" width="100" prop="size_human" />
-        <el-table-column label="类型" width="80" align="center">
+        <el-table-column
+          :label="$t('fileExplorer.colSize')"
+          width="100"
+          prop="size_human"
+        />
+        <el-table-column
+          :label="$t('fileExplorer.colType')"
+          width="80"
+          align="center"
+        >
           <template #default="{ row }">
             <el-tag
               :type="row.type === 'directory' ? 'warning' : 'info'"
               size="small"
             >
-              {{ row.type === "directory" ? "目录" : "文件" }}
+              {{
+                row.type === "directory"
+                  ? $t("fileExplorer.directory")
+                  : $t("fileExplorer.file")
+              }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="修改时间" width="180">
+        <el-table-column :label="$t('fileExplorer.colModified')" width="180">
           <template #default="{ row }">
             {{ formatTime(row.last_modified) }}
           </template>
         </el-table-column>
         <el-table-column
-          label="路径"
+          :label="$t('fileExplorer.colPath')"
           min-width="200"
           prop="full_path"
           show-overflow-tooltip
         />
-        <el-table-column label="操作" width="140" fixed="right" align="center">
+        <el-table-column
+          :label="$t('fileExplorer.colOperations')"
+          width="140"
+          fixed="right"
+          align="center"
+        >
           <template #default="{ row }">
             <el-button-group>
               <el-button
@@ -501,14 +525,14 @@ onMounted(() => {
 
       <el-empty
         v-if="!loading && entries.length === 0"
-        description="空目录或 IED 不支持文件服务"
+        :description="$t('fileExplorer.emptyDir')"
       />
     </div>
 
-    <!-- 上传对话框 -->
+    <!-- Upload dialog -->
     <el-dialog
       v-model="uploadDialogVisible"
-      title="上传文件到 IED"
+      :title="$t('fileExplorer.uploadTitle')"
       width="500px"
       destroy-on-close
     >
@@ -521,52 +545,62 @@ onMounted(() => {
         drag
       >
         <el-icon :size="40" class="upload-icon"><Upload /></el-icon>
-        <div class="el-upload__text">
-          拖拽文件到此处，或 <em>点击选择文件</em>
-        </div>
+        <div
+          class="el-upload__text"
+          v-html="$t('fileExplorer.uploadDropText')"
+        />
         <template #tip>
-          <div class="el-upload__tip">文件将上传至 IED 当前目录</div>
+          <div class="el-upload__tip">{{ $t("fileExplorer.uploadTip") }}</div>
         </template>
       </el-upload>
       <template #footer>
-        <el-button @click="uploadDialogVisible = false">取消</el-button>
+        <el-button @click="uploadDialogVisible = false">{{
+          $t("common.cancel")
+        }}</el-button>
         <el-button
           type="primary"
           @click="uploadRef?.submit()"
           :loading="uploading"
-          >上传</el-button
+          >{{ $t("fileExplorer.upload") }}</el-button
         >
       </template>
     </el-dialog>
 
-    <!-- 缓存管理对话框 -->
+    <!-- Cache management dialog -->
     <el-dialog
       v-model="cacheDialogVisible"
-      title="本地缓存管理"
+      :title="$t('fileExplorer.cacheTitle')"
       width="600px"
       destroy-on-close
     >
       <el-table :data="cacheList" border stripe size="small" max-height="400">
         <el-table-column
-          label="远程路径"
+          :label="$t('fileExplorer.colRemotePath')"
           prop="remote_path"
           min-width="200"
           show-overflow-tooltip
         />
-        <el-table-column label="文件大小" width="100">
+        <el-table-column :label="$t('fileExplorer.colFileSize')" width="100">
           <template #default="{ row }">
             {{ (row.file_size / 1024).toFixed(1) }} KB
           </template>
         </el-table-column>
-        <el-table-column label="下载时间" width="180">
+        <el-table-column
+          :label="$t('fileExplorer.colDownloadTime')"
+          width="180"
+        >
           <template #default="{ row }">
             {{ formatTime(row.download_time) }}
           </template>
         </el-table-column>
       </el-table>
       <template #footer>
-        <el-button @click="cacheDialogVisible = false">关闭</el-button>
-        <el-button type="danger" @click="handleClearCache">清空缓存</el-button>
+        <el-button @click="cacheDialogVisible = false">{{
+          $t("fileExplorer.close")
+        }}</el-button>
+        <el-button type="danger" @click="handleClearCache">{{
+          $t("fileExplorer.clearCache")
+        }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -581,7 +615,7 @@ onMounted(() => {
   border-radius: 4px;
 }
 
-// ===== 头部 (与 ReportsManager 一致) =====
+// ===== Header (consistent with ReportsManager) =====
 .file-header {
   display: flex;
   justify-content: space-between;
@@ -605,7 +639,7 @@ onMounted(() => {
   }
 }
 
-// ===== 工具条 =====
+// ===== Toolbar =====
 .toolbar {
   display: flex;
   justify-content: space-between;
@@ -645,7 +679,7 @@ onMounted(() => {
   }
 }
 
-// ===== 文件列表主体 =====
+// ===== File list body =====
 .file-body {
   flex: 1;
   padding: 0;
@@ -662,7 +696,7 @@ onMounted(() => {
   }
 }
 
-// ===== 文件名单元格 =====
+// ===== File name cell =====
 .file-name-cell {
   display: flex;
   align-items: center;
@@ -679,13 +713,13 @@ onMounted(() => {
   }
 }
 
-// ===== 上传区域 =====
+// ===== Upload area =====
 .upload-icon {
   color: #c0c4cc;
   margin-bottom: 8px;
 }
 
-// ===== 表格居中 (与 GooseManager 一致) =====
+// ===== Table center (consistent with GooseManager) =====
 ::deep(.el-table thead th .cell) {
   white-space: nowrap;
 }
@@ -694,7 +728,7 @@ onMounted(() => {
   text-align: center;
 }
 
-// ===== 小屏适配 =====
+// ===== Small screen adaptation =====
 @include bp.respond-to("small") {
   .file-header {
     flex-direction: column;

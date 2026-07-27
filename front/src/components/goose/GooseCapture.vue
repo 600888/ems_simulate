@@ -228,10 +228,13 @@
       </el-table-column>
     </el-table>
     <div v-if="packets.length > pageSize" class="capture-pagination">
-      <span class="pagination-summary"
-        >共 {{ packets.length }} 条，当前仅渲染
-        {{ visiblePackets.length }} 条</span
-      >
+      <span class="pagination-summary">{{
+        $t("goose.totalPackets", {
+          filtered: packets.length,
+          total: packets.length,
+          rendered: visiblePackets.length,
+        })
+      }}</span>
       <el-pagination
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
@@ -318,7 +321,7 @@
           }}</el-descriptions-item>
         </el-descriptions>
 
-        <h4 style="margin: 16px 0 8px">协议字段</h4>
+        <h4 style="margin: 16px 0 8px">{{ $t("goose.protocolFields") }}</h4>
         <el-table
           :data="detailPacket.fields || []"
           border
@@ -327,19 +330,27 @@
           highlight-current-row
           @row-click="selectRawRange"
         >
-          <el-table-column label="字节" width="85">
+          <el-table-column :label="$t('goose.bytes')" width="85">
             <template #default="{ row }">{{
               formatByteRange(row.offset, row.length)
             }}</template>
           </el-table-column>
-          <el-table-column prop="raw_hex" label="原始字节" min-width="130" />
-          <el-table-column prop="name" label="字段" width="145" />
+          <el-table-column
+            prop="raw_hex"
+            :label="$t('goose.rawBytes')"
+            min-width="130"
+          />
+          <el-table-column prop="name" :label="$t('goose.field')" width="145" />
           <el-table-column
             prop="display_value"
-            label="解析值"
+            :label="$t('goose.parsedValue')"
             min-width="180"
           />
-          <el-table-column prop="description" label="说明" min-width="130" />
+          <el-table-column
+            prop="description"
+            :label="$t('goose.explanation')"
+            min-width="130"
+          />
         </el-table>
 
         <!-- 数据集值 -->
@@ -361,12 +372,12 @@
             :label="$t('goose.seqNum')"
             width="60"
           />
-          <el-table-column label="字节" width="85">
+          <el-table-column :label="$t('goose.bytes')" width="85">
             <template #default="{ row }">{{
               formatByteRange(row.offset, row.length)
             }}</template>
           </el-table-column>
-          <el-table-column label="数据项" min-width="180">
+          <el-table-column :label="$t('goose.dataItems')" min-width="180">
             <template #default="{ row }">
               <div>{{ row.name || `Entry[${row.index ?? "-"}]` }}</div>
               <small v-if="row.description" class="text-muted">{{
@@ -374,7 +385,7 @@
               }}</small>
             </template>
           </el-table-column>
-          <el-table-column label="关联测点" min-width="150">
+          <el-table-column :label="$t('goose.linkedPoint')" min-width="150">
             <template #default="{ row }">
               <template v-if="row.point">
                 <div>{{ row.point.name || row.point.code }}</div>
@@ -382,7 +393,7 @@
                   >{{ row.point.code }} · {{ row.point.address }}</small
                 >
               </template>
-              <span v-else class="text-muted">未关联</span>
+              <span v-else class="text-muted">{{ $t("goose.unlinked") }}</span>
             </template>
           </el-table-column>
           <el-table-column
@@ -415,7 +426,7 @@
                 class="raw-byte"
                 :class="{ selected: isRawByteSelected(item.index) }"
                 :data-byte-index="item.index"
-                :title="`字节 ${item.index}`"
+                :title="$t('goose.bytePosition', { index: item.index })"
                 >{{ item.hex }}</span
               >
             </span>
@@ -423,7 +434,7 @@
           </div>
         </div>
         <div class="raw-byte-hint">
-          点击协议字段或DataSet数据项可定位并高亮对应字节
+          {{ $t("goose.clickToLocate") }}
         </div>
       </template>
     </el-dialog>

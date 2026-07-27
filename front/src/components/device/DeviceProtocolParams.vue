@@ -1,7 +1,7 @@
 <template>
   <div class="protocol-params-form">
     <el-alert
-      title="这里仅配置协议运行参数，IP、端口、串口和点表等原有配置仍在“基本信息”中。"
+      :title="$t('protocolParams.configHint')"
       type="info"
       :closable="false"
       show-icon
@@ -10,7 +10,7 @@
 
     <el-empty
       v-if="fields.length === 0"
-      description="当前协议及连接模式暂无额外运行参数"
+      :description="$t('protocolParams.noParamsHint')"
       :image-size="72"
     />
 
@@ -18,14 +18,14 @@
       <el-form-item
         v-for="field in commonFields"
         :key="field.key"
-        :label="field.label"
+        :label="translateFieldKey(field.label)"
         label-width="180px"
       >
         <el-input
           v-if="field.kind === 'directory'"
           v-model="modelValue.values[field.key]"
           class="directory-path-input"
-          :placeholder="field.placeholder"
+          :placeholder="translateFieldKey(field.placeholder)"
         >
           <template #append>
             <el-button-group class="directory-path-actions">
@@ -34,7 +34,7 @@
                 :icon="EditPen"
                 @click="chooseDirectory(field.key)"
               >
-                选择目录
+                {{ $t("protocolParams.chooseDirectory") }}
               </el-button>
             </el-button-group>
           </template>
@@ -52,7 +52,7 @@
           v-model="modelValue.values[field.key]"
           :type="field.kind === 'password' ? 'password' : 'text'"
           :show-password="field.kind === 'password'"
-          :placeholder="field.placeholder"
+          :placeholder="translateFieldKey(field.placeholder)"
           autocomplete="new-password"
         />
         <el-input-number
@@ -64,7 +64,7 @@
           style="width: 100%"
         >
           <template v-if="field.unit" #suffix>
-            <span class="field-unit">{{ field.unit }}</span>
+            <span class="field-unit">{{ translateFieldKey(field.unit) }}</span>
           </template>
         </el-input-number>
         <div
@@ -73,24 +73,28 @@
           "
           class="field-error"
         >
-          文件服务目录路径必须使用英文、数字和英文符号，不能包含中文字符。
+          {{ t("protocolParams.asciiOnlyPathError") }}
         </div>
-        <div v-if="field.tip" class="field-tip">{{ field.tip }}</div>
+        <div v-if="field.tip" class="field-tip">
+          {{ translateFieldKey(field.tip) }}
+        </div>
       </el-form-item>
 
       <div v-if="advancedFields.length" class="advanced-settings">
-        <div class="section-title">高级设置</div>
+        <div class="section-title">
+          {{ $t("protocolParams.advancedSettings") }}
+        </div>
         <el-form-item
           v-for="field in advancedFields"
           :key="field.key"
-          :label="field.label"
+          :label="translateFieldKey(field.label)"
           label-width="180px"
         >
           <el-input
             v-if="field.kind === 'directory'"
             v-model="modelValue.values[field.key]"
             class="directory-path-input"
-            :placeholder="field.placeholder"
+            :placeholder="translateFieldKey(field.placeholder)"
           >
             <template #append>
               <el-button-group class="directory-path-actions">
@@ -99,7 +103,7 @@
                   :icon="EditPen"
                   @click="chooseDirectory(field.key)"
                 >
-                  选择目录
+                  {{ $t("protocolParams.chooseDirectory") }}
                 </el-button>
               </el-button-group>
             </template>
@@ -117,7 +121,7 @@
             v-model="modelValue.values[field.key]"
             :type="field.kind === 'password' ? 'password' : 'text'"
             :show-password="field.kind === 'password'"
-            :placeholder="field.placeholder"
+            :placeholder="translateFieldKey(field.placeholder)"
             autocomplete="new-password"
           />
           <el-input-number
@@ -129,7 +133,9 @@
             style="width: 100%"
           >
             <template v-if="field.unit" #suffix>
-              <span class="field-unit">{{ field.unit }}</span>
+              <span class="field-unit">{{
+                translateFieldKey(field.unit)
+              }}</span>
             </template>
           </el-input-number>
           <div
@@ -138,9 +144,11 @@
             "
             class="field-error"
           >
-            文件服务目录路径必须使用英文、数字和英文符号，不能包含中文字符。
+            {{ t("protocolParams.asciiOnlyPathError") }}
           </div>
-          <div v-if="field.tip" class="field-tip">{{ field.tip }}</div>
+          <div v-if="field.tip" class="field-tip">
+            {{ translateFieldKey(field.tip) }}
+          </div>
         </el-form-item>
       </div>
 
@@ -149,7 +157,10 @@
         v-model="expandedSections"
         class="protocol-specific-settings"
       >
-        <el-collapse-item title="IEC 104 专属参数" name="iec104-specific">
+        <el-collapse-item
+          :title="$t('protocolParams.iec104SpecificParams')"
+          name="iec104-specific"
+        >
           <div
             v-if="protocolSpecificOptionFields.length"
             class="iec104-connect-options"
@@ -170,14 +181,14 @@
                 </svg>
               </span>
               <span class="iec104-connect-option__label">
-                {{ field.label }}
+                {{ translateFieldKey(field.label) }}
               </span>
             </label>
           </div>
           <el-form-item
             v-for="field in protocolSpecificValueFields"
             :key="field.key"
-            :label="field.label"
+            :label="translateFieldKey(field.label)"
             label-width="180px"
           >
             <el-input-number
@@ -188,18 +199,22 @@
               style="width: 100%"
             >
               <template #suffix>
-                <span class="field-unit">{{ field.unit || "" }}</span>
+                <span class="field-unit">{{
+                  translateFieldKey(field.unit)
+                }}</span>
               </template>
             </el-input-number>
-            <div v-if="field.tip" class="field-tip">{{ field.tip }}</div>
+            <div v-if="field.tip" class="field-tip">
+              {{ translateFieldKey(field.tip) }}
+            </div>
           </el-form-item>
         </el-collapse-item>
       </el-collapse>
 
       <div class="reset-row">
-        <el-button link type="primary" @click="resetDefaults"
-          >恢复默认参数</el-button
-        >
+        <el-button link type="primary" @click="resetDefaults">{{
+          $t("protocolParams.resetDefaults")
+        }}</el-button>
       </div>
     </template>
   </div>
@@ -208,9 +223,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
+import { useI18n } from "vue-i18n";
 import { EditPen } from "@element-plus/icons-vue";
 import type { ProtocolParamsConfig } from "@/types/channel";
 import { isTauri } from "@/utils/tauri";
+
+const { t } = useI18n();
+
+function translateFieldKey(key?: string) {
+  return key ? t(key) : "";
+}
 
 type FieldDefinition = {
   key: string;
@@ -239,7 +261,7 @@ const expandedSections = ref<string[]>(["iec104-specific"]);
 const modbusClient: FieldDefinition[] = [
   {
     key: "connect_timeout_ms",
-    label: "连接超时",
+    label: "protocolParams.connectTimeout",
     min: 100,
     max: 60000,
     unit: "ms",
@@ -247,7 +269,7 @@ const modbusClient: FieldDefinition[] = [
   },
   {
     key: "command_timeout_ms",
-    label: "单条命令超时",
+    label: "protocolParams.commandTimeout",
     min: 100,
     max: 60000,
     unit: "ms",
@@ -255,16 +277,16 @@ const modbusClient: FieldDefinition[] = [
   },
   {
     key: "command_retry_count",
-    label: "命令重试次数",
+    label: "protocolParams.commandRetryCount",
     min: 0,
     max: 10,
     step: 1,
-    unit: "次",
+    unit: "protocolParams.timesUnit",
     default: 1,
   },
   {
     key: "reconnect_initial_interval_ms",
-    label: "重连初始间隔",
+    label: "protocolParams.reconnectInitialInterval",
     min: 100,
     max: 60000,
     unit: "ms",
@@ -273,7 +295,7 @@ const modbusClient: FieldDefinition[] = [
   },
   {
     key: "reconnect_max_interval_ms",
-    label: "重连最大间隔",
+    label: "protocolParams.reconnectMaxInterval",
     min: 1000,
     max: 300000,
     unit: "ms",
@@ -282,65 +304,65 @@ const modbusClient: FieldDefinition[] = [
   },
   {
     key: "reconnect_max_attempts",
-    label: "最大重连次数",
+    label: "protocolParams.maxReconnectAttempts",
     min: -1,
     max: 100,
     step: 1,
-    unit: "次",
+    unit: "protocolParams.timesUnit",
     default: 0,
     advanced: true,
-    tip: "-1 表示持续重连，0 表示不自动重连",
+    tip: "protocolParams.retryCountTip",
   },
 ];
 
 const modbusServer: FieldDefinition[] = [
   {
     key: "client_idle_timeout_ms",
-    label: "客户端空闲超时",
+    label: "protocolParams.clientIdleTimeout",
     min: 0,
     max: 86400000,
     step: 1000,
     unit: "ms",
     default: 0,
-    tip: "超过该时间未收到报文则主动断开；0 表示不限制",
+    tip: "protocolParams.idleTimeoutTip",
   },
   {
     key: "max_connections",
-    label: "最大客户端连接数",
+    label: "protocolParams.maxConnections",
     min: 0,
     max: 1000,
     step: 1,
-    unit: "个",
+    unit: "protocolParams.countUnit",
     default: 0,
-    tip: "达到上限后拒绝新的客户端连接；0 表示不限制",
+    tip: "protocolParams.maxConnectionsTip",
   },
 ];
 
 const iec104LinkFields: FieldDefinition[] = [
   {
     key: "send_window_size",
-    label: "发送窗口（k）",
+    label: "protocolParams.sendWindowSize",
     min: 1,
     max: 32767,
     step: 1,
-    unit: "帧",
+    unit: "protocolParams.framesUnit",
     default: 12,
     protocolSpecific: true,
   },
   {
     key: "receive_window_size",
-    label: "接收窗口（w）",
+    label: "protocolParams.receiveWindowSize",
     min: 1,
     max: 32767,
     step: 1,
-    unit: "帧",
+    unit: "protocolParams.framesUnit",
     default: 8,
-    tip: "w 不能大于 k",
+    tip: "protocolParams.receiveWindowTip",
     protocolSpecific: true,
   },
   {
     key: "t0_timeout_s",
-    label: "连接建立超时（t0）",
+    label: "protocolParams.t0Timeout",
     min: 1,
     max: 3600,
     step: 1,
@@ -350,7 +372,7 @@ const iec104LinkFields: FieldDefinition[] = [
   },
   {
     key: "t1_timeout_s",
-    label: "报文确认超时（t1）",
+    label: "protocolParams.t1Timeout",
     min: 1,
     max: 3600,
     step: 1,
@@ -360,18 +382,18 @@ const iec104LinkFields: FieldDefinition[] = [
   },
   {
     key: "t2_timeout_s",
-    label: "接收确认间隔（t2）",
+    label: "protocolParams.t2Timeout",
     min: 1,
     max: 3600,
     step: 1,
     unit: "s",
     default: 10,
-    tip: "t2 不能大于 t1",
+    tip: "protocolParams.t2TimeoutTip",
     protocolSpecific: true,
   },
   {
     key: "t3_interval_s",
-    label: "空闲链路检测间隔（t3）",
+    label: "protocolParams.t3Interval",
     min: 1,
     max: 86400,
     step: 1,
@@ -384,14 +406,14 @@ const iec104LinkFields: FieldDefinition[] = [
 const iec104Client: FieldDefinition[] = [
   {
     key: "general_interrogation_on_connect",
-    label: "连接后立即执行总召唤",
+    label: "protocolParams.generalInterrogationOnConnect",
     kind: "checkbox",
     default: true,
     protocolSpecific: true,
   },
   {
     key: "counter_interrogation_on_connect",
-    label: "连接后立即执行计数量召唤",
+    label: "protocolParams.counterInterrogationOnConnect",
     kind: "checkbox",
     default: false,
     protocolSpecific: true,
@@ -408,7 +430,7 @@ const iec104Client: FieldDefinition[] = [
   }),
   {
     key: "originator_address",
-    label: "源发站地址",
+    label: "protocolParams.originatorAddress",
     min: 0,
     max: 255,
     step: 1,
@@ -417,40 +439,40 @@ const iec104Client: FieldDefinition[] = [
   },
   {
     key: "clock_sync_interval_s",
-    label: "时钟同步周期",
+    label: "protocolParams.clockSyncInterval",
     min: 0,
     max: 86400,
     step: 1,
     unit: "s",
     default: 0,
     protocolSpecific: true,
-    tip: "0 表示不定时发送",
+    tip: "protocolParams.zeroMeansUnscheduled",
   },
   {
     key: "general_interrogation_interval_s",
-    label: "总召唤命令间隔",
+    label: "protocolParams.generalInterrogationInterval",
     min: 0,
     max: 86400,
     step: 1,
     unit: "s",
     default: 0,
     protocolSpecific: true,
-    tip: "0 表示不定时发送；是否在连接建立时发送由上方开关控制",
+    tip: "protocolParams.giIntervalTip",
   },
   {
     key: "counter_interrogation_interval_s",
-    label: "累计量召唤命令间隔",
+    label: "protocolParams.counterInterrogationInterval",
     min: 0,
     max: 86400,
     step: 1,
     unit: "s",
     default: 0,
     protocolSpecific: true,
-    tip: "0 表示不定时发送",
+    tip: "protocolParams.zeroMeansUnscheduled",
   },
   {
     key: "reconnect_initial_interval_ms",
-    label: "重连初始间隔",
+    label: "protocolParams.reconnectInitialInterval",
     min: 100,
     max: 60000,
     unit: "ms",
@@ -459,7 +481,7 @@ const iec104Client: FieldDefinition[] = [
   },
   {
     key: "reconnect_max_interval_ms",
-    label: "重连最大间隔",
+    label: "protocolParams.reconnectMaxInterval",
     min: 1000,
     max: 300000,
     unit: "ms",
@@ -468,14 +490,14 @@ const iec104Client: FieldDefinition[] = [
   },
   {
     key: "reconnect_max_attempts",
-    label: "最大重连次数",
+    label: "protocolParams.maxReconnectAttempts",
     min: -1,
     max: 100,
     step: 1,
-    unit: "次",
+    unit: "protocolParams.timesUnit",
     default: 0,
     advanced: true,
-    tip: "-1 表示持续重连，0 表示不自动重连",
+    tip: "protocolParams.retryCountTip",
   },
 ];
 
@@ -483,21 +505,21 @@ const iec104Server: FieldDefinition[] = [
   ...iec104LinkFields,
   {
     key: "max_connections",
-    label: "最大客户端连接数",
+    label: "protocolParams.maxConnections",
     min: 0,
     max: 1000,
     step: 1,
-    unit: "个",
+    unit: "protocolParams.countUnit",
     default: 0,
     advanced: true,
-    tip: "0 表示不限制",
+    tip: "protocolParams.zeroMeansUnlimited",
   },
 ];
 
 const dlt645Client: FieldDefinition[] = [
   {
     key: "command_timeout_ms",
-    label: "单条命令超时",
+    label: "protocolParams.commandTimeout",
     min: 100,
     max: 60000,
     unit: "ms",
@@ -508,14 +530,14 @@ const dlt645Client: FieldDefinition[] = [
 const iec61850Client: FieldDefinition[] = [
   {
     key: "mms_capture_enabled",
-    label: "MMS 报文抓包",
+    label: "protocolParams.mmsCaptureEnabled",
     kind: "boolean",
     default: false,
-    tip: "开启后使用 Npcap/libpcap 捕获 MMS 报文，关闭可减少系统资源占用。",
+    tip: "protocolParams.mmsCaptureTip",
   },
   {
     key: "connect_timeout_ms",
-    label: "连接超时",
+    label: "protocolParams.connectTimeout",
     min: 100,
     max: 60000,
     unit: "ms",
@@ -523,7 +545,7 @@ const iec61850Client: FieldDefinition[] = [
   },
   {
     key: "command_timeout_ms",
-    label: "单条命令超时",
+    label: "protocolParams.commandTimeout",
     min: 100,
     max: 120000,
     unit: "ms",
@@ -531,7 +553,7 @@ const iec61850Client: FieldDefinition[] = [
   },
   {
     key: "model_discovery_timeout_s",
-    label: "模型发现总超时",
+    label: "protocolParams.modelDiscoveryTimeout",
     min: 10,
     max: 3600,
     step: 1,
@@ -541,20 +563,20 @@ const iec61850Client: FieldDefinition[] = [
   },
   {
     key: "authentication_enabled",
-    label: "用户认证",
+    label: "protocolParams.authenticationEnabled",
     kind: "boolean",
     default: false,
     advanced: true,
-    tip: "启用 IEC 61850 ACSE 密码认证。",
+    tip: "protocolParams.acseAuthTip",
   },
   {
     key: "authentication_password",
-    label: "认证密码",
+    label: "protocolParams.authenticationPassword",
     kind: "password",
     default: "",
     advanced: true,
     visibleWhen: { key: "authentication_enabled", value: true },
-    placeholder: "请输入 ACSE 认证密码",
+    placeholder: "protocolParams.acsePasswordPlaceholder",
   },
   {
     key: "remote_ap_title",
@@ -635,44 +657,44 @@ const iec61850Client: FieldDefinition[] = [
 const iec61850Server: FieldDefinition[] = [
   {
     key: "file_service_directory",
-    label: "文件服务目录",
+    label: "protocolParams.fileServiceDirectory",
     kind: "directory",
     default: "",
-    placeholder: "请选择向 MMS 客户端公开的文件目录",
-    tip: "该目录仅对当前设备生效；留空时不开启文件服务。Windows 下目录路径及目录内文件名请使用英文。",
+    placeholder: "protocolParams.fileServiceDirPlaceholder",
+    tip: "protocolParams.fileServiceDirTip",
   },
   {
     key: "mms_capture_enabled",
-    label: "MMS 报文抓包",
+    label: "protocolParams.mmsCaptureEnabled",
     kind: "boolean",
     default: false,
-    tip: "开启后使用 Npcap/libpcap 捕获 MMS 报文，关闭可减少系统资源占用。",
+    tip: "protocolParams.mmsCaptureTip",
   },
   {
     key: "max_connections",
-    label: "最大 MMS 连接数",
+    label: "protocolParams.maxMmsConnections",
     min: 1,
     max: 1000,
     step: 1,
-    unit: "个",
+    unit: "protocolParams.countUnit",
     default: 5,
   },
   {
     key: "authentication_enabled",
-    label: "用户认证",
+    label: "protocolParams.authenticationEnabled",
     kind: "boolean",
     default: false,
     advanced: true,
-    tip: "启用后仅接受密码正确的 IEC 61850 ACSE 客户端连接。",
+    tip: "protocolParams.serverAcseAuthTip",
   },
   {
     key: "authentication_password",
-    label: "服务端认证密码",
+    label: "protocolParams.serverAuthenticationPassword",
     kind: "password",
     default: "",
     advanced: true,
     visibleWhen: { key: "authentication_enabled", value: true },
-    placeholder: "请输入服务端 ACSE 认证密码",
+    placeholder: "protocolParams.serverAcsePasswordPlaceholder",
   },
 ];
 
@@ -687,7 +709,7 @@ const fields = computed<FieldDefinition[]>(() => {
     return [
       {
         key: "session_idle_timeout_ms",
-        label: "会话空闲超时",
+        label: "protocolParams.sessionIdleTimeout",
         min: 1000,
         max: 600000,
         unit: "ms",
@@ -740,15 +762,13 @@ function hasNonAsciiDirectoryPath(key: string): boolean {
 function validate(): boolean {
   if (props.protocolType !== 4 || props.connType !== 2) return true;
   if (!hasNonAsciiDirectoryPath("file_service_directory")) return true;
-  ElMessage.error(
-    "文件服务目录路径必须使用英文、数字和英文符号，不能包含中文字符",
-  );
+  ElMessage.error(t("protocolParams.asciiOnlyPathError"));
   return false;
 }
 
 async function chooseDirectory(key: string) {
   if (!isTauri()) {
-    ElMessage.info("浏览器模式不支持目录选择，请直接输入完整路径");
+    ElMessage.info(t("protocolParams.browserDirNotSupported"));
     return;
   }
   try {
@@ -764,16 +784,14 @@ async function chooseDirectory(key: string) {
     });
     if (typeof selected === "string") {
       if (!/^[\x20-\x7E]+$/.test(selected.trim())) {
-        ElMessage.error(
-          "文件服务目录路径必须使用英文、数字和英文符号，不能包含中文字符",
-        );
+        ElMessage.error(t("protocolParams.asciiOnlyPathError"));
         return;
       }
       props.modelValue.values[key] = selected;
     }
   } catch (error) {
     console.error("选择 IEC61850 文件服务目录失败", error);
-    ElMessage.error("选择目录失败");
+    ElMessage.error(t("protocolParams.chooseDirectoryFailed"));
   }
 }
 

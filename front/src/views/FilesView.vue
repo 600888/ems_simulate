@@ -29,7 +29,7 @@ watch(
       <FileExplorer :channel-id="channelId" />
     </div>
     <div v-else class="files-empty">
-      <el-empty description="请从侧边栏选择 IEC61850 设备的 Files 分类" />
+      <el-empty :description="$t('views.files.selectDevicePrompt')" />
     </div>
   </div>
 </template>

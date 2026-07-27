@@ -7,18 +7,26 @@
         ></el-button>
         <div>
           <div class="eyebrow">CREATE FROM SCRATCH</div>
-          <h1>从 0 新建 IEC 61850 模型</h1>
+          <h1>{{ $t("modeling.createWizard.title") }}</h1>
           <p>
-            向导会自动建立 Header、IED、AccessPoint、Server、LDevice、LLN0
-            和类型模板骨架。
+            {{ $t("modeling.createWizard.description") }}
           </p>
         </div>
       </header>
 
       <el-steps :active="activeStep" finish-status="success" align-center>
-        <el-step title="工程信息" description="文件与标准" />
-        <el-step title="设备骨架" description="IED 与逻辑设备" />
-        <el-step title="确认创建" description="检查初始结构" />
+        <el-step
+          :title="$t('modeling.createWizard.step1Title')"
+          :description="$t('modeling.createWizard.step1Desc')"
+        />
+        <el-step
+          :title="$t('modeling.createWizard.step2Title')"
+          :description="$t('modeling.createWizard.step2Desc')"
+        />
+        <el-step
+          :title="$t('modeling.createWizard.step3Title')"
+          :description="$t('modeling.createWizard.step3Desc')"
+        />
       </el-steps>
 
       <main class="wizard-body">
@@ -32,29 +40,42 @@
             <div class="section-title">
               <span>01</span>
               <div>
-                <h2>工程基本信息</h2>
-                <p>用于工程列表、文件标识和后续版本管理。</p>
+                <h2>{{ $t("modeling.createWizard.section1Title") }}</h2>
+                <p>{{ $t("modeling.createWizard.section1Desc") }}</p>
               </div>
             </div>
             <div class="form-grid">
-              <el-form-item label="工程名称" prop="name">
+              <el-form-item
+                :label="$t('modeling.createWizard.projectName')"
+                prop="name"
+              >
                 <el-input
                   v-model="form.name"
                   maxlength="128"
-                  placeholder="例如：110kV 线路保护装置模型"
+                  :placeholder="
+                    $t('modeling.createWizard.projectNamePlaceholder')
+                  "
                 />
               </el-form-item>
-              <el-form-item label="工程编码" prop="code">
+              <el-form-item
+                :label="$t('modeling.createWizard.projectCode')"
+                prop="code"
+              >
                 <el-input
                   v-model="form.code"
                   maxlength="64"
-                  placeholder="例如：LINE_PROTECTION_A"
+                  :placeholder="
+                    $t('modeling.createWizard.projectCodePlaceholder')
+                  "
                 />
                 <div class="field-tip">
-                  以字母开头，可使用字母、数字、下划线和短横线。
+                  {{ $t("modeling.createWizard.codeRule") }}
                 </div>
               </el-form-item>
-              <el-form-item label="目标文件类型" prop="file_type">
+              <el-form-item
+                :label="$t('modeling.createWizard.fileType')"
+                prop="file_type"
+              >
                 <el-radio-group
                   v-model="form.file_type"
                   class="file-type-group"
@@ -64,29 +85,40 @@
                   <el-radio-button value="SCD">SCD</el-radio-button>
                 </el-radio-group>
               </el-form-item>
-              <el-form-item label="IEC 61850 标准版本" prop="standard_version">
+              <el-form-item
+                :label="$t('modeling.createWizard.standardVersion')"
+                prop="standard_version"
+              >
                 <el-select v-model="form.standard_version" style="width: 100%">
                   <el-option label="IEC 61850 Ed2.1" value="IEC 61850 Ed2.1" />
                   <el-option label="IEC 61850 Ed2" value="IEC 61850 Ed2" />
                   <el-option label="IEC 61850 Ed1" value="IEC 61850 Ed1" />
                 </el-select>
               </el-form-item>
-              <el-form-item label="工程描述" class="full-row">
+              <el-form-item
+                :label="$t('modeling.createWizard.description')"
+                class="full-row"
+              >
                 <el-input
                   v-model="form.description"
                   type="textarea"
                   :rows="3"
                   maxlength="512"
                   show-word-limit
-                  placeholder="说明模型用途、站点或装置范围"
+                  :placeholder="
+                    $t('modeling.createWizard.descriptionPlaceholder')
+                  "
                 />
               </el-form-item>
-              <el-form-item label="建模配置档" class="full-row">
+              <el-form-item
+                :label="$t('modeling.createWizard.profiles')"
+                class="full-row"
+              >
                 <el-select
                   v-model="form.profiles"
                   multiple
                   style="width: 100%"
-                  placeholder="选择配置档"
+                  :placeholder="$t('modeling.createWizard.profilesPlaceholder')"
                 >
                   <el-option
                     v-for="profile in profiles"
@@ -101,7 +133,7 @@
                   </el-option>
                 </el-select>
                 <div class="field-tip">
-                  依赖项会自动解析并锁定版本；通用 IED 配置档始终建议启用。
+                  {{ $t("modeling.createWizard.profilesTip") }}
                 </div>
               </el-form-item>
             </div>
@@ -111,40 +143,54 @@
             <div class="section-title">
               <span>02</span>
               <div>
-                <h2>IED 与逻辑设备</h2>
+                <h2>{{ $t("modeling.createWizard.section2Title") }}</h2>
                 <p>
-                  先建立最小可用骨架，进入工作台后可继续扩展逻辑节点和数据对象。
+                  {{ $t("modeling.createWizard.section2Desc") }}
                 </p>
               </div>
             </div>
             <div class="form-grid">
-              <el-form-item label="IED 名称" prop="ied.name">
+              <el-form-item
+                :label="$t('modeling.createWizard.iedName')"
+                prop="ied.name"
+              >
                 <el-input
                   v-model="form.ied.name"
-                  placeholder="例如：PROT_IED_01"
+                  :placeholder="$t('modeling.createWizard.iedNamePlaceholder')"
                 />
               </el-form-item>
-              <el-form-item label="访问点名称" prop="access_point_name">
+              <el-form-item
+                :label="$t('modeling.createWizard.accessPoint')"
+                prop="access_point_name"
+              >
                 <el-input v-model="form.access_point_name" placeholder="AP1" />
               </el-form-item>
-              <el-form-item label="制造商">
-                <el-input v-model="form.ied.manufacturer" placeholder="可选" />
+              <el-form-item :label="$t('modeling.createWizard.manufacturer')">
+                <el-input
+                  v-model="form.ied.manufacturer"
+                  :placeholder="
+                    $t('modeling.createWizard.manufacturerPlaceholder')
+                  "
+                />
               </el-form-item>
-              <el-form-item label="设备类型">
+              <el-form-item :label="$t('modeling.createWizard.deviceType')">
                 <el-input
                   v-model="form.ied.type"
-                  placeholder="例如：线路保护"
+                  :placeholder="
+                    $t('modeling.createWizard.deviceTypePlaceholder')
+                  "
                 />
               </el-form-item>
             </div>
 
             <div class="ld-heading">
               <div>
-                <h3>逻辑设备</h3>
-                <p>每个逻辑设备会自动包含一个不可缺少的 LLN0。</p>
+                <h3>{{ $t("modeling.createWizard.logicalDevices") }}</h3>
+                <p>{{ $t("modeling.createWizard.logicalDevicesDesc") }}</p>
               </div>
               <el-button type="primary" plain @click="addLogicalDevice"
-                ><el-icon><Plus /></el-icon>添加逻辑设备</el-button
+                ><el-icon><Plus /></el-icon
+                >{{ $t("modeling.createWizard.addLogicalDevice") }}</el-button
               >
             </div>
             <div class="ld-list">
@@ -160,12 +206,12 @@
                 >
                   <el-input
                     v-model="device.inst"
-                    placeholder="实例标识，如 LD0"
+                    :placeholder="$t('modeling.createWizard.ldInstPlaceholder')"
                   />
                 </el-form-item>
                 <el-input
                   v-model="device.desc"
-                  placeholder="逻辑设备说明（可选）"
+                  :placeholder="$t('modeling.createWizard.ldDescPlaceholder')"
                 />
                 <el-button
                   :disabled="form.logical_devices.length === 1"
@@ -183,21 +229,21 @@
             <div class="section-title">
               <span>03</span>
               <div>
-                <h2>确认初始模型结构</h2>
-                <p>创建后可在工作台中动态添加、编辑和删除节点。</p>
+                <h2>{{ $t("modeling.createWizard.section3Title") }}</h2>
+                <p>{{ $t("modeling.createWizard.section3Desc") }}</p>
               </div>
             </div>
             <div class="review-grid">
               <div class="review-summary">
                 <dl>
                   <div>
-                    <dt>工程</dt>
+                    <dt>{{ $t("modeling.createWizard.summaryProject") }}</dt>
                     <dd>
                       {{ form.name }} <small>{{ form.code }}</small>
                     </dd>
                   </div>
                   <div>
-                    <dt>输出类型</dt>
+                    <dt>{{ $t("modeling.createWizard.summaryOutputType") }}</dt>
                     <dd>{{ form.file_type }} · {{ form.standard_version }}</dd>
                   </div>
                   <div>
@@ -205,29 +251,45 @@
                     <dd>
                       {{ form.ied.name }}
                       <small>{{
-                        form.ied.manufacturer || "未设置制造商"
+                        form.ied.manufacturer ||
+                        $t("modeling.createWizard.summaryManufacturer")
                       }}</small>
                     </dd>
                   </div>
                   <div>
-                    <dt>逻辑设备</dt>
-                    <dd>{{ form.logical_devices.length }} 个</dd>
+                    <dt>
+                      {{ $t("modeling.createWizard.summaryLogicalDevices") }}
+                    </dt>
+                    <dd>
+                      {{
+                        $t("modeling.createWizard.summaryLdCount", {
+                          count: form.logical_devices.length,
+                        })
+                      }}
+                    </dd>
                   </div>
                   <div>
-                    <dt>配置档</dt>
-                    <dd>{{ form.profiles.length }} 个</dd>
+                    <dt>{{ $t("modeling.createWizard.summaryProfiles") }}</dt>
+                    <dd>
+                      {{
+                        $t("modeling.createWizard.summaryLdCount", {
+                          count: form.profiles.length,
+                        })
+                      }}
+                    </dd>
                   </div>
                 </dl>
                 <el-alert
                   type="info"
                   :closable="false"
                   show-icon
-                  title="此阶段只生成可编辑模型，不会立即写入或覆盖任何现场 SCL 文件。"
+                  :title="$t('modeling.createWizard.summaryNote')"
                 />
               </div>
               <div class="structure-preview">
                 <div class="preview-title">
-                  <el-icon><Share /></el-icon>即将创建的骨架
+                  <el-icon><Share /></el-icon
+                  >{{ $t("modeling.createWizard.summaryTitle") }}
                 </div>
                 <div class="tree-line root">{{ form.name }}</div>
                 <div class="tree-line level-1">Header</div>
@@ -241,7 +303,8 @@
                   :key="device.inst"
                 >
                   <div class="tree-line level-4">
-                    LDevice · {{ device.inst || "未命名" }}
+                    LDevice ·
+                    {{ device.inst || $t("modeling.createWizard.unnamedLd") }}
                   </div>
                   <div class="tree-line level-5">LLN0</div>
                 </template>
@@ -258,19 +321,25 @@
             activeStep === 0 ? router.push('/scl/modeling') : activeStep--
           "
         >
-          {{ activeStep === 0 ? "取消" : "上一步" }}
+          {{
+            activeStep === 0
+              ? $t("common.cancel")
+              : $t("modeling.createWizard.prev")
+          }}
         </el-button>
-        <div class="step-hint">步骤 {{ activeStep + 1 }} / 3</div>
-        <el-button v-if="activeStep < 2" type="primary" @click="nextStep"
-          >下一步</el-button
-        >
+        <div class="step-hint">
+          {{ $t("modeling.createWizard.steps", { current: activeStep + 1 }) }}
+        </div>
+        <el-button v-if="activeStep < 2" type="primary" @click="nextStep">{{
+          $t("modeling.createWizard.next")
+        }}</el-button>
         <el-button
           v-else
           type="primary"
           :loading="creating"
           @click="createProject"
         >
-          创建并进入工作台
+          {{ $t("modeling.createWizard.create") }}
         </el-button>
       </footer>
     </div>
@@ -280,6 +349,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { ArrowLeft, Delete, Plus, Share } from "@element-plus/icons-vue";
 import {
@@ -289,6 +359,7 @@ import {
 } from "@/api/modelingApi";
 
 const router = useRouter();
+const { t } = useI18n();
 const formRef = ref<FormInstance>();
 const activeStep = ref(0);
 const creating = ref(false);
@@ -303,7 +374,9 @@ const form = reactive<CreateProjectPayload>({
   standard_version: "IEC 61850 Ed2.1",
   ied: { name: "", manufacturer: "", type: "", configVersion: "1.0" },
   access_point_name: "AP1",
-  logical_devices: [{ inst: "LD0", desc: "默认逻辑设备" }],
+  logical_devices: [
+    { inst: "LD0", desc: t("modeling.createWizard.defaultLd") },
+  ],
   profiles: ["generic-ied-ed2"],
 });
 
@@ -313,18 +386,28 @@ const identifierValidator = (
   callback: (error?: Error) => void,
 ) => {
   if (!namePattern.test(value || ""))
-    callback(new Error("以字母开头，只能包含字母、数字、下划线和短横线"));
+    callback(new Error(t("modeling.createWizard.codeRule")));
   else callback();
 };
 
 const rules: FormRules = {
-  name: [{ required: true, message: "请输入工程名称", trigger: "blur" }],
+  name: [
+    {
+      required: true,
+      message: t("modeling.createWizard.nameRequired"),
+      trigger: "blur",
+    },
+  ],
   code: [{ required: true, validator: identifierValidator, trigger: "blur" }],
   "ied.name": [
     { required: true, validator: identifierValidator, trigger: "blur" },
   ],
   access_point_name: [
-    { required: true, message: "请输入访问点名称", trigger: "blur" },
+    {
+      required: true,
+      message: t("modeling.createWizard.accessPointRequired"),
+      trigger: "blur",
+    },
   ],
 };
 const ldRules = [
@@ -370,7 +453,7 @@ async function createProject() {
   creating.value = true;
   try {
     const result = await modelingApi.createProject(form);
-    ElMessage.success("模型骨架创建成功");
+    ElMessage.success(t("modeling.createWizard.createSuccess"));
     await router.replace(`/scl/modeling/${result.project.id}`);
   } finally {
     creating.value = false;

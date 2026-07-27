@@ -1,48 +1,48 @@
 <template>
-  <el-empty v-if="!block" description="请选择一个 GOOSE 控制块" />
+  <el-empty v-if="!block" :description="$t('goose.selectControlBlock')" />
   <div v-else class="control-panel">
     <el-descriptions :column="2" border size="small" label-width="auto">
-      <el-descriptions-item label="名称 (Name)">{{
+      <el-descriptions-item :label="$t('goose.name')">{{
         block.display_name
       }}</el-descriptions-item>
-      <el-descriptions-item label="状态 (State)">
+      <el-descriptions-item :label="$t('goose.state')">
         <el-tag :type="stateTag">{{ stateLabel }}</el-tag>
       </el-descriptions-item>
-      <el-descriptions-item label="控制块引用 (GoCBRef)" :span="2">{{
+      <el-descriptions-item :label="$t('goose.goCbRefLabel')" :span="2">{{
         block.go_cb_ref
       }}</el-descriptions-item>
-      <el-descriptions-item label="GOOSE标识符 (GoID)">{{
+      <el-descriptions-item :label="$t('goose.goId')">{{
         block.go_id || "-"
       }}</el-descriptions-item>
-      <el-descriptions-item label="应用标识 (APPID)">{{
+      <el-descriptions-item :label="$t('goose.appId')">{{
         formatAppId(block.app_id)
       }}</el-descriptions-item>
-      <el-descriptions-item label="数据集 (DatSet)" :span="2">{{
+      <el-descriptions-item :label="$t('goose.dataSet')" :span="2">{{
         block.data_set_ref || "-"
       }}</el-descriptions-item>
-      <el-descriptions-item label="IED/逻辑设备/逻辑节点 (IED/LD/LN)"
+      <el-descriptions-item :label="$t('goose.iedLdLn')"
         >{{ block.ied_name }} / {{ block.ld_inst }} /
         {{ block.ln_name }}</el-descriptions-item
       >
-      <el-descriptions-item label="状态号/顺序号 (stNum/sqNum)"
+      <el-descriptions-item :label="$t('goose.stNumSqNum')"
         >{{ block.st_num }} / {{ block.sq_num }}</el-descriptions-item
       >
-      <el-descriptions-item label="配置版本号：预期/接收 (ConfRev)">
+      <el-descriptions-item :label="$t('goose.confRevLabel')">
         <span :class="{ mismatch: block.subscription?.config_mismatch }"
           >{{ block.conf_rev }} /
           {{ block.subscription?.received_conf_rev || "-" }}</span
         >
       </el-descriptions-item>
-      <el-descriptions-item label="网络接口 (Interface)">{{
+      <el-descriptions-item :label="$t('goose.interface')">{{
         interfaceLabel
       }}</el-descriptions-item>
-      <el-descriptions-item label="最后更新时间 (LastUpdate)">{{
+      <el-descriptions-item :label="$t('goose.lastUpdate')">{{
         formatGooseTime(block.last_update)
       }}</el-descriptions-item>
-      <el-descriptions-item label="报文数量 (Messages)">{{
+      <el-descriptions-item :label="$t('goose.messageCountLabel')">{{
         block.message_count || 0
       }}</el-descriptions-item>
-      <el-descriptions-item label="存活时间 (TimeAllowedToLive)"
+      <el-descriptions-item :label="$t('goose.timeAllowedToLive')"
         >{{
           block.subscription?.time_allowed_to_live || 0
         }}
@@ -51,20 +51,20 @@
     </el-descriptions>
 
     <section class="config-section">
-      <div class="section-title">订阅配置</div>
+      <div class="section-title">{{ $t("goose.subConfig") }}</div>
       <el-form label-width="200px" class="config-form">
-        <el-form-item label="订阅使能 (GoEna)">
+        <el-form-item :label="$t('goose.goEna')">
           <el-switch
             v-model="form.enabled"
-            active-text="已启用"
-            inactive-text="已禁用"
+            :active-text="$t('goose.enabled')"
+            :inactive-text="$t('goose.disabled')"
           />
         </el-form-item>
-        <el-form-item label="网络接口 (Interface)">
+        <el-form-item :label="$t('goose.interface')">
           <el-select
             v-model="form.interface"
             style="width: 100%"
-            placeholder="请选择网卡"
+            :placeholder="$t('goose.interfaceSelect')"
           >
             <el-option
               v-for="item in interfaces"
@@ -86,7 +86,7 @@
             </el-option>
           </el-select>
         </el-form-item>
-        <el-form-item label="应用标识过滤 (APPID)">
+        <el-form-item :label="$t('goose.filterAppId')">
           <el-input
             v-model="appIdHex"
             placeholder="0x0000"
@@ -94,17 +94,20 @@
             @blur="normalizeAppIdHex"
           />
         </el-form-item>
-        <el-form-item label="GOOSE标识符 (GoID)">
+        <el-form-item :label="$t('goose.goId')">
           <el-input v-model="form.go_id" />
         </el-form-item>
-        <el-form-item label="目标地址过滤 (DstAddress)">
-          <el-input v-model="form.dst_mac" placeholder="留空表示不过滤" />
+        <el-form-item :label="$t('goose.dstAddressFilter')">
+          <el-input
+            v-model="form.dst_mac"
+            :placeholder="$t('goose.dstMacPlaceholder')"
+          />
         </el-form-item>
-        <el-form-item label="数据集 (DatSet)">
+        <el-form-item :label="$t('goose.dataSet')">
           <el-select
             v-model="form.data_set_ref"
             style="width: 100%"
-            placeholder="请选择数据集"
+            :placeholder="$t('goose.dataSetSelect')"
             filterable
           >
             <el-option
@@ -115,32 +118,35 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="配置版本号 (ConfRev)">
+        <el-form-item :label="$t('goose.confRev')">
           <el-input-number
             v-model="form.conf_rev"
             :min="0"
             controls-position="right"
           />
         </el-form-item>
-        <el-form-item label="描述 (Description)">
+        <el-form-item :label="$t('goose.description')">
           <el-input v-model="form.description" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
     </section>
     <div class="actions">
-      <el-button type="primary" :loading="loading" @click="apply"
-        >应用配置</el-button
-      >
+      <el-button type="primary" :loading="loading" @click="apply">{{
+        $t("goose.applyConfig")
+      }}</el-button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Monitor } from "@element-plus/icons-vue";
 import type { NetworkInterfaceInfo } from "@/api/gooseApi";
 import type { GooseBlockItem } from "./gooseWorkbench";
 import { formatGooseTime } from "./gooseWorkbench";
+
+const { t } = useI18n();
 
 const props = defineProps<{
   block: GooseBlockItem | null;
@@ -191,10 +197,13 @@ function sync() {
 }
 const stateLabel = computed(() =>
   !props.block?.enabled
-    ? "已禁用"
-    : { connected: "已连接", lost: "超时", error: "错误", init: "等待中" }[
-        props.block.state
-      ] || props.block.state,
+    ? t("goose.disabled")
+    : {
+        connected: t("gooseStateLabels.connected"),
+        lost: t("gooseStateLabels.lost"),
+        error: t("gooseStateLabels.error"),
+        init: t("goose.waiting"),
+      }[props.block.state] || props.block.state,
 );
 const stateTag = computed(() =>
   !props.block?.enabled

@@ -2,7 +2,7 @@
   <div class="security-config-form">
     <el-alert
       v-if="!networkMode"
-      title="串口模式不支持 TLS"
+      :title="$t('device.tlsNotSupportedSerial')"
       type="info"
       :closable="false"
       show-icon
@@ -10,39 +10,43 @@
 
     <el-alert
       v-else-if="!tlsSupported"
-      title="当前协议暂不支持 TLS"
+      :title="$t('device.tlsNotSupportedProtocol')"
       type="info"
       :closable="false"
       show-icon
     />
 
     <template v-else>
-      <el-form-item label="启用 TLS">
+      <el-form-item :label="$t('device.enableTls')">
         <el-switch v-model="modelValue.tls_enabled" :disabled="disabled" />
       </el-form-item>
 
       <template v-if="modelValue.tls_enabled">
-        <el-form-item label="TLS 模式" required>
+        <el-form-item :label="$t('device.tlsMode')" required>
           <el-radio-group v-model="modelValue.tls_mode" :disabled="disabled">
-            <el-radio-button value="basic">基础 TLS</el-radio-button>
-            <el-radio-button value="mutual">双向认证 TLS</el-radio-button>
+            <el-radio-button value="basic">{{
+              $t("device.tlsBasic")
+            }}</el-radio-button>
+            <el-radio-button value="mutual">{{
+              $t("device.tlsMutual")
+            }}</el-radio-button>
           </el-radio-group>
           <div class="mode-description">
             <template v-if="modelValue.tls_mode === 'basic'">
-              仅加密链路，不校验对端证书身份。
+              {{ $t("device.tlsBasicDesc") }}
             </template>
             <template v-else>
               <template v-if="isIec61850">
-                使用 CA 双向校验证书；IEC 61850 原生库不校验服务端主机名或 IP。
+                {{ $t("device.tlsMutualDesc") }}
               </template>
               <template v-else>
-                使用 CA 双向校验证书，并校验服务端主机名或 IP。
+                {{ $t("device.tlsMutualHostDesc") }}
               </template>
             </template>
           </div>
         </el-form-item>
 
-        <el-form-item label="本端证书" required>
+        <el-form-item :label="$t('device.localCert')" required>
           <div class="file-config">
             <div class="file-action-row">
               <el-upload
@@ -54,9 +58,9 @@
                 :http-request="handleCertificate"
                 accept=".crt,.cer,.pem"
               >
-                <el-button type="primary" plain :disabled="disabled"
-                  >上传证书</el-button
-                >
+                <el-button type="primary" plain :disabled="disabled">{{
+                  $t("device.uploadCert")
+                }}</el-button>
               </el-upload>
               <el-tag
                 v-if="modelValue.certificate_configured && !certificateSelected"
@@ -64,14 +68,19 @@
                 type="success"
                 effect="plain"
               >
-                已保存：{{ modelValue.certificate_filename || "证书文件" }}
+                {{
+                  $t("device.savedFile", {
+                    filename:
+                      modelValue.certificate_filename || $t("device.certFile"),
+                  })
+                }}
               </el-tag>
             </div>
-            <div class="el-upload__tip">支持 .crt、.cer、.pem</div>
+            <div class="el-upload__tip">{{ $t("device.certTip") }}</div>
           </div>
         </el-form-item>
 
-        <el-form-item label="私钥" required>
+        <el-form-item :label="$t('device.privateKey')" required>
           <div class="file-config">
             <div class="file-action-row">
               <el-upload
@@ -83,9 +92,9 @@
                 :http-request="handlePrivateKey"
                 accept=".key,.pem"
               >
-                <el-button type="primary" plain :disabled="disabled"
-                  >上传私钥</el-button
-                >
+                <el-button type="primary" plain :disabled="disabled">{{
+                  $t("device.uploadKey")
+                }}</el-button>
               </el-upload>
               <el-tag
                 v-if="modelValue.private_key_configured && !privateKeySelected"
@@ -93,16 +102,21 @@
                 type="success"
                 effect="plain"
               >
-                已保存：{{ modelValue.private_key_filename || "私钥文件" }}
+                {{
+                  $t("device.savedFile", {
+                    filename:
+                      modelValue.private_key_filename || $t("device.keyFile"),
+                  })
+                }}
               </el-tag>
             </div>
-            <div class="el-upload__tip">支持 .key、.pem</div>
+            <div class="el-upload__tip">{{ $t("device.keyTip") }}</div>
           </div>
         </el-form-item>
 
         <el-form-item
           v-if="modelValue.tls_mode === 'mutual'"
-          label="CA 证书"
+          :label="$t('device.caCert')"
           required
         >
           <div class="file-config">
@@ -116,9 +130,9 @@
                 :http-request="handleCaCertificate"
                 accept=".crt,.cer,.pem"
               >
-                <el-button type="primary" plain :disabled="disabled"
-                  >上传 CA 证书</el-button
-                >
+                <el-button type="primary" plain :disabled="disabled">{{
+                  $t("device.uploadCaCert")
+                }}</el-button>
               </el-upload>
               <el-tag
                 v-if="
@@ -128,13 +142,16 @@
                 type="success"
                 effect="plain"
               >
-                已保存：{{
-                  modelValue.ca_certificate_filename || "CA 证书文件"
+                {{
+                  $t("device.savedFile", {
+                    filename:
+                      modelValue.ca_certificate_filename || $t("device.caFile"),
+                  })
                 }}
               </el-tag>
             </div>
             <div class="el-upload__tip">
-              用于双向校验对端证书，支持 .crt、.cer、.pem
+              {{ $t("device.caTip") }}
             </div>
           </div>
         </el-form-item>

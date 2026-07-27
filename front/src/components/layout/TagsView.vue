@@ -27,14 +27,14 @@
       @click.stop
     >
       <div class="context-menu-item" @click="closeCurrent">
-        <span>关闭该标签页</span>
+        <span>{{ $t("layout.tagsView.closeCurrent") }}</span>
       </div>
       <div class="context-menu-item" @click="closeOthers">
-        <span>关闭其他标签页</span>
+        <span>{{ $t("layout.tagsView.closeOthers") }}</span>
       </div>
       <div class="context-menu-divider"></div>
       <div class="context-menu-item" @click="closeAll">
-        <span>关闭所有标签页</span>
+        <span>{{ $t("layout.tagsView.closeAll") }}</span>
       </div>
     </div>
   </div>
@@ -42,6 +42,7 @@
 
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { Close } from "@element-plus/icons-vue";
 import type { ElScrollbar } from "element-plus";
@@ -58,6 +59,7 @@ import Sortable from "sortablejs";
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 const scrollbarRef = ref<InstanceType<typeof ElScrollbar>>();
 
 // 右键菜单状态

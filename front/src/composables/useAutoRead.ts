@@ -4,7 +4,15 @@
  * 支持暂停（导入文件时暂停自动轮询）
  */
 
-import { ref, computed, onActivated, onDeactivated, onUnmounted, watch } from "vue";
+import {
+  ref,
+  computed,
+  onActivated,
+  onDeactivated,
+  onUnmounted,
+  watch,
+} from "vue";
+import { useI18n } from "vue-i18n";
 import { isAutoRefreshPaused } from "@/composables/autoRefreshGate";
 import { ElMessage } from "element-plus";
 import { showErrorOnce } from "@/api/http";
@@ -49,7 +57,7 @@ interface AutoReadOptions {
     sid: number,
     q: string,
     pi: number,
-    ps: number
+    ps: number,
   ) => Promise<void>;
 }
 
@@ -74,6 +82,8 @@ export function useAutoRead(options: AutoReadOptions) {
     total,
     fetchDeviceTable,
   } = options;
+
+  const { t } = useI18n();
 
   const isAutoRead = ref(false);
   const timer = ref<any>(null);
@@ -101,8 +111,8 @@ export function useAutoRead(options: AutoReadOptions) {
 
   const readMode = ref<"batch" | "single">("batch");
   const readModeOptions = [
-    { label: "批量", value: "batch" },
-    { label: "逐点", value: "single" },
+    { label: t("autoRead.batch"), value: "batch" },
+    { label: t("autoRead.single"), value: "single" },
   ];
 
   // DataSet 页面使用独立状态，避免开关设备级自动读取。
@@ -143,7 +153,12 @@ export function useAutoRead(options: AutoReadOptions) {
     if (timer.value) return;
     const refresh = async () => {
       // 导入文件时暂停轮询，避免干扰上传和超时
-      if (isAutoRefreshPaused.value || refreshInFlight || isIec61850DatasetPage()) return;
+      if (
+        isAutoRefreshPaused.value ||
+        refreshInFlight ||
+        isIec61850DatasetPage()
+      )
+        return;
       refreshInFlight = true;
       try {
         await fetchDeviceTable(
@@ -151,7 +166,7 @@ export function useAutoRead(options: AutoReadOptions) {
           currentSlaveId.value,
           searchQuery.value[currentSlaveId.value] || "",
           pageIndex.value,
-          pageSize.value
+          pageSize.value,
         );
       } finally {
         refreshInFlight = false;
@@ -180,7 +195,12 @@ export function useAutoRead(options: AutoReadOptions) {
   };
 
   const readCurrentDataset = async (showSuccess: boolean) => {
-    if (!isIec61850DatasetPage() || datasetReadInFlight || isAutoRefreshPaused.value) return;
+    if (
+      !isIec61850DatasetPage() ||
+      datasetReadInFlight ||
+      isAutoRefreshPaused.value
+    )
+      return;
     datasetReadInFlight = true;
     datasetReading.value = true;
     try {
@@ -189,9 +209,9 @@ export function useAutoRead(options: AutoReadOptions) {
         currentSlaveId.value,
         searchQuery.value[currentSlaveId.value] || "",
         pageIndex.value,
-        pageSize.value
+        pageSize.value,
       );
-      if (showSuccess) ElMessage.success("DataSet 读取完成");
+      if (showSuccess) ElMessage.success(t("autoRead.datasetReadComplete"));
     } finally {
       datasetReadInFlight = false;
       datasetReading.value = false;
@@ -202,10 +222,13 @@ export function useAutoRead(options: AutoReadOptions) {
   const scheduleDatasetAutoRead = (delay = datasetReadInterval.value) => {
     stopDatasetAutoReadTimer();
     if (!datasetAutoRead.value || !isIec61850DatasetPage()) return;
-    datasetAutoReadTimer = setTimeout(async () => {
-      await readCurrentDataset(false);
-      scheduleDatasetAutoRead();
-    }, Math.max(delay, 1));
+    datasetAutoReadTimer = setTimeout(
+      async () => {
+        await readCurrentDataset(false);
+        scheduleDatasetAutoRead();
+      },
+      Math.max(delay, 1),
+    );
   };
 
   const handleDatasetAutoReadChange = async (enabled: boolean) => {
@@ -213,24 +236,29 @@ export function useAutoRead(options: AutoReadOptions) {
       const deviceInfo = await getDeviceInfo(routeName.value);
       if (!deviceInfo?.get("server_status")) {
         datasetAutoRead.value = false;
-        showErrorOnce("设备未连接，请先启动设备后再启用 DataSet 自动读取");
+        showErrorOnce(t("autoRead.deviceNotConnectedForDataset"));
         return;
       }
       datasetAutoRead.value = true;
-      ElMessage.success("已启用 DataSet 自动读取");
+      ElMessage.success(t("autoRead.datasetAutoReadEnabled"));
       scheduleDatasetAutoRead(0);
     } else {
       datasetAutoRead.value = false;
       stopDatasetAutoReadTimer();
-      ElMessage.success("已停止 DataSet 自动读取");
+      ElMessage.success(t("autoRead.datasetAutoReadStopped"));
     }
   };
 
   const handleDatasetIntervalChange = (val: string | number) => {
     const interval = Number(val);
     if (!Number.isFinite(interval) || interval <= 0) return;
-    if (!datasetIntervalOptions.value.some((option) => option.value === interval)) {
-      datasetIntervalOptions.value.push({ label: `${interval}ms`, value: interval });
+    if (
+      !datasetIntervalOptions.value.some((option) => option.value === interval)
+    ) {
+      datasetIntervalOptions.value.push({
+        label: `${interval}ms`,
+        value: interval,
+      });
       datasetIntervalOptions.value.sort((a, b) => a.value - b.value);
     }
     datasetReadInterval.value = interval;
@@ -241,7 +269,7 @@ export function useAutoRead(options: AutoReadOptions) {
     if (datasetReadInFlight) return;
     const deviceInfo = await getDeviceInfo(routeName.value);
     if (!deviceInfo?.get("server_status")) {
-      showErrorOnce("设备未连接，请先启动设备后再读取 DataSet");
+      showErrorOnce(t("autoRead.deviceNotConnectedForDataset"));
       return;
     }
     await readCurrentDataset(true);
@@ -257,14 +285,14 @@ export function useAutoRead(options: AutoReadOptions) {
     if (enabled) {
       if (readMode.value === "batch") {
         await startAutoRead(routeName.value);
-        ElMessage.success("已启用自动读取（批量模式）");
+        ElMessage.success(t("autoRead.batchAutoReadEnabled"));
       } else {
         startSinglePointAutoRead();
-        ElMessage.success("已启用自动读取（逐点模式）");
+        ElMessage.success(t("autoRead.singleAutoReadEnabled"));
       }
     } else {
       await stopAllAutoRead();
-      ElMessage.success("已停止自动读取");
+      ElMessage.success(t("autoRead.autoReadStopped"));
     }
   };
 
@@ -298,7 +326,7 @@ export function useAutoRead(options: AutoReadOptions) {
     successCount.value = 0;
     failCount.value = 0;
     readProgress.value = 0;
-    progressMessage.value = "逐点自动读取中...";
+    progressMessage.value = t("autoRead.singleAutoReadingProgress");
     doSinglePointReadCycle();
   };
 
@@ -331,7 +359,7 @@ export function useAutoRead(options: AutoReadOptions) {
         "",
         1,
         10000,
-        pointTypes.value
+        pointTypes.value,
       );
       const allRows: any[][] = data.get("table_data") || [];
       const totalPoints = allRows.length;
@@ -350,7 +378,11 @@ export function useAutoRead(options: AutoReadOptions) {
         const row = allRows[i];
         const pointCode = row[6];
         const pointName = row[5];
-        progressMessage.value = `自动读取 [${i + 1}/${totalPoints}] ${pointName}`;
+        progressMessage.value = t("autoRead.autoReading", {
+          current: i + 1,
+          total: totalPoints,
+          name: pointName,
+        });
 
         try {
           const value = await readSinglePoint(routeName.value, pointCode);
@@ -358,9 +390,9 @@ export function useAutoRead(options: AutoReadOptions) {
             successCount.value++;
             // 实时更新表格中的显示值
             if (tableDataMap.value[currentSlaveId.value]) {
-              const displayRow = tableDataMap.value[currentSlaveId.value].tableData.find(
-                (r) => r[6] === pointCode
-              );
+              const displayRow = tableDataMap.value[
+                currentSlaveId.value
+              ].tableData.find((r) => r[6] === pointCode);
               if (displayRow) displayRow[8] = value;
             }
           } else {
@@ -371,7 +403,9 @@ export function useAutoRead(options: AutoReadOptions) {
         }
 
         if (readInterval.value > 0) {
-          await new Promise((resolve) => setTimeout(resolve, readInterval.value));
+          await new Promise((resolve) =>
+            setTimeout(resolve, readInterval.value),
+          );
         }
         readProgress.value = Math.floor(((i + 1) / totalPoints) * 100);
       }
@@ -382,7 +416,10 @@ export function useAutoRead(options: AutoReadOptions) {
     // 循环下一轮
     if (isAutoRead.value && !cancelRead.value) {
       const cycleInterval = Math.max(readInterval.value * 2, 1000);
-      singlePointAutoReadTimer = setTimeout(doSinglePointReadCycle, cycleInterval);
+      singlePointAutoReadTimer = setTimeout(
+        doSinglePointReadCycle,
+        cycleInterval,
+      );
     } else {
       stopSinglePointAutoRead();
     }
@@ -397,7 +434,7 @@ export function useAutoRead(options: AutoReadOptions) {
     const deviceInfo = await getDeviceInfo(routeName.value);
     const serverStatus = deviceInfo?.get("server_status");
     if (!serverStatus) {
-      showErrorOnce("设备未连接，请先启动设备后再进行读取操作");
+      showErrorOnce(t("autoRead.deviceNotConnectedForRead"));
       return;
     }
 
@@ -416,10 +453,13 @@ export function useAutoRead(options: AutoReadOptions) {
 
   // 批量读取模式
   const handleBatchRead = async () => {
-    progressMessage.value = "正在批量读取寄存器...";
+    progressMessage.value = t("autoRead.readingRegisters");
     try {
-      if (isIec61850Protocol(String(protocolType.value)) && channelId.value !== null) {
-        progressMessage.value = "正在规划 IEC61850 DataSet 批量读取...";
+      if (
+        isIec61850Protocol(String(protocolType.value)) &&
+        channelId.value !== null
+      ) {
+        progressMessage.value = t("autoRead.planningIec61850Batch");
         readProgress.value = 1;
 
         // 先发起批读，再并行轮询 Handler 的进度快照。后端把阻塞的 MMS
@@ -428,7 +468,7 @@ export function useAutoRead(options: AutoReadOptions) {
           channelId.value,
           iec61850Category.value,
           iec61850Item.value,
-          readInterval.value
+          readInterval.value,
         );
         let polling = false;
         const pollReadProgress = async () => {
@@ -440,7 +480,7 @@ export function useAutoRead(options: AutoReadOptions) {
               // 网络响应可能乱序，始终保持进度单调递增。
               readProgress.value = Math.max(
                 readProgress.value,
-                Math.min(snapshot.progress, 99)
+                Math.min(snapshot.progress, 99),
               );
               if (snapshot.message) progressMessage.value = snapshot.message;
             }
@@ -458,13 +498,19 @@ export function useAutoRead(options: AutoReadOptions) {
           if (result) {
             successCount.value = result.success;
             failCount.value = result.fail;
-            progressMessage.value = `批量读取完成 (成功: ${result.success}, 失败: ${result.fail})`;
+            progressMessage.value = t("autoRead.batchReadProgress", {
+              success: result.success,
+              fail: result.fail,
+            });
             ElMessage.success(
-              `批量读取完成，成功 ${result.success} 个，失败 ${result.fail} 个`
+              t("autoRead.batchReadComplete", {
+                success: result.success,
+                fail: result.fail,
+              }),
             );
           } else {
-            progressMessage.value = "批量读取完成";
-            ElMessage.success("批量读取完成");
+            progressMessage.value = t("autoRead.batchReadCompleteSimple");
+            ElMessage.success(t("autoRead.batchReadCompleteSimple"));
           }
         } finally {
           window.clearInterval(progressTimer);
@@ -474,7 +520,7 @@ export function useAutoRead(options: AutoReadOptions) {
           currentSlaveId.value,
           searchQuery.value[currentSlaveId.value] || "",
           pageIndex.value,
-          pageSize.value
+          pageSize.value,
         );
         readProgress.value = 100;
         return;
@@ -485,27 +531,33 @@ export function useAutoRead(options: AutoReadOptions) {
         if (typeof result === "object" && "success" in result) {
           successCount.value = result.success;
           failCount.value = result.fail;
-          progressMessage.value = `批量读取完成 (成功: ${result.success}, 失败: ${result.fail})`;
+          progressMessage.value = t("autoRead.batchReadProgress", {
+            success: result.success,
+            fail: result.fail,
+          });
           ElMessage.success(
-            `批量读取完成，成功 ${result.success} 个，失败 ${result.fail} 个`
+            t("autoRead.batchReadComplete", {
+              success: result.success,
+              fail: result.fail,
+            }),
           );
         } else {
           readProgress.value = 100;
-          progressMessage.value = "批量读取完成";
-          ElMessage.success("批量读取完成");
+          progressMessage.value = t("autoRead.batchReadCompleteSimple");
+          ElMessage.success(t("autoRead.batchReadCompleteSimple"));
         }
         await fetchDeviceTable(
           routeName.value,
           currentSlaveId.value,
           searchQuery.value[currentSlaveId.value] || "",
           pageIndex.value,
-          pageSize.value
+          pageSize.value,
         );
         readProgress.value = 100;
       }
     } catch (e) {
       console.error("批量读取失败:", e);
-      progressMessage.value = "读取出错";
+      progressMessage.value = t("autoRead.readError");
     } finally {
       setTimeout(() => {
         isReading.value = false;
@@ -516,7 +568,7 @@ export function useAutoRead(options: AutoReadOptions) {
 
   // 逐点读取模式
   const handleSinglePointRead = async () => {
-    progressMessage.value = "正在获取测点列表...";
+    progressMessage.value = t("autoRead.fetchingPointList");
     try {
       let allRows: any[][] = [];
       if (isIec61850Filtered() && channelId.value !== null) {
@@ -527,7 +579,7 @@ export function useAutoRead(options: AutoReadOptions) {
           null,
           1,
           10000,
-          pointTypes.value
+          pointTypes.value,
         );
         if (data) allRows = data.get("table_data") || [];
       } else {
@@ -537,39 +589,43 @@ export function useAutoRead(options: AutoReadOptions) {
           "",
           1,
           10000,
-          pointTypes.value
+          pointTypes.value,
         );
         allRows = data.get("table_data") || [];
       }
 
       const totalPoints = allRows.length;
       if (totalPoints === 0) {
-        ElMessage.warning("当前从机没有测点");
+        ElMessage.warning(t("autoRead.noPointToRead"));
         isReading.value = false;
         return;
       }
 
-      progressMessage.value = "开始逐点读取...";
+      progressMessage.value = t("autoRead.startingSingleRead");
       for (let i = 0; i < totalPoints; i++) {
         if (cancelRead.value) {
-          progressMessage.value = "读取已取消";
-          ElMessage.warning("操作已取消");
+          progressMessage.value = t("autoRead.readCancelled");
+          ElMessage.warning(t("autoRead.operationCancelled"));
           break;
         }
 
         const row = allRows[i];
         const pointCode = row[6];
         const pointName = row[5];
-        progressMessage.value = `[${i + 1}/${totalPoints}] ${pointName}`;
+        progressMessage.value = t("autoRead.singleReadProgress", {
+          current: i + 1,
+          total: totalPoints,
+          name: pointName,
+        });
 
         try {
           const value = await readSinglePoint(routeName.value, pointCode);
           if (value !== null) {
             successCount.value++;
             if (tableDataMap.value[currentSlaveId.value]) {
-              const displayRow = tableDataMap.value[currentSlaveId.value].tableData.find(
-                (r) => r[6] === pointCode
-              );
+              const displayRow = tableDataMap.value[
+                currentSlaveId.value
+              ].tableData.find((r) => r[6] === pointCode);
               if (displayRow) displayRow[8] = value;
             }
           } else {
@@ -580,15 +636,23 @@ export function useAutoRead(options: AutoReadOptions) {
         }
 
         if (readInterval.value > 0) {
-          await new Promise((resolve) => setTimeout(resolve, readInterval.value));
+          await new Promise((resolve) =>
+            setTimeout(resolve, readInterval.value),
+          );
         }
         readProgress.value = Math.floor(((i + 1) / totalPoints) * 100);
       }
 
       if (!cancelRead.value) {
-        progressMessage.value = `完成 (成功: ${successCount.value}, 失败: ${failCount.value})`;
+        progressMessage.value = t("autoRead.readComplete", {
+          success: successCount.value,
+          fail: failCount.value,
+        });
         ElMessage.success(
-          `读取完成，成功 ${successCount.value} 个，失败 ${failCount.value} 个`
+          t("autoRead.singleReadComplete", {
+            success: successCount.value,
+            fail: failCount.value,
+          }),
         );
       }
     } catch (e) {
@@ -626,7 +690,7 @@ export function useAutoRead(options: AutoReadOptions) {
   });
 
   const formatProgress = (percentage: number) => {
-    return percentage === 100 ? "完成" : `${percentage}%`;
+    return percentage === 100 ? t("autoRead.completed") : `${percentage}%`;
   };
 
   onActivated(() => startAutoRefresh());

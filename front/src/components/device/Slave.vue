@@ -247,10 +247,10 @@
                   :icon="Download"
                   :loading="interrogating"
                 >
-                  触发总召唤
+                  {{ $t("device.generalCall") }}
                 </el-button>
                 <el-tooltip
-                  content="发送C_IC_NA_1请求，服务端返回所有测点最新值"
+                  :content="$t('device.generalCallTooltip')"
                   placement="top"
                 >
                   <el-icon class="info-icon"><InfoFilled /></el-icon>
@@ -439,11 +439,11 @@ const handleInterrogation = async () => {
   interrogating.value = true;
   try {
     await iec104Interrogation(routeName.value);
-    ElMessage.success("总召唤已触发，数据同步完成");
+    ElMessage.success(t("device.generalCallSuccess"));
     // 刷新表格
     handleSearch(currentSlaveId.value);
   } catch (e: any) {
-    showError(e, "总召唤失败");
+    showError(e, t("device.generalCallFailed"));
   } finally {
     interrogating.value = false;
   }

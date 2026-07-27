@@ -25,7 +25,7 @@
             <el-tabs v-model="activeName" class="inner-tabs" lazy>
               <el-tab-pane
                 :label="$t('table.configControl')"
-                name="数据解析和设置"
+                name="configControl"
               >
                 <div class="control-grid">
                   <SingleRegister
@@ -58,16 +58,19 @@
                   <EditPointLimit
                     :deviceName="deviceName"
                     :pointCode="scope.row['测点编码']"
-                    :active="activeName === '数据解析和设置'"
+                    :active="activeName === 'configControl'"
                   />
                 </div>
               </el-tab-pane>
-              <el-tab-pane :label="$t('table.propertyEdit')" name="测点编辑">
+              <el-tab-pane
+                :label="$t('table.propertyEdit')"
+                name="propertyEdit"
+              >
                 <div class="metadata-grid">
                   <EditPointMetadata
                     :deviceName="deviceName"
                     :pointCode="scope.row['测点编码']"
-                    :active="activeName === '测点编辑'"
+                    :active="activeName === 'propertyEdit'"
                     :protocolType="String(protocolType)"
                     @update-success="
                       (newCode) =>
@@ -77,22 +80,25 @@
                   <EditPointIec104
                     :deviceName="deviceName"
                     :pointCode="scope.row['测点编码']"
-                    :active="activeName === '测点编辑'"
+                    :active="activeName === 'propertyEdit'"
                     :protocolType="String(protocolType)"
                     @update-success="emit('refresh')"
                   />
                 </div>
               </el-tab-pane>
 
-              <el-tab-pane :label="$t('table.pointMapping')" name="测点映射">
+              <el-tab-pane
+                :label="$t('table.pointMapping')"
+                name="pointMapping"
+              >
                 <PointMappingConfig
                   :deviceName="deviceName"
                   :targetPointCode="scope.row['测点编码']"
-                  :active="activeName === '测点映射'"
+                  :active="activeName === 'pointMapping'"
                 />
               </el-tab-pane>
 
-              <el-tab-pane name="数据模拟" :disabled="isClientDevice">
+              <el-tab-pane name="simulation" :disabled="isClientDevice">
                 <template #label>
                   <el-tooltip
                     :content="isClientDevice ? $t('device.clientNoSim') : ''"
@@ -105,16 +111,19 @@
                 <PointSimulator
                   :deviceName="deviceName"
                   :pointCode="scope.row['测点编码']"
-                  :active="activeName === '数据模拟'"
+                  :active="activeName === 'simulation'"
                   @update-success="handlePointSimulatorUpdate"
                 />
               </el-tab-pane>
 
-              <el-tab-pane :label="$t('table.changeHistory')" name="变化回溯">
+              <el-tab-pane
+                :label="$t('table.changeHistory')"
+                name="changeHistory"
+              >
                 <PointChangeHistory
                   :deviceName="deviceName"
                   :pointCode="scope.row['测点编码']"
-                  :active="activeName === '变化回溯'"
+                  :active="activeName === 'changeHistory'"
                   :slaveId="slaveId"
                 />
               </el-tab-pane>
@@ -567,7 +576,12 @@
     destroy-on-close
   >
     <template v-if="metadataResult">
-      <el-descriptions :column="2" border size="small" title="品质 (Quality)">
+      <el-descriptions
+        :column="2"
+        border
+        size="small"
+        :title="$t('table.qTitle')"
+      >
         <el-descriptions-item :label="$t('table.qValidity')">
           <el-tag
             :type="metadataResult.quality.validity === 0 ? 'success' : 'danger'"
@@ -794,7 +808,7 @@ const translateFrameType = (val: string): string => {
   return key ? t("table." + key) : val;
 };
 
-const activeName = ref("数据解析和设置");
+const activeName = ref("configControl");
 const expandedRowKeys = ref<string[]>([]);
 
 // 切换设备时清空展开行，避免用旧pointCode请求新设备

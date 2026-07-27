@@ -1,4 +1,5 @@
 import { instance } from "@/api/http";
+import i18n from "@/i18n";
 import type {
   DeleteImpact,
   DataSetMemberDiscovery,
@@ -55,7 +56,11 @@ function parseJsonOffMainThread<T>(source: string): Promise<T> {
     };
     worker.onerror = (event) => {
       cleanup();
-      reject(new Error(event.message || "模型树解析失败"));
+      reject(
+        new Error(
+          event.message || i18n.global.t("common.modelTreeParseFailed"),
+        ),
+      );
     };
     worker.postMessage(source);
   });
@@ -291,7 +296,9 @@ export const modelingApi = {
       response.data,
     );
     if (envelope.code !== 200) {
-      throw new Error(envelope.message || "模型树加载失败");
+      throw new Error(
+        envelope.message || i18n.global.t("common.modelTreeLoadFailed"),
+      );
     }
     return envelope.data;
   },
@@ -479,7 +486,9 @@ export const modelingApi = {
       ApiEnvelope<DataSetMemberDiscovery>
     >(response.data);
     if (envelope.code !== 200) {
-      throw new Error(envelope.message || "DataSet 候选成员加载失败");
+      throw new Error(
+        envelope.message || i18n.global.t("common.datasetCandidatesLoadFailed"),
+      );
     }
     return envelope.data;
   },

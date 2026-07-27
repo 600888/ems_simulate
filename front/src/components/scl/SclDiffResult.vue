@@ -40,7 +40,7 @@
 
     <div class="diff-details">
       <el-table :data="diffResult.details" size="small" stripe max-height="200">
-        <el-table-column prop="path" label="路径" min-width="200" />
+        <el-table-column prop="path" :label="$t('scl.path')" min-width="200" />
         <el-table-column :label="$t('scl.pointCategory')" width="80">
           <template #default="{ row }">
             <el-tag
@@ -55,22 +55,22 @@
             >
               {{
                 row.type === "added"
-                  ? "新增"
+                  ? $t("scl.diffAdded")
                   : row.type === "deleted"
-                    ? "删除"
-                    : "修改"
+                    ? $t("scl.diffDeleted")
+                    : $t("scl.diffModified")
               }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column
           prop="left_value"
-          :label="`${fileA} 值`"
+          :label="$t('scl.diffValueA', { file: fileA })"
           min-width="150"
         />
         <el-table-column
           prop="right_value"
-          :label="`${fileB} 值`"
+          :label="$t('scl.diffValueB', { file: fileB })"
           min-width="150"
         />
       </el-table>

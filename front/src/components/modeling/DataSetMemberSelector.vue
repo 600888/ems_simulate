@@ -5,9 +5,13 @@
         <div>
           <small>{{ discovery?.dataset.path || dataSet.path }}</small>
           <div>
-            <strong>批量选择 DataSet 成员</strong>
+            <strong>{{ $t("modeling.datasetSelector.title") }}</strong>
             <el-tag size="small" effect="plain">
-              已有 {{ discovery?.summary.existing_count || 0 }} 项
+              {{
+                $t("modeling.datasetSelector.existingCount", {
+                  count: discovery?.summary.existing_count || 0,
+                })
+              }}
             </el-tag>
             <el-tag
               v-if="discovery?.summary.invalid_count"
@@ -15,17 +19,23 @@
               type="danger"
               effect="plain"
             >
-              {{ discovery.summary.invalid_count }} 项失效
+              {{
+                $t("modeling.datasetSelector.invalidCount", {
+                  count: discovery.summary.invalid_count,
+                })
+              }}
             </el-tag>
           </div>
         </div>
-        <span>支持 DO 整组与 DA 精确两种标准 FCDA 引用</span>
+        <span>{{ $t("modeling.datasetSelector.description") }}</span>
       </div>
       <div class="selector-header-actions">
-        <el-button plain>选择规则</el-button>
-        <el-button @click="emit('update:modelValue', false)"
-          >返回 DataSet</el-button
-        >
+        <el-button plain>{{
+          $t("modeling.datasetSelector.selectRules")
+        }}</el-button>
+        <el-button @click="emit('update:modelValue', false)">{{
+          $t("modeling.datasetSelector.backToDataset")
+        }}</el-button>
       </div>
     </header>
 
@@ -35,15 +45,23 @@
         type="error"
         :closable="false"
         show-icon
-        :title="`发现 ${invalidMembers.length} 个失效引用，请重新匹配或移除后再发布 SCL`"
+        :title="
+          $t('modeling.datasetSelector.invalidWarningTitle', {
+            count: invalidMembers.length,
+          })
+        "
       />
 
       <div class="selector-columns">
         <section class="candidate-panel selector-card">
           <header>
             <div>
-              <strong>从 DataModel 选择</strong>
-              <small>按层级勾选，系统自动填写 FCDA 引用和 FC</small>
+              <strong>{{
+                $t("modeling.datasetSelector.fromDataModel")
+              }}</strong>
+              <small>{{
+                $t("modeling.datasetSelector.fromDataModelDesc")
+              }}</small>
             </div>
             <el-segmented
               v-model="selectionLevel"
@@ -57,14 +75,17 @@
             <el-input
               v-model="keyword"
               clearable
-              placeholder="搜索 LD / LN / DO / DA 或完整引用"
+              :placeholder="$t('modeling.datasetSelector.search')"
             >
               <template #prefix
                 ><el-icon><Search /></el-icon
               ></template>
             </el-input>
             <el-select v-model="fcFilter" aria-label="功能约束筛选">
-              <el-option label="FC：全部" value="" />
+              <el-option
+                :label="$t('modeling.datasetSelector.fcFilter')"
+                value=""
+              />
               <el-option
                 v-for="fc in fcOptions"
                 :key="fc"
@@ -72,12 +93,22 @@
                 :value="fc"
               />
             </el-select>
-            <el-checkbox v-model="onlyAvailable">仅可用</el-checkbox>
+            <el-checkbox v-model="onlyAvailable">{{
+              $t("modeling.datasetSelector.onlyAvailable")
+            }}</el-checkbox>
           </div>
 
           <div class="candidate-summary">
-            <span>{{ filteredCandidateCount }} 个候选属性</span>
-            <span>{{ newCandidateIds.length }} 个待生成</span>
+            <span>{{
+              $t("modeling.datasetSelector.candidateCount", {
+                count: filteredCandidateCount,
+              })
+            }}</span>
+            <span>{{
+              $t("modeling.datasetSelector.pendingCount", {
+                count: newCandidateIds.length,
+              })
+            }}</span>
           </div>
 
           <div v-loading="treeBuilding" class="candidate-tree-scroll">
@@ -114,7 +145,9 @@
                     >
                       {{ data.candidate.fc || "—" }}
                     </el-tag>
-                    <em v-if="data.candidate.existing">已存在</em>
+                    <em v-if="data.candidate.existing">{{
+                      $t("modeling.datasetSelector.existing")
+                    }}</em>
                   </template>
                 </div>
               </template>
@@ -125,25 +158,29 @@
         <section class="selected-panel selector-card">
           <header>
             <div>
-              <strong>已选成员</strong>
-              <small>保持顺序写入 FCDA，可在生成前调整</small>
+              <strong>{{
+                $t("modeling.datasetSelector.selectedMembers")
+              }}</strong>
+              <small>{{
+                $t("modeling.datasetSelector.selectedMembersDesc")
+              }}</small>
             </div>
             <el-button
               text
               type="danger"
               :disabled="!newCandidateIds.length"
               @click="clearNewSelections"
-              >清空新增</el-button
+              >{{ $t("modeling.datasetSelector.clearNew") }}</el-button
             >
           </header>
 
           <div class="selection-options">
             <template v-if="selectionLevel === 'DA'">
               <el-switch v-model="autoCompanions" />
-              <span>勾选值时自动建议同一 DO 的 q / t</span>
+              <span>{{ $t("modeling.datasetSelector.suggestQt") }}</span>
             </template>
-            <span v-else>DO 整组将生成一个无 daName 的 FCDA</span>
-            <small>重复引用自动跳过</small>
+            <span v-else>{{ $t("modeling.datasetSelector.doGroupDesc") }}</span>
+            <small>{{ $t("modeling.datasetSelector.dedupNote") }}</small>
           </div>
 
           <el-scrollbar class="selected-list-scroll">
@@ -157,8 +194,8 @@
                 <button
                   class="drag-handle"
                   type="button"
-                  title="按住拖动调整顺序"
-                  aria-label="拖动调整 FCDA 顺序"
+                  :title="$t('modeling.datasetSelector.dragToReorder')"
+                  :aria-label="$t('modeling.datasetSelector.dragAriaLabel')"
                 >
                   <span aria-hidden="true"></span>
                 </button>
@@ -167,7 +204,7 @@
                   <small>{{
                     candidate.description ||
                     (candidate.selection_level === "DO"
-                      ? `${candidate.data_object} · DO 整组`
+                      ? `${candidate.data_object} · ${$t("modeling.datasetSelector.doGroup")}`
                       : `${candidate.data_object} · ${candidate.data_attribute}`)
                   }}</small>
                 </div>
@@ -182,14 +219,14 @@
                   size="small"
                   type="info"
                   effect="plain"
-                  >已存在</el-tag
+                  >{{ $t("modeling.datasetSelector.existing") }}</el-tag
                 >
                 <div v-else class="member-actions">
                   <el-button
                     text
                     circle
                     type="danger"
-                    title="移除"
+                    :title="$t('common.delete')"
                     @click="removeCandidate(candidate.id)"
                     >×</el-button
                   >
@@ -200,7 +237,7 @@
             <el-empty
               v-if="!selectedCandidates.length && !invalidMembers.length"
               :image-size="64"
-              description="从左侧 DataModel 勾选成员"
+              :description="$t('modeling.datasetSelector.selectFromLeft')"
             />
 
             <div
@@ -209,7 +246,9 @@
               class="invalid-member"
             >
               <div>
-                <el-tag size="small" type="danger">失效</el-tag>
+                <el-tag size="small" type="danger">{{
+                  $t("modeling.datasetSelector.invalid")
+                }}</el-tag>
                 <code>{{ member.reference }}</code>
               </div>
               <p>{{ member.reason }}</p>
@@ -218,13 +257,15 @@
                   v-model="repairSelections[member.node_id]"
                   filterable
                   clearable
-                  placeholder="搜索并选择替代引用"
+                  :placeholder="$t('modeling.datasetSelector.searchReplaceRef')"
                 >
                   <el-option
                     v-for="candidate in discovery?.candidates || []"
                     :key="candidate.id"
                     :label="`${candidate.reference} [${
-                      candidate.selection_level === 'DO' ? 'DO整组' : 'DA精确'
+                      candidate.selection_level === 'DO'
+                        ? $t('modeling.datasetSelector.doGroup')
+                        : $t('modeling.datasetSelector.daExact')
                     } · ${candidate.fc}]`"
                     :value="candidate.id"
                     :disabled="candidate.existing"
@@ -236,14 +277,14 @@
                   :loading="repairingId === member.node_id"
                   :disabled="!repairSelections[member.node_id]"
                   @click="repairMember(member.node_id)"
-                  >重新匹配</el-button
+                  >{{ $t("modeling.datasetSelector.rematch") }}</el-button
                 >
                 <el-button
                   type="danger"
                   plain
                   :loading="removingId === member.node_id"
                   @click="removeInvalidMember(member.node_id)"
-                  >移除</el-button
+                  >{{ $t("common.delete") }}</el-button
                 >
               </div>
             </div>
@@ -252,8 +293,10 @@
           <footer class="preflight">
             <el-icon><CircleCheckFilled /></el-icon>
             <div>
-              <strong>生成前预校验</strong>
-              <small>候选项来自当前实例模型，自动校验 DO/DA 路径和 FC</small>
+              <strong>{{ $t("modeling.datasetSelector.preValidate") }}</strong>
+              <small>{{
+                $t("modeling.datasetSelector.preValidateDesc")
+              }}</small>
             </div>
           </footer>
         </section>
@@ -263,12 +306,24 @@
     <footer class="selector-page-footer">
       <div class="selector-footer">
         <span>
-          将生成 <strong>{{ newCandidateIds.length }}</strong> 个 FCDA ·
-          <template v-if="orderChanged">成员顺序已调整 ·</template>
-          {{ discovery?.summary.invalid_count || 0 }} 个失效引用
+          {{
+            $t("modeling.datasetSelector.generateSummary", {
+              count: newCandidateIds.length,
+            })
+          }}
+          <template v-if="orderChanged"
+            >{{ $t("modeling.datasetSelector.orderChanged") }} ·</template
+          >
+          {{
+            $t("modeling.datasetSelector.invalidCount", {
+              count: discovery?.summary.invalid_count || 0,
+            })
+          }}
         </span>
         <div>
-          <el-button @click="emit('update:modelValue', false)">取消</el-button>
+          <el-button @click="emit('update:modelValue', false)">{{
+            $t("common.cancel")
+          }}</el-button>
           <el-tooltip
             :content="saveButtonTooltip"
             placement="top"
@@ -281,7 +336,7 @@
                 :disabled="!hasPendingChanges"
                 @click="createMembers"
               >
-                保存
+                {{ $t("common.save") }}
               </el-button>
             </span>
           </el-tooltip>
@@ -301,6 +356,7 @@ import {
   shallowRef,
   watch,
 } from "vue";
+import { useI18n } from "vue-i18n";
 import { CircleCheckFilled, Search } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox, type TreeV2Instance } from "element-plus";
 import Sortable from "sortablejs";
@@ -310,6 +366,8 @@ import type {
   DataSetMemberDiscovery,
   ModelNode,
 } from "@/types/modeling";
+
+const { t } = useI18n();
 
 interface CandidateTreeNode {
   id: string;
@@ -341,10 +399,10 @@ const keyword = ref("");
 const fcFilter = ref("");
 const onlyAvailable = ref(true);
 const selectionLevel = ref<"DO" | "DA">("DO");
-const selectionLevelOptions = [
-  { label: "DO 整组", value: "DO" },
-  { label: "DA 精确", value: "DA" },
-];
+const selectionLevelOptions = computed(() => [
+  { label: t("modeling.datasetSelector.doGroup"), value: "DO" as const },
+  { label: t("modeling.datasetSelector.daExact"), value: "DA" as const },
+]);
 const autoCompanions = ref(true);
 const selectedIds = reactive(new Set<string>());
 const selectedOrder = ref<string[]>([]);
@@ -396,16 +454,22 @@ const hasPendingChanges = computed(
 );
 const saveButtonTooltip = computed(() => {
   if (!hasPendingChanges.value) {
-    return "当前没有需要保存的成员或顺序变更";
+    return t("modeling.datasetSelector.noPendingChanges");
   }
-  const changes = [];
+  const changes: string[] = [];
   if (newCandidateIds.value.length) {
-    changes.push(`新增 ${newCandidateIds.value.length} 个 FCDA`);
+    changes.push(
+      t("modeling.datasetSelector.willAddFcda", {
+        count: newCandidateIds.value.length,
+      }),
+    );
   }
   if (orderChanged.value) {
-    changes.push("按照当前拖拽顺序写入 DataSet");
+    changes.push(t("modeling.datasetSelector.willWriteInDragOrder"));
   }
-  return `保存后将${changes.join("，并")}。`;
+  return t("modeling.datasetSelector.willSave", {
+    changes: changes.join(t("modeling.datasetSelector.and")),
+  });
 });
 
 function buildCandidateTreeSync(
@@ -606,7 +670,11 @@ function buildCandidateTreeOffMainThread(
       };
       worker.onerror = (event) => {
         cleanup();
-        reject(new Error(event.message || "候选树构建失败"));
+        reject(
+          new Error(
+            event.message || t("modeling.datasetSelector.treeBuildFailed"),
+          ),
+        );
       };
       worker.postMessage({ candidates, filters });
     },
@@ -830,14 +898,26 @@ async function createMembers() {
       newCandidateIds.value,
       selectedOrder.value,
     );
-    const messages = [];
+    const messages: string[] = [];
     if (result.created_count)
-      messages.push(`生成 ${result.created_count} 个 FCDA`);
-    if (result.reordered_count) messages.push("成员顺序已保存");
+      messages.push(
+        t("modeling.datasetSelector.generatedFcda", {
+          count: result.created_count,
+        }),
+      );
+    if (result.reordered_count)
+      messages.push(t("modeling.datasetSelector.orderSaved"));
     if (result.skipped_count) {
-      messages.push(`跳过 ${result.skipped_count} 个重复项`);
+      messages.push(
+        t("modeling.datasetSelector.skippedDuplicates", {
+          count: result.skipped_count,
+        }),
+      );
     }
-    ElMessage.success(messages.join("，") || "DataSet 成员已保存");
+    ElMessage.success(
+      messages.join(t("modeling.datasetSelector.messageSeparator")) ||
+        t("modeling.datasetSelector.saved"),
+    );
     emit("changed", props.dataSet.id);
     emit("update:modelValue", false);
   } finally {
@@ -856,7 +936,7 @@ async function repairMember(nodeId: string) {
       nodeId,
       candidateId,
     );
-    ElMessage.success("失效 FCDA 已重新匹配");
+    ElMessage.success(t("modeling.datasetSelector.rematched"));
     emit("changed", props.dataSet.id);
     await loadCandidates();
   } finally {
@@ -866,14 +946,14 @@ async function repairMember(nodeId: string) {
 
 async function removeInvalidMember(nodeId: string) {
   await ElMessageBox.confirm(
-    "确认从 DataSet 中移除这个失效 FCDA？",
-    "移除失效成员",
+    t("modeling.datasetSelector.confirmRemoveInvalid"),
+    t("modeling.datasetSelector.removeInvalidTitle"),
     { type: "warning" },
   );
   removingId.value = nodeId;
   try {
     await modelingApi.deleteNode(props.projectId, nodeId);
-    ElMessage.success("失效 FCDA 已移除");
+    ElMessage.success(t("modeling.datasetSelector.removed"));
     emit("changed", props.dataSet.id);
     await loadCandidates();
   } finally {

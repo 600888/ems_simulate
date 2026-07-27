@@ -2,7 +2,7 @@
   <div class="goose-manager">
     <el-tabs v-model="activeTab" class="goose-tabs">
       <!-- 发布和订阅统一在一个管理工作台中配置 -->
-      <el-tab-pane label="GOOSE 管理" name="manager">
+      <el-tab-pane :label="$t('goose.gooseManagement')" name="manager">
         <GooseSubscriberManager :channel-id="channelId" />
       </el-tab-pane>
 
@@ -17,14 +17,14 @@
             :disabled="!selectedDiscovered.length"
             @click="addDiscoveredAsPublisher"
           >
-            添加到发布
+            {{ $t("goose.addToPublish") }}
           </el-button>
           <el-button
             type="success"
             :disabled="!selectedDiscovered.length"
             @click="importDiscoveredSubscriptions"
           >
-            添加到订阅
+            {{ $t("goose.addToSubscribe") }}
           </el-button>
           <el-button
             :icon="Refresh"
@@ -52,7 +52,7 @@
           />
           <el-table-column
             prop="go_id"
-            label="GOOSE标识符 (GoID)"
+            :label="$t('goose.goIdLabel')"
             min-width="260"
             show-overflow-tooltip
           />
@@ -78,7 +78,11 @@
             width="90"
             align="center"
           />
-          <el-table-column label="发现状态" width="120" align="center">
+          <el-table-column
+            :label="$t('goose.discoveryStatus')"
+            width="120"
+            align="center"
+          >
             <template #default="{ row }">
               <el-tooltip
                 :content="row.discovery_error || ''"
@@ -90,7 +94,11 @@
                   "
                   size="small"
                 >
-                  {{ row.detail_status === "partial" ? "部分信息" : "完整" }}
+                  {{
+                    row.detail_status === "partial"
+                      ? $t("goose.partialInfo")
+                      : $t("goose.complete")
+                  }}
                 </el-tag>
               </el-tooltip>
             </template>
@@ -298,10 +306,10 @@
       destroy-on-close
     >
       <el-form :model="receiverForm" label-width="100px">
-        <el-form-item label="名称" required>
+        <el-form-item :label="$t('goose.name')" required>
           <el-input v-model="receiverForm.name" />
         </el-form-item>
-        <el-form-item label="描述">
+        <el-form-item :label="$t('goose.description')">
           <el-input v-model="receiverForm.description" />
         </el-form-item>
         <el-form-item :label="$t('goose.iface')" required>
@@ -365,7 +373,7 @@
             >
           </div>
         </el-form-item>
-        <el-form-item label="自动启动">
+        <el-form-item :label="$t('goose.autoStart')">
           <el-switch v-model="receiverForm.auto_start" />
         </el-form-item>
       </el-form>
@@ -548,7 +556,7 @@
           <el-form-item :label="$t('goose.subDescription')">
             <el-input v-model="newSubForm.description" style="width: 180px" />
           </el-form-item>
-          <el-form-item label="目标MAC">
+          <el-form-item :label="$t('goose.dstMac')">
             <el-input
               v-model="newSubForm.dst_mac"
               placeholder="01-0C-CD-01-00-01"
@@ -594,11 +602,11 @@
             >
             <span class="sub-card__value">{{ sub.go_id || "-" }}</span>
             <span class="sub-card__label" style="margin-left: 16px"
-              >状态号:</span
+              >{{ $t("goose.stNum") }}:</span
             >
             <span class="sub-card__value">{{ sub.st_num }}</span>
             <span class="sub-card__label" style="margin-left: 16px"
-              >顺序号:</span
+              >{{ $t("goose.sqNum") }}:</span
             >
             <span class="sub-card__value">{{ sub.sq_num }}</span>
           </div>
@@ -990,7 +998,9 @@ async function importDiscoveredSubscriptions() {
   if (!props.channelId || !selectedDiscovered.value.length) return;
   try {
     await ElMessageBox.confirm(
-      `将选中的 ${selectedDiscovered.value.length} 个控制块添加到当前设备订阅？`,
+      t("goose.addSubscribeConfirm", {
+        count: selectedDiscovered.value.length,
+      }),
       t("common.confirm"),
       {
         confirmButtonText: t("common.confirm"),
@@ -1023,7 +1033,7 @@ async function addDiscoveredAsPublisher() {
   if (!props.channelId || !selectedDiscovered.value.length) return;
   try {
     await ElMessageBox.confirm(
-      `将选中的 ${selectedDiscovered.value.length} 个控制块添加到当前设备发布？`,
+      t("goose.addPublishConfirm", { count: selectedDiscovered.value.length }),
       t("common.confirm"),
       {
         confirmButtonText: t("common.confirm"),
@@ -1063,11 +1073,14 @@ async function addDiscoveredAsPublisher() {
         })),
       });
     }
-    ElMessage.success(`已添加 ${selectedDiscovered.value.length} 个发布控制块`);
+    ElMessage.success(
+      t("goose.addedPublishers", { count: selectedDiscovered.value.length }),
+    );
     activeTab.value = "manager";
     await refreshAll();
   } catch (e: any) {
-    if (e !== "cancel" && e !== "close") showError(e, "添加发布控制块失败");
+    if (e !== "cancel" && e !== "close")
+      showError(e, t("goose.addPublishFailed"));
   }
 }
 
@@ -1098,7 +1111,7 @@ function parseMac(
       value.length !== 6 ||
       value.some((part) => !Number.isInteger(part) || part < 0 || part > 0xff)
     ) {
-      throw new Error("目标MAC地址格式错误");
+      throw new Error(t("goose.macFormatError"));
     }
     return [...value];
   }
@@ -1109,7 +1122,7 @@ function parseMac(
     parts.length !== 6 ||
     parts.some((part) => !/^[0-9a-fA-F]{2}$/.test(part))
   ) {
-    throw new Error("目标MAC地址格式错误");
+    throw new Error(t("goose.macFormatError"));
   }
   return parts.map((part) => Number.parseInt(part, 16));
 }
@@ -1149,7 +1162,9 @@ async function savePublisherConfig() {
     ElMessage.success(
       publisherForm.dst_mac
         ? t("common.success")
-        : `保存成功，目标地址留空，自动使用 GOOSE 组播地址 ${defaultGooseMulticastMac(publisherForm.app_id)}`,
+        : t("goose.saveSuccessNoMac", {
+            mac: defaultGooseMulticastMac(publisherForm.app_id),
+          }),
     );
     createPublisherVisible.value = false;
     await refreshPublishers();
@@ -1185,7 +1200,9 @@ async function createPublisher() {
     ElMessage.success(
       publisherForm.dst_mac
         ? t("goose.createSuccess")
-        : `创建成功，目标地址留空，自动使用 GOOSE 组播地址 ${defaultGooseMulticastMac(publisherForm.app_id)}`,
+        : t("goose.createSuccessNoMac", {
+            mac: defaultGooseMulticastMac(publisherForm.app_id),
+          }),
     );
     createPublisherVisible.value = false;
     await refreshPublishers();

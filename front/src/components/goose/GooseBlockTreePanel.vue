@@ -4,14 +4,14 @@
       <el-input
         v-model="search"
         clearable
-        placeholder="搜索 IED / 逻辑设备 / GOOSE控制块"
+        :placeholder="$t('goose.searchBlocks')"
         :prefix-icon="Search"
       />
       <div v-if="batchMode" class="batch-row">
-        <el-checkbox v-model="selectAll" :indeterminate="indeterminate"
-          >全选</el-checkbox
-        >
-        <span>已选 {{ checkedKeys.length }}</span>
+        <el-checkbox v-model="selectAll" :indeterminate="indeterminate">{{
+          $t("goose.selectAll")
+        }}</el-checkbox>
+        <span>{{ $t("goose.selected") }} {{ checkedKeys.length }}</span>
       </div>
     </div>
     <el-tree

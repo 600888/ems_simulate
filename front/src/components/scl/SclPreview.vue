@@ -50,6 +50,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import { getSclTree } from "@/api/sclApi";
 import type { SclTreeNode, SclFileInfo } from "@/api/sclApi";
@@ -67,6 +68,7 @@ const activeTab = ref("detail");
 const loading = ref(false);
 
 const statusText = ref("");
+const { t } = useI18n();
 
 watch(
   () => route.params.fileName,
@@ -101,7 +103,8 @@ function updateStatus(tree: SclTreeNode[]) {
     doCount = 0,
     daCount = 0,
     dsCount = 0,
-    goCount = 0;
+    goCount = 0,
+    rcbCount = 0;
   const count = (nodes: SclTreeNode[]) => {
     for (const n of nodes) {
       total++;
@@ -109,11 +112,20 @@ function updateStatus(tree: SclTreeNode[]) {
       if (n.type === "DA") daCount++;
       if (n.type === "DataSet") dsCount++;
       if (n.type === "GoCB") goCount++;
+      if (n.type === "RCB") rcbCount++;
       if (n.children) count(n.children);
     }
   };
   count(tree);
-  statusText.value = `节点数: ${total} | DO: ${doCount} | DA: ${daCount} | DS: ${dsCount} | GoCB: ${goCount}`;
+  statusText.value = t("scl.statusBar", {
+    total,
+    do: doCount,
+    da: daCount,
+    ds: dsCount,
+    gocb: goCount,
+    rcb: rcbCount,
+    validation: 0,
+  });
 }
 
 function handleNodeSelect(path: string, node: SclTreeNode) {

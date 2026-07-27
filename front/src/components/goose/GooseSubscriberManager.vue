@@ -1,9 +1,9 @@
 <template>
   <div class="goose-workbench">
     <header class="manager-header">
-      <h3>GOOSE 管理</h3>
+      <h3>{{ $t("goose.gooseManagement") }}</h3>
       <div class="header-actions">
-        <span>自动刷新</span>
+        <span>{{ $t("goose.autoRefresh") }}</span>
         <el-switch v-model="autoRefresh" />
         <el-select
           v-model="pollInterval"
@@ -14,34 +14,34 @@
           <el-option :value="2000" label="2 s" />
           <el-option :value="5000" label="5 s" />
         </el-select>
-        <el-button :icon="Refresh" :loading="loading" @click="loadBlocks"
-          >刷新</el-button
-        >
+        <el-button :icon="Refresh" :loading="loading" @click="loadBlocks">{{
+          $t("goose.refresh")
+        }}</el-button>
         <el-button
           v-if="selected?.kind === 'publisher'"
           type="primary"
           :disabled="!selected.publisher?.is_running"
           @click="publishSelected"
-          >立即发布</el-button
+          >{{ $t("goose.immediatePublish") }}</el-button
         >
         <el-button v-if="selected" type="danger" plain @click="deleteSelected">
-          删除控制块
+          {{ $t("goose.deleteControlBlock") }}
         </el-button>
         <el-button @click="batchMode = !batchMode">{{
-          batchMode ? "退出批量" : "批量模式"
+          batchMode ? $t("goose.exitBatch") : $t("goose.batchMode")
         }}</el-button>
         <template v-if="batchMode">
           <el-button
             type="success"
             :disabled="!checkedKeys.length"
             @click="batchSetEnabled(true)"
-            >批量使能</el-button
+            >{{ $t("goose.batchEnable") }}</el-button
           >
           <el-button
             type="warning"
             :disabled="!checkedKeys.length"
             @click="batchSetEnabled(false)"
-            >批量禁用</el-button
+            >{{ $t("goose.batchDisable") }}</el-button
           >
         </template>
       </div>
@@ -50,7 +50,7 @@
     <main class="manager-body" v-loading="loading && !blocks.length">
       <el-empty
         v-if="!loading && !blocks.length"
-        description="没有 GOOSE 发布或订阅控制块"
+        :description="$t('goose.noGooseBlocks')"
       />
       <template v-else>
         <GooseBlockTreePanel
@@ -63,7 +63,7 @@
         <section class="workspace">
           <el-empty
             v-if="!selected"
-            description="从左侧选择一个 GOOSE 控制块"
+            :description="$t('goose.selectFromLeft')"
           />
           <el-tabs
             v-else
@@ -71,7 +71,7 @@
             class="workspace-tabs"
             @tab-change="handleTabChange"
           >
-            <el-tab-pane label="属性配置" name="attributes">
+            <el-tab-pane :label="$t('goose.propertiesTab')" name="attributes">
               <GoosePublisherControlPanel
                 v-if="selected.kind === 'publisher'"
                 :block="selected"
@@ -93,8 +93,8 @@
             <el-tab-pane
               :label="
                 selected.kind === 'publisher'
-                  ? '当前 GOOSE 数据'
-                  : '最近 GOOSE 数据'
+                  ? $t('goose.currentData')
+                  : $t('goose.recentData')
               "
               name="latest"
             >
@@ -105,15 +105,26 @@
                       selected.kind === 'publisher' ? 'primary' : 'success'
                     "
                   >
-                    {{ selected.kind === "publisher" ? "发布器" : "订阅器" }}
+                    {{
+                      selected.kind === "publisher"
+                        ? $t("goose.publisher")
+                        : $t("goose.subscriber")
+                    }}
                   </el-tag>
                   <span v-if="selected.kind === 'subscriber'"
-                    >时间：{{ formatGooseTime(selected.last_update) }}</span
+                    >{{ $t("goose.timeLabel")
+                    }}{{ formatGooseTime(selected.last_update) }}</span
                   >
-                  <span>状态号：{{ selected.st_num }}</span>
-                  <span>顺序号：{{ selected.sq_num }}</span>
-                  <span>数据集：{{ selected.data_set_ref || "-" }}</span>
-                  <span>值：{{ selected.data_values.length }}</span>
+                  <span>{{ $t("goose.stNumLabel") }}{{ selected.st_num }}</span>
+                  <span>{{ $t("goose.sqNumLabel") }}{{ selected.sq_num }}</span>
+                  <span
+                    >{{ $t("goose.dataSetLabel")
+                    }}{{ selected.data_set_ref || "-" }}</span
+                  >
+                  <span
+                    >{{ $t("goose.valueLabel")
+                    }}{{ selected.data_values.length }}</span
+                  >
                 </div>
                 <GooseDataSetTable
                   :values="selected.data_values"
@@ -126,7 +137,12 @@
 
             <el-tab-pane
               v-if="selected.kind === 'subscriber'"
-              :label="`GOOSE 数据历史 (${selected.subscription?.history_count || 0})`"
+              :label="
+                $t('goose.historyTab') +
+                ' (' +
+                (selected.subscription?.history_count || 0) +
+                ')'
+              "
               name="history"
             >
               <div class="history-pane">
@@ -148,7 +164,7 @@
                   />
                   <el-table-column
                     prop="received_at"
-                    label="接收时间"
+                    :label="$t('goose.receiveTime')"
                     min-width="185"
                     sortable
                   >
@@ -156,33 +172,53 @@
                       formatGooseTime(row.received_at)
                     }}</template>
                   </el-table-column>
-                  <el-table-column prop="st_num" label="状态号" width="75" />
-                  <el-table-column prop="sq_num" label="顺序号" width="75" />
+                  <el-table-column
+                    prop="st_num"
+                    :label="$t('goose.stNum')"
+                    width="75"
+                  />
+                  <el-table-column
+                    prop="sq_num"
+                    :label="$t('goose.sqNum')"
+                    width="75"
+                  />
                   <el-table-column
                     prop="value_count"
-                    label="数据项"
+                    :label="$t('goose.dataItems')"
                     width="70"
                   />
                   <el-table-column
                     prop="changed_count"
-                    label="变化项"
+                    :label="$t('goose.changedItems')"
                     width="70"
                   />
                 </el-table>
                 <div class="history-detail">
                   <div v-if="selectedHistory" class="summary">
                     <span
-                      >时间：{{
-                        formatGooseTime(selectedHistory.received_at)
-                      }}</span
+                      >{{ $t("goose.timeLabel")
+                      }}{{ formatGooseTime(selectedHistory.received_at) }}</span
                     >
                     <span
-                      >数据集：{{ selectedHistory.data_set_ref || "-" }}</span
+                      >{{ $t("goose.dataSetLabel")
+                      }}{{ selectedHistory.data_set_ref || "-" }}</span
                     >
-                    <span>状态号：{{ selectedHistory.st_num }}</span>
-                    <span>顺序号：{{ selectedHistory.sq_num }}</span>
-                    <span>数据项：{{ selectedHistory.value_count }}</span>
-                    <span>变化项：{{ selectedHistory.changed_count }}</span>
+                    <span
+                      >{{ $t("goose.stNumLabel")
+                      }}{{ selectedHistory.st_num }}</span
+                    >
+                    <span
+                      >{{ $t("goose.sqNumLabel")
+                      }}{{ selectedHistory.sq_num }}</span
+                    >
+                    <span
+                      >{{ $t("goose.dataItems")
+                      }}{{ selectedHistory.value_count }}</span
+                    >
+                    <span
+                      >{{ $t("goose.changedItems")
+                      }}{{ selectedHistory.changed_count }}</span
+                    >
                   </div>
                   <GooseDataSetTable
                     :values="selectedHistory?.data_values || []"
@@ -354,10 +390,10 @@ async function publishSelected() {
     return;
   try {
     await publishGooseNow(props.channelId, block.publisher.id);
-    ElMessage.success("GOOSE 报文已发布");
+    ElMessage.success(t("goose.publishSuccess"));
     await loadBlocks(false);
   } catch (error) {
-    showError(error, "GOOSE 发布失败");
+    showError(error, t("goose.publishFailed"));
   }
 }
 
@@ -375,9 +411,9 @@ async function updatePublisherDataValue(payload: {
       payload.value,
     );
     await loadBlocks(false);
-    ElMessage.success("数据集值已更新");
+    ElMessage.success(t("goose.datasetValueUpdated"));
   } catch (error) {
-    showError(error, "数据集值更新失败");
+    showError(error, t("goose.datasetsUpdated"));
     await loadBlocks(false);
   } finally {
     updatingEntryIndex.value = null;
@@ -389,8 +425,8 @@ async function deleteSelected() {
   if (!props.channelId || !block) return;
   try {
     await ElMessageBox.confirm(
-      `确定删除 ${block.display_name}？`,
-      "删除 GOOSE 控制块",
+      t("goose.deleteControlConfirm", { name: block.display_name }),
+      t("goose.deleteControlTitle"),
       {
         confirmButtonText: t("common.confirm"),
         cancelButtonText: t("common.cancel"),
@@ -409,10 +445,10 @@ async function deleteSelected() {
     }
     selectedKey.value = "";
     await loadBlocks(false);
-    ElMessage.success("GOOSE 控制块已删除");
+    ElMessage.success(t("goose.deletedControl"));
   } catch (error) {
     if (error !== "cancel" && error !== "close") {
-      showError(error, "删除失败");
+      showError(error, t("goose.controlDeleteFailed"));
     }
   }
 }
@@ -424,7 +460,7 @@ function parseMac(value: string): number[] | null {
     parts.length !== 6 ||
     parts.some((item) => !/^[0-9a-fA-F]{2}$/.test(item))
   ) {
-    throw new Error("目标MAC地址格式错误");
+    throw new Error(t("goose.macFormatError"));
   }
   return parts.map((item) => Number.parseInt(item, 16));
 }
@@ -505,7 +541,9 @@ async function applyPublisherConfig(form: {
       form.data_set_ref &&
       (!dataSetDetail || !dataSetDetail.members.length)
     ) {
-      throw new Error(`数据集 ${form.data_set_ref} 没有可发布的成员`);
+      throw new Error(
+        t("goose.noPublishableMembers", { name: form.data_set_ref }),
+      );
     }
 
     if (block.publisher.is_running)
@@ -542,12 +580,14 @@ async function applyPublisherConfig(form: {
     if (form.enabled) await startGoosePublisher(props.channelId, publisherId);
     ElMessage.success(
       form.dst_mac
-        ? "GOOSE 发布配置已应用"
-        : `GOOSE 发布配置已应用，目标地址留空，自动使用组播地址 ${defaultGooseMulticastMac(form.app_id)}`,
+        ? t("goose.publishApplySuccess")
+        : t("goose.publishApplySuccessNoMac", {
+            mac: defaultGooseMulticastMac(form.app_id),
+          }),
     );
     await loadBlocks(false);
   } catch (error) {
-    showError(error, "发布配置应用失败");
+    showError(error, t("goose.publishApplyFailed"));
   } finally {
     applying.value = false;
   }
@@ -604,10 +644,10 @@ async function applySubscriptionConfig(form: {
         go_id: form.go_id,
       },
     );
-    ElMessage.success("GOOSE 订阅配置已应用");
+    ElMessage.success(t("goose.subApplySuccess"));
     await loadBlocks(false);
   } catch (error) {
-    showError(error, "订阅配置应用失败");
+    showError(error, t("goose.subApplyFailed"));
   } finally {
     applying.value = false;
   }
@@ -650,7 +690,9 @@ async function batchSetEnabled(enabled: boolean) {
   try {
     for (const block of targets) await setBlockEnabled(block, enabled);
     ElMessage.success(
-      `已${enabled ? "使能" : "禁用"} ${targets.length} 个 GOOSE 控制块`,
+      enabled
+        ? t("goose.batchEnableResult", { count: targets.length })
+        : t("goose.batchDisableResult", { count: targets.length }),
     );
     await loadBlocks(false);
   } finally {

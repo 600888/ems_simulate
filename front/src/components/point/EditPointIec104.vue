@@ -1,16 +1,16 @@
 <template>
   <div class="edit-iec104" v-if="isIec104">
     <div class="simple-title">
-      <span>IEC104 协议属性</span>
+      <span>{{ $t("device.iec104Properties") }}</span>
       <el-divider></el-divider>
     </div>
     <el-form label-width="auto" :model="iec104Form" class="iec104-form">
       <el-row :gutter="20">
         <el-col :span="24">
-          <el-form-item label="ASDU类型" class="form-item">
+          <el-form-item :label="$t('point.iec104Type')" class="form-item">
             <el-select
               v-model="iec104Form.iec_type_id"
-              placeholder="选择ASDU类型"
+              :placeholder="$t('point.selectAsduType')"
               style="width: 100%"
               clearable
             >
@@ -30,43 +30,50 @@
       </el-row>
       <el-row :gutter="20" v-if="supportsQualityFlag(iec104Form.frame_type)">
         <el-col :span="24">
-          <el-form-item label="品质描述符" class="form-item">
+          <el-form-item
+            :label="$t('device.iec104QualityDescriptor')"
+            class="form-item"
+          >
             <div class="quality-flags">
               <el-checkbox
                 v-model="qualityFlags.ov"
                 :disabled="!isIec104Server || !canOverflow"
-                label="溢出(OV)"
+                :label="$t('qualityLabels.overflow')"
               />
               <el-checkbox
                 v-model="qualityFlags.bl"
                 :disabled="!isIec104Server"
-                label="闭锁(BL)"
+                :label="$t('qualityLabels.blocked')"
               />
               <el-checkbox
                 v-model="qualityFlags.sb"
                 :disabled="!isIec104Server"
-                label="取代(SB)"
+                :label="$t('qualityLabels.substituted')"
               />
               <el-checkbox
                 v-model="qualityFlags.nt"
                 :disabled="!isIec104Server"
-                label="不刷新(NT)"
+                :label="$t('qualityLabels.notTopical')"
               />
               <el-checkbox
                 v-model="qualityFlags.iv"
                 :disabled="!isIec104Server"
-                label="无效(IV)"
+                :label="$t('qualityLabels.invalid')"
               />
-              <span v-if="!isIec104Server" class="readonly-hint"
-                >（客户端只读）</span
-              >
+              <span v-if="!isIec104Server" class="readonly-hint">{{
+                $t("device.iec104ClientReadonly")
+              }}</span>
             </div>
           </el-form-item>
         </el-col>
       </el-row>
       <div class="button-group">
-        <el-button type="primary" @click="saveIec104Metadata">保存</el-button>
-        <el-button @click="loadIec104Info">刷新</el-button>
+        <el-button type="primary" @click="saveIec104Metadata">{{
+          $t("device.iec104Save")
+        }}</el-button>
+        <el-button @click="loadIec104Info">{{
+          $t("device.iec104Refresh")
+        }}</el-button>
       </div>
     </el-form>
   </div>
@@ -161,7 +168,7 @@ const saveIec104Metadata = async () => {
       iec_quality: iecQuality,
     });
     if (result) {
-      ElMessage.success("IEC104属性已更新");
+      ElMessage.success(t("device.iec104Updated"));
       emit("update-success");
     }
   } catch (error: any) {

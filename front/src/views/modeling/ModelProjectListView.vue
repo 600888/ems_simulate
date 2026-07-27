@@ -3,18 +3,20 @@
     <section class="page-heading">
       <div>
         <div class="eyebrow">IEC 61850 MODELING</div>
-        <h1>模型工程</h1>
-        <p>从零建立、维护并校验 ICD / CID / SCD 模型。</p>
+        <h1>{{ $t("modeling.projectList.title") }}</h1>
+        <p>{{ $t("modeling.projectList.subtitle") }}</p>
       </div>
       <div class="heading-actions">
         <el-button @click="router.push('/scl/manager')">
-          <el-icon><FolderOpened /></el-icon>SCL 文件
+          <el-icon><FolderOpened /></el-icon
+          >{{ $t("modeling.projectList.sclFiles") }}
         </el-button>
         <el-button @click="openImportDialog">
-          <el-icon><UploadFilled /></el-icon>导入 ICD/CID
+          <el-icon><UploadFilled /></el-icon
+          >{{ $t("modeling.projectList.importIcd") }}
         </el-button>
         <el-button type="primary" @click="router.push('/scl/modeling/new')">
-          <el-icon><Plus /></el-icon>从 0 新建模型
+          <el-icon><Plus /></el-icon>{{ $t("modeling.projectList.newProject") }}
         </el-button>
       </div>
     </section>
@@ -23,7 +25,7 @@
       <el-input
         v-model="filters.keyword"
         clearable
-        placeholder="搜索工程名称或编码"
+        :placeholder="$t('modeling.projectList.searchPlaceholder')"
         class="keyword-input"
         @keyup.enter="loadProjects"
         @clear="loadProjects"
@@ -35,18 +37,33 @@
       <el-select
         v-model="filters.status"
         clearable
-        placeholder="全部状态"
+        :placeholder="$t('modeling.projectList.allStatuses')"
         @change="loadProjects"
       >
-        <el-option label="草稿" value="DRAFT" />
-        <el-option label="校验通过" value="VALID" />
-        <el-option label="已发布" value="PUBLISHED" />
-        <el-option label="已归档" value="ARCHIVED" />
+        <el-option
+          :label="$t('modeling.projectList.statusDraft')"
+          value="DRAFT"
+        />
+        <el-option
+          :label="$t('modeling.projectList.statusValid')"
+          value="VALID"
+        />
+        <el-option
+          :label="$t('modeling.projectList.statusPublished')"
+          value="PUBLISHED"
+        />
+        <el-option
+          :label="$t('modeling.projectList.statusArchived')"
+          value="ARCHIVED"
+        />
       </el-select>
       <el-button @click="loadProjects"
-        ><el-icon><Refresh /></el-icon>刷新</el-button
+        ><el-icon><Refresh /></el-icon
+        >{{ $t("modeling.projectList.refresh") }}</el-button
       >
-      <span class="result-count">共 {{ total }} 个工程</span>
+      <span class="result-count">{{
+        $t("modeling.projectList.totalProjects", { count: total })
+      }}</span>
     </section>
 
     <div v-loading="loading" class="project-area">
@@ -66,44 +83,62 @@
               <code>{{ project.code }}</code>
             </div>
             <el-dropdown trigger="click" @click.stop>
-              <el-button text circle aria-label="工程操作" @click.stop
+              <el-button
+                text
+                circle
+                :aria-label="$t('modeling.projectList.projectActions')"
+                @click.stop
                 ><el-icon><MoreFilled /></el-icon
               ></el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item @click="openProject(project.id)"
-                    >打开工程</el-dropdown-item
-                  >
+                  <el-dropdown-item @click="openProject(project.id)">{{
+                    $t("modeling.projectList.openProject")
+                  }}</el-dropdown-item>
                   <el-dropdown-item
                     divided
                     class="danger-item"
                     @click="removeProject(project)"
                   >
-                    删除工程
+                    {{ $t("modeling.projectList.deleteProject") }}
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
           </div>
-          <p class="description">{{ project.description || "暂无工程描述" }}</p>
+          <p class="description">
+            {{
+              project.description || $t("modeling.projectList.noDescription")
+            }}
+          </p>
           <div class="project-meta">
             <el-tag size="small" effect="plain">{{ project.file_type }}</el-tag>
             <el-tag size="small" :type="statusMeta(project.status).type">
               {{ statusMeta(project.status).label }}
             </el-tag>
-            <span>{{ project.node_count }} 个节点</span>
+            <span>{{
+              $t("modeling.projectList.nodeCount", {
+                count: project.node_count,
+              })
+            }}</span>
           </div>
           <div class="card-footer">
-            <span>版本 r{{ project.revision }}</span>
-            <span>{{ formatDate(project.updated_at) }} 更新</span>
+            <span>{{
+              $t("modeling.projectList.revision", { rev: project.revision })
+            }}</span>
+            <span>{{
+              $t("modeling.projectList.updated", {
+                date: formatDate(project.updated_at),
+              })
+            }}</span>
           </div>
         </article>
       </div>
 
-      <el-empty v-else description="还没有模型工程">
-        <el-button type="primary" @click="router.push('/scl/modeling/new')"
-          >从 0 新建第一个模型</el-button
-        >
+      <el-empty v-else :description="$t('modeling.projectList.noProjects')">
+        <el-button type="primary" @click="router.push('/scl/modeling/new')">{{
+          $t("modeling.projectList.createFirst")
+        }}</el-button>
       </el-empty>
     </div>
 
@@ -118,7 +153,7 @@
 
     <el-dialog
       v-model="importDialog.visible"
-      title="导入 IEC 61850 模型"
+      :title="$t('modeling.projectList.importTitle')"
       width="620px"
       destroy-on-close
     >
@@ -131,46 +166,61 @@
         :on-remove="clearImportFile"
       >
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-        <div class="el-upload__text">拖入 ICD/CID，或<em>点击选择</em></div>
+        <div
+          class="el-upload__text"
+          v-html="$t('modeling.projectList.importDrop')"
+        ></div>
       </el-upload>
       <div v-if="importDialog.previewing" class="import-job-progress">
         <el-progress
           :percentage="importDialog.progress"
           :status="importDialog.progress >= 100 ? 'success' : undefined"
         />
-        <span>后台解析中，可关闭或取消而不创建工程</span>
-        <el-button size="small" text type="danger" @click="cancelImportPreview"
-          >取消解析</el-button
+        <span>{{ $t("modeling.projectList.importParsing") }}</span>
+        <el-button
+          size="small"
+          text
+          type="danger"
+          @click="cancelImportPreview"
+          >{{ $t("modeling.projectList.cancelParse") }}</el-button
         >
       </div>
       <div v-if="importDialog.preview" class="import-preview">
         <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="文件类型">{{
+          <el-descriptions-item :label="$t('modeling.projectList.fileType')">{{
             importDialog.preview.project.file_type
           }}</el-descriptions-item>
           <el-descriptions-item label="IED">{{
             importDialog.preview.project.ied_name || "--"
           }}</el-descriptions-item>
-          <el-descriptions-item label="节点数">{{
-            importDialog.preview.summary.node_count
-          }}</el-descriptions-item>
-          <el-descriptions-item label="保真扩展">{{
-            importDialog.preview.summary.extension_count
-          }}</el-descriptions-item>
+          <el-descriptions-item
+            :label="$t('modeling.projectList.nodeCountLabel')"
+            >{{ importDialog.preview.summary.node_count }}</el-descriptions-item
+          >
+          <el-descriptions-item
+            :label="$t('modeling.projectList.lossyExtensions')"
+            >{{
+              importDialog.preview.summary.extension_count
+            }}</el-descriptions-item
+          >
         </el-descriptions>
         <el-alert
           v-if="importDialog.preview.summary.extension_count > 0"
           type="warning"
           :closable="false"
           show-icon
-          :title="`发现 ${importDialog.preview.summary.extension_count} 个保真扩展片段`"
-          description="这些内容通常来自厂商 Private 或当前工具尚未结构化支持的 XML。导入后会保留原文并默认只读，正常情况下不会影响发布；若后续确认无法原位回写，系统会明确标记为有损风险并阻止发布。"
+          :title="
+            $t('modeling.projectList.extensionCount', {
+              count: importDialog.preview.summary.extension_count,
+            })
+          "
+          :description="$t('modeling.projectList.extensionTip')"
         />
         <el-form label-position="top" class="import-form">
-          <el-form-item label="工程名称"
+          <el-form-item :label="$t('modeling.projectList.projectName')"
             ><el-input v-model="importDialog.name"
           /></el-form-item>
-          <el-form-item label="工程编码"
+          <el-form-item :label="$t('modeling.projectList.projectCode')"
             ><el-input v-model="importDialog.code"
           /></el-form-item>
         </el-form>
@@ -184,7 +234,9 @@
         />
       </div>
       <template #footer>
-        <el-button @click="importDialog.visible = false">取消</el-button>
+        <el-button @click="importDialog.visible = false">{{
+          $t("common.cancel")
+        }}</el-button>
         <el-button
           type="primary"
           :loading="importDialog.importing"
@@ -194,7 +246,7 @@
             !importDialog.code.trim()
           "
           @click="importModel"
-          >导入并打开</el-button
+          >{{ $t("modeling.projectList.importAndOpen") }}</el-button
         >
       </template>
     </el-dialog>
@@ -205,6 +257,7 @@
 import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, type UploadFile } from "element-plus";
+import { useI18n } from "vue-i18n";
 import {
   Connection,
   FolderOpened,
@@ -216,7 +269,9 @@ import {
 } from "@element-plus/icons-vue";
 import { modelingApi, type ImportPreview } from "@/api/modelingApi";
 import type { ModelProject } from "@/types/modeling";
+import { currentLocale } from "@/composables/useAppSettings";
 
+const { t } = useI18n();
 const router = useRouter();
 const loading = ref(false);
 const projects = ref<ModelProject[]>([]);
@@ -245,17 +300,29 @@ const importDialog = reactive<{
 function statusMeta(status: ModelProject["status"]) {
   return (
     {
-      DRAFT: { label: "草稿", type: "info" as const },
-      VALID: { label: "校验通过", type: "success" as const },
-      PUBLISHED: { label: "已发布", type: "primary" as const },
-      ARCHIVED: { label: "已归档", type: "warning" as const },
+      DRAFT: {
+        label: t("modeling.projectList.statusDraft"),
+        type: "info" as const,
+      },
+      VALID: {
+        label: t("modeling.projectList.statusValid"),
+        type: "success" as const,
+      },
+      PUBLISHED: {
+        label: t("modeling.projectList.statusPublished"),
+        type: "primary" as const,
+      },
+      ARCHIVED: {
+        label: t("modeling.projectList.statusArchived"),
+        type: "warning" as const,
+      },
     }[status] || { label: status, type: "info" as const }
   );
 }
 
 function formatDate(value: string) {
   if (!value) return "--";
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(currentLocale.value, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -286,16 +353,16 @@ function openProject(projectId: string) {
 async function removeProject(project: ModelProject) {
   try {
     await ElMessageBox.confirm(
-      `工程“${project.name}”及其全部模型节点将被永久删除。`,
-      "删除模型工程",
+      t("modeling.projectList.deleteConfirm", { name: project.name }),
+      t("modeling.projectList.deleteTitle"),
       {
         type: "warning",
-        confirmButtonText: "确认删除",
-        cancelButtonText: "取消",
+        confirmButtonText: t("common.confirmDelete"),
+        cancelButtonText: t("common.cancel"),
       },
     );
     await modelingApi.deleteProject(project.id);
-    ElMessage.success("模型工程已删除");
+    ElMessage.success(t("modeling.projectList.deleted"));
     await loadProjects();
   } catch (error) {
     if (error !== "cancel" && error !== "close") throw error;
@@ -353,7 +420,7 @@ async function handleImportFile(upload: UploadFile) {
       importDialog.code = job.result.project.code;
       importDialog.name = job.result.project.name;
     } else if (job.status === "FAILED") {
-      ElMessage.error(job.error || "SCL 后台解析失败");
+      ElMessage.error(job.error || t("modeling.projectList.parseFailed"));
     }
   } finally {
     if (sequence === previewSequence) {
@@ -381,7 +448,9 @@ async function importModel() {
       importDialog.code.trim(),
       importDialog.name.trim(),
     );
-    ElMessage.success(`已导入 ${result.summary.node_count} 个模型节点`);
+    ElMessage.success(
+      t("modeling.projectList.imported", { count: result.summary.node_count }),
+    );
     importDialog.visible = false;
     await router.push(`/scl/modeling/${result.project.id}`);
   } finally {

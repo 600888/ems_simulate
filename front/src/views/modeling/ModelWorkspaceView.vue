@@ -6,11 +6,14 @@
           class="back-button"
           text
           @click="router.push('/scl/modeling')"
-          ><el-icon><ArrowLeft /></el-icon>返回</el-button
+          ><el-icon><ArrowLeft /></el-icon
+          >{{ $t("modeling.workspace.back") }}</el-button
         >
         <span class="toolbar-divider"></span>
         <div>
-          <div class="project-name">{{ project?.name || "模型工作台" }}</div>
+          <div class="project-name">
+            {{ project?.name || $t("modeling.workspace.defaultTitle") }}
+          </div>
           <div class="project-code">
             {{ project?.code }} · {{ project?.file_type }} ·
             {{ project?.standard_version }}
@@ -37,45 +40,64 @@
         >
           {{
             extensionStats.lossy
-              ? `有损扩展 ${extensionStats.lossy}`
-              : `保真扩展 ${extensionStats.total}`
+              ? $t("modeling.workspace.lossyExtension", {
+                  count: extensionStats.lossy,
+                })
+              : $t("modeling.workspace.losslessExtension", {
+                  count: extensionStats.total,
+                })
           }}
         </el-tag>
         <span class="save-state" :class="{ dirty }">
           <span class="save-dot"></span
           >{{
-            dirty ? "有未应用修改" : `草稿已保存 · r${project?.revision || 1}`
+            dirty
+              ? $t("modeling.workspace.dirty")
+              : $t("modeling.workspace.draftSaved", {
+                  rev: project?.revision || 1,
+                })
           }}
         </span>
       </div>
       <div class="toolbar-actions">
-        <el-button :disabled="!dirty" @click="resetForm">撤销修改</el-button>
+        <el-button :disabled="!dirty" @click="resetForm">{{
+          $t("modeling.workspace.undo")
+        }}</el-button>
         <el-button @click="openVersions"
-          ><el-icon><Collection /></el-icon>版本</el-button
+          ><el-icon><Collection /></el-icon
+          >{{ $t("modeling.workspace.versions") }}</el-button
         >
         <el-button :loading="validating" @click="runValidation"
-          ><el-icon><CircleCheck /></el-icon>校验</el-button
+          ><el-icon><CircleCheck /></el-icon
+          >{{ $t("modeling.workspace.validate") }}</el-button
         >
         <el-button :loading="previewDialog.loading" @click="openSclPreview"
-          ><el-icon><View /></el-icon>预览</el-button
+          ><el-icon><View /></el-icon
+          >{{ $t("modeling.workspace.preview") }}</el-button
         >
         <el-button type="success" plain @click="openPublishDialog"
-          ><el-icon><Promotion /></el-icon>发布</el-button
+          ><el-icon><Promotion /></el-icon
+          >{{ $t("modeling.workspace.publish") }}</el-button
         >
         <el-dropdown trigger="click">
           <el-button
-            ><el-icon><Download /></el-icon>导出<el-icon class="el-icon--right"
-              ><ArrowDown /></el-icon
+            ><el-icon><Download /></el-icon
+            >{{ $t("modeling.workspace.exportBtn")
+            }}<el-icon class="el-icon--right"><ArrowDown /></el-icon
           ></el-button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item @click="downloadScl"
-                ><el-icon><Download /></el-icon>下载
-                {{ project?.file_type || "ICD" }}</el-dropdown-item
+                ><el-icon><Download /></el-icon
+                >{{
+                  $t("modeling.workspace.download", {
+                    type: project?.file_type || "ICD",
+                  })
+                }}</el-dropdown-item
               >
               <el-dropdown-item divided @click="downloadArtifactBundle"
-                ><el-icon><Files /></el-icon>下载 SCL / CFG / CSV
-                产物包</el-dropdown-item
+                ><el-icon><Files /></el-icon
+                >{{ $t("modeling.workspace.downloadBundle") }}</el-dropdown-item
               >
             </el-dropdown-menu>
           </template>
@@ -103,12 +125,12 @@
           class="panel-resizer panel-resizer-right"
           role="separator"
           aria-orientation="vertical"
-          aria-label="调整模型结构栏宽度"
+          :aria-label="$t('modeling.workspace.treeResizeLabel')"
           :aria-valuenow="leftPanelWidth"
           :aria-valuemin="LEFT_PANEL_MIN_WIDTH"
           :aria-valuemax="LEFT_PANEL_MAX_WIDTH"
           tabindex="0"
-          title="拖动调整模型结构栏宽度，双击恢复默认宽度"
+          :title="$t('modeling.workspace.treeResizeTitle')"
           @pointerdown="startPanelResize('left', $event)"
           @dblclick="resetPanelWidth('left')"
           @keydown.left.prevent="adjustPanelWidth('left', -10)"
@@ -116,10 +138,14 @@
         />
         <div class="panel-heading">
           <div>
-            <strong>模型结构</strong
-            ><small>{{ project?.node_count || 0 }} 个节点</small>
+            <strong>{{ $t("modeling.workspace.treeHeading") }}</strong
+            ><small>{{
+              $t("modeling.workspace.treeNodeCount", {
+                count: project?.node_count || 0,
+              })
+            }}</small>
           </div>
-          <el-tooltip content="刷新模型树"
+          <el-tooltip :content="$t('modeling.workspace.refreshTree')"
             ><el-button text circle @click="loadTree"
               ><el-icon><Refresh /></el-icon></el-button
           ></el-tooltip>
@@ -128,7 +154,7 @@
           <el-input
             v-model="treeKeyword"
             clearable
-            placeholder="搜索节点"
+            :placeholder="$t('modeling.workspace.searchNode')"
             size="small"
           >
             <template #prefix
@@ -138,10 +164,10 @@
           <el-select
             v-model="treeTypeFilter"
             size="small"
-            placeholder="全部类型"
-            aria-label="节点类型筛选"
+            :placeholder="$t('modeling.workspace.allTypes')"
+            :aria-label="$t('modeling.workspace.nodeTypeFilter')"
           >
-            <el-option label="全部类型" value="" />
+            <el-option :label="$t('modeling.workspace.allTypes')" value="" />
             <el-option
               v-for="kind in treeKinds"
               :key="kind"
@@ -175,7 +201,9 @@
                 class="tree-node tree-node-loading"
               >
                 <span class="tree-loading-dot"></span>
-                <span class="tree-label">加载中...</span>
+                <span class="tree-label">{{
+                  $t("modeling.workspace.loadingNodes")
+                }}</span>
               </div>
               <div
                 v-else
@@ -191,7 +219,9 @@
                 :title="
                   data.inherited
                     ? `${kindLabel(data.kind)} · ${data.name} · ${
-                        data.virtual ? '继承自类型模板' : '实例覆盖'
+                        data.virtual
+                          ? $t('modeling.workspace.inheritedFromTemplate')
+                          : $t('modeling.workspace.instanceOverride')
                       }`
                     : `${kindLabel(data.kind)} · ${data.name}`
                 "
@@ -201,7 +231,11 @@
                 </span>
                 <span class="tree-label">{{ data.name }}</span>
                 <span v-if="data.inherited" class="inheritance-badge">
-                  {{ data.virtual ? "模板" : "覆盖" }}
+                  {{
+                    data.virtual
+                      ? $t("modeling.workspace.template")
+                      : $t("modeling.workspace.override")
+                  }}
                 </span>
                 <span
                   v-if="childStatus(data) !== 'NORMAL'"
@@ -220,7 +254,8 @@
             type="primary"
             :disabled="!canAdd"
             @click="openAddDialog('single')"
-            ><el-icon><Plus /></el-icon>添加节点</el-button
+            ><el-icon><Plus /></el-icon
+            >{{ $t("modeling.workspace.addNode") }}</el-button
           >
           <el-button
             size="small"
@@ -229,7 +264,7 @@
             :disabled="!selectedNode || selectedNode.protected"
             @click="openDeleteDialog"
           >
-            <el-icon><Delete /></el-icon>删除
+            <el-icon><Delete /></el-icon>{{ $t("common.delete") }}
           </el-button>
         </div>
       </aside>
@@ -238,7 +273,7 @@
         <template v-if="selectedNode">
           <div class="context-heading">
             <div>
-              <strong>当前节点内容</strong>
+              <strong>{{ $t("modeling.workspace.nodeDetail") }}</strong>
               <div class="node-breadcrumb">
                 <el-icon><Location /></el-icon
                 >{{ displayPath(selectedNode.path) }}
@@ -259,22 +294,20 @@
             <template #title>
               {{
                 selectedExtensionHasLossRisk
-                  ? "该扩展存在有损回写风险"
-                  : "该节点是只读保真扩展"
+                  ? $t("modeling.workspace.lossyExtensionRisk")
+                  : $t("modeling.workspace.readonlyFidelityExtension")
               }}
             </template>
             <template #default>
               <p v-if="selectedExtensionHasLossRisk">
-                当前 XML
-                无法确认可以原位、原语义写回，修复保真策略前会阻止正式发布。
+                {{ $t("modeling.workspace.lossyExtensionDesc") }}
               </p>
               <p v-else>
-                这是厂商 Private 或尚未结构化支持的原始
-                XML。工具会在导出时按父节点保留，避免静默删除；由于无法完整理解其业务含义，默认不允许直接编辑。
+                {{ $t("modeling.workspace.fidelityExtensionDesc") }}
               </p>
               <div class="extension-meta">
                 <el-tag size="small" effect="plain"
-                  >元素
+                  >{{ $t("modeling.workspace.element") }}
                   {{ selectedNode.attributes.tag || selectedNode.name }}</el-tag
                 >
                 <el-tag
@@ -282,7 +315,8 @@
                   size="small"
                   effect="plain"
                 >
-                  命名空间 {{ selectedNode.attributes.namespace }}
+                  {{ $t("modeling.workspace.namespace") }}
+                  {{ selectedNode.attributes.namespace }}
                 </el-tag>
               </div>
             </template>
@@ -292,14 +326,15 @@
             <div class="cdc-assistant-heading">
               <div>
                 <strong
-                  ><el-icon><SetUp /></el-icon>CDC 数据属性助手</strong
+                  ><el-icon><SetUp /></el-icon
+                  >{{ $t("modeling.workspace.cdcAssistantTitle") }}</strong
                 >
                 <p>
-                  当前 CDC：<code>{{
-                    selectedNode.attributes.cdc || "未设置"
+                  {{ $t("modeling.workspace.currentCDC") }}：<code>{{
+                    selectedNode.attributes.cdc ||
+                    $t("modeling.workspace.notSet")
                   }}</code
-                  >。模板作用于该
-                  DOType，所有引用它的数据对象都会共享这些属性定义。
+                  >。{{ $t("modeling.workspace.cdcAssistantDesc") }}
                 </p>
               </div>
               <el-button
@@ -308,13 +343,13 @@
                 :loading="cdcAssistant.loading"
                 :disabled="dirty"
                 @click="applyCdcTemplate('common-quality-time-description')"
-                >补齐 q / t / dU</el-button
+                >{{ $t("modeling.workspace.fillQtdU") }}</el-button
               >
             </div>
             <div class="cdc-template-row">
               <el-select
                 v-model="cdcAssistant.templateId"
-                placeholder="选择完整 CDC 模板"
+                :placeholder="$t('modeling.workspace.selectFullCDCTemplate')"
                 style="min-width: 220px"
               >
                 <el-option
@@ -333,7 +368,7 @@
                 :loading="cdcAssistant.loading"
                 :disabled="dirty || !cdcAssistant.templateId"
                 @click="applyCdcTemplate(cdcAssistant.templateId)"
-                >应用完整模板</el-button
+                >{{ $t("modeling.workspace.applyFullTemplate") }}</el-button
               >
               <span v-if="selectedCdcTemplate" class="cdc-template-description">
                 {{ selectedCdcTemplate.description }}
@@ -355,8 +390,12 @@
               type="warning"
               :closable="false"
               show-icon
-              :title="`${cdcAssistant.conflicts.length} 个已有属性与模板不一致，已保留原配置`"
-              description="请在下方子节点中检查冲突属性；系统不会自动覆盖已有 bType、FC 或类型引用。"
+              :title="
+                $t('modeling.workspace.cdcConflictsTitle', {
+                  count: cdcAssistant.conflicts.length,
+                })
+              "
+              :description="$t('modeling.workspace.cdcConflictsDesc')"
             />
           </section>
 
@@ -366,11 +405,11 @@
           >
             <div>
               <strong
-                ><el-icon><CollectionTag /></el-icon>DataSet 成员配置</strong
+                ><el-icon><CollectionTag /></el-icon
+                >{{ $t("modeling.workspace.datasetConfig") }}</strong
               >
               <p>
-                从已完成的 DataModel 按 DO 整组或 DA 精确两种粒度批量选择，
-                系统自动填写 ldInst、LN、DO、DA 和 FC，并在写入前去重与校验。
+                {{ $t("modeling.workspace.datasetConfigDesc") }}
               </p>
             </div>
             <el-button
@@ -378,7 +417,7 @@
               :disabled="dirty"
               @click="datasetSelectorVisible = true"
             >
-              批量选择成员
+              {{ $t("modeling.workspace.batchSelectMembers") }}
             </el-button>
           </section>
 
@@ -386,8 +425,12 @@
             <el-tab-pane
               :label="
                 selectedNode.kind === 'DATASET'
-                  ? `成员层级 ${selectedNode.children?.length || 0}`
-                  : `子节点 ${selectedNode.children?.length || 0}`
+                  ? $t('modeling.workspace.memberHierarchy', {
+                      count: selectedNode.children?.length || 0,
+                    })
+                  : $t('modeling.workspace.childNodes', {
+                      count: selectedNode.children?.length || 0,
+                    })
               "
               name="children"
             >
@@ -406,7 +449,10 @@
                   class="children-table"
                   @row-click="focusChildRow"
                 >
-                  <el-table-column label="名称" min-width="150">
+                  <el-table-column
+                    :label="$t('modeling.workspace.colName')"
+                    min-width="150"
+                  >
                     <template #default="{ row }">
                       <div class="table-node-name">
                         <span class="node-mini">{{ nodeAbbr(row.kind) }}</span
@@ -416,28 +462,35 @@
                   </el-table-column>
                   <el-table-column
                     prop="kind_label"
-                    label="类型"
+                    :label="$t('modeling.workspace.colType')"
                     min-width="105"
                   />
-                  <el-table-column label="CDC" width="72"
+                  <el-table-column
+                    :label="$t('modeling.workspace.colCDC')"
+                    width="72"
                     ><template #default="{ row }">{{
                       attributeValue(row, ["cdc"]) || "—"
                     }}</template></el-table-column
                   >
-                  <el-table-column label="FC" width="64"
+                  <el-table-column
+                    :label="$t('modeling.workspace.colFC')"
+                    width="64"
                     ><template #default="{ row }">{{
                       attributeValue(row, ["fc"]) || "—"
                     }}</template></el-table-column
                   >
                   <el-table-column
-                    label="描述"
+                    :label="$t('modeling.workspace.colDesc')"
                     min-width="150"
                     show-overflow-tooltip
                     ><template #default="{ row }">{{
                       attributeValue(row, ["desc", "description"]) || "—"
                     }}</template></el-table-column
                   >
-                  <el-table-column label="状态" width="86">
+                  <el-table-column
+                    :label="$t('modeling.workspace.colStatus')"
+                    width="86"
+                  >
                     <template #default="{ row }"
                       ><span
                         class="node-status"
@@ -450,22 +503,25 @@
                 <el-empty
                   v-else
                   :image-size="72"
-                  description="当前节点还没有下级内容"
+                  :description="$t('modeling.workspace.noChildren')"
                 >
                   <el-button
                     v-if="canAdd"
                     type="primary"
                     @click="openAddDialog('single')"
-                    ><el-icon><Plus /></el-icon>添加第一个子节点</el-button
+                    ><el-icon><Plus /></el-icon
+                    >{{ $t("modeling.workspace.addFirstChild") }}</el-button
                   >
                 </el-empty>
                 <div
                   v-if="(selectedNode.children?.length || 0) > CHILD_PAGE_SIZE"
                   class="children-pagination"
                 >
-                  <span
-                    >共 {{ selectedNode.children?.length || 0 }} 个子节点</span
-                  >
+                  <span>{{
+                    $t("modeling.workspace.totalChildren", {
+                      count: selectedNode.children?.length || 0,
+                    })
+                  }}</span>
                   <el-pagination
                     v-model:current-page="childPage"
                     small
@@ -480,27 +536,33 @@
             </el-tab-pane>
 
             <el-tab-pane
-              :label="`引用关系 ${referenceTotal}`"
+              :label="
+                $t('modeling.workspace.referenceRelations', {
+                  total: referenceTotal,
+                })
+              "
               name="references"
             >
               <div class="reference-view">
                 <section class="reference-card">
                   <div>
-                    <span>被其他节点引用</span
+                    <span>{{
+                      $t("modeling.workspace.referencedByOthers")
+                    }}</span
                     ><strong>{{
                       nodeImpact?.inbound_references.length || 0
                     }}</strong>
                   </div>
-                  <p>删除或重命名前需要优先处理这些引用。</p>
+                  <p>{{ $t("modeling.workspace.referencedByHint") }}</p>
                 </section>
                 <section class="reference-card">
                   <div>
-                    <span>引用其他节点</span
+                    <span>{{ $t("modeling.workspace.referencingOthers") }}</span
                     ><strong>{{
                       nodeImpact?.outbound_reference_count || 0
                     }}</strong>
                   </div>
-                  <p>当前节点向下游模型建立的关系数量。</p>
+                  <p>{{ $t("modeling.workspace.referencingHint") }}</p>
                 </section>
                 <div
                   v-if="nodeImpact?.inbound_references.length"
@@ -534,19 +596,24 @@
                       v-if="reference.reference_value"
                       class="reference-value"
                     >
-                      引用值：<code>{{ reference.reference_value }}</code>
+                      {{ $t("modeling.workspace.referenceValue") }}：<code>{{
+                        reference.reference_value
+                      }}</code>
                     </span>
                   </div>
                 </div>
                 <el-empty
                   v-else
                   :image-size="64"
-                  description="当前节点没有外部引用"
+                  :description="$t('modeling.workspace.noExternalReferences')"
                 />
               </div>
             </el-tab-pane>
 
-            <el-tab-pane label="可视化摘要" name="summary">
+            <el-tab-pane
+              :label="$t('modeling.workspace.visualSummary')"
+              name="summary"
+            >
               <div class="summary-view">
                 <section class="summary-hero">
                   <div class="node-symbol">
@@ -560,29 +627,36 @@
                 </section>
                 <section class="metric-grid">
                   <div>
-                    <span>节点类型</span
+                    <span>{{ $t("modeling.workspace.nodeType") }}</span
                     ><strong>{{ selectedNode.kind }}</strong>
                   </div>
                   <div>
-                    <span>直接子节点</span
+                    <span>{{ $t("modeling.workspace.directChildren") }}</span
                     ><strong>{{ selectedNode.child_count }}</strong>
                   </div>
                   <div>
-                    <span>节点修订</span
+                    <span>{{ $t("modeling.workspace.nodeRevision") }}</span
                     ><strong>r{{ selectedNode.revision }}</strong>
                   </div>
                   <div>
-                    <span>结构保护</span
-                    ><strong>{{ selectedNode.protected ? "是" : "否" }}</strong>
+                    <span>{{
+                      $t("modeling.workspace.structuralProtection")
+                    }}</span
+                    ><strong>{{
+                      selectedNode.protected
+                        ? $t("common.yes")
+                        : $t("common.no")
+                    }}</strong>
                   </div>
                 </section>
                 <section class="guide-card">
                   <div class="guide-heading">
-                    <el-icon><Guide /></el-icon><strong>下一步建议</strong>
+                    <el-icon><Guide /></el-icon
+                    ><strong>{{ $t("modeling.workspace.nextSteps") }}</strong>
                   </div>
                   <p>{{ operationHint(selectedNode.kind) }}</p>
                   <div v-if="availableChildOptions.length" class="allowed-list">
-                    <span>可添加：</span
+                    <span>{{ $t("modeling.workspace.canAdd") }}：</span
                     ><el-tag
                       v-for="child in availableChildOptions"
                       :key="child.kind"
@@ -605,7 +679,7 @@
                 ><el-icon><Plus /></el-icon
                 >{{
                   selectedNode.kind === "DATASET"
-                    ? "手动添加 FCDA"
+                    ? $t("modeling.workspace.manualAddFCDA")
                     : addActionLabel
                 }}</el-button
               >
@@ -613,13 +687,20 @@
                 v-if="selectedNode.kind !== 'DATASET'"
                 :disabled="!canBatchAdd"
                 @click="openAddDialog('batch')"
-                >批量添加</el-button
+                >{{ $t("modeling.workspace.batchAdd") }}</el-button
               >
             </div>
-            <span>{{ selectedNode.children?.length || 0 }} 个直接子节点</span>
+            <span>{{
+              $t("modeling.workspace.directChildCount", {
+                count: selectedNode.children?.length || 0,
+              })
+            }}</span>
           </div>
         </template>
-        <el-empty v-else description="请从左侧选择一个模型节点" />
+        <el-empty
+          v-else
+          :description="$t('modeling.workspace.selectNodeHint')"
+        />
       </main>
 
       <aside class="property-panel panel">
@@ -627,12 +708,12 @@
           class="panel-resizer panel-resizer-left"
           role="separator"
           aria-orientation="vertical"
-          aria-label="调整属性编辑栏宽度"
+          :aria-label="$t('modeling.workspace.propertyResizeLabel')"
           :aria-valuenow="rightPanelWidth"
           :aria-valuemin="RIGHT_PANEL_MIN_WIDTH"
           :aria-valuemax="RIGHT_PANEL_MAX_WIDTH"
           tabindex="0"
-          title="拖动调整属性编辑栏宽度，双击恢复默认宽度"
+          :title="$t('modeling.workspace.propertyResizeTitle')"
           @pointerdown="startPanelResize('right', $event)"
           @dblclick="resetPanelWidth('right')"
           @keydown.left.prevent="adjustPanelWidth('right', 10)"
@@ -640,8 +721,10 @@
         />
         <div class="panel-heading property-heading">
           <div>
-            <strong>属性编辑</strong
-            ><small v-if="dirty" class="dirty-tip">有未应用修改</small>
+            <strong>{{ $t("modeling.workspace.propertyEdit") }}</strong
+            ><small v-if="dirty" class="dirty-tip">{{
+              $t("modeling.workspace.unappliedChanges")
+            }}</small>
           </div>
           <el-tag v-if="selectedNode" size="small" effect="plain">{{
             selectedNode.kind
@@ -652,13 +735,14 @@
             :class="{ active: propertyTab === 'basic' }"
             @click="propertyTab = 'basic'"
           >
-            基本信息
+            {{ $t("modeling.workspace.basicInfo") }}
           </button>
           <button
             :class="{ active: propertyTab === 'advanced' }"
             @click="propertyTab = 'advanced'"
           >
-            高级属性 <span>{{ advancedFields.length }}</span>
+            {{ $t("modeling.workspace.advancedProperties") }}
+            <span>{{ advancedFields.length }}</span>
           </button>
         </div>
         <el-scrollbar class="property-scroll">
@@ -666,11 +750,17 @@
             v-if="selectedNode?.effective_model_summary"
             class="effective-model-summary"
           >
-            <strong>类型模板展开</strong>
+            <strong>{{
+              $t("modeling.workspace.typeTemplateExpansion")
+            }}</strong>
             <span>
-              {{ selectedNode.effective_model_summary.data_objects }} 个 DO ·
-              {{ selectedNode.effective_model_summary.data_attributes }} 个 DA ·
-              {{ selectedNode.effective_model_summary.overrides }} 个实例覆盖
+              {{
+                $t("modeling.workspace.templateExpansionSummary", {
+                  do: selectedNode.effective_model_summary.data_objects,
+                  da: selectedNode.effective_model_summary.data_attributes,
+                  overrides: selectedNode.effective_model_summary.overrides,
+                })
+              }}
             </span>
           </div>
           <el-alert
@@ -679,14 +769,19 @@
             type="warning"
             :closable="false"
             show-icon
-            :title="`类型模板展开存在 ${selectedNode.effective_model_warnings.length} 个问题`"
+            :title="
+              $t('modeling.workspace.templateExpansionIssues', {
+                count: selectedNode.effective_model_warnings.length,
+              })
+            "
           />
           <section v-if="selectedNode?.virtual" class="inherited-node-card">
             <div>
-              <strong>继承自 DataTypeTemplates</strong>
+              <strong>{{
+                $t("modeling.workspace.inheritedFromDataTypeTemplates")
+              }}</strong>
               <span>
-                当前为只读虚拟节点，不会写入
-                SCL。创建实例覆盖后，可配置初始值、短地址等实例属性。
+                {{ $t("modeling.workspace.inheritedNodeReadOnlyHint") }}
               </span>
               <code>{{ selectedNode.template_path }}</code>
             </div>
@@ -697,7 +792,7 @@
               :loading="materializingOverride"
               @click="materializeSelectedOverride"
             >
-              创建实例覆盖
+              {{ $t("modeling.workspace.createInstanceOverride") }}
             </el-button>
           </section>
           <el-form
@@ -735,7 +830,7 @@
                   <el-option
                     v-for="option in field.options || []"
                     :key="option"
-                    :label="option || '无'"
+                    :label="option || $t('common.none')"
                     :value="option"
                   />
                 </el-select>
@@ -758,23 +853,35 @@
             <el-empty
               v-if="!visiblePropertyFields.length"
               :image-size="56"
-              description="当前节点没有该分组属性"
+              :description="$t('modeling.workspace.noPropertiesInGroup')"
             />
           </el-form>
-          <el-empty v-else :image-size="64" description="选择节点后编辑属性" />
+          <el-empty
+            v-else
+            :image-size="64"
+            :description="$t('modeling.workspace.selectNodeToEdit')"
+          />
         </el-scrollbar>
         <div v-if="selectedNode" class="property-reference-summary">
-          <span>引用 {{ nodeImpact?.outbound_reference_count || 0 }}</span
-          ><span>被引用 {{ nodeImpact?.inbound_references.length || 0 }}</span>
+          <span
+            >{{ $t("modeling.workspace.references") }}
+            {{ nodeImpact?.outbound_reference_count || 0 }}</span
+          ><span
+            >{{ $t("modeling.workspace.referencedBy") }}
+            {{ nodeImpact?.inbound_references.length || 0 }}</span
+          >
         </div>
         <div class="property-footer">
-          <el-button :disabled="!dirty" @click="resetForm">恢复</el-button>
+          <el-button :disabled="!dirty" @click="resetForm">{{
+            $t("common.restore")
+          }}</el-button>
           <el-button
             type="primary"
             :disabled="!dirty || isSelectedReadOnly"
             :loading="saving"
             @click="saveNode"
-            ><el-icon><DocumentChecked /></el-icon>应用</el-button
+            ><el-icon><DocumentChecked /></el-icon
+            >{{ $t("common.apply") }}</el-button
           >
         </div>
       </aside>
@@ -790,22 +897,31 @@
         @click="validationExpanded = !validationExpanded"
       >
         <el-icon :class="{ rotate: validationExpanded }"><ArrowUp /></el-icon>
-        <strong>问题</strong>
+        <strong>{{ $t("modeling.workspace.issues") }}</strong>
         <template v-if="validationResult">
-          <span class="error-count"
-            >{{ validationResult.error_count }} 错误</span
-          >
-          <span class="warning-count"
-            >{{ validationResult.warning_count }} 警告</span
-          >
+          <span class="error-count">{{
+            $t("modeling.workspace.errorCount", {
+              count: validationResult.error_count,
+            })
+          }}</span>
+          <span class="warning-count">{{
+            $t("modeling.workspace.warningCount", {
+              count: validationResult.warning_count,
+            })
+          }}</span>
           <span v-if="validationResult.passed" class="pass-text"
-            ><el-icon><CircleCheckFilled /></el-icon>校验通过</span
+            ><el-icon><CircleCheckFilled /></el-icon
+            >{{ $t("modeling.workspace.validationPassed") }}</span
           >
         </template>
-        <span v-else class="muted">尚未执行校验</span>
+        <span v-else class="muted">{{
+          $t("modeling.workspace.validationNotRun")
+        }}</span>
         <span class="validation-spacer"></span>
         <small>{{
-          validationExpanded ? "收起面板" : "展开问题、规则与路径"
+          validationExpanded
+            ? $t("modeling.workspace.collapsePanel")
+            : $t("modeling.workspace.expandIssues")
         }}</small>
       </button>
       <el-scrollbar v-if="validationExpanded" class="issue-list">
@@ -830,7 +946,9 @@
           v-else
           :image-size="48"
           :description="
-            validationResult ? '没有发现问题' : '点击右上角“校验模型”开始检查'
+            validationResult
+              ? $t('modeling.workspace.noIssuesFound')
+              : $t('modeling.workspace.clickValidateHint')
           "
         />
       </el-scrollbar>
@@ -840,14 +958,14 @@
       v-model="addDialog.visible"
       :title="
         addDialog.templateMode
-          ? '批量生成数据对象'
+          ? $t('modeling.workspace.batchGenerateDO')
           : isAddingLogicalNode
             ? addDialog.kind === 'LN0'
-              ? '新增零逻辑节点'
-              : '从 LNodeType 新增逻辑节点'
+              ? $t('modeling.workspace.addLLN0')
+              : $t('modeling.workspace.addLNodeFromType')
             : addDialog.batch
-              ? '批量添加模型节点'
-              : '添加模型节点'
+              ? $t('modeling.workspace.batchAddNodes')
+              : $t('modeling.workspace.addNode')
       "
       :width="
         addDialog.templateMode
@@ -865,18 +983,21 @@
         <el-segmented
           :model-value="addDialog.templateMode ? 'template' : 'manual'"
           :options="[
-            { label: '手动添加', value: 'manual' },
-            { label: '批量生成数据对象', value: 'template' },
+            { label: $t('modeling.workspace.manualAdd'), value: 'manual' },
+            {
+              label: $t('modeling.workspace.batchGenerateDO'),
+              value: 'template',
+            },
           ]"
           @change="switchNodeCreationMode"
         />
       </div>
 
       <el-form v-if="!addDialog.templateMode" label-position="top">
-        <el-form-item label="父节点"
+        <el-form-item :label="$t('modeling.workspace.parentNode')"
           ><el-input :model-value="selectedNode?.path" disabled
         /></el-form-item>
-        <el-form-item label="节点类型" required>
+        <el-form-item :label="$t('modeling.workspace.nodeType')" required>
           <el-select
             v-model="addDialog.kind"
             style="width: 100%"
@@ -896,15 +1017,18 @@
             type="info"
             :closable="false"
             show-icon
-            title="逻辑节点通过 lnType 引用 LNodeType；模板中的 DO/DA 会动态继承，不会复制为 DOI/DAI。"
+            :title="$t('modeling.workspace.lnTypeHint')"
           />
-          <el-form-item label="LNodeType 模板" required>
+          <el-form-item
+            :label="$t('modeling.workspace.lnodeTypeTemplate')"
+            required
+          >
             <el-select
               v-model="addDialog.lnType"
               :loading="addDialog.lnodeTypesLoading"
               filterable
               style="width: 100%"
-              placeholder="选择逻辑节点类型"
+              :placeholder="$t('modeling.workspace.selectLNodeType')"
               @change="handleLNodeTypeChange"
             >
               <el-option
@@ -933,43 +1057,46 @@
             >
               {{
                 addDialog.kind === "LN0"
-                  ? "DataTypeTemplates 中没有 LLN0 类型，请先创建 LNodeType。"
-                  : "DataTypeTemplates 中没有可用的逻辑节点类型。"
+                  ? $t("modeling.workspace.noLLN0Type")
+                  : $t("modeling.workspace.noLNodeTypesAvailable")
               }}
             </small>
           </el-form-item>
           <div v-if="addDialog.kind === 'LN'" class="ln-instance-fields">
-            <el-form-item label="前缀 prefix">
+            <el-form-item :label="$t('modeling.workspace.prefix')">
               <el-input
                 v-model="addDialog.prefix"
                 maxlength="11"
-                placeholder="可选"
+                :placeholder="$t('common.optional')"
                 @input="syncLogicalNodeName"
               />
             </el-form-item>
-            <el-form-item label="实例号 inst" required>
+            <el-form-item :label="$t('modeling.workspace.inst')" required>
               <el-input
                 v-model="addDialog.inst"
                 maxlength="12"
-                placeholder="例如 1"
+                :placeholder="$t('modeling.workspace.instPlaceholder')"
                 @input="syncLogicalNodeName"
                 @keyup.enter="createNode"
               />
             </el-form-item>
           </div>
-          <el-form-item label="逻辑节点标识">
+          <el-form-item :label="$t('modeling.workspace.lnIdentifier')">
             <el-input :model-value="logicalNodeDisplayName" disabled />
           </el-form-item>
           <section v-if="selectedLNodeType" class="ln-type-preview-card">
             <div>
-              <span>关联关系</span>
+              <span>{{ $t("modeling.workspace.relation") }}</span>
               <strong>
-                {{ logicalNodeDisplayName || "逻辑节点" }}
+                {{
+                  logicalNodeDisplayName || $t("modeling.workspace.logicalNode")
+                }}
                 <i>→</i>
                 {{ selectedLNodeType.id }}
               </strong>
               <small>{{
-                selectedLNodeType.description || "未填写模板说明"
+                selectedLNodeType.description ||
+                $t("modeling.workspace.noTemplateDescription")
               }}</small>
             </div>
             <div class="ln-type-preview-counts">
@@ -986,11 +1113,19 @@
               v-if="selectedLNodeType.warnings.length"
               type="warning"
               :closable="false"
-              :title="`模板存在 ${selectedLNodeType.warnings.length} 项未解析引用`"
+              :title="
+                $t('modeling.workspace.templateUnresolvedRefs', {
+                  count: selectedLNodeType.warnings.length,
+                })
+              "
             />
           </section>
         </template>
-        <el-form-item v-else label="节点名称" required>
+        <el-form-item
+          v-else
+          :label="$t('modeling.workspace.nodeName')"
+          required
+        >
           <el-input
             v-model="addDialog.name"
             maxlength="128"
@@ -999,7 +1134,7 @@
         </el-form-item>
         <el-form-item
           v-if="addDialog.batch && !isAddingLogicalNode"
-          label="创建数量"
+          :label="$t('modeling.workspace.createCount')"
           required
         >
           <el-input-number
@@ -1008,9 +1143,9 @@
             :max="20"
             controls-position="right"
           />
-          <span class="batch-hint"
-            >按名称尾部数字连续编号，最多一次创建 20 个。</span
-          >
+          <span class="batch-hint">{{
+            $t("modeling.workspace.batchHint")
+          }}</span>
         </el-form-item>
       </el-form>
 
@@ -1023,19 +1158,22 @@
           type="info"
           :closable="false"
           show-icon
-          title="批量创建的 DO 保存在 LNodeType 中；所有引用该类型的 LN 会动态显示这些对象，不会复制 DOI。"
+          :title="$t('modeling.workspace.batchDOHint')"
         />
         <el-form label-position="top">
           <div class="lnode-template-fields">
-            <el-form-item label="名称格式" required>
+            <el-form-item
+              :label="$t('modeling.workspace.namePattern')"
+              required
+            >
               <el-input
                 v-model="lnodeTemplateDialog.namePattern"
-                placeholder="例如 Temp{index}"
+                :placeholder="$t('modeling.workspace.namePatternPlaceholder')"
                 @input="invalidateLNodeTemplatePreview"
               />
-              <small>必须包含一个 <code>{index}</code> 占位符</small>
+              <small>{{ $t("modeling.workspace.namePatternHint") }}</small>
             </el-form-item>
-            <el-form-item label="DOType 引用" required>
+            <el-form-item :label="$t('modeling.workspace.doTypeRef')" required>
               <el-select
                 v-model="lnodeTemplateDialog.doTypeRef"
                 filterable
@@ -1050,7 +1188,7 @@
                 />
               </el-select>
             </el-form-item>
-            <el-form-item label="起始序号" required>
+            <el-form-item :label="$t('modeling.workspace.startIndex')" required>
               <el-input-number
                 v-model="lnodeTemplateDialog.startIndex"
                 :min="0"
@@ -1059,7 +1197,10 @@
                 @change="invalidateLNodeTemplatePreview"
               />
             </el-form-item>
-            <el-form-item label="创建数量" required>
+            <el-form-item
+              :label="$t('modeling.workspace.createCount')"
+              required
+            >
               <el-input-number
                 v-model="lnodeTemplateDialog.quantity"
                 :min="1"
@@ -1068,7 +1209,7 @@
                 @change="invalidateLNodeTemplatePreview"
               />
             </el-form-item>
-            <el-form-item label="序号宽度" required>
+            <el-form-item :label="$t('modeling.workspace.indexWidth')" required>
               <el-input-number
                 v-model="lnodeTemplateDialog.indexWidth"
                 :min="1"
@@ -1078,7 +1219,7 @@
               />
             </el-form-item>
             <div class="lnode-template-example">
-              <span>格式示例</span>
+              <span>{{ $t("modeling.workspace.formatExample") }}</span>
               <code>{{ lnodeTemplateExample }}</code>
             </div>
           </div>
@@ -1090,7 +1231,7 @@
         >
           <header>
             <div>
-              <strong>生成预览</strong>
+              <strong>{{ $t("modeling.workspace.generatePreview") }}</strong>
               <span>
                 {{ lnodeTemplateDialog.preview.target.name }} ·
                 {{ lnodeTemplateDialog.preview.do_type.id }}
@@ -1098,10 +1239,18 @@
             </div>
             <div class="template-preview-counts">
               <el-tag type="primary">
-                新增 {{ lnodeTemplateDialog.preview.summary.create }}
+                {{
+                  $t("modeling.workspace.newCount", {
+                    count: lnodeTemplateDialog.preview.summary.create,
+                  })
+                }}
               </el-tag>
               <el-tag type="success">
-                复用 {{ lnodeTemplateDialog.preview.summary.keep }}
+                {{
+                  $t("modeling.workspace.reuseCount", {
+                    count: lnodeTemplateDialog.preview.summary.keep,
+                  })
+                }}
               </el-tag>
               <el-tag
                 :type="
@@ -1110,7 +1259,11 @@
                     : 'info'
                 "
               >
-                冲突 {{ lnodeTemplateDialog.preview.summary.conflict }}
+                {{
+                  $t("modeling.workspace.conflictCount", {
+                    count: lnodeTemplateDialog.preview.summary.conflict,
+                  })
+                }}
               </el-tag>
             </div>
           </header>
@@ -1119,13 +1272,20 @@
             height="280"
             size="small"
           >
-            <el-table-column prop="name" label="DO 名称" min-width="180" />
+            <el-table-column
+              prop="name"
+              :label="$t('modeling.workspace.doName')"
+              min-width="180"
+            />
             <el-table-column
               prop="attributes.type"
               label="DOType"
               min-width="180"
             />
-            <el-table-column label="处理" width="90">
+            <el-table-column
+              :label="$t('modeling.workspace.action')"
+              width="90"
+            >
               <template #default="{ row }">
                 <el-tag
                   size="small"
@@ -1139,29 +1299,35 @@
                 >
                   {{
                     row.action === "CREATE"
-                      ? "新增"
+                      ? $t("modeling.workspace.createNew")
                       : row.action === "KEEP"
-                        ? "复用"
-                        : "冲突"
+                        ? $t("modeling.workspace.reuse")
+                        : $t("modeling.workspace.conflict")
                   }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="reason" label="说明" min-width="220" />
+            <el-table-column
+              prop="reason"
+              :label="$t('modeling.workspace.description')"
+              min-width="220"
+            />
           </el-table>
         </section>
       </div>
 
       <template #footer>
         <div class="add-dialog-footer">
-          <el-button @click="addDialog.visible = false">取消</el-button>
+          <el-button @click="addDialog.visible = false">{{
+            $t("common.cancel")
+          }}</el-button>
           <div v-if="addDialog.templateMode" class="template-footer-actions">
             <el-button
               :loading="lnodeTemplateDialog.previewing"
               :disabled="!canPreviewLNodeTemplate"
               @click="previewLNodeTemplate"
             >
-              生成预览
+              {{ $t("modeling.workspace.generatePreview") }}
             </el-button>
             <el-tooltip
               :content="lNodeTemplateApplyHint"
@@ -1175,7 +1341,7 @@
                   :disabled="!canApplyLNodeTemplate"
                   @click="applyLNodeTemplate"
                 >
-                  应用
+                  {{ $t("common.apply") }}
                 </el-button>
               </span>
             </el-tooltip>
@@ -1188,7 +1354,11 @@
             @click="createNode"
           >
             {{
-              addDialog.batch ? `创建 ${addDialog.quantity} 个节点` : "确认添加"
+              addDialog.batch
+                ? $t("modeling.workspace.createNCount", {
+                    count: addDialog.quantity,
+                  })
+                : $t("modeling.workspace.confirmAdd")
             }}
           </el-button>
         </div>
@@ -1198,7 +1368,7 @@
     <!-- 已整合进“添加模型节点”弹窗，保留结构仅用于本次迁移对照。
     <el-dialog
       v-model="lnodeTemplateDialog.visible"
-      title="从参数化模板添加数据对象"
+      :title="$t('modeling.workspace.lnodeTemplateTitle')"
       width="780px"
       destroy-on-close
     >
@@ -1210,19 +1380,19 @@
           type="info"
           :closable="false"
           show-icon
-          title="批量创建的 DO 保存在 LNodeType 中；所有引用该类型的 LN 会动态显示这些对象，不会复制 DOI。"
+          :title="$t('modeling.workspace.lnodeTemplateDesc')"
         />
         <el-form label-position="top">
           <div class="lnode-template-fields">
-            <el-form-item label="名称格式" required>
+            <el-form-item :label="$t('modeling.workspace.namePattern')" required>
               <el-input
                 v-model="lnodeTemplateDialog.namePattern"
-                placeholder="例如 Temp{index}"
+                :placeholder="$t('modeling.workspace.namePatternPlaceholder')"
                 @input="invalidateLNodeTemplatePreview"
               />
-              <small>必须包含一个 <code>{index}</code> 占位符</small>
+              <small v-html="$t('modeling.workspace.namePatternHint')"></small>
             </el-form-item>
-            <el-form-item label="DOType 引用" required>
+            <el-form-item :label="$t('modeling.workspace.doTypeRef')" required>
               <el-select
                 v-model="lnodeTemplateDialog.doTypeRef"
                 filterable
@@ -1237,7 +1407,7 @@
                 />
               </el-select>
             </el-form-item>
-            <el-form-item label="起始序号" required>
+            <el-form-item :label="$t('modeling.workspace.startIndex')" required>
               <el-input-number
                 v-model="lnodeTemplateDialog.startIndex"
                 :min="0"
@@ -1246,7 +1416,7 @@
                 @change="invalidateLNodeTemplatePreview"
               />
             </el-form-item>
-            <el-form-item label="创建数量" required>
+            <el-form-item :label="$t('modeling.workspace.createCount')" required>
               <el-input-number
                 v-model="lnodeTemplateDialog.quantity"
                 :min="1"
@@ -1255,7 +1425,7 @@
                 @change="invalidateLNodeTemplatePreview"
               />
             </el-form-item>
-            <el-form-item label="序号宽度" required>
+            <el-form-item :label="$t('modeling.workspace.indexWidth')" required>
               <el-input-number
                 v-model="lnodeTemplateDialog.indexWidth"
                 :min="1"
@@ -1265,7 +1435,7 @@
               />
             </el-form-item>
             <div class="lnode-template-example">
-              <span>格式示例</span>
+              <span>{{ $t('modeling.workspace.formatExample') }}</span>
               <code>{{ lnodeTemplateExample }}</code>
             </div>
           </div>
@@ -1277,7 +1447,7 @@
         >
           <header>
             <div>
-              <strong>生成预览</strong>
+              <strong>{{ $t('modeling.workspace.generatePreview') }}</strong>
               <span>
                 {{ lnodeTemplateDialog.preview.target.name }} ·
                 {{ lnodeTemplateDialog.preview.do_type.id }}
@@ -1285,10 +1455,10 @@
             </div>
             <div class="template-preview-counts">
               <el-tag type="primary">
-                新增 {{ lnodeTemplateDialog.preview.summary.create }}
+                {{ $t('modeling.workspace.previewCreate', { count: lnodeTemplateDialog.preview.summary.create }) }}
               </el-tag>
               <el-tag type="success">
-                复用 {{ lnodeTemplateDialog.preview.summary.keep }}
+                {{ $t('modeling.workspace.previewKeep', { count: lnodeTemplateDialog.preview.summary.keep }) }}
               </el-tag>
               <el-tag
                 :type="
@@ -1297,7 +1467,7 @@
                     : 'info'
                 "
               >
-                冲突 {{ lnodeTemplateDialog.preview.summary.conflict }}
+                {{ $t('modeling.workspace.previewConflict', { count: lnodeTemplateDialog.preview.summary.conflict }) }}
               </el-tag>
             </div>
           </header>
@@ -1306,13 +1476,13 @@
             height="280"
             size="small"
           >
-            <el-table-column prop="name" label="DO 名称" min-width="180" />
+            <el-table-column prop="name" :label="$t('modeling.workspace.doName')" min-width="180" />
             <el-table-column
               prop="attributes.type"
               label="DOType"
               min-width="180"
             />
-            <el-table-column label="处理" width="90">
+            <el-table-column :label="$t('modeling.workspace.action')" width="90">
               <template #default="{ row }">
                 <el-tag
                   size="small"
@@ -1326,26 +1496,26 @@
                 >
                   {{
                     row.action === "CREATE"
-                      ? "新增"
+                      ? $t('modeling.workspace.actionCreate')
                       : row.action === "KEEP"
-                        ? "复用"
-                        : "冲突"
+                        ? $t('modeling.workspace.actionKeep')
+                        : $t('modeling.workspace.actionConflict')
                   }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="reason" label="说明" min-width="220" />
+            <el-table-column prop="reason" :label="$t('modeling.workspace.reason')" min-width="220" />
           </el-table>
         </section>
       </div>
       <template #footer>
-        <el-button @click="lnodeTemplateDialog.visible = false">取消</el-button>
+        <el-button @click="lnodeTemplateDialog.visible = false">{{ $t('common.cancel') }}</el-button>
         <el-button
           :loading="lnodeTemplateDialog.previewing"
           :disabled="!canPreviewLNodeTemplate"
           @click="previewLNodeTemplate"
         >
-          生成预览
+          {{ $t('modeling.workspace.generatePreview') }}
         </el-button>
         <el-tooltip
           :content="lNodeTemplateApplyHint"
@@ -1359,7 +1529,7 @@
               :disabled="!canApplyLNodeTemplate"
               @click="applyLNodeTemplate"
             >
-              应用
+              {{ $t('modeling.workspace.apply') }}
             </el-button>
           </span>
         </el-tooltip>
@@ -1369,7 +1539,7 @@
 
     <el-dialog
       v-model="deleteDialog.visible"
-      title="删除影响确认"
+      :title="$t('modeling.workspace.deleteImpactConfirm')"
       width="560px"
     >
       <div v-loading="deleteDialog.loading" class="delete-impact">
@@ -1392,67 +1562,76 @@
         <div class="impact-stats">
           <div>
             <strong>{{ deleteDialog.impact?.subtree_count ?? "--" }}</strong
-            ><span>将删除节点</span>
+            ><span>{{ $t("modeling.workspace.nodesWillBeDeleted") }}</span>
           </div>
           <div>
             <strong>{{
               deleteDialog.impact?.inbound_references.length ?? "--"
             }}</strong
-            ><span>外部引用</span>
+            ><span>{{ $t("modeling.workspace.externalReferences") }}</span>
           </div>
           <div>
             <strong>{{
               deleteDialog.impact?.outbound_reference_count ?? "--"
             }}</strong
-            ><span>下游引用</span>
+            ><span>{{ $t("modeling.workspace.downstreamReferences") }}</span>
           </div>
         </div>
-        <p>删除会同时移除该节点的全部下级结构，此操作不可撤销。</p>
+        <p>{{ $t("modeling.workspace.deleteIrreversibleWarning") }}</p>
       </div>
       <template #footer>
-        <el-button @click="deleteDialog.visible = false">取消</el-button>
+        <el-button @click="deleteDialog.visible = false">{{
+          $t("common.cancel")
+        }}</el-button>
         <el-button
           type="danger"
           :disabled="!deleteDialog.impact?.can_delete"
           :loading="deleteDialog.deleting"
           @click="deleteNode"
-          >确认删除</el-button
+          >{{ $t("modeling.workspace.confirmDelete") }}</el-button
         >
       </template>
     </el-dialog>
 
     <el-drawer
       v-model="versionsDrawer.visible"
-      title="模型版本"
+      :title="$t('modeling.workspace.modelVersions')"
       size="480px"
       destroy-on-close
     >
       <div class="version-create-card">
         <div class="version-create-title">
-          <strong>创建当前快照</strong
-          ><small>保存 r{{ project?.revision }} 的完整模型结构</small>
+          <strong>{{ $t("modeling.workspace.createCurrentSnapshot") }}</strong
+          ><small>{{
+            $t("modeling.workspace.createSnapshotDesc", {
+              rev: project?.revision,
+            })
+          }}</small>
         </div>
         <el-input
           v-model="versionsDrawer.label"
           maxlength="128"
-          placeholder="版本名称，例如：保护配置初稿"
+          :placeholder="$t('modeling.workspace.snapshotNamePlaceholder')"
         />
         <el-input
           v-model="versionsDrawer.description"
           type="textarea"
           :rows="2"
           maxlength="512"
-          placeholder="版本说明（可选）"
+          :placeholder="$t('modeling.workspace.snapshotDescPlaceholder')"
         />
         <el-button
           type="primary"
           :loading="versionsDrawer.creating"
           @click="createVersion"
-          >创建快照</el-button
+          >{{ $t("modeling.workspace.createSnapshot") }}</el-button
         >
       </div>
       <div class="version-list-heading">
-        <strong>历史版本</strong><span>{{ versions.length }} 个版本</span>
+        <strong>{{ $t("modeling.workspace.historyVersions") }}</strong
+        ><span>{{
+          $t("modeling.workspace.versionCount", { count: versions.length })
+        }}</span>
       </div>
       <div v-loading="versionsDrawer.loading" class="version-list">
         <article
@@ -1473,39 +1652,44 @@
                 v-if="version.status === 'PUBLISHED'"
                 type="success"
                 size="small"
-                >已发布</el-tag
+                >{{ $t("modeling.workspace.published") }}</el-tag
               >
             </div>
-            <p>{{ version.description || "无版本说明" }}</p>
+            <p>
+              {{
+                version.description ||
+                $t("modeling.workspace.noVersionDescription")
+              }}
+            </p>
             <small
               >源修订 r{{ version.source_revision }} ·
               {{ formatDateTime(version.created_at) }}</small
             >
           </div>
           <div class="version-actions">
-            <el-button text type="primary" @click="restoreVersion(version)"
-              >恢复</el-button
-            >
+            <el-button text type="primary" @click="restoreVersion(version)">{{
+              $t("modeling.workspace.restore")
+            }}</el-button>
             <el-button
               v-if="version.status !== 'PUBLISHED'"
               text
               type="danger"
               @click="deleteVersion(version)"
-              >删除</el-button
+              >{{ $t("common.delete") }}</el-button
             >
           </div>
         </article>
         <el-empty
           v-if="!versionsDrawer.loading && !versions.length"
           :image-size="64"
-          description="还没有版本快照"
+          :description="$t('modeling.workspace.noSnapshotsYet')"
         />
       </div>
     </el-drawer>
 
     <el-dialog
       v-model="previewDialog.visible"
-      title="SCL XML 预览"
+      :title="$t('modeling.workspace.sclXmlPreview')"
       width="82%"
       top="5vh"
       destroy-on-close
@@ -1520,7 +1704,8 @@
           >
         </div>
         <el-button :loading="downloading" @click="downloadScl"
-          ><el-icon><Download /></el-icon>下载文件</el-button
+          ><el-icon><Download /></el-icon
+          >{{ $t("modeling.workspace.downloadFile") }}</el-button
         >
       </div>
       <el-scrollbar class="xml-preview">
@@ -1535,7 +1720,7 @@
 
     <el-dialog
       v-model="publishDialog.visible"
-      title="发布模型"
+      :title="$t('modeling.workspace.publishModel')"
       width="520px"
       destroy-on-close
     >
@@ -1543,7 +1728,7 @@
         type="warning"
         :closable="false"
         show-icon
-        title="发布前会重新执行结构校验与 SCL 完整性校验。"
+        :title="$t('modeling.workspace.publishValidationNotice')"
       />
       <el-alert
         v-if="extensionStats.total"
@@ -1553,42 +1738,51 @@
         show-icon
         :title="
           extensionStats.lossy
-            ? `存在 ${extensionStats.lossy} 个有损扩展，当前不能发布`
-            : `模型包含 ${extensionStats.total} 个只读保真扩展`
+            ? $t('modeling.workspace.lossyCannotPublish', {
+                count: extensionStats.lossy,
+              })
+            : $t('modeling.workspace.fidelityExtensionPublishCount', {
+                count: extensionStats.total,
+              })
         "
         :description="
           extensionStats.lossy
-            ? '请先处理标记为有损风险的 XML 片段，再执行发布。'
-            : '这些扩展会随 SCL 一并保留；发布校验会再次检查是否存在确认的有损风险。'
+            ? $t('modeling.workspace.lossyCannotPublishDesc')
+            : $t('modeling.workspace.fidelityExtensionPublishDesc')
         "
       />
       <el-form label-position="top" class="publish-form">
-        <el-form-item label="发布版本名称" required>
+        <el-form-item
+          :label="$t('modeling.workspace.publishLabelName')"
+          required
+        >
           <el-input
             v-model="publishDialog.label"
             maxlength="128"
-            placeholder="例如：现场投运 V1.0"
+            :placeholder="$t('modeling.workspace.publishLabelPlaceholder')"
           />
         </el-form-item>
-        <el-form-item label="发布说明">
+        <el-form-item :label="$t('modeling.workspace.publishDescriptionLabel')">
           <el-input
             v-model="publishDialog.description"
             type="textarea"
             :rows="3"
             maxlength="512"
-            placeholder="记录本次发布的范围和变更"
+            :placeholder="$t('modeling.workspace.publishDescPlaceholder')"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="publishDialog.visible = false">取消</el-button>
+        <el-button @click="publishDialog.visible = false">{{
+          $t("common.cancel")
+        }}</el-button>
         <el-button
           type="success"
           :loading="publishDialog.publishing"
           :disabled="!publishDialog.label.trim() || extensionStats.lossy > 0"
           @click="publishProject"
         >
-          校验并发布
+          {{ $t("modeling.workspace.validateAndPublish") }}
         </el-button>
       </template>
     </el-dialog>
@@ -1609,6 +1803,7 @@ import {
 } from "vue";
 import type { Component } from "vue";
 import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox, type TreeV2Instance } from "element-plus";
 import {
   ArrowDown,
@@ -1667,6 +1862,7 @@ import type {
 
 const props = defineProps<{ projectId: string }>();
 const router = useRouter();
+const { t } = useI18n();
 const initialLoading = ref(true);
 const saving = ref(false);
 const materializingOverride = ref(false);
@@ -2039,12 +2235,18 @@ const canApplyLNodeTemplate = computed(
 );
 const lNodeTemplateApplyHint = computed(() => {
   const preview = lnodeTemplateDialog.preview;
-  if (!preview) return "请先生成预览";
+  if (!preview) return t("modeling.workspace.templateApplyHintGenerateFirst");
   if (preview.summary.conflict) {
-    return `存在 ${preview.summary.conflict} 个同名异构冲突，请调整参数后重新预览`;
+    return t("modeling.workspace.templateApplyHintConflicts", {
+      count: preview.summary.conflict,
+    });
   }
-  if (!preview.summary.create) return "所有 DO 已存在，无需重复创建";
-  return `一次性创建 ${preview.summary.create} 个 DO，复用 ${preview.summary.keep} 个已有 DO`;
+  if (!preview.summary.create)
+    return t("modeling.workspace.templateApplyHintAllExist");
+  return t("modeling.workspace.templateApplyHintSummary", {
+    create: preview.summary.create,
+    keep: preview.summary.keep,
+  });
 });
 const referenceTotal = computed(
   () =>
@@ -2079,7 +2281,9 @@ const visiblePropertyFields = computed(() =>
 );
 const addActionLabel = computed(() => {
   const children = availableChildOptions.value;
-  return children.length === 1 ? `添加${children[0].label}` : "添加子节点";
+  return children.length === 1
+    ? t("modeling.workspace.addSpecificType", { type: children[0].label })
+    : t("modeling.workspace.addChildNode");
 });
 
 watch(
@@ -2301,7 +2505,7 @@ async function selectNode(data: ModelNode) {
   if (isTreeLoadingPlaceholder(data)) return;
   data = treeNodeIndex.get(data.id) || data;
   if (dirty.value && selectedNode.value?.id !== data.id) {
-    ElMessage.warning("请先保存或撤销右侧未保存的属性修改");
+    ElMessage.warning(t("modeling.workspace.unsavedChangesWarning"));
     await nextTick();
     treeRef.value?.setCurrentKey(selectedNode.value?.id || "");
     return;
@@ -3012,53 +3216,46 @@ function childStatus(node: ModelNode): "ERROR" | "WARNING" | "NORMAL" {
 }
 
 function statusText(status: "ERROR" | "WARNING" | "NORMAL") {
-  return ({ ERROR: "错误", WARNING: "警告", NORMAL: "正常" } as const)[status];
+  return (
+    {
+      ERROR: t("modeling.workspace.statusError"),
+      WARNING: t("modeling.workspace.statusWarning"),
+      NORMAL: t("modeling.workspace.statusNormal"),
+    } as const
+  )[status];
 }
 
 function nodeDescription(kind: string) {
-  return (
-    (
-      {
-        ROOT: "当前工程的模型根节点，包含 SCL 头、IED 和数据类型模板。",
-        IED: "智能电子设备，是访问点、服务与逻辑设备的容器。",
-        LDEVICE: "逻辑设备由 LLN0 和若干业务逻辑节点组成。",
-        LN0: "LLN0 管理数据集、报告和 GOOSE 控制配置。",
-        LN: "逻辑节点承载设备功能及其实例化数据对象。",
-        DATA_TYPE_TEMPLATES:
-          "集中维护逻辑节点、数据对象、数据属性和枚举类型定义。",
-      } as Record<string, string>
-    )[kind] || "选择右侧属性表单可编辑该节点的 IEC 61850 配置。"
-  );
+  const descriptions: Record<string, string> = {
+    ROOT: t("modeling.workspace.nodeDescRoot"),
+    IED: t("modeling.workspace.nodeDescIED"),
+    LDEVICE: t("modeling.workspace.nodeDescLDevice"),
+    LN0: t("modeling.workspace.nodeDescLN0"),
+    LN: t("modeling.workspace.nodeDescLN"),
+    DATA_TYPE_TEMPLATES: t("modeling.workspace.nodeDescDataTypeTemplates"),
+  };
+  return descriptions[kind] || t("modeling.workspace.nodeDescDefault");
 }
 
 function operationHint(kind: string) {
-  return (
-    (
-      {
-        ROOT: "建议先选择标准配置档并完善类型模板，再实例化 IED；Communication 可在生成 CID 时补充。",
-        IED: "一个 IED 可以包含多个 AccessPoint。现场常见装置可从一个 AP1 开始。",
-        LDEVICE:
-          "LLN0 已自动创建。请按装置功能添加 PTOC、XCBR、MMXU 等逻辑节点。",
-        LN0: "报告与 GOOSE 控制块应先创建 DataSet，再填写 datSet 引用。",
-        DATA_TYPE_TEMPLATES:
-          "按依赖关系维护 EnumType/DAType、DOType、LNodeType；引用字段会提供当前工程中的可选目标。",
-      } as Record<string, string>
-    )[kind] ||
-    "使用左下角“添加子节点”，右侧保存属性；删除前系统会先展示影响范围。"
-  );
+  const hints: Record<string, string> = {
+    ROOT: t("modeling.workspace.hintRoot"),
+    IED: t("modeling.workspace.hintIED"),
+    LDEVICE: t("modeling.workspace.hintLDevice"),
+    LN0: t("modeling.workspace.hintLN0"),
+    DATA_TYPE_TEMPLATES: t("modeling.workspace.hintDataTypeTemplates"),
+  };
+  return hints[kind] || t("modeling.workspace.hintDefault");
 }
 
 function projectStatusLabel(status: ModelProject["status"]) {
-  return (
-    (
-      {
-        DRAFT: "草稿",
-        VALID: "校验通过",
-        PUBLISHED: "已发布",
-        ARCHIVED: "已归档",
-      } as const
-    )[status] || status
-  );
+  const labels: Record<string, string> = {
+    DRAFT: t("modeling.workspace.statusDraft"),
+    VALID: t("modeling.workspace.statusValid"),
+    PUBLISHED: t("modeling.workspace.statusPublished"),
+    ARCHIVED: t("modeling.workspace.statusArchived"),
+  };
+  return labels[status] || status;
 }
 
 function formatDateTime(value: string) {

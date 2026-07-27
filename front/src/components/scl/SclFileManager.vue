@@ -196,11 +196,15 @@ function handleDiff(row: SclFileInfo) {
 async function handleDelete(row: SclFileInfo) {
   const name = getFileName(row);
   try {
-    await ElMessageBox.confirm('确定删除文件 "' + name + '"？', "提示", {
-      confirmButtonText: t("common.confirm"),
-      cancelButtonText: t("common.cancel"),
-      type: "warning",
-    });
+    await ElMessageBox.confirm(
+      t("scl.confirmDelete", { name }),
+      t("common.hint"),
+      {
+        confirmButtonText: t("common.confirm"),
+        cancelButtonText: t("common.cancel"),
+        type: "warning",
+      },
+    );
     await deleteSclFile(name);
     await loadFiles();
   } catch {

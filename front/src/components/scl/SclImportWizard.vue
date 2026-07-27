@@ -86,6 +86,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { getSclFileList, previewSclFile, importSclFile } from "@/api/sclApi";
 import type {
@@ -103,6 +104,7 @@ import SclUploadDialog from "./SclUploadDialog.vue";
 
 const emit = defineEmits<{ (e: "close"): void }>();
 const router = useRouter();
+const { t } = useI18n();
 
 const currentStep = ref(0);
 const fileList = ref<SclFileInfo[]>([]);
@@ -166,7 +168,7 @@ async function startImport() {
     return;
   }
 
-  importLogs.value.push(`[${time()}] 解析 ICD 文件成功`);
+  importLogs.value.push(`[${time()}] ${t("scl.importLogParseDone")}`);
   importProgress.value = 20;
 
   try {
@@ -181,7 +183,7 @@ async function startImport() {
     importResult.value = result;
     importProgress.value = 100;
     importLogs.value.push(
-      `[${time()}] ${result.success ? "✓ 导入完成" : "✗ 导入失败"}`,
+      `[${time()}] ${result.success ? t("scl.importLogDone") : t("scl.importLogFailed")}`,
     );
 
     // 导入成功后自动跳转到设备页面
@@ -191,7 +193,7 @@ async function startImport() {
         const channel = channels.find((c) => c.id === opts.channelId);
         if (channel) {
           importLogs.value.push(
-            `[${time()}] 正在跳转到 ${channel.name} 设备页面...`,
+            `[${time()}] ${t("scl.importingJumpTo", { name: channel.name })}`,
           );
           setTimeout(() => {
             router.push(`/device/${channel.name}`);
@@ -211,10 +213,10 @@ async function startImport() {
       yt: 0,
       goose_count: 0,
       report_count: 0,
-      errors: ["导入失败"],
+      errors: [t("scl.importFailed")],
       warnings: [],
     };
-    importLogs.value.push(`[${time()}] ✗ 导入失败`);
+    importLogs.value.push(`[${time()}] ${t("scl.importLogFailed")}`);
   } finally {
     await resumeAndExit();
   }

@@ -23,10 +23,12 @@
 import { ref, computed, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
+import { useI18n } from "vue-i18n";
 import { showErrorOnce } from "@/api/http";
 import { getSclFileContent } from "@/api/sclApi";
 
 const route = useRoute();
+const { t } = useI18n();
 const fileName = ref("");
 const content = ref("");
 const loading = ref(false);
@@ -58,9 +60,9 @@ async function loadContent() {
 async function copyContent() {
   try {
     await navigator.clipboard.writeText(content.value);
-    ElMessage.success("已复制");
+    ElMessage.success(t("scl.copySuccess"));
   } catch {
-    showErrorOnce("复制失败");
+    showErrorOnce(t("scl.copyFailed"));
   }
 }
 

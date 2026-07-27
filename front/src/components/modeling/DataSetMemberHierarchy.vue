@@ -1,10 +1,10 @@
 <template>
   <div ref="containerRef" v-loading="loading" class="dataset-hierarchy">
     <div class="hierarchy-columns">
-      <span>DataModel 层级 / FCDA 引用</span>
-      <span>类型</span>
+      <span>{{ $t("modeling.datasetMemberHierarchy.header") }}</span>
+      <span>{{ $t("modeling.datasetMemberHierarchy.type") }}</span>
       <span>FC</span>
-      <span>状态</span>
+      <span>{{ $t("modeling.datasetMemberHierarchy.status") }}</span>
     </div>
     <el-tree-v2
       :data="treeData"
@@ -32,8 +32,8 @@
           <span class="hierarchy-type">{{
             data.member
               ? data.member.attributes.daName
-                ? "DA 精确"
-                : "DO 整组"
+                ? $t("modeling.datasetMemberHierarchy.daExact")
+                : $t("modeling.datasetMemberHierarchy.doGroup")
               : groupTypeLabel(data.type)
           }}</span>
           <el-tag
@@ -46,7 +46,14 @@
           </el-tag>
           <span v-else></span>
           <span class="hierarchy-status" :class="{ group: !data.member }">
-            <i></i>{{ data.member ? "有效" : `${data.leafCount || 0} 项` }}
+            <i></i
+            >{{
+              data.member
+                ? $t("modeling.datasetMemberHierarchy.active")
+                : $t("modeling.datasetMemberHierarchy.itemCount", {
+                    count: data.leafCount || 0,
+                  })
+            }}
           </span>
         </div>
       </template>
@@ -54,7 +61,7 @@
     <el-empty
       v-if="!loading && !treeData.length"
       :image-size="64"
-      description="当前 DataSet 尚未添加成员"
+      :description="$t('modeling.datasetMemberHierarchy.noMembers')"
     />
   </div>
 </template>
@@ -68,6 +75,7 @@ import {
   shallowRef,
   watch,
 } from "vue";
+import { useI18n } from "vue-i18n";
 import type { ModelNode } from "@/types/modeling";
 
 interface HierarchyNode {
@@ -82,6 +90,8 @@ interface HierarchyNode {
 
 const props = defineProps<{ members: ModelNode[] }>();
 const emit = defineEmits<{ select: [member: ModelNode] }>();
+
+const { t } = useI18n();
 
 const containerRef = ref<HTMLElement>();
 const treeHeight = ref(320);
@@ -141,17 +151,18 @@ function buildHierarchyOffMainThread(members: ModelNode[]) {
   }
   buildWorker?.terminate();
   const source = `
-    self.onmessage = ({ data: members }) => {
+    self.onmessage = ({ data }) => {
+      const { members, labels } = data;
       const roots = new Map();
       const logicalNodes = new Map();
       const dataObjects = new Map();
       for (const member of members) {
         if (member.kind !== "FCDA") continue;
         const attrs = member.attributes || {};
-        const ld = String(attrs.ldInst || "(当前 LD)");
-        const ln = [attrs.prefix || "", attrs.lnClass || "", attrs.lnInst || ""].join("") || "(当前 LN)";
-        const doName = String(attrs.doName || "(DO 未设置)");
-        const daName = String(attrs.daName || "(DO 级引用)");
+        const ld = String(attrs.ldInst || labels.currentLD);
+        const ln = [attrs.prefix || "", attrs.lnClass || "", attrs.lnInst || ""].join("") || labels.currentLN;
+        const doName = String(attrs.doName || labels.doNotSet);
+        const daName = String(attrs.daName || labels.doLevelRef);
         let ldNode = roots.get(ld);
         if (!ldNode) {
           ldNode = { id: "ds-ld:" + ld, label: ld, type: "ld", leafCount: 0, children: [] };
@@ -217,9 +228,17 @@ function buildHierarchyOffMainThread(members: ModelNode[]) {
     };
     worker.onerror = (event) => {
       cleanup();
-      reject(new Error(event.message || "DataSet 层级构建失败"));
+      reject(new Error(t("common.requestFailed")));
     };
-    worker.postMessage(members);
+    worker.postMessage({
+      members,
+      labels: {
+        currentLD: t("modeling.datasetMemberHierarchy.currentLD"),
+        currentLN: t("modeling.datasetMemberHierarchy.currentLN"),
+        doNotSet: t("modeling.datasetMemberHierarchy.doNotSet"),
+        doLevelRef: t("modeling.datasetMemberHierarchy.doLevelRef"),
+      },
+    });
   });
 }
 
@@ -227,16 +246,20 @@ function buildHierarchy(members: ModelNode[]): HierarchyNode[] {
   const roots = new Map<string, HierarchyNode>();
   const logicalNodes = new Map<string, HierarchyNode>();
   const dataObjects = new Map<string, HierarchyNode>();
+  const currentLD = t("modeling.datasetMemberHierarchy.currentLD");
+  const currentLN = t("modeling.datasetMemberHierarchy.currentLN");
+  const doNotSet = t("modeling.datasetMemberHierarchy.doNotSet");
+  const doLevelRef = t("modeling.datasetMemberHierarchy.doLevelRef");
   for (const member of members) {
     if (member.kind !== "FCDA") continue;
     const attributes = member.attributes;
-    const ld = String(attributes.ldInst || "(当前 LD)");
+    const ld = String(attributes.ldInst || currentLD);
     const ln =
       ["prefix", "lnClass", "lnInst"]
         .map((key) => String(attributes[key] || ""))
-        .join("") || "(当前 LN)";
-    const doName = String(attributes.doName || "(DO 未设置)");
-    const daName = String(attributes.daName || "(DO 级引用)");
+        .join("") || currentLN;
+    const doName = String(attributes.doName || doNotSet);
+    const daName = String(attributes.daName || doLevelRef);
     let ldNode = roots.get(ld);
     if (!ldNode) {
       ldNode = {

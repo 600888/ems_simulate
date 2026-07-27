@@ -3,28 +3,29 @@
  * 集中管理 axios 实例、拦截器、通用请求方法
  */
 
-import axios from 'axios';
-import { ElMessage } from 'element-plus';
-import 'element-plus/es/components/message/style/css';
-import { HTTP_TIMEOUT, ERROR_DEBOUNCE_MS } from '@/constants';
+import axios from "axios";
+import { ElMessage } from "element-plus";
+import "element-plus/es/components/message/style/css";
+import { HTTP_TIMEOUT, ERROR_DEBOUNCE_MS } from "@/constants";
+import i18n from "@/i18n";
 
-const API_BASE_URL = import.meta.env.VUE_APP_API_BASE || '/';
+const API_BASE_URL = import.meta.env.VUE_APP_API_BASE || "/";
 
 export const instance = axios.create({
   baseURL: API_BASE_URL,
   timeout: HTTP_TIMEOUT,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
 // 错误消息去重：避免后端阻塞时多个请求同时超时导致不停弹窗
-let lastErrorMessage = '';
+let lastErrorMessage = "";
 let lastErrorTime = 0;
 // 最多同时显示 3 条错误消息
 const MAX_ERROR_COUNT = 3;
 const activeErrorMessages: { close: () => void }[] = [];
-const ERROR_NOTIFIED = Symbol('error-notified');
+const ERROR_NOTIFIED = Symbol("error-notified");
 
 type NotifiedError = Error & { [ERROR_NOTIFIED]?: boolean };
 
@@ -34,7 +35,9 @@ function markErrorNotified(error: Error): Error {
 }
 
 function isErrorNotified(error: unknown): boolean {
-  return error instanceof Error && Boolean((error as NotifiedError)[ERROR_NOTIFIED]);
+  return (
+    error instanceof Error && Boolean((error as NotifiedError)[ERROR_NOTIFIED])
+  );
 }
 
 export function showErrorOnce(message: string) {
@@ -61,54 +64,57 @@ export function showErrorOnce(message: string) {
 }
 
 /** 展示异常中的真实原因；同一个 HTTP 异常只通知一次。 */
-export function showError(error: unknown, fallback = '请求失败') {
+export function showError(error: unknown, fallback?: string) {
   if (isErrorNotified(error)) return;
-  const message = getApiErrorMessage(error, fallback);
+  const fallbackMsg = fallback ?? i18n.global.t("common.requestFailed");
+  const message = getApiErrorMessage(error, fallbackMsg);
   showErrorOnce(message);
   if (error instanceof Error) markErrorNotified(error);
 }
 
 function extractErrorText(value: unknown): string {
-  if (typeof value === 'string') return value.trim();
+  if (typeof value === "string") return value.trim();
   if (value instanceof Error) return value.message.trim();
   if (Array.isArray(value)) {
     return value
       .map((item) => extractErrorText(item))
       .filter(Boolean)
-      .join('；');
+      .join("；");
   }
-  if (value && typeof value === 'object') {
+  if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
-    const nested = extractErrorText(record.message) || extractErrorText(record.detail);
+    const nested =
+      extractErrorText(record.message) || extractErrorText(record.detail);
     if (nested) return nested;
-    if (typeof record.msg === 'string' && record.msg.trim()) {
-      const location = Array.isArray(record.loc) ? record.loc.join('.') : '';
+    if (typeof record.msg === "string" && record.msg.trim()) {
+      const location = Array.isArray(record.loc) ? record.loc.join(".") : "";
       return location ? `${location}: ${record.msg.trim()}` : record.msg.trim();
     }
   }
-  return '';
+  return "";
 }
 
-export function getApiErrorMessage(error: unknown, fallback = '请求失败'): string {
+export function getApiErrorMessage(error: unknown, fallback?: string): string {
+  const actualFallback = fallback ?? i18n.global.t("common.requestFailed");
   if (axios.isAxiosError(error)) {
     const respData = error.response?.data;
 
     if (respData) {
-      if (typeof respData === 'object') {
+      if (typeof respData === "object") {
         const responseMessage = extractErrorText(
-          (respData as { message?: unknown }).message
-          ?? (respData as { detail?: unknown }).detail,
+          (respData as { message?: unknown }).message ??
+            (respData as { detail?: unknown }).detail,
         );
         if (responseMessage) return responseMessage;
       }
 
-      if (typeof respData === 'string' && respData.trim()) {
+      if (typeof respData === "string" && respData.trim()) {
         try {
           const parsed = JSON.parse(respData);
-          if (typeof parsed?.message === 'string' && parsed.message.trim()) {
+          if (typeof parsed?.message === "string" && parsed.message.trim()) {
             return parsed.message;
           }
-          if (typeof parsed?.detail === 'string' && parsed.detail.trim()) {
+          if (typeof parsed?.detail === "string" && parsed.detail.trim()) {
             return parsed.detail;
           }
         } catch {
@@ -118,31 +124,39 @@ export function getApiErrorMessage(error: unknown, fallback = '请求失败'): s
     }
 
     if (error.response?.status) {
-      return `${fallback} (${error.response.status})`;
+      return `${actualFallback} (${error.response.status})`;
     }
     if (error.message) {
-      return `网络请求失败: ${error.message}`;
+      return `${i18n.global.t("common.networkRequestFailed")}: ${error.message}`;
     }
   }
 
   const directMessage = extractErrorText(error);
   if (directMessage) return directMessage;
 
-  return fallback;
+  return actualFallback;
 }
 // 响应拦截器
 instance.interceptors.response.use(
   (response) => {
     // 仅对 JSON 对象响应检查业务状态码（非 JSON 如原始 XML/文本直接放行）
-    if (typeof response.data === 'object' && response.data && response.data.code !== 200) {
-      const errorMsg = response.data.message || '请求失败';
+    if (
+      typeof response.data === "object" &&
+      response.data &&
+      response.data.code !== 200
+    ) {
+      const errorMsg =
+        response.data.message || i18n.global.t("common.requestFailed");
       showErrorOnce(errorMsg);
       return Promise.reject(markErrorNotified(new Error(errorMsg)));
     }
     return response;
   },
   (error) => {
-    const message = getApiErrorMessage(error, '网络请求失败');
+    const message = getApiErrorMessage(
+      error,
+      i18n.global.t("common.networkRequestFailed"),
+    );
     showErrorOnce(message);
     return Promise.reject(markErrorNotified(new Error(message)));
   },
@@ -156,7 +170,12 @@ instance.interceptors.response.use(
  * @param timeout 可选超时时间（毫秒），覆盖默认值
  * @returns 响应 data 字段
  */
-export const requestApi = async (url: string, method: string, data: any, timeout?: number): Promise<any> => {
+export const requestApi = async (
+  url: string,
+  method: string,
+  data: any,
+  timeout?: number,
+): Promise<any> => {
   const response = await instance.request({ url, method, data, timeout });
   return response.data.data;
 };

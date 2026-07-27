@@ -21,7 +21,14 @@
                 .join(", ")
             }}
           </div>
-          <div class="stat-meta">FC: MX | 类型: Float, Quality, Timestamp</div>
+          <div class="stat-meta">
+            {{
+              $t("scl.fcTypePreview", {
+                fc: "MX",
+                types: "Float, Quality, Timestamp",
+              })
+            }}
+          </div>
         </div>
         <div class="stat-card yx">
           <div class="stat-header">
@@ -36,7 +43,11 @@
                 .join(", ")
             }}
           </div>
-          <div class="stat-meta">FC: ST | 类型: Boolean, Quality</div>
+          <div class="stat-meta">
+            {{
+              $t("scl.fcTypePreview", { fc: "ST", types: "Boolean, Quality" })
+            }}
+          </div>
         </div>
         <div class="stat-card yk">
           <div class="stat-header">
@@ -51,7 +62,11 @@
                 .join(", ")
             }}
           </div>
-          <div class="stat-meta">FC: CO | 类型: Boolean, Quality</div>
+          <div class="stat-meta">
+            {{
+              $t("scl.fcTypePreview", { fc: "CO", types: "Boolean, Quality" })
+            }}
+          </div>
         </div>
         <div class="stat-card yt">
           <div class="stat-header">
@@ -66,7 +81,9 @@
                 .join(", ")
             }}
           </div>
-          <div class="stat-meta">FC: SP | 类型: Float, Quality</div>
+          <div class="stat-meta">
+            {{ $t("scl.fcTypePreview", { fc: "SP", types: "Float, Quality" }) }}
+          </div>
         </div>
       </div>
 

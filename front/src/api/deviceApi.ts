@@ -1,6 +1,7 @@
 /**
  * 设备管理 API
  */
+import i18n from "@/i18n";
 
 import { instance, requestApi } from "./http";
 import { DEVICE_API } from "@/constants";
@@ -522,15 +523,19 @@ export async function exportModel(
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err?.name === "AbortError") {
-      throw new Error("导出超时，模型可能过大，请重试");
+      throw new Error(i18n.global.t("common.exportTimeout"));
     }
-    throw new Error(`网络请求失败: ${err.message}`);
+    throw new Error(
+      `${i18n.global.t("common.networkRequestFailed")}: ${err.message}`,
+    );
   } finally {
     clearTimeout(timeoutId);
   }
 
   if (!response.ok) {
-    let errorMsg = `导出失败 (HTTP ${response.status})`;
+    let errorMsg = i18n.global.t("common.exportFailed", {
+      status: response.status,
+    });
     try {
       const errorData = await response.json();
       if (errorData?.message) {
