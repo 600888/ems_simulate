@@ -34,8 +34,10 @@
             :protocol-type="form.protocol_type"
             :conn-type="form.conn_type"
             :disabled="saving"
+            :is-edit-mode="isEditMode"
             @file-change="(f) => (selectedFile = f)"
             @icd-file-change="handleIcdFileChange"
+            @point-mode-change="(mode) => (dlt645PointMode = mode)"
           />
         </el-tab-pane>
 
@@ -210,6 +212,7 @@ import DeviceSecurityConfig from "./DeviceSecurityConfig.vue";
 import {
   createChannel,
   importPoints,
+  importDlt645StandardPoints,
   getChannel,
   updateChannel,
   getSerialPorts,
@@ -251,6 +254,7 @@ const activeTab = ref<"basic" | "protocol" | "security">("basic");
 const originalName = ref("");
 const mediaType = ref<"serial" | "network">("network");
 const selectedFile = ref<File | null>(null);
+const dlt645PointMode = ref<"standard" | "import">("standard");
 const icdFile = ref<File | null>(null);
 const certificateFile = ref<File | null>(null);
 const privateKeyFile = ref<File | null>(null);
@@ -449,6 +453,7 @@ const loadChannelData = async (id: number) => {
 };
 
 const resetForm = () => {
+  dlt645PointMode.value = "standard";
   Object.assign(form, {
     code: "",
     name: "",
@@ -589,7 +594,10 @@ const handleSubmit = async () => {
       }
 
       // 3. Excel 点表导入
-      if (!isIec61850Server.value && selectedFile.value) {
+      if (form.protocol_type === 3 && dlt645PointMode.value === "standard") {
+        progressText.value = "正在导入 DL/T645 标准点表";
+        await importDlt645StandardPoints(resultId);
+      } else if (!isIec61850Server.value && selectedFile.value) {
         progressText.value = t("addDevice.importingPoints");
         await importPoints(resultId, selectedFile.value);
       }

@@ -15,6 +15,7 @@ export const CHANNEL_API = {
   UPDATE: "/api/channels/update",
   SECURITY_UPLOAD: "/api/channels/security-upload",
   IMPORT_POINTS: "/api/channels/import-points",
+  IMPORT_DLT645_STANDARD_POINTS: "/api/channels/import-dlt645-standard-points",
   IMPORT_ICD: "/api/channels/import-icd",
   PREVIEW_ICD: "/api/channels/preview-icd",
   CREATE_AND_START: "/api/channels/create-and-start",

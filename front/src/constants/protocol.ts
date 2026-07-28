@@ -99,6 +99,8 @@ export const IEC61850_PROTOCOL_NAMES = [
 // 判断 IEC104 协议的字符串标识
 export const IEC104_PROTOCOL_NAMES = ["Iec104Client", "Iec104Server"] as const;
 
+export const DLT645_PROTOCOL_NAMES = ["Dlt645Client", "Dlt645Server"] as const;
+
 // 判断是否为 IEC61850 协议
 export function isIec61850Protocol(protocolStr: string | number): boolean {
   return IEC61850_PROTOCOL_NAMES.includes(protocolStr as any);
@@ -107,4 +109,11 @@ export function isIec61850Protocol(protocolStr: string | number): boolean {
 // 判断是否为 IEC104 协议
 export function isIec104Protocol(protocolStr: string | number): boolean {
   return IEC104_PROTOCOL_NAMES.includes(protocolStr as any);
+}
+
+export function isDlt645Protocol(protocolStr: string | number): boolean {
+  return (
+    protocolStr === PROTOCOL_TYPE.DLT645 ||
+    DLT645_PROTOCOL_NAMES.includes(protocolStr as any)
+  );
 }

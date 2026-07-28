@@ -63,7 +63,10 @@
             <el-icon
               v-if="iec61850Map[device.name]"
               class="node-icon iec61850-icon"
-              ><Connection
+              ><Coin
+                v-if="
+                  iec61850Map[device.name]?.[0]?.isDlt645Child
+                " /><Connection v-else
             /></el-icon>
             <el-icon v-else class="node-icon"><Cpu /></el-icon>
           </el-tooltip>
@@ -119,7 +122,9 @@
               </el-icon>
               <span v-else class="expand-arrow-placeholder small" />
               <el-icon class="child-icon">
-                <component :is="getIec61850NodeIcon(child)" />
+                <Collection v-if="child.isDlt645Child && child.isGroup" />
+                <Calendar v-else-if="child.isDlt645Child" />
+                <component v-else :is="getIec61850NodeIcon(child)" />
               </el-icon>
               <span class="child-label">{{ child.label }}</span>
             </div>
@@ -156,7 +161,8 @@
                   </el-icon>
                   <span v-else class="expand-arrow-placeholder small" />
                   <el-icon class="sub-icon">
-                    <component :is="getIec61850NodeIcon(subChild)" />
+                    <Calendar v-if="subChild.isDlt645Child" />
+                    <component v-else :is="getIec61850NodeIcon(subChild)" />
                   </el-icon>
                   <span class="sub-label">{{ subChild.label }}</span>
                 </div>
@@ -250,6 +256,9 @@ import {
   VideoPause,
   DocumentCopy,
   Connection,
+  Coin,
+  Collection,
+  Calendar,
 } from "@element-plus/icons-vue";
 
 interface TreeNode {
@@ -258,10 +267,12 @@ interface TreeNode {
   isGroup: boolean;
   id: number;
   isIec61850Child?: boolean;
+  isDlt645Child?: boolean;
+  dlt645Prefix?: number;
+  dlt645Settlement?: number;
   iec61850Level?: "category" | "ld" | "ln";
   name: string;
-  type?:
-    "GOOSE" | "Reports" | "SettingGroups" | "Files" | "DataSets" | "DataModel";
+  type?: string;
   value?: string;
   deviceName?: string;
   children?: TreeNode[];
@@ -318,7 +329,11 @@ const handleChildClick = (deviceName: string, child: TreeNode) => {
     toggleIec61850Category(deviceName, child.nodeKey);
   }
   // 发出 node-click 事件，传递完整的节点信息（包含 category/type）
-  emit("node-click", { ...child, deviceName, isIec61850Child: true });
+  emit("node-click", {
+    ...child,
+    deviceName,
+    isIec61850Child: child.isIec61850Child === true,
+  });
 };
 
 // 点击 IEC61850 子项 (LD 层)
@@ -330,7 +345,7 @@ const handleSubChildClick = (subChild: TreeNode, deviceName: string) => {
   // 发出 node-click 事件，传递完整的节点信息
   emit("node-click", {
     ...subChild,
-    isIec61850Child: true,
+    isIec61850Child: subChild.isIec61850Child === true,
     deviceName: subChild.deviceName || deviceName,
   });
 };

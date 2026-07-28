@@ -134,6 +134,8 @@ export async function getDeviceTable(
   orderBy: string | null = null,
   orderDirection: string | null = null,
   iec104Types: string[] = [],
+  dlt645Prefix: number | null = null,
+  dlt645Settlement: number | null = null,
 ): Promise<Map<string, any>> {
   try {
     const data = await requestApi(DEVICE_API.TABLE, "post", {
@@ -146,6 +148,8 @@ export async function getDeviceTable(
       order_by: orderBy,
       order_direction: orderDirection,
       iec104_types: iec104Types,
+      dlt645_prefix: dlt645Prefix,
+      dlt645_settlement: dlt645Settlement,
     });
     return new Map<string, any>(Object.entries(data));
   } catch (error) {

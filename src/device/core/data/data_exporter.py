@@ -44,6 +44,8 @@ class DataExporter:
         order_by: str | None = None,
         order_direction: str | None = None,
         iec104_types: list[str] | None = None,
+        dlt645_prefix: int | None = None,
+        dlt645_settlement: int | None = None,
     ) -> tuple[list[list[str]], int]:
         """获取表格数据
 
@@ -69,31 +71,42 @@ class DataExporter:
         def matches_iec104_type(point: BasePoint) -> bool:
             return not iec104_types or point.iec_type_id in iec104_types
 
+        def matches_dlt645_branch(point: BasePoint) -> bool:
+            if dlt645_prefix is None:
+                return True
+            try:
+                address = int(point.address)
+            except (TypeError, ValueError):
+                return False
+            if (address >> 24) != dlt645_prefix:
+                return False
+            return dlt645_settlement is None or (address & 0xFF) == dlt645_settlement
+
         table_data: list[list[str]] = []
         frame_type_dict = PointManager.frame_type_dict()
 
         # 处理遥测数据
         if 0 in point_types:
             for yc in yc_list:
-                if (name is None or name in str(yc.name)) and matches_iec104_type(yc):
+                if (name is None or name in str(yc.name)) and matches_iec104_type(yc) and matches_dlt645_branch(yc):
                     table_data.append(self._format_yc_row(yc, frame_type_dict, mask_error))
 
         # 处理遥信数据
         if 1 in point_types:
             for yx in yx_list:
-                if (name is None or name in str(yx.name)) and matches_iec104_type(yx):
+                if (name is None or name in str(yx.name)) and matches_iec104_type(yx) and matches_dlt645_branch(yx):
                     table_data.append(self._format_yx_row(yx, frame_type_dict, mask_error))
 
         # 处理遥控数据
         if 2 in point_types:
             for yk in yk_list:
-                if (name is None or name in str(yk.name)) and matches_iec104_type(yk):
+                if (name is None or name in str(yk.name)) and matches_iec104_type(yk) and matches_dlt645_branch(yk):
                     table_data.append(self._format_yx_row(yk, frame_type_dict, mask_error))
 
         # 处理遥调数据
         if 3 in point_types:
             for yt in yt_list:
-                if (name is None or name in str(yt.name)) and matches_iec104_type(yt):
+                if (name is None or name in str(yt.name)) and matches_iec104_type(yt) and matches_dlt645_branch(yt):
                     table_data.append(self._format_yc_row(yt, frame_type_dict, mask_error))
 
         # Default sorting by address

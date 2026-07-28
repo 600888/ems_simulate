@@ -727,6 +727,7 @@ import {
   CLIENT_PROTOCOL_NAMES,
   HEADER_I18N_MAP,
 } from "@/constants/table";
+import { isDlt645Protocol } from "@/constants/protocol";
 
 import SingleRegister from "../register/SingleRegister.vue";
 import LongRegister from "../register/LongRegister.vue";
@@ -827,11 +828,7 @@ const isModbus = computed(() => {
   );
 });
 
-const isDlt645 = computed(
-  () =>
-    typeof props.protocolType === "string" &&
-    props.protocolType.includes("Dlt645"),
-);
+const isDlt645 = computed(() => isDlt645Protocol(props.protocolType));
 
 const isClientDevice = computed(() => {
   const t = String(props.protocolType);
@@ -854,6 +851,14 @@ const isIec61850WithActions = computed(() => {
 const readingPoints = reactive<Record<string, boolean>>({});
 const deletingPoints = reactive<Record<string, boolean>>({});
 const showHexAddress = ref(false);
+
+watch(
+  isDlt645,
+  (enabled) => {
+    showHexAddress.value = enabled;
+  },
+  { immediate: true },
+);
 
 const isIec104 = computed(() => {
   const t = props.protocolType;

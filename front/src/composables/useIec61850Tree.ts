@@ -25,6 +25,10 @@ export interface TreeNode {
   value?: string;
   iec61850Level?: "category" | "ld" | "ln";
   linkTo?: string; // 导航链接 (如 GOOSE 节点导航到 /goose)
+  isDlt645?: boolean;
+  isDlt645Child?: boolean;
+  dlt645Prefix?: number;
+  dlt645Settlement?: number;
 }
 
 /**

@@ -25,6 +25,37 @@ router = APIRouter(tags=["channel"])
 ExcelPointImporter: Any = None
 
 
+async def _sync_imported_points(request: Request, channel_id: int, *, rebuild: bool = False) -> None:
+    """Refresh the runtime point model after a tabular point import."""
+    device_controller = request.app.state.device_controller
+    device = device_controller.get_device_by_id(channel_id)
+    if not device:
+        log.warning(f"导入点表后未找到内存设备 (ID: {channel_id})，需要手动加载或重启")
+        return
+
+    if device.protocol_type in (ProtocolType.Iec104Server, ProtocolType.Iec104Client):
+        was_running = device.is_protocol_running()
+        was_auto_reading = device.is_auto_read_running() if device.protocol_type == ProtocolType.Iec104Client else False
+        new_device = await reload_device_instance(device_controller, channel_id, is_start=False)
+        if was_running and not await new_device.start():
+            raise RuntimeError("IEC104 设备重建后恢复启动失败")
+        if was_auto_reading:
+            new_device.start_auto_read()
+        return
+
+    if device.protocol_type == ProtocolType.Iec61850Server:
+        was_running = device.is_protocol_running()
+        await reload_device_instance(device_controller, channel_id, is_start=was_running)
+        return
+
+    if rebuild:
+        # Standard-table replacement must discard every stale in-memory point.
+        was_running = device.is_protocol_running()
+        await reload_device_instance(device_controller, channel_id, is_start=was_running)
+    else:
+        device.importDataPointFromChannel(channel_id, device.protocol_type)
+
+
 def _resolve_goose_import_mode(goose_import_mode: str, auto_create_goose: bool) -> str:
     """解析显式 GOOSE 导入视角，并兼容旧版布尔参数。"""
     resolved = goose_import_mode.strip().lower()
@@ -112,35 +143,7 @@ async def import_points(
         yc_count, yx_count, yk_count, yt_count = importer.import_from_excel(tmp_path)
 
         try:
-            device_controller = request.app.state.device_controller
-            device = device_controller.get_device_by_id(channel_id)
-            if device:
-                if device.protocol_type in (ProtocolType.Iec104Server, ProtocolType.Iec104Client):
-                    # IEC104 的 Station/Point 模型在协议处理器初始化时创建。
-                    # 仅把数据库测点追加到 PointManager 不会更新已经存在的 Station，
-                    # 并且重复导入还会在内存中残留旧点，因此必须重建设备实例。
-                    was_running = device.is_protocol_running()
-                    was_auto_reading = (
-                        device.is_auto_read_running() if device.protocol_type == ProtocolType.Iec104Client else False
-                    )
-                    new_device = await reload_device_instance(device_controller, channel_id, is_start=False)
-                    if was_running and not await new_device.start():
-                        raise RuntimeError("IEC104 设备重建后恢复启动失败")
-                    if was_auto_reading:
-                        new_device.start_auto_read()
-                    log.info(
-                        f"IEC104 设备 {device.name} (ID: {channel_id}) 已重建，"
-                        f"新点表已注册到从站 (恢复运行: {was_running})"
-                    )
-                elif device.protocol_type == ProtocolType.Iec61850Server:
-                    was_running = device.is_protocol_running()
-                    await reload_device_instance(device_controller, channel_id, is_start=was_running)
-                    log.info(f"IEC 61850 服务端设备 {device.name} (ID: {channel_id}) 已重建以加载新点表")
-                else:
-                    device.importDataPointFromChannel(channel_id, device.protocol_type)
-                    log.info(f"已同步更新设备 {device.name} (ID: {channel_id}) 的内存点表")
-            else:
-                log.warning(f"导入点表后未找到内存设备 (ID: {channel_id})，需要手动加载或重启")
+            await _sync_imported_points(request, channel_id)
         except Exception as e:
             log.error(f"同步内存点表失败: {e}")
             raise OperationError("点表已导入，但设备运行时模型同步失败，请重试或重启设备") from e
@@ -158,6 +161,28 @@ async def import_points(
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+@router.post("/import-dlt645-standard-points", response_model=BaseResponse)
+async def import_dlt645_standard_points(request: Request, channel_id: int = Form(...)):
+    """Replace a DLT645 device's points with the library's standard DI table."""
+    channel = ChannelService.get_channel_by_id(channel_id)
+    if not channel or int(channel.get("protocol_type", -1)) != 3:
+        raise ValidationError("标准点表仅适用于 DL/T645-2007 设备")
+
+    from src.tools.dlt645_standard_importer import Dlt645StandardPointImporter
+
+    count = await asyncio.to_thread(Dlt645StandardPointImporter(channel_id).import_points)
+    try:
+        await _sync_imported_points(request, channel_id, rebuild=True)
+    except Exception as exc:
+        log.error(f"同步 DLT645 标准点表失败: {exc}")
+        raise OperationError("标准点表已导入，但运行时模型同步失败，请重试或重启设备") from exc
+
+    return BaseResponse(
+        message="DL/T645 标准点表导入成功",
+        data={"yc_count": count, "yx_count": 0, "yk_count": 0, "yt_count": 0, "total": count},
+    )
 
 
 @router.post("/preview-icd", response_model=BaseResponse)

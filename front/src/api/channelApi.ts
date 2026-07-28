@@ -216,6 +216,19 @@ export async function importPoints(
   }
 }
 
+export async function importDlt645StandardPoints(
+  channelId: number,
+): Promise<PointImportResult> {
+  const formData = new FormData();
+  formData.append("channel_id", channelId.toString());
+  const response = await instance.post(
+    CHANNEL_API.IMPORT_DLT645_STANDARD_POINTS,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" }, timeout: 120000 },
+  );
+  return response.data.data;
+}
+
 /** 预览 ICD/SCD/CID 文件（只解析不保存） */
 export async function previewIcd(
   file: File,

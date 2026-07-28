@@ -86,7 +86,7 @@
       </template>
 
       <el-form-item
-        v-if="!isIec61850"
+        v-if="!isIec61850 && !isDlt645"
         :label="$t('point.slaveAddress')"
         prop="rtu_addr"
       >
@@ -324,6 +324,11 @@ const isIec61850 = computed(() => {
   return pt === "Iec61850Client" || pt === "Iec61850Server";
 });
 
+const isDlt645 = computed(() => {
+  const pt = props.protocolType || "";
+  return pt === "Dlt645Client" || pt === "Dlt645Server";
+});
+
 const emit = defineEmits<{
   (e: "update:modelValue", value: boolean): void;
   (e: "success"): void;
@@ -494,15 +499,16 @@ const rules = computed<FormRules>(() => ({
           trigger: "blur",
         },
       ],
-  rtu_addr: isIec61850.value
-    ? []
-    : [
-        {
-          required: true,
-          message: t("point.pleaseSelectSlaveAddress"),
-          trigger: "change",
-        },
-      ],
+  rtu_addr:
+    isIec61850.value || isDlt645.value
+      ? []
+      : [
+          {
+            required: true,
+            message: t("point.pleaseSelectSlaveAddress"),
+            trigger: "change",
+          },
+        ],
   reg_addr: [
     { required: true, message: t("point.pleaseEnterRegAddr"), trigger: "blur" },
   ],

@@ -3,13 +3,51 @@ DLT645 协议处理器
 支持 DLT645 电力表计协议服务端和客户端
 """
 
+from collections import OrderedDict
 import contextlib
+import threading
 from typing import Any
 
 from src.config.config import Config
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.enums.point_data import Yc
 from src.enums.points.base_point import BasePoint
+
+
+class _CaptureSequenceTracker:
+    """Add stable numeric sequence IDs to dlt645's UUID-based records."""
+
+    def __init__(self, max_records: int = 1000) -> None:
+        self._max_records = max_records
+        self._next_sequence = 1
+        self._sequences: OrderedDict[str, int] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def serialize(self, messages: list, count: int) -> list[dict]:
+        result = []
+        with self._lock:
+            for message in messages:
+                item = message.to_dict()
+                record_id = str(item.get("id") or id(message))
+                sequence_id = self._sequences.get(record_id)
+                if sequence_id is None:
+                    sequence_id = self._next_sequence
+                    self._next_sequence += 1
+                    self._sequences[record_id] = sequence_id
+                else:
+                    self._sequences.move_to_end(record_id)
+                item["sequence_id"] = sequence_id
+                result.append(item)
+
+            while len(self._sequences) > self._max_records:
+                self._sequences.popitem(last=False)
+
+        return result[-count:] if count > 0 else result
+
+    def clear(self) -> None:
+        with self._lock:
+            self._next_sequence = 1
+            self._sequences.clear()
 
 
 class DLT645ServerHandler(ServerHandler):
@@ -23,6 +61,7 @@ class DLT645ServerHandler(ServerHandler):
         self._server = None
         self._log = log
         self._meter_address: str = "000000000000"
+        self._capture_sequences = _CaptureSequenceTracker()
         self._is_serial: bool = False  # 是否为串口模式
 
     def initialize(self, config: dict[str, Any]) -> None:
@@ -196,14 +235,15 @@ class DLT645ServerHandler(ServerHandler):
             报文记录列表，每条记录包含 direction, hex_string, timestamp 等
         """
         if self._server and hasattr(self._server, "get_captured_messages"):
-            messages = self._server.get_captured_messages(count)
-            return [msg.to_dict() for msg in messages]
+            messages = self._server.get_captured_messages(0)
+            return self._capture_sequences.serialize(messages, count)
         return []
 
     def clear_captured_messages(self) -> None:
         """清空捕获的报文"""
         if self._server and hasattr(self._server, "clear_captured_messages"):
             self._server.clear_captured_messages()
+            self._capture_sequences.clear()
 
     def get_avg_time(self) -> dict:
         """获取平均收发时间"""
@@ -239,6 +279,7 @@ class DLT645ClientHandler(ClientHandler):
 
     def __init__(self, log=None):
         super().__init__()
+        self._capture_sequences = _CaptureSequenceTracker()
         self._client = None  # MeterClientService 实例
         self._transport_client = None  # TcpClient 或 RtuClient 底层连接
         self._log = log
@@ -461,14 +502,15 @@ class DLT645ClientHandler(ClientHandler):
             报文记录列表，每条记录包含 direction, hex_string, timestamp 等
         """
         if self._client and hasattr(self._client, "get_captured_messages"):
-            messages = self._client.get_captured_messages(count)
-            return [msg.to_dict() for msg in messages]
+            messages = self._client.get_captured_messages(0)
+            return self._capture_sequences.serialize(messages, count)
         return []
 
     def clear_captured_messages(self) -> None:
         """清空捕获的报文"""
         if self._client and hasattr(self._client, "clear_captured_messages"):
             self._client.clear_captured_messages()
+            self._capture_sequences.clear()
 
     def get_avg_time(self) -> dict:
         """获取平均收发时间"""

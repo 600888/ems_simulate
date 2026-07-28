@@ -32,7 +32,11 @@ import {
   READ_PROGRESS_DELAY,
   SINGLE_READ_PROGRESS_DELAY,
 } from "@/constants";
-import { isIec61850Protocol, isIec104Protocol } from "@/constants/protocol";
+import {
+  isDlt645Protocol,
+  isIec61850Protocol,
+  isIec104Protocol,
+} from "@/constants/protocol";
 
 interface AutoReadOptions {
   routeName: Ref<string>;
@@ -48,6 +52,8 @@ interface AutoReadOptions {
   channelId: Ref<number | null>;
   iec61850Category: Ref<string>;
   iec61850Item: Ref<string>;
+  dlt645Prefix: Ref<number | null>;
+  dlt645Settlement: Ref<number | null>;
   tableDataMap: Ref<
     Record<number, { tableHeader: string[]; tableData: any[][]; total: number }>
   >;
@@ -78,6 +84,8 @@ export function useAutoRead(options: AutoReadOptions) {
     channelId,
     iec61850Category,
     iec61850Item,
+    dlt645Prefix,
+    dlt645Settlement,
     tableDataMap,
     total,
     fetchDeviceTable,
@@ -114,6 +122,7 @@ export function useAutoRead(options: AutoReadOptions) {
     { label: t("autoRead.batch"), value: "batch" },
     { label: t("autoRead.single"), value: "single" },
   ];
+  const isDlt645 = computed(() => isDlt645Protocol(protocolType.value));
 
   // DataSet 页面使用独立状态，避免开关设备级自动读取。
   const datasetAutoRead = ref(false);
@@ -283,7 +292,7 @@ export function useAutoRead(options: AutoReadOptions) {
 
   const handleAutoReadChange = async (enabled: boolean) => {
     if (enabled) {
-      if (readMode.value === "batch") {
+      if (readMode.value === "batch" && !isDlt645.value) {
         await startAutoRead(routeName.value);
         ElMessage.success(t("autoRead.batchAutoReadEnabled"));
       } else {
@@ -298,9 +307,12 @@ export function useAutoRead(options: AutoReadOptions) {
 
   /** 模式切换时由模板 `@change` 调用，确保先完全停止再重新启动 */
   const handleReadModeChange = async () => {
+    if (isDlt645.value) {
+      readMode.value = "single";
+    }
     if (!isAutoRead.value) return;
     await stopAllAutoRead();
-    if (readMode.value === "batch") {
+    if (readMode.value === "batch" && !isDlt645.value) {
       await startAutoRead(routeName.value);
     } else {
       startSinglePointAutoRead();
@@ -360,6 +372,11 @@ export function useAutoRead(options: AutoReadOptions) {
         1,
         10000,
         pointTypes.value,
+        null,
+        null,
+        [],
+        dlt645Prefix.value,
+        dlt645Settlement.value,
       );
       const allRows: any[][] = data.get("table_data") || [];
       const totalPoints = allRows.length;
@@ -385,7 +402,11 @@ export function useAutoRead(options: AutoReadOptions) {
         });
 
         try {
-          const value = await readSinglePoint(routeName.value, pointCode);
+          const value = await readSinglePoint(
+            routeName.value,
+            pointCode,
+            isDlt645.value ? undefined : currentSlaveId.value,
+          );
           if (value !== null) {
             successCount.value++;
             // 实时更新表格中的显示值
@@ -444,7 +465,7 @@ export function useAutoRead(options: AutoReadOptions) {
     successCount.value = 0;
     failCount.value = 0;
 
-    if (readMode.value === "batch") {
+    if (readMode.value === "batch" && !isDlt645.value) {
       await handleBatchRead();
     } else {
       await handleSinglePointRead();
@@ -590,6 +611,11 @@ export function useAutoRead(options: AutoReadOptions) {
           1,
           10000,
           pointTypes.value,
+          null,
+          null,
+          [],
+          dlt645Prefix.value,
+          dlt645Settlement.value,
         );
         allRows = data.get("table_data") || [];
       }
@@ -619,7 +645,11 @@ export function useAutoRead(options: AutoReadOptions) {
         });
 
         try {
-          const value = await readSinglePoint(routeName.value, pointCode);
+          const value = await readSinglePoint(
+            routeName.value,
+            pointCode,
+            isDlt645.value ? undefined : currentSlaveId.value,
+          );
           if (value !== null) {
             successCount.value++;
             if (tableDataMap.value[currentSlaveId.value]) {
@@ -676,6 +706,12 @@ export function useAutoRead(options: AutoReadOptions) {
 
   const fetchAutoReadStatus = async () => {
     const status = await getAutoReadStatus(routeName.value);
+    if (isDlt645.value) {
+      readMode.value = "single";
+      if (status) await stopAutoRead(routeName.value);
+      isAutoRead.value = false;
+      return;
+    }
     isAutoRead.value = status;
     if (status) startAutoRefresh();
   };
@@ -688,6 +724,14 @@ export function useAutoRead(options: AutoReadOptions) {
       scheduleDatasetAutoRead(0);
     }
   });
+
+  watch(
+    isDlt645,
+    (enabled) => {
+      if (enabled) readMode.value = "single";
+    },
+    { immediate: true },
+  );
 
   const formatProgress = (percentage: number) => {
     return percentage === 100 ? t("autoRead.completed") : `${percentage}%`;

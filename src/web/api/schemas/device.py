@@ -31,6 +31,8 @@ class DeviceTableRequest(BaseModel):
     order_by: str | None = None
     order_direction: str | None = None
     iec104_types: list[str] | None = None  # 为空表示全部 IEC104 ASDU 类型
+    dlt645_prefix: int | None = Field(None, ge=0, le=4)
+    dlt645_settlement: int | None = Field(None, ge=0, le=12)
 
 
 class SimulationStartRequest(BaseModel):

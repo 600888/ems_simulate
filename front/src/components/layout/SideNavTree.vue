@@ -21,6 +21,7 @@
           'is-iec61850-category': data.iec61850Level === 'category',
           'is-iec61850-ld': data.iec61850Level === 'ld',
           'is-iec61850-ln': data.iec61850Level === 'ln',
+          'is-dlt645-child': data.isDlt645Child,
         }"
       >
         <el-tooltip
@@ -29,8 +30,15 @@
           :disabled="!isCollapse"
         >
           <el-icon class="node-icon">
-            <Folder v-if="data.isGroup && !data.isIec61850Child" />
+            <Folder
+              v-if="
+                data.isGroup && !data.isIec61850Child && !data.isDlt645Child
+              "
+            />
             <Connection v-else-if="data.isIec61850 && !data.isGroup" />
+            <Coin v-else-if="data.isDlt645 && !data.isGroup" />
+            <Collection v-else-if="data.isDlt645Child && data.isGroup" />
+            <Calendar v-else-if="data.isDlt645Child" />
             <component
               :is="getIec61850NodeIcon(data)"
               v-else-if="data.isIec61850Child"
@@ -41,7 +49,9 @@
         <span class="node-label">{{ node.label }}</span>
 
         <div class="node-actions" v-if="!isCollapse" @click.stop>
-          <template v-if="data.isGroup && !data.isIec61850Child">
+          <template
+            v-if="data.isGroup && !data.isIec61850Child && !data.isDlt645Child"
+          >
             <el-dropdown
               trigger="click"
               @command="(cmd: string) => $emit('group-command', cmd, data)"
@@ -77,7 +87,7 @@
               </template>
             </el-dropdown>
           </template>
-          <template v-else-if="!data.isIec61850Child">
+          <template v-else-if="!data.isIec61850Child && !data.isDlt645Child">
             <el-button
               link
               size="small"
@@ -119,6 +129,9 @@ import {
   Delete,
   DocumentCopy,
   Connection,
+  Coin,
+  Collection,
+  Calendar,
 } from "@element-plus/icons-vue";
 
 const props = defineProps<{
@@ -173,6 +186,8 @@ const handleNodeClick = (data: any) => {
       }
     }
     emit("node-click", enrichedData);
+  } else if (data.isDlt645Child) {
+    emit("node-click", data);
   } else {
     emit("node-click", data);
   }

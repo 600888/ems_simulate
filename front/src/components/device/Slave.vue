@@ -3,6 +3,7 @@
     <el-tabs
       v-model="activeName"
       class="modern-tabs"
+      :class="{ 'without-data-tab': isIec61850 || isDlt645 }"
       @tab-click="handleClick"
       :before-leave="beforeLeave"
       @tab-remove="handleTabRemove"
@@ -15,9 +16,11 @@
         <template #label>
           <span class="custom-tab-label">
             <span>{{
-              isIec61850 ? $t("common.data") : `${$t("point.slave")} ${slave}`
+              isIec61850 || isDlt645
+                ? $t("common.data")
+                : `${$t("point.slave")} ${slave}`
             }}</span>
-            <span v-if="!isIec61850" @click.stop>
+            <span v-if="showsSlaveManagement" @click.stop>
               <el-dropdown
                 trigger="click"
                 @command="handleCommand($event, slave)"
@@ -116,7 +119,10 @@
 
                 <!-- 读取模式选择 (始终显示) -->
                 <el-tooltip
-                  v-if="!(isIec61850 && iec61850Category === 'DataSets')"
+                  v-if="
+                    !isDlt645 &&
+                    !(isIec61850 && iec61850Category === 'DataSets')
+                  "
                   :content="
                     readMode === 'batch'
                       ? $t('slave.batchRead')
@@ -196,12 +202,12 @@
                   :class="isReading ? 'cancel-read-btn' : 'manual-read-btn'"
                   @click="handleManualRead"
                   :icon="isReading ? CircleCloseFilled : Download"
-                  :loading="isReading && readMode === 'batch'"
+                  :loading="isReading && readMode === 'batch' && !isDlt645"
                 >
                   {{
                     isReading
                       ? $t("common.cancel")
-                      : readMode === "batch"
+                      : readMode === "batch" && !isDlt645
                         ? $t("common.batchRead")
                         : $t("common.singleRead")
                   }}
@@ -230,7 +236,7 @@
                   effect="plain"
                 >
                   {{
-                    readMode === "batch"
+                    readMode === "batch" && !isDlt645
                       ? $t("slave.batchAutoReading")
                       : $t("slave.singleAutoReading")
                   }}
@@ -310,7 +316,7 @@
       </el-tab-pane>
 
       <!-- 添加从机按钮（作为特殊 tab，IEC61850 不需要） -->
-      <el-tab-pane v-if="!isIec61850" name="add" :closable="false">
+      <el-tab-pane v-if="showsSlaveManagement" name="add" :closable="false">
         <template #label>
           <span class="add-slave-tab">
             <el-icon><Plus /></el-icon>
@@ -332,7 +338,7 @@
 
     <!-- 添加从机对话框（IEC61850 不需要） -->
     <AddSlaveDialog
-      v-if="!isIec61850"
+      v-if="showsSlaveManagement"
       v-model="showAddSlaveDialog"
       :deviceName="routeName"
       :existingSlaves="slaveIdList"
@@ -341,7 +347,7 @@
 
     <!-- 编辑从机对话框（IEC61850 不需要） -->
     <EditSlaveDialog
-      v-if="!isIec61850"
+      v-if="showsSlaveManagement"
       v-model="showEditSlaveDialog"
       :deviceName="routeName"
       :existingSlaves="slaveIdList"
@@ -379,7 +385,11 @@ import { getIEC61850TreeData } from "@/api/channelApi";
 import type { IEC61850TreeDataResponse } from "@/api/channelApi";
 import { clearPoints, resetPointData } from "@/api/pointApi";
 import { useAutoRead } from "@/composables";
-import { isIec61850Protocol, isIec104Protocol } from "@/constants/protocol";
+import {
+  isDlt645Protocol,
+  isIec61850Protocol,
+  isIec104Protocol,
+} from "@/constants/protocol";
 import { isAutoRefreshPaused } from "@/composables/autoRefreshGate";
 import { TABLE_HEADERS } from "@/constants/table";
 import DeviceTable from "./Table.vue";
@@ -419,6 +429,24 @@ const iec61850TreeData = ref<IEC61850TreeDataResponse | null>(null);
 const isIec61850 = computed(() => {
   return isIec61850Protocol(String(protocolType.value));
 });
+
+const isDlt645 = computed(() => isDlt645Protocol(protocolType.value));
+const showsSlaveManagement = computed(
+  () => !isIec61850.value && !isDlt645.value,
+);
+
+const parseDlt645QueryNumber = (value: unknown): number | null => {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const dlt645Prefix = computed(() =>
+  parseDlt645QueryNumber(route.query.dlt645_prefix),
+);
+const dlt645Settlement = computed(() =>
+  parseDlt645QueryNumber(route.query.dlt645_settlement),
+);
 
 // 判断当前是否为 IEC61850 树节点筛选模式
 const isIec61850Filtered = computed(() => {
@@ -527,8 +555,8 @@ const fetchSlaveList = async () => {
     console.warn("设备信息获取失败");
   }
 
-  // IEC61850 协议不需要从机列表，使用默认值
-  if (isIec61850.value) {
+  // IEC61850 和 DLT645 不向界面暴露从机概念，使用内部固定数据分区。
+  if (isIec61850.value || isDlt645.value) {
     slaveIdList.value = [1];
     currentSlaveId.value = 1;
     activeName.value = "1";
@@ -617,6 +645,8 @@ const fetchDeviceTable = async (
     orderBy.value,
     orderDirection.value,
     iec104Types.value,
+    dlt645Prefix.value,
+    dlt645Settlement.value,
   );
   if (data) {
     const fetchedTotal = Number(data.get("total") || 0);
@@ -860,6 +890,8 @@ const {
   channelId,
   iec61850Category,
   iec61850Item,
+  dlt645Prefix,
+  dlt645Settlement,
   tableDataMap,
   total,
   fetchDeviceTable,
@@ -1040,6 +1072,12 @@ defineExpose({
 }
 
 .modern-tabs {
+  &.without-data-tab {
+    :deep(.el-tabs__header) {
+      display: none;
+    }
+  }
+
   :deep(.el-tabs__header) {
     margin-bottom: 24px;
     border: none !important;

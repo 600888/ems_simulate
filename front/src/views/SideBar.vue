@@ -38,9 +38,10 @@
       <!-- 4. 未分组设备 -->
       <SideNavUngrouped
         :ungrouped-devices="ungroupedDevices"
-        :iec61850-map="iec61850UngroupedMap as any"
+        :iec61850-map="protocolUngroupedMap as any"
         :expanded="ungroupedExpanded"
         :current-device-name="currentDeviceName"
+        :selected-node-key="currentNodeKey"
         :is-collapse="sidebarDisplayCollapsed"
         @toggle="toggleUngrouped"
         @device-click="handleDeviceClick"
@@ -143,6 +144,7 @@ import {
 import { useIec61850Tree, type TreeNode } from "@/composables";
 import { useSidebarRefresh } from "@/composables";
 import { effectiveViewportWidth } from "@/composables/useAppSettings";
+import { buildDlt645Children } from "@/components/layout/dlt645Tree";
 
 const router = useRouter();
 const { t } = useI18n();
@@ -227,6 +229,7 @@ const expandedKeys = ref<string[]>([]);
 const currentNodeKey = ref<string>("");
 const currentDeviceName = ref<string>("");
 const ungroupedExpanded = ref(true);
+const dlt645UngroupedMap = ref<Record<string, TreeNode[]>>({});
 
 // IEC61850 设备树 composable
 const {
@@ -237,6 +240,10 @@ const {
   setStructureLoadedCallback,
   invalidateStructureCache,
 } = useIec61850Tree();
+const protocolUngroupedMap = computed(() => ({
+  ...iec61850UngroupedMap.value,
+  ...dlt645UngroupedMap.value,
+}));
 
 // IEC61850 结构加载完成后强制重建 el-tree
 setStructureLoadedCallback(() => {
@@ -357,6 +364,33 @@ const fetchDeviceGroupTree = async () => {
 
     // 构建 channelId -> deviceName 映射，供 TagsView 在 GOOSE/报告/文件页面高亮对应设备标签
     const channels = await getChannelList();
+    const markDlt645Nodes = (nodes: TreeNode[]) => {
+      for (const node of nodes) {
+        if (!node.isGroup) {
+          const channel = channels.find((item) => item.name === node.name);
+          if (channel?.protocol_type === 3) {
+            node.isDlt645 = true;
+            node.children = buildDlt645Children(node.name);
+            continue;
+          }
+        }
+        if (node.children) markDlt645Nodes(node.children);
+      }
+    };
+    markDlt645Nodes(treeData.value);
+    dlt645UngroupedMap.value = Object.fromEntries(
+      newUngrouped
+        .filter(
+          (device) =>
+            channels.find((channel) => channel.name === device.name)
+              ?.protocol_type === 3,
+        )
+        .map((device) => [
+          device.name,
+          buildDlt645Children(device.name, "ungrouped"),
+        ]),
+    );
+    treeKey.value++;
     channels.forEach((ch) => {
       if (ch.name) updateChannelIdDeviceMap(ch.id, ch.name);
     });
@@ -406,6 +440,15 @@ const handleNodeClick = (data: TreeNode) => {
     });
     return;
   }
+  if (data.isDlt645Child) {
+    navigateToDevice(
+      data.deviceName || currentDeviceName.value,
+      false,
+      false,
+      data,
+    );
+    return;
+  }
   if (!data.isGroup) navigateToDevice(data.name);
 };
 
@@ -430,6 +473,15 @@ const handleUngroupedNodeClick = (data: any) => {
       _category: category,
       _item: item,
     });
+    return;
+  }
+  if (data.isDlt645Child) {
+    navigateToDevice(
+      data.deviceName || currentDeviceName.value,
+      false,
+      false,
+      data,
+    );
   }
 };
 
@@ -460,6 +512,13 @@ const navigateToDevice = (
       (treeNode.isGroup ? "" : treeNode.name || treeNode.label);
     if (category) query.category = category;
     if (item) query.item = item;
+  }
+  if (treeNode?.isDlt645Child) {
+    query.dlt645_prefix = String(treeNode.dlt645Prefix);
+    if (treeNode.dlt645Settlement !== undefined) {
+      query.dlt645_settlement = String(treeNode.dlt645Settlement);
+    }
+    currentNodeKey.value = treeNode.nodeKey;
   }
 
   if (forceRefresh) {
