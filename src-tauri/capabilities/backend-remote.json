@@ -14,11 +14,13 @@
     "core:default",
     "core:webview:allow-create-webview-window",
     "dialog:allow-open",
+    "dialog:allow-save",
     "opener:allow-open-path",
     "opener:allow-reveal-item-in-dir",
     "allow-get-backend-url",
     "allow-is-backend-ready",
     "allow-restart-backend",
-    "allow-open-directory"
+    "allow-open-directory",
+    "allow-save-file"
   ]
 }

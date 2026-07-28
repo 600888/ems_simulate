@@ -143,6 +143,7 @@ instance.interceptors.response.use(
     if (
       typeof response.data === "object" &&
       response.data &&
+      Object.prototype.hasOwnProperty.call(response.data, "code") &&
       response.data.code !== 200
     ) {
       const errorMsg =

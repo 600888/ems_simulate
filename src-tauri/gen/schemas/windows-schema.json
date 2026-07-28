@@ -579,6 +579,12 @@
           "markdownDescription": "Enables the restart_backend command without any pre-configured scope."
         },
         {
+          "description": "Enables the save_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-file",
+          "markdownDescription": "Enables the save_file command without any pre-configured scope."
+        },
+        {
           "description": "Denies the get_backend_url command without any pre-configured scope.",
           "type": "string",
           "const": "deny-get-backend-url",
@@ -601,6 +607,12 @@
           "type": "string",
           "const": "deny-restart-backend",
           "markdownDescription": "Denies the restart_backend command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-file",
+          "markdownDescription": "Denies the save_file command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

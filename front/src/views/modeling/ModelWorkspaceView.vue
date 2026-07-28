@@ -1843,12 +1843,14 @@ import {
   View,
 } from "@element-plus/icons-vue";
 import { modelingApi, type CdcTemplate } from "@/api/modelingApi";
+import { showError } from "@/api/http";
 import DataSetMemberSelector from "@/components/modeling/DataSetMemberSelector.vue";
 import DataSetMemberHierarchy from "@/components/modeling/DataSetMemberHierarchy.vue";
 import {
   createModelingFormSnapshot,
   normalizeModelingFormAttributes,
 } from "@/utils/modelingFormSnapshot";
+import { saveDownload } from "@/utils/tauri";
 import type {
   DeleteImpact,
   LNodeDoTemplatePreview,
@@ -3370,13 +3372,11 @@ async function downloadScl() {
     const blob = new Blob([artifact.content], {
       type: "application/xml;charset=utf-8",
     });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = artifact.filename;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    ElMessage.success(`已生成 ${artifact.filename}`);
+    if (await saveDownload(blob, artifact.filename)) {
+      ElMessage.success(`已生成 ${artifact.filename}`);
+    }
+  } catch (error) {
+    showError(error, "导出模型失败");
   } finally {
     downloading.value = false;
   }
@@ -3387,13 +3387,11 @@ async function downloadArtifactBundle() {
   downloading.value = true;
   try {
     const bundle = await modelingApi.downloadArtifacts(props.projectId);
-    const url = URL.createObjectURL(bundle.content);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = bundle.filename;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    ElMessage.success(`已生成可追溯产物包 ${bundle.filename}`);
+    if (await saveDownload(bundle.content, bundle.filename)) {
+      ElMessage.success(`已生成可追溯产物包 ${bundle.filename}`);
+    }
+  } catch (error) {
+    showError(error, "下载 CFG 产物包失败");
   } finally {
     downloading.value = false;
   }

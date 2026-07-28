@@ -19,6 +19,7 @@
     "allow-get-backend-url",
     "allow-is-backend-ready",
     "allow-restart-backend",
-    "allow-open-directory"
+    "allow-open-directory",
+    "allow-save-file"
   ]
 }

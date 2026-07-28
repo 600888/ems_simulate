@@ -29,9 +29,40 @@ fn open_directory(app: tauri::AppHandle, path: String) -> Result<(), String> {
         .map_err(|error| format!("打开目录失败: {error}"))
 }
 
+fn resolve_file_destination(path: &str) -> Result<PathBuf, String> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err("文件路径不能为空".to_string());
+    }
+
+    let destination = PathBuf::from(path);
+    let filename = destination
+        .file_name()
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| "文件路径必须包含文件名".to_string())?;
+    let parent = destination
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .canonicalize()
+        .map_err(|error| format!("保存目录不存在或不可访问: {error}"))?;
+    if !parent.is_dir() {
+        return Err(format!("保存位置不是目录: {}", parent.display()));
+    }
+
+    Ok(parent.join(filename))
+}
+
+#[tauri::command]
+fn save_file(path: String, contents: Vec<u8>) -> Result<(), String> {
+    let destination = resolve_file_destination(&path)?;
+    std::fs::write(&destination, contents)
+        .map_err(|error| format!("保存文件失败 ({}): {error}", destination.display()))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::resolve_directory;
+    use super::{resolve_directory, resolve_file_destination};
 
     #[test]
     fn directory_path_must_not_be_empty() {
@@ -51,6 +82,21 @@ mod tests {
     fn existing_file_is_rejected() {
         let executable = std::env::current_exe().unwrap();
         assert!(resolve_directory(executable.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn file_destination_must_include_a_filename() {
+        assert!(resolve_file_destination("   ").is_err());
+    }
+
+    #[test]
+    fn file_destination_keeps_filename_in_existing_parent() {
+        let current = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let destination = current.join("model-artifacts.zip");
+        assert_eq!(
+            resolve_file_destination(destination.to_str().unwrap()).unwrap(),
+            destination
+        );
     }
 }
 
@@ -114,6 +160,7 @@ pub fn run() {
             backend::is_backend_ready,
             backend::restart_backend,
             open_directory,
+            save_file,
         ])
         .build(tauri::generate_context!())
         .expect("启动 EMS Simulate 失败");

@@ -287,12 +287,13 @@ def build_artifact_bundle(project: Any, nodes: list[Any], scl_xml: str, scl_file
         "artifacts": [artifact.metadata() for artifact in artifacts],
     }
     manifest_bytes = (json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
+    bundle_stem = f"{project.code}-r{project.revision}-artifacts"
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for artifact in sorted(artifacts, key=lambda item: item.filename):
-            _write_zip_entry(archive, artifact.filename, artifact.content)
-        _write_zip_entry(archive, "manifest.json", manifest_bytes)
-    return ArtifactBundle(artifacts, manifest, buffer.getvalue(), f"{project.code}-r{project.revision}-artifacts.zip")
+            _write_zip_entry(archive, f"{bundle_stem}/{artifact.filename}", artifact.content)
+        _write_zip_entry(archive, f"{bundle_stem}/manifest.json", manifest_bytes)
+    return ArtifactBundle(artifacts, manifest, buffer.getvalue(), f"{bundle_stem}.zip")
 
 
 def _write_zip_entry(archive: zipfile.ZipFile, filename: str, content: bytes) -> None:

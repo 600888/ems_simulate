@@ -67,15 +67,16 @@ def test_bundle_is_deterministic_traceable_and_contains_three_artifacts(service:
     assert first["content"] == second["content"]
     assert {item["kind"] for item in first["artifacts"]} == {"SCL", "CFG", "CSV"}
     with zipfile.ZipFile(io.BytesIO(first["content"])) as archive:
+        bundle_root = f"PHASE4_ICD-r{project['revision']}-artifacts"
         assert set(archive.namelist()) == {
-            "PHASE4_ICD.icd",
-            "PHASE4_ICD.cfg",
-            "PHASE4_ICD.csv",
-            "manifest.json",
+            f"{bundle_root}/PHASE4_ICD.icd",
+            f"{bundle_root}/PHASE4_ICD.cfg",
+            f"{bundle_root}/PHASE4_ICD.csv",
+            f"{bundle_root}/manifest.json",
         }
-        manifest = json.loads(archive.read("manifest.json"))
+        manifest = json.loads(archive.read(f"{bundle_root}/manifest.json"))
         for artifact in manifest["artifacts"]:
-            assert sha256(archive.read(artifact["filename"])).hexdigest() == artifact["sha256"]
+            assert sha256(archive.read(f"{bundle_root}/{artifact['filename']}")).hexdigest() == artifact["sha256"]
     assert service.get_project(project["id"])["revision"] == project["revision"]
 
 
@@ -89,8 +90,9 @@ def test_imported_sample_compiles_runtime_points_without_changing_model(service:
     bundle = service.generate_artifact_bundle(project["id"])
 
     with zipfile.ZipFile(io.BytesIO(bundle["content"])) as archive:
-        csv_lines = archive.read("PHASE4_SIMPLE.csv").decode("utf-8-sig").splitlines()
-        cfg = archive.read("PHASE4_SIMPLE.cfg").decode("utf-8")
+        bundle_root = f"PHASE4_SIMPLE-r{project['revision']}-artifacts"
+        csv_lines = archive.read(f"{bundle_root}/PHASE4_SIMPLE.csv").decode("utf-8-sig").splitlines()
+        cfg = archive.read(f"{bundle_root}/PHASE4_SIMPLE.cfg").decode("utf-8")
     assert len(csv_lines) > 1
     assert "DA(" in cfg
     assert service.get_project(project["id"])["revision"] == project["revision"]
