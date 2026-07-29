@@ -1370,6 +1370,10 @@ export default {
     clearCache: "Clear Cache",
   },
   protocolParams: {
+    configHint:
+      "These protocol runtime parameters apply only to the current device",
+    noParamsHint:
+      "No additional runtime parameters are available for this protocol and connection mode",
     connectionTimeout: "Connection Timeout",
     commandTimeout: "Command Timeout",
     commandRetries: "Command Retries",
@@ -1401,6 +1405,7 @@ export default {
     maxMmsConnections: "Max MMS Connections",
     sessionIdleTimeout: "Session Idle Timeout",
     ms: "ms",
+    seconds: "s",
     times: "times",
     frames: "frames",
     connections: "connections",

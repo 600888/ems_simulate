@@ -1343,6 +1343,8 @@ export default {
     clearCache: "清空缓存",
   },
   protocolParams: {
+    configHint: "以下参数仅作用于当前设备的协议运行配置",
+    noParamsHint: "当前协议及连接模式暂无额外运行参数",
     connectionTimeout: "连接超时",
     commandTimeout: "单条命令超时",
     commandRetries: "命令重试次数",
@@ -1374,6 +1376,7 @@ export default {
     maxMmsConnections: "最大 MMS 连接数",
     sessionIdleTimeout: "会话空闲超时",
     ms: "毫秒",
+    seconds: "秒",
     times: "次",
     frames: "帧",
     connections: "个",

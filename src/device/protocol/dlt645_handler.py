@@ -8,6 +8,8 @@ import contextlib
 import threading
 from typing import Any
 
+from dlt645 import MeterClientService, MeterServerService
+
 from src.config.config import Config
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.enums.point_data import Yc
@@ -82,8 +84,6 @@ class DLT645ServerHandler(ServerHandler):
                     - meter_address: 电表地址（12位BCD码）
                     - timeout: 超时时间（默认 30）
         """
-        from dlt645.service.serversvc.server_service import MeterServerService
-
         self._config = config
         timeout = config.get("timeout", 30)
         runtime = config.get("runtime", {})
@@ -304,8 +304,6 @@ class DLT645ClientHandler(ClientHandler):
                     - meter_address: 电表地址（12位BCD码）
                     - timeout: 超时时间（默认 30）
         """
-        from dlt645.service.clientsvc.client_service import MeterClientService
-
         self._config = config
         timeout = config.get("timeout", 3)  # 默认3秒超时，避免长时间阻塞
         runtime = config.get("runtime", {})

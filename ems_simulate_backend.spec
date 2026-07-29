@@ -59,6 +59,12 @@ hiddenimports = [
     "pydantic",
     "loguru",
     "c104",
+    # dlt645 exposes these through an eager package initializer. Listing both
+    # services explicitly keeps frozen builds from discovering either service
+    # for the first time inside a device-reload worker thread.
+    "dlt645",
+    "dlt645.service.serversvc.server_service",
+    "dlt645.service.clientsvc.client_service",
     *pyiec_hiddenimports,
 ]
 

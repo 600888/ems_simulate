@@ -50,7 +50,11 @@
           />
         </el-tab-pane>
 
-        <el-tab-pane label="加密配置" name="security">
+        <el-tab-pane
+          v-if="tlsSupportedProtocol"
+          label="加密配置"
+          name="security"
+        >
           <DeviceSecurityConfig
             ref="securityCompRef"
             :model-value="securityConfig"
@@ -262,6 +266,7 @@ const caCertificateFile = ref<File | null>(null);
 const deviceGroupOptions = ref<DeviceGroupInfo[]>([]);
 const serialPorts = ref<Array<{ device: string; description: string }>>([]);
 const protocols = ref<ProtocolOption[]>([]);
+const TLS_SUPPORTED_PROTOCOLS = new Set([1, 2, 4]);
 const protocolParams = reactive({
   schema_version: 1,
   values: {} as Record<string, number | boolean | string>,
@@ -307,7 +312,10 @@ const applyPersistedSecurityConfig = (persisted?: SecurityConfig) => {
     ...defaultSecurityConfig(),
     ...(persisted || {}),
     // 开关只认后端持久化的布尔值，不根据证书或本地点击状态推断。
-    tls_enabled: persisted?.tls_enabled === true,
+    tls_enabled:
+      persisted?.tls_enabled === true &&
+      TLS_SUPPORTED_PROTOCOLS.has(form.protocol_type) &&
+      (form.conn_type === 1 || form.conn_type === 2),
   };
   Object.assign(securityConfig, normalized);
 };
@@ -328,6 +336,9 @@ const gooseControlList = computed(() => {
 const isEditMode = computed(() => !!props.channelId);
 const isIec61850Server = computed(
   () => form.protocol_type === 4 && form.conn_type === 2,
+);
+const tlsSupportedProtocol = computed(() =>
+  TLS_SUPPORTED_PROTOCOLS.has(form.protocol_type),
 );
 const dialogVisible = computed({
   get: () => props.visible,
@@ -403,7 +414,10 @@ watch(
 watch(
   () => [form.protocol_type, form.conn_type],
   async ([protocolType, connType]) => {
-    if (![1, 2, 4].includes(protocolType)) securityConfig.tls_enabled = false;
+    if (!TLS_SUPPORTED_PROTOCOLS.has(protocolType)) {
+      securityConfig.tls_enabled = false;
+      if (activeTab.value === "security") activeTab.value = "basic";
+    }
     if (protocolType === 4 && connType === 2) {
       selectedFile.value = null;
     } else {
