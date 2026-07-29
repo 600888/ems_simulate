@@ -8,10 +8,9 @@ import contextlib
 import threading
 from typing import Any
 
-from dlt645 import MeterClientService, MeterServerService
-
 from src.config.config import Config
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
+from src.device.protocol.dlt645_compat import MeterClientService, MeterServerService
 from src.enums.point_data import Yc
 from src.enums.points.base_point import BasePoint
 
