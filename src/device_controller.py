@@ -1,11 +1,16 @@
 import asyncio
+from contextlib import suppress
 import json
 import os.path
-import sys
+import threading
 import time
 
+from src.config.config import Config
+from src.config.global_config import CONFIG_JSON_DIR
+from src.config.storage import get_storage_path
 from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
+from src.device.core.device import Device
 from src.device.data_update.data_update_thread import DataUpdateThread
 from src.device.factory.general_device_builder import GeneralDeviceBuilder
 from src.device.types.circuit_breaker import CircuitBreaker
@@ -13,13 +18,6 @@ from src.device.types.general_device import GeneralDevice
 from src.device.types.pcs import Pcs
 from src.enums.data_source import DataSource
 from src.enums.modbus_def import ProtocolType, get_protocol_type_by_value
-
-sys.path.append("../")
-
-from src.config.config import Config
-from src.config.global_config import CONFIG_JSON_DIR
-from src.config.storage import get_storage_path
-from src.device.core.device import Device
 from src.log import log
 
 
@@ -86,16 +84,7 @@ class DeviceController:
 
         # 停止设备
         try:
-            # 停止更新线程
-            if device.data_update_thread:
-                device.data_update_thread.stop()
-
-            # 停止模拟
-            device.simulation_controller.stop_simulation()
-
-            # 停止协议服务端/客户端
-            if device.protocol_handler:
-                await device.protocol_handler.stop()
+            await device.stop()
         except Exception as e:
             log.error(f"移除设备 {device.name} (ID: {device_id}) 时出错: {e}")
 
@@ -112,6 +101,9 @@ class DeviceController:
         if self.enerey_meter == device:
             self.enerey_meter = None
 
+        from src.config.log.device_logger import DeviceLoggerManager
+
+        DeviceLoggerManager.unregister_device(device.name)
         return True
 
     def sync_pcs_power_to_meter(self):
@@ -135,11 +127,15 @@ class DeviceController:
             log.error(f"同步PCS功率到电表失败: {e}")
 
     async def import_device_from_db(self):
+        """在线程中导入数据库设备，避免阻塞 FastAPI 事件循环。"""
+        await asyncio.to_thread(self._import_device_from_db)
+
+    def _import_device_from_db(self):
         try:
             channel_list = ChannelService.get_all_channels()
 
-            # 并发创建所有设备
-            async def _build_device(channel):
+            # 设备构建包含同步数据库访问，统一放在工作线程内顺序执行。
+            def _build_device(channel):
                 """单个设备的构建逻辑"""
                 channel_code = channel["code"]
                 channel_name = channel["name"]
@@ -220,8 +216,12 @@ class DeviceController:
 
                 return general_device, is_energy_meter
 
-            # 使用 asyncio.gather 并发创建所有设备
-            results = await asyncio.gather(*[_build_device(ch) for ch in channel_list], return_exceptions=True)
+            results = []
+            for channel in channel_list:
+                try:
+                    results.append(_build_device(channel))
+                except Exception as exc:
+                    results.append(exc)
 
             # 收集结果
             for result in results:
@@ -236,14 +236,21 @@ class DeviceController:
                         self.enerey_meter = general_device
 
             # 所有设备创建完成后，设置提供者（此时可以安全地解析跨设备依赖）
+            from src.data.service.point_mapping_service import PointMappingService
+
+            mappings = PointMappingService.get_all_mappings()
             for device in self.device_list:
-                device.set_device_provider(self)
+                device.set_device_provider(self, mappings)
 
         except Exception as e:
             log.error(f"通过数据库导入失败: {e}")
             raise
 
     async def import_device_from_json(self, file_path=config_json_path):
+        """在线程中读取并构建设备，避免同步文件 I/O 阻塞事件循环。"""
+        await asyncio.to_thread(self._import_device_from_json, file_path)
+
+    def _import_device_from_json(self, file_path=config_json_path):
         if file_path:
             try:
                 with open(file_path, encoding="utf-8") as f:
@@ -269,8 +276,11 @@ class DeviceController:
                 # self.start_data_sync_thread()
 
                 # 所有设备创建完成后，设置提供者
+                from src.data.service.point_mapping_service import PointMappingService
+
+                mappings = PointMappingService.get_all_mappings()
                 for device in self.device_list:
-                    device.set_device_provider(self)
+                    device.set_device_provider(self, mappings)
 
             except Exception as e:
                 log.error(f"通过csv文件导入设备配置文件失败: {e}")
@@ -291,39 +301,106 @@ class DeviceController:
 
     # 结束所有ModbusTcpServer
     async def stop_all_modbus_server(self):
-        for device in self.device_list:
-            # 停止数据更新线程
-            if device.data_update_thread:
-                device.data_update_thread.stop()
-            # 停止模拟控制器
-            device.simulation_controller.stop_simulation()
-            # 停止服务器
-            if device.server:
-                from src.proto.iec61850.iec61850_server import IEC61850Server
-                from src.proto.pyModbus.server.modbus_server import ModbusServer
-
-                if isinstance(device.server, IEC61850Server):
-                    device.server.stop()
-                elif isinstance(device.server, ModbusServer):
-                    await device.server.stopAsync()
-            # 停止客户端
-            if device.client:
-                device.client.disconnect()
+        for device in tuple(self.device_list):
+            await device.stop()
 
         # 停止数据同步线程
         if self.data_sync_thread:
-            self.data_sync_thread.stop()
+            await asyncio.to_thread(self.data_sync_thread.stop, 2.0)
             log.info("数据同步线程已停止")
 
+    async def shutdown(self) -> None:
+        """释放控制器拥有的设备、线程、协议和日志资源。"""
+        await self.stop_all_modbus_server()
 
-device_controller = None
+        from src.config.log.device_logger import DeviceLoggerManager
+
+        for device in tuple(self.device_list):
+            DeviceLoggerManager.unregister_device(device.name)
+        self.device_list.clear()
+        self.device_map.clear()
+        self.enerey_meter = None
+
+        # 默认 current_device 不一定属于 device_list，也需要释放计算线程池。
+        if self.current_device is not None:
+            self.current_device.point_calculator.stop()
 
 
-async def get_device_controller():
-    global device_controller
-    if device_controller is None:
-        device_controller = DeviceController()
-        # 读取配置文件创建设备
-        await device_controller.import_device()
-        # device_controller.start_data_sync_thread()
-    return device_controller
+device_controller: DeviceController | None = None
+_device_controller_init_task: asyncio.Task[DeviceController] | None = None
+_device_controller_guard = threading.Lock()
+
+
+async def _create_device_controller() -> DeviceController:
+    controller = DeviceController()
+    try:
+        await controller.import_device()
+    except BaseException:
+        with suppress(Exception):
+            await controller.shutdown()
+        raise
+    return controller
+
+
+async def get_device_controller() -> DeviceController:
+    """获取已初始化控制器；并发调用只执行一次初始化。"""
+    global device_controller, _device_controller_init_task
+
+    if device_controller is not None:
+        return device_controller
+
+    loop = asyncio.get_running_loop()
+    with _device_controller_guard:
+        if device_controller is not None:
+            return device_controller
+
+        task = _device_controller_init_task
+        if task is not None and task.get_loop() is not loop:
+            if not task.done():
+                raise RuntimeError("设备控制器正在另一个事件循环中初始化")
+            try:
+                device_controller = task.result()
+            except BaseException:
+                _device_controller_init_task = None
+                task = None
+
+        if device_controller is not None:
+            return device_controller
+        if task is None:
+            task = loop.create_task(_create_device_controller(), name="device-controller-initialization")
+            _device_controller_init_task = task
+
+    try:
+        controller = await asyncio.shield(task)
+    except BaseException:
+        with _device_controller_guard:
+            if _device_controller_init_task is task:
+                _device_controller_init_task = None
+        raise
+
+    with _device_controller_guard:
+        if device_controller is None:
+            device_controller = controller
+        if _device_controller_init_task is task:
+            _device_controller_init_task = None
+        return device_controller
+
+
+async def shutdown_device_controller() -> None:
+    """关闭并重置全局控制器，供应用 lifespan 和测试安全复用。"""
+    global device_controller, _device_controller_init_task
+
+    with _device_controller_guard:
+        controller = device_controller
+        task = _device_controller_init_task
+        device_controller = None
+        _device_controller_init_task = None
+
+    if controller is None and task is not None:
+        try:
+            controller = await asyncio.shield(task)
+        except BaseException:
+            controller = None
+
+    if controller is not None:
+        await controller.shutdown()

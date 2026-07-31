@@ -245,10 +245,6 @@ def _resolve_control_write_code(device, point_code: str) -> str:
         return point_code
     if point_fc == "CO" and _is_control_value_address(str(point.address)):
         return point_code
-    # 非 CO 的数据点（ST、MX 等），直接使用原测点编码，不需要控制解析
-    if point_fc and point_fc != "CO":
-        return point_code
-
     requested_ref = _parse_iec61850_address(str(point.address))
     if not requested_ref:
         return point_code

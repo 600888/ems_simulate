@@ -9,6 +9,7 @@ from src.proto.iec61850.plugins.reports import ReportsPlugin
 from src.proto.iec61850.plugins.reports import callback as report_callback_module
 from src.proto.iec61850.plugins.reports import manager as report_manager_module
 from src.proto.iec61850.plugins.reports.urcb import UrcbHandler
+from src.proto.iec61850.plugins.scl.parser.type_resolver import TypeResolver
 from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
 
 
@@ -17,13 +18,22 @@ def test_scl_da_trigger_flags_are_preserved_in_points():
 
     result = SclImportService().import_file(str(icd_path))
 
-    st_val = next(point for point in result.points.yx_points if point.reg_addr == "CTRL/krGGIO1.Alm1.stVal")
-    quality = next(point for point in result.points.yx_points if point.reg_addr == "CTRL/krGGIO1.Alm1.q")
-    analog = next(point for point in result.points.yc_points if point.reg_addr == "MEAS/GGIO1.AnIn1.mag.f")
+    st_val = next(point for point in result.points.yx_points if point.reg_addr == "PCS001CTRL/krGGIO1.Alm1.stVal")
+    analog = next(point for point in result.points.yc_points if point.reg_addr == "PCS001MEAS/GGIO1.AnIn1.mag.i")
+
+    ctrl_ld = next(ld for ld in result.doc.get_all_ldevices() if ld.inst == "PCS001CTRL")
+    kr_ggio = next(ln for ln in ctrl_ld.lns if ln.ln_name == "krGGIO1")
+    ln_type = result.doc.get_ln_node_type(kr_ggio.ln_type)
+    alm1 = next(do for do in ln_type.dos if do.name == "Alm1")
+    do_type = result.doc.get_do_type(alm1.type_id)
+    quality = next(
+        da for da in TypeResolver(result.doc).collect_all_das(alm1.type_id, do_type.cdc) if da["path"] == "q"
+    )
 
     assert st_val.dchg is True
-    assert quality.qchg is True
+    assert quality["qchg"] is True
     assert analog.dchg is True
+    assert not any(point.reg_addr.endswith(".q") for point in result.points.yx_points)
 
 
 def test_server_rcb_always_exposes_gi_capability(monkeypatch):
@@ -67,7 +77,7 @@ def test_expanded_report_instances_have_unique_rpt_ids():
     instances = [
         report
         for report in result.reports.report_controls
-        if report.ld_inst == "LD0" and report.name.startswith("brcbDin")
+        if report.ld_inst == "PCS001LD0" and report.name.startswith("brcbDin")
     ]
 
     assert [report.name for report in instances] == [f"brcbDin{idx:02d}" for idx in range(1, 13)]

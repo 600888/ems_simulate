@@ -3,8 +3,10 @@
 import os
 from pathlib import Path
 import select
+import shutil
 import socket
 import ssl
+import tempfile
 import threading
 from typing import Any
 
@@ -15,24 +17,70 @@ class IEC104TlsConfigurationError(ValueError):
     """Raised when IEC104 TLS material cannot be loaded safely."""
 
 
-def _required_file(
-    security: dict[str, Any],
-    key: str,
-    label: str,
-    *,
-    require_ascii: bool = False,
-) -> str:
+_staged_tls_material: dict[
+    tuple[tuple[str, int, int], ...],
+    tuple[tempfile.TemporaryDirectory, tuple[str, ...]],
+] = {}
+_staged_tls_lock = threading.Lock()
+
+
+def _required_file(security: dict[str, Any], key: str, label: str) -> str:
     value = security.get(key)
     if not value:
         raise IEC104TlsConfigurationError(f"IEC104 TLS 缺少{label}")
     path = Path(str(value)).expanduser().resolve(strict=False)
     if not path.is_file():
         raise IEC104TlsConfigurationError(f"IEC104 TLS {label}文件不存在")
-    if require_ascii and os.name == "nt" and not str(path).isascii():
-        raise IEC104TlsConfigurationError(
-            f"c104 2.2.2 在 Windows 上不支持包含非 ASCII 字符的{label}路径，请将数据目录设置为纯英文路径"
-        )
     return str(path)
+
+
+def _ascii_tls_paths(*paths: str) -> tuple[str, ...]:
+    """Stage native c104 TLS files when Windows paths contain non-ASCII text.
+
+    c104 2.2.2 cannot open such paths on Windows.  The temporary directory is
+    retained for the process lifetime because the native object may defer file
+    access until a connection is started.
+    """
+    if os.name != "nt" or all(path.isascii() for path in paths):
+        return paths
+
+    cache_key = tuple((path, Path(path).stat().st_size, Path(path).stat().st_mtime_ns) for path in paths)
+    with _staged_tls_lock:
+        cached = _staged_tls_material.get(cache_key)
+        if cached is not None:
+            return cached[1]
+
+        candidates = [Path.cwd(), Path(os.environ.get("SystemRoot", "C:\\Windows")) / "Temp"]
+        temporary_directory = None
+        for root in candidates:
+            if not str(root).isascii() or not root.is_dir():
+                continue
+            try:
+                temporary_directory = tempfile.TemporaryDirectory(prefix="ems-iec104-tls-", dir=root)
+                break
+            except OSError:
+                continue
+        if temporary_directory is None:
+            raise IEC104TlsConfigurationError(
+                "c104 2.2.2 在 Windows 上无法读取包含非 ASCII 字符的 TLS 路径，且未找到可写的纯英文暂存目录"
+            )
+
+        staged_paths = []
+        stage_root = Path(temporary_directory.name)
+        try:
+            for index, source in enumerate(paths):
+                suffix = Path(source).suffix or ".pem"
+                target = stage_root / f"material-{index}{suffix}"
+                shutil.copyfile(source, target)
+                target.chmod(0o600)
+                staged_paths.append(str(target))
+        except OSError as exc:
+            temporary_directory.cleanup()
+            raise IEC104TlsConfigurationError(f"IEC104 TLS 文件暂存失败: {exc}") from exc
+
+        result = tuple(staged_paths)
+        _staged_tls_material[cache_key] = (temporary_directory, result)
+        return result
 
 
 class IEC104BasicTlsConfig:
@@ -91,9 +139,14 @@ def build_transport_security(
         raise IEC104TlsConfigurationError("IEC104 TLS 模式必须是 basic 或 mutual")
     if tls_mode == "basic":
         return None
-    certificate_path = _required_file(config, "certificate_path", "证书", require_ascii=True)
-    private_key_path = _required_file(config, "private_key_path", "私钥", require_ascii=True)
-    ca_certificate_path = _required_file(config, "ca_certificate_path", "CA 证书", require_ascii=True)
+    certificate_path = _required_file(config, "certificate_path", "证书")
+    private_key_path = _required_file(config, "private_key_path", "私钥")
+    ca_certificate_path = _required_file(config, "ca_certificate_path", "CA 证书")
+    certificate_path, private_key_path, ca_certificate_path = _ascii_tls_paths(
+        certificate_path,
+        private_key_path,
+        ca_certificate_path,
+    )
 
     try:
         transport_security = c104.TransportSecurity(validate=True, only_known=False)

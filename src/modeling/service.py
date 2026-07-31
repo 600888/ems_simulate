@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter, OrderedDict, defaultdict
 from collections.abc import Callable
 from datetime import datetime
+from functools import wraps
 import json
 import re
 from threading import RLock
@@ -61,6 +62,17 @@ REFERENCE_RELATION_LABELS = {
 }
 
 
+def _serialized_project_operation(method: Callable[..., Any]) -> Callable[..., Any]:
+    """Serialize access to one cached mutable model document."""
+
+    @wraps(method)
+    def wrapper(self, project_id: str, *args: Any, **kwargs: Any) -> Any:
+        with self._get_project_lock(project_id):
+            return method(self, project_id, *args, **kwargs)
+
+    return wrapper
+
+
 def _json_loads(value: str | None) -> dict[str, Any]:
     if not value:
         return {}
@@ -83,11 +95,28 @@ class Iec61850ModelingService:
     """管理模型工程、节点树、影响分析和基础规则校验。"""
 
     _DOCUMENT_CACHE_SIZE = 4
+    _DOCUMENT_CACHE_MAX_NODES = 50_000
 
     def __init__(self, session_factory: SessionFactory = local_session):
         self.session_factory = session_factory
         self._document_cache: OrderedDict[str, tuple[str, ModelDocument]] = OrderedDict()
         self._document_cache_lock = RLock()
+        self._project_locks: dict[str, RLock] = {}
+        self._project_locks_guard = RLock()
+
+    def _get_project_lock(self, project_id: str) -> RLock:
+        with self._project_locks_guard:
+            return self._project_locks.setdefault(project_id, RLock())
+
+    def _cache_document(self, cache_key: str, document: ModelDocument) -> None:
+        with self._document_cache_lock:
+            self._document_cache[document.project_id] = (cache_key, document)
+            self._document_cache.move_to_end(document.project_id)
+            while len(self._document_cache) > 1 and (
+                len(self._document_cache) > self._DOCUMENT_CACHE_SIZE
+                or sum(len(item[1].nodes) for item in self._document_cache.values()) > self._DOCUMENT_CACHE_MAX_NODES
+            ):
+                self._document_cache.popitem(last=False)
 
     @staticmethod
     def _require_project(session: Session, project_id: str) -> Iec61850ModelProject:
@@ -209,11 +238,7 @@ class Iec61850ModelingService:
 
         self._normalize_legacy_fcda_names(document)
         self._materialize_inherited_instance_attributes(document)
-        with self._document_cache_lock:
-            self._document_cache[project.id] = (cache_key, document)
-            self._document_cache.move_to_end(project.id)
-            while len(self._document_cache) > self._DOCUMENT_CACHE_SIZE:
-                self._document_cache.popitem(last=False)
+        self._cache_document(cache_key, document)
         return document
 
     def _save_document(self, project: Iec61850ModelProject, document: ModelDocument) -> None:
@@ -222,11 +247,7 @@ class Iec61850ModelingService:
         project.model_format_version = document.FORMAT_VERSION
         project.model_node_count = len(document.nodes)
         project.model_checksum = document.checksum(content)
-        with self._document_cache_lock:
-            self._document_cache[project.id] = (project.model_checksum, document)
-            self._document_cache.move_to_end(project.id)
-            while len(self._document_cache) > self._DOCUMENT_CACHE_SIZE:
-                self._document_cache.popitem(last=False)
+        self._cache_document(project.model_checksum, document)
 
     @staticmethod
     def _project_dict(project: Iec61850ModelProject, node_count: int | None = None) -> dict[str, Any]:
@@ -587,6 +608,7 @@ class Iec61850ModelingService:
             # a multi-megabyte document here only duplicates startup work.
             return self._project_dict(project)
 
+    @_serialized_project_operation
     def delete_project(self, project_id: str) -> None:
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
@@ -595,6 +617,7 @@ class Iec61850ModelingService:
         with self._document_cache_lock:
             self._document_cache.pop(project_id, None)
 
+    @_serialized_project_operation
     def get_tree(
         self,
         project_id: str,
@@ -702,6 +725,7 @@ class Iec61850ModelingService:
                 roots = [root for root in roots if root.id in filtered_ids]
             return [build(root) for root in roots]
 
+    @_serialized_project_operation
     def get_node(
         self,
         project_id: str,
@@ -750,6 +774,7 @@ class Iec61850ModelingService:
                 ]
             return result
 
+    @_serialized_project_operation
     def get_effective_instance_tree(
         self,
         project_id: str,
@@ -763,6 +788,7 @@ class Iec61850ModelingService:
                 raise ValidationError("只有 LN0 或 LN 可以展开类型模板数据模型")
             return build_effective_instance_tree(document, logical_node)
 
+    @_serialized_project_operation
     def get_lnode_type_options(
         self,
         project_id: str,
@@ -819,6 +845,7 @@ class Iec61850ModelingService:
             )
             return options
 
+    @_serialized_project_operation
     def create_instance_override(
         self,
         project_id: str,
@@ -944,6 +971,7 @@ class Iec61850ModelingService:
                 "project_revision": project.revision,
             }
 
+    @_serialized_project_operation
     def get_lnode_do_template_options(
         self,
         project_id: str,
@@ -975,6 +1003,7 @@ class Iec61850ModelingService:
                 "do_types": do_types,
             }
 
+    @_serialized_project_operation
     def preview_lnode_do_template(
         self,
         project_id: str,
@@ -1000,6 +1029,7 @@ class Iec61850ModelingService:
             result["project_revision"] = project.revision
             return result
 
+    @_serialized_project_operation
     def apply_lnode_do_template(
         self,
         project_id: str,
@@ -1067,6 +1097,7 @@ class Iec61850ModelingService:
                 "project_revision": project.revision,
             }
 
+    @_serialized_project_operation
     def get_tree_kinds(self, project_id: str) -> list[dict[str, Any]]:
         with self.session_factory() as session:
             project = self._require_project(session, project_id)
@@ -1092,6 +1123,7 @@ class Iec61850ModelingService:
                 for kind, count in sorted(counts.items())
             ]
 
+    @_serialized_project_operation
     def create_node(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         parent_id = str(payload.get("parent_id", ""))
         kind = str(payload.get("kind", "")).upper()
@@ -1179,6 +1211,7 @@ class Iec61850ModelingService:
             result["path"] = document.node_path(node)
             return result
 
+    @_serialized_project_operation
     def get_dataset_member_candidates(
         self,
         project_id: str,
@@ -1195,6 +1228,7 @@ class Iec61850ModelingService:
             except ValueError as exc:
                 raise ValidationError(str(exc)) from exc
 
+    @_serialized_project_operation
     def create_dataset_members(
         self,
         project_id: str,
@@ -1305,6 +1339,7 @@ class Iec61850ModelingService:
                 "project_revision": project.revision,
             }
 
+    @_serialized_project_operation
     def repair_dataset_member(
         self,
         project_id: str,
@@ -1353,6 +1388,7 @@ class Iec61850ModelingService:
                 "project_revision": project.revision,
             }
 
+    @_serialized_project_operation
     def update_node(self, project_id: str, node_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
@@ -1388,6 +1424,7 @@ class Iec61850ModelingService:
             result["path"] = document.node_path(node)
             return result
 
+    @_serialized_project_operation
     def apply_cdc_template(self, project_id: str, do_type_id: str, template_id: str) -> dict[str, Any]:
         """Merge a declarative CDC template into one DOType as a single project revision."""
 
@@ -1512,6 +1549,7 @@ class Iec61850ModelingService:
                 "project_revision": project.revision,
             }
 
+    @_serialized_project_operation
     def get_delete_impact(self, project_id: str, node_id: str) -> dict[str, Any]:
         with self.session_factory() as session:
             project = self._require_project(session, project_id)
@@ -1577,6 +1615,7 @@ class Iec61850ModelingService:
                 ),
             }
 
+    @_serialized_project_operation
     def delete_node(self, project_id: str, node_id: str, *, force: bool = False) -> dict[str, Any]:
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
@@ -1597,6 +1636,7 @@ class Iec61850ModelingService:
             self._save_document(project, document)
             return {"deleted_node_id": node_id, "deleted_count": deleted_count}
 
+    @_serialized_project_operation
     def rebuild_references(self, project_id: str) -> dict[str, int]:
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
@@ -1605,6 +1645,7 @@ class Iec61850ModelingService:
             self._save_document(project, document)
             return {"reference_count": count}
 
+    @_serialized_project_operation
     def validate_project(self, project_id: str) -> dict[str, Any]:
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
@@ -1929,6 +1970,7 @@ class Iec61850ModelingService:
             ).all()
             return [self._version_dict(version) for version in versions]
 
+    @_serialized_project_operation
     def create_version(self, project_id: str, *, label: str = "", description: str = "") -> dict[str, Any]:
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
@@ -1940,6 +1982,7 @@ class Iec61850ModelingService:
             )
             return self._version_dict(version)
 
+    @_serialized_project_operation
     def restore_version(self, project_id: str, version_id: str) -> dict[str, Any]:
         with self.session_factory() as session, session.begin():
             project = self._require_project(session, project_id)
@@ -1989,6 +2032,7 @@ class Iec61850ModelingService:
                 "node_count": len(snapshot.get("nodes") or []),
             }
 
+    @_serialized_project_operation
     def delete_version(self, project_id: str, version_id: str) -> None:
         with self.session_factory() as session, session.begin():
             self._require_project(session, project_id)
@@ -2004,6 +2048,7 @@ class Iec61850ModelingService:
                 raise ValidationError("已发布版本不可删除")
             session.delete(version)
 
+    @_serialized_project_operation
     def generate_scl(self, project_id: str, *, file_type: str | None = None) -> dict[str, Any]:
         from src.modeling.scl_serializer import SclModelSerializer
 
@@ -2023,6 +2068,7 @@ class Iec61850ModelingService:
                 "status": project.status,
             }
 
+    @_serialized_project_operation
     def generate_artifact_bundle(self, project_id: str, *, file_type: str | None = None) -> dict[str, Any]:
         from src.modeling.scl_serializer import SclModelSerializer
 
@@ -2044,6 +2090,7 @@ class Iec61850ModelingService:
                 "revision": project.revision,
             }
 
+    @_serialized_project_operation
     def publish_project(self, project_id: str, *, label: str = "", description: str = "") -> dict[str, Any]:
         validation = self.validate_project(project_id)
         if not validation["passed"]:

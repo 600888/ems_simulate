@@ -82,61 +82,77 @@ class DataExporter:
                 return False
             return dlt645_settlement is None or (address & 0xFF) == dlt645_settlement
 
-        table_data: list[list[str]] = []
+        # 先筛选和排序轻量的测点对象，分页后只格式化当前页。
+        # 大通道不再为一页少量数据构造数万行字符串。
+        matched_points: list[tuple[BasePoint, bool]] = []
         frame_type_dict = PointManager.frame_type_dict()
+
+        def append_matches(points: list[BasePoint], is_analog: bool) -> None:
+            for point in points:
+                if (
+                    (name is None or name in str(point.name))
+                    and matches_iec104_type(point)
+                    and matches_dlt645_branch(point)
+                ):
+                    matched_points.append((point, is_analog))
 
         # 处理遥测数据
         if 0 in point_types:
-            for yc in yc_list:
-                if (name is None or name in str(yc.name)) and matches_iec104_type(yc) and matches_dlt645_branch(yc):
-                    table_data.append(self._format_yc_row(yc, frame_type_dict, mask_error))
+            append_matches(yc_list, True)
 
         # 处理遥信数据
         if 1 in point_types:
-            for yx in yx_list:
-                if (name is None or name in str(yx.name)) and matches_iec104_type(yx) and matches_dlt645_branch(yx):
-                    table_data.append(self._format_yx_row(yx, frame_type_dict, mask_error))
+            append_matches(yx_list, False)
 
         # 处理遥控数据
         if 2 in point_types:
-            for yk in yk_list:
-                if (name is None or name in str(yk.name)) and matches_iec104_type(yk) and matches_dlt645_branch(yk):
-                    table_data.append(self._format_yx_row(yk, frame_type_dict, mask_error))
+            append_matches(yk_list, False)
 
         # 处理遥调数据
         if 3 in point_types:
-            for yt in yt_list:
-                if (name is None or name in str(yt.name)) and matches_iec104_type(yt) and matches_dlt645_branch(yt):
-                    table_data.append(self._format_yc_row(yt, frame_type_dict, mask_error))
+            append_matches(yt_list, True)
 
-        # Default sorting by address
-        def default_sort_key(row):
-            return int(row[0]) if row[0].isdigit() else 0
+        def address_sort_key(item: tuple[BasePoint, bool]) -> int:
+            address = str(item[0].address)
+            return int(address) if address.isdigit() else 0
+
+        def function_sort_key(item: tuple[BasePoint, bool]) -> int:
+            function_code = str(item[0].func_code)
+            return int(function_code) if function_code.isdigit() else 0
+
+        def decode_sort_key(item: tuple[BasePoint, bool]) -> str:
+            return str(item[0].decode)
 
         # Optional custom sorting
+        sort_key = address_sort_key
+        is_reverse = False
         if order_by and order_direction:
             is_reverse = order_direction == "descending"
             if order_by == "地址":
-                table_data.sort(key=default_sort_key, reverse=is_reverse)
+                sort_key = address_sort_key
             elif order_by == "功能码":
-                table_data.sort(key=lambda row: int(row[3]) if row[3].isdigit() else 0, reverse=is_reverse)
+                sort_key = function_sort_key
             elif order_by == "解析码":
-                table_data.sort(key=lambda row: row[4], reverse=is_reverse)
+                sort_key = decode_sort_key
             else:
-                table_data.sort(key=default_sort_key)
-        else:
-            # 默认按地址排序
-            table_data.sort(key=default_sort_key)
+                is_reverse = False
+        matched_points.sort(key=sort_key, reverse=is_reverse)
 
-        total = len(table_data)
+        total = len(matched_points)
 
-        if page_index is None or page_size is None:
-            return table_data, total
+        if page_index is not None and page_size is not None:
+            start = (page_index - 1) * page_size
+            matched_points = matched_points[start : start + page_size]
 
-        # 分页
-        start = (page_index - 1) * page_size
-        end = start + page_size
-        return table_data[start:end], total
+        table_data = [
+            (
+                self._format_yc_row(point, frame_type_dict, mask_error)
+                if is_analog
+                else self._format_yx_row(point, frame_type_dict, mask_error)
+            )
+            for point, is_analog in matched_points
+        ]
+        return table_data, total
 
     def _format_yc_row(self, point: Yc, frame_type_dict: dict[int, str], mask_error: bool = True) -> list[str]:
         """格式化遥测/遥调行"""

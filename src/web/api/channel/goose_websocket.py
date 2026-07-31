@@ -23,11 +23,13 @@ GOOSE 抓包 WebSocket 实时推送
     {"type":"statistics", "data":{...}}    ← 统计更新
 """
 
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import json
 import threading
-from typing import Any, Optional
+from typing import Any, ClassVar
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -71,7 +73,7 @@ class WebSocketSessionManager:
     将捕获到的 GOOSE 报文实时推送给所有连接的客户端。
     """
 
-    _instance: Optional["WebSocketSessionManager"] = None
+    _instance: ClassVar[WebSocketSessionManager | None] = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -93,6 +95,8 @@ class WebSocketSessionManager:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._pending_packets: dict[int, list[dict[str, Any]]] = {}
         self._packet_batch_scheduled: set[int] = set()
+        self._max_pending_packets_per_channel = 1000
+        self._send_timeout_seconds = 1.0
 
     # ---- 连接管理 ----
 
@@ -120,20 +124,30 @@ class WebSocketSessionManager:
 
     async def broadcast(self, message: dict[str, Any], channel_id: int | None = None):
         """只向同一 IEC 61850 通道的客户端广播报文。"""
-        if not self._connections:
-            return
         payload = json.dumps(message, ensure_ascii=False, default=str)
-        disconnected = []
         with self._lock:
-            for ws in self._connections:
-                if channel_id is not None and self._connection_channels.get(ws) != channel_id:
-                    continue
-                try:
-                    await ws.send_text(payload)
-                except Exception:
-                    disconnected.append(ws)
-            for ws in disconnected:
-                self._connections.discard(ws)
+            connections = [
+                ws for ws in self._connections if channel_id is None or self._connection_channels.get(ws) == channel_id
+            ]
+        if not connections:
+            return
+
+        async def send(ws: WebSocket) -> WebSocket | None:
+            try:
+                await asyncio.wait_for(
+                    ws.send_text(payload),
+                    timeout=self._send_timeout_seconds,
+                )
+                return None
+            except Exception:
+                return ws
+
+        disconnected = [ws for ws in await asyncio.gather(*(send(ws) for ws in connections)) if ws is not None]
+        if disconnected:
+            with self._lock:
+                for ws in disconnected:
+                    self._connections.discard(ws)
+                    self._connection_channels.pop(ws, None)
 
     async def send_to(self, ws: WebSocket, message: dict[str, Any]):
         """向指定客户端发送消息"""
@@ -143,6 +157,22 @@ class WebSocketSessionManager:
         except Exception as e:
             log.warning(f"WebSocket 发送消息失败: {e}")
             await self.disconnect(ws)
+
+    async def shutdown(self) -> None:
+        """关闭所有会话，并丢弃尚未发送的抓包批次。"""
+        with self._lock:
+            connections = list(self._connections)
+            self._connections.clear()
+            self._connection_channels.clear()
+            self._pending_packets.clear()
+            self._packet_batch_scheduled.clear()
+            self._loop = None
+
+        async def close(ws: WebSocket) -> None:
+            with contextlib.suppress(Exception):
+                await ws.close()
+
+        await asyncio.gather(*(close(ws) for ws in connections))
 
     # ---- 报文回调 — 从捕获引擎接收实时报文 ----
 
@@ -164,7 +194,11 @@ class WebSocketSessionManager:
             packet_data = enrich_goose_packet(packet_data, channel_id)
 
             with self._lock:
-                self._pending_packets.setdefault(channel_id, []).append(packet_data)
+                pending = self._pending_packets.setdefault(channel_id, [])
+                pending.append(packet_data)
+                overflow = len(pending) - self._max_pending_packets_per_channel
+                if overflow > 0:
+                    del pending[:overflow]
                 should_schedule = channel_id not in self._packet_batch_scheduled
                 if should_schedule:
                     self._packet_batch_scheduled.add(channel_id)
@@ -175,12 +209,17 @@ class WebSocketSessionManager:
 
     async def _flush_packet_batch(self, channel_id: int) -> None:
         """Coalesce high-frequency capture callbacks into one WebSocket message."""
-        await asyncio.sleep(0.05)
-        with self._lock:
-            packets = self._pending_packets.pop(channel_id, [])
-            self._packet_batch_scheduled.discard(channel_id)
-        if packets:
-            await self.broadcast({"type": "packets", "data": packets}, channel_id)
+        while True:
+            await asyncio.sleep(0.05)
+            with self._lock:
+                packets = self._pending_packets.pop(channel_id, [])
+            if packets:
+                await self.broadcast({"type": "packets", "data": packets}, channel_id)
+            with self._lock:
+                if self._pending_packets.get(channel_id):
+                    continue
+                self._packet_batch_scheduled.discard(channel_id)
+                return
 
     # ---- 指令处理 ----
 

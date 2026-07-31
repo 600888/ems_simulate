@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 import src.data.model  # noqa: F401
 from src.data.model.base import Base
 from src.data.model.iec61850_modeling import Iec61850ModelProject
+from src.modeling.document import ModelDocument
 from src.modeling.scl_importer import SclModelImporter
 from src.modeling.service import Iec61850ModelingService
 
@@ -77,3 +78,34 @@ def test_large_import_is_stored_as_one_document_without_node_tables(monkeypatch)
         stored = session.get(Iec61850ModelProject, project_id)
         assert stored.model_json.startswith('{"format_version":1')
         assert len(stored.model_checksum) == 64
+
+
+def test_streaming_document_serialization_is_byte_stable():
+    document = ModelDocument.empty("project")
+    root = document.add_node(parent_id=None, kind="ROOT", name="root")
+    document.add_node(
+        parent_id=root.id,
+        kind="EXTENSION",
+        name="child",
+        attributes={"z": 1, "a": "value"},
+    )
+
+    serialized = document.to_json()
+
+    assert ModelDocument.from_json("project", serialized).to_json() == serialized
+    assert serialized.startswith('{"format_version":1,"nodes":[')
+
+
+def test_document_cache_enforces_total_node_budget():
+    service = Iec61850ModelingService()
+    service._DOCUMENT_CACHE_MAX_NODES = 3
+    first = ModelDocument.empty("first")
+    second = ModelDocument.empty("second")
+    for document in (first, second):
+        root = document.add_node(parent_id=None, kind="ROOT", name="root")
+        document.add_node(parent_id=root.id, kind="EXTENSION", name="child")
+
+    service._cache_document("first-checksum", first)
+    service._cache_document("second-checksum", second)
+
+    assert list(service._document_cache) == ["second"]

@@ -1,5 +1,7 @@
 """设备组管理路由"""
 
+import asyncio
+
 from fastapi import APIRouter, Request
 
 from src.data.service.device_group_service import DeviceGroupService
@@ -24,35 +26,35 @@ device_group_router = APIRouter(prefix="/api/device-groups", tags=["设备组管
 @device_group_router.post("/tree")
 async def get_device_group_tree():
     """获取设备组树形结构（包含未分组设备）"""
-    tree = DeviceGroupService.get_group_tree()
+    tree = await asyncio.to_thread(DeviceGroupService.get_group_tree)
     return BaseResponse(data=tree)
 
 
 @device_group_router.post("/list")
 async def get_all_groups():
     """获取所有设备组（扁平列表）"""
-    groups = DeviceGroupService.get_all_groups()
+    groups = await asyncio.to_thread(DeviceGroupService.get_all_groups)
     return BaseResponse(data=groups)
 
 
 @device_group_router.post("/root")
 async def get_root_groups():
     """获取顶级设备组"""
-    groups = DeviceGroupService.get_root_groups()
+    groups = await asyncio.to_thread(DeviceGroupService.get_root_groups)
     return BaseResponse(data=groups)
 
 
 @device_group_router.post("/ungrouped")
 async def get_ungrouped_devices():
     """获取未分组设备"""
-    devices = DeviceGroupService.get_ungrouped_devices()
+    devices = await asyncio.to_thread(DeviceGroupService.get_ungrouped_devices)
     return BaseResponse(data=devices)
 
 
 @device_group_router.post("/detail")
 async def get_group_by_id(body: DeviceGroupIdRequest):
     """根据ID获取设备组详情"""
-    group = DeviceGroupService.get_group_by_id(body.group_id)
+    group = await asyncio.to_thread(DeviceGroupService.get_group_by_id, body.group_id)
     if not group:
         raise NotFoundError("设备组不存在")
     return BaseResponse(data=group)
@@ -61,25 +63,26 @@ async def get_group_by_id(body: DeviceGroupIdRequest):
 @device_group_router.post("/devices")
 async def get_group_devices(body: DeviceGroupIdRequest):
     """获取设备组内的设备列表"""
-    devices = DeviceGroupService.get_devices_by_group(body.group_id)
+    devices = await asyncio.to_thread(DeviceGroupService.get_devices_by_group, body.group_id)
     return BaseResponse(data=devices)
 
 
 @device_group_router.post("/children")
 async def get_children_groups(body: DeviceGroupIdRequest):
     """获取子设备组"""
-    groups = DeviceGroupService.get_children_groups(body.group_id)
+    groups = await asyncio.to_thread(DeviceGroupService.get_children_groups, body.group_id)
     return BaseResponse(data=groups)
 
 
 @device_group_router.post("/create")
 async def create_group(request: DeviceGroupCreateRequest):
     """创建设备组"""
-    existing = DeviceGroupService.get_group_by_code(request.code)
+    existing = await asyncio.to_thread(DeviceGroupService.get_group_by_code, request.code)
     if existing:
         raise ValidationError(f"设备组编码 '{request.code}' 已存在")
 
-    group_id = DeviceGroupService.create_group(
+    group_id = await asyncio.to_thread(
+        DeviceGroupService.create_group,
         code=request.code,
         name=request.name,
         parent_id=request.parent_id,
@@ -93,11 +96,11 @@ async def create_group(request: DeviceGroupCreateRequest):
 @device_group_router.post("/update")
 async def update_group(body: DeviceGroupUpdateRequest):
     """更新设备组"""
-    update_data = {k: v for k, v in body.dict().items() if v is not None and k != "group_id"}
+    update_data = {k: v for k, v in body.model_dump().items() if v is not None and k != "group_id"}
     if not update_data:
         raise ValidationError("没有提供更新数据")
 
-    success = DeviceGroupService.update_group(body.group_id, **update_data)
+    success = await asyncio.to_thread(DeviceGroupService.update_group, body.group_id, **update_data)
     if not success:
         raise NotFoundError("设备组不存在")
     return BaseResponse(message="设备组更新成功")
@@ -108,13 +111,20 @@ async def delete_group(body: DeviceGroupDeleteRequest, request: Request):
     """删除设备组"""
     if body.cascade:
         device_controller = request.app.state.device_controller
-        channel_ids = DeviceGroupService.get_channel_ids_for_group_tree(body.group_id)
+        channel_ids = await asyncio.to_thread(
+            DeviceGroupService.get_channel_ids_for_group_tree,
+            body.group_id,
+        )
         for channel_id in channel_ids:
             try:
                 await device_controller.remove_device_by_id(channel_id)
             except Exception as e:
                 log.warning(f"级联删除分组时停止设备失败: channel_id={channel_id}, error={e}")
-    success = DeviceGroupService.delete_group(body.group_id, body.cascade)
+    success = await asyncio.to_thread(
+        DeviceGroupService.delete_group,
+        body.group_id,
+        body.cascade,
+    )
     if not success:
         raise NotFoundError("设备组不存在")
     return BaseResponse(message="设备组删除成功")
@@ -123,7 +133,8 @@ async def delete_group(body: DeviceGroupDeleteRequest, request: Request):
 @device_group_router.post("/add-device")
 async def add_device_to_group(request: DeviceToGroupRequest):
     """将设备添加到设备组"""
-    success = DeviceGroupService.add_device_to_group(
+    success = await asyncio.to_thread(
+        DeviceGroupService.add_device_to_group,
         device_id=request.device_id,
         group_id=request.group_id,
     )
@@ -135,7 +146,7 @@ async def add_device_to_group(request: DeviceToGroupRequest):
 @device_group_router.post("/remove-device")
 async def remove_device_from_group(body: RemoveDeviceRequest):
     """将设备从设备组移除"""
-    success = DeviceGroupService.remove_device_from_group(body.device_id)
+    success = await asyncio.to_thread(DeviceGroupService.remove_device_from_group, body.device_id)
     if not success:
         raise NotFoundError("设备不存在")
     return BaseResponse(message="设备已从设备组移除")
@@ -144,7 +155,8 @@ async def remove_device_from_group(body: RemoveDeviceRequest):
 @device_group_router.post("/move-devices")
 async def move_devices_to_group(request: DevicesToGroupRequest):
     """批量移动设备到指定设备组"""
-    count = DeviceGroupService.move_devices_to_group(
+    count = await asyncio.to_thread(
+        DeviceGroupService.move_devices_to_group,
         device_ids=request.device_ids,
         group_id=request.group_id,
     )
@@ -157,9 +169,9 @@ async def batch_device_operation(body: BatchDeviceOperationRequest, req: Request
     device_controller = req.app.state.device_controller
 
     if body.group_id == 0:
-        devices = DeviceGroupService.get_ungrouped_devices()
+        devices = await asyncio.to_thread(DeviceGroupService.get_ungrouped_devices)
     else:
-        devices = DeviceGroupService.get_devices_by_group(body.group_id)
+        devices = await asyncio.to_thread(DeviceGroupService.get_devices_by_group, body.group_id)
 
     if not devices:
         raise NotFoundError("设备组内没有设备")
@@ -182,7 +194,7 @@ async def batch_device_operation(body: BatchDeviceOperationRequest, req: Request
             elif body.operation == "stop":
                 result = await device.stop()
             elif body.operation == "reset":
-                device.resetPointValues()
+                await asyncio.to_thread(device.resetPointValues)
                 result = True
 
             if result:
@@ -203,7 +215,11 @@ async def batch_device_operation(body: BatchDeviceOperationRequest, req: Request
 @device_group_router.post("/update-status")
 async def update_group_status(body: DeviceGroupStatusRequest):
     """更新设备组状态"""
-    success = DeviceGroupService.update_group_status(body.group_id, body.status)
+    success = await asyncio.to_thread(
+        DeviceGroupService.update_group_status,
+        body.group_id,
+        body.status,
+    )
     if not success:
         raise NotFoundError("设备组不存在")
     return BaseResponse(message="设备组状态更新成功")

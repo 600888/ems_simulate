@@ -1,5 +1,7 @@
 """测点管理 - 测点操作路由"""
 
+import asyncio
+
 from fastapi import APIRouter, Request
 
 from src.data.dao.channel_dao import ChannelDao
@@ -71,7 +73,12 @@ async def edit_point_data(req: PointEditDataRequest, request: Request):
 async def edit_point_limit(req: PointLimitEditRequest, request: Request):
     """修改测点限制值"""
     device = _get_device(req.device_name, request)
-    success = device.edit_point_limit(req.point_code, req.min_value_limit, req.max_value_limit)
+    success = await asyncio.to_thread(
+        device.edit_point_limit,
+        req.point_code,
+        req.min_value_limit,
+        req.max_value_limit,
+    )
     if not success:
         raise ValidationError("编辑测点限制值数据失败!", data=False)
     return BaseResponse(message="编辑测点限制值数据成功!", data=True)
@@ -137,7 +144,7 @@ async def set_point_simulation_range(req: SimulateRangeSetRequest, request: Requ
 async def edit_point_metadata(req: PointMetadataEditRequest, request: Request):
     """修改测点元数据"""
     device = _get_device(req.device_name, request)
-    success = device.edit_point_metadata(req.point_code, req.metadata)
+    success = await asyncio.to_thread(device.edit_point_metadata, req.point_code, req.metadata)
     if not success:
         raise ValidationError("编辑测点属性失败!", data=False)
     return BaseResponse(message="编辑测点属性成功!", data=True)
@@ -153,7 +160,7 @@ async def edit_iec104_metadata(req: Iec104MetadataEditRequest, request: Request)
         "iec_type_id": req.iec_type_id,
         "iec_quality": req.iec_quality,
     }
-    success = device.edit_point_metadata(req.point_code, metadata)
+    success = await asyncio.to_thread(device.edit_point_metadata, req.point_code, metadata)
     if not success:
         raise ValidationError("编辑IEC104属性失败!", data=False)
     return BaseResponse(message="编辑IEC104属性成功!", data=True)
@@ -182,9 +189,9 @@ async def add_point(req: PointCreateRequest, request: Request):
     device = _get_device(req.device_name, request)
     if device.protocol_type in _IEC61850_PROTOCOLS:
         raise ValidationError("IEC 61850 测点由 ICD/SCL 模型管理，不能手工添加", data=False)
-    channel = ChannelDao.get_channel_by_code(req.device_name)
+    channel = await asyncio.to_thread(ChannelDao.get_channel_by_code, req.device_name)
     if not channel:
-        channels = ChannelDao.get_all_channels()
+        channels = await asyncio.to_thread(ChannelDao.get_all_channels)
         channel = next((c for c in channels if c["name"] == req.device_name), None)
 
     if not channel:
@@ -204,7 +211,7 @@ async def add_point(req: PointCreateRequest, request: Request):
         "iec_type_id": req.iec_type_id,
         "iec_quality": req.iec_quality,
     }
-    success = device.add_point_dynamic(channel_id, req.frame_type, point_data)
+    success = await asyncio.to_thread(device.add_point_dynamic, channel_id, req.frame_type, point_data)
     if not success:
         raise OperationError("添加测点失败!", data=False)
     return BaseResponse(message="添加测点成功!", data=True)
@@ -216,17 +223,22 @@ async def add_points_batch(req: PointsBatchCreateRequest, request: Request):
     device = _get_device(req.device_name, request)
     if device.protocol_type in _IEC61850_PROTOCOLS:
         raise ValidationError("IEC 61850 测点由 ICD/SCL 模型管理，不能批量添加", data=False)
-    channel = ChannelDao.get_channel_by_code(req.device_name)
+    channel = await asyncio.to_thread(ChannelDao.get_channel_by_code, req.device_name)
     if not channel:
-        channels = ChannelDao.get_all_channels()
+        channels = await asyncio.to_thread(ChannelDao.get_all_channels)
         channel = next((c for c in channels if c["name"] == req.device_name), None)
 
     if not channel:
         raise NotFoundError(f"找不到设备 {req.device_name} 的通道信息!", data=False)
 
     channel_id = channel["id"]
-    points_data = [point.dict() for point in req.points]
-    success = device.add_points_dynamic_batch(channel_id, req.frame_type, points_data)
+    points_data = [point.model_dump() for point in req.points]
+    success = await asyncio.to_thread(
+        device.add_points_dynamic_batch,
+        channel_id,
+        req.frame_type,
+        points_data,
+    )
     if not success:
         raise OperationError("批量添加测点失败!", data=False)
     return BaseResponse(message="批量添加测点成功!", data=True)
@@ -236,7 +248,7 @@ async def add_points_batch(req: PointsBatchCreateRequest, request: Request):
 async def delete_point(req: PointDeleteRequest, request: Request):
     """删除测点"""
     device = _get_device(req.device_name, request)
-    success = device.delete_point_dynamic(req.point_code)
+    success = await asyncio.to_thread(device.delete_point_dynamic, req.point_code)
     if not success:
         raise OperationError("删除测点失败!", data=False)
     return BaseResponse(message="删除测点成功!", data=True)
@@ -246,7 +258,7 @@ async def delete_point(req: PointDeleteRequest, request: Request):
 async def clear_points(req: ClearPointsRequest, request: Request):
     """清空从机测点"""
     device = _get_device(req.device_name, request)
-    deleted_count = device.clear_points_by_slave(req.slave_id)
+    deleted_count = await asyncio.to_thread(device.clear_points_by_slave, req.slave_id)
     if deleted_count < 0:
         raise OperationError("清空测点失败!", data=0)
     log.info(f"清空成功，共删除 {deleted_count} 个测点!")
@@ -257,7 +269,7 @@ async def clear_points(req: ClearPointsRequest, request: Request):
 async def reset_point_data(req: DeviceResetRequest, request: Request):
     """重置测点数据"""
     device = _get_device(req.device_name, request)
-    device.resetPointValues()
+    await asyncio.to_thread(device.resetPointValues)
     return BaseResponse(message="重置测点数据成功!", data=True)
 
 

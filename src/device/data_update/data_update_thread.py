@@ -43,8 +43,11 @@ class DataUpdateThread:
 
     def stop(self, timeout: float | None = None) -> None:
         """停止线程，支持超时控制"""
-        if self.is_alive():
-            self.stop_event.set()
-            self.thread.join(timeout=timeout)  # 等待线程终止
-            if self.thread.is_alive():  # 超时后强制清理
-                self.thread = None
+        self.stop_event.set()
+        thread = self.thread
+        if thread is None or thread is threading.current_thread():
+            return
+        if thread.is_alive():
+            thread.join(timeout=timeout)
+        if not thread.is_alive():
+            self.thread = None

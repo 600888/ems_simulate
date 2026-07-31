@@ -26,3 +26,4 @@ def test_iec104_type_filter_is_applied_before_pagination() -> None:
 
     assert rows == [["2"], ["3"]]
     assert total == 3
+    assert exporter._format_yc_row.call_count == 2

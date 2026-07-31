@@ -177,6 +177,7 @@ dist_msix
 .claude
 .codebuddy
 .codex
+.reasonix
 # Windows environment variable literal (防止工具错误展开)
 %SystemDrive%/
 

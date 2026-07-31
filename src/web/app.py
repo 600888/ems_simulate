@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import UTC
 import time
 
@@ -8,24 +9,43 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from src import __version__
 from src.proto.iec61850.core.exceptions import Iec61850Error
-from src.web.api import (
-    channel_router,
-    device_group_router,
-    device_router,
-    network_interfaces_router,
-    point_mapping_router,
-    point_router,
-    point_tree_router,
-    settings_router,
-)
+from src.web.api.channel import channel_router
+from src.web.api.device import device_router
+from src.web.api.device_group import device_group_router
 from src.web.api.exceptions import BizError
 from src.web.api.log_router import log_router
 from src.web.api.modeling import router as modeling_router
+from src.web.api.network_interfaces import router as network_interfaces_router
+from src.web.api.point import point_mapping_router, point_router, point_tree_router
 from src.web.api.schemas import BaseResponse
 from src.web.api.schemas.response_codes import DEFAULT_MESSAGES, Code
 from src.web.api.scl.router import router as scl_router
+from src.web.api.settings import settings_router
 from src.web.log import log
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    """托管后台初始化，并在应用退出时统一释放资源。"""
+    application.state.initialized = False
+    application.state.initialization_error = None
+    init_task = asyncio.create_task(
+        _background_init(application),
+        name="backend-initialization",
+    )
+    application.state.init_task = init_task
+    try:
+        yield
+    finally:
+        # 初始化包含在线程中执行的同步设备构建；优先等待它自然结束，
+        # 避免取消协程后遗留仍在运行、但已失去所有者的工作线程。
+        try:
+            if not init_task.done():
+                await init_task
+        finally:
+            await _shutdown_application(application)
 
 
 def create_app():
@@ -34,6 +54,7 @@ def create_app():
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
+        lifespan=lifespan,
     )
 
     # 配置CORS
@@ -83,6 +104,10 @@ def create_app():
 
     # 初始化应用状态
     app.state.initialized = False
+    app.state.initialization_error = None
+    app.state.init_task = None
+    app.state.device_controller = None
+    app.state.goose_manager = None
     app.state.scl_file_manager = None
     app.state.scl_import_service = None
 
@@ -93,7 +118,7 @@ app = create_app()
 
 
 @app.get("/api/health")
-async def health_check():
+async def health_check(request: Request):
     """
     健康检查端点 - 供 Tauri 桌面客户端检测后端服务是否就绪
     返回后端服务状态、版本信息和数据库连接状态
@@ -102,11 +127,13 @@ async def health_check():
     - initialized=False: 服务已启动但设备初始化尚未完成（返回 503）
     - initialized=True: 服务完全就绪（返回 200）
     """
-    initialized = getattr(app.state, "initialized", False)
+    application = request.app
+    initialized = getattr(application.state, "initialized", False)
+    initialization_error = getattr(application.state, "initialization_error", None)
 
     health_data = {
-        "status": "ok" if initialized else "initializing",
-        "version": "1.0.0",
+        "status": "ok" if initialized else ("failed" if initialization_error else "initializing"),
+        "version": __version__,
         "service": "EMS Simulate Backend",
         "timestamp": None,
         "busy": False,
@@ -129,7 +156,7 @@ async def health_check():
 
     # Busy is a healthy state. Expose long-running IEC61850 work separately so
     # clients and diagnostics do not confuse load with process failure.
-    controller = getattr(app.state, "device_controller", None)
+    controller = getattr(application.state, "device_controller", None)
     if controller is not None:
         for device in tuple(getattr(controller, "device_list", ())):
             get_progress = getattr(device, "get_iec61850_connect_progress", None)
@@ -152,9 +179,10 @@ async def health_check():
             health_data["status"] = "busy"
 
     if not initialized:
+        message = "服务初始化失败，请查看后端日志" if initialization_error else "服务初始化中，请稍后"
         return JSONResponse(
             status_code=503,
-            content=BaseResponse(code=503, message="服务初始化中，请稍后", data=health_data).model_dump(),
+            content=BaseResponse(code=503, message=message, data=health_data).model_dump(),
         )
 
     return BaseResponse(code=Code.SUCCESS, message="服务正常", data=health_data).model_dump()
@@ -181,7 +209,7 @@ async def _init_goose_manager():
         return None
 
 
-async def _background_init():
+async def _background_init(application: FastAPI):
     """后台初始化：设备控制器 + GOOSE 管理器
 
     不阻塞 uvicorn 端口监听，Tauri 通过 /api/health 检测初始化状态
@@ -193,28 +221,70 @@ async def _background_init():
     try:
         # 1. 初始化设备控制器
         device_controller = await _init_device_controller()
-        app.state.device_controller = device_controller
+        application.state.device_controller = device_controller
         log.info(
             f"设备控制器初始化完成 ({len(device_controller.device_list)} 个设备), 耗时 {time.perf_counter() - t0:.2f}s"
         )
 
         # 2. 初始化 GOOSE 管理器
-        app.state.goose_manager = await _init_goose_manager()
+        application.state.goose_manager = await _init_goose_manager()
 
         # 3. 标记初始化完成
-        app.state.initialized = True
+        application.state.initialized = True
+        application.state.initialization_error = None
         log.info(f"后台初始化全部完成, 总耗时 {time.perf_counter() - t0:.2f}s")
 
+    except asyncio.CancelledError:
+        log.info("后台初始化已取消")
+        raise
     except Exception as e:
-        log.error(f"后台初始化失败: {e}")
-        # 即使初始化失败也标记完成，避免前端无限等待
-        app.state.initialized = True
+        log.exception(f"后台初始化失败: {e}")
+        application.state.initialized = False
+        application.state.initialization_error = e
 
 
-@app.on_event("startup")
-async def startup_event():
-    """FastAPI启动事件：在后台异步初始化设备，不阻塞端口监听"""
-    asyncio.create_task(_background_init())
+async def _shutdown_application(application: FastAPI) -> None:
+    """按依赖顺序关闭网络资源、设备资源和数据库连接池。"""
+    try:
+        from src.web.api.channel.goose import GOOSE_CAPTURE_INSTANCES
+        from src.web.api.channel.goose_websocket import WebSocketSessionManager
+
+        captures = tuple(GOOSE_CAPTURE_INSTANCES.values())
+        GOOSE_CAPTURE_INSTANCES.clear()
+        for capture in captures:
+            try:
+                capture.set_callback(None)
+            except Exception:
+                pass
+        await asyncio.gather(*(asyncio.to_thread(capture.stop) for capture in captures))
+        await WebSocketSessionManager().shutdown()
+    except Exception as exc:
+        log.exception(f"关闭 GOOSE 抓包会话失败: {exc}")
+
+    goose_manager = getattr(application.state, "goose_manager", None)
+    if goose_manager is not None:
+        try:
+            await asyncio.to_thread(goose_manager.stop_all)
+        except Exception as exc:
+            log.exception(f"关闭 GOOSE 资源失败: {exc}")
+
+    try:
+        from src.device_controller import shutdown_device_controller
+
+        await shutdown_device_controller()
+    except Exception as exc:
+        log.exception(f"关闭设备控制器失败: {exc}")
+
+    try:
+        from src.data.controller.db import db_controller
+
+        await asyncio.to_thread(db_controller.close_db)
+    except Exception as exc:
+        log.exception(f"关闭数据库连接池失败: {exc}")
+
+    application.state.device_controller = None
+    application.state.goose_manager = None
+    application.state.initialized = False
 
 
 def _error_response(code: int, message: str, data=None, http_status: int | None = None) -> JSONResponse:

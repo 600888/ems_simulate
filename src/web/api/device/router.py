@@ -71,7 +71,7 @@ async def get_device_info(req: DeviceInfoRequest, request: Request):
         "parity": getattr(device, "parity", "N"),
     }
 
-    channels = ChannelDao.get_all_channels()
+    channels = await asyncio.to_thread(ChannelDao.get_all_channels)
     channel = next((c for c in channels if c.get("name") == req.device_name), None)
 
     if channel:
@@ -98,7 +98,8 @@ async def get_slave_id_list(req: DeviceInfoRequest, request: Request):
 async def get_table_by_slave_id(req: DeviceTableRequest, request: Request):
     """获取设备表格数据"""
     device = _get_device(req.device_name, request)
-    table_data, total = device.get_table_data(
+    table_data, total = await asyncio.to_thread(
+        device.get_table_data,
         slave_id=req.slave_id,
         name=req.point_name,
         page_index=req.page_index,
@@ -118,7 +119,7 @@ async def get_table_by_slave_id(req: DeviceTableRequest, request: Request):
 async def start_simulation(req: SimulationStartRequest, request: Request):
     """启动模拟"""
     device = _get_device(req.device_name, request)
-    device.setAllPointSimulateMethod(req.simulate_method)
+    await asyncio.to_thread(device.setAllPointSimulateMethod, req.simulate_method)
     device.startSimulation()
     return BaseResponse(message="启动模拟程序成功!", data=True)
 
@@ -127,7 +128,7 @@ async def start_simulation(req: SimulationStartRequest, request: Request):
 async def stop_simulation(req: SimulationStopRequest, request: Request):
     """停止模拟"""
     device = _get_device(req.device_name, request)
-    device.stopSimulation()
+    await asyncio.to_thread(device.stopSimulation)
     return BaseResponse(message="停止模拟程序成功!", data=True)
 
 
@@ -196,7 +197,7 @@ async def load_iec61850_model(req: DeviceInfoRequest, request: Request):
     device = _get_device(req.device_name, request)
 
     # 查询数据库中的 icd_path
-    channels = ChannelService.get_all_channels()
+    channels = await asyncio.to_thread(ChannelService.get_all_channels)
     channel = next((c for c in channels if c.get("name") == req.device_name), None)
 
     if not channel:

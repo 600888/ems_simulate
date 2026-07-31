@@ -14,6 +14,7 @@ _METADATA_CACHE: dict[
     int,
     tuple[float, list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]],
 ] = {}
+_POINT_LOOKUP_CACHE: dict[int, tuple[int, dict[str, dict[str, Any]]]] = {}
 _FC_SEGMENT = re.compile(r"\$(ST|MX|CO|SP|SG|SE|CF|DC|EX|SV|BL|OR)\$", re.IGNORECASE)
 
 
@@ -83,11 +84,38 @@ def _find_dataset_entries(
     return dataset_fallback or app_id_fallback
 
 
-def _find_point(points: list[dict[str, Any]], entry: dict[str, Any]) -> dict[str, Any] | None:
+def _get_point_lookup(channel_id: int, points: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    with _CACHE_LOCK:
+        cached = _POINT_LOOKUP_CACHE.get(channel_id)
+        if cached and cached[0] == id(points):
+            return cached[1]
+
+    lookup: dict[str, dict[str, Any]] = {}
+    for point in points:
+        for value in (
+            point.get("reg_addr") or point.get("address"),
+            point.get("code"),
+            point.get("name"),
+        ):
+            normalized = _normalize_ref(value)
+            if normalized:
+                lookup.setdefault(normalized, point)
+    with _CACHE_LOCK:
+        _POINT_LOOKUP_CACHE[channel_id] = (id(points), lookup)
+    return lookup
+
+
+def _find_point(
+    points: list[dict[str, Any]],
+    entry: dict[str, Any],
+    lookup: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
     """查找测点并返回匹配结果。"""
     reference = _normalize_ref(entry.get("name") or entry.get("ref") or entry.get("fcda_ref"))
     if not reference:
         return None
+    if lookup and reference in lookup:
+        return lookup[reference]
     best: dict[str, Any] | None = None
     for point in points:
         point_ref = _normalize_ref(point.get("reg_addr") or point.get("address"))
@@ -119,6 +147,7 @@ def enrich_goose_packet(packet: dict[str, Any], channel_id: int) -> dict[str, An
         str(packet.get("data_set_ref", "")),
         int(packet["app_id"]) if packet.get("app_id") is not None else None,
     )
+    point_lookup = _get_point_lookup(channel_id, points)
     for index, value in enumerate(enriched["data_values"]):
         value["index"] = index
         if index >= len(entries):
@@ -129,7 +158,7 @@ def enrich_goose_packet(packet: dict[str, Any], channel_id: int) -> dict[str, An
         value["fc"] = entry.get("fc", "")
         value["description"] = entry.get("description", "")
         value["dataset_type"] = entry.get("type") or entry.get("iec_type") or ""
-        point = _find_point(points, entry)
+        point = _find_point(points, entry, point_lookup)
         if point:
             value["point"] = {
                 "code": point.get("code", ""),
@@ -148,5 +177,7 @@ def clear_goose_detail_cache(channel_id: int | None = None) -> None:
     with _CACHE_LOCK:
         if channel_id is None:
             _METADATA_CACHE.clear()
+            _POINT_LOOKUP_CACHE.clear()
         else:
             _METADATA_CACHE.pop(channel_id, None)
+            _POINT_LOOKUP_CACHE.pop(channel_id, None)

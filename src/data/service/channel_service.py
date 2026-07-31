@@ -3,9 +3,15 @@
 提供通道的业务逻辑
 """
 
+from typing import Any
+
+from src.data.controller.db import local_session
 from src.data.dao.channel_dao import ChannelDao
 from src.data.log import log
-from src.data.model.channel import ChannelDict
+from src.data.model.channel import Channel, ChannelDict
+from src.data.model.channel_configuration import ChannelProtocolParams
+from src.data.model.device import Device
+from src.device.protocol.runtime_config import normalize_protocol_params
 from src.enums.modbus_def import ProtocolType
 
 
@@ -103,6 +109,52 @@ class ChannelService:
         except Exception as e:
             log.error(f"创建通道失败: {e}")
             return -1
+
+    @classmethod
+    def provision_channel(
+        cls,
+        *,
+        code: str,
+        name: str,
+        group_id: int | None,
+        protocol_type: int,
+        conn_type: int,
+        protocol_params: dict[str, Any] | None,
+        protocol_schema_version: int = 1,
+        **channel_values,
+    ) -> tuple[int, int]:
+        """在一个事务内创建设备、通道及协议配置。"""
+        normalized = normalize_protocol_params(protocol_type, conn_type, protocol_params)
+        with local_session() as session, session.begin():
+            device = Device(
+                code=code,
+                name=name,
+                device_type=0,
+                group_id=group_id,
+            )
+            session.add(device)
+            session.flush()
+
+            channel = Channel(
+                code=code,
+                name=name,
+                device_id=device.id,
+                protocol_type=protocol_type,
+                conn_type=conn_type,
+                **channel_values,
+            )
+            session.add(channel)
+            session.flush()
+            session.add(
+                ChannelProtocolParams(
+                    channel_id=channel.id,
+                    protocol_type=protocol_type,
+                    conn_type=conn_type,
+                    schema_version=protocol_schema_version,
+                    params_json=normalized,
+                )
+            )
+            return device.id, channel.id
 
     @classmethod
     def update_channel(cls, channel_id: int, **kwargs) -> bool:

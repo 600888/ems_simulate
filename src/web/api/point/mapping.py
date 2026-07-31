@@ -1,5 +1,7 @@
 """测点映射路由"""
 
+import asyncio
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -42,7 +44,7 @@ async def _reload_device_mappings(device_name: str | None) -> None:
         dc = await get_device_controller()
         device = dc.device_map.get(device_name)
         if device:
-            device.reload_mappings()
+            await asyncio.to_thread(device.reload_mappings)
     except Exception as e:
         log.warning(f"重新加载设备 {device_name} 的映射失败: {e}")
 
@@ -50,10 +52,11 @@ async def _reload_device_mappings(device_name: str | None) -> None:
 @point_mapping_router.post("/create", response_model=BaseResponse)
 async def create_mapping(request: PointMappingCreateRequest):
     """创建映射"""
-    result = PointMappingService.create_mapping(
+    result = await asyncio.to_thread(
+        PointMappingService.create_mapping,
         device_name=request.device_name,
         target_point_code=request.target_point_code,
-        source_point_codes=[item.dict() for item in request.source_point_codes],
+        source_point_codes=[item.model_dump() for item in request.source_point_codes],
         formula=request.formula,
         enable=request.enable,
     )
@@ -67,7 +70,7 @@ async def create_mapping(request: PointMappingCreateRequest):
 @point_mapping_router.post("/list", response_model=BaseResponse)
 async def get_all_mappings():
     """获取映射列表"""
-    data = PointMappingService.get_all_mappings()
+    data = await asyncio.to_thread(PointMappingService.get_all_mappings)
     return BaseResponse(message="获取映射列表成功", data=data)
 
 
@@ -76,13 +79,13 @@ async def update_mapping(request: PointMappingUpdateRequest):
     """更新映射"""
     device_name = request.device_name
     if not device_name:
-        existing = PointMappingService.get_mapping_by_id(request.id)
+        existing = await asyncio.to_thread(PointMappingService.get_mapping_by_id, request.id)
         if existing:
             device_name = existing.get("device_name")
 
-    data = request.dict(exclude_unset=True)
+    data = request.model_dump(exclude_unset=True)
     mapping_id = data.pop("id")
-    success = PointMappingService.update_mapping(mapping_id, data)
+    success = await asyncio.to_thread(PointMappingService.update_mapping, mapping_id, data)
 
     if not success:
         raise ValidationError("更新映射失败")
@@ -95,11 +98,11 @@ async def update_mapping(request: PointMappingUpdateRequest):
 async def delete_mapping(request: PointMappingDeleteRequest):
     """删除映射"""
     device_name = None
-    existing = PointMappingService.get_mapping_by_id(request.mapping_id)
+    existing = await asyncio.to_thread(PointMappingService.get_mapping_by_id, request.mapping_id)
     if existing:
         device_name = existing.get("device_name")
 
-    success = PointMappingService.delete_mapping(request.mapping_id)
+    success = await asyncio.to_thread(PointMappingService.delete_mapping, request.mapping_id)
     if not success:
         raise ValidationError("删除映射失败")
 

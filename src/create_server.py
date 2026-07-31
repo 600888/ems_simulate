@@ -1,12 +1,10 @@
-import sys
-
-import questionary
-
-sys.path.append("../")
+import asyncio
+import atexit
 
 from prettytable import PrettyTable
+import questionary
 
-from device_controller import get_device_controller
+from src.device_controller import get_device_controller
 from src.enums.point_data import Dlt645
 
 
@@ -37,11 +35,14 @@ def get_third_choice():
 
 
 if __name__ == "__main__":
-    device_controller = get_device_controller()
+    runner = asyncio.Runner()
+    atexit.register(runner.close)
+    device_controller = runner.run(get_device_controller())
     first_choice = get_first_choice()
     while True:
         if first_choice == "退出":
-            device_controller.stop_all_modbus_server()
+            runner.run(device_controller.stop_all_modbus_server())
+            break
         elif first_choice == "设备监控":
             option_list = device_controller.get_device_name_list()
             option_list.append("返回上级菜单")

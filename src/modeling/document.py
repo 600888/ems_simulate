@@ -6,6 +6,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 import hashlib
+from io import StringIO
 import json
 from typing import Any
 import uuid
@@ -137,7 +138,20 @@ class ModelDocument:
         }
 
     def to_json(self) -> str:
-        return _compact_json(self.to_dict())
+        # 逐项写入，避免大模型序列化时先构造完整 nodes/references 字典列表。
+        buffer = StringIO()
+        buffer.write(f'{{"format_version":{self.FORMAT_VERSION},"nodes":[')
+        for index, node in enumerate(self.nodes):
+            if index:
+                buffer.write(",")
+            buffer.write(_compact_json(node.to_dict()))
+        buffer.write('],"references":[')
+        for index, reference in enumerate(self.references):
+            if index:
+                buffer.write(",")
+            buffer.write(_compact_json(reference.to_dict()))
+        buffer.write("]}")
+        return buffer.getvalue()
 
     def checksum(self, content: str | None = None) -> str:
         serialized = content if content is not None else self.to_json()

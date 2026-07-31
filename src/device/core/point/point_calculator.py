@@ -8,6 +8,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 import json
 import operator
+import threading
 from typing import Any
 
 from src.data.service.point_mapping_service import PointMappingService
@@ -23,11 +24,18 @@ class PointCalculator:
         self.device = device
         self.pm = device.point_manager
         self._mappings: list[dict[str, Any]] = []
+        self._mapping_by_id: dict[int, dict[str, Any]] = {}
+        self._source_points_by_id: dict[int, list[Any]] = {}
+        self._formula_ast_by_id: dict[int, ast.AST] = {}
         self._source_usage: dict[
             str, list[int]
         ] = {}  # source_code -> [mapping_ids] (DEPRECATED: still used for debug or display)
         self._sender_map: dict[int, list[int]] = {}  # id(sender) -> [mapping_ids]
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="CalcThread")
+        self._executor: ThreadPoolExecutor | None = None
+        self._running = False
+        self._schedule_lock = threading.Lock()
+        self._pending_mapping_ids: set[int] = set()
+        self._latest_context: dict[int, ChangeContext | None] = {}
         self._device_provider: Any = None
 
         # 受限的操作符映射
@@ -44,24 +52,72 @@ class PointCalculator:
             ast.USub: operator.neg,
         }
 
-    def set_device_provider(self, provider: Any):
+    def set_device_provider(self, provider: Any, mappings: list[dict[str, Any]] | None = None):
         """设置设备提供者"""
         self._device_provider = provider
         # 立即启动计算器（加载映射并订阅事件）
-        self.start()
+        self.start(mappings)
 
-    def start(self):
+    def start(self, mappings: list[dict[str, Any]] | None = None):
         """启动计算器"""
-        self.reload_mappings()
+        if self._running:
+            return
+        self._running = True
+        self._ensure_executor()
+        self.reload_mappings(mappings)
         log.info("PointCalculator started")
 
     def stop(self):
         """停止计算器"""
-        if self._executor:
-            self._executor.shutdown(wait=False)
+        with self._schedule_lock:
+            self._running = False
+            self._pending_mapping_ids.clear()
+            self._latest_context.clear()
+        executor = self._executor
+        self._executor = None
+        if executor:
+            executor.shutdown(wait=False, cancel_futures=True)
         log.info("PointCalculator stopped")
 
-    def reload_mappings(self):
+    def _ensure_executor(self) -> ThreadPoolExecutor:
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="CalcThread")
+        return self._executor
+
+    def _schedule_mapping(self, mapping_id: int, context: ChangeContext | None = None) -> None:
+        """合并同一映射的高频变化，避免 ThreadPoolExecutor 队列无界增长。"""
+        with self._schedule_lock:
+            if not self._running:
+                return
+            self._latest_context[mapping_id] = context
+            if mapping_id in self._pending_mapping_ids:
+                return
+            self._pending_mapping_ids.add(mapping_id)
+        try:
+            self._ensure_executor().submit(self._drain_mapping, mapping_id)
+        except RuntimeError:
+            with self._schedule_lock:
+                self._pending_mapping_ids.discard(mapping_id)
+                self._latest_context.pop(mapping_id, None)
+
+    def _drain_mapping(self, mapping_id: int) -> None:
+        while True:
+            with self._schedule_lock:
+                if not self._running or mapping_id not in self._latest_context:
+                    self._pending_mapping_ids.discard(mapping_id)
+                    self._latest_context.pop(mapping_id, None)
+                    return
+                context = self._latest_context.pop(mapping_id)
+
+            self._execute_calculation(mapping_id, context)
+
+            with self._schedule_lock:
+                if self._running and mapping_id in self._latest_context:
+                    continue
+                self._pending_mapping_ids.discard(mapping_id)
+                return
+
+    def reload_mappings(self, mappings: list[dict[str, Any]] | None = None):
         """重新加载映射规则"""
         try:
             # 1. 重置所有测点的锁定状态
@@ -69,9 +125,13 @@ class PointCalculator:
                 for point in self.pm.get_all_points():
                     point.is_locked_by_mapping = False
 
-            mappings = PointMappingService.get_all_mappings()
+            if mappings is None:
+                mappings = PointMappingService.get_all_mappings()
             # 仅加载目标为当前设备的映射
             self._mappings = [m for m in mappings if m["enable"] and m.get("device_name") == self.device.name]
+            self._mapping_by_id = {mapping["id"]: mapping for mapping in self._mappings}
+            self._source_points_by_id.clear()
+            self._formula_ast_by_id.clear()
             self._build_dependency_map()
             self._subscribe_events()
 
@@ -87,7 +147,7 @@ class PointCalculator:
                 except Exception as ex:
                     log.warning(f"Failed to lock target point for mapping {mapping['id']}: {ex}")
 
-                self._executor.submit(self._execute_calculation, mapping["id"])
+                self._schedule_mapping(mapping["id"])
 
             log.info(f"PointCalculator for {self.device.name} loaded {len(self._mappings)} mappings")
         except Exception as e:
@@ -100,7 +160,10 @@ class PointCalculator:
         for mapping in self._mappings:
             try:
                 # source_point_codes 是 List[Dict]
+                mapping_id = mapping["id"]
                 source_points = json.loads(mapping["source_point_codes"])
+                self._source_points_by_id[mapping_id] = source_points
+                self._formula_ast_by_id[mapping_id] = ast.parse(mapping["formula"], mode="eval").body
                 for point_info in source_points:
                     # 兼容旧格式（如果是字符串列表）
                     if isinstance(point_info, str):
@@ -114,7 +177,7 @@ class PointCalculator:
                         if key not in self._source_usage:
                             self._source_usage[key] = []
                         self._source_usage[key].append(mapping["id"])
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, SyntaxError):
                 log.error(f"Invalid source_point_codes JSON for mapping {mapping['id']}")
 
     def _subscribe_events(self):
@@ -165,6 +228,8 @@ class PointCalculator:
 
     def on_source_changed(self, sender: BasePoint, **kwargs):
         """源测点值变化回调"""
+        if not self._running:
+            return
         # 尝试从 kwargs 中获取 sender (以防 signal 发送时漏传 sender)
         if not sender:
             log.warning(f"Invalid sender: None. kwargs: {kwargs}")
@@ -186,7 +251,7 @@ class PointCalculator:
         context_snapshot = capture_context()
 
         for mapping_id in set(mapping_ids):  # 去重
-            self._executor.submit(self._execute_calculation, mapping_id, context_snapshot)
+            self._schedule_mapping(mapping_id, context_snapshot)
 
     def _execute_calculation(self, mapping_id: int, context: ChangeContext | None = None):
         """执行计算"""
@@ -199,7 +264,7 @@ class PointCalculator:
 
     def _do_execute_calculation(self, mapping_id: int):
         """实际计算逻辑"""
-        mapping = next((m for m in self._mappings if m["id"] == mapping_id), None)
+        mapping = self._mapping_by_id.get(mapping_id)
         if not mapping:
             log.error(f"Mapping {mapping_id} not found")
             return
@@ -216,7 +281,7 @@ class PointCalculator:
                 log.error(f"Target point {target_code} not found")
                 return
 
-            source_points = json.loads(mapping["source_point_codes"])
+            source_points = self._source_points_by_id.get(mapping_id, [])
             formula = mapping["formula"]
 
             # 准备上下文
@@ -246,7 +311,7 @@ class PointCalculator:
                 context[alias] = val
 
             # 计算
-            result = self._safe_eval(formula, context)
+            result = self._safe_eval(self._formula_ast_by_id.get(mapping_id, formula), context)
 
             # 更新目标点
             if result is not None:
@@ -289,13 +354,14 @@ class PointCalculator:
         except Exception as e:
             log.error(f"Calculation failed for mapping {mapping_id}: {e}")
 
-    def _safe_eval(self, expr: str, context: dict[str, Any]) -> Any:
+    def _safe_eval(self, expr: str | ast.AST, context: dict[str, Any]) -> Any:
         """安全评估表达式"""
         try:
             # 1. 替换变量
             # 简单实现：使用 eval 但限制 globals/locals
             # 更好的实现是解析 AST
-            return self._eval_expr(ast.parse(expr, mode="eval").body, context)
+            node = ast.parse(expr, mode="eval").body if isinstance(expr, str) else expr
+            return self._eval_expr(node, context)
         except Exception as e:
             log.warning(f"Eval error: {e}")
             return None

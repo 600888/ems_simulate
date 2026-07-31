@@ -584,10 +584,12 @@ class Device:
     async def stop(self) -> bool:
         """停止设备"""
         try:
+            await asyncio.to_thread(self.data_update_thread.stop, 6.0)
+            await asyncio.to_thread(self.simulation_controller.stop_simulation, 1.0)
             self.point_calculator.stop()
             if self.protocol_handler:
                 return await self.protocol_handler.stop()
-            return False
+            return True
         except Exception as e:
             self.log.error(f"停止设备失败: {e}")
             return False
@@ -1013,12 +1015,12 @@ class Device:
         """设置测点关联"""
         self.point_operator.set_related_point(point, related_point)
 
-    def reload_mappings(self) -> None:
+    def reload_mappings(self, mappings: list[dict[str, Any]] | None = None) -> None:
         """重新加载测点映射"""
         if self.point_calculator:
-            self.point_calculator.reload_mappings()
+            self.point_calculator.reload_mappings(mappings)
 
-    def set_device_provider(self, provider: Any) -> None:
+    def set_device_provider(self, provider: Any, mappings: list[dict[str, Any]] | None = None) -> None:
         """设置设备提供者"""
         if self.point_calculator:
-            self.point_calculator.set_device_provider(provider)
+            self.point_calculator.set_device_provider(provider, mappings)

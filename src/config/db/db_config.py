@@ -1,7 +1,7 @@
 import json
 import os
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import URL, create_engine, event, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -40,7 +40,24 @@ class DbSqliteConfig(DbConfig):
         self.db_path = db_path
 
     def create_engine(self) -> None:
-        self.engine = create_engine("sqlite:///" + self.db_path, echo=False)
+        self.engine = create_engine(
+            "sqlite:///" + self.db_path,
+            echo=False,
+            pool_pre_ping=True,
+        )
+
+        @event.listens_for(self.engine, "connect")
+        def configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.execute("PRAGMA busy_timeout=5000")
+            finally:
+                cursor.close()
+
+        with self.engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA journal_mode=WAL")
+            connection.exec_driver_sql("PRAGMA synchronous=NORMAL")
 
     def remove_db(self) -> None:
         if os.path.exists(self.db_path):
@@ -77,14 +94,15 @@ class DbMysqlConfig(DbConfig):
         self._user_name = user_name
         self._password = pass_word
 
-    def get_url(self, db_name: str):
-        mysql_url = "mysql+pymysql://"
-        mysql_url += self._user_name + ":"
-        mysql_url += self._password + "@"
-        mysql_url += self._host + ":" + self._port + "/"
-        mysql_url += db_name
-        print(mysql_url)
-        return mysql_url
+    def get_url(self, db_name: str) -> URL:
+        return URL.create(
+            "mysql+pymysql",
+            username=self._user_name,
+            password=self._password,
+            host=self._host,
+            port=int(self._port),
+            database=db_name,
+        )
 
     def create_engine(self, db_name: str, is_create_db: bool = False) -> None:
         mysql_url = self.get_url(db_name)
@@ -93,7 +111,14 @@ class DbMysqlConfig(DbConfig):
             with self.engine.connect() as connection:
                 connection.execute(text("DROP DATABASE IF EXISTS " + db_name))
                 connection.execute(text("CREATE DATABASE IF NOT EXISTS " + db_name))
-        self.engine = create_engine(mysql_url, echo=False, pool_size=100, max_overflow=50, pool_pre_ping=True)
+        self.engine = create_engine(
+            mysql_url,
+            echo=False,
+            pool_size=10,
+            max_overflow=20,
+            pool_pre_ping=True,
+            pool_recycle=1800,
+        )
 
     def is_connect(self) -> bool:
         try:
@@ -110,14 +135,15 @@ class DbMysqlAsyncConfig(DbMysqlConfig):
     def get_engine(self):
         return self.engine
 
-    def get_url(self, db_name: str):
-        mysql_url = "mysql+aiomysql://"
-        mysql_url += self._user_name + ":"
-        mysql_url += self._password + "@"
-        mysql_url += self._host + ":" + self._port + "/"
-        mysql_url += db_name
-        print(mysql_url)
-        return mysql_url
+    def get_url(self, db_name: str) -> URL:
+        return URL.create(
+            "mysql+aiomysql",
+            username=self._user_name,
+            password=self._password,
+            host=self._host,
+            port=int(self._port),
+            database=db_name,
+        )
 
     def create_async_engine(self, db_name: str, is_create_db: bool = False) -> None:
         mysql_url = self.get_url(db_name)
@@ -127,7 +153,12 @@ class DbMysqlAsyncConfig(DbMysqlConfig):
                 connection.execute(text("DROP DATABASE IF EXISTS " + db_name))
                 connection.execute(text("CREATE DATABASE IF NOT EXISTS " + db_name))
         self.engine = create_async_engine(
-            mysql_url, echo=False, future=True, pool_size=100, max_overflow=50, pool_pre_ping=True
+            mysql_url,
+            echo=False,
+            pool_size=10,
+            max_overflow=20,
+            pool_pre_ping=True,
+            pool_recycle=1800,
         )
 
     async def is_connect(self) -> bool:
