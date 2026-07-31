@@ -370,7 +370,7 @@ const fetchDeviceGroupTree = async () => {
           const channel = channels.find((item) => item.name === node.name);
           if (channel?.protocol_type === 3) {
             node.isDlt645 = true;
-            node.children = buildDlt645Children(node.name);
+            node.children = buildDlt645Children(node.name, "device", t);
             continue;
           }
         }
@@ -387,7 +387,7 @@ const fetchDeviceGroupTree = async () => {
         )
         .map((device) => [
           device.name,
-          buildDlt645Children(device.name, "ungrouped"),
+          buildDlt645Children(device.name, "ungrouped", t),
         ]),
     );
     treeKey.value++;

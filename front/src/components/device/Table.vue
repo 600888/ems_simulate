@@ -1308,7 +1308,7 @@ const handleIec61850ReadMetadata = async (pointCode: string) => {
       metadataCache.value = newCache;
     }
   } catch (e: any) {
-    showError(e, t("table.metadataFailed", { msg: "未知错误" }));
+    showError(e, t("table.metadataFailed", { msg: t("table.unknownError") }));
     metadataDialogVisible.value = false;
   } finally {
     readingMetadata.value[pointCode] = false;
@@ -1443,7 +1443,10 @@ const handleIec61850ReadPoint = async (
       ElMessage.warning(t("table.readFailed"));
     }
   } catch (e: any) {
-    showError(e, t("table.iec61850ReadFailed", { msg: "未知错误" }));
+    showError(
+      e,
+      t("table.iec61850ReadFailed", { msg: t("table.unknownError") }),
+    );
   } finally {
     readingPoints[pointCode] = false;
   }

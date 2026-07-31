@@ -24,9 +24,11 @@
 
     <template #footer>
       <span class="dialog-footer">
-        <el-button @click="visible = false">{{ $t('common.cancel') }}</el-button>
+        <el-button @click="visible = false">{{
+          $t("common.cancel")
+        }}</el-button>
         <el-button type="primary" :loading="loading" @click="handleSubmit">
-          {{ $t('writeDialog.confirmWrite') }}
+          {{ $t("writeDialog.confirmWrite") }}
         </el-button>
       </span>
     </template>
@@ -34,66 +36,77 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue';
-import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus';
-import { showError } from '@/api/http';
-import { iec61850WritePoint } from '@/api/channelApi';
+import { ref, reactive, computed, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import { ElMessage } from "element-plus";
+import { showError } from "@/api/http";
+import { iec61850WritePoint } from "@/api/channelApi";
 
-const { t } = useI18n()
+const { t } = useI18n();
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   channelId: { type: Number, required: true },
-  pointCode: { type: String, default: '' },
-  attributeName: { type: String, default: '' },
-  currentValue: { type: [Number, String], default: '' },
+  pointCode: { type: String, default: "" },
+  attributeName: { type: String, default: "" },
+  currentValue: { type: [Number, String], default: "" },
 });
 
-const emit = defineEmits(['update:modelValue', 'success']);
+const emit = defineEmits(["update:modelValue", "success"]);
 
 const visible = computed({
   get: () => props.modelValue,
-  set: (val) => emit('update:modelValue', val),
+  set: (val) => emit("update:modelValue", val),
 });
 
 const loading = ref(false);
 const form = reactive({
-  pointCode: '',
-  attributeName: '',
-  currentValue: '' as string | number,
-  writeValue: '' as string | number,
+  pointCode: "",
+  attributeName: "",
+  currentValue: "" as string | number,
+  writeValue: "" as string | number,
 });
 
-watch(() => props.modelValue, (val) => {
-  if (val) {
-    form.pointCode = props.pointCode;
-    form.attributeName = props.attributeName || props.pointCode;
-    form.currentValue = props.currentValue;
-    form.writeValue = '';
-  }
-}, { immediate: true });
+watch(
+  () => props.modelValue,
+  (val) => {
+    if (val) {
+      form.pointCode = props.pointCode;
+      form.attributeName = props.attributeName || props.pointCode;
+      form.currentValue = props.currentValue;
+      form.writeValue = "";
+    }
+  },
+  { immediate: true },
+);
 
 const handleSubmit = async () => {
   if (!form.pointCode) {
-    ElMessage.warning(t('writeDialog.emptyCode'));
+    ElMessage.warning(t("writeDialog.emptyCode"));
     return;
   }
   loading.value = true;
   try {
     // 智能判断值类型: 纯数字转为数字, 否则保留字符串
     let val: string | number = form.writeValue;
-    if (typeof val === 'string' && val.trim() !== '' && !isNaN(Number(val))) {
+    if (typeof val === "string" && val.trim() !== "" && !isNaN(Number(val))) {
       val = Number(val);
     }
-    const result = await iec61850WritePoint(props.channelId, form.pointCode, val);
+    const result = await iec61850WritePoint(
+      props.channelId,
+      form.pointCode,
+      val,
+    );
     if (result) {
-      ElMessage.success(t('writeDialog.writeSent'));
+      ElMessage.success(t("writeDialog.writeSent"));
       visible.value = false;
-      emit('success');
+      emit("success");
     }
   } catch (e: any) {
-    showError(e, t('writeDialog.writeFailed', { msg: '未知错误' }));
+    showError(
+      e,
+      t("writeDialog.writeFailed", { msg: t("writeDialog.unknownError") }),
+    );
   } finally {
     loading.value = false;
   }

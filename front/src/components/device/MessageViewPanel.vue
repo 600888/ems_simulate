@@ -93,6 +93,7 @@
       stripe
       :height="fillWindow ? '100%' : 400"
       class="message-table"
+      :header-cell-style="{ whiteSpace: 'nowrap' }"
       :row-class-name="getRowClass"
     >
       <el-table-column
@@ -112,7 +113,7 @@
       <el-table-column
         prop="direction"
         :label="$t('messageView.direction')"
-        width="80"
+        width="110"
         align="center"
         header-align="center"
       >
@@ -133,7 +134,7 @@
         v-if="supportsSlaveClassification"
         prop="slave_id"
         :label="$t('messageView.slave')"
-        width="70"
+        width="90"
         align="center"
         header-align="center"
       >
@@ -142,7 +143,7 @@
       <el-table-column
         prop="length"
         :label="$t('messageView.length')"
-        width="70"
+        width="90"
         align="center"
         header-align="center"
       >
@@ -175,13 +176,17 @@
           }}</span></template
         >
       </el-table-column>
-      <el-table-column label="详情" width="96" align="center">
+      <el-table-column
+        :label="$t('messageView.detail')"
+        width="96"
+        align="center"
+      >
         <template #default="{ row }">
           <el-button
             type="primary"
             link
             @click="detailDrawer?.open(row.sequence_id)"
-            >查看详情</el-button
+            >{{ $t("messageView.viewDetail") }}</el-button
           >
         </template>
       </el-table-column>

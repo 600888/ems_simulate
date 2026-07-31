@@ -116,7 +116,7 @@ const editRegisterValue = async () => {
         getIntHex(pointRegister.value.signed),
       );
       ElMessage({
-        message: "修改成功!",
+        message: t("register.editSuccess"),
         type: "success",
       });
     }

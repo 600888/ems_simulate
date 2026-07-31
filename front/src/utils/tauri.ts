@@ -2,6 +2,7 @@
  * Tauri 桌面客户端集成工具
  * 检测是否在 Tauri 环境中运行，并提供原生能力接口
  */
+import i18n from "@/i18n";
 
 /** 是否运行在 Tauri 桌面客户端中 */
 export function isTauri(): boolean {
@@ -10,7 +11,7 @@ export function isTauri(): boolean {
 
 /** 在独立原生窗口中打开指定设备的报文查看器；同一设备只保留一个窗口。 */
 export async function openMessageWindow(deviceName: string): Promise<void> {
-  if (!isTauri()) throw new Error("不在 Tauri 环境中运行");
+  if (!isTauri()) throw new Error(i18n.global.t("common.notInTauri"));
 
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   let hash = 2166136261;
@@ -30,7 +31,7 @@ export async function openMessageWindow(deviceName: string): Promise<void> {
   const baseUrl = `${window.location.origin}${window.location.pathname}`;
   const messageWindow = new WebviewWindow(label, {
     url: `${baseUrl}#/message-view/${encodeURIComponent(deviceName)}`,
-    title: `查看报文 - ${deviceName}`,
+    title: i18n.global.t("messageView.windowTitle", { device: deviceName }),
     width: 1100,
     height: 650,
     minWidth: 820,
@@ -63,7 +64,7 @@ export async function invoke<T = any>(
   args?: Record<string, unknown>,
 ): Promise<T> {
   if (!isTauri()) {
-    throw new Error("不在 Tauri 环境中运行");
+    throw new Error(i18n.global.t("common.notInTauri"));
   }
   const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
   return tauriInvoke<T>(cmd, args);
@@ -159,7 +160,7 @@ export async function getAppConfig() {
 /** 重启后端服务 */
 export async function restartBackend(): Promise<string> {
   if (!isTauri()) {
-    throw new Error("不在 Tauri 环境中运行");
+    throw new Error(i18n.global.t("common.notInTauri"));
   }
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<string>("restart_backend");

@@ -590,7 +590,9 @@ export async function exportModel(
       await new Promise((r) => setTimeout(r, 100));
     }
   } catch (err: any) {
-    throw new Error(`写入文件失败: ${err.message}`);
+    throw new Error(
+      i18n.global.t("device.writeFileFailed", { msg: err.message }),
+    );
   }
 }
 

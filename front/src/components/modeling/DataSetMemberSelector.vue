@@ -67,7 +67,7 @@
               v-model="selectionLevel"
               :options="selectionLevelOptions"
               size="small"
-              aria-label="DataSet 成员选择粒度"
+              :aria-label="$t('modeling.datasetSelector.selectionLevelAria')"
             />
           </header>
 
@@ -81,7 +81,10 @@
                 ><el-icon><Search /></el-icon
               ></template>
             </el-input>
-            <el-select v-model="fcFilter" aria-label="功能约束筛选">
+            <el-select
+              v-model="fcFilter"
+              :aria-label="$t('modeling.datasetSelector.fcFilterAria')"
+            >
               <el-option
                 :label="$t('modeling.datasetSelector.fcFilter')"
                 value=""
@@ -89,7 +92,7 @@
               <el-option
                 v-for="fc in fcOptions"
                 :key="fc"
-                :label="`FC：${fc}`"
+                :label="$t('modeling.datasetSelector.fcLabel', { fc })"
                 :value="fc"
               />
             </el-select>

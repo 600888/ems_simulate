@@ -8,16 +8,17 @@
       style="display: none"
       @change="onFileSelected"
     />
-
   </div>
 </template>
 
 <script lang="ts" setup>
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { importIcdPoints } from "@/api/channelApi";
 import type { PointImportResult } from "@/types/channel";
 
-type GooseImportMode = "model_only" | "local_publish" | "remote_subscribe" | "both";
+type GooseImportMode =
+  "model_only" | "local_publish" | "remote_subscribe" | "both";
 
 const emit = defineEmits<{
   (e: "file-change", file: File | null): void;
@@ -28,6 +29,7 @@ const emit = defineEmits<{
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const importing = ref(false);
+const { t } = useI18n();
 let selectedFile: File | null = null;
 
 const onFileSelected = (event: Event) => {
@@ -45,10 +47,10 @@ const openFileDialog = () => {
 
 const importIcd = async (
   channelId: number,
-  _defaultMode: GooseImportMode = "model_only"
+  _defaultMode: GooseImportMode = "model_only",
 ): Promise<PointImportResult | null> => {
   if (!selectedFile) {
-    throw new Error("未选择 ICD 文件");
+    throw new Error(t("device.noIcdSelected"));
   }
 
   const file = selectedFile;
@@ -56,12 +58,7 @@ const importIcd = async (
   emit("import-start");
 
   try {
-    const result = await importIcdPoints(
-      channelId,
-      file,
-      "eth0",
-      "model_only"
-    );
+    const result = await importIcdPoints(channelId, file, "eth0", "model_only");
     emit("import-success", result);
     return result;
   } catch (error) {
@@ -71,7 +68,6 @@ const importIcd = async (
     importing.value = false;
   }
 };
-
 
 const clear = () => {
   selectedFile = null;

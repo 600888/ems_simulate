@@ -32,72 +32,42 @@
               v-model="metadataForm.decode_code"
               :placeholder="$t('editMetadata.selectDecodeCode')"
             >
-              <el-option-group label="8位字符">
-                <el-option label="0x10 - Byte (无符号)" value="0x10" />
-                <el-option label="0x11 - Byte (有符号)" value="0x11" />
+              <el-option-group :label="$t('decode.bit8')">
+                <el-option :label="$t('decode.opt10')" value="0x10" />
+                <el-option :label="$t('decode.opt11')" value="0x11" />
               </el-option-group>
-              <el-option-group label="16位整数">
-                <el-option label="0x20 - Short AB (大端)" value="0x20" />
-                <el-option label="0x21 - Short AB (有符号)" value="0x21" />
-                <el-option label="0x22 - Short BA (字节交换)" value="0x22" />
-                <el-option label="0xB0 - Short BA (无符号)" value="0xB0" />
-                <el-option label="0xB1 - Short BA (有符号)" value="0xB1" />
-                <el-option label="0xC0 - Short CD (小端)" value="0xC0" />
-                <el-option label="0xC1 - Short CD (有符号)" value="0xC1" />
+              <el-option-group :label="$t('decode.int16')">
+                <el-option :label="$t('decode.opt20')" value="0x20" />
+                <el-option :label="$t('decode.opt21')" value="0x21" />
+                <el-option :label="$t('decode.opt22')" value="0x22" />
+                <el-option :label="$t('decode.optB0')" value="0xB0" />
+                <el-option :label="$t('decode.optB1')" value="0xB1" />
+                <el-option :label="$t('decode.optC0')" value="0xC0" />
+                <el-option :label="$t('decode.optC1')" value="0xC1" />
               </el-option-group>
-              <el-option-group label="32位整数">
-                <el-option label="0x40 - Long AB CD (大端)" value="0x40" />
-                <el-option label="0x41 - Long AB CD (有符号)" value="0x41" />
-                <el-option
-                  label="0x43 - Long BA DC (大端字交换)"
-                  value="0x43"
-                />
-                <el-option label="0x44 - Long BA DC (有符号)" value="0x44" />
-                <el-option label="0xD0 - Long DC BA (小端)" value="0xD0" />
-                <el-option label="0xD1 - Long DC BA (有符号)" value="0xD1" />
-                <el-option
-                  label="0xD4 - Long CD AB (小端字交换)"
-                  value="0xD4"
-                />
-                <el-option label="0xD5 - Long CD AB (有符号)" value="0xD5" />
+              <el-option-group :label="$t('decode.int32')">
+                <el-option :label="$t('decode.opt40')" value="0x40" />
+                <el-option :label="$t('decode.opt41')" value="0x41" />
+                <el-option :label="$t('decode.opt43')" value="0x43" />
+                <el-option :label="$t('decode.opt44')" value="0x44" />
+                <el-option :label="$t('decode.optD0')" value="0xD0" />
+                <el-option :label="$t('decode.optD1')" value="0xD1" />
+                <el-option :label="$t('decode.optD4')" value="0xD4" />
+                <el-option :label="$t('decode.optD5')" value="0xD5" />
               </el-option-group>
-              <el-option-group label="32位浮点">
-                <el-option label="0x42 - Float AB CD (大端)" value="0x42" />
-                <el-option
-                  label="0x45 - Float BA DC (大端字交换)"
-                  value="0x45"
-                />
-                <el-option label="0xD2 - Float DC BA (小端)" value="0xD2" />
-                <el-option
-                  label="0xD3 - Float CD AB (小端字交换)"
-                  value="0xD3"
-                />
+              <el-option-group :label="$t('decode.float32')">
+                <el-option :label="$t('decode.opt42')" value="0x42" />
+                <el-option :label="$t('decode.opt45')" value="0x45" />
+                <el-option :label="$t('decode.optD2')" value="0xD2" />
+                <el-option :label="$t('decode.optD3')" value="0xD3" />
               </el-option-group>
-              <el-option-group label="64位类型">
-                <el-option
-                  label="0x60 - Int64 AB CD EF GH (大端)"
-                  value="0x60"
-                />
-                <el-option
-                  label="0x61 - Int64 AB CD EF GH (有符号)"
-                  value="0x61"
-                />
-                <el-option
-                  label="0x62 - Double AB CD EF GH (大端)"
-                  value="0x62"
-                />
-                <el-option
-                  label="0xE0 - Int64 HG FE DC BA (小端)"
-                  value="0xE0"
-                />
-                <el-option
-                  label="0xE1 - Int64 HG FE DC BA (有符号)"
-                  value="0xE1"
-                />
-                <el-option
-                  label="0xE2 - Double HG FE DC BA (小端)"
-                  value="0xE2"
-                />
+              <el-option-group :label="$t('decode.int64')">
+                <el-option :label="$t('decode.opt60')" value="0x60" />
+                <el-option :label="$t('decode.opt61')" value="0x61" />
+                <el-option :label="$t('decode.opt62')" value="0x62" />
+                <el-option :label="$t('decode.optE0')" value="0xE0" />
+                <el-option :label="$t('decode.optE1')" value="0xE1" />
+                <el-option :label="$t('decode.optE2')" value="0xE2" />
               </el-option-group>
             </el-select>
           </el-form-item>

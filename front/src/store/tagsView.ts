@@ -63,8 +63,9 @@ watch(
 
 export const addView = (view: RouteLocationNormalized) => {
   const path = view.path;
+  const rawTitle = view.meta.title as string;
   const title =
-    (view.meta.title as string) ||
+    (rawTitle ? i18n.global.t(rawTitle) : "") ||
     (view.params.deviceName as string) ||
     (view.name as string) ||
     i18n.global.t("layout.tagsView.fallbackTitle");

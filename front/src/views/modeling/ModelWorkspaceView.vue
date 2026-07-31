@@ -1662,8 +1662,12 @@
               }}
             </p>
             <small
-              >源修订 r{{ version.source_revision }} ·
-              {{ formatDateTime(version.created_at) }}</small
+              >{{
+                $t("modeling.workspace.sourceRevision", {
+                  rev: version.source_revision,
+                })
+              }}
+              · {{ formatDateTime(version.created_at) }}</small
             >
           </div>
           <div class="version-actions">
@@ -2580,7 +2584,7 @@ async function focusNode(nodeId: string) {
 
 async function focusReferenceNode(nodeId: string) {
   if (dirty.value) {
-    return ElMessage.warning("请先保存或撤销当前属性修改");
+    return ElMessage.warning(t("modeling.workspace.saveOrDiscardFirst"));
   }
   if (treeNodeIndex.has(nodeId)) {
     await focusNode(nodeId);
@@ -2606,13 +2610,11 @@ async function resetForm() {
 
 async function saveNode() {
   if (selectedNode.value?.virtual)
-    return ElMessage.warning(
-      "继承节点由 DataTypeTemplates 定义，不能在实例模型中直接修改",
-    );
+    return ElMessage.warning(t("modeling.workspace.inheritedNodeReadonlyWarn"));
   if (isSelectedExtension.value)
-    return ElMessage.warning("保真扩展默认只读，不能直接修改原始 XML");
+    return ElMessage.warning(t("modeling.workspace.fidelityReadonlyWarn"));
   if (!selectedNode.value || !propertyForm.name.trim())
-    return ElMessage.warning("节点名称不能为空");
+    return ElMessage.warning(t("modeling.workspace.nodeNameRequired"));
   saving.value = true;
   try {
     const updated = await modelingApi.updateNode(
@@ -2624,7 +2626,7 @@ async function saveNode() {
         expected_revision: propertyForm.revision,
       },
     );
-    ElMessage.success("节点属性已保存");
+    ElMessage.success(t("modeling.workspace.nodeSaved"));
     await Promise.all([loadProject(), loadTree(updated.id)]);
   } finally {
     saving.value = false;
@@ -2634,7 +2636,7 @@ async function saveNode() {
 async function materializeSelectedOverride() {
   const node = selectedNode.value;
   if (!node?.virtual || !node.logical_node_id || !node.template_path) {
-    return ElMessage.warning("当前节点没有可物化的类型模板路径");
+    return ElMessage.warning(t("modeling.workspace.noMaterializableTemplate"));
   }
   materializingOverride.value = true;
   try {
@@ -2646,8 +2648,10 @@ async function materializeSelectedOverride() {
     );
     ElMessage.success(
       result.created_count
-        ? `已创建 ${result.created_count} 个必要实例节点`
-        : "实例覆盖已存在",
+        ? t("modeling.workspace.instanceNodesCreated", {
+            count: result.created_count,
+          })
+        : t("modeling.workspace.instanceOverrideExists"),
     );
     validationResult.value = undefined;
     await Promise.all([loadProject(), loadTree(result.node.id)]);
@@ -2664,7 +2668,7 @@ async function handleDataSetMembersChanged(dataSetId: string) {
 async function applyCdcTemplate(templateId: string) {
   if (!selectedNode.value || selectedNode.value.kind !== "DO_TYPE") return;
   if (dirty.value)
-    return ElMessage.warning("请先保存或撤销当前 DOType 的属性修改");
+    return ElMessage.warning(t("modeling.workspace.saveOrDiscardDoTypeFirst"));
   cdcAssistant.loading = true;
   try {
     const nodeId = selectedNode.value.id;
@@ -2677,12 +2681,19 @@ async function applyCdcTemplate(templateId: string) {
     cdcAssistant.conflicts = result.conflicts;
     if (result.conflicts.length) {
       ElMessage.warning(
-        `已新增 ${result.created.length} 项，${result.conflicts.length} 项冲突保持原值`,
+        t("modeling.workspace.materializedWithConflicts", {
+          created: result.created.length,
+          conflicts: result.conflicts.length,
+        }),
       );
     } else if (result.changed) {
-      ElMessage.success(`已补齐 ${result.created.length} 个数据属性/依赖类型`);
+      ElMessage.success(
+        t("modeling.workspace.materializedFilled", {
+          count: result.created.length,
+        }),
+      );
     } else {
-      ElMessage.info("所需属性已经存在，无需重复创建");
+      ElMessage.info(t("modeling.workspace.materializedNoop"));
     }
   } finally {
     cdcAssistant.loading = false;
@@ -2715,7 +2726,7 @@ async function prepareLNodeTemplateMode() {
   if (!target || target.kind !== "LNODE_TYPE") return;
   if (dirty.value) {
     addDialog.templateMode = false;
-    return ElMessage.warning("请先保存或撤销当前节点的属性修改");
+    return ElMessage.warning(t("modeling.workspace.saveOrDiscardNodeFirst"));
   }
   lnodeTemplateDialog.loadingOptions = true;
   lnodeTemplateDialog.preview = undefined;
@@ -2736,7 +2747,7 @@ async function prepareLNodeTemplateMode() {
     }
     lnodeTemplateDialog.doTypes = result.do_types;
     if (!result.do_types.length) {
-      ElMessage.warning("当前 DataTypeTemplates 中还没有可引用的 DOType");
+      ElMessage.warning(t("modeling.workspace.noDoTypeInTemplates"));
     }
   } finally {
     lnodeTemplateDialog.loadingOptions = false;
@@ -2789,9 +2800,14 @@ async function applyLNodeTemplate() {
     addDialog.templateMode = false;
     validationResult.value = undefined;
     ElMessage.success(
-      `已创建 ${result.created_count} 个 DO${
-        result.kept_count ? `，复用 ${result.kept_count} 个已有 DO` : ""
-      }`,
+      result.kept_count
+        ? t("modeling.workspace.dosCreatedWithKept", {
+            created: result.created_count,
+            kept: result.kept_count,
+          })
+        : t("modeling.workspace.dosCreated", {
+            count: result.created_count,
+          }),
     );
     await Promise.all([loadProject(), loadTree(target.id)]);
   } finally {
@@ -2974,7 +2990,9 @@ async function createNode() {
     }
     addDialog.visible = false;
     ElMessage.success(
-      quantity === 1 ? "节点已添加" : `已连续创建 ${quantity} 个节点`,
+      quantity === 1
+        ? t("modeling.workspace.nodeAdded")
+        : t("modeling.workspace.nodesAdded", { count: quantity }),
     );
     await Promise.all([loadProject(), loadTree(node?.id)]);
   } finally {
@@ -3076,7 +3094,9 @@ async function deleteNode() {
     deleteDialog.visible = false;
     selectedNode.value = undefined;
     nodeImpact.value = undefined;
-    ElMessage.success(`已删除 ${result.deleted_count} 个节点`);
+    ElMessage.success(
+      t("modeling.workspace.nodesDeleted", { count: result.deleted_count }),
+    );
     await Promise.all([loadProject(), loadTree(parentId)]);
   } finally {
     deleteDialog.deleting = false;
@@ -3095,8 +3115,10 @@ async function runValidation() {
     }
     ElMessage[validationResult.value.passed ? "success" : "warning"](
       validationResult.value.passed
-        ? "模型基础校验通过"
-        : `发现 ${validationResult.value.error_count} 个错误`,
+        ? t("modeling.workspace.validationPassedBasic")
+        : t("modeling.workspace.validationErrorsFound", {
+            count: validationResult.value.error_count,
+          }),
     );
   } finally {
     validating.value = false;
@@ -3287,13 +3309,15 @@ async function loadVersions() {
 }
 
 async function openVersions() {
-  if (dirty.value) return ElMessage.warning("请先保存或撤销节点属性修改");
+  if (dirty.value)
+    return ElMessage.warning(t("modeling.workspace.saveOrDiscardNodeFirst"));
   versionsDrawer.visible = true;
   await loadVersions();
 }
 
 async function createVersion() {
-  if (dirty.value) return ElMessage.warning("请先保存当前节点修改");
+  if (dirty.value)
+    return ElMessage.warning(t("modeling.workspace.saveOrDiscardCurrent"));
   versionsDrawer.creating = true;
   try {
     await modelingApi.createVersion(props.projectId, {
@@ -3302,7 +3326,7 @@ async function createVersion() {
     });
     versionsDrawer.label = "";
     versionsDrawer.description = "";
-    ElMessage.success("当前模型已保存为版本快照");
+    ElMessage.success(t("modeling.workspace.snapshotSaved"));
     await loadVersions();
   } finally {
     versionsDrawer.creating = false;
@@ -3310,15 +3334,16 @@ async function createVersion() {
 }
 
 async function restoreVersion(version: ModelVersion) {
-  if (dirty.value) return ElMessage.warning("请先保存或撤销节点属性修改");
+  if (dirty.value)
+    return ElMessage.warning(t("modeling.workspace.saveOrDiscardNodeFirst"));
   try {
     await ElMessageBox.confirm(
-      `将当前模型恢复为“${version.label}”，恢复前建议先创建当前快照。`,
-      "恢复模型版本",
+      t("modeling.workspace.restoreConfirm", { label: version.label }),
+      t("modeling.workspace.restoreTitle"),
       {
         type: "warning",
-        confirmButtonText: "确认恢复",
-        cancelButtonText: "取消",
+        confirmButtonText: t("modeling.workspace.confirmRestore"),
+        cancelButtonText: t("common.cancel"),
       },
     );
     const result = await modelingApi.restoreVersion(
@@ -3327,7 +3352,9 @@ async function restoreVersion(version: ModelVersion) {
     );
     versionsDrawer.visible = false;
     validationResult.value = undefined;
-    ElMessage.success(`已恢复 ${result.node_count} 个模型节点`);
+    ElMessage.success(
+      t("modeling.workspace.restoreSuccess", { count: result.node_count }),
+    );
     await Promise.all([loadProject(), loadTree()]);
   } catch (error) {
     if (error !== "cancel" && error !== "close") throw error;
@@ -3337,16 +3364,16 @@ async function restoreVersion(version: ModelVersion) {
 async function deleteVersion(version: ModelVersion) {
   try {
     await ElMessageBox.confirm(
-      `确认删除版本快照“${version.label}”？`,
-      "删除版本",
+      t("modeling.workspace.deleteVersionConfirm", { label: version.label }),
+      t("modeling.workspace.deleteVersionTitle"),
       {
         type: "warning",
-        confirmButtonText: "删除",
-        cancelButtonText: "取消",
+        confirmButtonText: t("common.delete"),
+        cancelButtonText: t("common.cancel"),
       },
     );
     await modelingApi.deleteVersion(props.projectId, version.id);
-    ElMessage.success("版本快照已删除");
+    ElMessage.success(t("modeling.workspace.versionDeleted"));
     await loadVersions();
   } catch (error) {
     if (error !== "cancel" && error !== "close") throw error;
@@ -3354,7 +3381,8 @@ async function deleteVersion(version: ModelVersion) {
 }
 
 async function openSclPreview() {
-  if (dirty.value) return ElMessage.warning("请先保存或撤销节点属性修改");
+  if (dirty.value)
+    return ElMessage.warning(t("modeling.workspace.saveOrDiscardNodeFirst"));
   previewDialog.loading = true;
   try {
     previewDialog.artifact = await modelingApi.previewScl(props.projectId);
@@ -3365,7 +3393,8 @@ async function openSclPreview() {
 }
 
 async function downloadScl() {
-  if (dirty.value) return ElMessage.warning("请先保存或撤销节点属性修改");
+  if (dirty.value)
+    return ElMessage.warning(t("modeling.workspace.saveOrDiscardNodeFirst"));
   downloading.value = true;
   try {
     const artifact = await modelingApi.downloadScl(props.projectId);
@@ -3373,33 +3402,43 @@ async function downloadScl() {
       type: "application/xml;charset=utf-8",
     });
     if (await saveDownload(blob, artifact.filename)) {
-      ElMessage.success(`已生成 ${artifact.filename}`);
+      ElMessage.success(
+        t("modeling.workspace.artifactGenerated", {
+          filename: artifact.filename,
+        }),
+      );
     }
   } catch (error) {
-    showError(error, "导出模型失败");
+    showError(error, t("modeling.workspace.exportModelFailed"));
   } finally {
     downloading.value = false;
   }
 }
 
 async function downloadArtifactBundle() {
-  if (dirty.value) return ElMessage.warning("请先保存或撤销节点属性修改");
+  if (dirty.value)
+    return ElMessage.warning(t("modeling.workspace.saveOrDiscardNodeFirst"));
   downloading.value = true;
   try {
     const bundle = await modelingApi.downloadArtifacts(props.projectId);
     if (await saveDownload(bundle.content, bundle.filename)) {
-      ElMessage.success(`已生成可追溯产物包 ${bundle.filename}`);
+      ElMessage.success(
+        t("modeling.workspace.bundleGenerated", { filename: bundle.filename }),
+      );
     }
   } catch (error) {
-    showError(error, "下载 CFG 产物包失败");
+    showError(error, t("modeling.workspace.downloadBundleFailed"));
   } finally {
     downloading.value = false;
   }
 }
 
 function openPublishDialog() {
-  if (dirty.value) return ElMessage.warning("请先保存或撤销节点属性修改");
-  publishDialog.label = `现场发布 r${project.value?.revision || 1}`;
+  if (dirty.value)
+    return ElMessage.warning(t("modeling.workspace.saveOrDiscardNodeFirst"));
+  publishDialog.label = t("modeling.workspace.publishTitle", {
+    revision: project.value?.revision || 1,
+  });
   publishDialog.description = "";
   publishDialog.visible = true;
 }
@@ -3414,7 +3453,11 @@ async function publishProject() {
     });
     validationResult.value = result.validation;
     publishDialog.visible = false;
-    ElMessage.success(`模型已发布：${result.artifact.filename}`);
+    ElMessage.success(
+      t("modeling.workspace.publishedSuccess", {
+        filename: result.artifact.filename,
+      }),
+    );
     await Promise.all([loadProject(), loadVersions()]);
   } finally {
     publishDialog.publishing = false;

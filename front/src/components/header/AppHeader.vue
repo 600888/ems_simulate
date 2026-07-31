@@ -11,7 +11,7 @@
         :key="index"
         :to="item.path"
       >
-        {{ item.meta.title }}
+        {{ $t(item.meta.title) }}
       </el-breadcrumb-item>
     </el-breadcrumb>
     <div class="breadcrumb-divider"></div>

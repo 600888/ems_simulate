@@ -16,7 +16,7 @@
       label-position="right"
     >
       <el-tabs v-model="activeTab" class="device-form-tabs">
-        <el-tab-pane label="基本信息" name="basic">
+        <el-tab-pane :label="$t('addDevice.tabBasic')" name="basic">
           <DeviceFormBasic
             :model-value="form"
             :group-options="deviceGroupOptions"
@@ -41,7 +41,7 @@
           />
         </el-tab-pane>
 
-        <el-tab-pane label="协议参数" name="protocol">
+        <el-tab-pane :label="$t('addDevice.tabProtocol')" name="protocol">
           <DeviceProtocolParams
             ref="protocolParamsCompRef"
             :model-value="protocolParams"
@@ -52,7 +52,7 @@
 
         <el-tab-pane
           v-if="tlsSupportedProtocol"
-          label="加密配置"
+          :label="$t('addDevice.tabSecurity')"
           name="security"
         >
           <DeviceSecurityConfig
@@ -160,7 +160,11 @@
           min-width="240"
           show-overflow-tooltip
         />
-        <el-table-column prop="go_id" label="GOOSE标识符 (GoID)" width="180" />
+        <el-table-column
+          prop="go_id"
+          :label="$t('addDevice.gooseGoId')"
+          width="180"
+        />
         <el-table-column prop="app_id" label="APPID" width="70" />
         <el-table-column
           prop="dat_set"
@@ -560,8 +564,8 @@ const handleSubmit = async () => {
       activeTab.value = "security";
       ElMessage.error(
         securityConfig.tls_mode === "mutual"
-          ? "双向认证 TLS 必须上传本端证书、私钥和 CA 证书"
-          : "启用 TLS 后必须上传证书和私钥",
+          ? t("addDevice.tlsMutualRequired")
+          : t("addDevice.tlsCertRequired"),
       );
       return;
     }
@@ -590,7 +594,7 @@ const handleSubmit = async () => {
         resultId = createRes.channel_id;
       }
 
-      progressText.value = "正在保存 TLS 配置";
+      progressText.value = t("addDevice.savingTlsConfig");
       const persistedSecurity = await uploadChannelSecurity(
         resultId,
         securityConfig.tls_enabled,
@@ -609,7 +613,7 @@ const handleSubmit = async () => {
 
       // 3. Excel 点表导入
       if (form.protocol_type === 3 && dlt645PointMode.value === "standard") {
-        progressText.value = "正在导入 DL/T645 标准点表";
+        progressText.value = t("addDevice.importingDlt645");
         await importDlt645StandardPoints(resultId);
       } else if (!isIec61850Server.value && selectedFile.value) {
         progressText.value = t("addDevice.importingPoints");
@@ -628,7 +632,7 @@ const handleSubmit = async () => {
       localStorage.setItem("_pendingDevice", form.name);
       window.location.reload();
     } catch (e: any) {
-      console.error(e.message || "操作失败");
+      console.error(e.message || t("addDevice.operationFailed"));
     } finally {
       if (progressTimer) {
         clearInterval(progressTimer);

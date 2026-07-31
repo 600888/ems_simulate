@@ -96,6 +96,7 @@
             size="small"
             max-height="360"
             highlight-current-row
+            :header-cell-style="{ whiteSpace: 'nowrap' }"
             @row-click="selectField"
           >
             <el-table-column :label="$t('device.messageBytesCol')" width="82">
@@ -179,6 +180,7 @@
                     border
                     class="object-fields"
                     highlight-current-row
+                    :header-cell-style="{ whiteSpace: 'nowrap' }"
                     @row-click="selectField"
                   >
                     <el-table-column

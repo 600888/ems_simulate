@@ -1,25 +1,34 @@
 import type { TreeNode } from "@/composables";
 
-const SETTLEMENT_LABELS = [
-  "当前",
-  ...Array.from({ length: 12 }, (_, index) => `上 ${index + 1} 结算日`),
-];
-
-const CATEGORIES = [
-  { prefix: 0, label: "电能量", settlements: true },
-  { prefix: 1, label: "最大需量及发生时间", settlements: true },
-  { prefix: 2, label: "变量" },
-  { prefix: 3, label: "事件记录" },
-  { prefix: 4, label: "参变量" },
-];
+type TranslateFn = (key: string, params?: Record<string, unknown>) => string;
 
 export function buildDlt645Children(
   deviceName: string,
   keyPrefix = "device",
+  t?: TranslateFn,
 ): TreeNode[] {
-  return CATEGORIES.map((category) => {
+  const translate = (key: string, params?: Record<string, unknown>) =>
+    t ? t(key, params) : key;
+  const settlementLabels = [
+    translate("sidebar.dlt645.current"),
+    ...Array.from({ length: 12 }, (_, index) =>
+      translate("sidebar.dlt645.prevSettlement", { n: index + 1 }),
+    ),
+  ];
+  const categories = [
+    { prefix: 0, label: translate("sidebar.dlt645.energy"), settlements: true },
+    {
+      prefix: 1,
+      label: translate("sidebar.dlt645.maxDemand"),
+      settlements: true,
+    },
+    { prefix: 2, label: translate("sidebar.dlt645.variables") },
+    { prefix: 3, label: translate("sidebar.dlt645.events") },
+    { prefix: 4, label: translate("sidebar.dlt645.paramVars") },
+  ];
+  return categories.map((category) => {
     const children = category.settlements
-      ? SETTLEMENT_LABELS.map((label, settlement) => ({
+      ? settlementLabels.map((label, settlement) => ({
           nodeKey: `${keyPrefix}-${deviceName}-dlt645-${category.prefix}-${settlement}`,
           label,
           isGroup: false,

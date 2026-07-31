@@ -310,7 +310,7 @@ const handleOpenMessageView = async () => {
     await openMessageWindow(routeName.value);
   } catch (error) {
     console.error("打开独立报文窗口失败:", error);
-    showError(error, t("messageView.openWindowFailed", "打开报文窗口失败"));
+    showError(error, t("messageView.openWindowFailed"));
   }
 };
 const showExportDialog = ref<boolean>(false);
@@ -703,7 +703,10 @@ const handleLoadModelFromDb = async () => {
       modelLoaded.value = true;
       const path = result.icd_path || "";
       const msg = path
-        ? `${t("device.modelLoadSuccess")} 路径: ${path}`
+        ? t("device.modelLoadSuccessWithPath", {
+            msg: t("device.modelLoadSuccess"),
+            path,
+          })
         : t("device.modelLoadSuccess");
       ElMessage.success(msg);
       triggerSidebarRefresh(routeName.value);

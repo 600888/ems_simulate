@@ -96,7 +96,7 @@
                 </el-select>
               </el-form-item>
               <el-form-item
-                :label="$t('modeling.createWizard.description')"
+                :label="$t('modeling.createWizard.projectDescription')"
                 class="full-row"
               >
                 <el-input
@@ -106,7 +106,7 @@
                   maxlength="512"
                   show-word-limit
                   :placeholder="
-                    $t('modeling.createWizard.descriptionPlaceholder')
+                    $t('modeling.createWizard.projectDescriptionPlaceholder')
                   "
                 />
               </el-form-item>
