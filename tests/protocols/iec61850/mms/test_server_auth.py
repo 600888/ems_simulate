@@ -1,7 +1,9 @@
 """End-to-end IEC 61850 ACSE password authentication tests."""
 
 import socket
+from types import SimpleNamespace
 
+from src.proto.iec61850 import server_auth as server_auth_module
 from src.proto.iec61850.core.connection import (
     Iec61850AssociationParameters,
     Iec61850Connection,
@@ -53,6 +55,21 @@ def _connect(port: int, password: str | None) -> bool:
         return connection.connect(auto_discover=False)
     finally:
         connection.disconnect()
+
+
+def test_linux_auditwheel_library_name_is_discovered(tmp_path, monkeypatch):
+    package_dir = tmp_path / "pyiec61850"
+    package_dir.mkdir()
+    module_path = package_dir / "_libload.py"
+    module_path.touch()
+    library_dir = tmp_path / "pyiec61850_ng.libs"
+    library_dir.mkdir()
+    library_path = library_dir / "libiec61850-51dd1582.so.1.6.1"
+    library_path.touch()
+    libload = SimpleNamespace(__file__=str(module_path), LOADED_PATH=None)
+    monkeypatch.setattr(server_auth_module.sys, "platform", "linux")
+
+    assert server_auth_module._find_native_library_path(libload) == str(library_path)
 
 
 def test_server_rejects_missing_and_wrong_password_but_accepts_correct_password():

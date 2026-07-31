@@ -2,10 +2,46 @@
 
 import ctypes
 import hmac
+from pathlib import Path
 import sys
 from typing import Any
 
 _NATIVE_BOOL = ctypes.c_int if sys.platform == "win32" else ctypes.c_bool
+
+
+def _find_native_library_path(libload: Any) -> str | None:
+    """Locate libiec61850, including auditwheel's hashed Linux filename."""
+    loaded_path = getattr(libload, "LOADED_PATH", None)
+    if loaded_path:
+        return str(loaded_path)
+
+    module_file = getattr(libload, "__file__", None)
+    if not module_file:
+        return None
+    package_dir = Path(module_file).resolve().parent
+    search_dirs = (
+        package_dir,
+        package_dir.parent / "pyiec61850_ng.libs",
+        package_dir.parent / "pyiec61850.libs",
+    )
+    if sys.platform == "win32":
+        patterns = ("*iec61850*.dll",)
+    elif sys.platform == "darwin":
+        patterns = ("libiec61850*.dylib",)
+    else:
+        # auditwheel renames bundled libraries to forms such as
+        # libiec61850-51dd1582.so.1.6.1, which pyiec61850 1.6.1.9's own
+        # loader does not currently match.
+        patterns = ("libiec61850*.so", "libiec61850*.so.*")
+
+    for directory in search_dirs:
+        if not directory.is_dir():
+            continue
+        for pattern in patterns:
+            candidates = sorted(directory.glob(pattern))
+            if candidates:
+                return str(candidates[0])
+    return None
 
 
 class Iec61850ServerPasswordAuthenticator:
@@ -26,9 +62,11 @@ class Iec61850ServerPasswordAuthenticator:
         from pyiec61850 import _libload
         from pyiec61850 import pyiec61850 as iec61850
 
-        library_path = _libload.LOADED_PATH
+        library_path = _find_native_library_path(_libload)
         if not library_path:
-            raise RuntimeError("无法定位 libiec61850 原生动态库")
+            load_error = getattr(_libload, "LIB_LOAD_ERROR", None)
+            detail = f": {load_error}" if load_error else ""
+            raise RuntimeError(f"无法定位 libiec61850 原生动态库{detail}")
 
         self._library = ctypes.CDLL(library_path)
         self._expected_password = password.encode("utf-8")

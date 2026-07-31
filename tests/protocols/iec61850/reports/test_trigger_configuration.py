@@ -1,6 +1,5 @@
 """IEC 61850 服务端报告触发配置回归测试。"""
 
-from pathlib import Path
 from types import SimpleNamespace
 
 from src.proto.iec61850.defs.types import RCBInfo, ReportDataEntry
@@ -12,11 +11,46 @@ from src.proto.iec61850.plugins.reports.urcb import UrcbHandler
 from src.proto.iec61850.plugins.scl.parser.type_resolver import TypeResolver
 from src.proto.iec61850.plugins.scl.service.import_service import SclImportService
 
+_TRIGGER_SCL = """
+<SCL>
+  <Header nameStructure="IEDName" />
+  <IED name="PCS001"><AccessPoint name="AP1"><Server>
+    <LDevice inst="LD0"><LN0 lnClass="LLN0" lnType="Lln0Type">
+      <DataSet name="dsDin" />
+      <ReportControl datSet="dsDin" name="brcbDin" rptID="LD0/LLN0$BR$brcbDin"
+                     bufTime="100" confRev="1" buffered="true">
+        <TrgOps period="true" dchg="true" qchg="true" />
+        <RptEnabled max="12" />
+      </ReportControl>
+    </LN0></LDevice>
+    <LDevice inst="CTRL"><LN0 lnClass="LLN0" lnType="Lln0Type" />
+      <LN prefix="kr" lnClass="GGIO" inst="1" lnType="AlarmType" />
+    </LDevice>
+    <LDevice inst="MEAS"><LN0 lnClass="LLN0" lnType="Lln0Type" />
+      <LN lnClass="GGIO" inst="1" lnType="MeasureType" />
+    </LDevice>
+  </Server></AccessPoint></IED>
+  <DataTypeTemplates>
+    <LNodeType id="Lln0Type" lnClass="LLN0" />
+    <LNodeType id="AlarmType" lnClass="GGIO"><DO name="Alm1" type="SpsType" /></LNodeType>
+    <LNodeType id="MeasureType" lnClass="GGIO"><DO name="AnIn1" type="MvType" /></LNodeType>
+    <DOType id="SpsType" cdc="SPS">
+      <DA name="stVal" fc="ST" bType="BOOLEAN" dchg="true" />
+      <DA name="q" fc="ST" bType="Quality" qchg="true" />
+      <DA name="t" fc="ST" bType="Timestamp" />
+    </DOType>
+    <DOType id="MvType" cdc="MV">
+      <DA name="mag" fc="MX" bType="Struct" type="AnalogueValue" dchg="true" />
+      <DA name="q" fc="MX" bType="Quality" qchg="true" />
+    </DOType>
+    <DAType id="AnalogueValue"><BDA name="i" bType="INT32" /></DAType>
+  </DataTypeTemplates>
+</SCL>
+"""
+
 
 def test_scl_da_trigger_flags_are_preserved_in_points():
-    icd_path = Path(__file__).parents[4] / "data" / "device" / "IEC61850SERVER" / "SY_ES630K.icd"
-
-    result = SclImportService().import_file(str(icd_path))
+    result = SclImportService().import_string(_TRIGGER_SCL)
 
     st_val = next(point for point in result.points.yx_points if point.reg_addr == "PCS001CTRL/krGGIO1.Alm1.stVal")
     analog = next(point for point in result.points.yc_points if point.reg_addr == "PCS001MEAS/GGIO1.AnIn1.mag.i")
@@ -71,9 +105,7 @@ def test_server_rcb_always_exposes_gi_capability(monkeypatch):
 
 
 def test_expanded_report_instances_have_unique_rpt_ids():
-    icd_path = Path(__file__).parents[4] / "data" / "device" / "IEC61850SERVER" / "SY_ES630K.icd"
-
-    result = SclImportService().import_file(str(icd_path))
+    result = SclImportService().import_string(_TRIGGER_SCL)
     instances = [
         report
         for report in result.reports.report_controls
