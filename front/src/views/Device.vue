@@ -912,6 +912,9 @@ const fetchDeviceStatus = async () => {
     const info = await getDeviceInfo(routeName.value);
     const serverStatus = info.get("server_status");
 
+    // 同步显示参数（波特率可能在运行中被"更改通信速率"命令更新）
+    baudrate.value = info.get("baudrate") || 9600;
+
     // 更新显示状态（不受防抖影响，UI 始终反映最新值）
     // IEC61850 连接中时，不覆盖"连接中"状态（后端 is_running 在连接完成前为 false）
     if (iec61850Connecting.value) {

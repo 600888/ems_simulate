@@ -44,6 +44,19 @@
             </span>
           </span>
         </template>
+        <!-- DL/T645 特殊命令栏（仅 DLT645 设备显示，主站/从站命令集不同） -->
+        <div v-if="isDlt645" class="dlt645-command-bar">
+          <el-button
+            v-for="cmd in dlt645Commands"
+            :key="cmd.command"
+            class="dlt645-cmd-btn"
+            :class="{ 'dlt645-cmd-danger': cmd.danger }"
+            :icon="cmd.icon"
+            @click="handleDlt645CommandClick(cmd)"
+          >
+            {{ t(cmd.labelKey) }}
+          </el-button>
+        </div>
         <!-- 搜索与控制栏 -->
         <div class="search-bar">
           <div class="search-left">
@@ -354,6 +367,20 @@
       :currentSlaveId="editSlaveId"
       @success="handleSlaveEdited"
     />
+
+    <!-- DL/T645 特殊命令参数弹窗 -->
+    <Dlt645CommandDialog
+      v-model="dlt645DialogVisible"
+      :command="dlt645CurrentCommand"
+      :is-server="isDlt645ServerDevice"
+      :loading="dlt645CmdLoading"
+      :current-address="dlt645CurrentAddress"
+      :reading-address="dlt645AddressReading"
+      :address-error="dlt645AddressError"
+      :current-baud-rate="dlt645CurrentBaud"
+      @confirm="handleDlt645Confirm"
+      @read-address="fetchDlt645Address"
+    />
   </div>
 </template>
 
@@ -372,6 +399,15 @@ import {
   CircleCloseFilled,
   MoreFilled,
   InfoFilled,
+  Connection,
+  EditPen,
+  Clock,
+  Timer,
+  Odometer,
+  Key,
+  DataLine,
+  DeleteFilled,
+  DocumentDelete,
 } from "@element-plus/icons-vue";
 import {
   getSlaveIdList,
@@ -379,6 +415,7 @@ import {
   getDeviceInfo,
   deleteSlave,
   iec104Interrogation,
+  sendDlt645Command,
 } from "@/api/deviceApi";
 import { instance } from "@/api/http";
 import { getIEC61850TreeData } from "@/api/channelApi";
@@ -396,6 +433,7 @@ import DeviceTable from "./Table.vue";
 import AddPointDialog from "./AddPointDialog.vue";
 import AddSlaveDialog from "./AddSlaveDialog.vue";
 import EditSlaveDialog from "./EditSlaveDialog.vue";
+import Dlt645CommandDialog from "./Dlt645CommandDialog.vue";
 
 const route = useRoute();
 const { t } = useI18n();
@@ -431,9 +469,236 @@ const isIec61850 = computed(() => {
 });
 
 const isDlt645 = computed(() => isDlt645Protocol(protocolType.value));
+
+/** 是否为 DLT645 主站（客户端）设备 */
+const isDlt645ClientDevice = computed(
+  () => String(protocolType.value) === "Dlt645Client",
+);
+/** 是否为 DLT645 从站（模拟电表服务端）设备 */
+const isDlt645ServerDevice = computed(
+  () => String(protocolType.value) === "Dlt645Server",
+);
+
 const showsSlaveManagement = computed(
   () => !isIec61850.value && !isDlt645.value,
 );
+
+/** DL/T645 特殊命令项定义 */
+interface Dlt645CommandItem {
+  command: string;
+  labelKey: string;
+  icon: any;
+  danger?: boolean;
+}
+
+/** 主站（Dlt645Client）特殊命令 */
+const DLT645_CLIENT_COMMANDS: Dlt645CommandItem[] = [
+  {
+    command: "read_address",
+    labelKey: "slave.dlt645ClientCmd.read_address",
+    icon: Connection,
+  },
+  {
+    command: "write_address",
+    labelKey: "slave.dlt645ClientCmd.write_address",
+    icon: EditPen,
+  },
+  {
+    command: "broadcast_time_sync",
+    labelKey: "slave.dlt645ClientCmd.broadcast_time_sync",
+    icon: Clock,
+  },
+  {
+    command: "freeze",
+    labelKey: "slave.dlt645ClientCmd.freeze",
+    icon: Timer,
+  },
+  {
+    command: "change_baud_rate",
+    labelKey: "slave.dlt645ClientCmd.change_baud_rate",
+    icon: Odometer,
+  },
+  {
+    command: "change_password",
+    labelKey: "slave.dlt645ClientCmd.change_password",
+    icon: Key,
+  },
+  {
+    command: "clear_demand",
+    labelKey: "slave.dlt645ClientCmd.clear_demand",
+    icon: DataLine,
+    danger: true,
+  },
+  {
+    command: "clear_meter",
+    labelKey: "slave.dlt645ClientCmd.clear_meter",
+    icon: DeleteFilled,
+    danger: true,
+  },
+  {
+    command: "clear_event",
+    labelKey: "slave.dlt645ClientCmd.clear_event",
+    icon: DocumentDelete,
+    danger: true,
+  },
+];
+
+/** 从站（Dlt645Server）特殊命令 */
+const DLT645_SERVER_COMMANDS: Dlt645CommandItem[] = [
+  {
+    command: "write_address",
+    labelKey: "slave.dlt645ServerCmd.write_address",
+    icon: EditPen,
+  },
+  {
+    command: "set_time",
+    labelKey: "slave.dlt645ServerCmd.set_time",
+    icon: Clock,
+  },
+  {
+    command: "change_password",
+    labelKey: "slave.dlt645ServerCmd.change_password",
+    icon: Key,
+  },
+  {
+    command: "clear_demand",
+    labelKey: "slave.dlt645ServerCmd.clear_demand",
+    icon: DataLine,
+    danger: true,
+  },
+  {
+    command: "clear_meter",
+    labelKey: "slave.dlt645ServerCmd.clear_meter",
+    icon: DeleteFilled,
+    danger: true,
+  },
+  {
+    command: "clear_event",
+    labelKey: "slave.dlt645ServerCmd.clear_event",
+    icon: DocumentDelete,
+    danger: true,
+  },
+];
+
+/** 当前设备角色对应的命令列表 */
+const dlt645Commands = computed(() =>
+  isDlt645ClientDevice.value ? DLT645_CLIENT_COMMANDS : DLT645_SERVER_COMMANDS,
+);
+
+// DL/T645 命令弹窗状态
+const dlt645DialogVisible = ref(false);
+const dlt645CurrentCommand = ref("");
+const dlt645CmdLoading = ref(false);
+
+/** 需要弹窗输入参数的命令（用于判断无参命令直接执行） */
+const DLT645_PARAM_COMMANDS = new Set([
+  "write_address",
+  "broadcast_time_sync",
+  "set_time",
+  "change_baud_rate",
+  "change_password",
+  "clear_demand",
+  "clear_meter",
+  "clear_event",
+]);
+
+// 读/写通讯地址需要读取当前电表地址显示在弹窗中
+const dlt645CurrentAddress = ref<string | null>(null);
+const dlt645AddressReading = ref(false);
+const dlt645AddressError = ref(false);
+
+// 更改通信速率弹窗默认选中当前速率
+const dlt645CurrentBaud = ref<number | null>(null);
+const fetchDlt645BaudRate = async () => {
+  try {
+    const info = await getDeviceInfo(routeName.value);
+    const baud = Number(info.get("baudrate"));
+    dlt645CurrentBaud.value = Number.isFinite(baud) ? baud : null;
+  } catch {
+    dlt645CurrentBaud.value = null;
+  }
+};
+
+/** 读取当前电表通讯地址（主站读电表实际地址，从站取设备配置地址） */
+const fetchDlt645Address = async () => {
+  dlt645AddressReading.value = true;
+  dlt645AddressError.value = false;
+  try {
+    if (isDlt645ClientDevice.value) {
+      // 主站：通过读通讯地址命令获取电表实际地址
+      const detail = await sendDlt645Command(
+        routeName.value,
+        "read_address",
+        {},
+      );
+      const addr = detail?.value ?? null;
+      dlt645CurrentAddress.value = addr !== null ? String(addr) : null;
+    } else if (isDlt645ServerDevice.value) {
+      // 从站：直接取设备配置的电表地址
+      const info = await getDeviceInfo(routeName.value);
+      const addr = info.get("meter_address");
+      dlt645CurrentAddress.value = addr ? String(addr) : null;
+    }
+  } catch {
+    dlt645AddressError.value = true;
+    dlt645CurrentAddress.value = null;
+  } finally {
+    dlt645AddressReading.value = false;
+  }
+};
+
+// 弹窗打开时按命令预取相关信息
+watch(
+  () => dlt645DialogVisible.value,
+  (visible) => {
+    if (!visible) return;
+    const cmd = dlt645CurrentCommand.value;
+    if (cmd === "read_address" || cmd === "write_address") {
+      fetchDlt645Address();
+    }
+    if (cmd === "change_baud_rate") {
+      fetchDlt645BaudRate();
+    }
+  },
+);
+
+/** 点击命令按钮：危险或带参命令弹窗，其余直接执行 */
+const handleDlt645CommandClick = (cmd: Dlt645CommandItem) => {
+  dlt645CurrentCommand.value = cmd.command;
+  if (
+    cmd.danger ||
+    cmd.command === "read_address" ||
+    DLT645_PARAM_COMMANDS.has(cmd.command)
+  ) {
+    dlt645DialogVisible.value = true;
+  } else {
+    executeDlt645Command(cmd.command, {});
+  }
+};
+
+/** 执行 DL/T645 特殊命令 */
+const executeDlt645Command = async (
+  command: string,
+  params: Record<string, unknown>,
+) => {
+  dlt645CmdLoading.value = true;
+  try {
+    await sendDlt645Command(routeName.value, command, params);
+    ElMessage.success(t("slave.dlt645CmdSuccess"));
+    // 刷新表格数据
+    handleSearch(currentSlaveId.value);
+  } catch (e: any) {
+    showError(e, t("slave.dlt645CmdFailed"));
+  } finally {
+    dlt645CmdLoading.value = false;
+  }
+};
+
+/** 弹窗确认回调 */
+const handleDlt645Confirm = (params: Record<string, unknown>) => {
+  dlt645DialogVisible.value = false;
+  executeDlt645Command(dlt645CurrentCommand.value, params);
+};
 
 const parseDlt645QueryNumber = (value: unknown): number | null => {
   if (value === undefined || value === null || value === "") return null;
@@ -1179,6 +1444,32 @@ defineExpose({
         color: var(--color-primary);
         transform: rotate(90deg) scale(1.1); /* Slight zoom on hover */
       }
+    }
+  }
+}
+
+/* DL/T645 特殊命令栏 */
+.dlt645-command-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.dlt645-cmd-btn {
+  height: 38px;
+  padding: 0 18px;
+  font-size: 14px;
+  border-radius: 8px;
+  font-weight: 500;
+  &.dlt645-cmd-danger {
+    color: var(--el-color-danger);
+    border-color: var(--el-color-danger);
+    &:hover {
+      background-color: var(--el-color-danger);
+      color: #fff;
+      border-color: var(--el-color-danger);
     }
   }
 }

@@ -366,17 +366,35 @@ const form = reactive<ChannelCreateRequest>({
   protocol_params: protocolParams,
 });
 
-const rules: FormRules = {
-  code: [
-    { required: true, message: t("addDevice.codeRequired"), trigger: "blur" },
-  ],
-  name: [
-    { required: true, message: t("addDevice.nameRequired"), trigger: "blur" },
-  ],
-  port: [
-    { required: true, message: t("addDevice.portRequired"), trigger: "blur" },
-  ],
-};
+const rules = computed<FormRules>(() => {
+  const base: FormRules = {
+    code: [
+      { required: true, message: t("addDevice.codeRequired"), trigger: "blur" },
+    ],
+    name: [
+      { required: true, message: t("addDevice.nameRequired"), trigger: "blur" },
+    ],
+    port: [
+      { required: true, message: t("addDevice.portRequired"), trigger: "blur" },
+    ],
+  };
+  // DLT645 电表地址必须为 12 位数字
+  if (form.protocol_type === 3) {
+    base.rtu_addr = [
+      {
+        required: true,
+        message: t("addDevice.meterAddressRequired"),
+        trigger: "blur",
+      },
+      {
+        pattern: /^\d{12}$/,
+        message: t("addDevice.meterAddressInvalid"),
+        trigger: "blur",
+      },
+    ];
+  }
+  return base;
+});
 
 // 生命周期与监听
 onMounted(async () => {
@@ -422,6 +440,10 @@ watch(
       securityConfig.tls_enabled = false;
       if (activeTab.value === "security") activeTab.value = "basic";
     }
+    // DLT645 电表地址统一为 12 位数字（补零），避免短地址残留
+    if (protocolType === 3 && !loadingChannel.value) {
+      form.rtu_addr = String(form.rtu_addr || "").padStart(12, "0");
+    }
     if (protocolType === 4 && connType === 2) {
       selectedFile.value = null;
     } else {
@@ -454,6 +476,10 @@ const loadChannelData = async (id: number) => {
     const data = await getChannel(id);
     if (!data || requestId !== channelLoadRequest) return;
     Object.assign(form, data);
+    // DLT645 电表地址回显统一为 12 位数字（兼容历史短地址数据）
+    if (form.protocol_type === 3) {
+      form.rtu_addr = String(form.rtu_addr || "").padStart(12, "0");
+    }
     applyPersistedProtocolParams(data.protocol_params);
     form.protocol_params = protocolParams;
     applyPersistedSecurityConfig(data.security_config);
@@ -571,6 +597,10 @@ const handleSubmit = async () => {
     }
   }
   form.protocol_params = protocolParams;
+  // DLT645 电表地址统一为 12 位数字（补零后校验）
+  if (form.protocol_type === 3) {
+    form.rtu_addr = String(form.rtu_addr || "").padStart(12, "0");
+  }
   await formRef.value.validate(async (valid) => {
     if (!valid) {
       activeTab.value = "basic";

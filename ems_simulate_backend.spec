@@ -63,8 +63,15 @@ hiddenimports = [
     # services explicitly keeps frozen builds from discovering either service
     # for the first time inside a device-reload worker thread.
     "dlt645",
+    "dlt645.aio",
     "dlt645.service.serversvc.server_service",
+    "dlt645.service.serversvc.async_server_service",
     "dlt645.service.clientsvc.client_service",
+    "dlt645.service.clientsvc.async_client_service",
+    "dlt645.transport.server.async_tcp_server",
+    "dlt645.transport.server.async_rtu_server",
+    "dlt645.transport.client.async_tcp_client",
+    "dlt645.transport.client.async_rtu_client",
     *pyiec_hiddenimports,
 ]
 

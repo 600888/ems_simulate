@@ -29,6 +29,9 @@ def _configure_writable_log_path() -> Path:
 
 _configure_writable_log_path()
 
-from dlt645 import MeterClientService, MeterServerService  # noqa: E402
+from dlt645.aio import (  # noqa: E402
+    AsyncMeterClientService,
+    AsyncMeterServerService,
+)
 
-__all__ = ["MeterClientService", "MeterServerService"]
+__all__ = ["AsyncMeterClientService", "AsyncMeterServerService"]

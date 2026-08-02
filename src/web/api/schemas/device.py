@@ -11,6 +11,14 @@ class DeviceInfoRequest(BaseModel):
     device_name: str
 
 
+class DLT645CommandRequest(BaseModel):
+    """DL/T645 特殊命令请求（主站/从站功能）"""
+
+    device_name: str
+    command: str
+    params: dict | None = None
+
+
 class DeviceInfoResponse:
     pass  # 使用 BaseResponse 统一返回
 

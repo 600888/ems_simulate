@@ -736,6 +736,50 @@ class Device:
             self.log.info("总召唤完成，已同步所有从机数据")
         return result
 
+    async def send_dlt645_command(self, command: str, params: dict | None = None) -> dict:
+        """发送 DL/T645 特殊命令（主站/从站功能）
+
+        主站（Dlt645Client）支持：读/写通讯地址、广播校时、冻结命令、
+        更改通信速率、修改密码、最大需量清零、电表清零、事件清零。
+        从站（Dlt645Server）支持：写通讯地址、校时、设置密码、数据清零。
+
+        Args:
+            command: 命令名
+            params: 命令参数（地址/速率/密码等）
+
+        Returns:
+            {"ok": bool, "message": str, "detail": dict | None}
+        """
+        from src.device.protocol.dlt645_handler import (
+            DLT645ClientHandler,
+            DLT645ServerHandler,
+        )
+
+        handler = self.protocol_handler
+        if not isinstance(handler, (DLT645ClientHandler, DLT645ServerHandler)):
+            self.log.error("仅 DLT645 设备支持特殊命令")
+            return {"ok": False, "message": "仅 DLT645 设备支持特殊命令"}
+
+        # dlt645 3.0.0 的 send_command 为原生异步实现，直接等待
+        result = await handler.send_command(command, params or {})
+
+        # 更改通信速率成功后，同步本地配置，使设备信息接口返回新速率
+        if result.get("ok") and command == "change_baud_rate":
+            baud = (params or {}).get("baud")
+            if baud is not None:
+                try:
+                    self.baudrate = int(baud)
+                except (TypeError, ValueError):
+                    pass
+
+        # 写通讯地址成功后，同步本地电表地址（主站记录对端地址，从站记录自身地址）
+        if result.get("ok") and command == "write_address":
+            address = (params or {}).get("address")
+            if address:
+                self.meter_address = str(address)
+
+        return result
+
     async def read_point_metadata_async(self, point_code: str, slave_id: int | None = None) -> dict:
         """异步读取测点的品质(q)与时标(t)元数据"""
         return await self.point_operator.read_metadata_async(point_code, slave_id)

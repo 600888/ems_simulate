@@ -17,6 +17,7 @@ from src.web.api.schemas import (
     DeviceStartRequest,
     DeviceStopRequest,
     DeviceTableRequest,
+    DLT645CommandRequest,
     ExportModelRequest,
     IEC61850ImportModelRequest,
     ManualReadRequest,
@@ -69,6 +70,7 @@ async def get_device_info(req: DeviceInfoRequest, request: Request):
         "databits": getattr(device, "databits", 8),
         "stopbits": getattr(device, "stopbits", 1),
         "parity": getattr(device, "parity", "N"),
+        "meter_address": getattr(device, "meter_address", None),
     }
 
     channels = await asyncio.to_thread(ChannelDao.get_all_channels)
@@ -339,6 +341,25 @@ async def iec104_interrogation(req: DeviceInfoRequest, request: Request):
     if not success:
         raise OperationError("总召唤失败，请检查设备是否已连接且为 IEC104 客户端", data=False)
     return BaseResponse(message="总召唤已触发，数据同步中!", data=True)
+
+
+@device_router.post("/dlt645-command", response_model=BaseResponse)
+async def send_dlt645_command(req: DLT645CommandRequest, request: Request):
+    """发送 DL/T645 特殊命令（读/写通讯地址、广播校时、冻结、改速率、改密码、清零等）
+
+    主站（Dlt645Client）与从站（Dlt645Server）设备均支持，
+    具体可用命令由 handler 侧按角色分发。
+    """
+    device = _get_device(req.device_name, request)
+    result = await device.send_dlt645_command(req.command, req.params)
+    if not result.get("ok"):
+        message = result.get("message", "DLT645 命令执行失败")
+        log.error(f"设备 {req.device_name} DLT645 命令失败: {message}")
+        raise OperationError(message, data=False)
+    return BaseResponse(
+        message=result.get("message", "命令执行成功"),
+        data=result.get("detail") if result.get("detail") is not None else True,
+    )
 
 
 # ===== 报文捕获 =====

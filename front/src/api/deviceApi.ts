@@ -226,6 +226,29 @@ export async function iec104Interrogation(
   }
 }
 
+/**
+ * 发送 DL/T645 特殊命令（主站/从站功能）
+ *
+ * @param deviceName 设备名称
+ * @param command 命令名（read_address / write_address / broadcast_time_sync /
+ *                freeze / change_baud_rate / change_password /
+ *                clear_demand / clear_meter / clear_event / set_time）
+ * @param params 命令参数（地址 / 速率 / 密码 / 时间等）
+ * @returns 后端返回的 detail（成功时），失败抛异常
+ */
+export async function sendDlt645Command(
+  deviceName: string,
+  command: string,
+  params: Record<string, unknown> = {},
+): Promise<any> {
+  const data = await requestApi(DEVICE_API.DLT645_COMMAND, "post", {
+    device_name: deviceName,
+    command,
+    params,
+  });
+  return data;
+}
+
 // ===== 报文捕获 =====
 export async function getMessages(
   deviceName: string,

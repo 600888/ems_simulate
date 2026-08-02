@@ -5,14 +5,49 @@ DLT645 协议处理器
 
 from collections import OrderedDict
 import contextlib
+from datetime import datetime
 import threading
 from typing import Any
 
 from src.config.config import Config
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
-from src.device.protocol.dlt645_compat import MeterClientService, MeterServerService
+from src.device.protocol.dlt645_compat import (
+    AsyncMeterClientService,
+    AsyncMeterServerService,
+)
 from src.enums.point_data import Yc
 from src.enums.points.base_point import BasePoint
+
+
+def _parse_command_datetime(value: Any) -> datetime:
+    """解析命令参数中的时间，缺省返回当前时间。
+
+    支持 ISO 格式字符串（如 "2026-08-01T12:30:00"）或 datetime 对象。
+    """
+    if isinstance(value, datetime):
+        return value
+    if value:
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if dt.tzinfo is not None:
+                dt = dt.astimezone().replace(tzinfo=None)
+            return dt
+        except ValueError:
+            pass
+    return datetime.now()
+
+
+def _data_item_detail(item: Any) -> dict | None:
+    """将 dlt645 库返回的 DataItem 转成前端可读的 dict。"""
+    if item is None:
+        return None
+    return {
+        "di": getattr(item, "di", None),
+        "name": getattr(item, "name", None),
+        "value": getattr(item, "value", None),
+        "unit": getattr(item, "unit", None),
+        "update_time": (getattr(item, "update_time", None).isoformat() if getattr(item, "update_time", None) else None),
+    }
 
 
 class _CaptureSequenceTracker:
@@ -100,7 +135,7 @@ class DLT645ServerHandler(ServerHandler):
             stopbits = config.get("stopbits", 1)
             parity = config.get("parity", "E")
 
-            self._server = MeterServerService.new_rtu_server(
+            self._server = AsyncMeterServerService.new_rtu_server(
                 port=serial_port,
                 data_bits=databits,
                 stop_bits=stopbits,
@@ -114,7 +149,7 @@ class DLT645ServerHandler(ServerHandler):
             ip = config.get("ip", "0.0.0.0")
             port = config.get("port", 8899)
 
-            self._server = MeterServerService.new_tcp_server(ip=ip, port=port, timeout=timeout)
+            self._server = AsyncMeterServerService.new_tcp_server(ip=ip, port=port, timeout=timeout)
 
         # 确保地址是12位BCD码字符串
         addr_str = str(self._meter_address).zfill(12)
@@ -126,8 +161,8 @@ class DLT645ServerHandler(ServerHandler):
     async def start(self) -> bool:
         """启动 DLT645 服务器"""
         try:
-            if self._server and hasattr(self._server, "server"):
-                self._server.server.start()
+            if self._server:
+                await self._server.start()
                 self._is_running = True
                 if self._log:
                     self._log.info(f"DLT645 服务器启动成功, 电表地址: {self._meter_address}")
@@ -141,8 +176,8 @@ class DLT645ServerHandler(ServerHandler):
     async def stop(self) -> bool:
         """停止 DLT645 服务器"""
         try:
-            if self._server and hasattr(self._server, "server"):
-                self._server.server.stop()
+            if self._server:
+                await self._server.stop()
                 self._is_running = False
                 return True
             return False
@@ -222,6 +257,110 @@ class DLT645ServerHandler(ServerHandler):
         if self._server and hasattr(self._server, "clear_meter_data"):
             self._server.clear_meter_data()
 
+    async def send_command(self, command: str, params: dict | None = None) -> dict:
+        """执行 DL/T645 从站（模拟电表）侧特殊命令
+
+        从站直接操作内部状态，模拟电表收到主站命令后的效果：
+        - write_address: 写通讯地址（设置电表地址） params: address(12位数字)
+        - set_time: 校时（设置电表时间） params: datetime(可选, ISO 字符串)
+        - change_password: 设置密码（修改密码） params: password(8位数字)
+        - clear_demand: 最大需量清零（清空全部需量数据）
+        - clear_meter: 电表清零（清空电能量/需量/冻结/事件等累计数据）
+        - clear_event: 事件清零（清空事件记录）
+
+        Returns:
+            {"ok": bool, "message": str, "detail": dict | None}
+        """
+        params = params or {}
+        if not self._server:
+            return {"ok": False, "message": "DLT645 服务端未初始化"}
+
+        try:
+            if command == "write_address":
+                address = str(params.get("address", "")).strip()
+                if len(address) != 12 or not address.isdigit():
+                    return {"ok": False, "message": "通讯地址必须为 12 位数字"}
+                self._server.set_address(address)
+                self._meter_address = address
+                if self._log:
+                    self._log.info(f"DLT645 从站通讯地址已设置为: {address}")
+                return {
+                    "ok": True,
+                    "message": f"通讯地址已设置为 {address}",
+                    "detail": {"address": address},
+                }
+
+            if command == "set_time":
+                dt = _parse_command_datetime(params.get("datetime"))
+                from dlt645.common.transform import uint8_to_bcd
+
+                data = bytearray(
+                    [
+                        uint8_to_bcd(dt.year % 100),
+                        uint8_to_bcd(dt.month),
+                        uint8_to_bcd(dt.day),
+                        uint8_to_bcd(dt.hour),
+                        uint8_to_bcd(dt.minute),
+                        uint8_to_bcd(dt.second),
+                    ]
+                )
+                self._server.set_time(data)
+                if self._log:
+                    self._log.info(f"DLT645 从站电表时间已设置为: {dt:%Y-%m-%d %H:%M:%S}")
+                return {
+                    "ok": True,
+                    "message": f"电表时间已设置为 {dt:%Y-%m-%d %H:%M:%S}",
+                    "detail": {"datetime": dt.isoformat()},
+                }
+
+            if command == "change_password":
+                password = str(params.get("password", "")).strip()
+                if len(password) != 8 or not password.isdigit():
+                    return {"ok": False, "message": "密码必须为 8 位数字"}
+                self._server.set_password(password)
+                if self._log:
+                    self._log.info("DLT645 从站密码已修改")
+                return {"ok": True, "message": "密码修改成功"}
+
+            if command == "clear_demand":
+                from dlt645.model.data.data_handler import set_data_item
+                from dlt645.model.data.define import DIMap
+                from dlt645.model.types.dlt645_type import Demand
+
+                # 需量清零：清空全部 DI 前缀为 0x01 的需量数据（含发生时间）
+                count = 0
+                for di, item in DIMap.items():
+                    if (di >> 24) & 0xFF != 0x01 or isinstance(item, list):
+                        continue
+                    if set_data_item(di, Demand(0.0, datetime.now())):
+                        count += 1
+                if self._log:
+                    self._log.info(f"DLT645 从站最大需量清零完成，共 {count} 项")
+                return {
+                    "ok": True,
+                    "message": f"最大需量清零成功，共 {count} 项",
+                    "detail": {"count": count},
+                }
+
+            if command == "clear_meter":
+                self._server._reset_energy_data()
+                self._server._reset_event_records(0xFFFFFFFF)
+                if self._log:
+                    self._log.info("DLT645 从站电表数据已清零")
+                return {"ok": True, "message": "电表数据已清零"}
+
+            if command == "clear_event":
+                self._server._reset_event_records(0xFFFFFFFF)
+                if self._log:
+                    self._log.info("DLT645 从站事件记录已清零")
+                return {"ok": True, "message": "事件记录已清零"}
+        except Exception as e:
+            if self._log:
+                self._log.error(f"DLT645 从站命令执行失败: {e}")
+            return {"ok": False, "message": f"命令执行失败: {e}"}
+
+        return {"ok": False, "message": f"不支持的命令: {command}"}
+
     @property
     def server(self):
         """获取底层服务器对象"""
@@ -279,11 +418,12 @@ class DLT645ClientHandler(ClientHandler):
     def __init__(self, log=None):
         super().__init__()
         self._capture_sequences = _CaptureSequenceTracker()
-        self._client = None  # MeterClientService 实例
-        self._transport_client = None  # TcpClient 或 RtuClient 底层连接
+        self._client = None  # AsyncMeterClientService 实例
+        self._transport_client = None  # AsyncTcpClient / AsyncRtuClient 底层连接
         self._log = log
         self._meter_address: str = "000000000000"
         self._is_serial: bool = False  # 是否为串口模式
+        self._loop = None  # 连接建立时的事件循环引用（供自动读取线程复用）
 
     def initialize(self, config: dict[str, Any]) -> None:
         """初始化 DLT645 客户端
@@ -320,7 +460,7 @@ class DLT645ClientHandler(ClientHandler):
             stopbits = config.get("stopbits", 1)
             parity = config.get("parity", "E")
 
-            self._client = MeterClientService.new_rtu_client(
+            self._client = AsyncMeterClientService.new_rtu_client(
                 port=serial_port,
                 baudrate=baudrate,
                 databits=databits,
@@ -334,7 +474,7 @@ class DLT645ClientHandler(ClientHandler):
             ip = config.get("ip", "127.0.0.1")
             port = config.get("port", Config.DLT645_DEFAULT_PORT)
 
-            self._client = MeterClientService.new_tcp_client(ip=ip, port=port, timeout=timeout)
+            self._client = AsyncMeterClientService.new_tcp_client(ip=ip, port=port, timeout=timeout)
 
         if self._client:
             # 设置电表地址（12位BCD码字符串）
@@ -351,26 +491,24 @@ class DLT645ClientHandler(ClientHandler):
                     self._log.warning("DLT645 客户端不支持报文捕获")
 
     async def start(self) -> bool:
-        """启动客户端（非阻塞，在线程池中连接）"""
+        """启动客户端（建立异步连接）"""
         import asyncio
 
-        loop = asyncio.get_event_loop()
-        # 在线程池中执行阻塞的连接操作，避免阻塞事件循环
-        return await loop.run_in_executor(None, self.connect)
+        # 记录连接所在的事件循环：AsyncTcpClient/AsyncRtuClient 的底层连接
+        # 绑定在此循环上，后续自动读取线程需复用该循环（见 device.update_data）。
+        self._loop = asyncio.get_running_loop()
+        return await self.connect()
 
     async def stop(self) -> bool:
         """停止客户端（断开连接）"""
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self.disconnect)
+        await self.disconnect()
         return True
 
-    def connect(self) -> bool:
+    async def connect(self) -> bool:
         """连接到 DLT645 电表"""
         try:
-            if self._transport_client:
-                result = self._transport_client.connect()
+            if self._client:
+                result = await self._client.connect()
                 if result:
                     self._is_running = True
                     mode = "串口" if self._is_serial else "TCP"
@@ -383,15 +521,25 @@ class DLT645ClientHandler(ClientHandler):
                 self._log.error(f"连接 DLT645 电表失败: {e}")
             return False
 
-    def disconnect(self) -> None:
+    async def disconnect(self) -> None:
         """断开连接"""
-        if self._transport_client:
+        if self._client:
             with contextlib.suppress(Exception):
-                self._transport_client.disconnect()
+                await self._client.disconnect()
             self._is_running = False
 
     def read_value(self, point: BasePoint) -> Any:
-        """读取测点值
+        """读取测点值（同步占位接口）
+
+        dlt645 3.0.0 客户端为异步实现，网络读取请使用 read_value_async()。
+        同步路径无网络请求能力，统一返回 None 表示读取失败。
+        """
+        if self._log:
+            self._log.warning("DLT645 客户端 read_value 为同步占位接口，请改用 read_value_async() 读取")
+        return None
+
+    async def read_value_async(self, point: BasePoint) -> Any:
+        """异步读取测点值
 
         从远程电表读取数据标识对应的值。
         根据 DI 前缀调用相应的 read_XX 方法。
@@ -408,15 +556,15 @@ class DLT645ClientHandler(ClientHandler):
             # 根据 DI 前缀选择读取方法
             data_item = None
             if prefix == "00":
-                data_item = self._client.read_00(di)  # 读取电能
+                data_item = await self._client.read_00(di)  # 读取电能
             elif prefix == "01":
-                data_item = self._client.read_01(di)  # 读取最大需量
+                data_item = await self._client.read_01(di)  # 读取最大需量
             elif prefix == "02":
-                data_item = self._client.read_02(di)  # 读取变量
+                data_item = await self._client.read_02(di)  # 读取变量
             elif prefix == "03":
-                data_item = self._client.read_03(di)  # 读取事件记录
+                data_item = await self._client.read_03(di)  # 读取事件记录
             elif prefix == "04":
-                data_item = self._client.read_04(di)  # 读取参变量
+                data_item = await self._client.read_04(di)  # 读取参变量
             else:
                 if self._log:
                     self._log.warning(f"DLT645 客户端暂不支持 DI 前缀 {prefix} (addr: {hex_addr})")
@@ -444,7 +592,17 @@ class DLT645ClientHandler(ClientHandler):
             return 0
 
     def write_value(self, point: BasePoint, value: Any) -> bool:
-        """写入测点值（发送命令）
+        """写入测点值（同步占位接口）
+
+        dlt645 3.0.0 客户端为异步实现，网络写入请使用 write_value_async()。
+        同步路径无网络请求能力，统一返回 False 表示写入失败。
+        """
+        if self._log:
+            self._log.warning("DLT645 客户端 write_value 为同步占位接口，请改用 write_value_async() 写入")
+        return False
+
+    async def write_value_async(self, point: BasePoint, value: Any) -> bool:
+        """异步写入测点值（发送命令）
 
         向远程电表写入数据。注意：大多数电表数据是只读的，
         只有 DI 前缀为 04 的参变量支持写入。
@@ -465,7 +623,7 @@ class DLT645ClientHandler(ClientHandler):
                     real_to_send = value * point.mul_coe + point.add_coe
 
                 # 写参变量需要密码，这里使用默认空密码
-                result = self._client.write_04(di, str(real_to_send), "00000000")
+                result = await self._client.write_04(di, str(real_to_send), "00000000")
                 return result is not None
             else:
                 if self._log:
@@ -486,6 +644,163 @@ class DLT645ClientHandler(ClientHandler):
         self._meter_address = address
         if self._client:
             self._client.set_address(address)
+
+    async def send_command(self, command: str, params: dict | None = None) -> dict:
+        """发送 DL/T645 特殊命令（主站功能）
+
+        支持命令：
+        - read_address: 读通讯地址
+        - write_address: 写通讯地址 (params: address 12位数字)
+        - broadcast_time_sync: 广播校时 (params: datetime 可选 ISO 字符串)
+        - freeze: 冻结命令（瞬时广播冻结，无需应答）
+        - change_baud_rate: 更改通信速率 (params: baud 1200/2400/4800/9600/19200)
+        - change_password: 修改密码 (params: old_password, new_password 8位数字)
+        - clear_demand: 最大需量清零 (params: password 8位数字, di 可选默认 0x01010000)
+        - clear_meter: 电表清零 (params: password 8位数字)
+        - clear_event: 事件清零 (params: password 8位数字, di 可选默认 FFFFFFFF)
+
+        Returns:
+            {"ok": bool, "message": str, "detail": dict | None}
+        """
+        params = params or {}
+        if not self._client:
+            return {"ok": False, "message": "DLT645 客户端未初始化"}
+
+        try:
+            if command == "read_address":
+                item = await self._client.read_address()
+                if item is None:
+                    return {"ok": False, "message": "读通讯地址失败（无响应）"}
+                detail = _data_item_detail(item)
+                if self._log:
+                    self._log.info(f"DLT645 读通讯地址成功: {detail}")
+                return {
+                    "ok": True,
+                    "message": "读通讯地址成功",
+                    "detail": detail,
+                }
+
+            if command == "write_address":
+                from dlt645.common.transform import string_to_bcd
+
+                address = str(params.get("address", "")).strip()
+                if len(address) != 12 or not address.isdigit():
+                    return {"ok": False, "message": "通讯地址必须为 12 位数字"}
+                item = await self._client.write_address(string_to_bcd(address))
+                if item is None:
+                    return {"ok": False, "message": "写通讯地址失败（无响应）"}
+                if self._log:
+                    self._log.info(f"DLT645 写通讯地址成功: {address}")
+                return {
+                    "ok": True,
+                    "message": "写通讯地址成功",
+                    "detail": {"address": address},
+                }
+
+            if command == "broadcast_time_sync":
+                dt = _parse_command_datetime(params.get("datetime"))
+                ok = await self._client.broadcast_time_sync(dt)
+                if not ok:
+                    return {"ok": False, "message": "广播校时发送失败"}
+                if self._log:
+                    self._log.info(f"DLT645 广播校时: {dt:%Y-%m-%d %H:%M:%S}")
+                return {
+                    "ok": True,
+                    "message": f"广播校时已发送 ({dt:%Y-%m-%d %H:%M:%S})",
+                    "detail": {"datetime": dt.isoformat()},
+                }
+
+            if command == "freeze":
+                # 瞬时广播冻结（MMDDhhmm 全为 99），无需应答
+                item = await self._client.freeze(month=99, day=99, hour=99, minute=99, broadcast=True)
+                if item is None:
+                    return {"ok": False, "message": "冻结命令发送失败"}
+                if self._log:
+                    self._log.info("DLT645 瞬时广播冻结已发送")
+                return {
+                    "ok": True,
+                    "message": "冻结命令已发送（瞬时广播冻结）",
+                    "detail": _data_item_detail(item),
+                }
+
+            if command == "change_baud_rate":
+                baud = int(params.get("baud", 9600))
+                item = await self._client.change_baud_rate(baud)
+                if item is None:
+                    return {
+                        "ok": False,
+                        "message": f"更改通信速率失败（不支持 {baud} bps 或从站无响应）",
+                    }
+                if self._log:
+                    self._log.info(f"DLT645 更改通信速率为: {baud} bps")
+                return {
+                    "ok": True,
+                    "message": f"通信速率已更改为 {baud} bps",
+                    "detail": {"baud": baud},
+                }
+
+            if command == "change_password":
+                old_password = str(params.get("old_password", "")).strip()
+                new_password = str(params.get("new_password", "")).strip()
+                if len(old_password) != 8 or not old_password.isdigit():
+                    return {"ok": False, "message": "旧密码必须为 8 位数字"}
+                if len(new_password) != 8 or not new_password.isdigit():
+                    return {"ok": False, "message": "新密码必须为 8 位数字"}
+                ok = await self._client.change_password(old_password, new_password)
+                if not ok:
+                    return {"ok": False, "message": "修改密码失败（旧密码错误或无响应）"}
+                if self._log:
+                    self._log.info("DLT645 修改密码成功")
+                return {"ok": True, "message": "修改密码成功"}
+
+            if command == "clear_demand":
+                password = str(params.get("password", "")).strip()
+                if len(password) != 8 or not password.isdigit():
+                    return {"ok": False, "message": "密码必须为 8 位数字"}
+                di = int(params.get("di", 0x01010000))
+                item = await self._client.clear_demand(di, password)
+                if item is None:
+                    return {"ok": False, "message": "最大需量清零失败（密码错误或无响应）"}
+                if self._log:
+                    self._log.info(f"DLT645 最大需量清零成功: DI={hex(di)}")
+                return {
+                    "ok": True,
+                    "message": "最大需量清零成功",
+                    "detail": {"di": hex(di)},
+                }
+
+            if command == "clear_meter":
+                password = str(params.get("password", "")).strip()
+                if len(password) != 8 or not password.isdigit():
+                    return {"ok": False, "message": "密码必须为 8 位数字"}
+                item = await self._client.clear_meter(password)
+                if item is None:
+                    return {"ok": False, "message": "电表清零失败（密码错误或无响应）"}
+                if self._log:
+                    self._log.info("DLT645 电表清零成功")
+                return {"ok": True, "message": "电表清零成功"}
+
+            if command == "clear_event":
+                password = str(params.get("password", "")).strip()
+                if len(password) != 8 or not password.isdigit():
+                    return {"ok": False, "message": "密码必须为 8 位数字"}
+                di = int(params.get("di", 0xFFFFFFFF))
+                item = await self._client.clear_event(password, di=di)
+                if item is None:
+                    return {"ok": False, "message": "事件清零失败（密码错误或无响应）"}
+                if self._log:
+                    self._log.info(f"DLT645 事件清零成功: DI={hex(di)}")
+                return {
+                    "ok": True,
+                    "message": "事件清零成功",
+                    "detail": {"di": hex(di)},
+                }
+        except Exception as e:
+            if self._log:
+                self._log.error(f"DLT645 命令执行失败: {e}")
+            return {"ok": False, "message": f"命令执行失败: {e}"}
+
+        return {"ok": False, "message": f"不支持的命令: {command}"}
 
     @property
     def client(self):

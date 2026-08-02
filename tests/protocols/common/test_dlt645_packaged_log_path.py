@@ -15,8 +15,18 @@ def test_dlt645_logs_are_redirected_to_runtime_root(tmp_path):
             "-c",
             (
                 "from src.device.protocol.dlt645_compat import "
-                "MeterClientService, MeterServerService; "
-                "assert MeterClientService; assert MeterServerService"
+                "AsyncMeterClientService, AsyncMeterServerService; "
+                "from dlt645.common.base_log import configure_logging; "
+                "configure_logging(enabled=True); "
+                "import dlt645.model.log, dlt645.protocol.log; "
+                "import dlt645.transport.client.log, dlt645.transport.server.log; "
+                "import dlt645.service.clientsvc.log, dlt645.service.serversvc.log; "
+                "dlt645.model.log.log.info('p'); dlt645.protocol.log.log.info('p'); "
+                "dlt645.transport.client.log.log.info('p'); "
+                "dlt645.transport.server.log.log.info('p'); "
+                "dlt645.service.clientsvc.log.log.info('p'); "
+                "dlt645.service.serversvc.log.log.info('p'); "
+                "assert AsyncMeterClientService; assert AsyncMeterServerService"
             ),
         ],
         cwd=Path(__file__).resolve().parents[3],

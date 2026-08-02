@@ -896,6 +896,11 @@ const hiddenColumns = computed(() => {
     hidden.push("寄存器值", "乘法系数", "加法系数", "帧类型");
   }
 
+  // DLT645 协议按数据标识读取，无寄存器概念，只显示真实值
+  if (isDlt645.value) {
+    hidden.push("寄存器值");
+  }
+
   // 非 IEC61850 协议隐藏 FC 列 (IEC61850 通过专用列渲染 FC)
   if (!props.isIec61850) {
     hidden.push("FC");

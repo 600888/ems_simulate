@@ -70,6 +70,7 @@ export const DEVICE_API = {
   DELETE_SLAVE: "/api/devices/delete-slave",
   EDIT_SLAVE: "/api/devices/edit-slave",
   IEC104_INTERROGATION: "/api/devices/iec104-interrogation",
+  DLT645_COMMAND: "/api/devices/dlt645-command",
 } as const;
 
 // ===== 设备组相关 =====

@@ -88,8 +88,6 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         is_start: 是否启动设备
         scl_result: 可选，预先解析的 SclImportResult。提供时跳过 ICD 文件重新解析。
     """
-    await device_controller.remove_device_by_id(channel_id)
-
     channel = await asyncio.to_thread(ChannelService.get_channel_by_id, channel_id)
     if not channel:
         raise NotFoundError(f"通道 {channel_id} 不存在")
@@ -140,6 +138,13 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
 
     new_device = await asyncio.to_thread(build_device)
 
+    # 需要在新实例启动前停止旧实例（释放端口/连接）的场景
+    needs_stop_before_start = is_start and (
+        is_client_protocol(channel_protocol_type) or channel_protocol_type == ProtocolType.Iec61850Server
+    )
+    if needs_stop_before_start:
+        await device_controller.remove_device_by_id(channel_id)
+
     if is_start and is_client_protocol(channel_protocol_type):
         if channel_protocol_type == ProtocolType.Iec61850Client:
             # IEC61850 客户端: 使用 start() 后台线程连接，而非仅启动数据更新线程
@@ -154,6 +159,11 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         # 必须单独处理，否则 reload_device_instance(is_start=True) 不会启动服务器
         await new_device.start()
         log.info(f"IEC 61850 服务端已启动: {device_name}")
+
+    if not needs_stop_before_start:
+        # 非启动场景（或无需先停的启动场景）：新实例已构建完成，
+        # 此时再替换旧实例，避免删除-重建空窗期内接口报"设备不存在"
+        await device_controller.remove_device_by_id(channel_id)
 
     device_controller.device_list.append(new_device)
     device_controller.device_map[new_device.name] = new_device
