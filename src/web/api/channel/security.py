@@ -123,6 +123,16 @@ async def upload_security_config(
     ca_certificate_path = current.get("ca_certificate_path")
     ca_certificate_filename = ChannelConfigurationService.get_security_config(channel_id).get("ca_certificate_filename")
 
+    has_new_files = certificate is not None or private_key is not None or ca_certificate is not None
+    settings_changed = (
+        bool(current.get("tls_enabled")) != tls_enabled or str(current.get("tls_mode") or "mutual") != tls_mode
+    )
+    if not has_new_files and not settings_changed:
+        return BaseResponse(
+            message="TLS 配置未变化",
+            data=ChannelConfigurationService.get_security_config(channel_id),
+        )
+
     certificate_content = None
     private_key_content = None
     ca_certificate_content = None

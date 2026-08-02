@@ -37,7 +37,7 @@ from dlt645.aio import (  # noqa: E402
     AsyncMeterServerService,
 )
 from dlt645.common.transform import bcd_to_time  # noqa: E402
-from dlt645.model.types.dlt645_type import Demand  # noqa: E402
+from dlt645.model.types.dlt645_type import CtrlCode, Demand  # noqa: E402
 
 
 def _decode_demand_time(raw: bytes | bytearray):
@@ -57,10 +57,26 @@ class AsyncMeterClientService(_AsyncMeterClientService):
     """
 
     def handle_response(self, frame: Any):
-        item = super().handle_response(frame)
+        raw_time = None
+        original_data = getattr(frame, "data", None)
+        # The upstream parser decodes demand occurrence bytes before returning
+        # the DataItem. Feed it the byte order it expects so invalid intermediate
+        # dates (for example minute=17 interpreted as year and hour=21 as month)
+        # do not make it swallow the whole response and return None.
+        is_read_response = getattr(frame, "ctrl_code", None) == (CtrlCode.ReadData | 0x80)
+        if is_read_response and original_data is not None and len(original_data) >= 12 and original_data[3] == 0x01:
+            raw_time = bytes(original_data[7:12])
+            patched_data = bytearray(original_data)
+            patched_data[7:12] = reversed(raw_time)
+            frame.data = patched_data
+        try:
+            item = super().handle_response(frame)
+        finally:
+            if raw_time is not None:
+                frame.data = original_data
+
         value = getattr(item, "value", None)
-        if isinstance(value, Demand):
-            raw_time = bytes(getattr(frame, "data", b"")[7:12])
+        if isinstance(value, Demand) and raw_time is not None:
             try:
                 item.value = Demand(value=value.value, time=_decode_demand_time(raw_time))
             except (TypeError, ValueError):

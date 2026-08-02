@@ -5,7 +5,11 @@ export function normalizeDlt645PointMode(value: unknown): Dlt645PointMode {
   return value === "standard" ? "standard" : "import";
 }
 
-/** Standard mode intentionally regenerates the table whenever it is saved. */
-export function shouldImportDlt645Standard(mode: Dlt645PointMode): boolean {
-  return mode === "standard";
+/** Import the built-in table only when it is first selected, not on every edit. */
+export function shouldImportDlt645Standard(
+  mode: Dlt645PointMode,
+  isEdit: boolean,
+  originalMode: Dlt645PointMode,
+): boolean {
+  return mode === "standard" && (!isEdit || originalMode !== "standard");
 }

@@ -805,6 +805,7 @@ const handleSortChange = ({
 const handleTableRefresh = () => handleSearch(currentSlaveId.value);
 
 const fetchSlaveList = async () => {
+  if (!routeName.value) return;
   // 导入 ICD 文件期间暂停刷新，避免 404 错误
   if (isAutoRefreshPaused.value) return;
   try {

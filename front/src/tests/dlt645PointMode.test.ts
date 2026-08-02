@@ -11,11 +11,21 @@ describe("DLT645 point-table mode", () => {
     expect(normalizeDlt645PointMode("unknown")).toBe("import");
   });
 
-  it("regenerates a recorded standard table when the device is saved", () => {
-    expect(shouldImportDlt645Standard("standard")).toBe(true);
+  it("imports the standard table for a new device", () => {
+    expect(shouldImportDlt645Standard("standard", false, "import")).toBe(true);
   });
 
-  it("never generates standard points for an imported table", () => {
-    expect(shouldImportDlt645Standard("import")).toBe(false);
+  it("does not reimport an existing standard table during a normal edit", () => {
+    expect(shouldImportDlt645Standard("standard", true, "standard")).toBe(
+      false,
+    );
+  });
+
+  it("imports once when an edited device switches to the standard table", () => {
+    expect(shouldImportDlt645Standard("standard", true, "import")).toBe(true);
+  });
+
+  it("never generates standard points while import mode is selected", () => {
+    expect(shouldImportDlt645Standard("import", true, "standard")).toBe(false);
   });
 });

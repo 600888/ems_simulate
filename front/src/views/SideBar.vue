@@ -521,8 +521,9 @@ const navigateToDevice = (
     currentNodeKey.value = treeNode.nodeKey;
   }
 
-  if (forceRefresh) {
-  }
+  // Remount only the current device view after an edit. This replaces the
+  // previous full-page reload while still refreshing the displayed data.
+  if (forceRefresh) query._refresh = String(Date.now());
   router.push({
     path,
     query: Object.keys(query).length > 0 ? query : undefined,
@@ -705,13 +706,14 @@ const handleDeviceAdded = async (
   isEdit?: boolean,
   oldName?: string,
 ) => {
-  if (isEdit && oldName && oldName !== deviceName)
-    menuRouter.removeRoute(oldName);
-  menuRouter.addRoute({
-    path: `/device/${deviceName}`,
-    name: deviceName,
-    component: () => import("@/views/Device.vue"),
-  });
+  // Device pages are handled by the static `/device/:deviceName` route.
+  // Remove legacy literal routes because they match the URL without creating
+  // `route.params.deviceName`, causing all polling requests to send an empty body.
+  for (const routeName of new Set([oldName, deviceName])) {
+    if (routeName && menuRouter.hasRoute(routeName)) {
+      menuRouter.removeRoute(routeName);
+    }
+  }
   await fetchDeviceGroupTree();
 
   // 自动展开新设备所在的分组

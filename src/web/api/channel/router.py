@@ -26,6 +26,44 @@ from src.web.log import log
 
 router = APIRouter(tags=["channel"])
 
+_RUNTIME_CHANNEL_FIELDS = (
+    "ip",
+    "port",
+    "com_port",
+    "baud_rate",
+    "data_bits",
+    "stop_bits",
+    "parity",
+    "rtu_addr",
+    "model_name",
+)
+
+
+def _runtime_configuration_changed(
+    existing: dict,
+    req: ChannelUpdateRequest,
+    normalized_params: dict | None,
+    existing_params: dict | None,
+) -> bool:
+    """Return whether an edit requires replacing the in-memory device."""
+    protocol_type = req.protocol_type if req.protocol_type is not None else existing.get("protocol_type", 1)
+    conn_type = req.conn_type if req.conn_type is not None else existing.get("conn_type", 1)
+    if protocol_type != existing.get("protocol_type", 1) or conn_type != existing.get("conn_type", 1):
+        return True
+
+    for field in _RUNTIME_CHANNEL_FIELDS:
+        value = getattr(req, field)
+        if value is None:
+            continue
+        old_value = existing.get(field)
+        if field == "rtu_addr":
+            if str(value) != str(old_value):
+                return True
+        elif value != old_value:
+            return True
+
+    return normalized_params is not None and normalized_params != existing_params
+
 
 # 协议类型映射
 PROTOCOL_OPTIONS = [
@@ -246,49 +284,103 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
             )
 
     params = req.protocol_params
+    normalized_params = None
+    existing_params = None
     protocol_combination_changed = protocol_to_use != existing.get(
         "protocol_type", 1
     ) or conn_type_to_use != existing.get("conn_type", 1)
     if params is not None:
         try:
-            normalize_protocol_params(protocol_to_use, conn_type_to_use, params.values)
+            normalized_params = normalize_protocol_params(protocol_to_use, conn_type_to_use, params.values)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
+        current_protocol_params = await asyncio.to_thread(
+            ChannelConfigurationService.get_protocol_params,
+            channel_id,
+            existing.get("protocol_type", 1),
+            existing.get("conn_type", 1),
+        )
+        existing_params = current_protocol_params["values"]
 
-    success = await asyncio.to_thread(
-        ChannelService.update_channel,
-        channel_id=channel_id,
-        name=req.name,
-        protocol_type=req.protocol_type,
-        conn_type=req.conn_type,
-        ip=req.ip,
-        port=req.port,
-        com_port=req.com_port,
-        baud_rate=req.baud_rate,
-        data_bits=req.data_bits,
-        stop_bits=req.stop_bits,
-        parity=req.parity,
-        rtu_addr=req.rtu_addr if protocol_to_use == 3 else "1",
-        dlt645_point_mode=dlt645_point_mode_to_use if protocol_to_use == 3 else "import",
-        model_name=req.model_name if protocol_to_use == 4 else None,
+    runtime_configuration_changed = _runtime_configuration_changed(
+        existing,
+        req,
+        normalized_params,
+        existing_params,
     )
+
+    requested_updates = {
+        field: value
+        for field in (
+            "name",
+            "protocol_type",
+            "conn_type",
+            "ip",
+            "port",
+            "com_port",
+            "baud_rate",
+            "data_bits",
+            "stop_bits",
+            "parity",
+        )
+        if (value := getattr(req, field)) is not None
+    }
+    if protocol_to_use == 3:
+        if req.rtu_addr is not None:
+            requested_updates["rtu_addr"] = req.rtu_addr
+        requested_updates["dlt645_point_mode"] = dlt645_point_mode_to_use
+    else:
+        if protocol_combination_changed:
+            requested_updates["rtu_addr"] = "1"
+        requested_updates["dlt645_point_mode"] = "import"
+    if protocol_to_use == 4:
+        if req.model_name is not None:
+            requested_updates["model_name"] = req.model_name
+    elif protocol_combination_changed:
+        requested_updates["model_name"] = None
+
+    channel_updates = {
+        field: value
+        for field, value in requested_updates.items()
+        if (str(value) != str(existing.get(field)) if field == "rtu_addr" else value != existing.get(field))
+    }
+    success = True
+    if channel_updates:
+        success = await asyncio.to_thread(
+            ChannelService.update_channel,
+            channel_id=channel_id,
+            **channel_updates,
+        )
 
     if not success:
         raise OperationError("更新通道失败", data=False)
 
-    if params is not None or protocol_combination_changed:
+    protocol_params_changed = normalized_params is not None and normalized_params != existing_params
+    if protocol_params_changed or protocol_combination_changed:
         await asyncio.to_thread(
             ChannelConfigurationService.save_protocol_params,
             channel_id,
             protocol_to_use,
             conn_type_to_use,
-            params.values if params else None,
+            normalized_params if params else None,
             params.schema_version if params else 1,
         )
 
     try:
         device_controller = request.app.state.device_controller
-        await reload_device_instance(device_controller, channel_id, is_start=False)
+        if runtime_configuration_changed and not req.defer_runtime_reload:
+            old_device = device_controller.get_device_by_id(channel_id)
+            was_running = bool(old_device and old_device.is_protocol_running())
+            await reload_device_instance(device_controller, channel_id, is_start=was_running)
+        elif "name" in channel_updates:
+            # A display-name-only edit does not require rebuilding the protocol stack.
+            device = device_controller.get_device_by_id(channel_id)
+            if device is not None:
+                old_keys = [key for key, value in device_controller.device_map.items() if value is device]
+                for key in old_keys:
+                    device_controller.device_map.pop(key, None)
+                device.name = req.name
+                device_controller.device_map[req.name] = device
     except Exception as e:
-        log.error(f"更新配置后重载设备失败: {e}")
+        log.error(f"更新配置后同步运行时设备失败: {e}")
     return BaseResponse(message="更新通道成功", data=True)

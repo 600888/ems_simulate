@@ -630,6 +630,7 @@ const toggleDevice = async () => {
 };
 
 const fetchDeviceInfo = async () => {
+  if (!routeName.value) return;
   try {
     const info = await getDeviceInfo(routeName.value);
     deviceInfo.value = info;
@@ -904,6 +905,7 @@ let prevServerStatus: boolean | null = null; // 上一次轮询的连接状态�
 
 // 仅获取状态（不更新其他信息，减少开销）
 const fetchDeviceStatus = async () => {
+  if (!routeName.value) return;
   if (statusPollInFlight) return;
   // 导入 ICD 文件期间暂停轮询，避免设备重建设置 404 导致弹窗误报断连
   if (isAutoRefreshPaused.value) return;

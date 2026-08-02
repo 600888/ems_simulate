@@ -323,12 +323,17 @@ export async function getChannel(channelId: number): Promise<ChannelInfo> {
 export async function updateChannel(
   channelId: number,
   channel: Partial<ChannelCreateRequest>,
+  deferRuntimeReload = false,
 ): Promise<boolean> {
   try {
     return await requestApi(
       CHANNEL_API.UPDATE,
       "post",
-      { channel_id: channelId, ...channel },
+      {
+        channel_id: channelId,
+        ...channel,
+        defer_runtime_reload: deferRuntimeReload,
+      },
       30000,
     );
   } catch (error) {

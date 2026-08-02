@@ -705,6 +705,7 @@ export function useAutoRead(options: AutoReadOptions) {
   };
 
   const fetchAutoReadStatus = async () => {
+    if (!routeName.value) return;
     const status = await getAutoReadStatus(routeName.value);
     if (isDlt645.value) {
       readMode.value = "single";

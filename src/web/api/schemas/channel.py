@@ -45,6 +45,7 @@ class ChannelUpdateRequest(BaseModel):
     protocol_params: ProtocolParamsRequest | None = None
     model_name: str | None = None  # IEC61850 IED 模型名称
     dlt645_point_mode: Literal["standard", "import"] | None = None
+    defer_runtime_reload: bool = False
 
 
 class ChannelDeleteRequest(BaseModel):

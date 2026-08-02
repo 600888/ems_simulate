@@ -26,6 +26,38 @@ from src.web.api.settings import settings_router
 from src.web.log import log
 
 
+async def initialization_guard(request: Request, call_next):
+    """Wait for background startup before serving APIs that need runtime state."""
+    path = request.url.path
+    if request.method == "OPTIONS" or path == "/api/health" or not path.startswith("/api/"):
+        return await call_next(request)
+
+    application = request.app
+    controller = getattr(application.state, "device_controller", None)
+    if controller is None:
+        init_task = getattr(application.state, "init_task", None)
+        if init_task is not None and not init_task.done():
+            # A disconnected request must not cancel the shared application
+            # initialization task used by all subsequent requests.
+            try:
+                await asyncio.shield(init_task)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                application.state.initialization_error = exc
+        controller = getattr(application.state, "device_controller", None)
+
+    if controller is None:
+        initialization_error = getattr(application.state, "initialization_error", None)
+        message = "服务初始化失败，请查看后端日志" if initialization_error else "服务初始化中，请稍后重试"
+        return JSONResponse(
+            status_code=503,
+            content=BaseResponse(code=503, message=message, data=False).model_dump(),
+        )
+
+    return await call_next(request)
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """托管后台初始化，并在应用退出时统一释放资源。"""
@@ -58,6 +90,7 @@ def create_app():
     )
 
     # 配置CORS
+    app.middleware("http")(initialization_guard)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

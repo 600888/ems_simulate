@@ -1,6 +1,8 @@
 import asyncio
 from importlib import import_module
+import json
 import threading
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 
@@ -95,3 +97,53 @@ def test_lifespan_tracks_initialization_and_always_shuts_down(monkeypatch):
 
     asyncio.run(scenario())
     assert events == ["initialized", "shutdown"]
+
+
+def test_api_request_waits_for_background_initialization():
+    app_module = import_module("src.web.app")
+    application = FastAPI()
+    application.state.device_controller = None
+    application.state.initialization_error = None
+    request = SimpleNamespace(
+        method="POST",
+        url=SimpleNamespace(path="/api/devices/slave-id-list"),
+        app=application,
+    )
+
+    async def scenario():
+        async def initialize():
+            await asyncio.sleep(0)
+            application.state.device_controller = object()
+
+        application.state.init_task = asyncio.create_task(initialize())
+
+        async def call_next(_request):
+            return "served"
+
+        response = await app_module.initialization_guard(request, call_next)
+        assert response == "served"
+
+    asyncio.run(scenario())
+
+
+def test_api_request_returns_503_after_initialization_failure():
+    app_module = import_module("src.web.app")
+    application = FastAPI()
+    application.state.device_controller = None
+    application.state.init_task = None
+    application.state.initialization_error = RuntimeError("broken startup")
+    request = SimpleNamespace(
+        method="POST",
+        url=SimpleNamespace(path="/api/devices/slave-id-list"),
+        app=application,
+    )
+
+    async def scenario():
+        async def call_next(_request):
+            raise AssertionError("uninitialized API must not reach the route")
+
+        response = await app_module.initialization_guard(request, call_next)
+        assert response.status_code == 503
+        assert json.loads(response.body)["code"] == 503
+
+    asyncio.run(scenario())
