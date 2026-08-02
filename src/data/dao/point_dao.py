@@ -357,7 +357,7 @@ class PointDao:
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
-                    enable=True,
+                    enable=point_data.get("enable", True),
                 )
                 session.add(point)
                 session.flush()
@@ -380,12 +380,13 @@ class PointDao:
                     func_code=point_data.get("func_code", 2),
                     decode_code=point_data.get("decode_code", "0x10"),
                     bit=point_data.get("bit"),
+                    reverse=point_data.get("reverse", False),
                     iec_common_address=point_data.get("iec_common_address"),
                     iec_cot=point_data.get("iec_cot", 3),
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
-                    enable=True,
+                    enable=point_data.get("enable", True),
                 )
                 session.add(point)
                 session.flush()
@@ -408,12 +409,14 @@ class PointDao:
                     func_code=point_data.get("func_code", 5),
                     decode_code=point_data.get("decode_code", "0x10"),
                     bit=point_data.get("bit"),
+                    command_type=point_data.get("command_type", 0),
+                    related_yx_id=point_data.get("related_yx_id"),
                     iec_common_address=point_data.get("iec_common_address"),
                     iec_cot=point_data.get("iec_cot", 3),
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
-                    enable=True,
+                    enable=point_data.get("enable", True),
                 )
                 session.add(point)
                 session.flush()
@@ -444,12 +447,13 @@ class PointDao:
                     add_coe=add_coe,
                     max_limit=point_data.get("max_limit", calc_max),
                     min_limit=point_data.get("min_limit", calc_min),
+                    related_yc_id=point_data.get("related_yc_id"),
                     iec_common_address=point_data.get("iec_common_address"),
                     iec_cot=point_data.get("iec_cot", 3),
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
-                    enable=True,
+                    enable=point_data.get("enable", True),
                 )
                 session.add(point)
                 session.flush()
@@ -508,7 +512,7 @@ class PointDao:
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
-                            enable=True,
+                            enable=point_data.get("enable", True),
                         )
                     elif frame_type == 1:  # 遥信
                         point = PointYx(
@@ -520,12 +524,13 @@ class PointDao:
                             func_code=point_data.get("func_code", 2),
                             decode_code=point_data.get("decode_code", "0x10"),
                             bit=point_data.get("bit"),
+                            reverse=point_data.get("reverse", False),
                             iec_common_address=point_data.get("iec_common_address"),
                             iec_cot=point_data.get("iec_cot", 3),
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
-                            enable=True,
+                            enable=point_data.get("enable", True),
                         )
                     elif frame_type == 2:  # 遥控
                         point = PointYk(
@@ -537,12 +542,14 @@ class PointDao:
                             func_code=point_data.get("func_code", 5),
                             decode_code=point_data.get("decode_code", "0x10"),
                             bit=point_data.get("bit"),
+                            command_type=point_data.get("command_type", 0),
+                            related_yx_id=point_data.get("related_yx_id"),
                             iec_common_address=point_data.get("iec_common_address"),
                             iec_cot=point_data.get("iec_cot", 3),
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
-                            enable=True,
+                            enable=point_data.get("enable", True),
                         )
                     elif frame_type == 3:  # 遥调
                         decode_code = point_data.get("decode_code", "0x41")
@@ -562,12 +569,13 @@ class PointDao:
                             add_coe=add_coe,
                             max_limit=point_data.get("max_limit", calc_max),
                             min_limit=point_data.get("min_limit", calc_min),
+                            related_yc_id=point_data.get("related_yc_id"),
                             iec_common_address=point_data.get("iec_common_address"),
                             iec_cot=point_data.get("iec_cot", 3),
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
-                            enable=True,
+                            enable=point_data.get("enable", True),
                         )
                     else:
                         raise ValueError(f"无效的测点类型: {frame_type}")

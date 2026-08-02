@@ -13,6 +13,7 @@ from src.data.model import (
     GoosePublisher,
     GooseReceiverConfig,
     GooseSubscriptionConfig,
+    PointMapping,
 )
 
 
@@ -50,6 +51,12 @@ def test_delete_copied_channel_removes_children_before_device(monkeypatch):
                     params_json={},
                 ),
                 ChannelSecurityConfig(channel_id=channel_id),
+                PointMapping(
+                    device_name="Target",
+                    target_point_code="TOTAL",
+                    source_point_codes="[]",
+                    formula="0",
+                ),
             ]
         )
         publisher = GoosePublisher(
@@ -79,6 +86,7 @@ def test_delete_copied_channel_removes_children_before_device(monkeypatch):
         assert session.query(GooseEntry).count() == 0
         assert session.query(GooseReceiverConfig).count() == 0
         assert session.query(GooseSubscriptionConfig).count() == 0
+        assert session.query(PointMapping).count() == 0
 
 
 def test_delete_channel_keeps_device_while_another_channel_references_it(monkeypatch):

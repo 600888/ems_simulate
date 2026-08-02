@@ -192,6 +192,7 @@ class ChannelDao:
         from src.data.model.device import Device
         from src.data.model.goose_publisher import GooseEntry, GoosePublisher
         from src.data.model.goose_receiver import GooseReceiverConfig, GooseSubscriptionConfig
+        from src.data.model.point_mapping import PointMapping
         from src.data.model.point_yc import PointYc
         from src.data.model.point_yk import PointYk
         from src.data.model.point_yt import PointYt
@@ -212,6 +213,7 @@ class ChannelDao:
                 session.query(PointYx).where(PointYx.channel_id == channel_id).delete()
 
                 session.query(Slave).where(Slave.channel_id == channel_id).delete()
+                session.query(PointMapping).where(PointMapping.device_name == channel.name).delete()
 
                 # 显式清理所有不带数据库级联的通道配置，兼容旧版 SQLite 数据库。
                 session.query(ChannelProtocolParams).where(ChannelProtocolParams.channel_id == channel_id).delete()

@@ -6,6 +6,7 @@ from src.config.config import Config
 from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
 from src.data.service.iec61850_copy_service import Iec61850CopyResult, Iec61850CopyService
+from src.data.service.point_mapping_service import PointMappingService
 from src.enums.modbus_def import ProtocolType
 from src.web.api.channel.helpers import (
     configure_builder_network,
@@ -201,7 +202,11 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
             ChannelService.delete_channel(new_channel_id)
             continue
 
-        for point in source_points:
+        source_point_ids = {
+            (point.get("frame_type", 0), point["id"]) for point in source_points if point.get("id") is not None
+        }
+        copied_point_ids: dict[tuple[int, int], int] = {}
+        for point in sorted(source_points, key=lambda item: item.get("frame_type", 0)):
             point_copy = {
                 # Point codes only need to be unique within the copied device.
                 # Device naming options must not change the point table identity.
@@ -216,6 +221,7 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
                 "iec_type_id": point.get("iec_type_id"),
                 "iec_quality": point.get("iec_quality", 0),
                 "fc": point.get("fc"),
+                "enable": point.get("enable", True),
             }
             frame_type = point.get("frame_type", 0)
             if frame_type in [0, 3]:
@@ -225,10 +231,34 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
                 point_copy["min_limit"] = point.get("min_limit")
             if frame_type in [1, 2]:
                 point_copy["bit"] = point.get("bit")
+            if frame_type == 1:
+                point_copy["reverse"] = point.get("reverse", False)
+            if frame_type == 2:
+                point_copy["command_type"] = point.get("command_type", 0)
+                related_yx_id = point.get("related_yx_id")
+                if related_yx_id is not None:
+                    point_copy["related_yx_id"] = copied_point_ids.get((1, related_yx_id))
+                    if point_copy["related_yx_id"] is None and (1, related_yx_id) not in source_point_ids:
+                        point_copy["related_yx_id"] = related_yx_id
+            if frame_type == 3:
+                related_yc_id = point.get("related_yc_id")
+                if related_yc_id is not None:
+                    point_copy["related_yc_id"] = copied_point_ids.get((0, related_yc_id))
+                    if point_copy["related_yc_id"] is None and (0, related_yc_id) not in source_point_ids:
+                        point_copy["related_yc_id"] = related_yc_id
             try:
-                PointDao.create_point(new_channel_id, frame_type, point_copy)
+                created_point = PointDao.create_point(new_channel_id, frame_type, point_copy)
+                source_point_id = point.get("id")
+                created_point_id = created_point.get("id")
+                if source_point_id is not None and created_point_id is not None:
+                    copied_point_ids[(frame_type, source_point_id)] = created_point_id
             except Exception as e:
                 log.error(f"复制测点失败: {point.get('code')} -> {point_copy['code']}: {e}")
+
+        try:
+            PointMappingService.clone_for_device(source_channel["name"], new_name)
+        except Exception as e:
+            log.error(f"复制设备测点映射失败: {new_name}: {e}")
 
         try:
             device_controller = request.app.state.device_controller
@@ -258,6 +288,8 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
             new_device.name = new_name
             device_controller.device_list.append(new_device)
             device_controller.device_map[new_device.name] = new_device
+            mappings = PointMappingService.get_all_mappings()
+            new_device.set_device_provider(device_controller, mappings)
             log.info(f"复制设备 {new_name} (ID: {new_channel_id}) 已在内存中创建")
         except Exception as e:
             log.error(f"内存同步复制设备失败: {e}")

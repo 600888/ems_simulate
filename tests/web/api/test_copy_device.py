@@ -2,7 +2,7 @@
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from pydantic import ValidationError
 import pytest
@@ -16,15 +16,18 @@ from src.web.api.schemas.channel import CopyDeviceRequest, CopySingleDeviceReque
 def copy_configuration():
     with (
         patch("src.web.api.channel.device_manage.ChannelConfigurationService.clone_for_channel") as clone,
+        patch("src.web.api.channel.device_manage.PointMappingService.clone_for_device"),
+        patch("src.web.api.channel.device_manage.PointMappingService.get_all_mappings", return_value=[]),
         patch("src.data.service.device_service.DeviceService.update_device"),
         patch("src.web.api.channel.device_manage.log"),
     ):
         yield clone
 
 
-def _fake_builder():
+def _fake_builder(device=None):
+    runtime_device = device or SimpleNamespace(name="", set_device_provider=MagicMock())
     return SimpleNamespace(
-        makeGeneralDevice=lambda **_kwargs: SimpleNamespace(name=""),
+        makeGeneralDevice=lambda **_kwargs: runtime_device,
     )
 
 
@@ -253,14 +256,10 @@ def test_copy_loads_runtime_and_security_from_new_channel(copy_configuration):
         "ip": "127.0.0.1",
         "port": 2404,
     }
-    app_request = SimpleNamespace(
-        app=SimpleNamespace(
-            state=SimpleNamespace(
-                device_controller=SimpleNamespace(device_list=[], device_map={}),
-            ),
-        ),
-    )
-    builder = _fake_builder()
+    device_controller = SimpleNamespace(device_list=[], device_map={})
+    app_request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(device_controller=device_controller)))
+    runtime_device = SimpleNamespace(name="", set_device_provider=MagicMock())
+    builder = _fake_builder(runtime_device)
 
     with (
         patch(
@@ -294,6 +293,7 @@ def test_copy_loads_runtime_and_security_from_new_channel(copy_configuration):
     assert copied_channel_data["id"] == 30
     assert copied_channel_data["device_id"] == 20
     assert copied_channel_data["id"] != source_channel["id"]
+    runtime_device.set_device_provider.assert_called_once_with(device_controller, [])
 
 
 def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
@@ -310,6 +310,7 @@ def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
     }
     source_points = [
         {
+            "id": 101,
             "code": "YC",
             "name": "YC",
             "rtu_addr": 1,
@@ -323,6 +324,7 @@ def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
             "iec_type_id": "M_ME_NB_1",
         },
         {
+            "id": 102,
             "code": "YX",
             "name": "YX",
             "rtu_addr": 1,
@@ -332,8 +334,10 @@ def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
             "iec_cot": 20,
             "iec_quality": 0x10,
             "iec_type_id": "M_DP_TB_1",
+            "reverse": True,
         },
         {
+            "id": 103,
             "code": "YK",
             "name": "YK",
             "rtu_addr": 1,
@@ -343,8 +347,11 @@ def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
             "iec_cot": 6,
             "iec_quality": 0,
             "iec_type_id": "C_DC_TA_1",
+            "command_type": 1,
+            "related_yx_id": 102,
         },
         {
+            "id": 104,
             "code": "YT",
             "name": "YT",
             "rtu_addr": 1,
@@ -356,6 +363,7 @@ def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
             "iec_cot": 6,
             "iec_quality": 1,
             "iec_type_id": "C_SE_NC_1",
+            "related_yc_id": 101,
         },
     ]
     app_request = SimpleNamespace(
@@ -371,7 +379,10 @@ def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
         patch("src.data.service.device_service.DeviceService.get_device_by_id", return_value={"id": 10}),
         patch("src.data.service.device_service.DeviceService.create_device", return_value=20),
         patch("src.data.dao.point_dao.PointDao.get_points_by_channel", return_value=source_points),
-        patch("src.data.dao.point_dao.PointDao.create_point") as create_point,
+        patch(
+            "src.data.dao.point_dao.PointDao.create_point",
+            side_effect=[{"id": 201}, {"id": 202}, {"id": 203}, {"id": 204}],
+        ) as create_point,
         patch("src.web.api.channel.device_manage.get_device_builder", return_value=_fake_builder()),
     ):
         asyncio.run(copy_device(request, app_request))
@@ -385,6 +396,10 @@ def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
         assert copied["iec_quality"] == source["iec_quality"]
         assert copied["iec_common_address"] == source["iec_common_address"]
         assert copied["iec_cot"] == source["iec_cot"]
+    assert copied_by_frame[1]["reverse"] is True
+    assert copied_by_frame[2]["command_type"] == 1
+    assert copied_by_frame[2]["related_yx_id"] == 202
+    assert copied_by_frame[3]["related_yc_id"] == 201
 
 
 def test_copy_iec61850_deep_copies_model_resources_and_fc():

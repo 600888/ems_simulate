@@ -66,3 +66,41 @@ class PointMappingService:
     def delete_mapping(mapping_id: int) -> bool:
         """删除映射"""
         return PointMappingDao.delete_mapping(mapping_id)
+
+    @staticmethod
+    def clone_for_device(source_device_name: str, target_device_name: str) -> int:
+        """复制目标属于源设备的测点映射，并重写映射中的设备自引用。"""
+        copied_count = 0
+        for mapping in PointMappingService.get_all_mappings():
+            if mapping.get("device_name") != source_device_name:
+                continue
+
+            try:
+                source_points = json.loads(mapping.get("source_point_codes") or "[]")
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            if not isinstance(source_points, list):
+                continue
+
+            remapped_sources = []
+            for item in source_points:
+                if not isinstance(item, dict):
+                    remapped_sources.append(item)
+                    continue
+                cloned_item = dict(item)
+                if cloned_item.get("device_name") == source_device_name:
+                    cloned_item["device_name"] = target_device_name
+                remapped_sources.append(cloned_item)
+
+            copied = PointMappingService.create_mapping(
+                device_name=target_device_name,
+                target_point_code=mapping["target_point_code"],
+                source_point_codes=remapped_sources,
+                formula=mapping["formula"],
+                enable=bool(mapping.get("enable", True)),
+            )
+            if copied:
+                copied_count += 1
+
+        return copied_count
