@@ -22,6 +22,16 @@ from src.enums.points.change_tracker import ChangeSource, track_change
 if TYPE_CHECKING:
     from src.device.core.device import Device
 
+
+def _read_result(point: BasePoint) -> float | str:
+    """读取结果：DLT645 复合 DI（如最大需量及其发生时间）优先返回逗号分隔
+    显示串，否则返回数值主值。"""
+    display_extra = getattr(point, "_dlt645_display_extra", None)
+    if display_extra is not None:
+        return display_extra
+    return float(point.value) if getattr(point, "bit", None) is not None else point.real_value
+
+
 # Modbus 客户端协议集合: 这些协议下 Yc/Yx 带有 func_code=01/03 的测点允许客户端写入
 _MODBUS_PROTOCOLS = frozenset(
     {
@@ -184,7 +194,7 @@ class PointOperator:
                 self._log.error(f"测点 {point_code} 协议处理器未配置，无法写入")
                 raise ValueError(f"测点 {point_code} 协议处理器未配置，无法写入")
 
-    def read_single_point(self, point_code: str, slave_id: int | None = None) -> float | None:
+    def read_single_point(self, point_code: str, slave_id: int | None = None) -> float | str | None:
         """读取单个测点的值
 
         Args:
@@ -192,7 +202,7 @@ class PointOperator:
             slave_id: 从机 ID，不同从站编码相同时用于精确定位测点
 
         Returns:
-            Optional[float]: 读取成功返回值，失败返回None
+            读取成功返回数值；DLT645 复合 DI 返回完整显示字符串；失败返回 None
         """
         point = self._pm.get_point_by_code(point_code, slave_id)
         if not point:
@@ -209,7 +219,7 @@ class PointOperator:
                     point.value = value
                 point.is_valid = True
                 self._log.info(f"读取测点 {point_code} 成功: {value}")
-                return float(point.value) if getattr(point, "bit", None) is not None else point.real_value
+                return _read_result(point)
             else:
                 point.is_valid = False
                 self._log.info(f"读取测点 {point_code} 失败: {value}")
@@ -218,7 +228,7 @@ class PointOperator:
             point.is_valid = False
             raise ValueError(f"读取测点 {point_code} 失败: {e}") from e
 
-    async def read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | None:
+    async def read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | str | None:
         """异步读取单个测点的值（读取本地缓存，不发送网络请求）
 
         Args:
@@ -226,7 +236,7 @@ class PointOperator:
             slave_id: 从机 ID，不同从站编码相同时用于精确定位测点
 
         Returns:
-            Optional[float]: 读取成功返回值，失败返回None
+            读取成功返回数值；DLT645 复合 DI 返回完整显示字符串；失败返回 None
         """
         point = self._pm.get_point_by_code(point_code, slave_id)
         if not point:
@@ -243,7 +253,7 @@ class PointOperator:
                     point.value = value
                 point.is_valid = True
                 self._log.info(f"异步读取测点 {point_code} 成功: {value}")
-                return float(point.value) if getattr(point, "bit", None) is not None else point.real_value
+                return _read_result(point)
             else:
                 point.is_valid = False
                 self._log.info(f"异步读取测点 {point_code} 失败: {value}")
@@ -253,7 +263,7 @@ class PointOperator:
 
         return None
 
-    async def active_read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | None:
+    async def active_read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | str | None:
         """主动读取单个测点的值（发送网络请求获取最新值）
 
         与 read_single_point_async() 不同，此方法会向远程服务器发送
@@ -264,7 +274,7 @@ class PointOperator:
             slave_id: 从机 ID，不同从站编码相同时用于精确定位测点
 
         Returns:
-            Optional[float]: 读取成功返回值，失败返回None
+            读取成功返回数值；DLT645 复合 DI 返回完整显示字符串；失败返回 None
         """
         from src.device.protocol.iec104_handler import IEC104ClientHandler
 
@@ -289,7 +299,7 @@ class PointOperator:
                     point.value = value
                 point.is_valid = True
                 self._log.info(f"主动读取测点 {point_code} 成功: {value}")
-                return float(point.value) if getattr(point, "bit", None) is not None else point.real_value
+                return _read_result(point)
             else:
                 point.is_valid = False
                 self._log.info(f"主动读取测点 {point_code} 失败")

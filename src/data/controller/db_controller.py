@@ -75,6 +75,7 @@ class DbController:
 
             # 创建所有表
             Base.metadata.create_all(self.db_config.engine)
+            self._migrate_channel_point_table_mode_schema()
             self._migrate_goose_schema()
             self._migrate_channel_security_schema()
 
@@ -156,6 +157,7 @@ class DbController:
             self.db_config.create_engine(database, is_create_db=False)
             self._reset_legacy_iec61850_modeling_schema()
             Base.metadata.create_all(self.db_config.engine)
+            self._migrate_channel_point_table_mode_schema()
             self._migrate_goose_schema()
             self._migrate_channel_security_schema()
 
@@ -172,6 +174,69 @@ class DbController:
     def is_mysql(self) -> bool:
         """是否使用 MySQL"""
         return self._db_type == "mysql"
+
+    def _migrate_channel_point_table_mode_schema(self) -> None:
+        """Add the persisted DLT645 point-table source to existing databases.
+
+        Legacy rows default to ``import`` because their original source cannot
+        be known safely. This prevents an ordinary edit from replacing an
+        existing point table with the full standard table.
+        """
+        if not self.db_config:
+            return
+
+        from sqlalchemy import inspect, text
+
+        engine = self.db_config.engine
+        inspector = inspect(engine)
+        if "channel" not in inspector.get_table_names():
+            return
+        columns = {column["name"] for column in inspector.get_columns("channel")}
+        if "dlt645_point_mode" not in columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE channel ADD COLUMN dlt645_point_mode VARCHAR(16) NOT NULL DEFAULT 'import'")
+                )
+            self._backfill_legacy_dlt645_standard_tables()
+
+    def _backfill_legacy_dlt645_standard_tables(self) -> None:
+        """Recognize legacy standard tables by their complete DI code set."""
+        if not self.db_config:
+            return
+
+        from dlt645.model.data.define import DIMap
+        from sqlalchemy import inspect, text
+
+        engine = self.db_config.engine
+        table_names = set(inspect(engine).get_table_names())
+        point_tables = {"point_yc", "point_yx", "point_yk", "point_yt"}
+        if not point_tables.issubset(table_names):
+            return
+
+        standard_codes = {f"0x{di:08X}" for di in DIMap}
+        with engine.begin() as conn:
+            channel_ids = conn.scalars(text("SELECT id FROM channel WHERE protocol_type = 3")).all()
+            for channel_id in channel_ids:
+                codes = set(
+                    conn.scalars(
+                        text("SELECT code FROM point_yc WHERE channel_id = :channel_id"),
+                        {"channel_id": channel_id},
+                    ).all()
+                )
+                if codes != standard_codes:
+                    continue
+                has_other_points = any(
+                    conn.scalar(
+                        text(f"SELECT COUNT(*) FROM {table} WHERE channel_id = :channel_id"),
+                        {"channel_id": channel_id},
+                    )
+                    for table in ("point_yx", "point_yk", "point_yt")
+                )
+                if not has_other_points:
+                    conn.execute(
+                        text("UPDATE channel SET dlt645_point_mode = 'standard' WHERE id = :channel_id"),
+                        {"channel_id": channel_id},
+                    )
 
     def _reset_legacy_iec61850_modeling_schema(self) -> None:
         """检测并重建不兼容的旧版 IEC 61850 建模表。

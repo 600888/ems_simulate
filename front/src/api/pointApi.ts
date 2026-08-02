@@ -205,7 +205,7 @@ export async function readSinglePoint(
   pointCode: string,
   slaveId?: number,
   activeRead: boolean = false,
-): Promise<number | null> {
+): Promise<number | string | null> {
   try {
     const data = await requestApi(POINT_API.READ_SINGLE, "post", {
       device_name: deviceName,

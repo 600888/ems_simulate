@@ -112,7 +112,7 @@ async def import_points(
     file: UploadFile = File(...),
 ):
     """导入 Excel 点表"""
-    require_tabular_point_channel(channel_id)
+    channel = require_tabular_point_channel(channel_id)
 
     if not file.filename.endswith((".xlsx", ".xls")):
         raise ValidationError("请上传 Excel 文件 (.xlsx 或 .xls)")
@@ -148,6 +148,15 @@ async def import_points(
             log.error(f"同步内存点表失败: {e}")
             raise OperationError("点表已导入，但设备运行时模型同步失败，请重试或重启设备") from e
 
+        if int(channel.get("protocol_type", -1)) == 3:
+            saved = await asyncio.to_thread(
+                ChannelService.update_channel,
+                channel_id,
+                dlt645_point_mode="import",
+            )
+            if not saved:
+                raise OperationError("DL/T645 点表已导入，但点表来源保存失败")
+
         return BaseResponse(
             message="导入点表成功",
             data={
@@ -178,6 +187,14 @@ async def import_dlt645_standard_points(request: Request, channel_id: int = Form
     except Exception as exc:
         log.error(f"同步 DLT645 标准点表失败: {exc}")
         raise OperationError("标准点表已导入，但运行时模型同步失败，请重试或重启设备") from exc
+
+    saved = await asyncio.to_thread(
+        ChannelService.update_channel,
+        channel_id,
+        dlt645_point_mode="standard",
+    )
+    if not saved:
+        raise OperationError("标准点表已导入，但点表来源保存失败")
 
     return BaseResponse(
         message="DL/T645 标准点表导入成功",

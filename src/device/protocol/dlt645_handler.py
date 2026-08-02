@@ -50,6 +50,97 @@ def _data_item_detail(item: Any) -> dict | None:
     }
 
 
+def _scale_point_value(value: Any, point: BasePoint | None) -> Any:
+    """Yc 遥测点按系数反向换算为原始值；非数值或非遥测点原样返回。"""
+    if isinstance(point, Yc) and isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return int((float(value) - point.add_coe) / point.mul_coe)
+        except (ZeroDivisionError, TypeError, ValueError):
+            return value
+    return value
+
+
+def _format_point_value(value: Any, point: BasePoint | None = None) -> Any:
+    """将 dlt645 的多数据项值转成前端显示值。
+
+    DLT645 部分数据标识（DI）含有多个数据项，例如最大需量及其发生时间
+    （Demand 对象）、事件记录（EventRecord 元组 / 多个事件）。这里将
+    所有数据转成可读形式，多个数据用逗号分隔。
+    """
+    from dlt645.model.types.dlt645_type import Demand, EventRecord
+
+    if isinstance(value, Demand):
+        # dlt645 已将协议原始数据解码为真实值。系数反向换算只用于写回
+        # point.value，不能用于显示，否则自定义系数会让需量值被二次换算。
+        return f"{value.value}, {value.time:%Y-%m-%d %H:%M:%S}"
+    if isinstance(value, EventRecord):
+        event = value.event
+        if isinstance(event, (tuple, list)):
+            return ", ".join(str(e) for e in event)
+        return event
+    if isinstance(value, (list, tuple)):
+        parts = [str(_format_point_value(v, point)) for v in value]
+        return ", ".join(p for p in parts if p not in ("", "None"))
+    return value
+
+
+def _data_item_display(item: Any, point: BasePoint | None = None) -> Any:
+    """将 dlt645 返回的 DataItem（或 DataItem 列表）转成显示值。
+
+    客户端 read_XX / 服务端 get_data_item 对复合 DI（事件记录、时标参变量等）
+    会返回 DataItem 列表，此处逐项转换并用逗号分隔。
+    """
+    if item is None:
+        return None
+    if isinstance(item, list):
+        parts = [str(_data_item_display(i, point)) for i in item]
+        return ", ".join(p for p in parts if p not in ("", "None"))
+    return _format_point_value(getattr(item, "value", item), point)
+
+
+def _is_compound(item: Any) -> bool:
+    """判断是否为复合 DI（含多个数据项）。
+
+    复合数据包括：DataItem 列表（事件记录、时标参变量）、Demand（最大需量
+    及其发生时间）、EventRecord 元组、以及 value 本身为 list/tuple 的情况。
+    """
+    from dlt645.model.types.dlt645_type import Demand, EventRecord
+
+    if isinstance(item, list):
+        return True
+    value = getattr(item, "value", None)
+    return isinstance(value, (Demand, EventRecord, list, tuple))
+
+
+def _primary_numeric(item: Any, point: BasePoint | None = None) -> Any:
+    """从 dlt645 返回的 DataItem（或列表）中提取主数值。
+
+    测点模型（point.value / real_value）只接受数值：复合 DI 取第一个
+    数值数据项（Demand 取 value 部分），并应用 Yc 系数反向换算。
+    """
+    if item is None:
+        return 0
+
+    def extract(value: Any):
+        from dlt645.model.types.dlt645_type import Demand
+
+        if isinstance(value, Demand):
+            value = value.value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return _scale_point_value(value, point)
+        return None
+
+    if isinstance(item, list):
+        for it in item:
+            if it is None:
+                continue
+            val = extract(getattr(it, "value", None))
+            if val is not None:
+                return val
+        return 0
+    return extract(getattr(item, "value", None)) or 0
+
+
 class _CaptureSequenceTracker:
     """Add stable numeric sequence IDs to dlt645's UUID-based records."""
 
@@ -189,8 +280,17 @@ class DLT645ServerHandler(ServerHandler):
     def read_value(self, point: BasePoint) -> Any:
         """读取测点值"""
         if self._server:
-            # DLT645 使用数据标识读取，服务端直接返回原始值
-            return self._server.get_data(point.address)
+            # 每次读取先清空附加显示，避免残留上一次结果
+            point._dlt645_display_extra = None
+            # DLT645 使用数据标识读取，服务端直接返回内部映射值；
+            # 复合 DI（最大需量+发生时间等）的完整显示值挂到测点，供表格逗号分隔展示
+            item = self._server.get_data_item(point.address)
+            if _is_compound(item):
+                display = _data_item_display(item, point)
+                if display is not None:
+                    point._dlt645_display_extra = display
+            # 返回数值主值更新测点模型（point.value / real_value 只接受数值）
+            return _primary_numeric(item, point)
         return 0
 
     def write_value(self, point: BasePoint, value: Any) -> bool:
@@ -226,7 +326,7 @@ class DLT645ServerHandler(ServerHandler):
     def get_value_by_address(self, func_code: int, slave_id: int, address: int) -> Any:
         """根据地址获取值"""
         if self._server:
-            return self._server.get_data(address)
+            return _data_item_display(self._server.get_data_item(address))
         return 0
 
     def set_value_by_address(self, func_code: int, slave_id: int, address: int, value: Any) -> None:
@@ -545,7 +645,10 @@ class DLT645ClientHandler(ClientHandler):
         根据 DI 前缀调用相应的 read_XX 方法。
         """
         if not self._client:
-            return 0
+            return None
+
+        # 每次读取先清空附加显示，避免残留上一次结果
+        point._dlt645_display_extra = None
 
         try:
             # DLT645 使用数据标识 (DI) 读取
@@ -568,28 +671,26 @@ class DLT645ClientHandler(ClientHandler):
             else:
                 if self._log:
                     self._log.warning(f"DLT645 客户端暂不支持 DI 前缀 {prefix} (addr: {hex_addr})")
-                return 0
+                return None
 
             if data_item is None:
-                return 0
+                # 超时、地址不匹配和电表异常响应都属于读取失败，不能用 0
+                # 冒充成功值，否则前端会误以为只读到了一个数值。
+                return None
 
-            # 从 DataItem 获取值
-            real_val = data_item.value if hasattr(data_item, "value") else 0
-            if real_val is None:
-                return 0
-
-            # 如果是遥测点，需要根据系数反向换算回原始值
-            if isinstance(point, Yc):
-                try:
-                    return int((float(real_val) - point.add_coe) / point.mul_coe)
-                except (ZeroDivisionError, TypeError, ValueError):
-                    return 0
-            return real_val
+            # 复合 DI（最大需量及其发生时间等）的完整显示值挂到测点，
+            # 供表格"真实值"列逗号分隔展示；纯数值测点不设置，保持原有显示
+            if _is_compound(data_item):
+                display = _data_item_display(data_item, point)
+                if display is not None:
+                    point._dlt645_display_extra = display
+            # 返回数值主值更新测点模型（point.value / real_value 只接受数值）
+            return _primary_numeric(data_item, point)
 
         except Exception as e:
             if self._log:
                 self._log.error(f"DLT645 读取数据失败: {e}")
-            return 0
+            return None
 
     def write_value(self, point: BasePoint, value: Any) -> bool:
         """写入测点值（同步占位接口）

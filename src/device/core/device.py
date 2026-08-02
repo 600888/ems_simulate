@@ -692,15 +692,15 @@ class Device:
 
     # ===== 测点操作（委托给 PointOperator） =====
 
-    def read_single_point(self, point_code: str, slave_id: int | None = None) -> float | None:
+    def read_single_point(self, point_code: str, slave_id: int | None = None) -> float | str | None:
         """读取单个测点的值"""
         return self.point_operator.read_single_point(point_code, slave_id)
 
-    async def read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | None:
+    async def read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | str | None:
         """异步读取单个测点的值（读取本地缓存，不发送网络请求）"""
         return await self.point_operator.read_single_point_async(point_code, slave_id)
 
-    async def active_read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | None:
+    async def active_read_single_point_async(self, point_code: str, slave_id: int | None = None) -> float | str | None:
         """主动读取单个测点的值（发送网络请求获取最新值）"""
         return await self.point_operator.active_read_single_point_async(point_code, slave_id)
 

@@ -114,11 +114,11 @@ export const HEADER_I18N_MAP: Record<string, string> = {
 
 export const COLUMN_WIDTH_MAP: Record<string, number> = {
   测点编码: 150,
-  测点名称: 200,
+  测点名称: 240,
   寄存器值: 120,
   真实值: 120,
-  乘法系数: 100,
-  加法系数: 100,
+  乘法系数: 80,
+  加法系数: 80,
   位: 50,
   功能码: 90,
   解析码: 90,

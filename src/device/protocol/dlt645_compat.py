@@ -3,6 +3,7 @@
 from pathlib import Path
 import sys
 from types import ModuleType
+from typing import Any
 
 from src.config.global_config import LOG_DIR
 
@@ -30,8 +31,42 @@ def _configure_writable_log_path() -> Path:
 _configure_writable_log_path()
 
 from dlt645.aio import (  # noqa: E402
-    AsyncMeterClientService,
+    AsyncMeterClientService as _AsyncMeterClientService,
+)
+from dlt645.aio import (  # noqa: E402
     AsyncMeterServerService,
 )
+from dlt645.common.transform import bcd_to_time  # noqa: E402
+from dlt645.model.types.dlt645_type import Demand  # noqa: E402
+
+
+def _decode_demand_time(raw: bytes | bytearray):
+    """Decode DL/T 645 demand occurrence time (mmhhDDMMYY on wire)."""
+    if len(raw) != 5:
+        raise ValueError("invalid demand occurrence time length")
+    return bcd_to_time(bytes(reversed(raw)))
+
+
+class AsyncMeterClientService(_AsyncMeterClientService):
+    """App compatibility wrapper around dlt645's async client.
+
+    dlt645 3.0.0 passes the little-endian occurrence-time bytes directly to
+    ``bcd_to_time`` (which expects YYMMDDhhmm), swapping year/minute and
+    month/hour. Correct the decoded Demand while the original frame bytes are
+    still available.
+    """
+
+    def handle_response(self, frame: Any):
+        item = super().handle_response(frame)
+        value = getattr(item, "value", None)
+        if isinstance(value, Demand):
+            raw_time = bytes(getattr(frame, "data", b"")[7:12])
+            try:
+                item.value = Demand(value=value.value, time=_decode_demand_time(raw_time))
+            except (TypeError, ValueError):
+                # Preserve the library result for malformed/non-standard frames.
+                pass
+        return item
+
 
 __all__ = ["AsyncMeterClientService", "AsyncMeterServerService"]

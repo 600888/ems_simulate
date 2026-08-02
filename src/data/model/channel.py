@@ -33,6 +33,7 @@ class ChannelDict(TypedDict):
     rtu_addr: str
     timeout: int
     enable: bool
+    dlt645_point_mode: str
     # IEC 61850 专用
     model_name: str | None
     icd_path: str | None
@@ -74,6 +75,13 @@ class Channel(Base):
     rtu_addr: Mapped[str] = mapped_column(String(16), server_default="1", comment="电表地址(DLT645)")
     timeout: Mapped[int] = mapped_column(Integer, server_default="5", comment="超时时间(秒)")
     enable: Mapped[bool] = mapped_column(Boolean, server_default="1", comment="是否启用")
+    dlt645_point_mode: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="import",
+        server_default="import",
+        comment="DLT645点表来源: standard/import",
+    )
 
     # IEC 61850 专用字段
     model_name: Mapped[str | None] = mapped_column(String(128), nullable=True, comment="IED 模型名称 (IEC61850)")

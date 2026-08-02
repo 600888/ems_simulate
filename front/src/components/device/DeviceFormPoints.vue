@@ -127,6 +127,7 @@ const props = defineProps<{
   connType?: number;
   disabled?: boolean;
   isEditMode?: boolean;
+  pointMode?: "standard" | "import";
 }>();
 
 const uploadRef = ref();
@@ -139,14 +140,15 @@ const emit = defineEmits<{
 }>();
 
 const pointMode = ref<"standard" | "import">(
-  props.isEditMode ? "import" : "standard",
+  props.pointMode || (props.isEditMode ? "import" : "standard"),
 );
 
 watch(
-  () => props.isEditMode,
-  (isEdit) => {
-    pointMode.value = isEdit ? "import" : "standard";
+  () => props.pointMode,
+  (mode) => {
+    if (mode) pointMode.value = mode;
   },
+  { immediate: true },
 );
 watch(
   pointMode,

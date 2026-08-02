@@ -113,6 +113,7 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
         stop_bits=req.stop_bits,
         parity=req.parity,
         rtu_addr=req.rtu_addr if req.protocol_type == 3 else "1",
+        dlt645_point_mode=req.dlt645_point_mode if req.protocol_type == 3 else "import",
         model_name=req.model_name if req.protocol_type == 4 else None,
     )
 
@@ -229,6 +230,9 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
 
     protocol_to_use = req.protocol_type if req.protocol_type is not None else existing.get("protocol_type", 1)
     conn_type_to_use = req.conn_type if req.conn_type is not None else existing.get("conn_type", 1)
+    dlt645_point_mode_to_use = (
+        req.dlt645_point_mode if req.dlt645_point_mode is not None else existing.get("dlt645_point_mode", "import")
+    )
     _validate_protocol_connection(protocol_to_use, conn_type_to_use)
 
     old_protocol = existing.get("protocol_type", 1)
@@ -265,6 +269,7 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
         stop_bits=req.stop_bits,
         parity=req.parity,
         rtu_addr=req.rtu_addr if protocol_to_use == 3 else "1",
+        dlt645_point_mode=dlt645_point_mode_to_use if protocol_to_use == 3 else "import",
         model_name=req.model_name if protocol_to_use == 4 else None,
     )
 

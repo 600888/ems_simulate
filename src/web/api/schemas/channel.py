@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +26,7 @@ class ChannelCreateRequest(BaseModel):
     group_id: int | None = None
     protocol_params: ProtocolParamsRequest | None = None
     model_name: str | None = None  # IEC61850 IED 模型名称
+    dlt645_point_mode: Literal["standard", "import"] = "import"
 
 
 class ChannelUpdateRequest(BaseModel):
@@ -43,6 +44,7 @@ class ChannelUpdateRequest(BaseModel):
     rtu_addr: str | None = None
     protocol_params: ProtocolParamsRequest | None = None
     model_name: str | None = None  # IEC61850 IED 模型名称
+    dlt645_point_mode: Literal["standard", "import"] | None = None
 
 
 class ChannelDeleteRequest(BaseModel):

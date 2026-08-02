@@ -40,3 +40,31 @@ def test_channel_provisioning_rolls_back_the_whole_aggregate(monkeypatch):
     with factory() as session:
         assert session.scalar(select(func.count(Device.id))) == 1
         assert session.scalar(select(func.count(Channel.id))) == 1
+
+
+def test_channel_provisioning_persists_dlt645_point_mode(monkeypatch):
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(channel_service_module, "local_session", factory)
+
+    _device_id, channel_id = ChannelService.provision_channel(
+        code="DLT1",
+        name="DLT645",
+        group_id=None,
+        protocol_type=3,
+        conn_type=1,
+        protocol_params=None,
+        ip="127.0.0.1",
+        port=8899,
+        dlt645_point_mode="standard",
+    )
+
+    with factory() as session:
+        channel = session.get(Channel, channel_id)
+        assert channel is not None
+        assert channel.dlt645_point_mode == "standard"

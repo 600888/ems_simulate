@@ -35,6 +35,7 @@
             :conn-type="form.conn_type"
             :disabled="saving"
             :is-edit-mode="isEditMode"
+            :point-mode="dlt645PointMode"
             @file-change="(f) => (selectedFile = f)"
             @icd-file-change="handleIcdFileChange"
             @point-mode-change="(mode) => (dlt645PointMode = mode)"
@@ -235,6 +236,11 @@ import type {
   PointImportResult,
   SecurityConfig,
 } from "@/types/channel";
+import {
+  normalizeDlt645PointMode,
+  shouldImportDlt645Standard,
+  type Dlt645PointMode,
+} from "@/utils/dlt645PointMode";
 
 const props = defineProps<{
   visible: boolean;
@@ -262,7 +268,7 @@ const activeTab = ref<"basic" | "protocol" | "security">("basic");
 const originalName = ref("");
 const mediaType = ref<"serial" | "network">("network");
 const selectedFile = ref<File | null>(null);
-const dlt645PointMode = ref<"standard" | "import">("standard");
+const dlt645PointMode = ref<Dlt645PointMode>("standard");
 const icdFile = ref<File | null>(null);
 const certificateFile = ref<File | null>(null);
 const privateKeyFile = ref<File | null>(null);
@@ -364,6 +370,7 @@ const form = reactive<ChannelCreateRequest>({
   rtu_addr: "1",
   group_id: null,
   protocol_params: protocolParams,
+  dlt645_point_mode: "standard",
 });
 
 const rules = computed<FormRules>(() => {
@@ -479,6 +486,7 @@ const loadChannelData = async (id: number) => {
     // DLT645 电表地址回显统一为 12 位数字（兼容历史短地址数据）
     if (form.protocol_type === 3) {
       form.rtu_addr = String(form.rtu_addr || "").padStart(12, "0");
+      dlt645PointMode.value = normalizeDlt645PointMode(data.dlt645_point_mode);
     }
     applyPersistedProtocolParams(data.protocol_params);
     form.protocol_params = protocolParams;
@@ -513,6 +521,7 @@ const resetForm = () => {
     rtu_addr: "1",
     group_id: null,
     protocol_params: protocolParams,
+    dlt645_point_mode: "standard",
   });
   applyPersistedProtocolParams();
   applyPersistedSecurityConfig();
@@ -600,6 +609,7 @@ const handleSubmit = async () => {
   // DLT645 电表地址统一为 12 位数字（补零后校验）
   if (form.protocol_type === 3) {
     form.rtu_addr = String(form.rtu_addr || "").padStart(12, "0");
+    form.dlt645_point_mode = dlt645PointMode.value;
   }
   await formRef.value.validate(async (valid) => {
     if (!valid) {
@@ -642,7 +652,10 @@ const handleSubmit = async () => {
       }
 
       // 3. Excel 点表导入
-      if (form.protocol_type === 3 && dlt645PointMode.value === "standard") {
+      if (
+        form.protocol_type === 3 &&
+        shouldImportDlt645Standard(dlt645PointMode.value)
+      ) {
         progressText.value = t("addDevice.importingDlt645");
         await importDlt645StandardPoints(resultId);
       } else if (!isIec61850Server.value && selectedFile.value) {

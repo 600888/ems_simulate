@@ -728,6 +728,7 @@ import {
   HEADER_I18N_MAP,
 } from "@/constants/table";
 import { isDlt645Protocol } from "@/constants/protocol";
+import { formatTableRealValue } from "@/utils/tableValue";
 
 import SingleRegister from "../register/SingleRegister.vue";
 import LongRegister from "../register/LongRegister.vue";
@@ -922,6 +923,10 @@ const columnWidthMap = COLUMN_WIDTH_MAP;
 // 根据当前可见列动态生成宽度列表
 const addressFilteredWidthList = computed(() => {
   return filteredTableHeaderWithoutAddress.value.map((header) => {
+    // DLT645 测点编码较短（如 0x00010000），收窄该列宽度
+    if (isDlt645.value && header === "测点编码") {
+      return 110;
+    }
     return columnWidthMap[header] || columnWidthMap["default"];
   });
 });
@@ -1000,7 +1005,8 @@ const convertedTableData = computed(() => {
         if (displayVal === "None" || displayVal === null) {
           displayVal = "";
         }
-        data[h] = h === "真实值" ? parseFloat(val || 0).toFixed(3) : displayVal;
+        data[h] =
+          h === "真实值" ? formatTableRealValue(displayVal) : displayVal;
       }
     });
     return data;

@@ -58,6 +58,7 @@ export interface ChannelCreateRequest {
   // 设备组ID
   group_id?: number | null;
   protocol_params?: ProtocolParamsConfig;
+  dlt645_point_mode?: "standard" | "import";
 }
 
 export interface ProtocolParamsConfig {
@@ -99,6 +100,7 @@ export interface ChannelInfo {
   icd_file_hash?: string | null;
   protocol_params?: ProtocolParamsConfig;
   security_config?: SecurityConfig;
+  dlt645_point_mode?: "standard" | "import";
 }
 
 // 点表导入结果

@@ -148,6 +148,7 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
             parity=source_channel.get("parity", "N"),
             rtu_addr=source_channel.get("rtu_addr", "1"),
             timeout=source_channel.get("timeout", 5),
+            dlt645_point_mode=source_channel.get("dlt645_point_mode", "import"),
             model_name=source_channel.get("model_name"),
             # IEC 61850 models are deep-copied after both ownership IDs exist.
             # Never leave a copied device pointing at the source device's file.

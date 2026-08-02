@@ -172,7 +172,11 @@ class DataExporter:
             reg_val = str(point.hex_value)
             # IEC61850: FC=DC 的 DA 为描述/元数据 (如 dU, d, cDCnam), 真实值返回描述文本
             point_fc = getattr(point, "fc", "") or ""
-            if point_fc == "DC":
+            # DLT645 复合 DI（如最大需量及其发生时间）的完整显示值，逗号分隔
+            dlt645_display = getattr(point, "_dlt645_display_extra", None)
+            if dlt645_display is not None:
+                real_val = str(dlt645_display)
+            elif point_fc == "DC":
                 real_val = str(point.name)
             else:
                 real_val = str(point.real_value)
