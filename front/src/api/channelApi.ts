@@ -47,6 +47,14 @@ export interface CopyDeviceRequest {
   target_group_id?: number | null;
 }
 
+export interface CopySingleDeviceRequest {
+  channel_id: number;
+  target_name: string;
+  target_code: string;
+  target_ip: string;
+  target_port: number;
+}
+
 export interface IEC61850DataSetInfo {
   ref: string;
   name: string;
@@ -403,6 +411,17 @@ export async function copyDevice(
     return await requestApi(CHANNEL_API.COPY, "post", request);
   } catch (error) {
     console.error("Error copying device:", error);
+    throw error;
+  }
+}
+
+export async function copySingleDevice(
+  request: CopySingleDeviceRequest,
+): Promise<CopyDeviceResponse> {
+  try {
+    return await requestApi(CHANNEL_API.COPY_SINGLE, "post", request);
+  } catch (error) {
+    console.error("Error copying single device:", error);
     throw error;
   }
 }

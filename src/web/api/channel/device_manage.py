@@ -14,8 +14,8 @@ from src.web.api.channel.helpers import (
     is_client_protocol,
     reload_device_instance,
 )
-from src.web.api.exceptions import NotFoundError
-from src.web.api.schemas import BaseResponse, ChannelIdRequest, CopyDeviceRequest
+from src.web.api.exceptions import ConflictError, NotFoundError
+from src.web.api.schemas import BaseResponse, ChannelIdRequest, CopyDeviceRequest, CopySingleDeviceRequest
 from src.web.log import log
 
 router = APIRouter(tags=["channel"])
@@ -82,6 +82,16 @@ async def reload_device_config(req: ChannelIdRequest, request: Request):
 @router.post("/copy", response_model=BaseResponse)
 async def copy_device(req: CopyDeviceRequest, request: Request):
     """复制设备（包括点表）"""
+    return await _copy_device(req, request)
+
+
+@router.post("/copy-single", response_model=BaseResponse)
+async def copy_single_device(req: CopySingleDeviceRequest, request: Request):
+    """复制单个设备（包括点表）。"""
+    return await _copy_device(req, request)
+
+
+async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request: Request):
     from src.data.dao.point_dao import PointDao
     from src.data.service.device_group_service import DeviceGroupService
     from src.data.service.device_service import DeviceService
@@ -93,7 +103,10 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
     source_device_id = source_channel.get("device_id")
     source_device = DeviceService.get_device_by_id(source_device_id) if source_device_id else None
     source_group_id = source_device.get("group_id") if source_device else None
-    target_group_id = req.target_group_id if "target_group_id" in req.model_fields_set else source_group_id
+    is_single = isinstance(req, CopySingleDeviceRequest)
+    target_group_id = (
+        req.target_group_id if not is_single and "target_group_id" in req.model_fields_set else source_group_id
+    )
     if target_group_id is not None and not DeviceGroupService.get_group_by_id(target_group_id):
         raise NotFoundError(f"目标设备组 {target_group_id} 不存在")
     source_points = PointDao.get_points_by_channel(req.channel_id)
@@ -101,19 +114,28 @@ async def copy_device(req: CopyDeviceRequest, request: Request):
     source_port = source_channel.get("port", Config.DEFAULT_PORT)
     is_iec61850 = source_channel.get("protocol_type") == Iec61850CopyService.PROTOCOL_ID
 
-    prefix = req.prefix or ""
-    suffix = req.suffix or ""
+    prefix = "" if is_single else req.prefix or ""
+    suffix = "" if is_single else req.suffix or ""
+    copy_count = 1 if is_single else req.count
     copied_channels = []
 
-    for i in range(1, req.count + 1):
-        ip_offset = 0 if req.ip_start_offset == 0 else req.ip_start_offset + i - 1
-        new_ip = increment_ip(source_ip, ip_offset)
-        new_port = source_port + req.port_offset * i if req.port_offset > 0 else source_port
-        new_code = f"{prefix}{source_channel['code']}{suffix}{i}"
-        new_name = f"{prefix}{source_channel['name']}{suffix}{i}"
+    for i in range(1, copy_count + 1):
+        ip_offset = 0 if is_single or req.ip_start_offset == 0 else req.ip_start_offset + i - 1
+        new_ip = str(req.target_ip) if is_single else increment_ip(source_ip, ip_offset)
+        new_port = (
+            req.target_port if is_single else source_port + req.port_offset * i if req.port_offset > 0 else source_port
+        )
+        if is_single:
+            new_code = req.target_code
+            new_name = req.target_name
+        else:
+            new_code = f"{prefix}{source_channel['code']}{suffix}{i}"
+            new_name = f"{prefix}{source_channel['name']}{suffix}{i}"
 
         existing = ChannelService.get_channel_by_code(new_code)
         if existing:
+            if is_single:
+                raise ConflictError(f"设备编码 '{new_code}' 已存在，请使用其他编码")
             log.warning(f"通道编码 {new_code} 已存在，跳过")
             continue
 

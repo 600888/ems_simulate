@@ -1,6 +1,7 @@
+from ipaddress import IPv4Address
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from src.config.config import Config
 
@@ -76,3 +77,23 @@ class CopyDeviceRequest(BaseModel):
     suffix: str | None = Field(None, description="编码后缀")
     port_offset: int = Field(0, description="端口偏移量")
     target_group_id: int | None = Field(None, description="目标设备组ID，NULL表示未分组")
+
+
+class CopySingleDeviceRequest(BaseModel):
+    """单个复制设备请求。"""
+
+    channel_id: int = Field(..., description="源通道ID")
+    target_name: str = Field(..., description="目标设备名称")
+    target_code: str = Field(..., description="目标设备编码")
+    target_ip: IPv4Address = Field(..., description="目标设备IP地址")
+    target_port: int = Field(..., ge=1, le=65535, description="目标设备端口")
+
+    @model_validator(mode="after")
+    def validate_target_identity(self):
+        self.target_name = self.target_name.strip()
+        self.target_code = self.target_code.strip()
+        if not self.target_name:
+            raise ValueError("目标设备名称不能为空")
+        if not self.target_code:
+            raise ValueError("目标设备编码不能为空")
+        return self

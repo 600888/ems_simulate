@@ -6,6 +6,7 @@ from .channel import (
     ChannelIdRequest,
     ChannelUpdateRequest,
     CopyDeviceRequest,
+    CopySingleDeviceRequest,
     CreateAndStartDeviceRequest,
 )
 from .device import (
@@ -104,6 +105,7 @@ __all__ = [
     "ChannelIdRequest",
     "CreateAndStartDeviceRequest",
     "CopyDeviceRequest",
+    "CopySingleDeviceRequest",
     "DeviceInfoRequest",
     "DeviceTableRequest",
     "SimulationStartRequest",

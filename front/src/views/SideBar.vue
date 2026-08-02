@@ -96,6 +96,7 @@
     v-model:visible="copyDeviceDialogVisible"
     :channel-id="copyingChannelId || 0"
     :device-name="copyingDeviceName"
+    :device-code="copyingDeviceCode"
     :device-ip="copyingDeviceIp"
     :device-port="copyingDevicePort"
     :point-count="copyingPointCount"
@@ -214,6 +215,7 @@ const parentGroupIdForNewGroup = ref<number | null>(null);
 const copyDeviceDialogVisible = ref(false);
 const copyingChannelId = ref<number | null>(null);
 const copyingDeviceName = ref<string>("");
+const copyingDeviceCode = ref<string>("");
 const copyingDeviceIp = ref<string>("");
 const copyingDevicePort = ref<number>(502);
 const copyingPointCount = ref<number>(0);
@@ -675,6 +677,7 @@ const handleCopyDeviceByName = async (
     if (channel) {
       copyingChannelId.value = channel.id;
       copyingDeviceName.value = channel.name;
+      copyingDeviceCode.value = channel.code;
       copyingDeviceIp.value = channel.ip || "0.0.0.0";
       copyingDevicePort.value = channel.port || 502;
       copyingPointCount.value = 0;
@@ -691,6 +694,7 @@ const handleCopyDeviceByName = async (
 
 const handleCopyDeviceClose = () => {
   copyingChannelId.value = null;
+  copyingDeviceCode.value = "";
   copyingProtocolType.value = -1;
   copyingModelName.value = "";
   copyingModelPath.value = "";

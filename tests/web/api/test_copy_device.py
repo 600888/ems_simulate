@@ -8,8 +8,8 @@ from pydantic import ValidationError
 import pytest
 
 from src.data.service.iec61850_copy_service import Iec61850CopyResult
-from src.web.api.channel.device_manage import copy_device
-from src.web.api.schemas.channel import CopyDeviceRequest
+from src.web.api.channel.device_manage import copy_device, copy_single_device
+from src.web.api.schemas.channel import CopyDeviceRequest, CopySingleDeviceRequest
 
 
 @pytest.fixture(autouse=True)
@@ -43,6 +43,76 @@ def test_copy_device_request_accepts_unchanged_ip_and_port():
 def test_copy_device_request_rejects_negative_ip_offset():
     with pytest.raises(ValidationError):
         CopyDeviceRequest(channel_id=1, ip_start_offset=-1)
+
+
+def test_single_copy_uses_explicit_target_identity_and_endpoint():
+    request = CopySingleDeviceRequest(
+        channel_id=1,
+        target_name="Target device",
+        target_code="TARGET",
+        target_ip="192.168.10.20",
+        target_port=1502,
+    )
+    source_channel = {
+        "id": 1,
+        "device_id": 10,
+        "code": "SOURCE",
+        "name": "Source",
+        "protocol_type": 1,
+        "conn_type": 1,
+        "ip": "127.0.0.1",
+        "port": 502,
+    }
+    app_request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                device_controller=SimpleNamespace(device_list=[], device_map={}),
+            ),
+        ),
+    )
+
+    with (
+        patch(
+            "src.web.api.channel.device_manage.ChannelService.get_channel_by_id",
+            return_value=source_channel,
+        ),
+        patch(
+            "src.web.api.channel.device_manage.ChannelService.get_channel_by_code",
+            return_value=None,
+        ),
+        patch(
+            "src.web.api.channel.device_manage.ChannelService.create_channel",
+            return_value=30,
+        ) as create_channel,
+        patch(
+            "src.data.service.device_service.DeviceService.get_device_by_id",
+            return_value={"id": 10, "group_id": 7},
+        ),
+        patch(
+            "src.data.service.device_service.DeviceService.create_device",
+            return_value=20,
+        ) as create_device,
+        patch(
+            "src.data.service.device_group_service.DeviceGroupService.get_group_by_id",
+            return_value={"id": 7},
+        ),
+        patch("src.data.dao.point_dao.PointDao.get_points_by_channel", return_value=[]),
+        patch(
+            "src.web.api.channel.device_manage.get_device_builder",
+            return_value=_fake_builder(),
+        ),
+    ):
+        response = asyncio.run(copy_single_device(request, app_request))
+
+    assert create_device.call_args.kwargs == {
+        "code": "TARGET",
+        "name": "Target device",
+        "device_type": 0,
+        "group_id": 7,
+    }
+    assert create_channel.call_args.kwargs["ip"] == "192.168.10.20"
+    assert create_channel.call_args.kwargs["port"] == 1502
+    assert response.data["copied_count"] == 1
 
 
 @pytest.mark.parametrize(

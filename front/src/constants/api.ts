@@ -22,6 +22,7 @@ export const CHANNEL_API = {
   RESTART: "/api/channels/restart",
   RELOAD_CONFIG: "/api/channels/reload-config",
   COPY: "/api/channels/copy",
+  COPY_SINGLE: "/api/channels/copy-single",
   IEC61850_STRUCTURE: "/api/channels/iec61850-structure",
   IEC61850_READ_POINTS: "/api/channels/iec61850-read-points",
   IEC61850_TABLE_DATA: "/api/channels/iec61850-table-data",

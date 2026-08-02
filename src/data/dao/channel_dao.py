@@ -188,7 +188,10 @@ class ChannelDao:
     @classmethod
     def delete_channel(cls, channel_id: int) -> bool:
         """删除通道及关联测点（硬删除）"""
+        from src.data.model.channel_configuration import ChannelProtocolParams, ChannelSecurityConfig
         from src.data.model.device import Device
+        from src.data.model.goose_publisher import GooseEntry, GoosePublisher
+        from src.data.model.goose_receiver import GooseReceiverConfig, GooseSubscriptionConfig
         from src.data.model.point_yc import PointYc
         from src.data.model.point_yk import PointYk
         from src.data.model.point_yt import PointYt
@@ -197,26 +200,49 @@ class ChannelDao:
 
         try:
             with local_session() as session, session.begin():
-                # 1. 先删除关联的测点
-                session.query(PointYc).where(PointYc.channel_id == channel_id).delete()
-                session.query(PointYx).where(PointYx.channel_id == channel_id).delete()
+                channel = session.query(Channel).where(Channel.id == channel_id).first()
+                if not channel:
+                    return False
+                device_id = channel.device_id
+
+                # 控制点可能引用遥信/遥测点，必须先删除依赖方。
                 session.query(PointYk).where(PointYk.channel_id == channel_id).delete()
                 session.query(PointYt).where(PointYt.channel_id == channel_id).delete()
+                session.query(PointYc).where(PointYc.channel_id == channel_id).delete()
+                session.query(PointYx).where(PointYx.channel_id == channel_id).delete()
 
-                # 2. 删除关联的从机配置 (Slave 表)
                 session.query(Slave).where(Slave.channel_id == channel_id).delete()
 
-                # 3. 删除关联的设备 (Device 表)
-                # 先查出通道，获取 device_id
-                channel = session.query(Channel).where(Channel.id == channel_id).first()
-                if channel and channel.device_id:
-                    session.query(Device).where(Device.id == channel.device_id).delete()
+                # 显式清理所有不带数据库级联的通道配置，兼容旧版 SQLite 数据库。
+                session.query(ChannelProtocolParams).where(ChannelProtocolParams.channel_id == channel_id).delete()
+                session.query(ChannelSecurityConfig).where(ChannelSecurityConfig.channel_id == channel_id).delete()
 
-                # 4. 再删除通道
-                if channel:
-                    session.delete(channel)
-                    return True
-                return False
+                publisher_ids = session.query(GoosePublisher.id).where(GoosePublisher.channel_id == channel_id)
+                session.query(GooseEntry).where(GooseEntry.publisher_id.in_(publisher_ids)).delete(
+                    synchronize_session=False
+                )
+                session.query(GoosePublisher).where(GoosePublisher.channel_id == channel_id).delete(
+                    synchronize_session=False
+                )
+
+                receiver_ids = session.query(GooseReceiverConfig.id).where(GooseReceiverConfig.channel_id == channel_id)
+                session.query(GooseSubscriptionConfig).where(
+                    GooseSubscriptionConfig.receiver_id.in_(receiver_ids)
+                ).delete(synchronize_session=False)
+                session.query(GooseReceiverConfig).where(GooseReceiverConfig.channel_id == channel_id).delete(
+                    synchronize_session=False
+                )
+
+                # channel 持有指向 device 的外键，因此必须先删通道、再删设备。
+                session.query(Channel).where(Channel.id == channel_id).delete(synchronize_session=False)
+                session.flush()
+                if device_id is not None:
+                    has_other_channels = (
+                        session.query(Channel.id).where(Channel.device_id == device_id).first() is not None
+                    )
+                    if not has_other_channels:
+                        session.query(Device).where(Device.id == device_id).delete(synchronize_session=False)
+                return True
         except Exception as e:
             log.error(f"删除通道失败: {str(e)}")
             raise e
