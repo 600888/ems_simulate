@@ -8,22 +8,17 @@ EMS Simulate 支持通过配置文件和环境变量进行灵活配置。
 
 ```ini
 [server]
-host = 0.0.0.0
-port = 8000
+port = 8991
 
 [database]
 type = sqlite
-path = data/ems.db
+sqlite_path = data/ems.db
 
-[modbus]
-default_port = 502
-
-[iec104]
-default_port = 2404
-
-[dlt645]
-default_port = 8899
+[data_source]
+type = db
 ```
+
+其中 `[server] port` 为后端 HTTP 服务端口（默认 `8991`），源码运行时也可通过 `start_back_end.py --port` 指定。
 
 ## 数据库配置
 
@@ -38,9 +33,11 @@ default_port = 8899
 ```ini
 [database]
 type = mysql
-host = localhost
+
+[mysql]
+host = 127.0.0.1
 port = 3306
-user = your_user
+username = your_user
 password = your_password
 database = ems_simulate
 ```

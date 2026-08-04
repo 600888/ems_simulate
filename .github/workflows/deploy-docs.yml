@@ -1,10 +1,10 @@
 name: Deploy VitePress Documentation
 
 on:
-  # 仅在打 tag 时触发
+  # 推送到 main 分支时更新文档（含普通提交，无需打 tag）
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
 
 jobs:
   build-and-deploy:

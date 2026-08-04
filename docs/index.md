@@ -43,8 +43,8 @@ features:
 ## 快速安装
 
 ```bash
-# 安装 Python 依赖
-pip install -r requirements.txt
+# 安装 Python 依赖（基于 pyproject.toml / uv.lock，需先安装 uv: pip install uv）
+uv sync --extra dev
 
 # 前端开发环境
 cd front && npm install && npm run dev
