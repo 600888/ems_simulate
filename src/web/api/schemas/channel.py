@@ -43,6 +43,7 @@ class ChannelUpdateRequest(BaseModel):
     stop_bits: int | None = None
     parity: str | None = None
     rtu_addr: str | None = None
+    group_id: int | None = Field(None, description="设备组ID，NULL表示未分组")
     protocol_params: ProtocolParamsRequest | None = None
     model_name: str | None = None  # IEC61850 IED 模型名称
     dlt645_point_mode: Literal["standard", "import"] | None = None

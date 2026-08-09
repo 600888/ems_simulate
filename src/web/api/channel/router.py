@@ -8,6 +8,7 @@ from src.config.config import Config
 from src.data.dao.point_dao import PointDao
 from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
+from src.data.service.device_group_service import DeviceGroupService
 from src.device.protocol.runtime_config import normalize_protocol_params
 from src.enums.modbus_def import ProtocolType
 from src.web.api.channel.helpers import (
@@ -338,6 +339,22 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
             requested_updates["model_name"] = req.model_name
     elif protocol_combination_changed:
         requested_updates["model_name"] = None
+
+    # 设备分组变更：group_id 存储在 Device 表，由 DeviceGroupService 统一更新。
+    # 注意：移动分组与下方通道更新不在同一事务，任一步失败都会留下部分更新，
+    # 因此移动失败时直接报错中断，避免通道已更新而分组未生效。
+    if "group_id" in req.model_fields_set and req.group_id != existing.get("group_id"):
+        if req.group_id is not None and not DeviceGroupService.get_group_by_id(req.group_id):
+            raise ValidationError(f"目标设备组 {req.group_id} 不存在")
+        device_id = existing.get("device_id")
+        if device_id is not None:
+            moved = await asyncio.to_thread(
+                DeviceGroupService.move_devices_to_group,
+                [device_id],
+                req.group_id,
+            )
+            if moved != 1:
+                raise OperationError("更新设备分组失败", data=False)
 
     channel_updates = {
         field: value
