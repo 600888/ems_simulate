@@ -22,7 +22,16 @@
           'is-iec61850-ld': data.iec61850Level === 'ld',
           'is-iec61850-ln': data.iec61850Level === 'ln',
           'is-dlt645-child': data.isDlt645Child,
+          'is-draggable': isDraggableNode(data),
+          'is-dragging': isDraggingNode(data),
+          'is-drop-target': isDropTargetNode(data),
         }"
+        :draggable="isDraggableNode(data)"
+        @dragstart="onDragStart($event, data)"
+        @dragover="onDragOver($event, data)"
+        @dragleave="onDragLeave($event, data)"
+        @drop="onDrop($event, data)"
+        @dragend="onDragEnd"
       >
         <el-tooltip
           :content="node.label"
@@ -118,6 +127,12 @@ import { onMounted, ref, watch, nextTick } from "vue";
 import { ElTree } from "element-plus";
 import { getIec61850NodeIcon } from "./iec61850NodeIcons";
 import {
+  readDragPayload,
+  setDragPayload,
+  clearDragPayload,
+  type DeviceDragPayload,
+} from "./deviceDrag";
+import {
   Folder,
   Cpu,
   MoreFilled,
@@ -148,6 +163,8 @@ const emit = defineEmits<{
   (e: "edit-device", data: any): void;
   (e: "delete-device", data: any): void;
   (e: "copy-device", data: any): void;
+  (e: "device-drop", deviceId: number, groupId: number): void;
+  (e: "group-drop", groupId: number, targetGroupId: number): void;
 }>();
 
 const treeRef = ref<InstanceType<typeof ElTree>>();
@@ -191,6 +208,124 @@ const handleNodeClick = (data: any) => {
   } else {
     emit("node-click", data);
   }
+};
+
+// ========== 拖拽修改设备分组 ==========
+
+/** 可拖拽的节点：普通分组与设备节点（排除 IEC61850/dlt645 子结构节点） */
+const isDraggableNode = (data: any) =>
+  !data.isIec61850Child && !data.isDlt645Child;
+
+const draggingId = ref<number | null>(null);
+const dropTargetId = ref<number | null>(null);
+
+const isDraggingNode = (data: any) =>
+  draggingId.value !== null && data.id === draggingId.value;
+const isDropTargetNode = (data: any) =>
+  dropTargetId.value !== null && data.id === dropTargetId.value;
+
+const onDragStart = (event: DragEvent, data: any) => {
+  if (!isDraggableNode(data)) return;
+  // 从操作按钮区域开始拖动时取消拖拽，避免与编辑/删除/复制按钮误触
+  const target = event.target as HTMLElement | null;
+  if (target?.closest(".node-actions")) {
+    event.preventDefault();
+    return;
+  }
+  const payload: DeviceDragPayload = data.isGroup
+    ? { type: "group", id: data.id, name: data.name }
+    : {
+        type: "device",
+        id: data.id,
+        name: data.name,
+        groupId: data.groupId ?? null,
+      };
+  setDragPayload(event, payload);
+  draggingId.value = data.id;
+};
+
+/** 判断 targetId 是否位于 sourceId 分组（不含自身）的子孙分组中 */
+const isTargetInSubtree = (
+  sourceId: number,
+  targetId: number,
+  nodes: any[],
+): boolean => {
+  for (const node of nodes) {
+    if (!node.isGroup || !node.children) continue;
+    if (node.id === sourceId) {
+      return containsGroup(node.children, targetId);
+    }
+    if (isTargetInSubtree(sourceId, targetId, node.children)) return true;
+  }
+  return false;
+};
+
+const containsGroup = (nodes: any[], targetId: number): boolean => {
+  for (const node of nodes) {
+    if (!node.isGroup) continue;
+    if (node.id === targetId) return true;
+    if (node.children && containsGroup(node.children, targetId)) return true;
+  }
+  return false;
+};
+
+/** 只有真正的设备组节点可接收拖放（排除 IEC61850/dlt645 子结构分组） */
+const isValidDropTarget = (data: any, payload: DeviceDragPayload) => {
+  if (!data.isGroup || data.isIec61850Child || data.isDlt645Child) {
+    return false;
+  }
+  if (payload.type === "device") {
+    // 设备拖回自己当前所在的分组没有意义
+    return payload.groupId !== data.id;
+  }
+  if (payload.type === "group") {
+    // 分组不能拖到自己或自己的子孙分组下（避免循环）
+    if (data.id === payload.id) return false;
+    return !isTargetInSubtree(payload.id, data.id, props.treeData);
+  }
+  return false;
+};
+
+const onDragOver = (event: DragEvent, data: any) => {
+  const payload = readDragPayload(event);
+  if (!payload || !isValidDropTarget(data, payload)) return;
+  event.preventDefault();
+  event.dataTransfer!.dropEffect = "move";
+  dropTargetId.value = data.id;
+};
+
+const onDragLeave = (event: DragEvent, data: any) => {
+  if (dropTargetId.value !== data.id) return;
+  const related = event.relatedTarget as Node | null;
+  if (
+    related &&
+    event.currentTarget instanceof Node &&
+    event.currentTarget.contains(related)
+  ) {
+    // 仍在节点内部移动（子元素之间），保持高亮
+    return;
+  }
+  dropTargetId.value = null;
+};
+
+const onDrop = (event: DragEvent, data: any) => {
+  const payload = readDragPayload(event);
+  if (!payload || !isValidDropTarget(data, payload)) return;
+  event.preventDefault();
+  clearDragPayload();
+  draggingId.value = null;
+  dropTargetId.value = null;
+  if (payload.type === "device") {
+    emit("device-drop", payload.id, data.id);
+  } else {
+    emit("group-drop", payload.id, data.id);
+  }
+};
+
+const onDragEnd = () => {
+  clearDragPayload();
+  draggingId.value = null;
+  dropTargetId.value = null;
 };
 
 const expandKeys = () => {
@@ -392,5 +527,20 @@ watch(() => props.currentNodeKey, setCurrentKey);
 .node-actions .el-button:hover {
   background-color: var(--item-active-bg);
   color: var(--color-primary);
+}
+
+/* ===== 拖拽修改设备分组 ===== */
+.tree-node-content.is-draggable {
+  cursor: grab;
+}
+
+.tree-node-content.is-dragging {
+  opacity: 0.4;
+}
+
+.tree-node-content.is-drop-target {
+  background: var(--item-active-bg) !important;
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+  border-radius: 10px;
 }
 </style>

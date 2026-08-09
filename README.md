@@ -185,8 +185,8 @@ EMS Simulate 支持 5 种工业通信协议，每种协议均可配置为**服�
 ### 安装依赖
 
 ```bash
-# 1. 安装 Python 依赖
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+# 1. 安装 Python 依赖（基于 pyproject.toml / uv.lock，需先安装 uv: pip install uv）
+uv sync --extra dev
 
 # 2. 前端开发环境
 cd front
@@ -218,7 +218,7 @@ cargo tauri build
 ## 文档资源
 
 -   📚 **[项目文档](docs/index.md)**: 完整的项目使用说明和 API 参考
--   📦 **[Debian 打包与部署指南](docs/packaging_deb.md)**: 详细介绍了如何在 Linux 环境下构建 deb 安装包
+-   📦 **[Debian 打包与部署指南](docs/guide/install/packaging_deb.md)**: 详细介绍了如何在 Linux 环境下构建 deb 安装包
 
 ---
 
@@ -404,7 +404,8 @@ ems_simulate/
 │   └── tauri.conf.json
 ├── data/                       # SQLite 数据库
 ├── start_back_end.py          # 后端入口
-└── requirements.txt           # Python依赖
+├── pyproject.toml             # Python 依赖与配置
+└── uv.lock                    # Python 依赖锁定文件
 ```
 
 ---
@@ -424,7 +425,7 @@ class MyDevice(Device):
     def __init__(self):
         super().__init__()
         self.device_type = DeviceType.Other
-    
+
     def setSpecialDataPointValues(self):
         # 设置特殊测点关联逻辑
         pass
@@ -442,21 +443,21 @@ from src.device.protocol.base_handler import ServerHandler
 class MyProtocolHandler(ServerHandler):
     def initialize(self, config):
         pass
-    
+
     async def start(self) -> bool:
         self._is_running = True
         return True
-    
+
     async def stop(self) -> bool:
         self._is_running = False
         return True
-    
+
     def read_value(self, point):
         pass
-    
+
     def write_value(self, point, value):
         pass
-    
+
     def add_points(self, points):
         pass
 ```

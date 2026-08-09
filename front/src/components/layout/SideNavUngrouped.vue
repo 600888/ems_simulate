@@ -1,5 +1,11 @@
 <template>
-  <div class="ungrouped-section" v-if="ungroupedDevices.length > 0">
+  <div
+    class="ungrouped-section"
+    :class="{ 'is-drop-target': isDropTarget }"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
     <div class="ungrouped-header">
       <div class="header-left" @click="$emit('toggle')">
         <el-icon><ArrowRight :class="{ 'is-expanded': expanded }" /></el-icon>
@@ -30,7 +36,11 @@
         </el-dropdown>
       </div>
     </div>
-    <div v-show="expanded" class="ungrouped-list">
+    <div
+      v-if="ungroupedDevices.length"
+      v-show="expanded"
+      class="ungrouped-list"
+    >
       <div
         v-for="device in ungroupedDevices"
         :key="device.id"
@@ -42,7 +52,11 @@
             'is-active':
               currentDeviceName === device.name ||
               selectedNodeKey === `device-${device.name}`,
+            'is-dragging': draggingId === device.id,
           }"
+          draggable="true"
+          @dragstart="onDeviceDragStart($event, device)"
+          @dragend="onDragEnd"
           @click="handleDeviceClick(device)"
         >
           <!-- IEC61850 展开箭头 -->
@@ -239,12 +253,21 @@
         </div>
       </div>
     </div>
+    <div v-else v-show="expanded" class="ungrouped-empty">
+      {{ $t("sidebar.ungroupedEmpty") }}
+    </div>
   </div>
 </template>
 
 <script lang="ts" setup>
 import { ref, watch } from "vue";
 import { getIec61850NodeIcon } from "./iec61850NodeIcons";
+import {
+  readDragPayload,
+  setDragPayload,
+  clearDragPayload,
+  type DeviceDragPayload,
+} from "./deviceDrag";
 import {
   ArrowRight,
   Cpu,
@@ -295,7 +318,76 @@ const emit = defineEmits<{
   (e: "group-command", command: string): void;
   (e: "copy-device", name: string): void;
   (e: "node-click", data: any): void;
+  (e: "device-drop-ungrouped", deviceId: number): void;
+  (e: "group-drop-ungrouped", groupId: number): void;
 }>();
+
+// ========== 拖拽修改设备分组 ==========
+
+const draggingId = ref<number | null>(null);
+const isDropTarget = ref(false);
+
+const onDeviceDragStart = (event: DragEvent, device: any) => {
+  // 从操作按钮区域开始拖动时取消拖拽，避免与编辑/删除/复制按钮误触
+  const target = event.target as HTMLElement | null;
+  if (target?.closest(".node-actions")) {
+    event.preventDefault();
+    return;
+  }
+  setDragPayload(event, {
+    type: "device",
+    id: device.id,
+    name: device.name,
+    groupId: null,
+  });
+  draggingId.value = device.id;
+};
+
+/** 未分组区域可接收：分组（提升为顶级）与仍处于分组中的设备（移出分组） */
+const canAccept = (payload: DeviceDragPayload) => {
+  if (payload.type === "device") return payload.groupId !== null;
+  return true;
+};
+
+const onDragOver = (event: DragEvent) => {
+  const payload = readDragPayload(event);
+  if (!payload || !canAccept(payload)) return;
+  event.preventDefault();
+  event.dataTransfer!.dropEffect = "move";
+  isDropTarget.value = true;
+};
+
+const onDragLeave = (event: DragEvent) => {
+  const related = event.relatedTarget as Node | null;
+  if (
+    related &&
+    event.currentTarget instanceof Node &&
+    event.currentTarget.contains(related)
+  ) {
+    return;
+  }
+  isDropTarget.value = false;
+};
+
+const onDrop = (event: DragEvent) => {
+  const payload = readDragPayload(event);
+  if (!payload || !canAccept(payload)) return;
+  event.preventDefault();
+  clearDragPayload();
+  draggingId.value = null;
+  isDropTarget.value = false;
+  if (payload.type === "device") {
+    emit("device-drop-ungrouped", payload.id);
+  } else {
+    emit("group-drop-ungrouped", payload.id);
+  }
+};
+
+const onDragEnd = () => {
+  clearDragPayload();
+  draggingId.value = null;
+  isDropTarget.value = false;
+};
 
 // IEC61850 设备展开状态
 const expandedIec61850 = ref<Record<string, boolean>>({});
@@ -404,6 +496,27 @@ watch(
   margin: 20px 12px 10px;
   border-top: 1px solid var(--sb-border);
   padding-top: 20px;
+}
+
+/* ===== 拖拽修改设备分组 ===== */
+.ungrouped-item.is-dragging {
+  opacity: 0.4;
+}
+
+.ungrouped-section.is-drop-target {
+  outline: 2px dashed var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+.ungrouped-empty {
+  padding: 16px 14px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  border: 1px dashed var(--sb-border);
+  border-radius: 10px;
 }
 
 .ungrouped-header {
