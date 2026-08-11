@@ -15,7 +15,8 @@ from src.web.api.channel.helpers import (
     is_client_protocol,
     reload_device_instance,
 )
-from src.web.api.exceptions import ConflictError, NotFoundError
+from src.web.api.channel.router import _server_ip_conflicts, _validate_server_endpoint_unique
+from src.web.api.exceptions import ConflictError, NotFoundError, ValidationError
 from src.web.api.schemas import BaseResponse, ChannelIdRequest, CopyDeviceRequest, CopySingleDeviceRequest
 from src.web.log import log
 
@@ -119,6 +120,8 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
     suffix = "" if is_single else req.suffix or ""
     copy_count = 1 if is_single else req.count
     copied_channels = []
+    # 本次复制循环内已创建的服务端端点 (ip, port, name)，用于互查
+    created_server_endpoints: list[tuple[str | None, int, str]] = []
 
     for i in range(1, copy_count + 1):
         ip_offset = 0 if is_single or req.ip_start_offset == 0 else req.ip_start_offset + i - 1
@@ -139,6 +142,32 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
                 raise ConflictError(f"设备编码 '{new_code}' 已存在，请使用其他编码")
             log.warning(f"通道编码 {new_code} 已存在，跳过")
             continue
+
+        # TCP 服务端复制：IP+端口 组合唯一（含 0.0.0.0 通配），
+        # 同时与本次循环内已创建的端点互查；单个复制冲突直接报错，批量复制跳过。
+        is_server_copy = source_channel.get("conn_type", 2) == 2
+        if is_server_copy:
+            try:
+                _validate_server_endpoint_unique(new_ip, new_port)
+            except ValidationError as exc:
+                if is_single:
+                    raise ConflictError(str(exc)) from exc
+                log.warning(f"复制设备 {new_name} 跳过：{exc}")
+                continue
+            conflicting_copy = next(
+                (
+                    copied_name
+                    for copied_ip, copied_port, copied_name in created_server_endpoints
+                    if str(copied_port or "") == str(new_port or "") and _server_ip_conflicts(copied_ip, new_ip)
+                ),
+                None,
+            )
+            if conflicting_copy is not None:
+                message = f"服务端地址 {new_ip or '未指定IP'}:{new_port} 与本次复制的设备 '{conflicting_copy}' 冲突"
+                if is_single:
+                    raise ConflictError(message)
+                log.warning(f"复制设备 {new_name} 跳过：{message}")
+                continue
 
         new_device_id = DeviceService.create_device(
             code=new_code,
@@ -181,6 +210,8 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
         if new_channel_id <= 0:
             log.error(f"创建通道失败: {new_code}")
             continue
+        if is_server_copy:
+            created_server_endpoints.append((new_ip, new_port, new_name))
 
         iec61850_copy = Iec61850CopyResult()
         try:
