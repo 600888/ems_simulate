@@ -92,6 +92,46 @@ def _validate_protocol_connection(protocol_type: int, conn_type: int) -> None:
         raise ValidationError(f"协议 {option['label']} 不支持连接类型 {conn_type}")
 
 
+def _server_ip_conflicts(ip_a: str | None, ip_b: str | None) -> bool:
+    """判断两个服务端 IP 是否互相冲突。
+
+    0.0.0.0（或空值）表示监听所有 IP，与任何具体 IP 同端口都会冲突；
+    否则仅相同 IP 才冲突（如 192.168.0.1 与 192.168.0.2 不冲突）。
+    """
+    a = (ip_a or "").strip()
+    b = (ip_b or "").strip()
+    if a in ("0.0.0.0", "") or b in ("0.0.0.0", ""):
+        return True
+    return a == b
+
+
+def _validate_server_endpoint_unique(
+    ip: str | None,
+    port: int | None,
+    exclude_channel_id: int | None = None,
+) -> None:
+    """校验 TCP 服务端 IP+端口 组合唯一。
+
+    TCP 服务端（conn_type=2）的唯一标识是 IP+端口，而非端口号本身；
+    其中 0.0.0.0 表示监听所有 IP，与任何具体 IP 的同端口均冲突。
+    exclude_channel_id 用于编辑场景排除自身。
+    """
+    if port is None:
+        return
+    for ch in ChannelService.get_all_channels():
+        if ch.get("conn_type") != 2:
+            continue
+        if exclude_channel_id is not None and ch.get("id") == exclude_channel_id:
+            continue
+        if str(ch.get("port") or "") != str(port):
+            continue
+        if not _server_ip_conflicts(ch.get("ip"), ip):
+            continue
+        raise ValidationError(
+            f"服务端地址 {ip or '未指定IP'}:{port} 已被设备 '{ch.get('name')}' 占用，请使用其他 IP 或端口"
+        )
+
+
 @router.post("/protocols", response_model=BaseResponse)
 async def get_protocols():
     """获取支持的协议列表"""
@@ -120,10 +160,7 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
         raise ValidationError(f"设备编码 '{req.code}' 已存在，请使用其他编码")
 
     if req.conn_type == 2:
-        all_channels = await asyncio.to_thread(ChannelService.get_all_channels)
-        for ch in all_channels:
-            if ch.get("conn_type") == 2 and ch.get("port") == req.port:
-                raise ValidationError(f"端口 {req.port} 已被设备 '{ch.get('name')}' 占用，请使用其他端口")
+        _validate_server_endpoint_unique(req.ip, req.port)
 
     params = req.protocol_params
     try:
@@ -339,6 +376,12 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
             requested_updates["model_name"] = req.model_name
     elif protocol_combination_changed:
         requested_updates["model_name"] = None
+
+    # TCP 服务端唯一性检测：IP+端口 组合唯一（排除自身），须在写库前完成
+    if conn_type_to_use == 2:
+        new_ip = req.ip if req.ip is not None else existing.get("ip")
+        new_port = req.port if req.port is not None else existing.get("port")
+        _validate_server_endpoint_unique(new_ip, new_port, exclude_channel_id=channel_id)
 
     # 设备分组变更：group_id 存储在 Device 表，由 DeviceGroupService 统一更新。
     # 注意：移动分组与下方通道更新不在同一事务，任一步失败都会留下部分更新，
