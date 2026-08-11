@@ -2,7 +2,7 @@
   <el-dialog
     v-model="dialogVisible"
     :title="$t('copyDevice.title')"
-    width="480px"
+    width="640px"
     :close-on-click-modal="false"
     @close="handleClose"
     class="modern-dialog"
@@ -108,18 +108,10 @@
             </el-form-item>
 
             <el-form-item :label="$t('copyDevice.ipStart')" prop="ipStart">
-              <div class="ip-segment-input">
-                <template v-for="(_, idx) in 4" :key="idx">
-                  <el-input-number
-                    v-model="form.ipStartSegments[idx]"
-                    :min="0"
-                    :max="255"
-                    :controls="false"
-                    class="ip-segment"
-                  />
-                  <span v-if="idx < 3" class="ip-dot">.</span>
-                </template>
-              </div>
+              <el-input
+                v-model="form.ipStart"
+                :placeholder="$t('copyDevice.targetIpPlaceholder')"
+              />
             </el-form-item>
 
             <el-form-item :label="$t('copyDevice.ipOffsets')">
@@ -279,10 +271,18 @@ const form = reactive({
   suffix: "_COPY",
   count: 2,
   targetGroupId: 0,
-  ipStartSegments: [0, 0, 0, 0],
+  ipStart: "",
   ipOffsets: [0, 0, 0, 1],
   portOffset: 0,
 });
+
+const isValidIpv4 = (value: string): boolean => {
+  const parts = value?.trim().split(".") || [];
+  return (
+    parts.length === 4 &&
+    parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+  );
+};
 
 const rules: FormRules = {
   targetName: [
@@ -307,12 +307,27 @@ const rules: FormRules = {
     },
     {
       validator: (_rule, value: string, callback) => {
-        const parts = value?.trim().split(".") || [];
-        const valid =
-          parts.length === 4 &&
-          parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255);
         callback(
-          valid ? undefined : new Error(t("copyDevice.targetIpInvalid")),
+          isValidIpv4(value)
+            ? undefined
+            : new Error(t("copyDevice.targetIpInvalid")),
+        );
+      },
+      trigger: "blur",
+    },
+  ],
+  ipStart: [
+    {
+      required: true,
+      message: t("copyDevice.targetIpRequired"),
+      trigger: "blur",
+    },
+    {
+      validator: (_rule, value: string, callback) => {
+        callback(
+          isValidIpv4(value)
+            ? undefined
+            : new Error(t("copyDevice.targetIpInvalid")),
         );
       },
       trigger: "blur",
@@ -363,14 +378,13 @@ watch(
       form.targetIp = props.deviceIp || "0.0.0.0";
       form.targetPort = props.devicePort || 502;
       // 默认起始IP = 源IP末段+1，避免第一台复制设备与源设备端点冲突
-      const startParts = (props.deviceIp || "0.0.0.0")
-        .split(".")
-        .map((p) => parseInt(p, 10));
+      const startParts = (props.deviceIp || "0.0.0.0").split(".");
       if (startParts.length === 4) {
-        startParts[3] = startParts[3] + 1 > 255 ? 0 : startParts[3] + 1;
-        form.ipStartSegments = startParts;
+        const lastOctet = parseInt(startParts[3], 10);
+        startParts[3] = String(lastOctet + 1 > 255 ? 0 : lastOctet + 1);
+        form.ipStart = startParts.join(".");
       } else {
-        form.ipStartSegments = [0, 0, 0, 1];
+        form.ipStart = "0.0.0.1";
       }
       form.ipOffsets = [0, 0, 0, 1];
       copyMode.value = "single";
@@ -388,7 +402,9 @@ function getPreviewName(index: number): string {
 }
 
 function getPreviewIp(index: number): string {
-  const values = form.ipStartSegments.map(
+  const startParts = form.ipStart.split(".").map((p) => parseInt(p, 10));
+  if (startParts.length !== 4) return form.ipStart;
+  const values = startParts.map(
     (seg, k) => seg + form.ipOffsets[k] * (index - 1),
   );
   // 256 进制进位：第4段溢出向第3段进位，依此类推
@@ -431,7 +447,7 @@ const handleSubmit = async () => {
               count: form.count,
               prefix: form.prefix,
               suffix: form.suffix,
-              ip_start: form.ipStartSegments.join("."),
+              ip_start: form.ipStart.trim(),
               ip_offsets: form.ipOffsets,
               port_offset: form.portOffset,
               target_group_id:
@@ -467,22 +483,6 @@ const handleClose = () => {
   color: #909399;
   margin-top: 4px;
   line-height: 1.4;
-}
-
-.ip-segment-input {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-
-  .ip-segment {
-    flex: 1;
-  }
-
-  .ip-dot {
-    color: #909399;
-    font-weight: 600;
-  }
 }
 
 .ip-offset-row {
