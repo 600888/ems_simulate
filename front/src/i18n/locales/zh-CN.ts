@@ -441,7 +441,6 @@ export default {
       "将独立复制 ICD/SCD/CID 模型文件，并复制协议参数、TLS、GOOSE Publisher/Receiver、DataSet 和订阅配置；新设备默认保持停止。",
     iec61850Model: "模型：{model}",
     copyPreview: "复制预览",
-    moreDevices: "... 还有 {count} 个设备",
     countRequired: "请输入复制数量",
     startCopy: "开始复制",
     copySuccess: "成功复制 {count} 个设备",

@@ -188,18 +188,11 @@
 
             <el-form-item :label="$t('copyDevice.copyPreview')">
               <div class="preview-list">
-                <div
-                  v-for="i in Math.min(form.count, 5)"
-                  :key="i"
-                  class="preview-item"
-                >
+                <div v-for="i in form.count" :key="i" class="preview-item">
                   <span class="preview-name">{{ getPreviewName(i) }}</span>
                   <span class="preview-ip"
                     >{{ getPreviewIp(i) }}:{{ getPreviewPort(i) }}</span
                   >
-                </div>
-                <div v-if="form.count > 5" class="preview-more">
-                  {{ $t("copyDevice.moreDevices", { count: form.count - 5 }) }}
                 </div>
               </div>
             </el-form-item>
@@ -548,13 +541,6 @@ const handleClose = () => {
   font-size: 13px;
   color: #409eff;
   font-family: monospace;
-}
-
-.preview-more {
-  text-align: center;
-  color: #909399;
-  font-size: 12px;
-  padding-top: 8px;
 }
 
 .dialog-footer {

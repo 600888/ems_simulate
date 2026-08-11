@@ -452,7 +452,6 @@ export default {
       "Creates an independent ICD/SCD/CID model file and copies protocol parameters, TLS, GOOSE publishers/receivers, DataSets, and subscriptions. New devices remain stopped.",
     iec61850Model: "Model: {model}",
     copyPreview: "Copy Preview",
-    moreDevices: "... and {count} more devices",
     countRequired: "Please enter copy count",
     startCopy: "Start Copy",
     copySuccess: "Successfully copied {count} devices",
