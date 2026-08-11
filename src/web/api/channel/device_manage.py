@@ -9,6 +9,7 @@ from src.data.service.iec61850_copy_service import Iec61850CopyResult, Iec61850C
 from src.data.service.point_mapping_service import PointMappingService
 from src.enums.modbus_def import ProtocolType
 from src.web.api.channel.helpers import (
+    apply_ip_offsets,
     configure_builder_network,
     get_device_builder,
     increment_ip,
@@ -125,7 +126,13 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
 
     for i in range(1, copy_count + 1):
         ip_offset = 0 if is_single or req.ip_start_offset == 0 else req.ip_start_offset + i - 1
-        new_ip = str(req.target_ip) if is_single else increment_ip(source_ip, ip_offset)
+        if is_single:
+            new_ip = str(req.target_ip)
+        elif req.ip_start is not None and req.ip_offsets is not None:
+            # 起始IP + 各段独立偏移：第 i 台设备 = 起始IP + 各段偏移 × (i-1)
+            new_ip = apply_ip_offsets(req.ip_start, req.ip_offsets, i)
+        else:
+            new_ip = increment_ip(source_ip, ip_offset)
         new_port = (
             req.target_port if is_single else source_port + req.port_offset * i if req.port_offset > 0 else source_port
         )

@@ -107,21 +107,41 @@
               />
             </el-form-item>
 
-            <el-form-item
-              :label="$t('copyDevice.ipOffset')"
-              prop="ipStartOffset"
-            >
-              <el-input-number
-                v-model="form.ipStartOffset"
-                :min="0"
-                :max="254"
-                style="width: 100%"
-              />
+            <el-form-item :label="$t('copyDevice.ipStart')" prop="ipStart">
+              <div class="ip-segment-input">
+                <template v-for="(_, idx) in 4" :key="idx">
+                  <el-input-number
+                    v-model="form.ipStartSegments[idx]"
+                    :min="0"
+                    :max="255"
+                    :controls="false"
+                    class="ip-segment"
+                  />
+                  <span v-if="idx < 3" class="ip-dot">.</span>
+                </template>
+              </div>
+            </el-form-item>
+
+            <el-form-item :label="$t('copyDevice.ipOffsets')">
+              <div class="ip-offset-row">
+                <div v-for="(_, idx) in 4" :key="idx" class="ip-offset-item">
+                  <span class="ip-offset-label">{{
+                    $t("copyDevice.offsetSegment", { n: idx + 1 })
+                  }}</span>
+                  <el-input-number
+                    v-model="form.ipOffsets[idx]"
+                    :min="0"
+                    :max="255"
+                    :controls="false"
+                    size="small"
+                  />
+                </div>
+              </div>
               <div class="form-tip">
                 {{
                   $t("copyDevice.ipPreview", {
-                    ip: sourceIp,
-                    newIp: previewFirstIp,
+                    ip: previewFirstIp,
+                    newIp: getPreviewIp(2),
                   })
                 }}
               </div>
@@ -259,7 +279,8 @@ const form = reactive({
   suffix: "_COPY",
   count: 2,
   targetGroupId: 0,
-  ipStartOffset: 1,
+  ipStartSegments: [0, 0, 0, 0],
+  ipOffsets: [0, 0, 0, 1],
   portOffset: 0,
 });
 
@@ -315,7 +336,6 @@ const dialogVisible = computed({
 });
 
 const sourceDeviceName = computed(() => props.deviceName || "");
-const sourceIp = computed(() => props.deviceIp || "0.0.0.0");
 const sourcePort = computed(() => props.devicePort || 502);
 const sourcePointCount = computed(() => props.pointCount || 0);
 const isIec61850 = computed(() => props.protocolType === 4);
@@ -342,6 +362,17 @@ watch(
       form.targetCode = `${props.deviceCode}_COPY`;
       form.targetIp = props.deviceIp || "0.0.0.0";
       form.targetPort = props.devicePort || 502;
+      // 默认起始IP = 源IP末段+1，避免第一台复制设备与源设备端点冲突
+      const startParts = (props.deviceIp || "0.0.0.0")
+        .split(".")
+        .map((p) => parseInt(p, 10));
+      if (startParts.length === 4) {
+        startParts[3] = startParts[3] + 1 > 255 ? 0 : startParts[3] + 1;
+        form.ipStartSegments = startParts;
+      } else {
+        form.ipStartSegments = [0, 0, 0, 1];
+      }
+      form.ipOffsets = [0, 0, 0, 1];
       copyMode.value = "single";
       formRef.value?.clearValidate();
     }
@@ -357,19 +388,20 @@ function getPreviewName(index: number): string {
 }
 
 function getPreviewIp(index: number): string {
-  if (form.ipStartOffset === 0) {
-    return sourceIp.value;
+  const values = form.ipStartSegments.map(
+    (seg, k) => seg + form.ipOffsets[k] * (index - 1),
+  );
+  // 256 进制进位：第4段溢出向第3段进位，依此类推
+  for (let k = 3; k > 0; k--) {
+    if (values[k] > 255) {
+      values[k - 1] += Math.floor(values[k] / 256);
+      values[k] %= 256;
+    }
   }
-  try {
-    const parts = sourceIp.value.split(".");
-    if (parts.length !== 4) return sourceIp.value;
-    const lastOctet = parseInt(parts[3], 10);
-    const newOctet = lastOctet + form.ipStartOffset + index - 1;
-    parts[3] = String(newOctet > 255 ? newOctet - 256 : newOctet);
-    return parts.join(".");
-  } catch {
-    return sourceIp.value;
+  if (values[0] > 255) {
+    return t("copyDevice.ipOutOfRange");
   }
+  return values.join(".");
 }
 
 function getPreviewPort(index: number): number {
@@ -399,7 +431,8 @@ const handleSubmit = async () => {
               count: form.count,
               prefix: form.prefix,
               suffix: form.suffix,
-              ip_start_offset: form.ipStartOffset,
+              ip_start: form.ipStartSegments.join("."),
+              ip_offsets: form.ipOffsets,
               port_offset: form.portOffset,
               target_group_id:
                 form.targetGroupId === 0 ? null : form.targetGroupId,
@@ -434,6 +467,42 @@ const handleClose = () => {
   color: #909399;
   margin-top: 4px;
   line-height: 1.4;
+}
+
+.ip-segment-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+
+  .ip-segment {
+    flex: 1;
+  }
+
+  .ip-dot {
+    color: #909399;
+    font-weight: 600;
+  }
+}
+
+.ip-offset-row {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.ip-offset-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+}
+
+.ip-offset-label {
+  font-size: 11px;
+  color: #909399;
+  white-space: nowrap;
 }
 
 .iec61850-model {

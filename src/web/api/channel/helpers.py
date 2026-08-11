@@ -188,3 +188,28 @@ def increment_ip(ip: str, offset: int) -> str:
         return ".".join(parts)
     except Exception:
         return ip
+
+
+def apply_ip_offsets(start_ip: str, offsets: list[int], index: int) -> str:
+    """按起始 IP 与各段独立偏移生成第 index 台设备的 IP。
+
+    index 从 1 开始，第 index 台设备第 k 段 = start_ip[k] + offsets[k] * (index - 1)。
+    段值按 256 进制从第 4 段向第 1 段进位；第 1 段溢出视为超出 IPv4 范围。
+    """
+    try:
+        parts = [int(p) for p in start_ip.split(".")]
+    except (AttributeError, ValueError) as exc:
+        raise ValueError(f"无效的起始IP: {start_ip}") from exc
+    if len(parts) != 4 or any(not (0 <= p <= 255) for p in parts):
+        raise ValueError(f"无效的起始IP: {start_ip}")
+    if len(offsets) != 4:
+        raise ValueError("IP偏移必须包含4个段的偏移量")
+
+    values = [parts[k] + offsets[k] * (index - 1) for k in range(4)]
+    for k in range(3, 0, -1):
+        if values[k] > 255:
+            values[k - 1] += values[k] // 256
+            values[k] %= 256
+    if values[0] > 255:
+        raise ValueError(f"起始IP {start_ip} 偏移后第 {index} 台设备超出 IPv4 范围")
+    return ".".join(str(v) for v in values)

@@ -42,6 +42,10 @@ export interface CopyDeviceRequest {
   count: number;
   prefix?: string;
   suffix?: string;
+  /** 起始IP（4段模板），与 ip_offsets 配合使用；提供时按各段偏移生成IP */
+  ip_start?: string;
+  /** 各段独立偏移量（长度4，0-255） */
+  ip_offsets?: number[];
   ip_start_offset: number;
   port_offset?: number;
   target_group_id?: number | null;
