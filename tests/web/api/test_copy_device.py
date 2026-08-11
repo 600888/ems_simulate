@@ -48,6 +48,16 @@ def test_copy_device_request_rejects_negative_ip_offset():
         CopyDeviceRequest(channel_id=1, ip_start_offset=-1)
 
 
+def test_copy_device_request_accepts_max_count_256():
+    request = CopyDeviceRequest(channel_id=1, count=256)
+    assert request.count == 256
+
+
+def test_copy_device_request_rejects_count_over_256():
+    with pytest.raises(ValidationError):
+        CopyDeviceRequest(channel_id=1, count=257)
+
+
 def test_single_copy_uses_explicit_target_identity_and_endpoint():
     request = CopySingleDeviceRequest(
         channel_id=1,

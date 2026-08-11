@@ -72,7 +72,7 @@ class CopyDeviceRequest(BaseModel):
     """复制设备请求"""
 
     channel_id: int = Field(..., description="源通道ID")
-    count: int = Field(2, ge=1, le=100, description="复制数量（1-100）")
+    count: int = Field(2, ge=1, le=256, description="复制数量（1-256）")
     ip_start_offset: int = Field(1, ge=0, description="IP起始偏移量（仅作用于最后一段，兼容旧逻辑）")
     prefix: str | None = Field(None, description="编码前缀")
     suffix: str | None = Field(None, description="编码后缀")

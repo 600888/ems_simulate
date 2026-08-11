@@ -102,7 +102,7 @@
               <el-input-number
                 v-model="form.count"
                 :min="1"
-                :max="100"
+                :max="256"
                 style="width: 100%"
               />
             </el-form-item>
