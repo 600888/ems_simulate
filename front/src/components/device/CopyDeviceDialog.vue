@@ -115,7 +115,7 @@
             </el-form-item>
 
             <el-form-item :label="$t('copyDevice.ipOffsets')">
-              <div class="ip-offset-grid">
+              <div class="ip-offset-row">
                 <div v-for="(_, idx) in 4" :key="idx" class="ip-offset-item">
                   <span class="ip-offset-label">{{
                     $t("copyDevice.offsetSegment", { n: idx + 1 })
@@ -126,7 +126,7 @@
                     :max="255"
                     :controls="false"
                     size="small"
-                    style="width: 100%"
+                    class="ip-offset-input"
                   />
                 </div>
               </div>
@@ -486,26 +486,28 @@ const handleClose = () => {
   line-height: 1.4;
 }
 
-.ip-offset-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px 16px;
+.ip-offset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
 }
 
 .ip-offset-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  flex: 1;
   min-width: 0;
+}
 
-  .el-input-number {
-    flex: 1;
-  }
+.ip-offset-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .ip-offset-label {
-  font-size: 12px;
+  font-size: 11px;
   color: #909399;
   white-space: nowrap;
 }
