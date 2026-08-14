@@ -77,6 +77,10 @@ export default {
     confirmCascadeDeleteGroup:
       "将永久删除分组“{name}”、全部子分组，以及其中的所有设备、通道和测点数据。此操作不可恢复，是否继续？",
     confirmCascadeDelete: "永久删除",
+    deleteAllDevices: "删除全部设备",
+    deleteAllDevicesTitle: "危险操作：删除全部",
+    confirmDeleteAllUngroupedDevices:
+      "将永久删除所有未分组设备、通道和测点数据。此操作不可恢复，是否继续？",
     confirmDeleteDevice: '确定删除 "{name}"？',
     success: "成功",
     deleteSuccess: "删除成功",
@@ -103,6 +107,8 @@ export default {
     moveDeviceConfirmTitle: "移动设备",
     moveDeviceConfirmSummary: "将设备“{device}”移动至：",
     ungroupedTarget: "未分组",
+    dropToTopLevel: "拖到此处提升为顶层分组",
+    dropToUngrouped: "拖到此处移出分组",
     originalGroup: "原分组",
     newGroup: "新分组",
     topLevelGroup: "顶级",
@@ -391,6 +397,7 @@ export default {
     groupCode: "组编码",
     groupName: "组名称",
     parentGroup: "父级设备组",
+    topLevel: "顶层",
     description: "描述",
     codePlaceholder: "请输入设备组编码，如 GROUP1",
     namePlaceholder: "请输入设备组名称",

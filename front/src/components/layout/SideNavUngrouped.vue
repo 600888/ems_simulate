@@ -31,6 +31,13 @@
               <el-dropdown-item command="stopAll" :icon="VideoPause">{{
                 $t("sidebar.stopAll")
               }}</el-dropdown-item>
+              <el-dropdown-item
+                command="deleteAllDevices"
+                :icon="Delete"
+                divided
+                style="color: var(--el-color-danger)"
+                >{{ $t("sidebar.deleteAllDevices") }}</el-dropdown-item
+              >
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -319,7 +326,6 @@ const emit = defineEmits<{
   (e: "copy-device", name: string): void;
   (e: "node-click", data: any): void;
   (e: "device-drop-ungrouped", deviceId: number): void;
-  (e: "group-drop-ungrouped", groupId: number): void;
 }>();
 
 // ========== 拖拽修改设备分组 ==========
@@ -343,11 +349,9 @@ const onDeviceDragStart = (event: DragEvent, device: any) => {
   draggingId.value = device.id;
 };
 
-/** 未分组区域可接收：分组（提升为顶级）与仍处于分组中的设备（移出分组） */
-const canAccept = (payload: DeviceDragPayload) => {
-  if (payload.type === "device") return payload.groupId !== null;
-  return true;
-};
+/** 未分组区域仅接收仍处于分组中的设备（移出分组）；分组提升为顶层请拖到分组树顶部的顶层落点 */
+const canAccept = (payload: DeviceDragPayload) =>
+  payload.type === "device" && payload.groupId !== null;
 
 const onDragOver = (event: DragEvent) => {
   const payload = readDragPayload(event);
@@ -378,8 +382,6 @@ const onDrop = (event: DragEvent) => {
   isDropTarget.value = false;
   if (payload.type === "device") {
     emit("device-drop-ungrouped", payload.id);
-  } else {
-    emit("group-drop-ungrouped", payload.id);
   }
 };
 

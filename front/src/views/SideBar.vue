@@ -35,6 +35,8 @@
         @copy-device="handleCopyDevice"
         @device-drop="handleDeviceDrop"
         @group-drop="handleGroupDrop"
+        @group-drop-top="handleGroupDropToTop"
+        @device-drop-top="handleDeviceDropUngrouped"
       />
 
       <!-- 4. 未分组设备 -->
@@ -53,7 +55,6 @@
         @copy-device="handleCopyDeviceByName"
         @node-click="handleUngroupedNodeClick"
         @device-drop-ungrouped="handleDeviceDropUngrouped"
-        @group-drop-ungrouped="handleGroupDropUngrouped"
       />
     </el-scrollbar>
 
@@ -587,8 +588,57 @@ const handleUngroupedCommand = async (command: string) => {
     },
     startAll: () => handleBatchOperation(0, "start"),
     stopAll: () => handleBatchOperation(0, "stop"),
+    deleteAllDevices: () => handleDeleteAllUngroupedDevices(),
   };
   actions[command]?.();
+};
+
+/** 删除全部未分组设备（含通道与测点数据），与分组设备的级联删除保持一致 */
+const handleDeleteAllUngroupedDevices = async () => {
+  if (!ungroupedDevices.value.length) return;
+  await ElMessageBox.confirm(
+    t("sidebar.confirmDeleteAllUngroupedDevices"),
+    t("sidebar.deleteAllDevicesTitle"),
+    {
+      confirmButtonText: t("sidebar.confirmCascadeDelete"),
+      cancelButtonText: t("common.cancel"),
+      type: "error",
+      confirmButtonClass: "el-button--danger",
+    },
+  );
+  const channels = await getChannelList();
+  const deviceNames = ungroupedDevices.value.map((d) => d.name);
+  for (const deviceName of deviceNames) {
+    const channel = channels.find((c) => c.name === deviceName);
+    if (channel) {
+      await deleteChannel(channel.id);
+    }
+    // 关闭设备标签页并移除动态路由
+    const path = `/device/${deviceName}`;
+    const targetView = visitedViews.value.find((v) => v.path === path);
+    if (targetView) {
+      await delView(targetView);
+    }
+    if (menuRouter.hasRoute(deviceName)) {
+      menuRouter.removeRoute(deviceName);
+    }
+  }
+  if (
+    currentDeviceName.value &&
+    deviceNames.includes(currentDeviceName.value)
+  ) {
+    currentDeviceName.value = "";
+    currentNodeKey.value = "";
+    localStorage.removeItem("activeRoute");
+    const latestView = visitedViews.value.slice(-1)[0];
+    if (latestView) {
+      router.push(latestView.path as string);
+    } else {
+      router.push("/");
+    }
+  }
+  ElMessage.success(t("sidebar.deleteSuccess"));
+  await fetchDeviceGroupTree();
 };
 
 const handleBatchOperation = async (
@@ -1006,8 +1056,8 @@ const handleGroupDrop = async (groupId: number, targetGroupId: number) => {
   }
 };
 
-/** 分组拖到未分组区域（提升为顶级分组） */
-const handleGroupDropUngrouped = async (groupId: number) => {
+/** 分组拖到分组树顶部的顶层落点（提升为顶级分组） */
+const handleGroupDropToTop = async (groupId: number) => {
   try {
     await confirmMoveGroup(groupId, t("sidebar.topLevelGroup"));
     await updateDeviceGroup(groupId, { parent_id: null });

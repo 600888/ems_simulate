@@ -96,7 +96,8 @@ async def create_group(request: DeviceGroupCreateRequest):
 @device_group_router.post("/update")
 async def update_group(body: DeviceGroupUpdateRequest):
     """更新设备组"""
-    update_data = {k: v for k, v in body.model_dump().items() if v is not None and k != "group_id"}
+    # exclude_unset 区分"未传"与"显式传 null"：parent_id 显式传 null 表示提升为顶层
+    update_data = {k: v for k, v in body.model_dump(exclude_unset=True).items() if k != "group_id"}
     if not update_data:
         raise ValidationError("没有提供更新数据")
 

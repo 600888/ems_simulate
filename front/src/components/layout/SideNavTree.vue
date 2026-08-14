@@ -1,4 +1,21 @@
 <template>
+  <!-- 拖拽分组时显示的顶层落点：拖到此处提升为顶层分组。
+       用 v-show 而非 v-if：dragstart 期间同步插入 DOM 节点会取消浏览器原生拖拽 -->
+  <div
+    v-show="isGroupDragging"
+    class="top-level-drop-zone"
+    :class="{ 'is-over': isTopLevelDropActive }"
+    @dragover="onTopLevelDragOver"
+    @dragleave="onTopLevelDragLeave"
+    @drop="onTopLevelDrop"
+  >
+    <el-icon class="top-level-drop-icon"><Top /></el-icon>
+    <span>{{
+      draggingDeviceInGroup
+        ? $t("sidebar.dropToUngrouped")
+        : $t("sidebar.dropToTopLevel")
+    }}</span>
+  </div>
   <el-tree
     ref="treeRef"
     :data="treeData"
@@ -22,6 +39,10 @@
           'is-iec61850-ld': data.iec61850Level === 'ld',
           'is-iec61850-ln': data.iec61850Level === 'ln',
           'is-dlt645-child': data.isDlt645Child,
+          'is-dlt645-category':
+            data.isDlt645Child && data.dlt645Settlement === undefined,
+          'is-dlt645-settlement':
+            data.isDlt645Child && data.dlt645Settlement !== undefined,
           'is-draggable': isDraggableNode(data),
           'is-dragging': isDraggingNode(data),
           'is-drop-target': isDropTargetNode(data),
@@ -123,7 +144,7 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref, watch, nextTick } from "vue";
+import { onMounted, ref, watch, nextTick, computed } from "vue";
 import { ElTree } from "element-plus";
 import { getIec61850NodeIcon } from "./iec61850NodeIcons";
 import {
@@ -147,6 +168,7 @@ import {
   Coin,
   Collection,
   Calendar,
+  Top,
 } from "@element-plus/icons-vue";
 
 const props = defineProps<{
@@ -165,6 +187,8 @@ const emit = defineEmits<{
   (e: "copy-device", data: any): void;
   (e: "device-drop", deviceId: number, groupId: number): void;
   (e: "group-drop", groupId: number, targetGroupId: number): void;
+  (e: "group-drop-top", groupId: number): void;
+  (e: "device-drop-top", deviceId: number): void;
 }>();
 
 const treeRef = ref<InstanceType<typeof ElTree>>();
@@ -218,6 +242,16 @@ const isDraggableNode = (data: any) =>
 
 const draggingId = ref<number | null>(null);
 const dropTargetId = ref<number | null>(null);
+/** 当前拖拽的分组 id（用于显示顶层落点） */
+const draggingGroupId = ref<number | null>(null);
+/** 当前拖拽的设备是否位于分组内（设备拖到顶层落点 = 移出分组） */
+const draggingDeviceInGroup = ref(false);
+/** 分组是否悬停在顶层落点上 */
+const isTopLevelDropActive = ref(false);
+/** 是否显示顶层落点：拖拽分组（提升为顶层）或拖拽分组内设备（移出分组） */
+const isGroupDragging = computed(
+  () => draggingGroupId.value !== null || draggingDeviceInGroup.value,
+);
 
 const isDraggingNode = (data: any) =>
   draggingId.value !== null && data.id === draggingId.value;
@@ -242,6 +276,13 @@ const onDragStart = (event: DragEvent, data: any) => {
       };
   setDragPayload(event, payload);
   draggingId.value = data.id;
+  // 延迟设置拖拽状态：dragstart 期间同步更新 DOM（哪怕只是 display）可能中断浏览器原生拖拽
+  setTimeout(() => {
+    if (draggingId.value === data.id) {
+      draggingGroupId.value = data.isGroup ? data.id : null;
+      draggingDeviceInGroup.value = !data.isGroup && payload.groupId != null;
+    }
+  }, 0);
 };
 
 /** 判断 targetId 是否位于 sourceId 分组（不含自身）的子孙分组中 */
@@ -315,6 +356,9 @@ const onDrop = (event: DragEvent, data: any) => {
   clearDragPayload();
   draggingId.value = null;
   dropTargetId.value = null;
+  draggingGroupId.value = null;
+  draggingDeviceInGroup.value = false;
+  isTopLevelDropActive.value = false;
   if (payload.type === "device") {
     emit("device-drop", payload.id, data.id);
   } else {
@@ -326,6 +370,46 @@ const onDragEnd = () => {
   clearDragPayload();
   draggingId.value = null;
   dropTargetId.value = null;
+  draggingGroupId.value = null;
+  draggingDeviceInGroup.value = false;
+  isTopLevelDropActive.value = false;
+};
+
+/** 顶层落点可接收：分组（提升为顶层）与分组内的设备（移出分组） */
+const isTopLevelDropValid = (payload: DeviceDragPayload | null): boolean =>
+  !!payload &&
+  (payload.type === "group" ||
+    (payload.type === "device" && payload.groupId != null));
+
+const onTopLevelDragOver = (event: DragEvent) => {
+  const payload = readDragPayload(event);
+  if (!payload) return;
+  if (!isTopLevelDropValid(payload)) return;
+  event.preventDefault();
+  event.dataTransfer!.dropEffect = "move";
+  isTopLevelDropActive.value = true;
+};
+
+const onTopLevelDragLeave = () => {
+  isTopLevelDropActive.value = false;
+};
+
+const onTopLevelDrop = (event: DragEvent) => {
+  const payload = readDragPayload(event);
+  if (!payload) return;
+  if (!isTopLevelDropValid(payload)) return;
+  event.preventDefault();
+  clearDragPayload();
+  draggingId.value = null;
+  dropTargetId.value = null;
+  draggingGroupId.value = null;
+  draggingDeviceInGroup.value = false;
+  isTopLevelDropActive.value = false;
+  if (payload.type === "device") {
+    emit("device-drop-top", payload.id);
+  } else {
+    emit("group-drop-top", payload.id);
+  }
 };
 
 const expandKeys = () => {
@@ -375,6 +459,32 @@ watch(() => props.currentNodeKey, setCurrentKey);
   --el-tree-node-hover-bg-color: var(--item-hover-bg);
 }
 
+/* 拖拽分组时的顶层落点 */
+.top-level-drop-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 12px 8px;
+  padding: 8px 12px;
+  border: 1.5px dashed var(--sb-border);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  cursor: copy;
+  transition: all 0.2s;
+}
+
+.top-level-drop-zone.is-over {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--item-active-bg);
+}
+
+.top-level-drop-icon {
+  font-size: 15px;
+}
+
 .device-tree :deep(.el-tree-node) {
   background-color: transparent !important;
 }
@@ -407,6 +517,19 @@ watch(() => props.currentNodeKey, setCurrentKey);
   margin-bottom: 1px;
 }
 
+/* dlt645 子节点行高：与 IEC61850 保持一致（category → 32px，settlement → 28px） */
+.device-tree :deep(.el-tree-node__content:has(> .is-dlt645-category)) {
+  height: 32px;
+  border-radius: 8px;
+  margin-bottom: 2px;
+}
+
+.device-tree :deep(.el-tree-node__content:has(> .is-dlt645-settlement)) {
+  height: 28px;
+  border-radius: 6px;
+  margin-bottom: 1px;
+}
+
 .device-tree :deep(.el-tree-node.is-current > .el-tree-node__content) {
   background: var(--item-active-bg) !important;
   color: var(--color-primary) !important;
@@ -428,7 +551,8 @@ watch(() => props.currentNodeKey, setCurrentKey);
   color: var(--text-primary);
 }
 
-.tree-node-content.is-iec61850-child {
+.tree-node-content.is-iec61850-child,
+.tree-node-content.is-dlt645-child {
   padding-left: 4px;
 }
 
@@ -466,6 +590,30 @@ watch(() => props.currentNodeKey, setCurrentKey);
   color: var(--text-secondary);
   font-size: 12px;
   margin-right: 6px;
+}
+
+/* dlt645 category 层 - 与 IEC61850 category 保持一致 */
+.tree-node-content.is-dlt645-category .node-label {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.tree-node-content.is-dlt645-category .node-icon {
+  color: var(--color-primary);
+  font-size: 16px;
+  margin-right: 10px;
+}
+
+/* dlt645 settlement 层 - 与 IEC61850 LD 层保持一致 */
+.tree-node-content.is-dlt645-settlement .node-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.tree-node-content.is-dlt645-settlement .node-icon {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-right: 8px;
 }
 
 .tree-node-content.is-iec61850-device {

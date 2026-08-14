@@ -77,6 +77,10 @@ export default {
     confirmCascadeDeleteGroup:
       'This will permanently delete group "{name}", all child groups, and every device, channel, and point inside them. This cannot be undone. Continue?',
     confirmCascadeDelete: "Permanently Delete",
+    deleteAllDevices: "Delete All Devices",
+    deleteAllDevicesTitle: "Danger: Delete All",
+    confirmDeleteAllUngroupedDevices:
+      "All ungrouped devices, channels, and point data will be permanently deleted. This cannot be undone. Continue?",
     confirmDeleteDevice: 'Delete "{name}"?',
     success: "Success",
     deleteSuccess: "Deleted successfully",
@@ -103,6 +107,8 @@ export default {
     moveDeviceConfirmTitle: "Move Device",
     moveDeviceConfirmSummary: 'Move device "{device}" to:',
     ungroupedTarget: "Ungrouped",
+    dropToTopLevel: "Drop here to move to top level",
+    dropToUngrouped: "Drop here to ungroup",
     originalGroup: "Original Group",
     newGroup: "New Group",
     topLevelGroup: "Top Level",
@@ -402,6 +408,7 @@ export default {
     groupCode: "Group Code",
     groupName: "Group Name",
     parentGroup: "Parent Group",
+    topLevel: "Top Level",
     description: "Description",
     codePlaceholder: "Enter group code, e.g. GROUP1",
     namePlaceholder: "Enter group name",
