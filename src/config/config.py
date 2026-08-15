@@ -33,6 +33,7 @@ class Config:
     data_source: DataSource = DataSource.Db
 
     # Web服务配置
+    web_host: str = "127.0.0.1"  # 服务监听地址，默认仅本机访问
     web_port: int = 8991
 
     @classmethod
@@ -67,6 +68,7 @@ class Config:
 
                 # Server 配置
                 if "server" in config:
+                    cls.web_host = config["server"].get("host", cls.web_host)
                     cls.web_port = int(config["server"].get("port", cls.web_port))
             else:
                 print(f"Warning: Config file {config_file} not found, using defaults")

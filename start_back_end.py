@@ -79,6 +79,7 @@ if __name__ == "__main__":
     from fastapi.staticfiles import StaticFiles
     import uvicorn
 
+    from src.config.config import Config
     from src.web.app import app
 
     # 挂载静态文件（前端打包产物）
@@ -91,7 +92,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "src.web.app:app",
-        host="127.0.0.1",
+        host=Config.web_host,
         port=args.port,
         log_level="info",
         reload=False,
