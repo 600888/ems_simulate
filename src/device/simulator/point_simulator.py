@@ -21,6 +21,9 @@ class PointSimulator:
 
     def simulate(self):
         """模拟测点值变化"""
+        # 方式为"不模拟"（监视用）：测点已在模拟线程中，但不改变其值
+        if self.simulate_method == SimulateMethod.NoSimulation:
+            return
         # 如果测点被映射锁定，则不进行模拟
         if self.point.is_locked_by_mapping:
             return

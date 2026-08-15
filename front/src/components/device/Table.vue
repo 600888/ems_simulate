@@ -1622,6 +1622,11 @@ const funcCodeToolTip = FUNC_CODE_TOOLTIP;
   border: none;
 }
 
+/* 去掉展开单元格默认的大内边距（20px 50px），消除展开区上方间隙 */
+.custom-table :deep(.el-table__expanded-cell) {
+  padding: 0;
+}
+
 /* 配置与控制区域改为左右分布 */
 .control-grid {
   display: flex;

@@ -1,0 +1,3261 @@
+{
+  "version": "2.17",
+  "children": [
+    {
+      "type": "frame",
+      "id": "bi8Au",
+      "x": 0,
+      "y": 0,
+      "name": "模拟配置对话框设计",
+      "clip": true,
+      "width": 1120,
+      "height": 1560,
+      "fill": "$bg-main",
+      "layout": "none",
+      "children": [
+        {
+          "type": "frame",
+          "id": "uburx",
+          "x": 10,
+          "y": 40,
+          "name": "模拟配置对话框",
+          "clip": true,
+          "width": 1100,
+          "height": 700,
+          "fill": "$panel",
+          "cornerRadius": 16,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#0f172a2e",
+            "offset": {
+              "x": 0,
+              "y": 12
+            },
+            "blur": 40
+          },
+          "layout": "vertical",
+          "children": [
+            {
+              "type": "frame",
+              "id": "G4vFd",
+              "name": "标题栏",
+              "width": "fill_container",
+              "height": 56,
+              "padding": [
+                0,
+                24
+              ],
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "a7OCtg",
+                  "name": "标题组",
+                  "gap": 10,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "ctdHt",
+                      "name": "标题图标",
+                      "width": 20,
+                      "height": 20,
+                      "icon": "activity",
+                      "library": "lucide",
+                      "fill": "$primary"
+                    },
+                    {
+                      "type": "text",
+                      "id": "s9l2QZ",
+                      "name": "标题",
+                      "fill": "$text-primary",
+                      "content": "模拟配置",
+                      "fontFamily": "$font-body",
+                      "fontSize": 17,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "BMViy",
+                  "name": "标题右侧组",
+                  "gap": 16,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "LYqzD",
+                      "name": "设备名",
+                      "fill": "$text-secondary",
+                      "content": "DTU-01 · 台区配电终端",
+                      "fontFamily": "$font-body",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "eMlKC",
+                      "name": "关闭按钮",
+                      "width": 30,
+                      "height": 30,
+                      "cornerRadius": 8,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "o1CGC1",
+                          "name": "关闭图标",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "x",
+                          "library": "lucide",
+                          "fill": "$text-secondary"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "gQgpk",
+              "name": "标题栏分隔线",
+              "fill": "$border",
+              "width": "fill_container",
+              "height": 1
+            },
+            {
+              "type": "frame",
+              "id": "dI9vb",
+              "name": "页签栏",
+              "width": "fill_container",
+              "height": 48,
+              "gap": 36,
+              "padding": [
+                0,
+                24
+              ],
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "ygncc",
+                  "name": "页签-测点选择",
+                  "width": 88,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "hJfsJ",
+                      "name": "测点选择文本",
+                      "fill": "$primary",
+                      "content": "测点选择",
+                      "fontFamily": "$font-body",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "k4Dfj1",
+                      "name": "选中下划线",
+                      "fill": "$primary",
+                      "width": 44,
+                      "height": 2
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "MJrel",
+                  "name": "页签-模拟数据",
+                  "width": 88,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "padding": [
+                    0,
+                    2
+                  ],
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "c4Dlof",
+                      "name": "模拟数据文本",
+                      "fill": "$text-secondary",
+                      "content": "模拟数据",
+                      "fontFamily": "$font-body",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "d0OXS",
+                      "name": "下划线占位",
+                      "fill": "#00000000",
+                      "width": 44,
+                      "height": 2
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "mSPog",
+              "name": "内容区",
+              "width": "fill_container",
+              "height": "fill_container",
+              "gap": 16,
+              "padding": [
+                20,
+                24
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "HvOpN",
+                  "name": "左侧测点树面板",
+                  "clip": true,
+                  "width": 360,
+                  "height": "fill_container",
+                  "fill": "$panel",
+                  "cornerRadius": 8,
+                  "stroke": "$border",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "UK7k6",
+                      "name": "搜索栏",
+                      "width": "fill_container",
+                      "height": 44,
+                      "fill": "$bg-subtle",
+                      "stroke": "$border",
+                      "strokeWidth": {
+                        "bottom": 1
+                      },
+                      "gap": 8,
+                      "padding": [
+                        0,
+                        12
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "UP4Jl",
+                          "name": "搜索图标",
+                          "width": 15,
+                          "height": 15,
+                          "icon": "search",
+                          "library": "lucide",
+                          "fill": "$text-muted"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Oqxwa",
+                          "name": "搜索占位",
+                          "fill": "$text-muted",
+                          "content": "搜索测点名称或编码",
+                          "fontFamily": "$font-body",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "bioOX",
+                      "name": "测点树",
+                      "width": "fill_container",
+                      "height": "fill_container",
+                      "layout": "vertical",
+                      "padding": [
+                        6,
+                        0
+                      ],
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "yDVWu",
+                          "name": "分组-遥测 (YC)",
+                          "width": "fill_container",
+                          "height": 32,
+                          "gap": 6,
+                          "padding": [
+                            0,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "WCSIh",
+                              "name": "展开箭头",
+                              "width": 14,
+                              "height": 14,
+                              "icon": "chevron-down",
+                              "library": "lucide",
+                              "fill": "$text-muted"
+                            },
+                            {
+                              "type": "text",
+                              "id": "TlSd3",
+                              "name": "分组名",
+                              "fill": "$text-primary",
+                              "content": "遥测 (YC)",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "m5qtvS",
+                              "name": "数量标签",
+                              "fill": "#000000",
+                              "cornerRadius": 10,
+                              "padding": [
+                                1,
+                                7
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "SQ0WM",
+                                  "name": "数量",
+                                  "fill": "$text-secondary",
+                                  "content": "8",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "wxlkd",
+                          "name": "测点-A相电压",
+                          "width": "fill_container",
+                          "height": 34,
+                          "fill": "$primary-soft",
+                          "cornerRadius": 6,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            10,
+                            0,
+                            32
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "AUJln",
+                              "name": "复选框",
+                              "width": 16,
+                              "height": 16,
+                              "fill": "$primary",
+                              "cornerRadius": 4,
+                              "stroke": "$primary",
+                              "strokeWidth": 1,
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "VUwfG",
+                                  "name": "勾选",
+                                  "width": 11,
+                                  "height": 11,
+                                  "icon": "check",
+                                  "library": "lucide",
+                                  "fill": "#ffffff"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "m9hd5S",
+                              "name": "测点名",
+                              "fill": "$text-primary",
+                              "content": "A相电压",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "otsPX",
+                              "name": "测点码",
+                              "fill": "$text-muted",
+                              "content": "YC0001",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "K6YZkQ",
+                          "name": "测点-B相电压",
+                          "width": "fill_container",
+                          "height": 34,
+                          "fill": "#00000000",
+                          "cornerRadius": 6,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            10,
+                            0,
+                            32
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "FDLBp",
+                              "name": "复选框",
+                              "width": 16,
+                              "height": 16,
+                              "fill": "#00000000",
+                              "cornerRadius": 4,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "justifyContent": "center",
+                              "alignItems": "center"
+                            },
+                            {
+                              "type": "text",
+                              "id": "a1ywI",
+                              "name": "测点名",
+                              "fill": "$text-primary",
+                              "content": "B相电压",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "AoGmz",
+                              "name": "测点码",
+                              "fill": "$text-muted",
+                              "content": "YC0002",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "oesEH",
+                          "name": "测点-C相电压",
+                          "width": "fill_container",
+                          "height": 34,
+                          "fill": "$primary-soft",
+                          "cornerRadius": 6,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            10,
+                            0,
+                            32
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "TQnw6",
+                              "name": "复选框",
+                              "width": 16,
+                              "height": 16,
+                              "fill": "$primary",
+                              "cornerRadius": 4,
+                              "stroke": "$primary",
+                              "strokeWidth": 1,
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "Ei3Ii",
+                                  "name": "勾选",
+                                  "width": 11,
+                                  "height": 11,
+                                  "icon": "check",
+                                  "library": "lucide",
+                                  "fill": "#ffffff"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "cdX5C",
+                              "name": "测点名",
+                              "fill": "$text-primary",
+                              "content": "C相电压",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "C65Vxh",
+                              "name": "测点码",
+                              "fill": "$text-muted",
+                              "content": "YC0003",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "AY3nK",
+                          "name": "测点-A相电流",
+                          "width": "fill_container",
+                          "height": 34,
+                          "fill": "#00000000",
+                          "cornerRadius": 6,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            10,
+                            0,
+                            32
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "uL2Xu",
+                              "name": "复选框",
+                              "width": 16,
+                              "height": 16,
+                              "fill": "#00000000",
+                              "cornerRadius": 4,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "justifyContent": "center",
+                              "alignItems": "center"
+                            },
+                            {
+                              "type": "text",
+                              "id": "yzfo2",
+                              "name": "测点名",
+                              "fill": "$text-primary",
+                              "content": "A相电流",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "v4ualW",
+                              "name": "测点码",
+                              "fill": "$text-muted",
+                              "content": "YC0004",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "OzFe2",
+                          "name": "分组-遥信 (YX)",
+                          "width": "fill_container",
+                          "height": 32,
+                          "gap": 6,
+                          "padding": [
+                            0,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "Bgvrz",
+                              "name": "展开箭头",
+                              "width": 14,
+                              "height": 14,
+                              "icon": "chevron-down",
+                              "library": "lucide",
+                              "fill": "$text-muted"
+                            },
+                            {
+                              "type": "text",
+                              "id": "fOGox",
+                              "name": "分组名",
+                              "fill": "$text-primary",
+                              "content": "遥信 (YX)",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "SbI4A",
+                              "name": "数量标签",
+                              "fill": "#000000",
+                              "cornerRadius": 10,
+                              "padding": [
+                                1,
+                                7
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "HvSTK",
+                                  "name": "数量",
+                                  "fill": "$text-secondary",
+                                  "content": "5",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "jAsDK",
+                          "name": "测点-断路器位置",
+                          "width": "fill_container",
+                          "height": 34,
+                          "fill": "$primary-soft",
+                          "cornerRadius": 6,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            10,
+                            0,
+                            32
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "UNX6p",
+                              "name": "复选框",
+                              "width": 16,
+                              "height": 16,
+                              "fill": "$primary",
+                              "cornerRadius": 4,
+                              "stroke": "$primary",
+                              "strokeWidth": 1,
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "KbJCV",
+                                  "name": "勾选",
+                                  "width": 11,
+                                  "height": 11,
+                                  "icon": "check",
+                                  "library": "lucide",
+                                  "fill": "#ffffff"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "rFRfT",
+                              "name": "测点名",
+                              "fill": "$text-primary",
+                              "content": "断路器位置",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "EAvva",
+                              "name": "测点码",
+                              "fill": "$text-muted",
+                              "content": "YX0001",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "FljHO",
+                          "name": "测点-隔离开关位置",
+                          "width": "fill_container",
+                          "height": 34,
+                          "fill": "#00000000",
+                          "cornerRadius": 6,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            10,
+                            0,
+                            32
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "D5irG",
+                              "name": "复选框",
+                              "width": 16,
+                              "height": 16,
+                              "fill": "#00000000",
+                              "cornerRadius": 4,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "justifyContent": "center",
+                              "alignItems": "center"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ytWE0",
+                              "name": "测点名",
+                              "fill": "$text-primary",
+                              "content": "隔离开关位置",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "p7pezw",
+                              "name": "测点码",
+                              "fill": "$text-muted",
+                              "content": "YX0002",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ADrX9",
+                          "name": "测点-保护动作信号",
+                          "width": "fill_container",
+                          "height": 34,
+                          "fill": "#00000000",
+                          "cornerRadius": 6,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            10,
+                            0,
+                            32
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "hSQ39",
+                              "name": "复选框",
+                              "width": 16,
+                              "height": 16,
+                              "fill": "#00000000",
+                              "cornerRadius": 4,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "justifyContent": "center",
+                              "alignItems": "center"
+                            },
+                            {
+                              "type": "text",
+                              "id": "LTx9H",
+                              "name": "测点名",
+                              "fill": "$text-primary",
+                              "content": "保护动作信号",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "F6VXDI",
+                              "name": "测点码",
+                              "fill": "$text-muted",
+                              "content": "YX0003",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "OAvMR",
+                          "name": "分组-遥控 (YK)",
+                          "width": "fill_container",
+                          "height": 32,
+                          "gap": 6,
+                          "padding": [
+                            0,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "SeT8f",
+                              "name": "展开箭头",
+                              "width": 14,
+                              "height": 14,
+                              "icon": "chevron-right",
+                              "library": "lucide",
+                              "fill": "$text-muted"
+                            },
+                            {
+                              "type": "text",
+                              "id": "y3yZD",
+                              "name": "分组名",
+                              "fill": "$text-primary",
+                              "content": "遥控 (YK)",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "W6XnJ",
+                              "name": "数量标签",
+                              "fill": "#000000",
+                              "cornerRadius": 10,
+                              "padding": [
+                                1,
+                                7
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Qphzg",
+                                  "name": "数量",
+                                  "fill": "$text-secondary",
+                                  "content": "3",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "kde8j",
+                          "name": "测点-断路器分闸",
+                          "width": "fill_container",
+                          "height": 34,
+                          "fill": "#00000000",
+                          "cornerRadius": 6,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            10,
+                            0,
+                            32
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "j3TMny",
+                              "name": "复选框",
+                              "width": 16,
+                              "height": 16,
+                              "fill": "#00000000",
+                              "cornerRadius": 4,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "justifyContent": "center",
+                              "alignItems": "center"
+                            },
+                            {
+                              "type": "text",
+                              "id": "RAkUH",
+                              "name": "测点名",
+                              "fill": "$text-primary",
+                              "content": "断路器分闸",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ixVHJ",
+                              "name": "测点码",
+                              "fill": "$text-muted",
+                              "content": "YK0001",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "c6y2gR",
+                          "name": "测点-断路器合闸",
+                          "width": "fill_container",
+                          "height": 34,
+                          "fill": "#00000000",
+                          "cornerRadius": 6,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            10,
+                            0,
+                            32
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "tpNYr",
+                              "name": "复选框",
+                              "width": 16,
+                              "height": 16,
+                              "fill": "#00000000",
+                              "cornerRadius": 4,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "justifyContent": "center",
+                              "alignItems": "center"
+                            },
+                            {
+                              "type": "text",
+                              "id": "oHPTZ",
+                              "name": "测点名",
+                              "fill": "$text-primary",
+                              "content": "断路器合闸",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "sYDZT",
+                              "name": "测点码",
+                              "fill": "$text-muted",
+                              "content": "YK0002",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "uAkz7",
+                  "name": "转移按钮区",
+                  "width": 48,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "dswk5",
+                      "name": "移入按钮",
+                      "width": 32,
+                      "height": 32,
+                      "fill": "$primary",
+                      "cornerRadius": 6,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "ntgaY",
+                          "name": "右移图标",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "chevrons-right",
+                          "library": "lucide",
+                          "fill": "#ffffff"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "zGxH8",
+                      "name": "移出按钮",
+                      "width": 32,
+                      "height": 32,
+                      "fill": "$panel",
+                      "cornerRadius": 6,
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "Chtqu",
+                          "name": "左移图标",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "chevrons-left",
+                          "library": "lucide",
+                          "fill": "$text-secondary"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "iXdn1",
+                  "name": "右侧已选面板",
+                  "clip": true,
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "fill": "$panel",
+                  "cornerRadius": 8,
+                  "stroke": "$border",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "q0pAjj",
+                      "name": "已选标题栏",
+                      "width": "fill_container",
+                      "height": 44,
+                      "stroke": "$border",
+                      "strokeWidth": {
+                        "bottom": 1
+                      },
+                      "padding": [
+                        0,
+                        14
+                      ],
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "RLEtd",
+                          "name": "标题左组",
+                          "gap": 8,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "ZEwHM",
+                              "name": "已选标题",
+                              "fill": "$text-primary",
+                              "content": "已选模拟测点",
+                              "fontFamily": "$font-body",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "OdgJz",
+                              "name": "数量徽标",
+                              "fill": "$primary-soft",
+                              "cornerRadius": 10,
+                              "padding": [
+                                1,
+                                8
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Gjiya",
+                                  "name": "徽标数",
+                                  "fill": "$primary",
+                                  "content": "3",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "QOB9Z",
+                          "name": "清空按钮",
+                          "cornerRadius": 6,
+                          "gap": 4,
+                          "padding": [
+                            4,
+                            6
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "s2Z29",
+                              "name": "清空图标",
+                              "width": 13,
+                              "height": 13,
+                              "icon": "trash-2",
+                              "library": "lucide",
+                              "fill": "$text-secondary"
+                            },
+                            {
+                              "type": "text",
+                              "id": "jjD3E",
+                              "name": "清空文本",
+                              "fill": "$text-secondary",
+                              "content": "清空",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "aPTcE",
+                      "name": "已选列表",
+                      "width": "fill_container",
+                      "height": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "padding": 12,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "HLR0j",
+                          "name": "已选-A相电压",
+                          "width": "fill_container",
+                          "height": 48,
+                          "fill": "$panel",
+                          "cornerRadius": 6,
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "GA0md",
+                              "name": "名称列",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 1,
+                              "justifyContent": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Y0xCEK",
+                                  "name": "测点名",
+                                  "fill": "$text-primary",
+                                  "content": "A相电压",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "m56MvE",
+                                  "name": "测点码",
+                                  "fill": "$text-muted",
+                                  "content": "YC0001",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "WANIT",
+                              "name": "方式选择",
+                              "width": 128,
+                              "height": 32,
+                              "fill": "$panel",
+                              "cornerRadius": 6,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "padding": [
+                                0,
+                                10
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "wVzND",
+                                  "name": "方式值",
+                                  "fill": "$text-primary",
+                                  "content": "正弦波",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "icon",
+                                  "id": "pyVIs",
+                                  "name": "下拉图标",
+                                  "width": 13,
+                                  "height": 13,
+                                  "icon": "chevron-down",
+                                  "library": "lucide",
+                                  "fill": "$text-secondary"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "XBxUo",
+                              "name": "步长输入",
+                              "width": 72,
+                              "height": 32,
+                              "fill": "$panel",
+                              "cornerRadius": 6,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "padding": [
+                                0,
+                                4,
+                                0,
+                                10
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "EV3Ah",
+                                  "name": "步长值",
+                                  "fill": "$text-primary",
+                                  "content": "1",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "t8LDjf",
+                                  "name": "步长增减",
+                                  "layout": "vertical",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "rqJ60",
+                                      "name": "加",
+                                      "width": 10,
+                                      "height": 10,
+                                      "icon": "chevron-up",
+                                      "library": "lucide",
+                                      "fill": "$text-muted"
+                                    },
+                                    {
+                                      "type": "icon",
+                                      "id": "Ndm4U",
+                                      "name": "减",
+                                      "width": 10,
+                                      "height": 10,
+                                      "icon": "chevron-down",
+                                      "library": "lucide",
+                                      "fill": "$text-muted"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "aAGKI",
+                              "name": "删除按钮",
+                              "width": 24,
+                              "height": 24,
+                              "cornerRadius": 6,
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "kCYev",
+                                  "name": "删除图标",
+                                  "width": 14,
+                                  "height": 14,
+                                  "icon": "x",
+                                  "library": "lucide",
+                                  "fill": "$text-muted"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "OYO7q",
+                          "name": "已选-C相电压",
+                          "width": "fill_container",
+                          "height": 48,
+                          "fill": "$panel",
+                          "cornerRadius": 6,
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "tUpZb",
+                              "name": "名称列",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 1,
+                              "justifyContent": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "cQEoi",
+                                  "name": "测点名",
+                                  "fill": "$text-primary",
+                                  "content": "C相电压",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "C80lW",
+                                  "name": "测点码",
+                                  "fill": "$text-muted",
+                                  "content": "YC0003",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "z4zve",
+                              "name": "方式选择",
+                              "width": 128,
+                              "height": 32,
+                              "fill": "$panel",
+                              "cornerRadius": 6,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "padding": [
+                                0,
+                                10
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "bsEP9",
+                                  "name": "方式值",
+                                  "fill": "$text-primary",
+                                  "content": "随机",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "icon",
+                                  "id": "MBzrf",
+                                  "name": "下拉图标",
+                                  "width": 13,
+                                  "height": 13,
+                                  "icon": "chevron-down",
+                                  "library": "lucide",
+                                  "fill": "$text-secondary"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "bgk3k",
+                              "name": "步长输入",
+                              "width": 72,
+                              "height": 32,
+                              "fill": "$panel",
+                              "cornerRadius": 6,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "padding": [
+                                0,
+                                4,
+                                0,
+                                10
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "mUH5S",
+                                  "name": "步长值",
+                                  "fill": "$text-primary",
+                                  "content": "1",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "a1JCZ",
+                                  "name": "步长增减",
+                                  "layout": "vertical",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "YhpZ9",
+                                      "name": "加",
+                                      "width": 10,
+                                      "height": 10,
+                                      "icon": "chevron-up",
+                                      "library": "lucide",
+                                      "fill": "$text-muted"
+                                    },
+                                    {
+                                      "type": "icon",
+                                      "id": "Ia5vO",
+                                      "name": "减",
+                                      "width": 10,
+                                      "height": 10,
+                                      "icon": "chevron-down",
+                                      "library": "lucide",
+                                      "fill": "$text-muted"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "wXnSI",
+                              "name": "删除按钮",
+                              "width": 24,
+                              "height": 24,
+                              "cornerRadius": 6,
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "t2WJd",
+                                  "name": "删除图标",
+                                  "width": 14,
+                                  "height": 14,
+                                  "icon": "x",
+                                  "library": "lucide",
+                                  "fill": "$text-muted"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ZK6an",
+                          "name": "已选-断路器位置",
+                          "width": "fill_container",
+                          "height": 48,
+                          "fill": "$panel",
+                          "cornerRadius": 6,
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "Q1h4p",
+                              "name": "名称列",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 1,
+                              "justifyContent": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "b9QOv",
+                                  "name": "测点名",
+                                  "fill": "$text-primary",
+                                  "content": "断路器位置",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "UE9UZ",
+                                  "name": "测点码",
+                                  "fill": "$text-muted",
+                                  "content": "YX0001",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "MtGyN",
+                              "name": "方式选择",
+                              "width": 128,
+                              "height": 32,
+                              "fill": "$panel",
+                              "cornerRadius": 6,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "padding": [
+                                0,
+                                10
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "OxIVB",
+                                  "name": "方式值",
+                                  "fill": "$text-primary",
+                                  "content": "脉冲",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "icon",
+                                  "id": "WdQMI",
+                                  "name": "下拉图标",
+                                  "width": 13,
+                                  "height": 13,
+                                  "icon": "chevron-down",
+                                  "library": "lucide",
+                                  "fill": "$text-secondary"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "oQSE7",
+                              "name": "步长输入",
+                              "width": 72,
+                              "height": 32,
+                              "fill": "$panel",
+                              "cornerRadius": 6,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "padding": [
+                                0,
+                                4,
+                                0,
+                                10
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "ZNVcE",
+                                  "name": "步长值",
+                                  "fill": "$text-primary",
+                                  "content": "2",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "hvpQs",
+                                  "name": "步长增减",
+                                  "layout": "vertical",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "EGS7Q",
+                                      "name": "加",
+                                      "width": 10,
+                                      "height": 10,
+                                      "icon": "chevron-up",
+                                      "library": "lucide",
+                                      "fill": "$text-muted"
+                                    },
+                                    {
+                                      "type": "icon",
+                                      "id": "PZY0d",
+                                      "name": "减",
+                                      "width": 10,
+                                      "height": 10,
+                                      "icon": "chevron-down",
+                                      "library": "lucide",
+                                      "fill": "$text-muted"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "WwPWK",
+                              "name": "删除按钮",
+                              "width": 24,
+                              "height": 24,
+                              "cornerRadius": 6,
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "sJr7v",
+                                  "name": "删除图标",
+                                  "width": 14,
+                                  "height": 14,
+                                  "icon": "x",
+                                  "library": "lucide",
+                                  "fill": "$text-muted"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "y9yOR4",
+              "name": "底部操作区",
+              "width": "fill_container",
+              "height": 64,
+              "stroke": "$border",
+              "strokeWidth": {
+                "top": 1
+              },
+              "gap": 12,
+              "padding": [
+                0,
+                24
+              ],
+              "justifyContent": "end",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "DCM6P",
+                  "name": "取消按钮",
+                  "height": 34,
+                  "fill": "$panel",
+                  "cornerRadius": 6,
+                  "stroke": "$border",
+                  "strokeWidth": 1,
+                  "padding": [
+                    0,
+                    20
+                  ],
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "cGKcM",
+                      "name": "取消文本",
+                      "fill": "$text-primary",
+                      "content": "取消",
+                      "fontFamily": "$font-body",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "tmlgs",
+                  "name": "保存按钮",
+                  "height": 34,
+                  "fill": "$primary",
+                  "cornerRadius": 6,
+                  "padding": [
+                    0,
+                    20
+                  ],
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "y6Q8H",
+                      "name": "保存文本",
+                      "fill": "#ffffff",
+                      "content": "保存配置",
+                      "fontFamily": "$font-body",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "WKgzO",
+          "x": 10,
+          "y": 800,
+          "name": "模拟配置对话框-模拟数据页",
+          "clip": true,
+          "width": 1100,
+          "height": 700,
+          "fill": "$panel",
+          "cornerRadius": 16,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#0f172a2e",
+            "offset": {
+              "x": 0,
+              "y": 12
+            },
+            "blur": 40
+          },
+          "layout": "vertical",
+          "children": [
+            {
+              "type": "frame",
+              "id": "F56h51",
+              "name": "标题栏",
+              "width": "fill_container",
+              "height": 56,
+              "padding": [
+                0,
+                24
+              ],
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "OMI2C",
+                  "name": "标题组",
+                  "gap": 10,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "LGKlY",
+                      "name": "标题图标",
+                      "width": 20,
+                      "height": 20,
+                      "icon": "activity",
+                      "library": "lucide",
+                      "fill": "$primary"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Z4ZyU",
+                      "name": "标题",
+                      "fill": "$text-primary",
+                      "content": "模拟配置",
+                      "fontFamily": "$font-body",
+                      "fontSize": 17,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "k3EnIo",
+                  "name": "标题右侧组",
+                  "gap": 16,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "eDBV3",
+                      "name": "设备名",
+                      "fill": "$text-secondary",
+                      "content": "DTU-01 · 台区配电终端",
+                      "fontFamily": "$font-body",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "p1C4uv",
+                      "name": "关闭按钮",
+                      "width": 30,
+                      "height": 30,
+                      "cornerRadius": 8,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "PVSuz",
+                          "name": "关闭图标",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "x",
+                          "library": "lucide",
+                          "fill": "$text-secondary"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "rectangle",
+              "id": "WFVAh",
+              "name": "标题栏分隔线",
+              "fill": "$border",
+              "width": "fill_container",
+              "height": 1
+            },
+            {
+              "type": "frame",
+              "id": "E7HoF",
+              "name": "页签栏",
+              "width": "fill_container",
+              "height": 48,
+              "gap": 36,
+              "padding": [
+                0,
+                24
+              ],
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "avVjG",
+                  "name": "页签-测点选择",
+                  "width": 88,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "UdI3q",
+                      "name": "测点选择文本",
+                      "fill": "$text-secondary",
+                      "content": "测点选择",
+                      "fontFamily": "$font-body",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "cGck1",
+                      "name": "下划线占位",
+                      "fill": "#00000000",
+                      "width": 44,
+                      "height": 2
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "yHoQp",
+                  "name": "页签-模拟数据",
+                  "width": 88,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "zUzPc",
+                      "name": "模拟数据文本",
+                      "fill": "$primary",
+                      "content": "模拟数据",
+                      "fontFamily": "$font-body",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "s3hKA",
+                      "name": "选中下划线",
+                      "fill": "$primary",
+                      "width": 44,
+                      "height": 2
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "mdE3x",
+              "name": "内容区",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": [
+                20,
+                24
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "QrHvC",
+                  "name": "表格工具栏",
+                  "width": "fill_container",
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Hp1oI",
+                      "name": "统计组",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "VvIMf",
+                          "name": "统计文本",
+                          "fill": "$text-secondary",
+                          "content": "共",
+                          "fontFamily": "$font-body",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "CMmy0",
+                          "name": "统计数",
+                          "fill": "$primary-soft",
+                          "cornerRadius": 10,
+                          "padding": [
+                            1,
+                            8
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "K2AWi5",
+                              "name": "统计数文本",
+                              "fill": "$primary",
+                              "content": "3",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "IdpMc",
+                          "name": "个测点",
+                          "fill": "$text-secondary",
+                          "content": "个测点参与模拟",
+                          "fontFamily": "$font-body",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "BYvBO",
+                      "name": "刷新按钮",
+                      "height": 30,
+                      "fill": "$panel",
+                      "cornerRadius": 6,
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "gap": 6,
+                      "padding": [
+                        0,
+                        12
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "u6dzl",
+                          "name": "刷新图标",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "refresh-cw",
+                          "library": "lucide",
+                          "fill": "$text-primary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "RMIBL",
+                          "name": "刷新文本",
+                          "fill": "$text-primary",
+                          "content": "刷新",
+                          "fontFamily": "$font-body",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ZJwi9",
+                  "name": "数据表格",
+                  "clip": true,
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "fill": "$panel",
+                  "cornerRadius": 8,
+                  "stroke": "$border",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "yJybM",
+                      "name": "表头行",
+                      "width": "fill_container",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "o8VUqb",
+                          "name": "表头-序号",
+                          "width": 56,
+                          "height": 36,
+                          "fill": "$table-header",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "icjQA",
+                              "name": "表头文本",
+                              "fill": "$text-primary",
+                              "content": "序号",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "l8pu9H",
+                          "name": "表头-测点名称",
+                          "width": 180,
+                          "height": 36,
+                          "fill": "$table-header",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Arit6",
+                              "name": "表头文本",
+                              "fill": "$text-primary",
+                              "content": "测点名称",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Q2gZp",
+                          "name": "表头-测点编码",
+                          "width": 140,
+                          "height": 36,
+                          "fill": "$table-header",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "rs7u8",
+                              "name": "表头文本",
+                              "fill": "$text-primary",
+                              "content": "测点编码",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "OBRNF",
+                          "name": "表头-帧类型",
+                          "width": 90,
+                          "height": 36,
+                          "fill": "$table-header",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "orJrz",
+                              "name": "表头文本",
+                              "fill": "$text-primary",
+                              "content": "帧类型",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "uxdJm",
+                          "name": "表头-模拟方式",
+                          "width": 130,
+                          "height": 36,
+                          "fill": "$table-header",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "BbcVq",
+                              "name": "表头文本",
+                              "fill": "$text-primary",
+                              "content": "模拟方式",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "t2KZKj",
+                          "name": "表头-步长",
+                          "width": 80,
+                          "height": 36,
+                          "fill": "$table-header",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "d35Im",
+                              "name": "表头文本",
+                              "fill": "$text-primary",
+                              "content": "步长",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "UXJKQ",
+                          "name": "表头-当前值",
+                          "width": 140,
+                          "height": 36,
+                          "fill": "$table-header",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Pu6NQ",
+                              "name": "表头文本",
+                              "fill": "$text-primary",
+                              "content": "当前值",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Q2oON",
+                          "name": "表头-状态",
+                          "width": 110,
+                          "height": 36,
+                          "fill": "$table-header",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "YvPcp",
+                              "name": "表头文本",
+                              "fill": "$text-primary",
+                              "content": "状态",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "iyy3B",
+                      "name": "数据行1",
+                      "width": "fill_container",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "qtzZP",
+                          "name": "单元格",
+                          "width": 56,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "o2YEF",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "1",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "rKa21",
+                          "name": "单元格",
+                          "width": 180,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "l3CrY",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "A相电压",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "bZcP3",
+                          "name": "单元格",
+                          "width": 140,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "x2WcX",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "YC0001",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "CSqJc",
+                          "name": "单元格",
+                          "width": 90,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "V2EWTy",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "遥测",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "xNkwU",
+                          "name": "单元格",
+                          "width": 130,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "z0x9A8",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "正弦波",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "rS0P8",
+                          "name": "单元格",
+                          "width": 80,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "SRc5F",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "1",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "payOv",
+                          "name": "单元格",
+                          "width": 140,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "end",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "oYL0b",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "220.35",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "t4CHk",
+                          "name": "单元格",
+                          "width": 110,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "ltZxi",
+                              "name": "状态标签",
+                              "fill": "#ecfdf5",
+                              "cornerRadius": 10,
+                              "stroke": "#d1fae5",
+                              "strokeWidth": 1,
+                              "gap": 5,
+                              "padding": [
+                                2,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "ellipse",
+                                  "id": "nsZmU",
+                                  "name": "状态圆点",
+                                  "fill": "$success",
+                                  "width": 6,
+                                  "height": 6
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "vGv1E",
+                                  "name": "状态文本",
+                                  "fill": "#059669",
+                                  "content": "运行中",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "EkOX3",
+                      "name": "数据行2",
+                      "width": "fill_container",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "I3LDnD",
+                          "name": "单元格",
+                          "width": 56,
+                          "height": 40,
+                          "fill": "$panel",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Xd5Up",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "2",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "R8K6Ok",
+                          "name": "单元格",
+                          "width": 180,
+                          "height": 40,
+                          "fill": "$panel",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "b6HFd",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "C相电压",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "t5JdFT",
+                          "name": "单元格",
+                          "width": 140,
+                          "height": 40,
+                          "fill": "$panel",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "rCAsi",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "YC0003",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "gQ0pm",
+                          "name": "单元格",
+                          "width": 90,
+                          "height": 40,
+                          "fill": "$panel",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "P2hCu",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "遥测",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "fiFxo",
+                          "name": "单元格",
+                          "width": 130,
+                          "height": 40,
+                          "fill": "$panel",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "ONTbP",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "随机",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "aN52y",
+                          "name": "单元格",
+                          "width": 80,
+                          "height": 40,
+                          "fill": "$panel",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "U7fjYi",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "1",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "IJBZs",
+                          "name": "单元格",
+                          "width": 140,
+                          "height": 40,
+                          "fill": "$panel",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "end",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "MV3d5",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "219.87",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Ttdlo",
+                          "name": "单元格",
+                          "width": 110,
+                          "height": 40,
+                          "fill": "$panel",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "SzHiW",
+                              "name": "状态标签",
+                              "fill": "#ecfdf5",
+                              "cornerRadius": 10,
+                              "stroke": "#d1fae5",
+                              "strokeWidth": 1,
+                              "gap": 5,
+                              "padding": [
+                                2,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "ellipse",
+                                  "id": "NrWSx",
+                                  "name": "状态圆点",
+                                  "fill": "$success",
+                                  "width": 6,
+                                  "height": 6
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "xPDnq",
+                                  "name": "状态文本",
+                                  "fill": "#059669",
+                                  "content": "运行中",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "qd9B0",
+                      "name": "数据行3",
+                      "width": "fill_container",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "wcDQ4",
+                          "name": "单元格",
+                          "width": 56,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "wHnzO",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "3",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "mpic5",
+                          "name": "单元格",
+                          "width": 180,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Xw0dd",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "断路器位置",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "LuR26",
+                          "name": "单元格",
+                          "width": 140,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "uzY9p",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "YX0001",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "HuTHF",
+                          "name": "单元格",
+                          "width": 90,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "f9urpZ",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "遥信",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "LkiBS",
+                          "name": "单元格",
+                          "width": 130,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "vhxJ6",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "脉冲",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "MiDiv",
+                          "name": "单元格",
+                          "width": 80,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "f3BB8H",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "2",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "zyzKs",
+                          "name": "单元格",
+                          "width": 140,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "E2WqR",
+                              "name": "单元格内容",
+                              "fill": "$text-primary",
+                              "content": "闭合",
+                              "fontFamily": "$font-body",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "nC1Il",
+                          "name": "单元格",
+                          "width": 110,
+                          "height": 40,
+                          "fill": "$table-stripe",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "QMXqm",
+                              "name": "状态标签",
+                              "fill": "#ecfdf5",
+                              "cornerRadius": 10,
+                              "stroke": "#d1fae5",
+                              "strokeWidth": 1,
+                              "gap": 5,
+                              "padding": [
+                                2,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "ellipse",
+                                  "id": "Tl5YI",
+                                  "name": "状态圆点",
+                                  "fill": "$success",
+                                  "width": 6,
+                                  "height": 6
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "P3Z3p",
+                                  "name": "状态文本",
+                                  "fill": "#059669",
+                                  "content": "运行中",
+                                  "fontFamily": "$font-body",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Xr7sP",
+              "name": "底部操作区",
+              "width": "fill_container",
+              "height": 64,
+              "stroke": "$border",
+              "strokeWidth": {
+                "top": 1
+              },
+              "gap": 12,
+              "padding": [
+                0,
+                24
+              ],
+              "justifyContent": "end",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "n5SU0j",
+                  "name": "取消按钮",
+                  "height": 34,
+                  "fill": "$panel",
+                  "cornerRadius": 6,
+                  "stroke": "$border",
+                  "strokeWidth": 1,
+                  "padding": [
+                    0,
+                    20
+                  ],
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "kH1DO",
+                      "name": "取消文本",
+                      "fill": "$text-primary",
+                      "content": "取消",
+                      "fontFamily": "$font-body",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "RrPsJ",
+                  "name": "保存按钮",
+                  "height": 34,
+                  "fill": "$primary",
+                  "cornerRadius": 6,
+                  "padding": [
+                    0,
+                    20
+                  ],
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "g3Ai0G",
+                      "name": "保存文本",
+                      "fill": "#ffffff",
+                      "content": "保存配置",
+                      "fontFamily": "$font-body",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "bg-main": {
+      "type": "color",
+      "value": "#f1f5f9"
+    },
+    "panel": {
+      "type": "color",
+      "value": "#ffffff"
+    },
+    "text-primary": {
+      "type": "color",
+      "value": "#1e293b"
+    },
+    "text-secondary": {
+      "type": "color",
+      "value": "#64748b"
+    },
+    "text-muted": {
+      "type": "color",
+      "value": "#94a3b8"
+    },
+    "border": {
+      "type": "color",
+      "value": "#dfe5ec"
+    },
+    "primary": {
+      "type": "color",
+      "value": "#3b82f6"
+    },
+    "primary-soft": {
+      "type": "color",
+      "value": "#eaf2fb"
+    },
+    "table-header": {
+      "type": "color",
+      "value": "#e8edf3"
+    },
+    "table-stripe": {
+      "type": "color",
+      "value": "#f6f8fb"
+    },
+    "table-hover": {
+      "type": "color",
+      "value": "#eaf2fb"
+    },
+    "success": {
+      "type": "color",
+      "value": "#10b981"
+    },
+    "danger": {
+      "type": "color",
+      "value": "#ef4444"
+    },
+    "font-body": {
+      "type": "string",
+      "value": "Noto Sans SC"
+    },
+    "bg-subtle": {
+      "type": "color",
+      "value": "#f8fafc"
+    },
+    "bg-muted": {
+      "type": "color",
+      "value": "#eef2f6"
+    }
+  },
+  "fileToken": "1031bcd1-c56b-47ef-8930-d44ae18d839f"
+}

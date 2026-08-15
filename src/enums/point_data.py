@@ -25,6 +25,7 @@ class DeviceType(Enum):
 
 
 class SimulateMethod(Enum):
+    NoSimulation = "None"  # 不模拟（监视用，值保持不变）
     Random = "Random"  # 随机模拟
     AutoIncrement = "AutoIncrement"  # 自增模拟
     AutoDecrement = "AutoDecrement"  # 自减模拟

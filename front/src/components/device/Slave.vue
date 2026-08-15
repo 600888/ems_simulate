@@ -1317,9 +1317,8 @@ defineExpose({
 
 <style lang="scss" scoped>
 .slave-container {
-  margin-top: 16px;
   background-color: var(--panel-bg);
-  padding: 24px 20px 20px;
+  padding: 16px 20px 12px;
   border-radius: var(--border-radius-base);
   box-shadow: var(--box-shadow-base);
   border: 1px solid var(--sidebar-border);
@@ -1339,7 +1338,8 @@ defineExpose({
 
 .modern-tabs {
   &.without-data-tab {
-    :deep(.el-tabs__header) {
+    /* 只隐藏外层从机 Tabs 的头部（直接子级），不影响展开行内层 inner-tabs */
+    > :deep(.el-tabs__header) {
       display: none;
     }
   }

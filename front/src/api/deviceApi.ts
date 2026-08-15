@@ -56,14 +56,11 @@ export async function getDeviceInfo(
   }
 }
 
-export async function startSimulation(
-  deviceName: string,
-  simulateMethod: string,
-): Promise<boolean> {
+export async function startSimulation(deviceName: string): Promise<boolean> {
   try {
     const data = await requestApi(DEVICE_API.START_SIMULATION, "post", {
       device_name: deviceName,
-      simulate_method: simulateMethod,
+      // simulate_method 不传：不覆盖各测点已配置的模拟方式
     });
     return data;
   } catch (error) {
@@ -80,6 +77,55 @@ export async function stopSimulation(deviceName: string): Promise<boolean> {
     return data;
   } catch (error) {
     console.error("Error stop simulation:", error);
+    throw error;
+  }
+}
+
+// ===== 测点级模拟配置 =====
+
+export interface SimulationConfigItem {
+  point_code: string;
+  name?: string;
+  frame_type?: number | null;
+  simulate_method: string;
+  step: number;
+  enabled: boolean;
+}
+
+export interface SimulationConfigApplyResult {
+  applied: string[];
+  failed: { point_code: string; reason: string }[];
+}
+
+/** 获取整机测点模拟配置（Dialog 回显用） */
+export async function getSimulationConfig(
+  deviceName: string,
+): Promise<SimulationConfigItem[]> {
+  try {
+    return await requestApi(DEVICE_API.SIMULATION_CONFIG, "post", {
+      device_name: deviceName,
+    });
+  } catch (error) {
+    console.error("Error fetching simulation config:", error);
+    throw error;
+  }
+}
+
+/** 批量应用测点模拟配置（开始模拟前调用） */
+export async function applySimulationConfig(
+  deviceName: string,
+  points: Pick<
+    SimulationConfigItem,
+    "point_code" | "enabled" | "simulate_method" | "step"
+  >[],
+): Promise<SimulationConfigApplyResult> {
+  try {
+    return await requestApi(DEVICE_API.APPLY_SIMULATION_CONFIG, "post", {
+      device_name: deviceName,
+      points,
+    });
+  } catch (error) {
+    console.error("Error applying simulation config:", error);
     throw error;
   }
 }

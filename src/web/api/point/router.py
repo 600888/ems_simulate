@@ -11,6 +11,7 @@ from src.enums.point_data import Yc, Yt
 from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import (
     BaseResponse,
+    BatchPointValuesRequest,
     ChangeTrackingConfigRequest,
     ClearPointsRequest,
     DeviceResetRequest,
@@ -128,6 +129,14 @@ async def get_point_info(req: PointInfoRequest, request: Request):
     if not point_info:
         raise ValidationError("获取点信息失败!", data=None)
     return BaseResponse(message="获取点信息成功!", data=point_info)
+
+
+@point_router.post("/batch-values", response_model=BaseResponse)
+async def get_batch_point_values(req: BatchPointValuesRequest, request: Request):
+    """批量获取测点当前值（轻量，供模拟数据自动刷新）"""
+    device = _get_device(req.device_name, request)
+    values = await asyncio.to_thread(device.getPointsValues, req.point_codes)
+    return BaseResponse(message="获取测点值成功!", data=values)
 
 
 @point_router.post("/set-simulation-range", response_model=BaseResponse)

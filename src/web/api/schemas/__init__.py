@@ -10,6 +10,7 @@ from .channel import (
     CreateAndStartDeviceRequest,
 )
 from .device import (
+    ApplySimulationConfigRequest,
     CurrentTableRequest,
     DeviceGroupStatusRequest,
     DeviceInfoRequest,
@@ -26,6 +27,7 @@ from .device import (
     ManualReadRequest,
     MessageDetailRequest,
     MessageListRequest,
+    SimulationConfigItem,
     SimulationStartRequest,
     SimulationStopRequest,
     SlaveAddRequest,
@@ -65,6 +67,7 @@ from .goose import (
     GooseSubscriptionStatus,
 )
 from .point import (
+    BatchPointValuesRequest,
     ChangeTrackingConfigRequest,
     ClearPointsRequest,
     Iec104MetadataEditRequest,
@@ -111,6 +114,8 @@ __all__ = [
     "DeviceTableRequest",
     "SimulationStartRequest",
     "SimulationStopRequest",
+    "ApplySimulationConfigRequest",
+    "SimulationConfigItem",
     "DeviceStartRequest",
     "DeviceStopRequest",
     "DeviceResetRequest",
@@ -139,6 +144,7 @@ __all__ = [
     "PointMetadataEditRequest",
     "Iec104MetadataEditRequest",
     "PointInfoRequest",
+    "BatchPointValuesRequest",
     "SimulateMethodSetRequest",
     "SimulateStepSetRequest",
     "SimulateRangeSetRequest",

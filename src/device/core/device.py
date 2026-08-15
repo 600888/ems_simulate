@@ -941,8 +941,48 @@ class Device:
     def setSinglePointStep(self, point_code: str, step: int) -> bool:
         return self.simulation_controller.set_single_point_step(point_code, step)
 
+    def setSinglePointStatus(self, point_code: str, is_running: bool) -> bool:
+        """按测点编码设置模拟启停状态"""
+        return self.simulation_controller.set_point_status_by_code(point_code, is_running)
+
+    def getSimulationConfig(self) -> list[dict]:
+        """获取整机测点模拟配置（回显用）"""
+        configs: list[dict] = []
+        for point, simulator in self.simulation_controller.points.items():
+            configs.append(
+                {
+                    "point_code": point.code,
+                    "name": point.name,
+                    "frame_type": getattr(point, "frame_type", None),
+                    "simulate_method": simulator.simulate_method.value,
+                    "step": simulator.step,
+                    "enabled": simulator.is_running,
+                }
+            )
+        return configs
+
+    def applySimulationConfig(self, items: list[dict]) -> dict:
+        """批量应用测点模拟配置（是否模拟 + 模拟方式 + 步长）。
+
+        配置是"要模拟的测点"的完整定义：未包含在配置中的测点将被禁用模拟，
+        避免仅启用已选点、其余保持默认全量模拟。批量场景不打逐点日志。
+        """
+        applied, failed = self.simulation_controller.apply_configuration(items)
+        self.log.info(f"应用模拟配置: 成功 {len(applied)} 个测点, 失败 {len(failed)} 个")
+        return {"applied": applied, "failed": failed}
+
     def getPointInfo(self, point_code: str) -> dict:
         return self.simulation_controller.get_point_info(point_code)
+
+    def getPointsValues(self, point_codes: list[str]) -> dict[str, float | int | str | None]:
+        """批量获取测点当前值（轻量，供自动刷新；仅返回存在的测点）"""
+        values: dict[str, float | int | str | None] = {}
+        for code in point_codes:
+            point = self.point_manager.get_point_by_code(code)
+            if point is None:
+                continue
+            values[code] = point.real_value if isinstance(point, (Yc, Yt)) else point.value
+        return values
 
     def setPointSimulationRange(self, point_code: str, min_value: float, max_value: float) -> bool:
         return self.simulation_controller.set_point_simulation_range(point_code, min_value, max_value)

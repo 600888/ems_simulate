@@ -12,6 +12,7 @@ from src.device.core.device import Device
 from src.enums.modbus_def import ProtocolType
 from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import (
+    ApplySimulationConfigRequest,
     BaseResponse,
     DeviceInfoRequest,
     DeviceStartRequest,
@@ -122,7 +123,8 @@ async def get_table_by_slave_id(req: DeviceTableRequest, request: Request):
 async def start_simulation(req: SimulationStartRequest, request: Request):
     """启动模拟"""
     device = _get_device(req.device_name, request)
-    await asyncio.to_thread(device.setAllPointSimulateMethod, req.simulate_method)
+    if req.simulate_method is not None:
+        await asyncio.to_thread(device.setAllPointSimulateMethod, req.simulate_method)
     device.startSimulation()
     return BaseResponse(message="启动模拟程序成功!", data=True)
 
@@ -133,6 +135,25 @@ async def stop_simulation(req: SimulationStopRequest, request: Request):
     device = _get_device(req.device_name, request)
     await asyncio.to_thread(device.stopSimulation)
     return BaseResponse(message="停止模拟程序成功!", data=True)
+
+
+@device_router.post("/simulation-config", response_model=BaseResponse)
+async def get_simulation_config(req: DeviceInfoRequest, request: Request):
+    """获取整机测点模拟配置（Dialog 回显用）"""
+    device = _get_device(req.device_name, request)
+    configs = await asyncio.to_thread(device.getSimulationConfig)
+    return BaseResponse(message="获取模拟配置成功!", data=configs)
+
+
+@device_router.post("/apply-simulation-config", response_model=BaseResponse)
+async def apply_simulation_config(req: ApplySimulationConfigRequest, request: Request):
+    """批量应用测点模拟配置（是否模拟 + 模拟方式 + 步长）"""
+    device = _get_device(req.device_name, request)
+    result = await asyncio.to_thread(
+        device.applySimulationConfig,
+        [item.model_dump(mode="json") for item in req.points],
+    )
+    return BaseResponse(message="应用模拟配置成功!", data=result)
 
 
 @device_router.post("/start", response_model=BaseResponse)

@@ -27,9 +27,53 @@ class SimulationController:
         for point_simulator in self.points.values():
             point_simulator.simulate_method = simulate_method
 
+    def apply_configuration(self, items: list[dict]) -> tuple[list[str], list[dict]]:
+        """批量应用测点模拟配置（无逐点日志，避免海量日志导致卡顿）。
+
+        配置是"要模拟的测点"的完整定义：未包含在配置中的测点停止模拟。
+        返回 (成功编码列表, 失败项列表)。
+        """
+        configured_codes = {item.get("point_code") for item in items if item.get("point_code")}
+        # 重置：未出现在配置中的测点不参与模拟
+        for point, simulator in self.points.items():
+            if point.code not in configured_codes:
+                simulator.is_running = False
+        applied: list[str] = []
+        failed: list[dict] = []
+        for item in items:
+            point_code = item.get("point_code")
+            if not point_code:
+                failed.append({"point_code": point_code, "reason": "缺少 point_code"})
+                continue
+            simulator = next((s for p, s in self.points.items() if p.code == point_code), None)
+            if simulator is None:
+                failed.append({"point_code": point_code, "reason": "未找到测点"})
+                continue
+            try:
+                if item.get("simulate_method") is not None:
+                    simulator.simulate_method = SimulateMethod(item["simulate_method"])
+                if item.get("step") is not None:
+                    simulator.step = int(item["step"])
+                if item.get("enabled") is not None:
+                    simulator.is_running = bool(item["enabled"])
+                applied.append(point_code)
+            except (ValueError, TypeError) as exc:
+                failed.append({"point_code": point_code, "reason": str(exc)})
+        return applied, failed
+
     def set_point_status(self, point: Yc | Yx, is_running: bool):
         if point in self.points:
             self.points[point].is_running = is_running
+
+    def set_point_status_by_code(self, point_code: str, is_running: bool) -> bool:
+        """按测点编码设置模拟启停状态"""
+        for point, simulator in self.points.items():
+            if point.code == point_code:
+                simulator.is_running = is_running
+                log.info(f"设置点 {point_code} 的模拟状态为 {'运行' if is_running else '停止'}")
+                return True
+        log.error(f"未找到点 {point_code}")
+        return False
 
     def set_single_point_simulate_method(self, point_code: str, simulate_method: SimulateMethod):
         """设置单个点的模拟方法"""
@@ -111,7 +155,8 @@ class SimulationController:
 
     def _run_simulation(self):
         """单线程模拟循环"""
-        log.info(f"模拟线程启动, 模拟测点个数: {len(self.points)}")
+        running_count = sum(1 for s in self.points.values() if s.is_running)
+        log.info(f"模拟线程启动, 模拟测点个数: {running_count}")
         # 获取设备本地地址信息
         from src.enums.modbus_def import ProtocolType
 

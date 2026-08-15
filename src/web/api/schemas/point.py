@@ -131,6 +131,13 @@ class PointChangeHistoryRequest(BaseModel):
     slave_id: int | None = Field(None, description="从机 ID，不同从站编码相同时用于精确定位测点")
 
 
+class BatchPointValuesRequest(BaseModel):
+    """批量获取测点当前值请求（轻量，供自动刷新）"""
+
+    device_name: str = Field(..., description="设备名称")
+    point_codes: list[str] = Field(..., description="测点编码列表")
+
+
 class ChangeTrackingConfigRequest(BaseModel):
     """变更追溯配置请求"""
 

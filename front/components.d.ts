@@ -136,6 +136,7 @@ declare module 'vue' {
     SideNavHeader: typeof import('./src/components/layout/SideNavHeader.vue')['default']
     SideNavTree: typeof import('./src/components/layout/SideNavTree.vue')['default']
     SideNavUngrouped: typeof import('./src/components/layout/SideNavUngrouped.vue')['default']
+    SimulationConfigDialog: typeof import('./src/components/point/SimulationConfigDialog.vue')['default']
     SingleRegister: typeof import('./src/components/register/SingleRegister.vue')['default']
     Slave: typeof import('./src/components/device/Slave.vue')['default']
     Table: typeof import('./src/components/device/Table.vue')['default']

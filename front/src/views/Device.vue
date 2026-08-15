@@ -159,20 +159,24 @@
             :name="simulationStatusStr"
             :status="simulationStatus"
           />
-          <el-select
-            v-model="currentSimulateMethod"
-            :placeholder="$t('device.selectSimMethod')"
-            size="large"
-            class="simulation-select"
-            :disabled="isClientDevice"
-          >
-            <el-option
-              v-for="item in simulateOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
+          <el-tooltip :content="t('device.simConfig')" placement="top">
+            <span class="tooltip-wrapper">
+              <el-button
+                class="button btn-config"
+                @click="showSimConfigDialog = true"
+                :disabled="
+                  !deviceStatus ||
+                  isClientDevice ||
+                  (isIec61850Protocol && !modelLoaded)
+                "
+              >
+                <template #icon>
+                  <el-icon class="icon"><Setting /></el-icon>
+                </template>
+                <span>{{ t("device.simConfig") }}</span>
+              </el-button>
+            </span>
+          </el-tooltip>
           <!-- 模拟工具提示 -->
           <el-tooltip
             :content="simTooltipText"
@@ -228,6 +232,16 @@
 
     <!-- 模型导出对话框 -->
     <ModelExportDialog v-model="showExportDialog" :device-name="routeName" />
+
+    <!-- 测点级模拟配置对话框 -->
+    <SimulationConfigDialog
+      v-model="showSimConfigDialog"
+      :device-name="routeName"
+      :saved-config="savedSimConfig"
+      :simulation-running="simulationStatus"
+      @save="handleSaveSimConfig"
+      @simulation-changed="(v: boolean) => (simulationStatus = v)"
+    />
   </el-col>
 </template>
 
@@ -247,6 +261,7 @@ import { useRoute } from "vue-router";
 import TextNode from "@/components/common/TextNode.vue";
 import Slave from "@/components/device/Slave.vue";
 import MessageViewDialog from "@/components/device/MessageViewDialog.vue";
+import SimulationConfigDialog from "@/components/point/SimulationConfigDialog.vue";
 import { isTauri, openMessageWindow } from "@/utils/tauri";
 import ModelExportDialog from "@/components/device/ModelExportDialog.vue";
 import {
@@ -260,8 +275,12 @@ import {
   discoverIEC61850Model,
   checkIEC61850ModelCache,
   loadIEC61850ModelFromCache,
+  applySimulationConfig,
 } from "@/api/deviceApi";
-import type { IEC61850ConnectProgress } from "@/api/deviceApi";
+import type {
+  IEC61850ConnectProgress,
+  SimulationConfigItem,
+} from "@/api/deviceApi";
 import { triggerSidebarRefresh } from "@/composables";
 import {
   acquireAutoRefreshPause,
@@ -276,6 +295,7 @@ import {
   Refresh,
   Search,
   Upload,
+  Setting,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { HTTP_TIMEOUT_MODEL_DISCOVERY } from "@/constants";
@@ -404,15 +424,14 @@ const isAnyModelProcessing = computed(
     iec61850Connecting.value,
 );
 
-const simulateOptions = computed(() => [
-  { value: "Random", label: t("device.random") },
-  { value: "AutoIncrement", label: t("device.autoIncrement") },
-  { value: "AutoDecrement", label: t("device.autoDecrement") },
-  { value: "SineWave", label: t("device.sineWave") },
-  { value: "Ramp", label: t("device.ramp") },
-  { value: "Pulse", label: t("device.pulse") },
-]);
-const currentSimulateMethod = ref<string>("Random");
+// 测点级模拟配置 Dialog
+const showSimConfigDialog = ref<boolean>(false);
+const savedSimConfig = ref<SimulationConfigItem[] | null>(null);
+
+const handleSaveSimConfig = (config: SimulationConfigItem[]) => {
+  // D1：保存仅暂存前端；点"开始模拟"时再应用
+  savedSimConfig.value = config;
+};
 
 const isDeviceProcessing = ref<boolean>(false);
 const isSimProcessing = ref<boolean>(false);
@@ -678,7 +697,11 @@ const startFunction = async () => {
         simulationStatus.value = false;
       }
     } else {
-      if (await startSimulation(routeName.value, currentSimulateMethod.value)) {
+      // D1：开始模拟前先应用本地保存的测点模拟配置（未保存过则走后端默认全量模拟）
+      if (savedSimConfig.value !== null) {
+        await applySimulationConfig(routeName.value, savedSimConfig.value);
+      }
+      if (await startSimulation(routeName.value)) {
         simulationStatus.value = true;
       }
     }
@@ -1159,6 +1182,11 @@ watch(
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
 }
 
+.btn-config {
+  background-color: #6366f1;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+}
+
 .btn-start {
   background-color: var(--color-success);
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
@@ -1225,20 +1253,6 @@ watch(
   }
 }
 
-.simulation-select {
-  margin: 0;
-  width: 200px;
-  :deep(.el-input__wrapper) {
-    border-radius: 10px;
-    background-color: transparent;
-    box-shadow: 0 0 0 1px var(--sidebar-border) inset;
-  }
-  :deep(.el-input__inner) {
-    text-align: center;
-    font-weight: 500;
-  }
-}
-
 /* 响应式适配：medium 及以下断点缩小间距 */
 @include bp.respond-to("medium-down") {
   .device-container {
@@ -1272,9 +1286,6 @@ watch(
     min-width: 100px;
     height: 38px;
     font-size: 13px;
-  }
-  .simulation-select {
-    width: 170px;
   }
 }
 
@@ -1316,8 +1327,7 @@ watch(
       );
     }
   }
-  .button,
-  .simulation-select {
+  .button {
     width: 100%;
   }
 }
