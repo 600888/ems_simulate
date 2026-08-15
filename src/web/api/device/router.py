@@ -18,6 +18,7 @@ from src.web.api.schemas import (
     DeviceStopRequest,
     DeviceTableRequest,
     DLT645CommandRequest,
+    DLT645DiInfoRequest,
     ExportModelRequest,
     IEC61850ImportModelRequest,
     ManualReadRequest,
@@ -360,6 +361,57 @@ async def send_dlt645_command(req: DLT645CommandRequest, request: Request):
         message=result.get("message", "命令执行成功"),
         data=result.get("detail") if result.get("detail") is not None else True,
     )
+
+
+@device_router.post("/dlt645-di-info", response_model=BaseResponse)
+async def get_dlt645_di_info(req: DLT645DiInfoRequest):
+    """获取 DL/T645 数据标识（DI）的元信息：名称、数据格式、是否列表及子项格式。"""
+    import dlt645  # noqa: F401
+    from dlt645.model.data.define import DIMap
+
+    di_str = req.di.strip()
+    try:
+        di = int(di_str, 16)
+    except ValueError:
+        raise ValidationError("数据标识格式错误，请输入十六进制，如 0x00000000") from None
+    item = DIMap.get(di)
+    if item is None:
+        raise ValidationError(f"数据标识 0x{di:08X} 不存在")
+
+    def _range(it: object) -> tuple:
+        min_v = getattr(it, "min_value", None)
+        max_v = getattr(it, "max_value", None)
+        return min_v, max_v
+
+    if isinstance(item, list):
+        min_v, max_v = _range(item[0])
+        for child in item[1:]:
+            child_min, child_max = _range(child)
+            if child_min is not None:
+                min_v = child_min if min_v is None else min(min_v, child_min)
+            if child_max is not None:
+                max_v = child_max if max_v is None else max(max_v, child_max)
+        info = {
+            "di": f"0x{di:08X}",
+            "name": " / ".join(str(getattr(child, "name", "")) for child in item if getattr(child, "name", "")),
+            "is_list": True,
+            "data_format": None,
+            "list_formats": [getattr(child, "data_format", "") for child in item],
+            "min_value": min_v,
+            "max_value": max_v,
+        }
+    else:
+        min_v, max_v = _range(item)
+        info = {
+            "di": f"0x{di:08X}",
+            "name": str(getattr(item, "name", "")),
+            "is_list": False,
+            "data_format": getattr(item, "data_format", ""),
+            "list_formats": None,
+            "min_value": min_v,
+            "max_value": max_v,
+        }
+    return BaseResponse(data=info)
 
 
 # ===== 报文捕获 =====

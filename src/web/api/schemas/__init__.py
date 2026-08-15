@@ -18,6 +18,7 @@ from .device import (
     DeviceStopRequest,
     DeviceTableRequest,
     DLT645CommandRequest,
+    DLT645DiInfoRequest,
     ExportModelRequest,
     IEC61850ImportModelRequest,
     IEC61850LoadModelRequest,

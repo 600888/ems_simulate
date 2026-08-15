@@ -778,7 +778,66 @@ class Device:
             if address:
                 self.meter_address = str(address)
 
+        # 写入值成功后，从服务端实例映射重新读取对应点并更新点表缓存，
+        # 使表格"真实值"列立即反映新值（与写全局 DIMap 不同，实例映射是读值来源）
+        if result.get("ok") and command == "write_value":
+            self._sync_dlt645_points_after_write(handler, params)
+
         return result
+
+    def _sync_dlt645_points_after_write(self, handler, params: dict | None = None) -> None:
+        """write_value 写入成功后，将服务端 data_map 中的新值同步到点表缓存。
+
+        DLT645 从站表格真实值读取自 point.real_value（点模型缓存），
+        而写入只修改了服务端实例映射，需重新读取对应点以刷新缓存。
+        直接从实例映射取原始工程值，避免 read_value 的寄存器整数换算截断精度。
+        """
+        from src.device.protocol.dlt645_handler import DLT645ServerHandler
+
+        if not isinstance(handler, DLT645ServerHandler):
+            return
+        di_str = str((params or {}).get("di", "")).strip()
+        try:
+            di = int(di_str, 16)
+        except ValueError:
+            return
+        server = getattr(handler, "server", None)
+        if server is None:
+            return
+
+        def _raw_primary(item) -> float | None:
+            from dlt645.model.types.dlt645_type import Demand
+
+            def extract(value):
+                if isinstance(value, Demand):
+                    value = value.value
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    return float(value)
+                return None
+
+            if isinstance(item, list):
+                for it in item:
+                    if it is None:
+                        continue
+                    val = extract(getattr(it, "value", None))
+                    if val is not None:
+                        return val
+                return None
+            return extract(getattr(item, "value", None))
+
+        item = server.get_data_item(di)
+        if item is None:
+            return
+        raw = _raw_primary(item)
+        if raw is None:
+            return
+        for point in self.point_manager.get_all_points():
+            try:
+                if int(point.address) == di:
+                    point.real_value = raw
+                    point.is_valid = True
+            except (TypeError, ValueError):
+                continue
 
     async def read_point_metadata_async(self, point_code: str, slave_id: int | None = None) -> dict:
         """异步读取测点的品质(q)与时标(t)元数据"""

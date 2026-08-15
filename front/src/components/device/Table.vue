@@ -382,7 +382,13 @@
       <el-table-column
         v-if="props.iec61850Category !== 'DataSets'"
         :label="$t('common.operation')"
-        :width="isClientDevice || isIec61850WithActions ? 240 : 100"
+        :width="
+          isClientDevice || isIec61850WithActions
+            ? 240
+            : isDlt645Server
+              ? 200
+              : 100
+        "
         fixed="right"
       >
         <template #default="scope">
@@ -513,6 +519,16 @@
             >
               {{ $t("table.write") }}
             </el-button>
+            <!-- DLT645 从站: 写入值（直接设置模拟电表内部该数据标识的值，列表数据用逗号分隔） -->
+            <el-button
+              v-if="isDlt645Server"
+              type="success"
+              size="small"
+              :icon="Edit"
+              @click="handleDlt645WriteValue(scope.row['测点编码'])"
+            >
+              {{ $t("slave.dlt645ServerCmd.write_value") }}
+            </el-button>
             <el-popconfirm
               v-if="!isIec61850"
               :title="$t('table.deleteConfirm')"
@@ -557,6 +573,13 @@
     :currentValue="currentPoint.value"
     :pointType="currentPoint.type"
     :slaveId="slaveId"
+    @success="handleWriteSuccess"
+  />
+  <!-- DLT645 从站专用写入对话框 -->
+  <Dlt645WriteDialog
+    v-model="dlt645WriteDialogVisible"
+    :device-name="deviceName"
+    :di="dlt645WritePointCode"
     @success="handleWriteSuccess"
   />
   <!-- IEC61850 专用写入对话框 -->
@@ -741,6 +764,7 @@ import PointMappingConfig from "../point/PointMappingConfig.vue";
 import PointChangeHistory from "../point/PointChangeHistory.vue";
 import WritePointDialog from "./WritePointDialog.vue";
 import Iec61850WriteDialog from "./Iec61850WriteDialog.vue";
+import Dlt645WriteDialog from "./Dlt645WriteDialog.vue";
 
 const { t, locale } = useI18n();
 
@@ -848,6 +872,11 @@ const isIec61850Client = computed(() => {
 const isIec61850WithActions = computed(() => {
   return isIec61850Server.value || isIec61850Client.value;
 });
+
+/** DLT645 从站（模拟电表服务端）设备 */
+const isDlt645Server = computed(
+  () => String(props.protocolType) === "Dlt645Server",
+);
 
 const readingPoints = reactive<Record<string, boolean>>({});
 const deletingPoints = reactive<Record<string, boolean>>({});
@@ -1254,6 +1283,15 @@ const handleReadPoint = async (pointCode: string) => {
   } finally {
     readingPoints[pointCode] = false;
   }
+};
+
+/** DLT645 从站：打开写入值对话框（显示测点名称/数据格式，列表项逐个输入） */
+const dlt645WriteDialogVisible = ref(false);
+const dlt645WritePointCode = ref("");
+const handleDlt645WriteValue = (pointCode: string) => {
+  if (!pointCode) return;
+  dlt645WritePointCode.value = pointCode;
+  dlt645WriteDialogVisible.value = true;
 };
 
 const writeDialogVisible = ref(false);

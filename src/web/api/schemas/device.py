@@ -19,6 +19,13 @@ class DLT645CommandRequest(BaseModel):
     params: dict | None = None
 
 
+class DLT645DiInfoRequest(BaseModel):
+    """DL/T645 数据标识（DI）元信息请求"""
+
+    device_name: str
+    di: str
+
+
 class DeviceInfoResponse:
     pass  # 使用 BaseResponse 统一返回
 

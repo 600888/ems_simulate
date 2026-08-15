@@ -364,6 +364,7 @@ class DLT645ServerHandler(ServerHandler):
         - write_address: 写通讯地址（设置电表地址） params: address(12位数字)
         - set_time: 校时（设置电表时间） params: datetime(可选, ISO 字符串)
         - change_password: 设置密码（修改密码） params: password(8位数字)
+        - write_value: 写入数据标识值 params: di(十六进制, 如 0x00000000), value(数值；列表数据用逗号分隔)
         - clear_demand: 最大需量清零（清空全部需量数据）
         - clear_meter: 电表清零（清空电能量/需量/冻结/事件等累计数据）
         - clear_event: 事件清零（清空事件记录）
@@ -424,15 +425,15 @@ class DLT645ServerHandler(ServerHandler):
 
             if command == "clear_demand":
                 from dlt645.model.data.data_handler import set_data_item
-                from dlt645.model.data.define import DIMap
                 from dlt645.model.types.dlt645_type import Demand
 
-                # 需量清零：清空全部 DI 前缀为 0x01 的需量数据（含发生时间）
+                # 需量清零：写入当前服务端实例的内部映射（self._server.data_map），
+                # 使该电表表格读取能反映清零结果，且不影响全局 DIMap 与其他电表实例
                 count = 0
-                for di, item in DIMap.items():
+                for di, item in self._server.data_map.items():
                     if (di >> 24) & 0xFF != 0x01 or isinstance(item, list):
                         continue
-                    if set_data_item(di, Demand(0.0, datetime.now())):
+                    if set_data_item(di, Demand(0.0, datetime.now()), self._server.data_map):
                         count += 1
                 if self._log:
                     self._log.info(f"DLT645 从站最大需量清零完成，共 {count} 项")
@@ -454,6 +455,88 @@ class DLT645ServerHandler(ServerHandler):
                 if self._log:
                     self._log.info("DLT645 从站事件记录已清零")
                 return {"ok": True, "message": "事件记录已清零"}
+
+            if command == "write_value":
+                di_str = str(params.get("di", "")).strip()
+                raw_value = params.get("value")
+                if not di_str or raw_value is None or str(raw_value).strip() == "":
+                    return {"ok": False, "message": "请填写数据标识和值"}
+                try:
+                    di = int(di_str, 16)
+                except ValueError:
+                    return {
+                        "ok": False,
+                        "message": "数据标识格式错误，请输入十六进制，如 0x00000000",
+                    }
+                from dlt645.model.data.data_handler import set_data_item
+                from dlt645.model.data.define import DIMap
+
+                item = DIMap.get(di)
+                if item is None:
+                    return {
+                        "ok": False,
+                        "message": f"数据标识 0x{di:08X} 不存在",
+                    }
+
+                def _to_number(text: str) -> float | None:
+                    try:
+                        return float(text)
+                    except ValueError:
+                        return None
+
+                def _write_to_server(di: int, payload) -> bool:
+                    """写入服务端实例的内部数据映射（self._server.data_map），
+                    使该电表表格读取能反映新值。优先调用服务端 set_{前缀} 方法
+                    （与 handler.write_value 机制一致），否则直接写 data_map。"""
+                    prefix = f"{di:08X}"[:2]
+                    setter = getattr(self._server, f"set_{prefix}", None)
+                    if callable(setter):
+                        return bool(setter(di, payload))
+                    return set_data_item(di, payload, self._server.data_map)
+
+                if isinstance(item, list):
+                    # 列表数据项：支持逗号分隔多个值，与子项一一对应
+                    parts = [p.strip() for p in str(raw_value).split(",")]
+                    values = [_to_number(p) for p in parts]
+                    if any(v is None for v in values):
+                        return {
+                            "ok": False,
+                            "message": "列表值必须为逗号分隔的数值",
+                        }
+                    if not _write_to_server(di, values):
+                        return {
+                            "ok": False,
+                            "message": f"写入失败：值超出 0x{di:08X} 的范围或格式不匹配",
+                        }
+                    if self._log:
+                        self._log.info(f"DLT645 从站写入数据标识 0x{di:08X} = {values}")
+                    return {
+                        "ok": True,
+                        "message": f"写入成功: 0x{di:08X} = {values}",
+                        "detail": {"di": f"0x{di:08X}", "value": values},
+                    }
+
+                num = _to_number(str(raw_value).strip())
+                if num is None:
+                    return {"ok": False, "message": "值必须为数值"}
+                payload = num
+                # 需量数据项（Demand 结构）：数值写入时补当前发生时间
+                from dlt645.model.types.dlt645_type import Demand
+
+                if isinstance(getattr(item, "value", None), Demand):
+                    payload = Demand(num, datetime.now())
+                if not _write_to_server(di, payload):
+                    return {
+                        "ok": False,
+                        "message": f"写入失败：值超出 0x{di:08X} 的范围或格式不匹配",
+                    }
+                if self._log:
+                    self._log.info(f"DLT645 从站写入数据标识 0x{di:08X} = {num}")
+                return {
+                    "ok": True,
+                    "message": f"写入成功: 0x{di:08X} = {num}",
+                    "detail": {"di": f"0x{di:08X}", "value": num},
+                }
         except Exception as e:
             if self._log:
                 self._log.error(f"DLT645 从站命令执行失败: {e}")

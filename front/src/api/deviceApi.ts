@@ -249,6 +249,23 @@ export async function sendDlt645Command(
   return data;
 }
 
+/**
+ * 获取 DL/T645 数据标识（DI）的元信息：名称、数据格式、是否列表及子项格式
+ *
+ * @param deviceName 设备名称
+ * @param di 数据标识（十六进制，如 "0x00000000"）
+ * @returns { di, name, is_list, data_format, list_formats, min_value, max_value }
+ */
+export async function getDlt645DiInfo(
+  deviceName: string,
+  di: string,
+): Promise<any> {
+  return requestApi(DEVICE_API.DLT645_DI_INFO, "post", {
+    device_name: deviceName,
+    di,
+  });
+}
+
 // ===== 报文捕获 =====
 export async function getMessages(
   deviceName: string,

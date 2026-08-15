@@ -23,6 +23,7 @@ declare module 'vue' {
     DeviceSecurityConfig: typeof import('./src/components/device/DeviceSecurityConfig.vue')['default']
     DiscoveryProgress: typeof import('./src/components/scl/DiscoveryProgress.vue')['default']
     Dlt645CommandDialog: typeof import('./src/components/device/Dlt645CommandDialog.vue')['default']
+    Dlt645WriteDialog: typeof import('./src/components/device/Dlt645WriteDialog.vue')['default']
     EditPoint: typeof import('./src/components/point/EditPoint.vue')['default']
     EditPointIec104: typeof import('./src/components/point/EditPointIec104.vue')['default']
     EditPointLimit: typeof import('./src/components/point/EditPointLimit.vue')['default']
