@@ -12,7 +12,6 @@ repos:
       - id: check-json
       - id: check-toml
       - id: check-merge-conflict
-      - id: check-added-large-files
       - id: detect-private-key
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -42,3 +41,9 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0  # 建议使用较新版本
+    hooks:
+    -   id: check-added-large-files
+        args: ['--maxkb=5000']  # 将大小限制提高到5000KB
