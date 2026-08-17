@@ -171,6 +171,12 @@ def test_copy_uses_start_ip_and_per_segment_offsets():
         ),
         patch("src.data.dao.point_dao.PointDao.get_points_by_channel", return_value=[]),
         patch(
+            "src.web.api.channel.device_manage.ChannelConfigurationService.clone_for_channel",
+        ),
+        patch(
+            "src.web.api.channel.device_manage.Iec61850CopyService.clone_for_channel",
+        ),
+        patch(
             "src.web.api.channel.device_manage.get_device_builder",
             return_value=_fake_builder(),
         ),
@@ -219,6 +225,12 @@ def test_copy_offsets_carry_to_previous_segment():
             side_effect=[21, 22],
         ),
         patch("src.data.dao.point_dao.PointDao.get_points_by_channel", return_value=[]),
+        patch(
+            "src.web.api.channel.device_manage.ChannelConfigurationService.clone_for_channel",
+        ),
+        patch(
+            "src.web.api.channel.device_manage.Iec61850CopyService.clone_for_channel",
+        ),
         patch(
             "src.web.api.channel.device_manage.get_device_builder",
             return_value=_fake_builder(),

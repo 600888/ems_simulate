@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from src.data.service.point_tree_service import PointTreeService
 from src.device.core.point.point_manager import PointManager
+from src.enums.modbus_def import ProtocolType
 from src.enums.points.yc import Yc
 from src.enums.points.yx import Yx
 
@@ -12,6 +13,7 @@ class MockDevice:
     def __init__(self, name, device_id):
         self.name = name
         self.device_id = device_id
+        self.protocol_type = ProtocolType.ModbusTcp
         self.point_manager = PointManager()
         self.yc_dict = {}
         self.yx_dict = {}
