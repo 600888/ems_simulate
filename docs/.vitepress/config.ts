@@ -94,6 +94,7 @@ export default defineConfig({
                     collapsed: false,
                     items: [
                         { text: '设备管理', link: '/guide/device/device-management' },
+                        { text: '设备复制', link: '/guide/device/device-copy' },
                         { text: '从机管理', link: '/guide/device/slave-management' }
                     ]
                 },
