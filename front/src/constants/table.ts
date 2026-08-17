@@ -165,6 +165,11 @@ export const FRAME_TYPE_TAG_MAP: Record<string, string> = {
   "1": "warning",
   "2": "danger",
   "3": "info",
+  // 表格行数据的帧类型为中文（如“遥测”），兼容数字与中文两种 key
+  遥测: "success",
+  遥信: "warning",
+  遥控: "danger",
+  遥调: "info",
 } as const;
 
 // ===== IEC104 类型标签颜色 =====

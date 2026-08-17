@@ -46,7 +46,8 @@ export interface CopyDeviceRequest {
   ip_start?: string;
   /** 各段独立偏移量（长度4，0-255） */
   ip_offsets?: number[];
-  ip_start_offset: number;
+  /** 旧逻辑 IP 起始偏移（仅作用最后一段，后端有默认值 1，兼容旧逻辑） */
+  ip_start_offset?: number;
   port_offset?: number;
   target_group_id?: number | null;
 }

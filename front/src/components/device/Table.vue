@@ -1007,7 +1007,9 @@ const iec61850RowClassName = ({ row }: { row: any }) => {
   return "";
 };
 
-const tagFilters = FRAME_TYPE_FILTERS;
+const tagFilters = computed(() =>
+  FRAME_TYPE_FILTERS.map((f) => ({ text: t(f.text), value: f.value })),
+);
 
 const iec104TypeFilters = computed(() =>
   IEC104_TYPE_FILTERS.map((f) => ({ text: t(f.text), value: f.value })),
