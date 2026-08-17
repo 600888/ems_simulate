@@ -109,6 +109,14 @@ export default defineConfig({
                         { text: '寄存器解析', link: '/guide/point/register-parsing' },
                         { text: '变化回溯', link: '/guide/point/change-tracking' }
                     ]
+                },
+                {
+                    text: '数据模拟',
+                    collapsed: false,
+                    items: [
+                        { text: '测点配置', link: '/guide/simulation/point-config' },
+                        { text: '数据监视', link: '/guide/simulation/data-monitor' }
+                    ]
                 }
                 // {
                 //     text: '操作手册',
