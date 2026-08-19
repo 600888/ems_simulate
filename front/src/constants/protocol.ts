@@ -9,6 +9,7 @@ export const PROTOCOL_TYPE = {
   IEC104: 2,
   DLT645: 3,
   IEC61850: 4,
+  DNP3: 5,
 } as const;
 
 // 连接类型枚举值
@@ -26,6 +27,7 @@ export const PROTOCOL_DEFAULT_PORTS: Record<number, number> = {
   [PROTOCOL_TYPE.IEC104]: 2404,
   [PROTOCOL_TYPE.DLT645]: 8899,
   [PROTOCOL_TYPE.IEC61850]: 102,
+  [PROTOCOL_TYPE.DNP3]: 20000,
 } as const;
 
 // 协议客户端默认 IP 映射（仅 TCP 客户端模式使用）
@@ -33,6 +35,7 @@ export const PROTOCOL_DEFAULT_CLIENT_IP: Record<number, string> = {
   [PROTOCOL_TYPE.IEC104]: "127.0.0.1",
   [PROTOCOL_TYPE.DLT645]: "127.0.0.1",
   [PROTOCOL_TYPE.IEC61850]: "127.0.0.1",
+  [PROTOCOL_TYPE.DNP3]: "127.0.0.1",
 } as const;
 
 // 标准波特率列表
@@ -115,5 +118,15 @@ export function isDlt645Protocol(protocolStr: string | number): boolean {
   return (
     protocolStr === PROTOCOL_TYPE.DLT645 ||
     DLT645_PROTOCOL_NAMES.includes(protocolStr as any)
+  );
+}
+
+// DNP3 协议标识判断
+export const DNP3_PROTOCOL_NAMES = ["Dnp3Client", "Dnp3Server"] as const;
+
+export function isDnp3Protocol(protocolStr: string | number): boolean {
+  return (
+    protocolStr === PROTOCOL_TYPE.DNP3 ||
+    DNP3_PROTOCOL_NAMES.includes(protocolStr as any)
   );
 }

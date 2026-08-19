@@ -287,8 +287,8 @@ class PointOperator:
             return None
 
         try:
-            # IEC104 客户端使用专门的主动读取方法（发送 C_RD_NA_1 或总召唤）
-            if isinstance(self._handler, IEC104ClientHandler):
+            # IEC104 / DNP3 客户端使用专门的主动读取方法（发送网络请求获取最新值）
+            if isinstance(self._handler, IEC104ClientHandler) or hasattr(self._handler, "active_read_value_async"):
                 value = await self._handler.active_read_value_async(point)
             else:
                 # 其他协议回退到普通异步读取

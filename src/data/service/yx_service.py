@@ -118,4 +118,16 @@ class YxService:
                 fc=fc,
             )
 
+        elif protocol_type in [ProtocolType.Dnp3Server, ProtocolType.Dnp3Client]:
+            # DNP3 以 index 寻址：reg_addr 存十进制 index，经 process_hex_address 还原为数值
+            return Yx(
+                rtu_addr=item["rtu_addr"],
+                address=process_hex_address(item["reg_addr"]),
+                bit=None,
+                name=item["name"],
+                code=item["code"],
+                value=0,
+                frame_type=1,
+            )
+
         return None

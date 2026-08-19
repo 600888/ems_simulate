@@ -15,6 +15,8 @@ class ProtocolType(Enum):
     Dlt645Client = "Dlt645Client"
     Iec61850Server = "Iec61850Server"
     Iec61850Client = "Iec61850Client"
+    Dnp3Server = "Dnp3Server"
+    Dnp3Client = "Dnp3Client"
 
 
 class RegisterType(Enum):

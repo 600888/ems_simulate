@@ -218,4 +218,5 @@ export const CLIENT_PROTOCOL_NAMES = [
   "Iec104Client",
   "Dlt645Client",
   "Iec61850Client",
+  "Dnp3Client",
 ] as const;

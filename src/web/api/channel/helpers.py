@@ -42,6 +42,7 @@ def configure_builder_network(builder, conn_type, protocol_type, ip, port, chann
         ProtocolType.ModbusTcpClient,
         ProtocolType.Dlt645Client,
         ProtocolType.Iec61850Client,
+        ProtocolType.Dnp3Client,
     ]:
         builder.setDeviceNetConfig(port=port, ip=ip)
     else:
@@ -76,6 +77,7 @@ def is_client_protocol(protocol_type) -> bool:
         ProtocolType.Iec104Client,
         ProtocolType.Dlt645Client,
         ProtocolType.Iec61850Client,
+        ProtocolType.Dnp3Client,
     ]
 
 
@@ -140,7 +142,9 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
 
     # 需要在新实例启动前停止旧实例（释放端口/连接）的场景
     needs_stop_before_start = is_start and (
-        is_client_protocol(channel_protocol_type) or channel_protocol_type == ProtocolType.Iec61850Server
+        is_client_protocol(channel_protocol_type)
+        or channel_protocol_type == ProtocolType.Iec61850Server
+        or channel_protocol_type == ProtocolType.Dnp3Server
     )
     if needs_stop_before_start:
         await device_controller.remove_device_by_id(channel_id)
@@ -159,6 +163,10 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         # 必须单独处理，否则 reload_device_instance(is_start=True) 不会启动服务器
         await new_device.start()
         log.info(f"IEC 61850 服务端已启动: {device_name}")
+    elif is_start and channel_protocol_type == ProtocolType.Dnp3Server:
+        # DNP3 服务端（Outstation）: 不在 is_client_protocol 中，需显式启动监听
+        await new_device.start()
+        log.info(f"DNP3 服务端已启动: {device_name}")
 
     if not needs_stop_before_start:
         # 非启动场景（或无需先停的启动场景）：新实例已构建完成，

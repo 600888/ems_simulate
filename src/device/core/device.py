@@ -30,6 +30,7 @@ from src.device.data_update.data_update_thread import DataUpdateThread
 from src.device.protocol import ProtocolHandler
 from src.device.protocol.base_handler import ClientHandler
 from src.device.protocol.dlt645_handler import DLT645ClientHandler, DLT645ServerHandler
+from src.device.protocol.dnp3_handler import DNP3ClientHandler, DNP3ServerHandler
 from src.device.protocol.iec104_handler import IEC104ClientHandler, IEC104ServerHandler
 from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
 from src.device.protocol.modbus_handler import ModbusClientHandler, ModbusServerHandler
@@ -128,12 +129,16 @@ class Device:
         """获取底层服务器对象"""
         if isinstance(self.protocol_handler, IEC61850ServerHandler):
             return self.protocol_handler.server
+        if isinstance(self.protocol_handler, DNP3ServerHandler):
+            return self.protocol_handler.server
         return None
 
     @property
     def client(self):
         """获取底层客户端对象"""
         if isinstance(self.protocol_handler, IEC61850ClientHandler):
+            return self.protocol_handler.client
+        if isinstance(self.protocol_handler, DNP3ClientHandler):
             return self.protocol_handler.client
         return None
 
@@ -166,6 +171,8 @@ class Device:
             ProtocolType.Dlt645Client: lambda: DLT645ClientHandler(self.log),
             ProtocolType.Iec61850Server: lambda: IEC61850ServerHandler(self.log),
             ProtocolType.Iec61850Client: lambda: IEC61850ClientHandler(self.log),
+            ProtocolType.Dnp3Server: lambda: DNP3ServerHandler(self.log),
+            ProtocolType.Dnp3Client: lambda: DNP3ClientHandler(self.log),
         }
         creator = handler_map.get(self.protocol_type)
         if creator:
@@ -263,6 +270,16 @@ class Device:
     def initIec61850Client(self) -> None:
         """初始化 IEC 61850 客户端"""
         self.protocol_type = ProtocolType.Iec61850Client
+        self.initProtocol()
+
+    def initDnp3Server(self) -> None:
+        """初始化 DNP3 服务端（Outstation）"""
+        self.protocol_type = ProtocolType.Dnp3Server
+        self.initProtocol()
+
+    def initDnp3Client(self) -> None:
+        """初始化 DNP3 客户端（Master）"""
+        self.protocol_type = ProtocolType.Dnp3Client
         self.initProtocol()
 
     def get_iec61850_connect_progress(self) -> dict:

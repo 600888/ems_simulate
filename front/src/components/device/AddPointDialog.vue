@@ -42,7 +42,10 @@
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item :label="$t('point.startAddress')" prop="reg_addr">
+        <el-form-item
+          :label="isDnp3 ? $t('point.startIndex') : $t('point.startAddress')"
+          prop="reg_addr"
+        >
           <el-input
             v-model="formData.reg_addr"
             :placeholder="$t('point.startAddrPlaceholder')"
@@ -77,7 +80,10 @@
           />
         </el-form-item>
 
-        <el-form-item :label="$t('point.regAddress')" prop="reg_addr">
+        <el-form-item
+          :label="isDnp3 ? $t('point.index') : $t('point.regAddress')"
+          prop="reg_addr"
+        >
           <el-input
             v-model="formData.reg_addr"
             :placeholder="$t('point.regAddrPlaceholder')"
@@ -86,7 +92,7 @@
       </template>
 
       <el-form-item
-        v-if="!isIec61850 && !isDlt645"
+        v-if="!isIec61850 && !isDlt645 && !isDnp3"
         :label="$t('point.slaveAddress')"
         prop="rtu_addr"
       >
@@ -105,7 +111,7 @@
       </el-form-item>
 
       <el-form-item
-        v-if="!isIec104"
+        v-if="!isIec104 && !isDnp3"
         :label="$t('point.funcCode')"
         prop="func_code"
       >
@@ -124,7 +130,7 @@
       </el-form-item>
 
       <el-form-item
-        v-if="!isIec104"
+        v-if="!isIec104 && !isDnp3"
         :label="$t('point.decodeCode')"
         prop="decode_code"
       >
@@ -327,6 +333,12 @@ const isIec61850 = computed(() => {
 const isDlt645 = computed(() => {
   const pt = props.protocolType || "";
   return pt === "Dlt645Client" || pt === "Dlt645Server";
+});
+
+// 判断是否为 DNP3 协议（DNP3 用 index 寻址，无功能码/解析码/从站地址）
+const isDnp3 = computed(() => {
+  const pt = props.protocolType || "";
+  return pt === "Dnp3Client" || pt === "Dnp3Server";
 });
 
 const emit = defineEmits<{

@@ -73,6 +73,7 @@ PROTOCOL_OPTIONS = [
     {"value": 2, "label": "IEC 104", "conn_types": [1, 2]},
     {"value": 3, "label": "DL/T645-2007", "conn_types": [0, 1, 2, 3]},
     {"value": 4, "label": "IEC 61850", "conn_types": [1, 2]},
+    {"value": 5, "label": "DNP3", "conn_types": [1, 2]},
 ]
 
 # 连接类型映射
@@ -214,6 +215,7 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
                 ProtocolType.Iec104Client,
                 ProtocolType.Dlt645Client,
                 ProtocolType.Iec61850Client,
+                ProtocolType.Dnp3Client,
             ]:
                 builder.setDeviceNetConfig(port=req.port, ip=req.ip)
             else:

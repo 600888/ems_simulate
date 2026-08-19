@@ -136,4 +136,18 @@ class YkService:
                 command_type=item.get("command_type", 0),
             )
 
+        elif protocol_type in [ProtocolType.Dnp3Server, ProtocolType.Dnp3Client]:
+            # DNP3 以 index 寻址：reg_addr 存十进制 index
+            return Yk(
+                rtu_addr=item["rtu_addr"],
+                address=process_hex_address(item["reg_addr"]),
+                bit=item.get("bit"),
+                func_code=item["func_code"] if item.get("func_code") else 5,
+                name=item["name"],
+                code=item["code"],
+                value=0,
+                frame_type=2,
+                command_type=item.get("command_type", 0),
+            )
+
         return None

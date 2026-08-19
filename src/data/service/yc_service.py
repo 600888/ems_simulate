@@ -150,4 +150,20 @@ class YcService:
                 frame_type=0,
             )
 
+        elif protocol_type in [ProtocolType.Dnp3Server, ProtocolType.Dnp3Client]:
+            # DNP3 以 index 寻址：reg_addr 存十进制 index，经 process_hex_address 还原为数值
+            return Yc(
+                rtu_addr=item["rtu_addr"],
+                address=process_hex_address(item["reg_addr"]),
+                func_code=int(item["func_code"]) if item.get("func_code") else 3,
+                name=item["name"],
+                code=item["code"],
+                value=0,
+                max_value_limit=item["max_limit"],
+                min_value_limit=item["min_limit"],
+                add_coe=item["add_coe"],
+                mul_coe=item["mul_coe"],
+                frame_type=0,
+            )
+
         return None

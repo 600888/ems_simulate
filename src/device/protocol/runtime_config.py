@@ -76,6 +76,35 @@ IEC61850_SERVER_DEFAULTS = {
     "file_service_directory": "",
 }
 
+# DNP3 客户端（Master）默认运行参数
+DNP3_CLIENT_DEFAULTS = {
+    "local_address": 1,
+    "remote_address": 0,
+    "address_size": 2,
+    "link_confirm": True,
+    "app_confirm": True,
+    "time_sync_enabled": True,
+    "integrity_interval_s": 60,
+    "event_interval_s": 5,
+    "enable_unsolicited": False,
+    "connection_timeout_ms": 3000,
+    "command_timeout_ms": 3000,
+    "max_retries": 3,
+}
+
+# DNP3 服务端（Outstation）默认运行参数
+DNP3_SERVER_DEFAULTS = {
+    "local_address": 1,
+    "remote_address": 0,
+    "address_size": 2,
+    "link_confirm": True,
+    "app_confirm": True,
+    "enable_unsolicited": False,
+    "event_buffer_size": 1000,
+    "select_timeout_s": 10,
+    "max_connections": 0,
+}
+
 # Keys use the persisted protocol_type and conn_type values.
 _DEFAULTS: dict[tuple[int, int], dict[str, int | bool | str]] = {
     (0, 0): MODBUS_CLIENT_DEFAULTS,
@@ -89,6 +118,8 @@ _DEFAULTS: dict[tuple[int, int], dict[str, int | bool | str]] = {
     (3, 3): {"session_idle_timeout_ms": 30000},
     (4, 1): IEC61850_CLIENT_DEFAULTS,
     (4, 2): IEC61850_SERVER_DEFAULTS,
+    (5, 1): DNP3_CLIENT_DEFAULTS,
+    (5, 2): DNP3_SERVER_DEFAULTS,
 }
 
 _RANGES: dict[str, tuple[int, int]] = {
@@ -118,6 +149,15 @@ _RANGES: dict[str, tuple[int, int]] = {
     "max_connections": (0, 1000),
     "remote_ae_qualifier": (0, 2147483647),
     "local_ae_qualifier": (0, 2147483647),
+    # DNP3
+    "local_address": (0, 65535),
+    "remote_address": (0, 65535),
+    "address_size": (1, 2),
+    "integrity_interval_s": (0, 86400),
+    "event_interval_s": (0, 3600),
+    "event_buffer_size": (1, 100000),
+    "select_timeout_s": (1, 60),
+    "max_retries": (0, 100),
 }
 
 _AP_TITLE_FIELDS = {"remote_ap_title", "local_ap_title"}

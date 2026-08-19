@@ -151,4 +151,20 @@ class YtService:
                 frame_type=3,
             )
 
+        elif protocol_type in [ProtocolType.Dnp3Server, ProtocolType.Dnp3Client]:
+            # DNP3 以 index 寻址：reg_addr 存十进制 index
+            return Yt(
+                rtu_addr=item["rtu_addr"],
+                address=process_hex_address(item["reg_addr"]),
+                func_code=int(item["func_code"]) if item.get("func_code") else 6,
+                name=item["name"],
+                code=item["code"],
+                value=0,
+                max_value_limit=item["max_limit"],
+                min_value_limit=item["min_limit"],
+                add_coe=item["add_coe"],
+                mul_coe=item["mul_coe"],
+                frame_type=3,
+            )
+
         return None

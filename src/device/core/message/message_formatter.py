@@ -13,7 +13,14 @@ from src.device.core.message.message_parser import (
     IEC104MessageParser,
     ModbusMessageParser,
 )
-from src.device.core.message.parsers import describe_mms, parse_dlt645, parse_iec104, parse_mms, parse_modbus
+from src.device.core.message.parsers import (
+    describe_mms,
+    parse_dlt645,
+    parse_dnp3,
+    parse_iec104,
+    parse_mms,
+    parse_modbus,
+)
 from src.enums.modbus_def import ProtocolType
 from src.enums.modbus_register import Decode
 
@@ -53,6 +60,11 @@ _IEC104_TYPES = {
 _MMS_TYPES = {
     ProtocolType.Iec61850Server,
     ProtocolType.Iec61850Client,
+}
+
+_DNP3_TYPES = {
+    ProtocolType.Dnp3Server,
+    ProtocolType.Dnp3Client,
 }
 
 
@@ -228,6 +240,8 @@ class MessageFormatter:
             detail = parse_iec104(raw, role=role)
         elif protocol_type in _MMS_TYPES:
             detail = parse_mms(raw, role=role)
+        elif protocol_type in _DNP3_TYPES:
+            detail = parse_dnp3(raw, role=role)
         else:
             return None
         detail.update(

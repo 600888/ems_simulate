@@ -98,6 +98,12 @@ class GeneralDeviceBuilder:
     def initIec61850Client(self) -> None:
         self.general_device.initIec61850Client()
 
+    def initDnp3Server(self) -> None:
+        self.general_device.initDnp3Server()
+
+    def initDnp3Client(self) -> None:
+        self.general_device.initDnp3Client()
+
     def importDataPoints(self) -> None:
         """导入测点数据"""
         if self.import_method == DataSource.Db:
@@ -139,6 +145,10 @@ class GeneralDeviceBuilder:
             return self.generalDeviceIec61850Server
         elif protocol_type == ProtocolType.Iec61850Client:
             return self.generalDeviceIec61850Client
+        elif protocol_type == ProtocolType.Dnp3Server:
+            return self.generalDeviceDnp3Server
+        elif protocol_type == ProtocolType.Dnp3Client:
+            return self.generalDeviceDnp3Client
         return None
 
     @property
@@ -256,4 +266,29 @@ class GeneralDeviceBuilder:
         self.initIec61850Client()
         self.general_device.initLog()
         self.general_device.setSpecialDataPointValues()
+        return self.general_device
+
+    @property
+    def generalDeviceDnp3Server(self) -> Device:
+        """构建 DNP3 服务端（Outstation）"""
+
+        self.setDeviceId(self.device_id)
+        self.setDeviceName(name=self.device_name)
+        self.importDataPoints()
+        self.initDnp3Server()
+        self.general_device.setSpecialDataPointValues()
+        # DNP3 为 asyncio 协议，启动由 async handler.start()（device.start()/reload）异步驱动，
+        # 不在同步构建方法里直接在事件循环外启动。
+        return self.general_device
+
+    @property
+    def generalDeviceDnp3Client(self) -> Device:
+        """构建 DNP3 客户端（Master）"""
+
+        self.setDeviceId(self.device_id)
+        self.setDeviceName(name=self.device_name)
+        self.importDataPoints()
+        self.initDnp3Client()
+        self.general_device.setSpecialDataPointValues()
+        # DNP3 为 asyncio 协议，启动由 async handler.start()（device.start()/reload）异步驱动。
         return self.general_device

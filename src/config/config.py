@@ -27,6 +27,7 @@ class Config:
     DEFAULT_PORT: int = 502
     IEC104_DEFAULT_PORT: int = 2404
     DLT645_DEFAULT_PORT: int = 8899
+    DNP3_DEFAULT_PORT: int = 20000
     DEFAULT_IP: str = "0.0.0.0"
 
     # 数据源配置

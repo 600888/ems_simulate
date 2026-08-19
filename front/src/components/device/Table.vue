@@ -1267,9 +1267,11 @@ const isModbusWriteable = (row: any) => {
 const handleReadPoint = async (pointCode: string) => {
   readingPoints[pointCode] = true;
   try {
-    // IEC104 客户端使用主动读取（发送网络请求），其他协议使用缓存读取
+    // IEC104 / DNP3 客户端使用主动读取（发送网络请求），其他协议使用缓存读取
+    const protocolStr = String(props.protocolType);
     const useActiveRead =
-      isClientDevice.value && String(props.protocolType) === "Iec104Client";
+      isClientDevice.value &&
+      (protocolStr === "Iec104Client" || protocolStr === "Dnp3Client");
     const value = await readSinglePoint(
       deviceName.value,
       pointCode,

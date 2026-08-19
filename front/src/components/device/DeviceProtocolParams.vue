@@ -698,6 +698,185 @@ const iec61850Server: FieldDefinition[] = [
   },
 ];
 
+// DNP3 客户端（Master 主站）参数
+const dnp3Client: FieldDefinition[] = [
+  {
+    key: "local_address",
+    label: "protocolParams.dnp3LocalAddress",
+    kind: "number",
+    min: 0,
+    max: 65535,
+    step: 1,
+    default: 1,
+  },
+  {
+    key: "remote_address",
+    label: "protocolParams.dnp3RemoteAddress",
+    kind: "number",
+    min: 0,
+    max: 65535,
+    step: 1,
+    default: 0,
+  },
+  {
+    key: "address_size",
+    label: "protocolParams.dnp3AddressSize",
+    kind: "number",
+    min: 1,
+    max: 2,
+    step: 1,
+    default: 2,
+  },
+  {
+    key: "link_confirm",
+    label: "protocolParams.dnp3LinkConfirm",
+    kind: "checkbox",
+    default: true,
+  },
+  {
+    key: "app_confirm",
+    label: "protocolParams.dnp3AppConfirm",
+    kind: "checkbox",
+    default: true,
+  },
+  {
+    key: "time_sync_enabled",
+    label: "protocolParams.dnp3TimeSync",
+    kind: "checkbox",
+    default: true,
+  },
+  {
+    key: "enable_unsolicited",
+    label: "protocolParams.dnp3Unsolicited",
+    kind: "checkbox",
+    default: false,
+  },
+  {
+    key: "integrity_interval_s",
+    label: "protocolParams.dnp3IntegrityInterval",
+    unit: "protocolParams.seconds",
+    min: 0,
+    max: 86400,
+    step: 1,
+    default: 60,
+  },
+  {
+    key: "event_interval_s",
+    label: "protocolParams.dnp3EventInterval",
+    unit: "protocolParams.seconds",
+    min: 0,
+    max: 3600,
+    step: 1,
+    default: 5,
+  },
+  {
+    key: "connection_timeout_ms",
+    label: "protocolParams.connectionTimeout",
+    unit: "protocolParams.ms",
+    min: 1000,
+    max: 300000,
+    default: 3000,
+  },
+  {
+    key: "command_timeout_ms",
+    label: "protocolParams.commandTimeout",
+    unit: "protocolParams.ms",
+    min: 100,
+    max: 120000,
+    default: 3000,
+  },
+  {
+    key: "max_retries",
+    label: "protocolParams.dnp3MaxRetries",
+    unit: "protocolParams.timesUnit",
+    kind: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 3,
+    advanced: true,
+  },
+];
+
+// DNP3 服务端（Outstation 从站）参数
+const dnp3Server: FieldDefinition[] = [
+  {
+    key: "local_address",
+    label: "protocolParams.dnp3LocalAddress",
+    kind: "number",
+    min: 0,
+    max: 65535,
+    step: 1,
+    default: 1,
+  },
+  {
+    key: "remote_address",
+    label: "protocolParams.dnp3RemoteAddress",
+    kind: "number",
+    min: 0,
+    max: 65535,
+    step: 1,
+    default: 0,
+  },
+  {
+    key: "address_size",
+    label: "protocolParams.dnp3AddressSize",
+    kind: "number",
+    min: 1,
+    max: 2,
+    step: 1,
+    default: 2,
+  },
+  {
+    key: "link_confirm",
+    label: "protocolParams.dnp3LinkConfirm",
+    kind: "checkbox",
+    default: true,
+  },
+  {
+    key: "app_confirm",
+    label: "protocolParams.dnp3AppConfirm",
+    kind: "checkbox",
+    default: true,
+  },
+  {
+    key: "enable_unsolicited",
+    label: "protocolParams.dnp3Unsolicited",
+    kind: "checkbox",
+    default: false,
+  },
+  {
+    key: "event_buffer_size",
+    label: "protocolParams.dnp3EventBuffer",
+    kind: "number",
+    min: 1,
+    max: 100000,
+    step: 1,
+    default: 1000,
+  },
+  {
+    key: "select_timeout_s",
+    label: "protocolParams.dnp3SelectTimeout",
+    unit: "protocolParams.seconds",
+    min: 1,
+    max: 60,
+    step: 1,
+    default: 10,
+    advanced: true,
+  },
+  {
+    key: "max_connections",
+    label: "protocolParams.maxConnections",
+    unit: "protocolParams.countUnit",
+    kind: "number",
+    min: 0,
+    max: 1000,
+    step: 1,
+    default: 0,
+    advanced: true,
+  },
+];
+
 const fields = computed<FieldDefinition[]>(() => {
   const key = `${props.protocolType}:${props.connType}`;
   if (key === "0:0" || key === "1:1") return modbusClient;
@@ -719,6 +898,8 @@ const fields = computed<FieldDefinition[]>(() => {
   }
   if (key === "4:1") return iec61850Client;
   if (key === "4:2") return iec61850Server;
+  if (key === "5:1") return dnp3Client;
+  if (key === "5:2") return dnp3Server;
   return [];
 });
 
