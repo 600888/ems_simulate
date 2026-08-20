@@ -1078,11 +1078,13 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
 
     logical_devices = []
     protocol_handler = getattr(device, "protocol_handler", None)
+    client_connected = False
     if protocol_handler:
         from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
 
         if isinstance(protocol_handler, IEC61850ClientHandler):
             client = protocol_handler._client
+            client_connected = bool(client and protocol_handler.is_running)
             if client:
                 logical_devices = client.browse_logical_devices()
             # 如果 MMS 连接不可用（ICD 离线模式），从 PointManager 解析 LD/LN
@@ -1137,10 +1139,13 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
 
         if isinstance(protocol_handler, (IEC61850ClientHandler, IEC61850ServerHandler)):
             discovered_datasets = protocol_handler.get_discovered_datasets()
-            log.info(
-                f"get_discovered_datasets() 返回 {len(discovered_datasets)} 个 DataSet: "
-                + ", ".join(f"{d.get('ld', '')}/{d.get('ln', '')}.{d.get('name', '')}" for d in discovered_datasets)
-            )
+            if discovered_datasets or client_connected or isinstance(protocol_handler, IEC61850ServerHandler):
+                log.info(
+                    f"get_discovered_datasets() 返回 {len(discovered_datasets)} 个 DataSet: "
+                    + ", ".join(f"{d.get('ld', '')}/{d.get('ln', '')}.{d.get('name', '')}" for d in discovered_datasets)
+                )
+            else:
+                log.debug("IEC61850 客户端未连接，DataSet 使用空缓存")
             # 构建 LD -> {LN -> [datasets]} 层级映射
             ld_map: dict[str, dict[str, list]] = {}
             for ds in discovered_datasets:
@@ -1189,7 +1194,7 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
                 rcbs = protocol_handler.get_discovered_rcbs()
                 client = getattr(protocol_handler, "_client", None)
                 # 只在设备已连接时才尝试现场发现，避免只读接口静默触发 MMS 连接
-                if not rcbs and protocol_handler._is_running and client and client.reports:
+                if not rcbs and client_connected and client and client.reports:
                     rcbs = client.reports.discover_rcbs()
                     # 现场发现成功则回写缓存，供 /reports 页面复用
                     if rcbs:
@@ -1197,8 +1202,11 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
                 for rcb in rcbs:
                     active_mark = " 🟢" if rcb.get("rpt_ena") else ""
                     report_items.append(f"{rcb['ref']} ({rcb['rcb_type']}){active_mark}")
-                log.info(f"Reports: 返回 {len(rcbs)} 个 RCB")
-                if not rcbs:
+                if rcbs or client_connected:
+                    log.info(f"Reports: 返回 {len(rcbs)} 个 RCB")
+                else:
+                    log.debug("IEC61850 客户端未连接，Reports 使用空缓存")
+                if client_connected and not rcbs:
                     log.info("远端 IED 未配置报告控制块 (BRCB/URCB)，需在 ICD 中声明 ReportControl")
             elif isinstance(protocol_handler, IEC61850ServerHandler):
                 # 服务端模式：从 ReportManager 获取已注册的 RCB
@@ -1220,7 +1228,12 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
 
             iec61850_client = None
             if isinstance(protocol_handler, IEC61850ClientHandler):
-                iec61850_client = getattr(protocol_handler, "_client", None)
+                # 客户端文件目录是实时 MMS 操作。设备关闭时只返回空列表，
+                # 不调用 FilesPlugin，避免产生“连接不可用”的误导性告警。
+                if client_connected:
+                    iec61850_client = getattr(protocol_handler, "_client", None)
+                else:
+                    log.debug("IEC61850 客户端未连接，跳过远端文件目录浏览")
             elif isinstance(protocol_handler, IEC61850ServerHandler):
                 iec61850_client = getattr(protocol_handler, "_server", None)
 
