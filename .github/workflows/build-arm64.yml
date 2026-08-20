@@ -1,0 +1,198 @@
+name: Build Ubuntu ARM64 Deb
+
+on:
+  workflow_call:
+    inputs:
+      release_version:
+        description: Version written into the Deb package
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Optional version override, for example 4.7.0
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-arm64:
+    name: Ubuntu 20.04 baseline / ARM64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 150
+    container:
+      image: ubuntu:20.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      PYTHON_VERSION: 3.11.16
+      PYTHON_PREFIX: /opt/python-3.11
+      PYTHON_SHA256: 91bcdebfdde239a003ae93738a7fce0f9230fee5c4bc2b86f6e6e8c6f98aabe8
+      UV_VERSION: 0.9.18
+      UV_CACHE_DIR: ${{ github.workspace }}/.uv-cache-arm64
+
+    steps:
+      - name: Bootstrap Ubuntu 20.04 build container
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            binutils \
+            build-essential \
+            ca-certificates \
+            cmake \
+            curl \
+            dpkg-dev \
+            file \
+            git \
+            libbz2-dev \
+            libffi-dev \
+            libgdbm-dev \
+            liblzma-dev \
+            libncurses5-dev \
+            libreadline-dev \
+            libsqlite3-dev \
+            libssl-dev \
+            ninja-build \
+            pkg-config \
+            tar \
+            tk-dev \
+            uuid-dev \
+            xz-utils \
+            zlib1g-dev \
+            zstd
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Cache shared-library Python 3.11
+        id: python-cache
+        uses: actions/cache@v5
+        with:
+          path: /opt/python-3.11
+          key: cpython-${{ env.PYTHON_VERSION }}-ubuntu20-arm64-shared-v1
+
+      - name: Build shared-library Python 3.11 on Ubuntu 20.04
+        if: steps.python-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "${workdir}"' EXIT
+          archive="${workdir}/Python-${PYTHON_VERSION}.tar.xz"
+
+          curl --fail --location --retry 5 \
+            --output "${archive}" \
+            "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tar.xz"
+          echo "${PYTHON_SHA256}  ${archive}" | sha256sum --check --strict
+
+          tar -xJf "${archive}" -C "${workdir}"
+          cd "${workdir}/Python-${PYTHON_VERSION}"
+          ./configure \
+            --prefix="${PYTHON_PREFIX}" \
+            --enable-shared \
+            --with-ensurepip=install
+          make -j"$(nproc)"
+          make altinstall
+
+      - name: Configure Python runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${PYTHON_PREFIX}/lib" > /etc/ld.so.conf.d/ems-python-3.11.conf
+          ldconfig
+          "${PYTHON_PREFIX}/bin/python3.11" -c \
+            "import platform, sysconfig; assert platform.machine() == 'aarch64'; assert sysconfig.get_config_var('Py_ENABLE_SHARED') == 1"
+
+      - name: Resolve and sync package version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ inputs.release_version }}"
+          if [ -z "${version}" ]; then
+            version="$(grep -oP '^version\s*=\s*"\K[^"]+' pyproject.toml)"
+          fi
+          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must match MAJOR.MINOR.PATCH, got: ${version}"
+            exit 1
+          fi
+          sed -i "s/^version = \".*\"/version = \"${version}\"/" pyproject.toml
+          "${PYTHON_PREFIX}/bin/python3.11" scripts/sync_version.py
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Setup Node.js for ARM64 frontend
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+
+      - name: Build frontend
+        working-directory: front
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build:fast
+          test -f ../www/index.html
+
+      - name: Install uv
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Build ARM64 Deb
+        shell: bash
+        env:
+          PYTHON_BIN: /opt/python-3.11/bin/python3.11
+        run: |
+          set -euo pipefail
+          chmod +x scripts/build_web_deb_arm64.sh
+          bash scripts/build_web_deb_arm64.sh
+
+      - name: Verify ARM64 package and Ubuntu 20.04 ABI baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          deb="build/dist_deb/ems-simulate-web_${{ steps.version.outputs.version }}_arm64.deb"
+          test -f "${deb}"
+          test "$(dpkg-deb --field "${deb}" Architecture)" = "arm64"
+          test "$(dpkg-deb --field "${deb}" Version)" = "${{ steps.version.outputs.version }}"
+
+          extract_dir="$(mktemp -d)"
+          versions_file="$(mktemp)"
+          trap 'rm -rf "${extract_dir}" "${versions_file}"' EXIT
+          dpkg-deb --extract "${deb}" "${extract_dir}"
+
+          main_binary="${extract_dir}/usr/share/ems-simulate-web/ems_simulate_web"
+          file "${main_binary}" | grep -q 'ARM aarch64'
+
+          while IFS= read -r -d '' candidate; do
+            if readelf --file-header "${candidate}" >/dev/null 2>&1; then
+              readelf --version-info "${candidate}" 2>/dev/null \
+                | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' \
+                | sed 's/^GLIBC_//' >> "${versions_file}" || true
+            fi
+          done < <(find "${extract_dir}/usr/share/ems-simulate-web" -type f -print0)
+
+          max_glibc="$(sort -V "${versions_file}" | tail -n 1)"
+          test -n "${max_glibc}"
+          if ! dpkg --compare-versions "${max_glibc}" le "2.31"; then
+            echo "::error::Package requires GLIBC_${max_glibc}; Ubuntu 20.04 only provides GLIBC_2.31"
+            exit 1
+          fi
+          echo "Verified ARM64 Deb; maximum required glibc is GLIBC_${max_glibc}"
+
+      - name: Upload ARM64 Deb
+        uses: actions/upload-artifact@v7
+        with:
+          name: ems-simulate-linux-arm64-v${{ steps.version.outputs.version }}
+          path: build/dist_deb/ems-simulate-web_${{ steps.version.outputs.version }}_arm64.deb
+          compression-level: 0
+          if-no-files-found: error
