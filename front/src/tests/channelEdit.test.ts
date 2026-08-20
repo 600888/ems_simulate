@@ -1,6 +1,11 @@
 /// <reference types="jest" />
 
-import { shouldSaveChannelSecurity } from "@/utils/channelEdit";
+import {
+  applyConnectionTypeDefaults,
+  applyProtocolTypeDefaults,
+  shouldSaveChannelSecurity,
+} from "@/utils/channelEdit";
+import type { ChannelCreateRequest, ProtocolOption } from "@/types/channel";
 
 const unchangedEdit = {
   isEdit: true,
@@ -35,5 +40,38 @@ describe("channel edit optimization", () => {
         hasNewFiles: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("channel edit endpoint hydration", () => {
+  const protocols: ProtocolOption[] = [
+    { value: 2, label: "IEC104", conn_types: [1, 2] },
+  ];
+
+  const createForm = (): ChannelCreateRequest => ({
+    code: "iec104-client",
+    name: "iec104-client",
+    protocol_type: 2,
+    conn_type: 1,
+    ip: "10.20.30.40",
+    port: 12404,
+  });
+
+  it("preserves persisted IP and port while channel details are hydrating", () => {
+    const form = createForm();
+
+    applyProtocolTypeDefaults(form, protocols, 2, true);
+    applyConnectionTypeDefaults(form, 1, true);
+
+    expect(form.ip).toBe("10.20.30.40");
+    expect(form.port).toBe(12404);
+  });
+
+  it("still applies defaults for an explicit user connection-mode change", () => {
+    const form = createForm();
+
+    applyConnectionTypeDefaults(form, 1);
+
+    expect(form.ip).toBe("127.0.0.1");
   });
 });

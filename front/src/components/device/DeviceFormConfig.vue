@@ -138,17 +138,18 @@ import { useI18n } from "vue-i18n";
 
 useI18n();
 import type { ChannelCreateRequest, ProtocolOption } from "@/types/channel";
+import { BAUD_RATES } from "@/constants/protocol";
 import {
-  BAUD_RATES,
-  PROTOCOL_DEFAULT_PORTS,
-  PROTOCOL_DEFAULT_CLIENT_IP,
-} from "@/constants/protocol";
+  applyConnectionTypeDefaults,
+  applyProtocolTypeDefaults,
+} from "@/utils/channelEdit";
 
 const props = defineProps<{
   modelValue: ChannelCreateRequest;
   mediaType: "serial" | "network";
   protocols: ProtocolOption[];
   serialPorts: Array<{ device: string; description: string }>;
+  hydrating?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -175,28 +176,12 @@ const baudRates = BAUD_RATES;
 watch(
   () => props.modelValue.protocol_type,
   (newType) => {
-    const defaultPort = PROTOCOL_DEFAULT_PORTS[newType];
-    if (defaultPort !== undefined) {
-      props.modelValue.port = defaultPort;
-    }
-    // 协议有默认客户端 IP 时，检查当前连接模式是否被该协议支持
-    // 如果不支持（如串口模式选到纯TCP协议），则自动切换到客户端模式
-    const defaultIp = PROTOCOL_DEFAULT_CLIENT_IP[newType];
-    if (defaultIp !== undefined) {
-      const proto = props.protocols.find((p) => p.value === newType);
-      const currentConnType = props.modelValue.conn_type;
-      // 仅当当前连接模式不被该协议支持时，才强制切换为客户端模式
-      if (proto && !proto.conn_types.includes(currentConnType)) {
-        props.modelValue.conn_type = 1;
-        props.modelValue.ip = defaultIp;
-      } else if (!proto) {
-        props.modelValue.conn_type = 1;
-        props.modelValue.ip = defaultIp;
-      }
-    } else if (props.modelValue.conn_type === 1) {
-      // 无默认客户端 IP 的协议，且当前为客户端模式时清空 IP
-      props.modelValue.ip = "0.0.0.0";
-    }
+    applyProtocolTypeDefaults(
+      props.modelValue,
+      props.protocols,
+      newType,
+      props.hydrating,
+    );
   },
 );
 
@@ -204,15 +189,7 @@ watch(
 watch(
   () => props.modelValue.conn_type,
   (newConnType) => {
-    if (newConnType === 1) {
-      // 切换为 TCP 客户端时，设置协议默认 IP
-      const defaultIp =
-        PROTOCOL_DEFAULT_CLIENT_IP[props.modelValue.protocol_type];
-      props.modelValue.ip = defaultIp !== undefined ? defaultIp : "127.0.0.1";
-    } else if (newConnType === 2) {
-      // 切换为 TCP 服务端时，恢复监听所有 IP
-      props.modelValue.ip = "0.0.0.0";
-    }
+    applyConnectionTypeDefaults(props.modelValue, newConnType, props.hydrating);
   },
 );
 

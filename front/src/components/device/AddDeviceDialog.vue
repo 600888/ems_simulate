@@ -27,6 +27,7 @@
             v-model:media-type="mediaType"
             :protocols="protocols"
             :serial-ports="serialPorts"
+            :hydrating="loadingChannel"
           />
 
           <DeviceFormPoints
