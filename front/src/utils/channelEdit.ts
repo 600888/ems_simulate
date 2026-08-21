@@ -8,10 +8,26 @@ export interface SecuritySaveState {
   isEdit: boolean;
   tlsSupported: boolean;
   tlsEnabled: boolean;
-  tlsMode: "basic" | "mutual";
+  tlsMode: "one_way" | "mutual";
   originalTlsEnabled: boolean;
-  originalTlsMode: "basic" | "mutual";
+  originalTlsMode: "one_way" | "mutual";
   hasNewFiles: boolean;
+}
+
+export interface TlsMaterialRequirements {
+  identity: boolean;
+  caCertificate: boolean;
+}
+
+/** Required files for one-way TLS and mutual TLS, based on endpoint role. */
+export function getTlsMaterialRequirements(
+  tlsMode: "one_way" | "mutual",
+  connType: number,
+): TlsMaterialRequirements {
+  return {
+    identity: tlsMode === "mutual" || connType === 2,
+    caCertificate: tlsMode === "mutual" || connType === 1,
+  };
 }
 
 /** Avoid saving/reloading TLS when an edit did not change its configuration. */

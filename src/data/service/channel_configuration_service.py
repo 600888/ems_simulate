@@ -9,6 +9,19 @@ from src.data.controller.db import local_session
 from src.data.model.channel_configuration import ChannelProtocolParams, ChannelSecurityConfig
 from src.device.protocol.runtime_config import get_protocol_param_defaults, normalize_protocol_params
 
+TLS_MODE_ONE_WAY = "one_way"
+TLS_MODE_MUTUAL = "mutual"
+
+
+def normalize_tls_mode(value: Any) -> str:
+    """Normalize persisted TLS modes, including the removed legacy basic mode."""
+    mode = str(value or TLS_MODE_ONE_WAY)
+    if mode == "basic":
+        return TLS_MODE_ONE_WAY
+    if mode in {TLS_MODE_ONE_WAY, TLS_MODE_MUTUAL}:
+        return mode
+    return TLS_MODE_ONE_WAY
+
 
 class ChannelConfigurationService:
     @classmethod
@@ -74,7 +87,7 @@ class ChannelConfigurationService:
             if not record:
                 return {
                     "tls_enabled": False,
-                    "tls_mode": "mutual",
+                    "tls_mode": TLS_MODE_ONE_WAY,
                     "certificate_configured": False,
                     "certificate_filename": None,
                     "private_key_configured": False,
@@ -84,7 +97,7 @@ class ChannelConfigurationService:
                 }
             return {
                 "tls_enabled": record.tls_enabled,
-                "tls_mode": record.tls_mode or "mutual",
+                "tls_mode": normalize_tls_mode(record.tls_mode),
                 "certificate_configured": bool(record.certificate_path),
                 "certificate_filename": record.certificate_filename,
                 "private_key_configured": bool(record.private_key_path),
@@ -100,14 +113,14 @@ class ChannelConfigurationService:
             if not record:
                 return {
                     "tls_enabled": False,
-                    "tls_mode": "mutual",
+                    "tls_mode": TLS_MODE_ONE_WAY,
                     "certificate_path": None,
                     "private_key_path": None,
                     "ca_certificate_path": None,
                 }
             return {
                 "tls_enabled": record.tls_enabled,
-                "tls_mode": record.tls_mode or "mutual",
+                "tls_mode": normalize_tls_mode(record.tls_mode),
                 "certificate_path": record.certificate_path,
                 "private_key_path": record.private_key_path,
                 "ca_certificate_path": record.ca_certificate_path,
@@ -125,7 +138,7 @@ class ChannelConfigurationService:
         private_key_filename: str | None,
         ca_certificate_path: str | None = None,
         ca_certificate_filename: str | None = None,
-        tls_mode: str = "mutual",
+        tls_mode: str = TLS_MODE_ONE_WAY,
     ) -> None:
         with local_session() as session, session.begin():
             record = session.get(ChannelSecurityConfig, channel_id)
@@ -133,7 +146,7 @@ class ChannelConfigurationService:
                 record = ChannelSecurityConfig(channel_id=channel_id)
                 session.add(record)
             record.tls_enabled = tls_enabled
-            record.tls_mode = tls_mode
+            record.tls_mode = normalize_tls_mode(tls_mode)
             record.certificate_path = certificate_path
             record.certificate_filename = certificate_filename
             record.private_key_path = private_key_path
@@ -184,7 +197,7 @@ class ChannelConfigurationService:
         cls.save_security_config(
             target_channel_id,
             tls_enabled=bool(runtime_security.get("tls_enabled")),
-            tls_mode=str(runtime_security.get("tls_mode") or "mutual"),
+            tls_mode=normalize_tls_mode(runtime_security.get("tls_mode")),
             certificate_path=certificate_path,
             certificate_filename=public_security.get("certificate_filename"),
             private_key_path=private_key_path,

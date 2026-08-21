@@ -358,7 +358,7 @@ export async function updateChannel(
 export async function uploadChannelSecurity(
   channelId: number,
   tlsEnabled: boolean,
-  tlsMode: "basic" | "mutual",
+  tlsMode: "one_way" | "mutual",
   certificate?: File | null,
   privateKey?: File | null,
   caCertificate?: File | null,

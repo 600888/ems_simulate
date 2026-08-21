@@ -313,7 +313,7 @@ def test_tls_mode_is_persisted_and_exposed_to_runtime(monkeypatch):
     ChannelConfigurationService.save_security_config(
         502,
         tls_enabled=True,
-        tls_mode="basic",
+        tls_mode="one_way",
         certificate_path="certificate.pem",
         certificate_filename="certificate.pem",
         private_key_path="private_key.pem",
@@ -323,14 +323,33 @@ def test_tls_mode_is_persisted_and_exposed_to_runtime(monkeypatch):
     with session_factory() as session:
         persisted = session.get(ChannelSecurityConfig, 502)
         assert persisted is not None
-        assert persisted.tls_mode == "basic"
+        assert persisted.tls_mode == "one_way"
 
     persisted_public = ChannelConfigurationService.get_security_config(502)
     persisted_runtime = ChannelConfigurationService.get_runtime_security(502)
     assert persisted_public["tls_enabled"] is True
-    assert persisted_public["tls_mode"] == "basic"
+    assert persisted_public["tls_mode"] == "one_way"
     assert persisted_runtime["tls_enabled"] is True
-    assert persisted_runtime["tls_mode"] == "basic"
+    assert persisted_runtime["tls_mode"] == "one_way"
+
+
+def test_legacy_basic_tls_mode_is_exposed_as_one_way(monkeypatch):
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(configuration_service_module, "local_session", session_factory)
+
+    with session_factory() as session, session.begin():
+        session.add(
+            ChannelSecurityConfig(
+                channel_id=503,
+                tls_enabled=True,
+                tls_mode="basic",
+            )
+        )
+
+    assert ChannelConfigurationService.get_security_config(503)["tls_mode"] == "one_way"
+    assert ChannelConfigurationService.get_runtime_security(503)["tls_mode"] == "one_way"
 
 
 def test_clone_for_channel_persists_protocol_tls_and_independent_files(monkeypatch, tmp_path):
@@ -356,7 +375,7 @@ def test_clone_for_channel_persists_protocol_tls_and_independent_files(monkeypat
     ChannelConfigurationService.save_security_config(
         2,
         tls_enabled=True,
-        tls_mode="basic",
+        tls_mode="one_way",
         certificate_path=str(certificate),
         certificate_filename="client.crt",
         private_key_path=str(private_key),
@@ -370,7 +389,7 @@ def test_clone_for_channel_persists_protocol_tls_and_independent_files(monkeypat
     cloned_public_security = ChannelConfigurationService.get_security_config(30)
     assert cloned_protocol["values"] == source_protocol
     assert cloned_security["tls_enabled"] is True
-    assert cloned_security["tls_mode"] == "basic"
+    assert cloned_security["tls_mode"] == "one_way"
     assert cloned_public_security["certificate_filename"] == "client.crt"
     assert cloned_public_security["private_key_filename"] == "client.key"
     assert cloned_security["certificate_path"] != str(certificate)

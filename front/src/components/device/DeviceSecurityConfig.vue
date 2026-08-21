@@ -24,29 +24,34 @@
       <template v-if="modelValue.tls_enabled">
         <el-form-item :label="$t('device.tlsMode')" required>
           <el-radio-group v-model="modelValue.tls_mode" :disabled="disabled">
-            <el-radio-button value="basic">{{
-              $t("device.tlsBasic")
+            <el-radio-button value="one_way">{{
+              $t("device.tlsOneWay")
             }}</el-radio-button>
             <el-radio-button value="mutual">{{
               $t("device.tlsMutual")
             }}</el-radio-button>
           </el-radio-group>
           <div class="mode-description">
-            <template v-if="modelValue.tls_mode === 'basic'">
-              {{ $t("device.tlsBasicDesc") }}
+            <template v-if="modelValue.tls_mode === 'one_way'">
+              {{
+                $t(
+                  connType === 1
+                    ? "device.tlsOneWayClientDesc"
+                    : "device.tlsOneWayServerDesc",
+                )
+              }}
             </template>
             <template v-else>
-              <template v-if="isIec61850">
-                {{ $t("device.tlsMutualDesc") }}
-              </template>
-              <template v-else>
-                {{ $t("device.tlsMutualHostDesc") }}
-              </template>
+              {{ $t("device.tlsMutualDesc") }}
             </template>
           </div>
         </el-form-item>
 
-        <el-form-item :label="$t('device.localCert')" required>
+        <el-form-item
+          v-if="materialRequirements.identity"
+          :label="$t('device.localCert')"
+          required
+        >
           <div class="file-config">
             <div class="file-action-row">
               <el-upload
@@ -80,7 +85,11 @@
           </div>
         </el-form-item>
 
-        <el-form-item :label="$t('device.privateKey')" required>
+        <el-form-item
+          v-if="materialRequirements.identity"
+          :label="$t('device.privateKey')"
+          required
+        >
           <div class="file-config">
             <div class="file-action-row">
               <el-upload
@@ -115,7 +124,7 @@
         </el-form-item>
 
         <el-form-item
-          v-if="modelValue.tls_mode === 'mutual'"
+          v-if="materialRequirements.caCertificate"
           :label="$t('device.caCert')"
           required
         >
@@ -161,13 +170,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import type { SecurityConfig } from "@/types/channel";
+import { getTlsMaterialRequirements } from "@/utils/channelEdit";
 
 const props = defineProps<{
   modelValue: SecurityConfig;
   networkMode: boolean;
   protocolType: number;
+  connType: number;
   disabled?: boolean;
 }>();
 
@@ -177,7 +188,9 @@ const tlsSupported = computed(
     props.protocolType === 2 ||
     props.protocolType === 4,
 );
-const isIec61850 = computed(() => props.protocolType === 4);
+const materialRequirements = computed(() =>
+  getTlsMaterialRequirements(props.modelValue.tls_mode, props.connType),
+);
 
 const emit = defineEmits<{
   (event: "certificate-change", file: File): void;

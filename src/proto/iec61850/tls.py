@@ -25,14 +25,18 @@ def _required_file(config: dict[str, Any], key: str, label: str) -> str:
 
 
 def _mode(config: dict[str, Any]) -> str:
-    mode = str(config.get("tls_mode") or "mutual")
-    if mode not in {"basic", "mutual"}:
-        raise IEC61850TlsConfigurationError("IEC61850 TLS 模式必须是 basic 或 mutual")
+    mode = str(config.get("tls_mode") or "one_way")
+    if mode not in {"one_way", "mutual"}:
+        raise IEC61850TlsConfigurationError("IEC61850 TLS 模式必须是 one_way 或 mutual")
     return mode
 
 
 @contextlib.contextmanager
-def _native_file_paths(certificate: str, private_key: str, ca_certificate: str | None):
+def _native_file_paths(
+    certificate: str | None,
+    private_key: str | None,
+    ca_certificate: str | None,
+):
     """Give the C library ASCII paths, including on Windows user profiles with non-ASCII names."""
     paths = (certificate, private_key, ca_certificate)
     if all(path is None or path.isascii() for path in paths):
@@ -89,9 +93,11 @@ def create_native_tls_configuration(
     from pyiec61850 import pyiec61850 as iec61850
 
     mode = _mode(settings)
-    certificate = _required_file(settings, "certificate_path", "证书")
-    private_key = _required_file(settings, "private_key_path", "私钥")
-    ca_certificate = _required_file(settings, "ca_certificate_path", "CA 证书") if mode == "mutual" else None
+    requires_identity = mode == "mutual" or not client
+    requires_ca = mode == "mutual" or client
+    certificate = _required_file(settings, "certificate_path", "证书") if requires_identity else None
+    private_key = _required_file(settings, "private_key_path", "私钥") if requires_identity else None
+    ca_certificate = _required_file(settings, "ca_certificate_path", "CA 证书") if requires_ca else None
 
     native = iec61850.TLSConfiguration_create()
     if native is None:
@@ -103,13 +109,12 @@ def create_native_tls_configuration(
             iec61850.TLSConfiguration_setClientMode(native)
         iec61850.TLSConfiguration_setMinTlsVersion(native, iec61850.TLS_VERSION_TLS_1_2)
         iec61850.TLSConfiguration_setMaxTlsVersion(native, iec61850.TLS_VERSION_TLS_1_3)
-        # basic 与 IEC 104 / Modbus 的现有语义一致：只加密链路，
-        # 不验证对端证书。mutual 才启用 CA 链和有效期校验。
-        validate_peer = mode == "mutual"
+        # 单向客户端和双向模式校验对端 CA 链；单向服务端不要求客户端证书。
+        validate_peer = requires_ca
         if not validate_peer:
             set_insecure = getattr(iec61850, "TLSConfiguration_setInsecure", None)
             if set_insecure is None:
-                raise IEC61850TlsConfigurationError("IEC61850 基础 TLS 需要 pyiec61850-ng 1.6.1.9 或更高版本")
+                raise IEC61850TlsConfigurationError("IEC61850 单向服务端 TLS 需要 pyiec61850-ng 1.6.1.9 或更高版本")
             set_insecure(native, True)
         iec61850.TLSConfiguration_setChainValidation(native, validate_peer)
         iec61850.TLSConfiguration_setAllowOnlyKnownCertificates(native, False)
@@ -117,9 +122,11 @@ def create_native_tls_configuration(
 
         with _native_file_paths(certificate, private_key, ca_certificate) as native_paths:
             native_certificate, native_private_key, native_ca_certificate = native_paths
-            if not iec61850.TLSConfiguration_setOwnCertificateFromFile(native, native_certificate):
+            if native_certificate and not iec61850.TLSConfiguration_setOwnCertificateFromFile(
+                native, native_certificate
+            ):
                 raise IEC61850TlsConfigurationError("IEC61850 TLS 证书加载失败")
-            if not iec61850.TLSConfiguration_setOwnKeyFromFile(native, native_private_key, None):
+            if native_private_key and not iec61850.TLSConfiguration_setOwnKeyFromFile(native, native_private_key, None):
                 raise IEC61850TlsConfigurationError("IEC61850 TLS 私钥加载失败")
             if native_ca_certificate and not iec61850.TLSConfiguration_addCACertificateFromFile(
                 native, native_ca_certificate

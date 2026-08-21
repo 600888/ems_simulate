@@ -12,7 +12,7 @@ from c104 import Quality
 
 from src.device.core.message.message_capture import MessageCapture
 from src.proto.iec104.log import log
-from src.proto.iec104.tls import IEC104BasicTlsConfig, TlsServerBridge, allocate_loopback_port
+from src.proto.iec104.tls import IEC104OneWayTlsConfig, TlsServerBridge, allocate_loopback_port
 
 
 class IEC104Server:
@@ -28,7 +28,7 @@ class IEC104Server:
         receive_window_size: int = 8,
         max_connections: int = 0,
         transport_security: c104.TransportSecurity | None = None,
-        basic_tls_config: IEC104BasicTlsConfig | None = None,
+        one_way_tls_config: IEC104OneWayTlsConfig | None = None,
     ):
         """
         初始化IEC 104服务器
@@ -41,14 +41,14 @@ class IEC104Server:
         backend_ip = ip
         backend_port = port
         self._tls_bridge = None
-        if basic_tls_config:
+        if one_way_tls_config:
             backend_ip = "127.0.0.1"
             backend_port = allocate_loopback_port()
             self._tls_bridge = TlsServerBridge(
                 listen_host=ip,
                 listen_port=port,
                 backend_port=backend_port,
-                context=basic_tls_config.create_server_context(),
+                context=one_way_tls_config.create_server_context(),
             )
         self.server = c104.Server(
             ip=backend_ip,

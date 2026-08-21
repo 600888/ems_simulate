@@ -235,15 +235,14 @@ export default {
     tlsNotSupportedProtocol: "TLS is not supported for this protocol",
     enableTls: "Enable TLS",
     tlsMode: "TLS Mode",
-    tlsBasic: "Basic TLS",
+    tlsOneWay: "One-way TLS",
     tlsMutual: "Mutual TLS",
-    tlsMutualHost: "Mutual TLS (Hostname Verification)",
-    tlsBasicDesc:
-      "Encrypts the link only; does not verify peer certificate identity.",
+    tlsOneWayClientDesc:
+      "Validates only the server certificate chain with the CA; no client certificate or hostname/IP verification.",
+    tlsOneWayServerDesc:
+      "The server presents its certificate and private key and does not require a client certificate.",
     tlsMutualDesc:
-      "Uses CA mutual certificate verification; IEC 61850 native library does not validate server hostname or IP.",
-    tlsMutualHostDesc:
-      "Uses CA mutual certificate verification and validates server hostname or IP.",
+      "Both peers use a local certificate, private key and CA for mutual chain validation; hostname/IP verification is disabled.",
     localCert: "Local Certificate",
     privateKey: "Private Key",
     caCert: "CA Certificate",
@@ -257,11 +256,12 @@ export default {
     certTip: "Supports .crt, .cer, .pem",
     keyTip: "Supports .key, .pem",
     caTip:
-      "Used for mutual peer certificate verification; supports .crt, .cer, .pem",
+      "Used to validate the peer certificate chain; supports .crt, .cer, .pem",
     tlsMutualRequired:
       "Mutual TLS requires local certificate, private key and CA certificate",
-    tlsCertRequired:
-      "Certificate and private key are required when TLS is enabled",
+    tlsOneWayCaRequired: "Client one-way TLS requires a CA certificate",
+    tlsOneWayIdentityRequired:
+      "Server one-way TLS requires a local certificate and private key",
     savingTlsConfig: "Saving TLS configuration...",
     dataParseSettings: "Data Parse & Settings",
     dataSimulation: "Data Simulation",
@@ -408,8 +408,10 @@ export default {
     importingDlt645: "Importing DL/T645 standard point table...",
     tlsMutualRequired:
       "Mutual TLS requires uploading the local certificate, private key and CA certificate",
-    tlsCertRequired:
-      "Enabling TLS requires uploading a certificate and private key",
+    tlsOneWayCaRequired:
+      "Client one-way TLS requires uploading a CA certificate",
+    tlsOneWayIdentityRequired:
+      "Server one-way TLS requires uploading a local certificate and private key",
     operationFailed: "Operation failed",
     previewIcd: "Preview ICD",
     saveChanges: "Save Changes",

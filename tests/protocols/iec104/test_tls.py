@@ -1,6 +1,7 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 import socket
+import ssl
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -13,7 +14,7 @@ from src.proto.iec104.iec104server import IEC104Server
 from src.proto.iec104.tls import (
     IEC104TlsConfigurationError,
     build_transport_security,
-    load_basic_tls_config,
+    load_one_way_tls_config,
 )
 
 
@@ -75,8 +76,8 @@ def _write_identity(
     certificate,
     ca_certificate=None,
     *,
-    peer_hostname=None,
     tls_mode="mutual",
+    client=None,
 ):
     certificate_path = directory / f"{name}.pem"
     private_key_path = directory / f"{name}.key"
@@ -98,9 +99,9 @@ def _write_identity(
         ca_path = directory / f"{name}-ca.pem"
         ca_path.write_bytes(ca_certificate.public_bytes(serialization.Encoding.PEM))
         security["ca_certificate_path"] = str(ca_path)
-    if tls_mode == "basic":
-        return load_basic_tls_config(security)
-    return build_transport_security(security, peer_hostname=peer_hostname)
+    if tls_mode == "one_way":
+        return load_one_way_tls_config(security, client=bool(client))
+    return build_transport_security(security)
 
 
 def _available_port():
@@ -113,7 +114,7 @@ def test_disabled_tls_does_not_require_certificate_files():
     assert build_transport_security({"tls_enabled": False}) is None
 
 
-def test_enabled_tls_requires_ca_certificate(tmp_path):
+def test_mutual_tls_requires_ca_certificate(tmp_path):
     certificate = tmp_path / "identity.pem"
     private_key = tmp_path / "identity.key"
     certificate.write_text("invalid")
@@ -122,10 +123,31 @@ def test_enabled_tls_requires_ca_certificate(tmp_path):
         build_transport_security(
             {
                 "tls_enabled": True,
+                "tls_mode": "mutual",
                 "certificate_path": str(certificate),
                 "private_key_path": str(private_key),
             }
         )
+
+
+def test_one_way_client_requires_only_ca_certificate(tmp_path):
+    _, ca_certificate = _create_ca()
+    ca_path = tmp_path / "one-way-ca.pem"
+    ca_path.write_bytes(ca_certificate.public_bytes(serialization.Encoding.PEM))
+
+    tls_config = load_one_way_tls_config(
+        {
+            "tls_enabled": True,
+            "tls_mode": "one_way",
+            "ca_certificate_path": str(ca_path),
+        },
+        client=True,
+    )
+
+    assert tls_config is not None
+    context = tls_config.create_client_context()
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname is False
 
 
 def test_invalid_tls_mode_is_rejected(tmp_path):
@@ -144,7 +166,7 @@ def test_invalid_tls_mode_is_rejected(tmp_path):
         )
 
 
-def test_iec104_client_and_server_connect_over_basic_tls_without_ca(tmp_path):
+def test_iec104_client_and_server_connect_over_one_way_tls(tmp_path):
     server_ca_key, server_ca = _create_ca()
     server_key, server_certificate = _create_identity(
         "ems-server",
@@ -161,23 +183,26 @@ def test_iec104_client_and_server_connect_over_basic_tls_without_ca(tmp_path):
     )
     server_tls = _write_identity(
         tmp_path,
-        "basic-server",
+        "one-way-server",
         server_key,
         server_certificate,
-        tls_mode="basic",
+        tls_mode="one_way",
+        client=False,
     )
     client_tls = _write_identity(
         tmp_path,
-        "basic-client",
+        "one-way-client",
         client_key,
         client_certificate,
-        tls_mode="basic",
+        server_ca,
+        tls_mode="one_way",
+        client=True,
     )
 
     port = _available_port()
-    server = IEC104Server(ip="127.0.0.1", port=port, basic_tls_config=server_tls)
+    server = IEC104Server(ip="127.0.0.1", port=port, one_way_tls_config=server_tls)
     server.get_station(common_address=1)
-    client = IEC104Client(ip="127.0.0.1", port=port, basic_tls_config=client_tls)
+    client = IEC104Client(ip="127.0.0.1", port=port, one_way_tls_config=client_tls)
     client.get_station(common_address=1)
     try:
         server.start()
@@ -216,7 +241,6 @@ def test_iec104_client_and_server_connect_over_mutual_tls(tmp_path):
         client_key,
         client_certificate,
         ca_certificate,
-        peer_hostname="ems-server",
     )
 
     port = _available_port()
@@ -263,7 +287,6 @@ def test_iec104_rejects_client_signed_by_untrusted_ca(tmp_path):
         client_key,
         client_certificate,
         trusted_ca,
-        peer_hostname="ems-server",
     )
 
     port = _available_port()
@@ -280,7 +303,7 @@ def test_iec104_rejects_client_signed_by_untrusted_ca(tmp_path):
         server.stop()
 
 
-def test_iec104_client_rejects_wrong_server_hostname(tmp_path):
+def test_iec104_mutual_tls_does_not_validate_server_hostname(tmp_path):
     ca_key, ca_certificate = _create_ca()
     server_key, server_certificate = _create_identity(
         "ems-server",
@@ -301,7 +324,6 @@ def test_iec104_client_rejects_wrong_server_hostname(tmp_path):
         client_key,
         client_certificate,
         ca_certificate,
-        peer_hostname="another-server",
     )
 
     port = _available_port()
@@ -311,8 +333,8 @@ def test_iec104_client_rejects_wrong_server_hostname(tmp_path):
     client.get_station(common_address=1)
     try:
         server.start()
-        assert asyncio.run(client.connect(timeout=1)) is False
-        assert client.is_connected is False
+        assert asyncio.run(client.connect(timeout=3)) is True
+        assert client.is_connected is True
     finally:
         client.disconnect()
         server.stop()

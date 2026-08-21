@@ -18,8 +18,8 @@ def _required_file(path_value: str | None, label: str) -> str:
 
 
 def _validate_mode(tls_mode: str) -> str:
-    if tls_mode not in {"basic", "mutual"}:
-        raise ModbusTlsConfigurationError("Modbus TLS 模式必须是 basic 或 mutual")
+    if tls_mode not in {"one_way", "mutual"}:
+        raise ModbusTlsConfigurationError("Modbus TLS 模式必须是 one_way 或 mutual")
     return tls_mode
 
 
@@ -30,23 +30,20 @@ def create_client_ssl_context(
     private_key_path: str | None,
     ca_certificate_path: str | None,
 ) -> ssl.SSLContext:
-    """Create a TLS client context for encryption-only TLS or mTLS."""
+    """Create a CA-validating TLS client context for one-way TLS or mTLS."""
     mode = _validate_mode(tls_mode)
-    certificate = _required_file(certificate_path, "证书")
-    private_key = _required_file(private_key_path, "私钥")
+    ca_certificate = _required_file(ca_certificate_path, "CA 证书")
 
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.maximum_version = ssl.TLSVersion.TLSv1_3
-    if mode == "basic":
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-    else:
-        ca_certificate = _required_file(ca_certificate_path, "CA 证书")
-        context.check_hostname = True
-        context.verify_mode = ssl.CERT_REQUIRED
-        context.load_verify_locations(cafile=ca_certificate)
-    context.load_cert_chain(certfile=certificate, keyfile=private_key)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.load_verify_locations(cafile=ca_certificate)
+    if mode == "mutual":
+        certificate = _required_file(certificate_path, "证书")
+        private_key = _required_file(private_key_path, "私钥")
+        context.load_cert_chain(certfile=certificate, keyfile=private_key)
     return context
 
 
@@ -57,7 +54,7 @@ def create_server_ssl_context(
     private_key_path: str | None,
     ca_certificate_path: str | None,
 ) -> ssl.SSLContext:
-    """Create a TLS server context for encryption-only TLS or mTLS."""
+    """Create a TLS server context for one-way TLS or mTLS."""
     mode = _validate_mode(tls_mode)
     certificate = _required_file(certificate_path, "证书")
     private_key = _required_file(private_key_path, "私钥")
@@ -66,7 +63,7 @@ def create_server_ssl_context(
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.maximum_version = ssl.TLSVersion.TLSv1_3
     context.load_cert_chain(certfile=certificate, keyfile=private_key)
-    if mode == "basic":
+    if mode == "one_way":
         context.verify_mode = ssl.CERT_NONE
     else:
         ca_certificate = _required_file(ca_certificate_path, "CA 证书")

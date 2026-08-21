@@ -3,6 +3,7 @@
 import {
   applyConnectionTypeDefaults,
   applyProtocolTypeDefaults,
+  getTlsMaterialRequirements,
   shouldSaveChannelSecurity,
 } from "@/utils/channelEdit";
 import type { ChannelCreateRequest, ProtocolOption } from "@/types/channel";
@@ -73,5 +74,28 @@ describe("channel edit endpoint hydration", () => {
     applyConnectionTypeDefaults(form, 1);
 
     expect(form.ip).toBe("127.0.0.1");
+  });
+});
+
+describe("TLS material requirements", () => {
+  it("requires only CA for a one-way TLS client", () => {
+    expect(getTlsMaterialRequirements("one_way", 1)).toEqual({
+      identity: false,
+      caCertificate: true,
+    });
+  });
+
+  it("requires only server identity for a one-way TLS server", () => {
+    expect(getTlsMaterialRequirements("one_way", 2)).toEqual({
+      identity: true,
+      caCertificate: false,
+    });
+  });
+
+  it("requires identity and CA for mutual TLS", () => {
+    expect(getTlsMaterialRequirements("mutual", 1)).toEqual({
+      identity: true,
+      caCertificate: true,
+    });
   });
 });

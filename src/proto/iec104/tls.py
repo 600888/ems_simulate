@@ -83,20 +83,29 @@ def _ascii_tls_paths(*paths: str) -> tuple[str, ...]:
         return result
 
 
-class IEC104BasicTlsConfig:
-    """Certificate and key material for encryption-only TLS."""
+class IEC104OneWayTlsConfig:
+    """Role-specific material for CA-validated one-way TLS."""
 
-    def __init__(self, certificate_path: str, private_key_path: str) -> None:
+    def __init__(
+        self,
+        *,
+        certificate_path: str | None = None,
+        private_key_path: str | None = None,
+        ca_certificate_path: str | None = None,
+    ) -> None:
         self.certificate_path = certificate_path
         self.private_key_path = private_key_path
+        self.ca_certificate_path = ca_certificate_path
 
     def create_client_context(self) -> ssl.SSLContext:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.maximum_version = ssl.TLSVersion.TLSv1_3
         context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        context.load_cert_chain(certfile=self.certificate_path, keyfile=self.private_key_path)
+        context.verify_mode = ssl.CERT_REQUIRED
+        if not self.ca_certificate_path:
+            raise IEC104TlsConfigurationError("IEC104 客户端单向 TLS 缺少 CA 证书")
+        context.load_verify_locations(cafile=self.ca_certificate_path)
         return context
 
     def create_server_context(self) -> ssl.SSLContext:
@@ -104,40 +113,52 @@ class IEC104BasicTlsConfig:
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.maximum_version = ssl.TLSVersion.TLSv1_3
         context.verify_mode = ssl.CERT_NONE
+        if not self.certificate_path or not self.private_key_path:
+            raise IEC104TlsConfigurationError("IEC104 服务端单向 TLS 缺少证书或私钥")
         context.load_cert_chain(certfile=self.certificate_path, keyfile=self.private_key_path)
         return context
 
 
-def load_basic_tls_config(security: dict[str, Any] | None) -> IEC104BasicTlsConfig | None:
+def load_one_way_tls_config(
+    security: dict[str, Any] | None,
+    *,
+    client: bool,
+) -> IEC104OneWayTlsConfig | None:
     config = security or {}
-    if not config.get("tls_enabled") or str(config.get("tls_mode") or "mutual") != "basic":
+    if not config.get("tls_enabled") or str(config.get("tls_mode") or "one_way") != "one_way":
         return None
-    tls_config = IEC104BasicTlsConfig(
-        certificate_path=_required_file(config, "certificate_path", "证书"),
-        private_key_path=_required_file(config, "private_key_path", "私钥"),
+    tls_config = (
+        IEC104OneWayTlsConfig(
+            ca_certificate_path=_required_file(config, "ca_certificate_path", "CA 证书"),
+        )
+        if client
+        else IEC104OneWayTlsConfig(
+            certificate_path=_required_file(config, "certificate_path", "证书"),
+            private_key_path=_required_file(config, "private_key_path", "私钥"),
+        )
     )
     try:
-        tls_config.create_client_context()
-        tls_config.create_server_context()
+        if client:
+            tls_config.create_client_context()
+        else:
+            tls_config.create_server_context()
     except (OSError, ssl.SSLError) as exc:
-        raise IEC104TlsConfigurationError(f"IEC104 基础 TLS 配置加载失败: {exc}") from exc
+        raise IEC104TlsConfigurationError(f"IEC104 单向 TLS 配置加载失败: {exc}") from exc
     return tls_config
 
 
 def build_transport_security(
     security: dict[str, Any] | None,
-    *,
-    peer_hostname: str | None = None,
 ) -> c104.TransportSecurity | None:
     """Build native c104 TLS settings from channel security settings."""
     config = security or {}
     if not config.get("tls_enabled"):
         return None
 
-    tls_mode = str(config.get("tls_mode") or "mutual")
-    if tls_mode not in {"basic", "mutual"}:
-        raise IEC104TlsConfigurationError("IEC104 TLS 模式必须是 basic 或 mutual")
-    if tls_mode == "basic":
+    tls_mode = str(config.get("tls_mode") or "one_way")
+    if tls_mode not in {"one_way", "mutual"}:
+        raise IEC104TlsConfigurationError("IEC104 TLS 模式必须是 one_way 或 mutual")
+    if tls_mode == "one_way":
         return None
     certificate_path = _required_file(config, "certificate_path", "证书")
     private_key_path = _required_file(config, "private_key_path", "私钥")
@@ -154,11 +175,6 @@ def build_transport_security(
         transport_security.set_version(c104.TlsVersion.TLS_1_2, c104.TlsVersion.TLS_1_3)
         transport_security.set_ca_certificate(ca_certificate_path)
 
-        if peer_hostname is not None:
-            set_hostname_verification = getattr(transport_security, "set_hostname_verification", None)
-            if set_hostname_verification is None:
-                raise IEC104TlsConfigurationError("IEC104 TLS 主机名校验需要 c104 2.2.2 或更高版本")
-            set_hostname_verification(peer_hostname)
         return transport_security
     except IEC104TlsConfigurationError:
         raise
@@ -253,7 +269,7 @@ class TlsClientBridge(_TlsBridge):
         listener.listen()
         listener.settimeout(0.5)
         self._listener = listener
-        self._thread = threading.Thread(target=self._accept_loop, name="iec104-basic-tls-client", daemon=True)
+        self._thread = threading.Thread(target=self._accept_loop, name="iec104-one-way-tls-client", daemon=True)
         self._thread.start()
 
     def _accept_loop(self) -> None:
@@ -311,7 +327,7 @@ class TlsServerBridge(_TlsBridge):
         listener.listen()
         listener.settimeout(0.5)
         self._listener = listener
-        self._thread = threading.Thread(target=self._accept_loop, name="iec104-basic-tls-server", daemon=True)
+        self._thread = threading.Thread(target=self._accept_loop, name="iec104-one-way-tls-server", daemon=True)
         self._thread.start()
 
     def _accept_loop(self) -> None:

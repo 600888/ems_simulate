@@ -31,7 +31,7 @@ class ChannelSecurityConfig(Base):
 
     channel_id: Mapped[int] = mapped_column(Integer, ForeignKey("channel.id"), primary_key=True)
     tls_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
-    tls_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="mutual", server_default="mutual")
+    tls_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="one_way", server_default="one_way")
     certificate_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     certificate_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     private_key_path: Mapped[str | None] = mapped_column(String(512), nullable=True)

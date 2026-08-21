@@ -62,6 +62,7 @@
             :model-value="securityConfig"
             :network-mode="mediaType === 'network'"
             :protocol-type="form.protocol_type"
+            :conn-type="form.conn_type"
             :disabled="saving || loadingChannel"
             @certificate-change="(file) => (certificateFile = file)"
             @private-key-change="(file) => (privateKeyFile = file)"
@@ -241,7 +242,10 @@ import {
   shouldImportDlt645Standard,
   type Dlt645PointMode,
 } from "@/utils/dlt645PointMode";
-import { shouldSaveChannelSecurity } from "@/utils/channelEdit";
+import {
+  getTlsMaterialRequirements,
+  shouldSaveChannelSecurity,
+} from "@/utils/channelEdit";
 
 const props = defineProps<{
   visible: boolean;
@@ -285,7 +289,7 @@ const protocolParams = reactive({
 });
 const securityConfig = reactive<SecurityConfig>({
   tls_enabled: false,
-  tls_mode: "mutual",
+  tls_mode: "one_way",
   certificate_configured: false,
   certificate_filename: null,
   private_key_configured: false,
@@ -295,7 +299,7 @@ const securityConfig = reactive<SecurityConfig>({
 });
 const originalSecuritySettings = ref({
   tls_enabled: false,
-  tls_mode: "mutual" as SecurityConfig["tls_mode"],
+  tls_mode: "one_way" as SecurityConfig["tls_mode"],
 });
 
 // GOOSE 预览状态
@@ -314,7 +318,7 @@ let channelLoadRequest = 0;
 
 const defaultSecurityConfig = (): SecurityConfig => ({
   tls_enabled: false,
-  tls_mode: "mutual",
+  tls_mode: "one_way",
   certificate_configured: false,
   certificate_filename: null,
   private_key_configured: false,
@@ -327,6 +331,9 @@ const applyPersistedSecurityConfig = (persisted?: SecurityConfig) => {
   const normalized = {
     ...defaultSecurityConfig(),
     ...(persisted || {}),
+    // 兼容旧数据库；basic 已整改为会校验 CA 的单向 TLS。
+    tls_mode:
+      (persisted?.tls_mode as string) === "mutual" ? "mutual" : "one_way",
     // 开关只认后端持久化的布尔值，不根据证书或本地点击状态推断。
     tls_enabled:
       persisted?.tls_enabled === true &&
@@ -543,7 +550,7 @@ const resetForm = () => {
   applyPersistedSecurityConfig();
   originalSecuritySettings.value = {
     tls_enabled: false,
-    tls_mode: "mutual",
+    tls_mode: "one_way",
   };
   clearPendingPointFiles();
   goosePreviewData.value = null;
@@ -611,17 +618,23 @@ const handleSubmit = async () => {
       securityConfig.private_key_configured || !!privateKeyFile.value;
     const hasCaCertificate =
       securityConfig.ca_certificate_configured || !!caCertificateFile.value;
-    if (
-      !hasCertificate ||
-      !hasPrivateKey ||
-      (securityConfig.tls_mode === "mutual" && !hasCaCertificate)
-    ) {
+    const requirements = getTlsMaterialRequirements(
+      securityConfig.tls_mode,
+      form.conn_type,
+    );
+    const missingIdentity =
+      requirements.identity && (!hasCertificate || !hasPrivateKey);
+    const missingCaCertificate =
+      requirements.caCertificate && !hasCaCertificate;
+    if (missingIdentity || missingCaCertificate) {
       activeTab.value = "security";
-      ElMessage.error(
+      const messageKey =
         securityConfig.tls_mode === "mutual"
-          ? t("addDevice.tlsMutualRequired")
-          : t("addDevice.tlsCertRequired"),
-      );
+          ? "addDevice.tlsMutualRequired"
+          : form.conn_type === 1
+            ? "addDevice.tlsOneWayCaRequired"
+            : "addDevice.tlsOneWayIdentityRequired";
+      ElMessage.error(t(messageKey));
       return;
     }
   }

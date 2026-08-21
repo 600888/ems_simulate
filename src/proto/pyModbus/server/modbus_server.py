@@ -149,7 +149,7 @@ class ModbusServer:
         parity: str = "N",
         stopbits: int = 1,
         tls_enabled: bool = False,
-        tls_mode: str = "mutual",
+        tls_mode: str = "one_way",
         certificate_path: str | None = None,
         private_key_path: str | None = None,
         ca_certificate_path: str | None = None,

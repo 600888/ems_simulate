@@ -71,12 +71,13 @@ def tls_files(tmp_path):
 
 
 def _settings(files, identity, mode):
+    one_way_client = mode == "one_way" and identity == "client"
     return {
         "tls_enabled": True,
         "tls_mode": mode,
-        "certificate_path": files[f"{identity}_cert"],
-        "private_key_path": files[f"{identity}_key"],
-        "ca_certificate_path": files["ca"] if mode == "mutual" else None,
+        "certificate_path": None if one_way_client else files[f"{identity}_cert"],
+        "private_key_path": None if one_way_client else files[f"{identity}_key"],
+        "ca_certificate_path": files["ca"] if mode == "mutual" or one_way_client else None,
     }
 
 
@@ -87,9 +88,9 @@ def test_mutual_tls_requires_ca(tls_files):
         create_client_tls_configuration(settings)
 
 
-def test_basic_tls_configurations_load_without_ca(tls_files):
-    server = create_server_tls_configuration(_settings(tls_files, "server", "basic"))
-    client = create_client_tls_configuration(_settings(tls_files, "client", "basic"))
+def test_one_way_tls_uses_server_identity_and_client_ca_only(tls_files):
+    server = create_server_tls_configuration(_settings(tls_files, "server", "one_way"))
+    client = create_client_tls_configuration(_settings(tls_files, "client", "one_way"))
     try:
         assert server is not None and server.native is not None
         assert client is not None and client.native is not None
@@ -98,12 +99,12 @@ def test_basic_tls_configurations_load_without_ca(tls_files):
         server.close()
 
 
-def test_basic_tls_requires_1619_insecure_api(tls_files, monkeypatch):
+def test_one_way_tls_server_requires_1619_insecure_api(tls_files, monkeypatch):
     from pyiec61850 import pyiec61850 as iec61850
 
     monkeypatch.delattr(iec61850, "TLSConfiguration_setInsecure")
     with pytest.raises(IEC61850TlsConfigurationError, match="1.6.1.9"):
-        create_client_tls_configuration(_settings(tls_files, "client", "basic"))
+        create_server_tls_configuration(_settings(tls_files, "server", "one_way"))
 
 
 def test_client_handler_passes_native_tls_to_direct_mms_connection(tls_files, monkeypatch):

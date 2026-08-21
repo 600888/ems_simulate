@@ -319,7 +319,7 @@ class DbController:
                         conn.execute(text(f"ALTER TABLE goose_subscription ADD COLUMN {column} {ddl}"))
 
     def _migrate_channel_security_schema(self) -> None:
-        """为旧数据库补齐 IEC104 TLS 模式和 CA 证书字段。"""
+        """补齐 TLS 字段，并迁移已移除的 basic 模式。"""
         if not self.db_config:
             return
         from sqlalchemy import inspect, text
@@ -330,7 +330,7 @@ class DbController:
             return
         existing = {column["name"] for column in inspector.get_columns("channel_security_config")}
         definitions = {
-            "tls_mode": "VARCHAR(16) NOT NULL DEFAULT 'mutual'",
+            "tls_mode": "VARCHAR(16) NOT NULL DEFAULT 'one_way'",
             "ca_certificate_path": "VARCHAR(512)",
             "ca_certificate_filename": "VARCHAR(255)",
         }
@@ -338,3 +338,4 @@ class DbController:
             for column, ddl in definitions.items():
                 if column not in existing:
                     conn.execute(text(f"ALTER TABLE channel_security_config ADD COLUMN {column} {ddl}"))
+            conn.execute(text("UPDATE channel_security_config SET tls_mode = 'one_way' WHERE tls_mode = 'basic'"))

@@ -23,8 +23,15 @@ _PRIVATE_KEY_SUFFIXES = {".key", ".pem"}
 
 
 def _validate_tls_mode(protocol_type: int, tls_mode: str) -> None:
-    if tls_mode not in {"basic", "mutual"}:
-        raise ValidationError("TLS 模式必须是基础 TLS 或双向认证 TLS")
+    if tls_mode not in {"one_way", "mutual"}:
+        raise ValidationError("TLS 模式必须是单向认证 TLS 或双向认证 TLS")
+
+
+def _tls_material_requirements(conn_type: int, tls_mode: str) -> tuple[bool, bool]:
+    """Return whether local identity and CA material are required."""
+    requires_identity = tls_mode == "mutual" or conn_type == 2
+    requires_ca = tls_mode == "mutual" or conn_type == 1
+    return requires_identity, requires_ca
 
 
 async def _read_upload(file: UploadFile, suffixes: set[str], label: str) -> bytes:
@@ -101,7 +108,7 @@ async def upload_security_config(
     request: Request,
     channel_id: int = Form(...),
     tls_enabled: bool = Form(...),
-    tls_mode: str = Form("mutual"),
+    tls_mode: str = Form("one_way"),
     certificate: UploadFile | None = File(None),
     private_key: UploadFile | None = File(None),
     ca_certificate: UploadFile | None = File(None),
@@ -125,7 +132,7 @@ async def upload_security_config(
 
     has_new_files = certificate is not None or private_key is not None or ca_certificate is not None
     settings_changed = (
-        bool(current.get("tls_enabled")) != tls_enabled or str(current.get("tls_mode") or "mutual") != tls_mode
+        bool(current.get("tls_enabled")) != tls_enabled or str(current.get("tls_mode") or "one_way") != tls_mode
     )
     if not has_new_files and not settings_changed:
         return BaseResponse(
@@ -154,16 +161,18 @@ async def upload_security_config(
     elif ca_certificate_path and Path(ca_certificate_path).is_file():
         ca_certificate_content = Path(ca_certificate_path).read_bytes()
 
-    if tls_enabled and (certificate_content is None or private_key_content is None):
-        raise ValidationError("启用 TLS 后必须上传证书和私钥")
-    mutual_tls_without_ca = (
-        tls_enabled
-        and channel.get("protocol_type") in (1, 2, 4)
-        and tls_mode == "mutual"
-        and ca_certificate_content is None
-    )
-    if mutual_tls_without_ca:
-        raise ValidationError("双向认证 TLS 必须上传 CA 证书")
+    conn_type = int(channel.get("conn_type", 0))
+    requires_identity, requires_ca = _tls_material_requirements(conn_type, tls_mode)
+    if (certificate_content is None) != (private_key_content is None):
+        raise ValidationError("本端证书和私钥必须成对配置")
+    if tls_enabled and requires_identity and certificate_content is None:
+        if tls_mode == "mutual":
+            raise ValidationError("双向认证 TLS 必须上传本端证书和私钥")
+        raise ValidationError("服务端单向认证 TLS 必须上传本端证书和私钥")
+    if tls_enabled and requires_ca and ca_certificate_content is None:
+        if tls_mode == "mutual":
+            raise ValidationError("双向认证 TLS 必须上传 CA 证书")
+        raise ValidationError("客户端单向认证 TLS 必须上传 CA 证书")
 
     parsed_ca_certificate = None
     if ca_certificate_content is not None:

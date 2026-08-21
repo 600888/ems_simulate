@@ -85,7 +85,7 @@ class IEC104ServerHandler(ServerHandler):
         runtime = config.get("runtime", {})
         security = config.get("security", {})
 
-        from src.proto.iec104.tls import build_transport_security, load_basic_tls_config
+        from src.proto.iec104.tls import build_transport_security, load_one_way_tls_config
 
         self._server: IEC104Server = IEC104Server(
             ip=ip,
@@ -98,7 +98,7 @@ class IEC104ServerHandler(ServerHandler):
             receive_window_size=runtime.get("receive_window_size", 8),
             max_connections=runtime.get("max_connections", 0),
             transport_security=build_transport_security(security),
-            basic_tls_config=load_basic_tls_config(security),
+            one_way_tls_config=load_one_way_tls_config(security, client=False),
         )
 
         # 预创建所有从站对应的 Station（common_address = slave_id）
@@ -360,7 +360,7 @@ class IEC104ClientHandler(ClientHandler):
         except RuntimeError:
             self._loop = None
 
-        from src.proto.iec104.tls import build_transport_security, load_basic_tls_config
+        from src.proto.iec104.tls import build_transport_security, load_one_way_tls_config
 
         self._client = IEC104Client(
             ip=ip,
@@ -373,8 +373,8 @@ class IEC104ClientHandler(ClientHandler):
             send_window_size=runtime.get("send_window_size", 12),
             receive_window_size=runtime.get("receive_window_size", 8),
             general_interrogation_on_connect=runtime.get("general_interrogation_on_connect", True),
-            transport_security=build_transport_security(security, peer_hostname=ip),
-            basic_tls_config=load_basic_tls_config(security),
+            transport_security=build_transport_security(security),
+            one_way_tls_config=load_one_way_tls_config(security, client=True),
         )
 
         # 预创建所有从站对应的 Station（common_address = slave_id）

@@ -86,15 +86,15 @@ def tls_files(tmp_path):
     }
 
 
-def test_basic_tls_encrypts_without_peer_certificate_validation(tls_files):
+def test_one_way_tls_client_uses_only_ca_and_disables_hostname_check(tls_files):
     client = create_client_ssl_context(
-        tls_mode="basic",
-        certificate_path=tls_files["client_certificate"],
-        private_key_path=tls_files["client_key"],
-        ca_certificate_path=None,
+        tls_mode="one_way",
+        certificate_path=None,
+        private_key_path=None,
+        ca_certificate_path=tls_files["ca"],
     )
     server = create_server_ssl_context(
-        tls_mode="basic",
+        tls_mode="one_way",
         certificate_path=tls_files["server_certificate"],
         private_key_path=tls_files["server_key"],
         ca_certificate_path=None,
@@ -103,7 +103,7 @@ def test_basic_tls_encrypts_without_peer_certificate_validation(tls_files):
     assert client.minimum_version == ssl.TLSVersion.TLSv1_2
     assert client.maximum_version == ssl.TLSVersion.TLSv1_3
     assert client.check_hostname is False
-    assert client.verify_mode == ssl.CERT_NONE
+    assert client.verify_mode == ssl.CERT_REQUIRED
     assert server.verify_mode == ssl.CERT_NONE
 
 
@@ -121,7 +121,7 @@ def test_mutual_tls_requires_and_validates_peer_certificates(tls_files):
         ca_certificate_path=tls_files["ca"],
     )
 
-    assert client.check_hostname is True
+    assert client.check_hostname is False
     assert client.verify_mode == ssl.CERT_REQUIRED
     assert server.verify_mode == ssl.CERT_REQUIRED
 
@@ -136,6 +136,16 @@ def test_mutual_tls_rejects_missing_ca(tls_files):
         )
 
 
+def test_one_way_tls_client_rejects_missing_ca():
+    with pytest.raises(ModbusTlsConfigurationError, match="CA 证书"):
+        create_client_ssl_context(
+            tls_mode="one_way",
+            certificate_path=None,
+            private_key_path=None,
+            ca_certificate_path=None,
+        )
+
+
 def test_invalid_tls_mode_is_rejected(tls_files):
     with pytest.raises(ModbusTlsConfigurationError, match="模式"):
         create_server_ssl_context(
@@ -146,25 +156,24 @@ def test_invalid_tls_mode_is_rejected(tls_files):
         )
 
 
-@pytest.mark.parametrize("tls_mode", ["basic", "mutual"])
+@pytest.mark.parametrize("tls_mode", ["one_way", "mutual"])
 def test_pymodbus_client_and_server_connect_with_supported_tls_modes(tls_files, tls_mode):
     async def run_connection():
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
 
-        ca_path = tls_files["ca"] if tls_mode == "mutual" else None
         server_ssl = create_server_ssl_context(
             tls_mode=tls_mode,
             certificate_path=tls_files["server_certificate"],
             private_key_path=tls_files["server_key"],
-            ca_certificate_path=ca_path,
+            ca_certificate_path=tls_files["ca"] if tls_mode == "mutual" else None,
         )
         client_ssl = create_client_ssl_context(
             tls_mode=tls_mode,
-            certificate_path=tls_files["client_certificate"],
-            private_key_path=tls_files["client_key"],
-            ca_certificate_path=ca_path,
+            certificate_path=tls_files["client_certificate"] if tls_mode == "mutual" else None,
+            private_key_path=tls_files["client_key"] if tls_mode == "mutual" else None,
+            ca_certificate_path=tls_files["ca"],
         )
         server = ModbusTlsServer(
             ModbusServerContext(ModbusDeviceContext()),

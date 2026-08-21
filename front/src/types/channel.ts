@@ -68,7 +68,7 @@ export interface ProtocolParamsConfig {
 
 export interface SecurityConfig {
   tls_enabled: boolean;
-  tls_mode: "basic" | "mutual";
+  tls_mode: "one_way" | "mutual";
   certificate_configured: boolean;
   certificate_filename?: string | null;
   private_key_configured: boolean;
