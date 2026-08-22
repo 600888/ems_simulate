@@ -59,12 +59,18 @@ class Iec61850ServerPasswordAuthenticator:
         if not password:
             raise ValueError("IEC 61850 服务端认证密码不能为空")
 
-        from pyiec61850 import _libload
         from pyiec61850 import pyiec61850 as iec61850
 
-        library_path = _find_native_library_path(_libload)
+        try:
+            from pyiec61850 import _libload as library_locator
+        except ImportError:
+            # Some Windows wheels place iec61850.dll beside pyiec61850.py
+            # without shipping the private _libload helper module.
+            library_locator = iec61850
+
+        library_path = _find_native_library_path(library_locator)
         if not library_path:
-            load_error = getattr(_libload, "LIB_LOAD_ERROR", None)
+            load_error = getattr(library_locator, "LIB_LOAD_ERROR", None)
             detail = f": {load_error}" if load_error else ""
             raise RuntimeError(f"无法定位 libiec61850 原生动态库{detail}")
 

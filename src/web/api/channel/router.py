@@ -379,10 +379,16 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
     elif protocol_combination_changed:
         requested_updates["model_name"] = None
 
-    # TCP 服务端唯一性检测：IP+端口 组合唯一（排除自身），须在写库前完成
-    if conn_type_to_use == 2:
-        new_ip = req.ip if req.ip is not None else existing.get("ip")
-        new_port = req.port if req.port is not None else existing.get("port")
+    # TCP 服务端唯一性检测只在切换为服务端或端点实际变化时执行。
+    # 名称、分组等无关编辑不应查询真实通道表，更不应被历史冲突数据阻断。
+    new_ip = req.ip if req.ip is not None else existing.get("ip")
+    new_port = req.port if req.port is not None else existing.get("port")
+    server_endpoint_changed = (
+        conn_type_to_use != existing.get("conn_type", 1)
+        or (new_ip or "").strip() != (existing.get("ip") or "").strip()
+        or str(new_port or "") != str(existing.get("port") or "")
+    )
+    if conn_type_to_use == 2 and server_endpoint_changed:
         _validate_server_endpoint_unique(new_ip, new_port, exclude_channel_id=channel_id)
 
     # 设备分组变更：group_id 存储在 Device 表，由 DeviceGroupService 统一更新。

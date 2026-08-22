@@ -311,7 +311,7 @@ def test_update_keeps_own_endpoint_is_allowed():
         patch(
             "src.web.api.channel.router.ChannelService.get_all_channels",
             return_value=[_server(ip="192.168.1.50", port=502), existing],
-        ),
+        ) as get_all,
         patch(
             "src.web.api.channel.router.ChannelService.update_channel",
             return_value=True,
@@ -319,3 +319,4 @@ def test_update_keeps_own_endpoint_is_allowed():
     ):
         # 仅改名称，IP+端口保持自身原值：排除自身后不应误报
         _update_run(ChannelUpdateRequest(channel_id=1, name="renamed"), existing)
+    get_all.assert_not_called()
