@@ -639,6 +639,9 @@ const handleSubmit = async () => {
     }
   }
   form.protocol_params = protocolParams;
+  // TreeSelect 清空时部分 Element Plus 版本会返回 undefined；显式提交 null
+  // 才能让后台区分“移到未分组”和“未修改分组”。
+  if (form.group_id === undefined) form.group_id = null;
   // DLT645 电表地址统一为 12 位数字（补零后校验）
   if (form.protocol_type === 3) {
     form.rtu_addr = String(form.rtu_addr || "").padStart(12, "0");
