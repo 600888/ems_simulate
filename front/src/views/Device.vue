@@ -165,9 +165,7 @@
                 class="button btn-config"
                 @click="showSimConfigDialog = true"
                 :disabled="
-                  !deviceStatus ||
-                  isClientDevice ||
-                  (isIec61850Protocol && !modelLoaded)
+                  isClientDevice || (isIec61850Protocol && !modelLoaded)
                 "
               >
                 <template #icon>
@@ -238,6 +236,7 @@
       v-model="showSimConfigDialog"
       :device-name="routeName"
       :saved-config="savedSimConfig"
+      :device-running="deviceStatus"
       :simulation-running="simulationStatus"
       @save="handleSaveSimConfig"
       @simulation-changed="(v: boolean) => (simulationStatus = v)"

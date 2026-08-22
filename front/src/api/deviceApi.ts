@@ -89,6 +89,7 @@ export interface SimulationConfigItem {
   frame_type?: number | null;
   simulate_method: string;
   step: number;
+  fixed_value: number;
   enabled: boolean;
 }
 
@@ -116,7 +117,7 @@ export async function applySimulationConfig(
   deviceName: string,
   points: Pick<
     SimulationConfigItem,
-    "point_code" | "enabled" | "simulate_method" | "step"
+    "point_code" | "enabled" | "simulate_method" | "step" | "fixed_value"
   >[],
 ): Promise<SimulationConfigApplyResult> {
   try {

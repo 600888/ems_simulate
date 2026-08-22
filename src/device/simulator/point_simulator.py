@@ -2,19 +2,20 @@ import math
 import random
 import time
 
-from src.enums.point_data import SimulateMethod, Yc, Yx
+from src.enums.point_data import SimulateMethod, Yc, Yt, Yx
 
 
 class PointSimulator:
     def __init__(self, point, method, step):
-        self.point: Yc | Yx = point
+        self.point: Yc | Yt | Yx = point
         self.simulate_method = method
         self.step = step
         self.is_running = False
         # 添加新的模拟参数
         self.cycle = 60  # 周期（秒），用于波形模拟
         self.phase = 0  # 相位，用于波形模拟
-        self.last_value = point.real_value if isinstance(point, Yc) else point.value
+        self.last_value = point.real_value if isinstance(point, (Yc, Yt)) else point.value
+        self.fixed_value = self.last_value  # 定值模拟目标值
         self.ramp_time = 5  # 斜坡时间（秒），用于斜坡模拟
         self.target_value = self.last_value
         self.ramp_start_time = 0
@@ -26,6 +27,13 @@ class PointSimulator:
             return
         # 如果测点被映射锁定，则不进行模拟
         if self.point.is_locked_by_mapping:
+            return
+
+        if self.simulate_method == SimulateMethod.FixedValue:
+            # 所有测点类型都实现了 set_real_value，可在被外部写入后于下一轮
+            # 恢复配置的定值。
+            self.point.set_real_value(self.fixed_value)
+            self.last_value = self.point.real_value if isinstance(self.point, (Yc, Yt)) else self.point.value
             return
 
         current_time = time.time()
@@ -50,8 +58,8 @@ class PointSimulator:
         elif hasattr(self.point, "min_value_limit") and hasattr(self.point, "max_value_limit"):
             # 遥测点模拟（只有 Yc 类型有 min_value_limit/max_value_limit）
             if self.simulate_method == SimulateMethod.AutoIncrement:
-                # 自增模拟，随机步长
-                step = random.randint(1, self.step)
+                # 自增模拟，支持浮点步长
+                step = float(self.step)
                 value = self.point.real_value + step
                 if value <= self.point.max_value_limit:
                     self.point.set_real_value(value)
@@ -62,8 +70,8 @@ class PointSimulator:
                     # self.simulate_method = SimulateMethod.AutoDecrement
 
             elif self.simulate_method == SimulateMethod.AutoDecrement:
-                # 自减模拟，修复原有的条件判断错误
-                step = random.randint(1, self.step)
+                # 自减模拟，支持浮点步长
+                step = float(self.step)
                 value = self.point.real_value - step
                 if value >= self.point.min_value_limit:
                     self.point.set_real_value(value)

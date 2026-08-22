@@ -15,7 +15,7 @@ class PointLeaf(BaseModel):
 
 
 class GroupNode(BaseModel):
-    """分组节点 (可嵌套)，用于 DLT645 数据标识前缀 / 结算日分组"""
+    """分组节点 (可嵌套)，用于协议专属层级分组"""
 
     label: str = Field(..., description="分组标签")
     dlt645_prefix: int | None = Field(None, description="DLT645 数据标识前缀 (0-4)，非 DLT645 分组为空")
@@ -26,9 +26,10 @@ class GroupNode(BaseModel):
 
 
 class TypeNode(BaseModel):
-    """类型节点 (遥测/遥信等)"""
+    """顶层分类节点（帧类型，或 IEC61850 的逻辑设备）"""
 
     label: str = Field(..., description="类型标签")
+    frame_type: int | None = Field(None, description="帧类型；协议数据模型分组时为空")
     children: list["GroupNode | PointLeaf"] = Field(default_factory=list, description="子节点 (测点列表或分组)")
 
 

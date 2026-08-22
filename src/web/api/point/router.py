@@ -106,6 +106,8 @@ async def set_single_point_simulate_method(req: SimulateMethodSetRequest, reques
     """设置单个点的模拟方法"""
     device = _get_device(req.device_name, request)
     success = device.setSinglePointSimulateMethod(req.point_code, req.simulate_method)
+    if success and req.fixed_value is not None:
+        success = device.setSinglePointFixedValue(req.point_code, req.fixed_value)
     if not success:
         raise ValidationError("设置单点模拟方法失败!", data=False)
     return BaseResponse(message="设置单点模拟方法成功!", data=True)

@@ -10,10 +10,10 @@ from src.enums.points.yx import Yx
 
 
 class MockDevice:
-    def __init__(self, name, device_id):
+    def __init__(self, name, device_id, protocol_type=ProtocolType.ModbusTcp):
         self.name = name
         self.device_id = device_id
-        self.protocol_type = ProtocolType.ModbusTcp
+        self.protocol_type = protocol_type
         self.point_manager = PointManager()
         self.yc_dict = {}
         self.yx_dict = {}
@@ -79,6 +79,44 @@ class TestPointTree(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(yx_node)
             self.assertEqual(len(yx_node.children), 1)
             self.assertEqual(yx_node.children[0].code, "YX001")
+
+    async def test_iec61850_tree_uses_data_model_ld_ln_hierarchy(self):
+        device = MockDevice("IED", 2, ProtocolType.Iec61850Server)
+        power = Yc(
+            code="power",
+            name="有功功率",
+            address="IEDLD0/MMXU1.TotW.mag.f",
+            value=10,
+        )
+        position = Yx(
+            code="position",
+            name="开关位置",
+            address="IEDLD0/XCBR1.Pos.stVal",
+            value=1,
+        )
+        alarm = Yx(
+            code="alarm",
+            name="告警",
+            address="IEDLD1/GGIO1.Alm.stVal",
+            value=0,
+        )
+        device.yc_dict = {1: [power]}
+        device.yx_dict = {1: [position, alarm]}
+
+        mock_dc = MagicMock(device_list=[device])
+        with patch("src.data.service.point_tree_service.get_device_controller", new_callable=MagicMock) as mock_get_dc:
+            future = asyncio.Future()
+            future.set_result(mock_dc)
+            mock_get_dc.return_value = future
+
+            tree = await PointTreeService.get_tree("IED")
+
+        self.assertEqual([node.label for node in tree[0].children], ["IEDLD0", "IEDLD1"])
+        ld0 = tree[0].children[0]
+        self.assertIsNone(ld0.frame_type)
+        self.assertEqual([node.label for node in ld0.children], ["MMXU1", "XCBR1"])
+        self.assertEqual(ld0.children[0].children[0].code, "power")
+        self.assertEqual(ld0.children[1].children[0].type, "YX")
 
 
 if __name__ == "__main__":

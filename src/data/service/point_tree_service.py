@@ -34,10 +34,10 @@ class PointTreeService:
                 # 初始化类型节点
                 # 使用列表来保持顺序: YC, YX, YT, YK
                 type_nodes_map = {
-                    "YC": TypeNode(label="遥测", children=[]),
-                    "YX": TypeNode(label="遥信", children=[]),
-                    "YT": TypeNode(label="遥调", children=[]),
-                    "YK": TypeNode(label="遥控", children=[]),
+                    "YC": TypeNode(label="遥测", frame_type=0, children=[]),
+                    "YX": TypeNode(label="遥信", frame_type=1, children=[]),
+                    "YT": TypeNode(label="遥调", frame_type=3, children=[]),
+                    "YK": TypeNode(label="遥控", frame_type=2, children=[]),
                 }
 
                 # 辅助函数：添加测点
@@ -47,6 +47,23 @@ class PointTreeService:
                     for p in points:
                         leaf = PointTreeService._create_leaf(p, type_key)
                         type_nodes_map[type_key].children.append(leaf)  # noqa: B023
+
+                # IEC61850 按 DataModel 的 LD → LN 层级展示，不再按遥测/遥信
+                # 拆散同一个逻辑节点下的测点。
+                if device.protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client):
+                    typed_points = []
+                    for type_key, point_dict in (
+                        ("YC", device.yc_dict),
+                        ("YX", device.yx_dict),
+                        ("YT", device.point_manager.yt_dict),
+                        ("YK", device.point_manager.yk_dict),
+                    ):
+                        for points in point_dict.values():
+                            typed_points.extend((point, type_key) for point in points)
+                    children = PointTreeService._build_iec61850_data_model(typed_points)
+                    if children:
+                        devices_node_list.append(DeviceNode(label=device_label, children=children))
+                    continue
 
                 # 遥测：DLT645 设备按数据标识前缀/结算日分组（与侧边栏一致）
                 is_dlt645 = device.protocol_type in (
@@ -166,3 +183,28 @@ class PointTreeService:
                     )
                 )
         return groups
+
+    @staticmethod
+    def _build_iec61850_data_model(points: list[tuple[BasePoint, str]]) -> list[TypeNode]:
+        """按 IEC61850 DataModel 的 LD → LN 层级组织测点。"""
+        ld_map: dict[str, dict[str, list[PointLeaf]]] = {}
+        for point, type_label in points:
+            ref = str(point.hex_address or point.address or "")
+            if "/" in ref:
+                ld_name, remainder = ref.split("/", 1)
+                ln_name = remainder.split(".", 1)[0].split("$", 1)[0]
+            else:
+                ld_name, ln_name = "其他", "其他"
+            ld_name = ld_name or "其他"
+            ln_name = ln_name or "其他"
+            ld_map.setdefault(ld_name, {}).setdefault(ln_name, []).append(
+                PointTreeService._create_leaf(point, type_label)
+            )
+
+        return [
+            TypeNode(
+                label=ld_name,
+                children=[GroupNode(label=ln_name, children=leaves) for ln_name, leaves in ln_map.items()],
+            )
+            for ld_name, ln_map in ld_map.items()
+        ]

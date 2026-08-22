@@ -13,7 +13,7 @@ class SimulationController:
         self._simulation_thread = None  # 单线程控制
         self._stop_event = threading.Event()  # 线程停止信号
 
-    def add_point(self, point: Yc | Yx, simulate_method: SimulateMethod, step: int):
+    def add_point(self, point: Yc | Yx, simulate_method: SimulateMethod, step: float):
         # IEC61850 标准元数据 DA（品质 q、时标 t、描述 dU）不参与模拟
         from src.enums.modbus_def import ProtocolType
 
@@ -53,7 +53,9 @@ class SimulationController:
                 if item.get("simulate_method") is not None:
                     simulator.simulate_method = SimulateMethod(item["simulate_method"])
                 if item.get("step") is not None:
-                    simulator.step = int(item["step"])
+                    simulator.step = float(item["step"])
+                if item.get("fixed_value") is not None:
+                    simulator.fixed_value = float(item["fixed_value"])
                 if item.get("enabled") is not None:
                     simulator.is_running = bool(item["enabled"])
                 applied.append(point_code)
@@ -85,12 +87,22 @@ class SimulationController:
         log.error(f"未找到点 {point_code}")
         return False
 
-    def set_single_point_step(self, point_code: str, step: int):
+    def set_single_point_step(self, point_code: str, step: float):
         """设置单个点的模拟步长"""
         for point, simulator in self.points.items():
             if point.code == point_code:
-                simulator.step = step
+                simulator.step = float(step)
                 log.info(f"设置点 {point_code} 的模拟步长为 {step}")
+                return True
+        log.error(f"未找到点 {point_code}")
+        return False
+
+    def set_single_point_fixed_value(self, point_code: str, fixed_value: float | int) -> bool:
+        """设置单个点的定值模拟目标值"""
+        for point, simulator in self.points.items():
+            if point.code == point_code:
+                simulator.fixed_value = float(fixed_value)
+                log.info(f"设置点 {point_code} 的模拟定值为 {fixed_value}")
                 return True
         log.error(f"未找到点 {point_code}")
         return False
@@ -109,6 +121,7 @@ class SimulationController:
                     "value": point.real_value if isinstance(point, (Yc, Yt)) else point.value,
                     "simulate_method": simulator.simulate_method.value,
                     "step": simulator.step,
+                    "fixed_value": simulator.fixed_value,
                     "is_running": simulator.is_running,
                     "frame_type": point.frame_type,
                     "iec_type_id": getattr(point, "iec_type_id", None),

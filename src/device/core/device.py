@@ -955,8 +955,11 @@ class Device:
             self.log.error(f"无效的模拟方法: {simulate_method}")
             return False
 
-    def setSinglePointStep(self, point_code: str, step: int) -> bool:
+    def setSinglePointStep(self, point_code: str, step: float) -> bool:
         return self.simulation_controller.set_single_point_step(point_code, step)
+
+    def setSinglePointFixedValue(self, point_code: str, fixed_value: float | int) -> bool:
+        return self.simulation_controller.set_single_point_fixed_value(point_code, fixed_value)
 
     def setSinglePointStatus(self, point_code: str, is_running: bool) -> bool:
         """按测点编码设置模拟启停状态"""
@@ -973,6 +976,7 @@ class Device:
                     "frame_type": getattr(point, "frame_type", None),
                     "simulate_method": simulator.simulate_method.value,
                     "step": simulator.step,
+                    "fixed_value": simulator.fixed_value,
                     "enabled": simulator.is_running,
                 }
             )

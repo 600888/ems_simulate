@@ -117,12 +117,14 @@ export async function setSinglePointSimulateMethod(
   deviceName: string,
   pointCode: string,
   simulateMethod: string,
+  fixedValue?: number,
 ): Promise<boolean> {
   try {
     return await requestApi(POINT_API.SET_SIMULATE_METHOD, "post", {
       device_name: deviceName,
       point_code: pointCode,
       simulate_method: simulateMethod,
+      fixed_value: fixedValue,
     });
   } catch (error) {
     console.error("Error setting single point simulate method:", error);

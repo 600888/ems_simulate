@@ -61,7 +61,8 @@ class SimulationConfigItem(BaseModel):
     point_code: str
     enabled: bool | None = Field(None, description="是否参与模拟")
     simulate_method: SimulateMethod | None = Field(None, description="模拟方式")
-    step: int | None = Field(None, ge=1, description="模拟步长")
+    step: float | None = Field(None, gt=0, description="模拟步长，支持浮点数")
+    fixed_value: float | int | None = Field(None, description="定值模拟的目标值")
 
 
 class ApplySimulationConfigRequest(BaseModel):

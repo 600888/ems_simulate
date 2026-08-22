@@ -52,13 +52,14 @@ class SimulateMethodSetRequest(BaseModel):
     point_code: str
     slave_id: int | None = Field(None, description="从机 ID，不同从站编码相同时用于精确定位测点")
     simulate_method: SimulateMethod
+    fixed_value: float | int | None = Field(None, description="定值模拟的目标值")
 
 
 class SimulateStepSetRequest(BaseModel):
     device_name: str
     point_code: str
     slave_id: int | None = Field(None, description="从机 ID，不同从站编码相同时用于精确定位测点")
-    step: int
+    step: float = Field(..., gt=0, description="模拟步长，支持浮点数")
 
 
 class SimulateRangeSetRequest(BaseModel):

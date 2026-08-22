@@ -28,6 +28,8 @@ export type TreeNode = GroupNode | PointLeaf;
 
 export interface TypeNode {
   label: string;
+  /** 帧类型；IEC61850 的 LD 数据模型分组没有该字段 */
+  frame_type?: number | null;
   children: TreeNode[];
 }
 
