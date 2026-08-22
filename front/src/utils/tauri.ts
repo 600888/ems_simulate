@@ -166,19 +166,14 @@ export async function restartBackend(): Promise<string> {
   return invoke<string>("restart_backend");
 }
 
-/** 打开外部 URL（使用系统默认浏览器） */
+/** 浏览器端在新标签页打开；桌面端使用系统 Microsoft Edge 打开。 */
 export async function openExternal(url: string) {
   if (!isTauri()) {
-    window.open(url, "_blank");
+    window.open(url, "_blank", "noopener,noreferrer");
     return;
   }
-  try {
-    const { open } = await import("@tauri-apps/plugin-shell");
-    await open(url);
-  } catch (e) {
-    console.error("打开外部链接失败:", e);
-    window.open(url, "_blank");
-  }
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  await openUrl(url, "msedge");
 }
 
 /** Tauri 环境初始化（在 main.ts 中调用） */

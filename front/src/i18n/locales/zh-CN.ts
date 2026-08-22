@@ -1222,6 +1222,7 @@ export default {
     contactHint: "欢迎通过以下方式联系作者，反馈问题或提出建议。",
     copySuccess: "已复制",
     copyFail: "复制失败",
+    openLinkFailed: "打开链接失败",
   },
   scl: {
     title: "SCL 文件管理",

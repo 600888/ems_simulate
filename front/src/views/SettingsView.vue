@@ -1,11 +1,29 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { Brush, Iphone, User, Document, Link, FolderOpened, Files, EditPen, Delete } from '@element-plus/icons-vue'
-import { zoomLevel, setZoom, currentLocale, setLocale, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '@/composables/useAppSettings'
-import type { LocaleType } from '@/i18n'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { showError } from '@/api/http'
+import { ref, computed, onMounted, reactive } from "vue";
+import { useI18n } from "vue-i18n";
+import {
+  Brush,
+  Iphone,
+  User,
+  Document,
+  Link,
+  FolderOpened,
+  Files,
+  EditPen,
+  Delete,
+} from "@element-plus/icons-vue";
+import {
+  zoomLevel,
+  setZoom,
+  currentLocale,
+  setLocale,
+  ZOOM_MIN,
+  ZOOM_MAX,
+  ZOOM_STEP,
+} from "@/composables/useAppSettings";
+import type { LocaleType } from "@/i18n";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { showError } from "@/api/http";
 import {
   clearStorageDirectory,
   getStorageSettings,
@@ -13,254 +31,285 @@ import {
   type DirectoryStatus,
   type StoragePathKey,
   type StoragePaths,
-} from '@/api/settingsApi'
-import { invoke, isTauri } from '@/utils/tauri'
+} from "@/api/settingsApi";
+import { invoke, isTauri, openExternal } from "@/utils/tauri";
 
-const { t, locale } = useI18n()
+const { t, locale } = useI18n();
 
-type MenuKey = 'appearance' | 'language' | 'storage' | 'contact'
+type MenuKey = "appearance" | "language" | "storage" | "contact";
 
-const activeMenu = ref<MenuKey>('appearance')
+const activeMenu = ref<MenuKey>("appearance");
 
 const menuItems = computed(() => [
-  { key: 'appearance' as MenuKey, icon: Brush, label: t('settings.appearance') },
-  { key: 'language' as MenuKey, icon: Iphone, label: t('settings.region') },
-  { key: 'storage' as MenuKey, icon: Files, label: t('settings.storage') },
-  { key: 'contact' as MenuKey, icon: User, label: t('settings.contact') },
-])
+  {
+    key: "appearance" as MenuKey,
+    icon: Brush,
+    label: t("settings.appearance"),
+  },
+  { key: "language" as MenuKey, icon: Iphone, label: t("settings.region") },
+  { key: "storage" as MenuKey, icon: Files, label: t("settings.storage") },
+  { key: "contact" as MenuKey, icon: User, label: t("settings.contact") },
+]);
 
 const emptyPaths = (): StoragePaths => ({
-  data_directory: '',
-  point_table_cache_directory: '',
-  iec61850_model_cache_directory: '',
-  iec61850_file_cache_directory: '',
-  iec61850_temp_directory: '',
-})
+  data_directory: "",
+  point_table_cache_directory: "",
+  iec61850_model_cache_directory: "",
+  iec61850_file_cache_directory: "",
+  iec61850_temp_directory: "",
+});
 
-const storagePaths = reactive<StoragePaths>(emptyPaths())
-const storageDefaults = ref<StoragePaths>(emptyPaths())
-const storageStatus = ref<Partial<Record<StoragePathKey, DirectoryStatus>>>({})
-const storageLoading = ref(false)
-const storageSaving = ref(false)
-const clearingDirectory = ref<StoragePathKey | null>(null)
-const savedStoragePaths = ref('')
+const storagePaths = reactive<StoragePaths>(emptyPaths());
+const storageDefaults = ref<StoragePaths>(emptyPaths());
+const storageStatus = ref<Partial<Record<StoragePathKey, DirectoryStatus>>>({});
+const storageLoading = ref(false);
+const storageSaving = ref(false);
+const clearingDirectory = ref<StoragePathKey | null>(null);
+const savedStoragePaths = ref("");
 
 const storageItems = computed(() => [
   {
-    key: 'data_directory' as StoragePathKey,
-    label: t('settings.dataDirectory'),
-    description: t('settings.dataDirectoryHint'),
+    key: "data_directory" as StoragePathKey,
+    label: t("settings.dataDirectory"),
+    description: t("settings.dataDirectoryHint"),
   },
   {
-    key: 'point_table_cache_directory' as StoragePathKey,
-    label: t('settings.pointTableCacheDirectory'),
-    description: t('settings.pointTableCacheDirectoryHint'),
+    key: "point_table_cache_directory" as StoragePathKey,
+    label: t("settings.pointTableCacheDirectory"),
+    description: t("settings.pointTableCacheDirectoryHint"),
   },
   {
-    key: 'iec61850_model_cache_directory' as StoragePathKey,
-    label: t('settings.iec61850ModelCacheDirectory'),
-    description: t('settings.iec61850ModelCacheDirectoryHint'),
+    key: "iec61850_model_cache_directory" as StoragePathKey,
+    label: t("settings.iec61850ModelCacheDirectory"),
+    description: t("settings.iec61850ModelCacheDirectoryHint"),
   },
   {
-    key: 'iec61850_file_cache_directory' as StoragePathKey,
-    label: t('settings.iec61850FileCacheDirectory'),
-    description: t('settings.iec61850FileCacheDirectoryHint'),
+    key: "iec61850_file_cache_directory" as StoragePathKey,
+    label: t("settings.iec61850FileCacheDirectory"),
+    description: t("settings.iec61850FileCacheDirectoryHint"),
   },
   {
-    key: 'iec61850_temp_directory' as StoragePathKey,
-    label: t('settings.iec61850TempDirectory'),
-    description: t('settings.iec61850TempDirectoryHint'),
+    key: "iec61850_temp_directory" as StoragePathKey,
+    label: t("settings.iec61850TempDirectory"),
+    description: t("settings.iec61850TempDirectoryHint"),
   },
-])
+]);
 
-const storageDirty = computed(() => JSON.stringify(storagePaths) !== savedStoragePaths.value)
+const storageDirty = computed(
+  () => JSON.stringify(storagePaths) !== savedStoragePaths.value,
+);
 
 function pathIsVerified(key: StoragePathKey): boolean {
-  if (!storageStatus.value[key]?.writable || !savedStoragePaths.value) return false
-  const saved = JSON.parse(savedStoragePaths.value) as Partial<StoragePaths>
-  return storagePaths[key] === saved[key]
+  if (!storageStatus.value[key]?.writable || !savedStoragePaths.value)
+    return false;
+  const saved = JSON.parse(savedStoragePaths.value) as Partial<StoragePaths>;
+  return storagePaths[key] === saved[key];
 }
 
-function applyStorageData(data: Awaited<ReturnType<typeof getStorageSettings>>) {
-  Object.assign(storagePaths, data.paths)
-  storageDefaults.value = { ...data.defaults }
-  storageStatus.value = data.status
-  savedStoragePaths.value = JSON.stringify(data.paths)
+function applyStorageData(
+  data: Awaited<ReturnType<typeof getStorageSettings>>,
+) {
+  Object.assign(storagePaths, data.paths);
+  storageDefaults.value = { ...data.defaults };
+  storageStatus.value = data.status;
+  savedStoragePaths.value = JSON.stringify(data.paths);
 }
 
 async function loadStorageSettings() {
-  storageLoading.value = true
+  storageLoading.value = true;
   try {
-    applyStorageData(await getStorageSettings())
+    applyStorageData(await getStorageSettings());
   } catch (error) {
-    showError(error, t('settings.storageLoadFailed'))
+    showError(error, t("settings.storageLoadFailed"));
   } finally {
-    storageLoading.value = false
+    storageLoading.value = false;
   }
 }
 
 async function chooseDirectory(key: StoragePathKey) {
   if (!isTauri()) {
-    ElMessage.info(t('settings.directoryPickerWebHint'))
-    return
+    ElMessage.info(t("settings.directoryPickerWebHint"));
+    return;
   }
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
+    const { open } = await import("@tauri-apps/plugin-dialog");
     const selected = await open({
       directory: true,
       multiple: false,
       defaultPath: storagePaths[key] || undefined,
-    })
-    if (typeof selected === 'string') {
-      storagePaths[key] = selected
+    });
+    if (typeof selected === "string") {
+      storagePaths[key] = selected;
     }
   } catch (error) {
-    showError(error, t('settings.directoryPickerFailed'))
+    showError(error, t("settings.directoryPickerFailed"));
   }
 }
 
 async function openDirectory(key: StoragePathKey) {
-  const path = storagePaths[key].trim()
+  const path = storagePaths[key].trim();
   if (!path) {
-    ElMessage.warning(t('settings.directoryRequired'))
-    return
+    ElMessage.warning(t("settings.directoryRequired"));
+    return;
   }
   if (!isTauri()) {
-    ElMessage.info(t('settings.directoryOpenWebHint'))
-    return
+    ElMessage.info(t("settings.directoryOpenWebHint"));
+    return;
   }
   try {
-    await invoke('open_directory', { path })
+    await invoke("open_directory", { path });
   } catch (error) {
-    showError(error, t('settings.directoryOpenFailed'))
+    showError(error, t("settings.directoryOpenFailed"));
   }
 }
 
 async function clearDirectory(key: StoragePathKey) {
   if (!pathIsVerified(key)) {
-    ElMessage.warning(t('settings.clearDirectorySaveFirst'))
-    return
+    ElMessage.warning(t("settings.clearDirectorySaveFirst"));
+    return;
   }
 
-  const path = storagePaths[key]
+  const path = storagePaths[key];
   try {
     await ElMessageBox.confirm(
-      t('settings.clearDirectoryConfirm', { path }),
-      t('settings.clearDirectoryTitle'),
+      t("settings.clearDirectoryConfirm", { path }),
+      t("settings.clearDirectoryTitle"),
       {
-        confirmButtonText: t('settings.clearDirectoryConfirmButton'),
-        cancelButtonText: t('common.cancel'),
-        type: 'warning',
-        customClass: 'clear-directory-message-box',
-        confirmButtonClass: 'clear-directory-confirm-button',
+        confirmButtonText: t("settings.clearDirectoryConfirmButton"),
+        cancelButtonText: t("common.cancel"),
+        type: "warning",
+        customClass: "clear-directory-message-box",
+        confirmButtonClass: "clear-directory-confirm-button",
       },
-    )
+    );
   } catch {
-    return
+    return;
   }
 
-  clearingDirectory.value = key
+  clearingDirectory.value = key;
   try {
-    await clearStorageDirectory(key)
-    await loadStorageSettings()
-    ElMessage.success(t('settings.clearDirectorySuccess'))
+    await clearStorageDirectory(key);
+    await loadStorageSettings();
+    ElMessage.success(t("settings.clearDirectorySuccess"));
   } catch (error) {
-    showError(error, t('settings.clearDirectoryFailed'))
+    showError(error, t("settings.clearDirectoryFailed"));
   } finally {
-    clearingDirectory.value = null
+    clearingDirectory.value = null;
   }
 }
 
 function restoreStorageDefaults() {
-  Object.assign(storagePaths, storageDefaults.value)
+  Object.assign(storagePaths, storageDefaults.value);
 }
 
 async function saveStorageSettings() {
   if (Object.values(storagePaths).some((path) => !path.trim())) {
-    ElMessage.warning(t('settings.directoryRequired'))
-    return
+    ElMessage.warning(t("settings.directoryRequired"));
+    return;
   }
-  storageSaving.value = true
+  storageSaving.value = true;
   try {
-    const data = await updateStorageSettings({ ...storagePaths })
-    applyStorageData(data)
+    const data = await updateStorageSettings({ ...storagePaths });
+    applyStorageData(data);
     ElMessage.success(
-      data.restart_required ? t('settings.storageSavedRestart') : t('settings.storageSaved'),
-    )
+      data.restart_required
+        ? t("settings.storageSavedRestart")
+        : t("settings.storageSaved"),
+    );
   } catch (error) {
-    showError(error, t('settings.storageSaveFailed'))
+    showError(error, t("settings.storageSaveFailed"));
   } finally {
-    storageSaving.value = false
+    storageSaving.value = false;
   }
 }
 
-onMounted(loadStorageSettings)
+onMounted(loadStorageSettings);
 
 const localeOptions = computed<{ value: LocaleType; label: string }[]>(() => [
-  { value: 'zh-CN', label: t('settings.zh') },
-  { value: 'en-US', label: t('settings.en') },
-])
+  { value: "zh-CN", label: t("settings.zh") },
+  { value: "en-US", label: t("settings.en") },
+]);
 
 function handleLocaleChange(val: LocaleType) {
-  setLocale(val)
-  locale.value = val
+  setLocale(val);
+  locale.value = val;
 }
 
-const contactLinks = computed(() => [
+type ContactLink = {
+  name: string;
+  value: string;
+  icon: string;
+  color: string;
+  showValue: boolean;
+};
+
+const contactLinks = computed<ContactLink[]>(() => [
   {
-    name: t('settings.gitee'),
-    value: 'https://gitee.com/chen-dongyu123',
-    icon: 'gitee',
-    color: '#C71D23',
+    name: t("settings.gitee"),
+    value: "https://gitee.com/chen-dongyu123",
+    icon: "gitee",
+    color: "#C71D23",
     showValue: false,
   },
   {
-    name: t('settings.github'),
-    value: 'https://github.com/600888',
-    icon: 'github',
-    color: 'var(--text-primary)',
+    name: t("settings.github"),
+    value: "https://github.com/600888",
+    icon: "github",
+    color: "var(--text-primary)",
     showValue: false,
   },
   {
-    name: t('settings.onlineDoc'),
-    value: 'https://600888.github.io/ems_simulate/',
-    icon: 'doc',
-    color: 'var(--color-primary)',
+    name: t("settings.onlineDoc"),
+    value: "https://600888.github.io/ems_simulate/",
+    icon: "doc",
+    color: "var(--color-primary)",
     showValue: false,
   },
   {
-    name: t('settings.wechat'),
-    value: t('settings.wechatId'),
-    icon: 'wechat',
-    color: '#07C160',
+    name: t("settings.wechat"),
+    value: t("settings.wechatId"),
+    icon: "wechat",
+    color: "#07C160",
     showValue: true,
   },
   {
-    name: t('settings.qq'),
-    value: t('settings.qqId'),
-    icon: 'qq',
-    color: '#12B7F5',
+    name: t("settings.qq"),
+    value: t("settings.qqId"),
+    icon: "qq",
+    color: "#12B7F5",
     showValue: true,
   },
-])
+]);
 
 function copyText(text: string) {
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.style.position = 'fixed'
-  textarea.style.left = '-9999px'
-  textarea.style.top = '-9999px'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.focus()
-  textarea.select()
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "-9999px";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
   try {
-    ;(document as any).execCommand('copy')
-    ElMessage.success(t('settings.copySuccess'))
+    (document as any).execCommand("copy");
+    ElMessage.success(t("settings.copySuccess"));
   } catch {
-    ElMessage.warning(t('settings.copyFail'))
+    ElMessage.warning(t("settings.copyFail"));
   }
-  document.body.removeChild(textarea)
+  document.body.removeChild(textarea);
+}
+
+async function handleContactLink(link: ContactLink) {
+  if (link.showValue) {
+    copyText(link.value);
+    return;
+  }
+  try {
+    await openExternal(link.value);
+  } catch (error) {
+    showError(error, t("settings.openLinkFailed"));
+  }
 }
 </script>
 
@@ -273,7 +322,11 @@ function copyText(text: string) {
         class="settings-menu"
         @select="(key: MenuKey) => (activeMenu = key)"
       >
-        <el-menu-item v-for="item in menuItems" :key="item.key" :index="item.key">
+        <el-menu-item
+          v-for="item in menuItems"
+          :key="item.key"
+          :index="item.key"
+        >
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.label }}</span>
         </el-menu-item>
@@ -284,12 +337,12 @@ function copyText(text: string) {
     <div class="settings-content">
       <!-- 外观设置 -->
       <div v-show="activeMenu === 'appearance'" class="settings-section">
-        <h3 class="section-title">{{ t('settings.appearance') }}</h3>
+        <h3 class="section-title">{{ t("settings.appearance") }}</h3>
         <div class="section-card">
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">{{ t('settings.zoom') }}</div>
-              <div class="setting-desc">{{ t('settings.zoomHint') }}</div>
+              <div class="setting-label">{{ t("settings.zoom") }}</div>
+              <div class="setting-desc">{{ t("settings.zoomHint") }}</div>
             </div>
             <div class="setting-control zoom-control">
               <span class="zoom-value">{{ zoomLevel }}%</span>
@@ -307,12 +360,12 @@ function copyText(text: string) {
 
       <!-- 语言设置 -->
       <div v-show="activeMenu === 'language'" class="settings-section">
-        <h3 class="section-title">{{ t('settings.region') }}</h3>
+        <h3 class="section-title">{{ t("settings.region") }}</h3>
         <div class="section-card">
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">{{ t('settings.language') }}</div>
-              <div class="setting-desc">{{ t('settings.languageHint') }}</div>
+              <div class="setting-label">{{ t("settings.language") }}</div>
+              <div class="setting-desc">{{ t("settings.languageHint") }}</div>
             </div>
             <div class="setting-control">
               <el-radio-group
@@ -333,11 +386,19 @@ function copyText(text: string) {
       </div>
 
       <!-- 存储设置 -->
-      <div v-show="activeMenu === 'storage'" v-loading="storageLoading" class="settings-section storage-section">
-        <h3 class="section-title">{{ t('settings.storage') }}</h3>
-        <p class="storage-hint">{{ t('settings.storageHint') }}</p>
+      <div
+        v-show="activeMenu === 'storage'"
+        v-loading="storageLoading"
+        class="settings-section storage-section"
+      >
+        <h3 class="section-title">{{ t("settings.storage") }}</h3>
+        <p class="storage-hint">{{ t("settings.storageHint") }}</p>
         <div class="section-card storage-card">
-          <div v-for="item in storageItems" :key="item.key" class="storage-item">
+          <div
+            v-for="item in storageItems"
+            :key="item.key"
+            class="storage-item"
+          >
             <div class="storage-item-header">
               <div>
                 <div class="setting-label">{{ item.label }}</div>
@@ -350,16 +411,18 @@ function copyText(text: string) {
                   type="success"
                   effect="plain"
                 >
-                  {{ t('settings.directoryWritable') }}
+                  {{ t("settings.directoryWritable") }}
                 </el-tag>
                 <el-button
                   class="clear-directory-button"
                   :icon="Delete"
                   :loading="clearingDirectory === item.key"
-                  :disabled="clearingDirectory !== null || !pathIsVerified(item.key)"
+                  :disabled="
+                    clearingDirectory !== null || !pathIsVerified(item.key)
+                  "
                   @click="clearDirectory(item.key)"
                 >
-                  {{ t('settings.clearDirectory') }}
+                  {{ t("settings.clearDirectory") }}
                 </el-button>
               </div>
             </div>
@@ -375,14 +438,14 @@ function copyText(text: string) {
                     :icon="EditPen"
                     @click="chooseDirectory(item.key)"
                   >
-                    {{ t('settings.modifyDirectory') }}
+                    {{ t("settings.modifyDirectory") }}
                   </el-button>
                   <el-button
                     class="storage-path-button storage-path-button--open"
                     :icon="FolderOpened"
                     @click="openDirectory(item.key)"
                   >
-                    {{ t('settings.openDirectory') }}
+                    {{ t("settings.openDirectory") }}
                   </el-button>
                 </el-button-group>
               </template>
@@ -397,54 +460,104 @@ function copyText(text: string) {
           class="storage-alert"
         />
         <div class="storage-actions">
-          <el-button @click="restoreStorageDefaults">{{ t('settings.restoreDefaults') }}</el-button>
+          <el-button @click="restoreStorageDefaults">{{
+            t("settings.restoreDefaults")
+          }}</el-button>
           <el-button
             type="primary"
             :loading="storageSaving"
             :disabled="!storageDirty"
             @click="saveStorageSettings"
           >
-            {{ t('settings.saveStorage') }}
+            {{ t("settings.saveStorage") }}
           </el-button>
         </div>
       </div>
 
       <!-- 联系作者 -->
-      <div v-show="activeMenu === 'contact'" class="settings-section contact-section">
-        <h3 class="section-title">{{ t('settings.contact') }}</h3>
-        <p class="contact-hint">{{ t('settings.contactHint') }}</p>
+      <div
+        v-show="activeMenu === 'contact'"
+        class="settings-section contact-section"
+      >
+        <h3 class="section-title">{{ t("settings.contact") }}</h3>
+        <p class="contact-hint">{{ t("settings.contactHint") }}</p>
 
         <div class="contact-grid">
           <div
             v-for="link in contactLinks"
             :key="link.name"
             class="contact-card"
-            @click="copyText(link.value)"
+            @click="handleContactLink(link)"
           >
             <!-- Gitee SVG -->
-            <svg v-if="link.icon === 'gitee'" class="contact-icon" viewBox="0 0 1024 1024" width="32" height="32">
-              <path d="M512 1024C230.4 1024 0 793.6 0 512S230.4 0 512 0s512 230.4 512 512-230.4 512-512 512z m259.2-569.6H480c-12.8 0-25.6 12.8-25.6 25.6v64c0 12.8 12.8 25.6 25.6 25.6h176c12.8 0 25.6 12.8 25.6 25.6v12.8c0 41.6-35.2 76.8-76.8 76.8h-240c-12.8 0-25.6-12.8-25.6-25.6V416c0-41.6 35.2-76.8 76.8-76.8h355.2c12.8 0 25.6-12.8 25.6-25.6v-64c0-12.8-12.8-25.6-25.6-25.6H416c-105.6 0-192 86.4-192 192v256c0 105.6 86.4 192 192 192h240c105.6 0 192-86.4 192-192V518.4c0-35.2-28.8-64-64-64z" :fill="link.color"/>
+            <svg
+              v-if="link.icon === 'gitee'"
+              class="contact-icon"
+              viewBox="0 0 1024 1024"
+              width="32"
+              height="32"
+            >
+              <path
+                d="M512 1024C230.4 1024 0 793.6 0 512S230.4 0 512 0s512 230.4 512 512-230.4 512-512 512z m259.2-569.6H480c-12.8 0-25.6 12.8-25.6 25.6v64c0 12.8 12.8 25.6 25.6 25.6h176c12.8 0 25.6 12.8 25.6 25.6v12.8c0 41.6-35.2 76.8-76.8 76.8h-240c-12.8 0-25.6-12.8-25.6-25.6V416c0-41.6 35.2-76.8 76.8-76.8h355.2c12.8 0 25.6-12.8 25.6-25.6v-64c0-12.8-12.8-25.6-25.6-25.6H416c-105.6 0-192 86.4-192 192v256c0 105.6 86.4 192 192 192h240c105.6 0 192-86.4 192-192V518.4c0-35.2-28.8-64-64-64z"
+                :fill="link.color"
+              />
             </svg>
             <!-- GitHub SVG -->
-            <svg v-else-if="link.icon === 'github'" class="contact-icon" viewBox="0 0 16 16" width="32" height="32">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" :fill="link.color"/>
+            <svg
+              v-else-if="link.icon === 'github'"
+              class="contact-icon"
+              viewBox="0 0 16 16"
+              width="32"
+              height="32"
+            >
+              <path
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+                :fill="link.color"
+              />
             </svg>
             <!-- Document icon -->
-            <el-icon v-else-if="link.icon === 'doc'" :size="32" :color="link.color">
+            <el-icon
+              v-else-if="link.icon === 'doc'"
+              :size="32"
+              :color="link.color"
+            >
               <Document />
             </el-icon>
             <!-- WeChat SVG -->
-            <svg v-else-if="link.icon === 'wechat'" class="contact-icon" viewBox="0 0 1024 1024" width="32" height="32">
-              <path d="M864 448c0-158.4-161.6-288-360-288S144 289.6 144 448c0 84.8 44.8 161.6 116.8 217.6l-28.8 89.6 100.8-52.8c48 17.6 99.2 28.8 153.6 28.8 20.8 0 41.6-1.6 62.4-4.8-11.2-33.6-17.6-68.8-17.6-105.6 0-176 161.6-320 360-320 25.6 0 51.2 1.6 76.8 6.4C836.8 508.8 864 475.2 864 448zM448 384m-48 0a48 48 0 1 0 96 0 48 48 0 1 0-96 0M640 384m-48 0a48 48 0 1 0 96 0 48 48 0 1 0-96 0" fill="#07C160"/>
-              <path d="M864 576c0-124.8-121.6-224-272-224s-272 99.2-272 224 121.6 224 272 224c35.2 0 68.8-4.8 100.8-14.4l80 44.8-22.4-72C792 732.8 864 656 864 576zM656 544m-36 0a36 36 0 1 0 72 0 36 36 0 1 0-72 0m-112 0m-36 0a36 36 0 1 0 72 0 36 36 0 1 0-72 0" fill="#07C160"/>
+            <svg
+              v-else-if="link.icon === 'wechat'"
+              class="contact-icon"
+              viewBox="0 0 1024 1024"
+              width="32"
+              height="32"
+            >
+              <path
+                d="M864 448c0-158.4-161.6-288-360-288S144 289.6 144 448c0 84.8 44.8 161.6 116.8 217.6l-28.8 89.6 100.8-52.8c48 17.6 99.2 28.8 153.6 28.8 20.8 0 41.6-1.6 62.4-4.8-11.2-33.6-17.6-68.8-17.6-105.6 0-176 161.6-320 360-320 25.6 0 51.2 1.6 76.8 6.4C836.8 508.8 864 475.2 864 448zM448 384m-48 0a48 48 0 1 0 96 0 48 48 0 1 0-96 0M640 384m-48 0a48 48 0 1 0 96 0 48 48 0 1 0-96 0"
+                fill="#07C160"
+              />
+              <path
+                d="M864 576c0-124.8-121.6-224-272-224s-272 99.2-272 224 121.6 224 272 224c35.2 0 68.8-4.8 100.8-14.4l80 44.8-22.4-72C792 732.8 864 656 864 576zM656 544m-36 0a36 36 0 1 0 72 0 36 36 0 1 0-72 0m-112 0m-36 0a36 36 0 1 0 72 0 36 36 0 1 0-72 0"
+                fill="#07C160"
+              />
             </svg>
             <!-- QQ SVG -->
-            <svg v-else-if="link.icon === 'qq'" class="contact-icon" viewBox="0 0 1024 1024" width="32" height="32">
-              <path d="M512 64C266.6 64 64 212.6 64 400c0 107.4 64 201.6 160 262.4-16 48-44.8 92.8-76.8 129.6-12.8 14.4-19.2 36.8-12.8 56 6.4 19.2 22.4 32 41.6 33.6 89.6 6.4 168-28.8 224-67.2 36.8 6.4 76.8 9.6 112 9.6s75.2-3.2 112-9.6c56 38.4 134.4 73.6 224 67.2 19.2-1.6 35.2-14.4 41.6-33.6 6.4-19.2 0-41.6-12.8-56-32-36.8-60.8-81.6-76.8-129.6 96-60.8 160-155.2 160-262.4 0-187.4-202.6-336-448-336z" fill="#12B7F5"/>
+            <svg
+              v-else-if="link.icon === 'qq'"
+              class="contact-icon"
+              viewBox="0 0 1024 1024"
+              width="32"
+              height="32"
+            >
+              <path
+                d="M512 64C266.6 64 64 212.6 64 400c0 107.4 64 201.6 160 262.4-16 48-44.8 92.8-76.8 129.6-12.8 14.4-19.2 36.8-12.8 56 6.4 19.2 22.4 32 41.6 33.6 89.6 6.4 168-28.8 224-67.2 36.8 6.4 76.8 9.6 112 9.6s75.2-3.2 112-9.6c56 38.4 134.4 73.6 224 67.2 19.2-1.6 35.2-14.4 41.6-33.6 6.4-19.2 0-41.6-12.8-56-32-36.8-60.8-81.6-76.8-129.6 96-60.8 160-155.2 160-262.4 0-187.4-202.6-336-448-336z"
+                fill="#12B7F5"
+              />
             </svg>
             <div class="contact-card-info">
               <span class="contact-card-label">{{ link.name }}</span>
-              <span v-if="link.showValue" class="contact-card-value">{{ link.value }}</span>
+              <span v-if="link.showValue" class="contact-card-value">{{
+                link.value
+              }}</span>
             </div>
             <el-icon class="copy-icon" :size="16"><Link /></el-icon>
           </div>
@@ -597,7 +710,11 @@ function copyText(text: string) {
 
   :deep(.el-input-group__append) {
     padding: 4px;
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(14, 165, 233, 0.12));
+    background: linear-gradient(
+      135deg,
+      rgba(59, 130, 246, 0.08),
+      rgba(14, 165, 233, 0.12)
+    );
     border-radius: 0 10px 10px 0;
     box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.18) inset;
   }
@@ -622,7 +739,10 @@ function copyText(text: string) {
     font-size: 13px;
     font-weight: 600;
     letter-spacing: 0.01em;
-    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      background 0.18s ease;
 
     &:hover {
       transform: translateY(-1px);

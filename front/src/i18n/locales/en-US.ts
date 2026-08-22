@@ -1253,6 +1253,7 @@ export default {
       "Welcome to contact the author via the following channels for feedback or suggestions.",
     copySuccess: "Copied",
     copyFail: "Copy failed",
+    openLinkFailed: "Failed to open link",
   },
   scl: {
     title: "SCL File Management",
