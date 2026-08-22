@@ -521,12 +521,10 @@ onMounted(() => {
             </el-button-group>
           </template>
         </el-table-column>
+        <template #empty>
+          <el-empty :description="$t('fileExplorer.emptyDir')" />
+        </template>
       </el-table>
-
-      <el-empty
-        v-if="!loading && entries.length === 0"
-        :description="$t('fileExplorer.emptyDir')"
-      />
     </div>
 
     <!-- Upload dialog -->
