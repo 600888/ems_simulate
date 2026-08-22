@@ -42,7 +42,7 @@ class ModbusServerHandler(ServerHandler):
         self._config = config
         port = config.get("port", Config.DEFAULT_PORT)
         self._slave_id_list = config.get("slave_id_list", [1])
-        protocol_type = config.get("protocol_type", ProtocolType.ModbusTcp)
+        protocol_type = config.get("protocol_type", ProtocolType.ModbusTcpServer)
         security = config.get("security", {})
         runtime = config.get("runtime", {})
 
@@ -253,7 +253,7 @@ class ModbusClientHandler(ClientHandler):
         self._config = config
         ip = config.get("ip", "127.0.0.1")
         port = config.get("port", Config.DEFAULT_PORT)
-        protocol_type = config.get("protocol_type", ProtocolType.ModbusTcp)
+        protocol_type = config.get("protocol_type", ProtocolType.ModbusTcpServer)
         runtime = config.get("runtime", {})
         security = config.get("security", {})
         self._command_timeout = runtime.get("command_timeout_ms", 2000) / 1000
@@ -276,7 +276,7 @@ class ModbusClientHandler(ClientHandler):
         parity = config.get("parity", "N")
 
         # 对于 TCP 客户端，使用专门的异步客户端以避免同一进程中的阻塞
-        if protocol_type == ProtocolType.ModbusTcpClient or protocol_type == ProtocolType.ModbusTcp:
+        if protocol_type == ProtocolType.ModbusTcpClient or protocol_type == ProtocolType.ModbusTcpServer:
             self._client = AsyncModbusClient(
                 host=ip,
                 port=port,

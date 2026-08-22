@@ -10,7 +10,7 @@ from src.enums.points.yx import Yx
 
 
 class MockDevice:
-    def __init__(self, name, device_id, protocol_type=ProtocolType.ModbusTcp):
+    def __init__(self, name, device_id, protocol_type=ProtocolType.ModbusTcpServer):
         self.name = name
         self.device_id = device_id
         self.protocol_type = protocol_type

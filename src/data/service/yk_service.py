@@ -68,7 +68,7 @@ class YkService:
     def _create_point(cls, item: dict, protocol_type: ProtocolType) -> Yk | None:
         """创建遥控点对象"""
         if protocol_type in [
-            ProtocolType.ModbusTcp,
+            ProtocolType.ModbusTcpServer,
             ProtocolType.ModbusRtu,
             ProtocolType.ModbusRtuClient,
             ProtocolType.ModbusRtuServer,

@@ -76,7 +76,7 @@ class ChannelService:
             (1, 4): ProtocolType.Iec61850Client,
             (1, 5): ProtocolType.Dnp3Client,
             # TCP 服务端
-            (2, 1): ProtocolType.ModbusTcp,
+            (2, 1): ProtocolType.ModbusTcpServer,
             (2, 2): ProtocolType.Iec104Server,
             (2, 3): ProtocolType.Dlt645Server,
             (2, 4): ProtocolType.Iec61850Server,
@@ -93,7 +93,7 @@ class ChannelService:
             elif protocol == 3:
                 return ProtocolType.Dlt645Server  # DLT645 从站模拟电表
 
-        return ProtocolType.ModbusTcp
+        return ProtocolType.ModbusTcpServer
 
     @classmethod
     def create_channel(

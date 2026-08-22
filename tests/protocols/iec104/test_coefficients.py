@@ -181,7 +181,7 @@ class _MetadataHandler:
         return True
 
 
-@pytest.mark.parametrize("protocol_type", [ProtocolType.ModbusTcp, ProtocolType.Iec104Server])
+@pytest.mark.parametrize("protocol_type", [ProtocolType.ModbusTcpServer, ProtocolType.Iec104Server])
 def test_yc_coefficient_edit_has_same_result_as_modbus(monkeypatch, protocol_type):
     point = Yc(value=100, mul_coe=0.1, add_coe=0, decode="0x41", iec_type_id="M_ME_NB_1")
     handler = _MetadataHandler()
@@ -206,7 +206,7 @@ def test_yc_coefficient_edit_has_same_result_as_modbus(monkeypatch, protocol_typ
     assert handler.written == []
 
 
-@pytest.mark.parametrize("protocol_type", [ProtocolType.ModbusTcp, ProtocolType.Iec104Server])
+@pytest.mark.parametrize("protocol_type", [ProtocolType.ModbusTcpServer, ProtocolType.Iec104Server])
 def test_yt_coefficient_edit_has_same_result_as_modbus(monkeypatch, protocol_type):
     point = Yt(value=100, mul_coe=0.1, add_coe=5, decode="0x41", iec_type_id="C_SE_NB_1")
     handler = _MetadataHandler()

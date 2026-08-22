@@ -142,7 +142,7 @@ class ModbusServer:
         logger,
         slave_id_list: list[int],
         port: int = 502,
-        protocol_type: ProtocolType = ProtocolType.ModbusTcp,
+        protocol_type: ProtocolType = ProtocolType.ModbusTcpServer,
         serial_port: str = "COM1",
         baudrate: int = 9600,
         bytesize: int = 8,
@@ -293,7 +293,7 @@ class ModbusServer:
         }
 
         try:
-            if self.protocol_type == ProtocolType.ModbusTcp and self.tls_enabled:
+            if self.protocol_type == ProtocolType.ModbusTcpServer and self.tls_enabled:
                 address = (self.ip if self.ip else "", self.port if self.port else None)
                 ssl_context = create_server_ssl_context(
                     tls_mode=self.tls_mode,
@@ -306,7 +306,7 @@ class ModbusServer:
                     sslctx=ssl_context,
                     **common_params,
                 )
-            elif self.protocol_type == ProtocolType.ModbusTcp:
+            elif self.protocol_type == ProtocolType.ModbusTcpServer:
                 address = (
                     self.ip if self.ip else "",
                     self.port if self.port else None,

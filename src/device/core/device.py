@@ -47,7 +47,7 @@ class Device:
     所有公开方法签名保持向后兼容。
     """
 
-    def __init__(self, protocol_type: ProtocolType = ProtocolType.ModbusTcp) -> None:
+    def __init__(self, protocol_type: ProtocolType = ProtocolType.ModbusTcpServer) -> None:
         """初始化设备实例
 
         Args:
@@ -159,7 +159,7 @@ class Device:
         from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
 
         handler_map = {
-            ProtocolType.ModbusTcp: lambda: ModbusServerHandler(self.log),
+            ProtocolType.ModbusTcpServer: lambda: ModbusServerHandler(self.log),
             ProtocolType.ModbusRtu: lambda: ModbusServerHandler(self.log),
             ProtocolType.ModbusRtuServer: lambda: ModbusServerHandler(self.log),
             ProtocolType.ModbusRtuClient: lambda: ModbusClientHandler(self.log),
@@ -219,7 +219,7 @@ class Device:
         self.protocol_handler.add_points(all_points)
 
     # 初始化方法
-    def initModbusTcpServer(self, port: int, protocol_type: ProtocolType = ProtocolType.ModbusTcp) -> None:
+    def initModbusTcpServer(self, port: int, protocol_type: ProtocolType = ProtocolType.ModbusTcpServer) -> None:
         """初始化 Modbus TCP 服务器"""
         self.port = port
         self.protocol_type = protocol_type
@@ -1029,7 +1029,9 @@ class Device:
 
     # ===== 数据导入导出（委托给 DataExporter） =====
 
-    def importDataPointFromChannel(self, channel_id: int, protocol_type: ProtocolType = ProtocolType.ModbusTcp) -> None:
+    def importDataPointFromChannel(
+        self, channel_id: int, protocol_type: ProtocolType = ProtocolType.ModbusTcpServer
+    ) -> None:
         """从通道导入测点"""
         self.protocol_type = protocol_type
         self.point_manager.import_from_db(channel_id, protocol_type)

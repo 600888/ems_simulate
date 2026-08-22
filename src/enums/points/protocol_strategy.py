@@ -164,7 +164,7 @@ class IEC61850Strategy(ProtocolStrategy):
 def get_protocol_strategy(protocol_type: str) -> ProtocolStrategy:
     """根据协议类型获取对应的策略实例"""
     strategy_map = {
-        "ModbusTcp": ModbusStrategy(),
+        "ModbusTcpServer": ModbusStrategy(),
         "ModbusRtu": ModbusStrategy(),
         "ModbusRtuClient": ModbusStrategy(),
         "ModbusRtuServer": ModbusStrategy(),

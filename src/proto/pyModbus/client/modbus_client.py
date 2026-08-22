@@ -21,7 +21,7 @@ class ModbusClient:
         self,
         host: str = "127.0.0.1",
         port: int = 502,
-        protocol_type: ProtocolType = ProtocolType.ModbusTcp,
+        protocol_type: ProtocolType = ProtocolType.ModbusTcpServer,
         serial_port: str = "/dev/ttyUSB0",
         baudrate: int = 9600,
         bytesize: int = 8,
@@ -80,7 +80,7 @@ class ModbusClient:
             bool: 连接是否成功
         """
         try:
-            if self.protocol_type == ProtocolType.ModbusTcp or self.protocol_type == ProtocolType.ModbusTcpClient:
+            if self.protocol_type == ProtocolType.ModbusTcpServer or self.protocol_type == ProtocolType.ModbusTcpClient:
                 self.client = ModbusTcpClientWithCapture(
                     host=self.host,
                     port=self.port,

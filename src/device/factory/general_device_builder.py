@@ -32,7 +32,7 @@ class GeneralDeviceBuilder:
         self.path: str | None = None
         self.serial_port: str | None = None
         self.is_start: bool = False
-        self.protocol_type: ProtocolType = ProtocolType.ModbusTcp
+        self.protocol_type: ProtocolType = ProtocolType.ModbusTcpServer
 
     def setDeviceId(self, device_id: int) -> None:
         self.general_device.set_device_id(device_id)
@@ -125,7 +125,7 @@ class GeneralDeviceBuilder:
         self.is_start = is_start
         self.protocol_type = protocol_type
 
-        if protocol_type in [ProtocolType.ModbusTcp, ProtocolType.ModbusRtuOverTcp]:
+        if protocol_type in [ProtocolType.ModbusTcpServer, ProtocolType.ModbusRtuOverTcp]:
             return self.generalDeviceModbusTcp
         elif protocol_type == ProtocolType.ModbusTcpClient:
             return self.generalDeviceModbusTcpClient

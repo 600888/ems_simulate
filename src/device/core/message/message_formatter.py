@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 # Modbus TCP 类协议类型集合
 _MODBUS_TCP_TYPES = {
-    ProtocolType.ModbusTcp,
+    ProtocolType.ModbusTcpServer,
     ProtocolType.ModbusTcpClient,
     ProtocolType.ModbusUdp,
 }

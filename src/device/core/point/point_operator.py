@@ -36,7 +36,7 @@ def _read_result(point: BasePoint) -> float | str:
 _MODBUS_PROTOCOLS = frozenset(
     {
         ProtocolType.ModbusTcpClient,
-        ProtocolType.ModbusTcp,
+        ProtocolType.ModbusTcpServer,
         ProtocolType.ModbusRtu,
         ProtocolType.ModbusRtuClient,
         ProtocolType.ModbusRtuServer,

@@ -140,7 +140,7 @@ class IEC61850Config:
 def get_default_protocol_config(protocol_type: str) -> Any | None:
     """根据协议类型获取默认配置"""
     config_map = {
-        "ModbusTcp": ModbusConfig(),
+        "ModbusTcpServer": ModbusConfig(),
         "ModbusRtu": ModbusConfig(),
         "ModbusRtuClient": ModbusConfig(),
         "ModbusRtuServer": ModbusConfig(),
@@ -159,7 +159,7 @@ def get_default_protocol_config(protocol_type: str) -> Any | None:
 def create_protocol_config(protocol_type: str, data: dict[str, Any]) -> Any | None:
     """根据协议类型和数据创建配置对象"""
     if protocol_type in [
-        "ModbusTcp",
+        "ModbusTcpServer",
         "ModbusRtu",
         "ModbusRtuClient",
         "ModbusRtuServer",

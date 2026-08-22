@@ -23,7 +23,7 @@ def test_limits_calculation():
         from src.data.model.channel import Channel
 
         with local_session() as session, session.begin():
-            ch = Channel(name="Test Channel", proto_name="ModbusTcp", ip="127.0.0.1", port=502)
+            ch = Channel(name="Test Channel", proto_name="ModbusTcpServer", ip="127.0.0.1", port=502)
             session.add(ch)
             session.flush()
             channel_id = ch.id

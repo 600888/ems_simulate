@@ -23,7 +23,7 @@ def test_fixed_value_simulation_restores_configured_value():
 
 
 def test_apply_configuration_sets_fixed_value():
-    device = SimpleNamespace(protocol_type=ProtocolType.ModbusTcp)
+    device = SimpleNamespace(protocol_type=ProtocolType.ModbusTcpServer)
     controller = SimulationController(device)
     point = Yx(code="switch", value=0)
     controller.add_point(point, SimulateMethod.Random, 1)
