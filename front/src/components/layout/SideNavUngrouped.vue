@@ -114,149 +114,47 @@
           </div>
         </div>
 
-        <!-- IEC61850 子节点树 -->
+        <!-- 协议子节点树：使用与分组设备相同的递归 el-tree，确保 DataSets 等深层结构一致 -->
         <div
           v-if="iec61850Map[device.name]"
           v-show="expandedIec61850[device.name]"
           class="iec61850-children"
         >
-          <div
-            v-for="child in iec61850Map[device.name]"
-            :key="child.nodeKey"
-            class="iec61850-child-item"
-            :class="{ 'is-group': child.isGroup }"
+          <el-tree
+            :data="iec61850Map[device.name]"
+            :props="protocolTreeProps"
+            node-key="nodeKey"
+            :expand-on-click-node="true"
+            highlight-current
+            :current-node-key="selectedNodeKey"
+            class="ungrouped-protocol-tree"
+            @node-click="
+              (data: TreeNode) => handleProtocolNodeClick(device.name, data)
+            "
           >
-            <div
-              class="child-row"
-              :class="{ 'is-selected': selectedNodeKey === child.nodeKey }"
-              @click="handleChildClick(device.name, child)"
-            >
-              <el-icon
-                v-if="child.isGroup"
-                class="expand-arrow small"
+            <template #default="{ data }">
+              <div
+                class="protocol-tree-node"
                 :class="{
-                  'is-expanded':
-                    expandedCategories[`${device.name}::${child.nodeKey}`],
+                  'is-group': data.isGroup,
+                  'is-iec61850-category': data.iec61850Level === 'category',
+                  'is-iec61850-ld': data.iec61850Level === 'ld',
+                  'is-iec61850-ln': data.iec61850Level === 'ln',
+                  'is-dlt645-category':
+                    data.isDlt645Child && data.dlt645Settlement === undefined,
+                  'is-dlt645-settlement':
+                    data.isDlt645Child && data.dlt645Settlement !== undefined,
                 }"
               >
-                <ArrowRight />
-              </el-icon>
-              <span v-else class="expand-arrow-placeholder small" />
-              <el-icon class="child-icon">
-                <Collection v-if="child.isDlt645Child && child.isGroup" />
-                <Calendar v-else-if="child.isDlt645Child" />
-                <component v-else :is="getIec61850NodeIcon(child)" />
-              </el-icon>
-              <span class="child-label">{{ child.label }}</span>
-            </div>
-            <!-- 分类下的子项 -->
-            <div
-              v-if="child.isGroup && child.children"
-              v-show="expandedCategories[`${device.name}::${child.nodeKey}`]"
-              class="iec61850-sub-children"
-            >
-              <div
-                v-for="subChild in child.children"
-                :key="subChild.nodeKey"
-                class="iec61850-sub-item-wrapper"
-              >
-                <div
-                  class="iec61850-sub-item"
-                  :class="{
-                    'is-selected': selectedNodeKey === subChild.nodeKey,
-                    'is-group': subChild.isGroup,
-                  }"
-                  @click="handleSubChildClick(subChild, device.name)"
-                >
-                  <el-icon
-                    v-if="subChild.isGroup"
-                    class="expand-arrow small"
-                    :class="{
-                      'is-expanded':
-                        expandedCategories[
-                          `${device.name}::${subChild.nodeKey}`
-                        ],
-                    }"
-                  >
-                    <ArrowRight />
-                  </el-icon>
-                  <span v-else class="expand-arrow-placeholder small" />
-                  <el-icon class="sub-icon">
-                    <Calendar v-if="subChild.isDlt645Child" />
-                    <component v-else :is="getIec61850NodeIcon(subChild)" />
-                  </el-icon>
-                  <span class="sub-label">{{ subChild.label }}</span>
-                </div>
-                <!-- LD 下的 LN 子节点 (第三层) -->
-                <div
-                  v-if="subChild.isGroup && subChild.children"
-                  v-show="
-                    expandedCategories[`${device.name}::${subChild.nodeKey}`]
-                  "
-                  class="iec61850-ln-children"
-                >
-                  <div
-                    v-for="lnChild in subChild.children"
-                    :key="lnChild.nodeKey"
-                    class="iec61850-ln-item"
-                    :class="{
-                      'is-selected': selectedNodeKey === lnChild.nodeKey,
-                    }"
-                  >
-                    <div
-                      class="iec61850-ln-row"
-                      :class="{ 'is-group': lnChild.isGroup }"
-                      @click="handleLnChildClick(lnChild)"
-                    >
-                      <el-icon
-                        v-if="lnChild.isGroup"
-                        class="expand-arrow small"
-                        :class="{
-                          'is-expanded':
-                            expandedCategories[
-                              `${device.name}::${lnChild.nodeKey}`
-                            ],
-                        }"
-                        @click.stop="
-                          toggleIec61850Category(device.name, lnChild.nodeKey)
-                        "
-                      >
-                        <ArrowRight />
-                      </el-icon>
-                      <span v-else class="expand-arrow-placeholder small" />
-                      <el-icon class="ln-icon">
-                        <component :is="getIec61850NodeIcon(lnChild)" />
-                      </el-icon>
-                      <span class="ln-label">{{ lnChild.label }}</span>
-                    </div>
-                    <!-- LN 下的数据集子节点 (第四层) -->
-                    <div
-                      v-if="lnChild.isGroup && lnChild.children"
-                      v-show="
-                        expandedCategories[`${device.name}::${lnChild.nodeKey}`]
-                      "
-                      class="iec61850-ds-children"
-                    >
-                      <div
-                        v-for="dsChild in lnChild.children"
-                        :key="dsChild.nodeKey"
-                        class="iec61850-ds-item"
-                        :class="{
-                          'is-selected': selectedNodeKey === dsChild.nodeKey,
-                        }"
-                        @click="handleDsChildClick(dsChild)"
-                      >
-                        <el-icon class="ds-icon">
-                          <component :is="getIec61850NodeIcon(dsChild)" />
-                        </el-icon>
-                        <span class="ds-label">{{ dsChild.label }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <el-icon class="protocol-node-icon">
+                  <Collection v-if="data.isDlt645Child && data.isGroup" />
+                  <Calendar v-else-if="data.isDlt645Child" />
+                  <component v-else :is="getIec61850NodeIcon(data)" />
+                </el-icon>
+                <span class="protocol-node-label">{{ data.label }}</span>
               </div>
-            </div>
-          </div>
+            </template>
+          </el-tree>
         </div>
       </div>
     </div>
@@ -393,18 +291,12 @@ const onDragEnd = () => {
 
 // IEC61850 设备展开状态
 const expandedIec61850 = ref<Record<string, boolean>>({});
-const expandedCategories = ref<Record<string, boolean>>({});
 const selectedNodeKey = ref<string>("");
+const protocolTreeProps = { children: "children", label: "label" };
 
 const toggleIec61850 = (deviceName: string) => {
   expandedIec61850.value[deviceName] = !expandedIec61850.value[deviceName];
   expandedIec61850.value = { ...expandedIec61850.value };
-};
-
-const toggleIec61850Category = (deviceName: string, nodeKey: string) => {
-  const key = `${deviceName}::${nodeKey}`;
-  expandedCategories.value[key] = !expandedCategories.value[key];
-  expandedCategories.value = { ...expandedCategories.value };
 };
 
 // 点击设备行：如果是 IEC61850 设备则展开/折叠树，同时选中设备
@@ -416,59 +308,13 @@ const handleDeviceClick = (device: any) => {
   emit("device-click", device);
 };
 
-// 点击 IEC61850 子节点
-const handleChildClick = (deviceName: string, child: TreeNode) => {
-  selectedNodeKey.value = child.nodeKey;
-  if (child.isGroup) {
-    toggleIec61850Category(deviceName, child.nodeKey);
-  }
-  // 发出 node-click 事件，传递完整的节点信息（包含 category/type）
+// 未分组设备与分组设备统一由 el-tree 递归处理任意深度子菜单。
+const handleProtocolNodeClick = (deviceName: string, node: TreeNode) => {
+  selectedNodeKey.value = node.nodeKey;
   emit("node-click", {
-    ...child,
-    deviceName,
-    isIec61850Child: child.isIec61850Child === true,
-  });
-};
-
-// 点击 IEC61850 子项 (LD 层)
-const handleSubChildClick = (subChild: TreeNode, deviceName: string) => {
-  selectedNodeKey.value = subChild.nodeKey;
-  if (subChild.isGroup) {
-    toggleIec61850Category(deviceName, subChild.nodeKey);
-  }
-  // 发出 node-click 事件，传递完整的节点信息
-  emit("node-click", {
-    ...subChild,
-    isIec61850Child: subChild.isIec61850Child === true,
-    deviceName: subChild.deviceName || deviceName,
-  });
-};
-
-// 点击 IEC61850 LN 子节点 (第三层)
-const handleLnChildClick = (lnChild: TreeNode) => {
-  selectedNodeKey.value = lnChild.nodeKey;
-  // 如果 LN 有子节点（如 DataSet 下的数据集），切换展开/折叠
-  // LN 节点不触发导航（只有叶子节点如数据集的 DS 才导航到主面板）
-  if (lnChild.isGroup) {
-    toggleIec61850Category(lnChild.deviceName || "", lnChild.nodeKey);
-    return;
-  }
-  // 无子节点的 LN 也允许导航
-  emit("node-click", {
-    ...lnChild,
-    isIec61850Child: true,
-    deviceName: lnChild.deviceName,
-  });
-};
-
-// 点击 IEC61850 数据集子节点 (第四层)
-const handleDsChildClick = (dsChild: TreeNode) => {
-  selectedNodeKey.value = dsChild.nodeKey;
-  // 发出 node-click 事件，传递完整的节点信息
-  emit("node-click", {
-    ...dsChild,
-    isIec61850Child: true,
-    deviceName: dsChild.deviceName,
+    ...node,
+    isIec61850Child: node.isIec61850Child === true,
+    deviceName: node.deviceName || deviceName,
   });
 };
 
@@ -692,6 +538,98 @@ watch(
 /* IEC61850 子节点样式 */
 .iec61850-children {
   padding: 4px 0 6px 24px;
+}
+
+/* 与分组设备的 SideNavTree 使用同一套递归树视觉层级。 */
+.ungrouped-protocol-tree {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.ungrouped-protocol-tree :deep(.el-tree-node) {
+  background-color: transparent !important;
+}
+
+.ungrouped-protocol-tree :deep(.el-tree-node__content) {
+  height: 32px;
+  margin-bottom: 2px;
+  padding-right: 8px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.ungrouped-protocol-tree :deep(.el-tree-node__content:has(> .is-iec61850-ld)),
+.ungrouped-protocol-tree
+  :deep(.el-tree-node__content:has(> .is-dlt645-settlement)) {
+  height: 28px;
+  margin-bottom: 1px;
+  border-radius: 6px;
+}
+
+.ungrouped-protocol-tree :deep(.el-tree-node__content:has(> .is-iec61850-ln)) {
+  height: 26px;
+  margin-bottom: 1px;
+  border-radius: 5px;
+}
+
+.ungrouped-protocol-tree
+  :deep(.el-tree-node.is-current > .el-tree-node__content) {
+  background: var(--item-active-bg) !important;
+  color: var(--color-primary) !important;
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--color-primary);
+}
+
+.protocol-tree-node {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 4px;
+}
+
+.protocol-tree-node.is-group {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.protocol-node-icon {
+  flex: none;
+  margin-right: 10px;
+  font-size: 16px;
+  color: var(--color-primary);
+}
+
+.protocol-node-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+.protocol-tree-node.is-iec61850-ld .protocol-node-icon,
+.protocol-tree-node.is-dlt645-settlement .protocol-node-icon {
+  margin-right: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.protocol-tree-node.is-iec61850-ld .protocol-node-label,
+.protocol-tree-node.is-dlt645-settlement .protocol-node-label {
+  font-size: 12px;
+}
+
+.protocol-tree-node.is-iec61850-ln .protocol-node-icon {
+  margin-right: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.protocol-tree-node.is-iec61850-ln .protocol-node-label {
+  font-size: 11.5px;
 }
 
 .iec61850-child-item {

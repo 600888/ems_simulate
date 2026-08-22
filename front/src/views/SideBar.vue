@@ -486,6 +486,10 @@ const handleUngroupedNodeClick = (data: any) => {
     // 构建 category 和 item 信息
     // data.type 是分类 (如 "DataModel")，data.value 是完整过滤路径 (如 "GenericLD/MMXU1")
     const category = data.type || (data.isGroup ? data.name : "");
+    // 与分组设备保持一致：DataSets 的分类、LD、LN 分组只展开树，不触发页面导航。
+    if (category === "DataSets" && data.isGroup) {
+      return;
+    }
     const item = data.isGroup ? "" : data.value || data.name;
     navigateToDevice(deviceName, false, true, {
       ...data,
