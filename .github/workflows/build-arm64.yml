@@ -31,6 +31,7 @@ jobs:
       PYTHON_SHA256: 91bcdebfdde239a003ae93738a7fce0f9230fee5c4bc2b86f6e6e8c6f98aabe8
       UV_VERSION: 0.9.18
       UV_CACHE_DIR: ${{ github.workspace }}/.uv-cache-arm64
+      C104_PYPI_VERSION: 2.2.1
 
     steps:
       - name: Bootstrap Ubuntu 20.04 build container

@@ -29,6 +29,7 @@ PY_WORK="${BUILD_DIR}/build_pyinstaller_web"
 VENV_DIR="${BUILD_DIR}/.venv"
 VENV_PY="${VENV_DIR}/bin/python"
 WWW_DIR="${PROJECT_ROOT}/www"
+C104_PYPI_VERSION="${C104_PYPI_VERSION:-2.2.1}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -110,14 +111,25 @@ sed -i "/^Installed-Size:/d" "${DEB_DIR}/DEBIAN/control"
 if [ "${SKIP_BACKEND}" -eq 1 ]; then
     info "跳过 PyInstaller 构建"
 else
-    info "根据 uv.lock 安装 ARM64 后端构建依赖"
+    info "根据 uv.lock 安装 ARM64 后端构建依赖（排除仅供其他架构使用的 Git 版 c104）"
     UV_PROJECT_ENVIRONMENT="${VENV_DIR}" \
         uv sync \
             --project "${PROJECT_ROOT}" \
             --python "${PY}" \
             --frozen \
             --no-dev \
+            --no-install-package c104 \
             --extra build || die "Python 依赖安装失败"
+
+    info "从 PyPI 安装 ARM64 c104 ${C104_PYPI_VERSION}"
+    uv pip install \
+        --python "${VENV_PY}" \
+        --default-index "https://pypi.org/simple" \
+        --only-binary c104 \
+        "c104==${C104_PYPI_VERSION}" || die "PyPI c104 安装失败"
+    "${VENV_PY}" -c \
+        "import importlib.metadata, platform, c104; assert importlib.metadata.version('c104') == '${C104_PYPI_VERSION}'; assert platform.machine() in {'aarch64', 'arm64'}" \
+        || die "PyPI c104 ARM64 校验失败"
 
     info "运行 PyInstaller"
     EMS_PYINSTALLER_MODE=onedir \
