@@ -527,6 +527,8 @@ export default {
     batchRead: "批量读取：合并连续地址，一次性读取多个寄存器（推荐）",
     singleRead: "逐点读取：逐个测点读取，可设置间隔",
     interval: "间隔",
+    cycleInterval: "轮询周期",
+    pointInterval: "点间隔",
     batchAutoReading: "批量自动读取中",
     singleAutoReading: "逐点自动读取中",
     readDataset: "读取 DataSet",

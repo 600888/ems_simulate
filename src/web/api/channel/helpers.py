@@ -91,6 +91,14 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         is_start: 是否启动设备
         scl_result: 可选，预先解析的 SclImportResult。提供时跳过 ICD 文件重新解析。
     """
+    get_device_by_id = getattr(device_controller, "get_device_by_id", None)
+    old_device = get_device_by_id(channel_id) if callable(get_device_by_id) else None
+    old_auto_read_status = old_device.get_auto_read_status() if old_device is not None else {}
+    previous_auto_read_config = (
+        old_device.auto_read_manager.current_config()
+        if old_device is not None and old_auto_read_status.get("state") == "running"
+        else None
+    )
     channel = await asyncio.to_thread(ChannelService.get_channel_by_id, channel_id)
     if not channel:
         raise NotFoundError(f"通道 {channel_id} 不存在")
@@ -157,7 +165,6 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         else:
             # Modbus/其他客户端：先连接服务器，再启动数据更新线程
             await new_device.start()
-        new_device.data_update_thread.start()
     elif is_start and channel_protocol_type == ProtocolType.Iec61850Server:
         # IEC61850 服务端: 需要显式启动 MMS 服务器
         # 注意: IEC61850 服务器不在 is_client_protocol 中，
@@ -182,6 +189,9 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
     # 对运行中计算器重载映射并重新订阅当前内存中的新测点。
     mappings = await asyncio.to_thread(PointMappingService.get_all_mappings)
     await asyncio.to_thread(new_device.set_device_provider, device_controller, mappings)
+
+    if is_start and previous_auto_read_config is not None:
+        await new_device.start_auto_read(previous_auto_read_config)
 
     log.info(f"设备 {device_name} 实例已更新 (启动状态: {is_start})")
     return new_device

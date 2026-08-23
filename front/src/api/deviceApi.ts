@@ -207,7 +207,55 @@ export async function getDeviceTable(
 
 // ===== 自动读取控制 =====
 
-export async function getAutoReadStatus(deviceName: string): Promise<boolean> {
+export type AutoReadMode = "batch" | "single" | "dataset";
+export type AutoReadState = "idle" | "running" | "stopping" | "failed";
+
+export interface AutoReadConfig {
+  mode: AutoReadMode;
+  cycle_interval_ms: number;
+  request_interval_ms?: number;
+  slave_id?: number;
+  channel_id?: number;
+  category?: string;
+  item?: string;
+  point_types?: number[];
+  dlt645_prefix?: number | null;
+  dlt645_settlement?: number | null;
+}
+
+export interface AutoReadStatus {
+  state: AutoReadState;
+  task_id: string | null;
+  mode: AutoReadMode | null;
+  config: AutoReadConfig | null;
+  started_at: string | null;
+  last_cycle_at: string | null;
+  cycle_count: number;
+  current: number;
+  total: number;
+  success: number;
+  fail: number;
+  last_error: string | null;
+}
+
+const idleAutoReadStatus = (): AutoReadStatus => ({
+  state: "idle",
+  task_id: null,
+  mode: null,
+  config: null,
+  started_at: null,
+  last_cycle_at: null,
+  cycle_count: 0,
+  current: 0,
+  total: 0,
+  success: 0,
+  fail: 0,
+  last_error: null,
+});
+
+export async function getAutoReadStatus(
+  deviceName: string,
+): Promise<AutoReadStatus> {
   try {
     const data = await requestApi(DEVICE_API.AUTO_READ_STATUS, "post", {
       device_name: deviceName,
@@ -215,14 +263,18 @@ export async function getAutoReadStatus(deviceName: string): Promise<boolean> {
     return data;
   } catch (error) {
     console.error("Error getting auto read status:", error);
-    return false;
+    return idleAutoReadStatus();
   }
 }
 
-export async function startAutoRead(deviceName: string): Promise<boolean> {
+export async function startAutoRead(
+  deviceName: string,
+  config: AutoReadConfig,
+): Promise<AutoReadStatus> {
   try {
     const data = await requestApi(DEVICE_API.START_AUTO_READ, "post", {
       device_name: deviceName,
+      ...config,
     });
     return data;
   } catch (error) {
@@ -231,7 +283,9 @@ export async function startAutoRead(deviceName: string): Promise<boolean> {
   }
 }
 
-export async function stopAutoRead(deviceName: string): Promise<boolean> {
+export async function stopAutoRead(
+  deviceName: string,
+): Promise<AutoReadStatus> {
   try {
     const data = await requestApi(DEVICE_API.STOP_AUTO_READ, "post", {
       device_name: deviceName,
@@ -245,18 +299,35 @@ export async function stopAutoRead(deviceName: string): Promise<boolean> {
 
 export async function manualRead(
   deviceName: string,
-  interval: number = 0,
-): Promise<any> {
+  config: AutoReadConfig,
+): Promise<AutoReadStatus> {
   try {
     const data = await requestApi(DEVICE_API.MANUAL_READ, "post", {
       device_name: deviceName,
-      interval: interval,
+      interval: config.request_interval_ms ?? 0,
+      ...config,
     });
     return data;
   } catch (error) {
     console.error("Error performing manual read:", error);
     throw error;
   }
+}
+
+export async function getManualReadStatus(
+  deviceName: string,
+): Promise<AutoReadStatus> {
+  return await requestApi(DEVICE_API.MANUAL_READ_STATUS, "post", {
+    device_name: deviceName,
+  });
+}
+
+export async function stopManualRead(
+  deviceName: string,
+): Promise<AutoReadStatus> {
+  return await requestApi(DEVICE_API.STOP_MANUAL_READ, "post", {
+    device_name: deviceName,
+  });
 }
 
 export async function iec104Interrogation(

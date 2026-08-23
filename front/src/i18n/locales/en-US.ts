@@ -540,6 +540,8 @@ export default {
       "Batch read: merge consecutive addresses, read multiple registers at once (recommended)",
     singleRead: "Single read: read points one by one, configurable interval",
     interval: "Interval",
+    cycleInterval: "Polling interval",
+    pointInterval: "Point interval",
     batchAutoReading: "Batch auto reading...",
     singleAutoReading: "Single auto reading...",
     readDataset: "Read DataSet",

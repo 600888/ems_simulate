@@ -11,6 +11,7 @@ from .channel import (
 )
 from .device import (
     ApplySimulationConfigRequest,
+    AutoReadStartRequest,
     CurrentTableRequest,
     DeviceGroupStatusRequest,
     DeviceInfoRequest,
@@ -115,6 +116,7 @@ __all__ = [
     "SimulationStartRequest",
     "SimulationStopRequest",
     "ApplySimulationConfigRequest",
+    "AutoReadStartRequest",
     "SimulationConfigItem",
     "DeviceStartRequest",
     "DeviceStopRequest",

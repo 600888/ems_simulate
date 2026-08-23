@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 import struct
 from typing import TYPE_CHECKING
@@ -102,7 +102,13 @@ class DataReader:
                 point.is_valid = False
 
     async def get_slave_values_async(
-        self, yc_list: list[Yc], yx_list: list[Yx], interval_ms: int | None = 0
+        self,
+        yc_list: list[Yc],
+        yx_list: list[Yx],
+        interval_ms: int | None = 0,
+        *,
+        stop_event: asyncio.Event | None = None,
+        progress_callback: Callable[[int, int, int, int], None] | None = None,
     ) -> tuple[int, int]:
         """异步读取从机的测点值（支持批量读取优化）
 
@@ -135,15 +141,34 @@ class DataReader:
 
         if is_modbus_client:
             # Modbus 批量读取优化
-            return await self._batch_read_async(all_points, interval_ms=interval_ms)
+            return await self._batch_read_async(
+                all_points,
+                interval_ms=interval_ms,
+                stop_event=stop_event,
+                progress_callback=progress_callback,
+            )
         elif is_iec61850_client:
             # IEC61850 批量读取优化
-            return await self._iec61850_batch_read_async(all_points)
+            return await self._iec61850_batch_read_async(
+                all_points,
+                stop_event=stop_event,
+                progress_callback=progress_callback,
+            )
         else:
             # 回退到逐点读取
-            return await self._single_read_async(all_points)
+            return await self._single_read_async(
+                all_points,
+                stop_event=stop_event,
+                progress_callback=progress_callback,
+            )
 
-    async def _iec61850_batch_read_async(self, points: Sequence[BasePoint]) -> tuple[int, int]:
+    async def _iec61850_batch_read_async(
+        self,
+        points: Sequence[BasePoint],
+        *,
+        stop_event: asyncio.Event | None = None,
+        progress_callback: Callable[[int, int, int, int], None] | None = None,
+    ) -> tuple[int, int]:
         """IEC61850 批量读取模式
 
         利用 IEC61850ClientHandler.read_points_batch 按 iec_type 分组读取，
@@ -160,7 +185,11 @@ class DataReader:
         change_source = self._get_change_source()
         client_info = self._get_client_info()
 
-        # 在 executor 中执行同步批量读取 (避免阻塞事件循环)
+        if stop_event is not None and stop_event.is_set():
+            return 0, 0
+
+        # 在 executor 中执行同步批量读取 (避免阻塞事件循环)。底层原生
+        # 调用不可强杀；停止请求会在调用返回后阻止下一批或下一轮。
         loop = asyncio.get_running_loop()
         batch_results = await loop.run_in_executor(None, self._handler.read_points_batch, points)
 
@@ -168,6 +197,8 @@ class DataReader:
         fail_count = 0
 
         for point in points:
+            if stop_event is not None and stop_event.is_set():
+                break
             value = batch_results.get(point.code)
             if value is not None:
                 with track_change(change_source, f"IEC61850批量同步 {point.code}", client_info):
@@ -177,15 +208,25 @@ class DataReader:
             else:
                 point.is_valid = False
                 fail_count += 1
+            if progress_callback is not None:
+                progress_callback(success_count + fail_count, len(points), success_count, fail_count)
 
         return success_count, fail_count
 
-    async def _single_read_async(self, points: Sequence[BasePoint]) -> tuple[int, int]:
+    async def _single_read_async(
+        self,
+        points: Sequence[BasePoint],
+        *,
+        stop_event: asyncio.Event | None = None,
+        progress_callback: Callable[[int, int, int, int], None] | None = None,
+    ) -> tuple[int, int]:
         """逐点读取模式（回退方案）"""
         success_count = 0
         fail_count = 0
         change_source = self._get_change_source()
         for point in points:
+            if stop_event is not None and stop_event.is_set():
+                break
             try:
                 if isinstance(self._handler, ClientHandler):
                     value = await self._handler.read_value_async(point)
@@ -204,9 +245,18 @@ class DataReader:
                 self._log.error(f"Error reading point {point.code}: {e}")
                 point.is_valid = False
                 fail_count += 1
+            if progress_callback is not None:
+                progress_callback(success_count + fail_count, len(points), success_count, fail_count)
         return success_count, fail_count
 
-    async def _batch_read_async(self, points: Sequence[BasePoint], interval_ms: int | None = 0) -> tuple[int, int]:
+    async def _batch_read_async(
+        self,
+        points: Sequence[BasePoint],
+        interval_ms: int | None = 0,
+        *,
+        stop_event: asyncio.Event | None = None,
+        progress_callback: Callable[[int, int, int, int], None] | None = None,
+    ) -> tuple[int, int]:
         """批量读取模式（优化方案）
 
         将连续地址的测点分组，一次性读取多个数据点，然后解码映射。
@@ -227,10 +277,20 @@ class DataReader:
         is_first_request = True
         for (slave_id, func_code), address_groups in groups.items():
             for group in address_groups:
+                if stop_event is not None and stop_event.is_set():
+                    return success_count, fail_count
                 try:
                     # 在请求之间添加间隔（第一次请求不等待）
                     if not is_first_request and interval_ms is not None and interval_ms > 0:
-                        await asyncio.sleep(interval_ms / 1000.0)
+                        if stop_event is None:
+                            await asyncio.sleep(interval_ms / 1000.0)
+                        else:
+                            try:
+                                await asyncio.wait_for(stop_event.wait(), timeout=interval_ms / 1000.0)
+                            except TimeoutError:
+                                pass
+                            if stop_event.is_set():
+                                return success_count, fail_count
                     is_first_request = False
 
                     # 2. 批量读取
@@ -253,6 +313,9 @@ class DataReader:
                     for point in group.points:
                         point.is_valid = False
                     fail_count += len(group.points)
+
+                if progress_callback is not None:
+                    progress_callback(success_count + fail_count, len(points), success_count, fail_count)
 
         return success_count, fail_count
 

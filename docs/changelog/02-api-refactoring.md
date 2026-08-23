@@ -125,6 +125,10 @@ src/web/
 | `POST /device/delete_slave` | `POST /api/devices/delete-slave` | 不变 |
 | `POST /device/edit_slave` | `POST /api/devices/edit-slave` | 不变 |
 
+> 自动读取接口现返回结构化任务状态。`start-auto-read` 接收 `mode`、`cycle_interval_ms`、`request_interval_ms` 及目标筛选配置；`auto-read-status` 和 `stop-auto-read` 返回 `idle/running/stopping/failed`、任务 ID、进度、计数和最后错误。前端查询接口只读取缓存，不再负责调度真实协议读取。
+
+> `manual-read` 统一提交一次后台批量、逐点或 DataSet 读取任务，并新增 `manual-read-status`、`stop-manual-read`。逐点模式由后端筛选测点并依次读取，前端不再为每个测点调用一次接口；状态查询不会触发新的协议读取。
+
 ### 测点管理 (`/point` → `/api/points`)
 
 | 旧路径 | 新路径 | HTTP 方法 |

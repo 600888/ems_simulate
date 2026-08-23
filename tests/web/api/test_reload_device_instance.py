@@ -40,7 +40,6 @@ def _new_device(name: str = "dlt645-server"):
         device_id=1,
         start=AsyncMock(return_value=True),
         set_device_provider=Mock(),
-        data_update_thread=SimpleNamespace(start=lambda: None),
     )
 
 

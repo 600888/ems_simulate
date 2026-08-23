@@ -35,12 +35,17 @@ async def _sync_imported_points(request: Request, channel_id: int, *, rebuild: b
 
     if device.protocol_type in (ProtocolType.Iec104Server, ProtocolType.Iec104Client):
         was_running = device.is_protocol_running()
-        was_auto_reading = device.is_auto_read_running() if device.protocol_type == ProtocolType.Iec104Client else False
+        auto_read_status = device.get_auto_read_status()
+        auto_read_config = (
+            device.auto_read_manager.current_config()
+            if device.protocol_type == ProtocolType.Iec104Client and auto_read_status.get("state") == "running"
+            else None
+        )
         new_device = await reload_device_instance(device_controller, channel_id, is_start=False)
         if was_running and not await new_device.start():
             raise RuntimeError("IEC104 设备重建后恢复启动失败")
-        if was_auto_reading:
-            new_device.start_auto_read()
+        if auto_read_config is not None:
+            await new_device.start_auto_read(auto_read_config)
         return
 
     if device.protocol_type == ProtocolType.Iec61850Server:

@@ -21,17 +21,12 @@ import {
   startAutoRead,
   stopAutoRead,
   manualRead,
+  getManualReadStatus,
+  stopManualRead,
   getDeviceInfo,
-  getDeviceTable,
-  getIEC61850ConnectProgress,
 } from "@/api/deviceApi";
-import { getIEC61850TableData, iec61850ReadPoints } from "@/api/channelApi";
-import { readSinglePoint } from "@/api/pointApi";
-import {
-  TABLE_REFRESH_INTERVAL,
-  READ_PROGRESS_DELAY,
-  SINGLE_READ_PROGRESS_DELAY,
-} from "@/constants";
+import type { AutoReadConfig, AutoReadStatus } from "@/api/deviceApi";
+import { TABLE_REFRESH_INTERVAL, READ_PROGRESS_DELAY } from "@/constants";
 import {
   isDlt645Protocol,
   isIec61850Protocol,
@@ -136,11 +131,9 @@ export function useAutoRead(options: AutoReadOptions) {
     { label: "10000ms", value: 10000 },
     { label: "30000ms", value: 30000 },
   ]);
-  let datasetAutoReadTimer: ReturnType<typeof setTimeout> | null = null;
   let datasetReadInFlight = false;
-
-  // 逐点自动读取定时器
-  let singlePointAutoReadTimer: any = null;
+  let autoReadStatusTimer: ReturnType<typeof setInterval> | null = null;
+  let statusInFlight = false;
 
   // 判断是否需要显示自动读取控件
   const needsAutoReadControls = computed(() => {
@@ -149,25 +142,11 @@ export function useAutoRead(options: AutoReadOptions) {
     return connType.value === 0 || connType.value === 1;
   });
 
-  // 判断是否为 IEC61850 筛选模式
-  const isIec61850Filtered = () => {
-    return (
-      isIec61850Protocol(String(protocolType.value)) &&
-      channelId.value !== null &&
-      !!iec61850Category.value
-    );
-  };
-
   const startAutoRefresh = () => {
     if (timer.value) return;
     const refresh = async () => {
       // 导入文件时暂停轮询，避免干扰上传和超时
-      if (
-        isAutoRefreshPaused.value ||
-        refreshInFlight ||
-        isIec61850DatasetPage()
-      )
-        return;
+      if (isAutoRefreshPaused.value || refreshInFlight) return;
       refreshInFlight = true;
       try {
         await fetchDeviceTable(
@@ -196,48 +175,95 @@ export function useAutoRead(options: AutoReadOptions) {
     }
   };
 
-  const stopDatasetAutoReadTimer = () => {
-    if (datasetAutoReadTimer) {
-      clearTimeout(datasetAutoReadTimer);
-      datasetAutoReadTimer = null;
+  const applyAutoReadStatus = (status: AutoReadStatus) => {
+    const running = status.state === "running";
+    const isCurrentDataset =
+      status.mode === "dataset" && status.config?.item === iec61850Item.value;
+
+    datasetAutoRead.value = running && isCurrentDataset;
+    isAutoRead.value = running && status.mode !== "dataset";
+    if (running && (status.mode === "batch" || status.mode === "single")) {
+      readMode.value = status.mode;
+    }
+    if (running && status.config?.cycle_interval_ms) {
+      if (status.mode === "dataset") {
+        datasetReadInterval.value = status.config.cycle_interval_ms;
+      } else if (status.mode === "batch") {
+        readInterval.value = status.config.cycle_interval_ms;
+      } else if (status.config.request_interval_ms !== undefined) {
+        readInterval.value = status.config.request_interval_ms;
+      }
+    }
+    if (status.state === "failed") {
+      showErrorOnce(status.last_error || t("autoRead.readError"));
     }
   };
 
-  const readCurrentDataset = async (showSuccess: boolean) => {
-    if (
-      !isIec61850DatasetPage() ||
-      datasetReadInFlight ||
-      isAutoRefreshPaused.value
-    )
-      return;
-    datasetReadInFlight = true;
-    datasetReading.value = true;
+  const fetchAutoReadStatus = async () => {
+    if (!routeName.value || statusInFlight) return;
+    statusInFlight = true;
     try {
-      await fetchDeviceTable(
-        routeName.value,
-        currentSlaveId.value,
-        searchQuery.value[currentSlaveId.value] || "",
-        pageIndex.value,
-        pageSize.value,
-      );
-      if (showSuccess) ElMessage.success(t("autoRead.datasetReadComplete"));
+      const status = await getAutoReadStatus(routeName.value);
+      applyAutoReadStatus(status);
+      if (status.state === "running" || status.state === "stopping") {
+        startAutoReadStatusPolling();
+      } else {
+        stopAutoReadStatusPolling();
+      }
     } finally {
-      datasetReadInFlight = false;
-      datasetReading.value = false;
+      statusInFlight = false;
     }
   };
 
-  // 使用递归 setTimeout，保证慢速 MMS 读取不会并发重叠。
-  const scheduleDatasetAutoRead = (delay = datasetReadInterval.value) => {
-    stopDatasetAutoReadTimer();
-    if (!datasetAutoRead.value || !isIec61850DatasetPage()) return;
-    datasetAutoReadTimer = setTimeout(
-      async () => {
-        await readCurrentDataset(false);
-        scheduleDatasetAutoRead();
-      },
-      Math.max(delay, 1),
-    );
+  const startAutoReadStatusPolling = () => {
+    if (autoReadStatusTimer) return;
+    autoReadStatusTimer = setInterval(() => void fetchAutoReadStatus(), 1000);
+  };
+
+  const stopAutoReadStatusPolling = () => {
+    if (autoReadStatusTimer) {
+      clearInterval(autoReadStatusTimer);
+      autoReadStatusTimer = null;
+    }
+  };
+
+  const stopAllAutoRead = async () => {
+    const status = await stopAutoRead(routeName.value).catch(() => null);
+    isAutoRead.value = false;
+    datasetAutoRead.value = false;
+    if (status) applyAutoReadStatus(status);
+    startAutoReadStatusPolling();
+  };
+
+  const stopAndWaitForIdle = async () => {
+    await stopAllAutoRead();
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const status = await getAutoReadStatus(routeName.value);
+      applyAutoReadStatus(status);
+      if (status.state === "idle" || status.state === "failed") return;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error("自动读取任务仍在停止中，请稍后重试");
+  };
+
+  const buildStandardAutoReadConfig = (): AutoReadConfig => {
+    const mode = isDlt645.value ? "single" : readMode.value;
+    return {
+      mode,
+      cycle_interval_ms:
+        mode === "single"
+          ? Math.max(readInterval.value * 2, 1000)
+          : Math.max(readInterval.value, 100),
+      request_interval_ms: mode === "single" ? readInterval.value : 0,
+      slave_id:
+        mode === "single" && !isDlt645.value ? currentSlaveId.value : undefined,
+      channel_id: channelId.value ?? undefined,
+      category: iec61850Category.value,
+      item: iec61850Item.value,
+      point_types: pointTypes.value,
+      dlt645_prefix: dlt645Prefix.value,
+      dlt645_settlement: dlt645Settlement.value,
+    };
   };
 
   const handleDatasetAutoReadChange = async (enabled: boolean) => {
@@ -248,17 +274,26 @@ export function useAutoRead(options: AutoReadOptions) {
         showErrorOnce(t("autoRead.deviceNotConnectedForDataset"));
         return;
       }
-      datasetAutoRead.value = true;
+      await stopAndWaitForIdle();
+      const status = await startAutoRead(routeName.value, {
+        mode: "dataset",
+        cycle_interval_ms: Math.max(datasetReadInterval.value, 100),
+        request_interval_ms: 0,
+        channel_id: channelId.value ?? undefined,
+        category: iec61850Category.value,
+        item: iec61850Item.value,
+        point_types: pointTypes.value,
+      });
+      applyAutoReadStatus(status);
+      startAutoReadStatusPolling();
       ElMessage.success(t("autoRead.datasetAutoReadEnabled"));
-      scheduleDatasetAutoRead(0);
     } else {
-      datasetAutoRead.value = false;
-      stopDatasetAutoReadTimer();
+      await stopAllAutoRead();
       ElMessage.success(t("autoRead.datasetAutoReadStopped"));
     }
   };
 
-  const handleDatasetIntervalChange = (val: string | number) => {
+  const handleDatasetIntervalChange = async (val: string | number) => {
     const interval = Number(val);
     if (!Number.isFinite(interval) || interval <= 0) return;
     if (
@@ -271,7 +306,9 @@ export function useAutoRead(options: AutoReadOptions) {
       datasetIntervalOptions.value.sort((a, b) => a.value - b.value);
     }
     datasetReadInterval.value = interval;
-    if (datasetAutoRead.value) scheduleDatasetAutoRead();
+    if (datasetAutoRead.value) {
+      await handleDatasetAutoReadChange(true);
+    }
   };
 
   const handleDatasetManualRead = async () => {
@@ -281,23 +318,54 @@ export function useAutoRead(options: AutoReadOptions) {
       showErrorOnce(t("autoRead.deviceNotConnectedForDataset"));
       return;
     }
-    await readCurrentDataset(true);
-  };
-
-  /** 停止所有自动读取（批量+逐点） */
-  const stopAllAutoRead = async () => {
-    await stopAutoRead(routeName.value).catch(() => {});
-    stopSinglePointAutoRead();
+    if (channelId.value === null || !isIec61850DatasetPage()) return;
+    datasetReadInFlight = true;
+    datasetReading.value = true;
+    try {
+      isReading.value = true;
+      cancelRead.value = false;
+      await runBackgroundManualRead({
+        mode: "dataset",
+        cycle_interval_ms: 100,
+        request_interval_ms: 0,
+        channel_id: channelId.value,
+        category: iec61850Category.value,
+        item: iec61850Item.value,
+        point_types: pointTypes.value,
+      });
+      await fetchDeviceTable(
+        routeName.value,
+        currentSlaveId.value,
+        searchQuery.value[currentSlaveId.value] || "",
+        pageIndex.value,
+        pageSize.value,
+      );
+      ElMessage.success(t("autoRead.datasetReadComplete"));
+    } finally {
+      isReading.value = false;
+      datasetReadInFlight = false;
+      datasetReading.value = false;
+    }
   };
 
   const handleAutoReadChange = async (enabled: boolean) => {
     if (enabled) {
-      if (readMode.value === "batch" && !isDlt645.value) {
-        await startAutoRead(routeName.value);
-        ElMessage.success(t("autoRead.batchAutoReadEnabled"));
-      } else {
-        startSinglePointAutoRead();
-        ElMessage.success(t("autoRead.singleAutoReadEnabled"));
+      try {
+        await stopAndWaitForIdle();
+        const status = await startAutoRead(
+          routeName.value,
+          buildStandardAutoReadConfig(),
+        );
+        applyAutoReadStatus(status);
+        startAutoReadStatusPolling();
+        if (readMode.value === "batch" && !isDlt645.value) {
+          ElMessage.success(t("autoRead.batchAutoReadEnabled"));
+        } else {
+          ElMessage.success(t("autoRead.singleAutoReadEnabled"));
+        }
+      } catch (error) {
+        isAutoRead.value = false;
+        throw error;
       }
     } else {
       await stopAllAutoRead();
@@ -311,15 +379,16 @@ export function useAutoRead(options: AutoReadOptions) {
       readMode.value = "single";
     }
     if (!isAutoRead.value) return;
-    await stopAllAutoRead();
-    if (readMode.value === "batch" && !isDlt645.value) {
-      await startAutoRead(routeName.value);
-    } else {
-      startSinglePointAutoRead();
-    }
+    await stopAndWaitForIdle();
+    const status = await startAutoRead(
+      routeName.value,
+      buildStandardAutoReadConfig(),
+    );
+    applyAutoReadStatus(status);
+    startAutoReadStatusPolling();
   };
 
-  const handleIntervalChange = (val: string | number) => {
+  const handleIntervalChange = async (val: string | number) => {
     const numVal = Number(val);
     if (!isNaN(numVal) && numVal > 0) {
       const exists = intervalOptions.value.some((opt) => opt.value === numVal);
@@ -328,127 +397,22 @@ export function useAutoRead(options: AutoReadOptions) {
         intervalOptions.value.sort((a, b) => a.value - b.value);
       }
       readInterval.value = numVal;
-    }
-  };
-
-  /** 启动逐点自动读取循环 */
-  const startSinglePointAutoRead = () => {
-    isReading.value = true;
-    cancelRead.value = false;
-    successCount.value = 0;
-    failCount.value = 0;
-    readProgress.value = 0;
-    progressMessage.value = t("autoRead.singleAutoReadingProgress");
-    doSinglePointReadCycle();
-  };
-
-  /** 停止逐点自动读取 */
-  const stopSinglePointAutoRead = () => {
-    if (singlePointAutoReadTimer) {
-      clearTimeout(singlePointAutoReadTimer);
-      singlePointAutoReadTimer = null;
-    }
-    cancelRead.value = true;
-    isReading.value = false;
-    readProgress.value = 0;
-    successCount.value = 0;
-    failCount.value = 0;
-    progressMessage.value = "";
-  };
-
-  /** 执行一轮逐点读取 */
-  const doSinglePointReadCycle = async () => {
-    if (!isAutoRead.value || cancelRead.value) {
-      stopSinglePointAutoRead();
-      return;
-    }
-
-    try {
-      // 获取测点列表
-      const data = await getDeviceTable(
-        routeName.value,
-        currentSlaveId.value,
-        "",
-        1,
-        10000,
-        pointTypes.value,
-        null,
-        null,
-        [],
-        dlt645Prefix.value,
-        dlt645Settlement.value,
-      );
-      const allRows: any[][] = data.get("table_data") || [];
-      const totalPoints = allRows.length;
-
-      if (totalPoints === 0) {
-        singlePointAutoReadTimer = setTimeout(doSinglePointReadCycle, 2000);
-        return;
+      if (isAutoRead.value) {
+        await stopAndWaitForIdle();
+        const status = await startAutoRead(
+          routeName.value,
+          buildStandardAutoReadConfig(),
+        );
+        applyAutoReadStatus(status);
+        startAutoReadStatusPolling();
       }
-
-      successCount.value = 0;
-      failCount.value = 0;
-
-      for (let i = 0; i < totalPoints; i++) {
-        if (!isAutoRead.value || cancelRead.value) break;
-
-        const row = allRows[i];
-        const pointCode = row[6];
-        const pointName = row[5];
-        progressMessage.value = t("autoRead.autoReading", {
-          current: i + 1,
-          total: totalPoints,
-          name: pointName,
-        });
-
-        try {
-          const value = await readSinglePoint(
-            routeName.value,
-            pointCode,
-            isDlt645.value ? undefined : currentSlaveId.value,
-          );
-          if (value !== null) {
-            successCount.value++;
-            // 实时更新表格中的显示值
-            if (tableDataMap.value[currentSlaveId.value]) {
-              const displayRow = tableDataMap.value[
-                currentSlaveId.value
-              ].tableData.find((r) => r[6] === pointCode);
-              if (displayRow) displayRow[8] = value;
-            }
-          } else {
-            failCount.value++;
-          }
-        } catch (e) {
-          failCount.value++;
-        }
-
-        if (readInterval.value > 0) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, readInterval.value),
-          );
-        }
-        readProgress.value = Math.floor(((i + 1) / totalPoints) * 100);
-      }
-    } catch (e) {
-      console.error("逐点自动读取错误:", e);
-    }
-
-    // 循环下一轮
-    if (isAutoRead.value && !cancelRead.value) {
-      const cycleInterval = Math.max(readInterval.value * 2, 1000);
-      singlePointAutoReadTimer = setTimeout(
-        doSinglePointReadCycle,
-        cycleInterval,
-      );
-    } else {
-      stopSinglePointAutoRead();
     }
   };
 
   const handleManualRead = async () => {
     if (isReading.value) {
       cancelRead.value = true;
+      await stopManualRead(routeName.value).catch(() => null);
       return;
     }
 
@@ -472,110 +436,60 @@ export function useAutoRead(options: AutoReadOptions) {
     }
   };
 
-  // 批量读取模式
+  const runBackgroundManualRead = async (config: AutoReadConfig) => {
+    let status = await manualRead(routeName.value, config);
+    while (status.state === "running" || status.state === "stopping") {
+      if (cancelRead.value && status.state === "running") {
+        status = await stopManualRead(routeName.value);
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        status = await getManualReadStatus(routeName.value);
+      }
+      successCount.value = status.success;
+      failCount.value = status.fail;
+      readProgress.value = status.total
+        ? Math.floor((status.current / status.total) * 100)
+        : 0;
+    }
+    if (status.state === "failed") {
+      throw new Error(status.last_error || t("autoRead.readError"));
+    }
+    successCount.value = status.success;
+    failCount.value = status.fail;
+    readProgress.value = 100;
+    return status;
+  };
+
+  // 批量读取由后端单次任务执行；前端只查询任务状态，不重复触发读取接口。
   const handleBatchRead = async () => {
     progressMessage.value = t("autoRead.readingRegisters");
     try {
-      if (
-        isIec61850Protocol(String(protocolType.value)) &&
-        channelId.value !== null
-      ) {
-        progressMessage.value = t("autoRead.planningIec61850Batch");
-        readProgress.value = 1;
-
-        // 先发起批读，再并行轮询 Handler 的进度快照。后端把阻塞的 MMS
-        // 调用放在线程中执行，因此每完成一个 DataSet 都能及时刷新到界面。
-        const readPromise = iec61850ReadPoints(
-          channelId.value,
-          iec61850Category.value,
-          iec61850Item.value,
-          readInterval.value,
-        );
-        let polling = false;
-        const pollReadProgress = async () => {
-          if (polling) return;
-          polling = true;
-          try {
-            const snapshot = await getIEC61850ConnectProgress(routeName.value);
-            if (snapshot?.operation === "read") {
-              // 网络响应可能乱序，始终保持进度单调递增。
-              readProgress.value = Math.max(
-                readProgress.value,
-                Math.min(snapshot.progress, 99),
-              );
-              if (snapshot.message) progressMessage.value = snapshot.message;
-            }
-          } finally {
-            polling = false;
-          }
-        };
-        const progressTimer = window.setInterval(() => {
-          void pollReadProgress();
-        }, 100);
-        void pollReadProgress();
-
-        try {
-          const result = await readPromise;
-          if (result) {
-            successCount.value = result.success;
-            failCount.value = result.fail;
-            progressMessage.value = t("autoRead.batchReadProgress", {
-              success: result.success,
-              fail: result.fail,
-            });
-            ElMessage.success(
-              t("autoRead.batchReadComplete", {
-                success: result.success,
-                fail: result.fail,
-              }),
-            );
-          } else {
-            progressMessage.value = t("autoRead.batchReadCompleteSimple");
-            ElMessage.success(t("autoRead.batchReadCompleteSimple"));
-          }
-        } finally {
-          window.clearInterval(progressTimer);
-        }
-        await fetchDeviceTable(
-          routeName.value,
-          currentSlaveId.value,
-          searchQuery.value[currentSlaveId.value] || "",
-          pageIndex.value,
-          pageSize.value,
-        );
-        readProgress.value = 100;
-        return;
-      }
-
-      const result = await manualRead(routeName.value, readInterval.value);
-      if (result) {
-        if (typeof result === "object" && "success" in result) {
-          successCount.value = result.success;
-          failCount.value = result.fail;
-          progressMessage.value = t("autoRead.batchReadProgress", {
-            success: result.success,
-            fail: result.fail,
-          });
-          ElMessage.success(
-            t("autoRead.batchReadComplete", {
-              success: result.success,
-              fail: result.fail,
-            }),
-          );
-        } else {
-          readProgress.value = 100;
-          progressMessage.value = t("autoRead.batchReadCompleteSimple");
-          ElMessage.success(t("autoRead.batchReadCompleteSimple"));
-        }
-        await fetchDeviceTable(
-          routeName.value,
-          currentSlaveId.value,
-          searchQuery.value[currentSlaveId.value] || "",
-          pageIndex.value,
-          pageSize.value,
-        );
-        readProgress.value = 100;
-      }
+      const result = await runBackgroundManualRead({
+        mode: "batch",
+        cycle_interval_ms: 100,
+        request_interval_ms: readInterval.value,
+        channel_id: channelId.value ?? undefined,
+        category: iec61850Category.value,
+        item: iec61850Item.value,
+        point_types: pointTypes.value,
+      });
+      progressMessage.value = t("autoRead.batchReadProgress", {
+        success: result.success,
+        fail: result.fail,
+      });
+      ElMessage.success(
+        t("autoRead.batchReadComplete", {
+          success: result.success,
+          fail: result.fail,
+        }),
+      );
+      await fetchDeviceTable(
+        routeName.value,
+        currentSlaveId.value,
+        searchQuery.value[currentSlaveId.value] || "",
+        pageIndex.value,
+        pageSize.value,
+      );
     } catch (e) {
       console.error("批量读取失败:", e);
       progressMessage.value = t("autoRead.readError");
@@ -587,143 +501,60 @@ export function useAutoRead(options: AutoReadOptions) {
     }
   };
 
-  // 逐点读取模式
+  // 逐点读取同样由后端单次任务执行；前端不再拉全量点表并逐点调用接口。
   const handleSinglePointRead = async () => {
-    progressMessage.value = t("autoRead.fetchingPointList");
+    progressMessage.value = t("autoRead.startingSingleRead");
     try {
-      let allRows: any[][] = [];
-      if (isIec61850Filtered() && channelId.value !== null) {
-        const data = await getIEC61850TableData(
-          channelId.value,
-          iec61850Category.value,
-          iec61850Item.value,
-          null,
-          1,
-          10000,
-          pointTypes.value,
-        );
-        if (data) allRows = data.get("table_data") || [];
-      } else {
-        const data = await getDeviceTable(
-          routeName.value,
-          currentSlaveId.value,
-          "",
-          1,
-          10000,
-          pointTypes.value,
-          null,
-          null,
-          [],
-          dlt645Prefix.value,
-          dlt645Settlement.value,
-        );
-        allRows = data.get("table_data") || [];
-      }
-
-      const totalPoints = allRows.length;
-      if (totalPoints === 0) {
-        ElMessage.warning(t("autoRead.noPointToRead"));
-        isReading.value = false;
+      const result = await runBackgroundManualRead({
+        mode: "single",
+        cycle_interval_ms: 100,
+        request_interval_ms: readInterval.value,
+        slave_id: currentSlaveId.value,
+        channel_id: channelId.value ?? undefined,
+        category: iec61850Category.value,
+        item: iec61850Item.value,
+        point_types: pointTypes.value,
+        dlt645_prefix: dlt645Prefix.value,
+        dlt645_settlement: dlt645Settlement.value,
+      });
+      if (cancelRead.value) {
+        progressMessage.value = t("autoRead.readCancelled");
+        ElMessage.warning(t("autoRead.operationCancelled"));
         return;
       }
-
-      progressMessage.value = t("autoRead.startingSingleRead");
-      for (let i = 0; i < totalPoints; i++) {
-        if (cancelRead.value) {
-          progressMessage.value = t("autoRead.readCancelled");
-          ElMessage.warning(t("autoRead.operationCancelled"));
-          break;
-        }
-
-        const row = allRows[i];
-        const pointCode = row[6];
-        const pointName = row[5];
-        progressMessage.value = t("autoRead.singleReadProgress", {
-          current: i + 1,
-          total: totalPoints,
-          name: pointName,
-        });
-
-        try {
-          const value = await readSinglePoint(
-            routeName.value,
-            pointCode,
-            isDlt645.value ? undefined : currentSlaveId.value,
-          );
-          if (value !== null) {
-            successCount.value++;
-            if (tableDataMap.value[currentSlaveId.value]) {
-              const displayRow = tableDataMap.value[
-                currentSlaveId.value
-              ].tableData.find((r) => r[6] === pointCode);
-              if (displayRow) displayRow[8] = value;
-            }
-          } else {
-            failCount.value++;
-          }
-        } catch (e) {
-          failCount.value++;
-        }
-
-        if (readInterval.value > 0) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, readInterval.value),
-          );
-        }
-        readProgress.value = Math.floor(((i + 1) / totalPoints) * 100);
-      }
-
-      if (!cancelRead.value) {
-        progressMessage.value = t("autoRead.readComplete", {
-          success: successCount.value,
-          fail: failCount.value,
-        });
-        ElMessage.success(
-          t("autoRead.singleReadComplete", {
-            success: successCount.value,
-            fail: failCount.value,
-          }),
-        );
-      }
+      progressMessage.value = t("autoRead.readComplete", {
+        success: result.success,
+        fail: result.fail,
+      });
+      ElMessage.success(
+        t("autoRead.singleReadComplete", {
+          success: result.success,
+          fail: result.fail,
+        }),
+      );
+      await fetchDeviceTable(
+        routeName.value,
+        currentSlaveId.value,
+        searchQuery.value[currentSlaveId.value] || "",
+        pageIndex.value,
+        pageSize.value,
+      );
     } catch (e) {
       console.error("逐点读取失败:", e);
+      progressMessage.value = t("autoRead.readError");
     } finally {
-      if (cancelRead.value) {
+      const resetDelay = cancelRead.value ? 0 : READ_PROGRESS_DELAY;
+      setTimeout(() => {
         isReading.value = false;
         readProgress.value = 0;
         successCount.value = 0;
         failCount.value = 0;
-      } else {
-        setTimeout(() => {
-          isReading.value = false;
-          readProgress.value = 0;
-          successCount.value = 0;
-          failCount.value = 0;
-        }, SINGLE_READ_PROGRESS_DELAY);
-      }
+      }, resetDelay);
     }
-  };
-
-  const fetchAutoReadStatus = async () => {
-    if (!routeName.value) return;
-    const status = await getAutoReadStatus(routeName.value);
-    if (isDlt645.value) {
-      readMode.value = "single";
-      if (status) await stopAutoRead(routeName.value);
-      isAutoRead.value = false;
-      return;
-    }
-    isAutoRead.value = status;
-    if (status) startAutoRefresh();
   };
 
   watch([iec61850Category, iec61850Item], () => {
-    if (!isIec61850DatasetPage()) {
-      datasetAutoRead.value = false;
-      stopDatasetAutoReadTimer();
-    } else if (datasetAutoRead.value) {
-      scheduleDatasetAutoRead(0);
-    }
+    void fetchAutoReadStatus();
   });
 
   watch(
@@ -738,15 +569,18 @@ export function useAutoRead(options: AutoReadOptions) {
     return percentage === 100 ? t("autoRead.completed") : `${percentage}%`;
   };
 
-  onActivated(() => startAutoRefresh());
+  onActivated(() => {
+    startAutoRefresh();
+    void fetchAutoReadStatus();
+    startAutoReadStatusPolling();
+  });
   onDeactivated(() => {
     stopAutoRefresh();
-    datasetAutoRead.value = false;
-    stopDatasetAutoReadTimer();
+    stopAutoReadStatusPolling();
   });
   onUnmounted(() => {
     stopAutoRefresh();
-    stopDatasetAutoReadTimer();
+    stopAutoReadStatusPolling();
   });
 
   return {

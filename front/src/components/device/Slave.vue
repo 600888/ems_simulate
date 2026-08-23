@@ -152,11 +152,21 @@
                 </el-tooltip>
 
                 <!-- 间隔设置 (批量和逐点都支持，始终显示) -->
-                <span class="auto-read-label">{{ $t("slave.interval") }}</span>
+                <span class="auto-read-label">
+                  {{
+                    $t(
+                      isIec61850 && iec61850Category === "DataSets"
+                        ? "slave.cycleInterval"
+                        : readMode === "single" || isDlt645
+                          ? "slave.pointInterval"
+                          : "slave.cycleInterval",
+                    )
+                  }}
+                </span>
                 <el-select
                   v-if="isIec61850 && iec61850Category === 'DataSets'"
                   v-model="datasetReadInterval"
-                  :placeholder="$t('slave.interval')"
+                  :placeholder="$t('slave.cycleInterval')"
                   allow-create
                   filterable
                   default-first-option
@@ -174,7 +184,13 @@
                 <el-select
                   v-else
                   v-model="readInterval"
-                  :placeholder="$t('slave.interval')"
+                  :placeholder="
+                    $t(
+                      readMode === 'single' || isDlt645
+                        ? 'slave.pointInterval'
+                        : 'slave.cycleInterval',
+                    )
+                  "
                   allow-create
                   filterable
                   default-first-option
@@ -1189,6 +1205,7 @@ watch(
         pageSize.value = 10;
         isAutoRead.value = false;
         await fetchSlaveList();
+        await fetchAutoReadStatus();
         startAutoRefresh();
       } else {
         // 同一设备，若筛选参数变化则重新加载数据

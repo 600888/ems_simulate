@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from src.data.service.channel_service import ChannelService
 from src.enums.points.base_point import BasePoint
 from src.proto.iec61850.defs.mms_types import MmsType, infer_mms_type_from_path
-from src.web.api.exceptions import NotFoundError, ValidationError
+from src.web.api.exceptions import ConflictError, NotFoundError, ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
 
@@ -958,7 +958,7 @@ def _paginate_iec61850_dataset_tree(tree_data: dict[str, Any], page_index: int, 
         if member_offset >= end:
             break
 
-    return {"items": paged_items, "total": total}
+    return {**tree_data, "items": paged_items, "total": total}
 
 
 @router.post("/iec61850-tree-data", response_model=BaseResponse)
@@ -1025,10 +1025,7 @@ async def get_iec61850_tree_data(
 
     return BaseResponse(
         message="获取 IEC61850 树形数据成功",
-        data={
-            "items": paged_items,
-            "total": total,
-        },
+        data={**tree_data, "items": paged_items, "total": total},
     )
 
 
@@ -1314,6 +1311,19 @@ async def iec61850_read_points(
     """根据 IEC61850 左侧树形节点过滤，批量读取对应测点的值"""
     device = _get_iec61850_device(request, body.channel_id)
 
+    if device.is_auto_read_running():
+        raise ConflictError("自动读取运行中，请先停止后再执行手动读取", data=device.get_auto_read_status())
+
+    if body.category == "DataSets":
+        if not body.item:
+            raise ValidationError("DataSet 读取必须指定 item")
+        snapshot = await device.read_dataset_once(body.item)
+        values = snapshot.get("values") or {}
+        return BaseResponse(
+            message="IEC61850 DataSet 读取完成",
+            data={"success": len(values), "fail": 0, "snapshot": snapshot},
+        )
+
     filtered_points = _get_iec61850_filtered_points(device, body.category, body.item)
     if not filtered_points:
         return BaseResponse(message="无匹配测点", data={"success": 0, "fail": 0})
@@ -1448,14 +1458,11 @@ def _build_iec61850_dataset_tree(device, dataset_ref: str) -> dict[str, Any]:
 
     members = matched_ds.get("members", [])
 
-    # 读取 DataSet 所有值
+    # DataSet 表格查询只读取显式读取/后台任务留下的缓存快照。
     resolved_ref = matched_ds.get("ref") or dataset_ref
-    values = protocol_handler.read_dataset_values(resolved_ref)
-
-    # 记录读取时间（用于前端显示"最后更新时间"）
-    import datetime
-
-    read_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    snapshot = device.get_dataset_snapshot(resolved_ref)
+    values = snapshot.get("values") or {}
+    read_time = snapshot.get("updated_at") or ""
 
     # 按 DO 分组构建树
     do_map: dict[str, dict[str, Any]] = {}
@@ -1543,7 +1550,13 @@ def _build_iec61850_dataset_tree(device, dataset_ref: str) -> dict[str, Any]:
 
     # 保持 ICD 文件中的 FCDA 原始顺序，不自作主张排序
     items = list(do_map.values())
-    return {"items": items, "total": len(items)}
+    return {
+        "items": items,
+        "total": len(items),
+        "last_updated_at": snapshot.get("updated_at"),
+        "stale": snapshot.get("stale", True),
+        "last_error": snapshot.get("last_error"),
+    }
 
 
 def _get_iec61850_filtered_points(device, category: str, item: str) -> list[BasePoint]:
@@ -1792,36 +1805,22 @@ async def get_iec61850_dataset_detail(
     if not is_iec61850:
         raise ValidationError("仅 IEC61850 协议支持 DataSet 操作")
 
-    # 优先实时浏览 DataSet 目录（获取最新成员信息）
+    # 详情查询必须是纯缓存查询，不再实时浏览或读取远端设备。
     matched_ds = None
-    if isinstance(protocol_handler, IEC61850ClientHandler) and protocol_handler.client:
-        for dataset_ref in _dataset_ref_aliases(body.dataset_ref):
-            members = protocol_handler.client.browse_dataset_directory(dataset_ref)
-            if members:
-                matched_ds = {
-                    "ref": dataset_ref,
-                    "name": _normalize_dataset_ref(dataset_ref).split("$")[-1],
-                    "member_count": len(members),
-                    "members": members,
-                }
-                break
-
-    # 如果实时浏览失败，从缓存查找
-    if not matched_ds or matched_ds.get("member_count", 0) == 0:
-        for ds in protocol_handler.get_discovered_datasets():
-            if _normalize_dataset_ref(ds.get("ref", "")) == _normalize_dataset_ref(body.dataset_ref):
-                matched_ds = ds
-                break
+    for ds in protocol_handler.get_discovered_datasets():
+        if _normalize_dataset_ref(ds.get("ref", "")) == _normalize_dataset_ref(body.dataset_ref):
+            matched_ds = ds
+            break
 
     if not matched_ds:
         raise NotFoundError("DataSet 未找到，请先连接设备获取结构")
 
-    # 读取 DataSet 所有成员的值
     resolved_ref = matched_ds.get("ref") or body.dataset_ref
-    values = protocol_handler.read_dataset_values(resolved_ref)
+    snapshot = device.get_dataset_snapshot(resolved_ref)
+    values = snapshot.get("values") or {}
 
-    # 将值合并到成员列表
-    members = matched_ds.get("members", [])
+    # 复制成员，避免查询接口污染 Handler 的发现缓存。
+    members = [dict(member) for member in matched_ds.get("members", [])]
     for member in members:
         ref = member.get("ref", "")
         member["value"] = values.get(ref, None)
@@ -1834,5 +1833,8 @@ async def get_iec61850_dataset_detail(
             "ld": matched_ds.get("ld", ""),
             "member_count": len(members),
             "members": members,
+            "last_updated_at": snapshot.get("updated_at"),
+            "stale": snapshot.get("stale", True),
+            "last_error": snapshot.get("last_error"),
         },
     )

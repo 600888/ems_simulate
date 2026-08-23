@@ -8,11 +8,13 @@ from fastapi import APIRouter, Request
 
 from src.config.storage import get_storage_path
 from src.data.dao.channel_dao import ChannelDao
+from src.device.auto_read import AutoReadConfig, AutoReadConflictError, AutoReadMode
 from src.device.core.device import Device
 from src.enums.modbus_def import ProtocolType
-from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
+from src.web.api.exceptions import ConflictError, NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import (
     ApplySimulationConfigRequest,
+    AutoReadStartRequest,
     BaseResponse,
     DeviceInfoRequest,
     DeviceStartRequest,
@@ -319,40 +321,84 @@ async def discover_iec61850_model(req: DeviceInfoRequest, request: Request):
 async def get_auto_read_status(req: DeviceInfoRequest, request: Request):
     """获取自动读取状态"""
     device = _get_device(req.device_name, request)
-    is_running = device.is_auto_read_running()
-    return BaseResponse(message="获取自动读取状态成功!", data=is_running)
+    return BaseResponse(message="获取自动读取状态成功!", data=device.get_auto_read_status())
 
 
 @device_router.post("/start-auto-read", response_model=BaseResponse)
-async def start_auto_read(req: DeviceInfoRequest, request: Request):
+async def start_auto_read(req: AutoReadStartRequest, request: Request):
     """启动自动读取"""
     device = _get_device(req.device_name, request)
-    success = device.start_auto_read()
-    if not success:
-        log.warning(f"设备 {req.device_name} 自动读取已在运行中")
-        raise ValidationError("自动读取已在运行中!", data=False)
-    return BaseResponse(message="启动自动读取成功!", data=True)
+    if not device.is_protocol_running():
+        raise ValidationError("设备未连接，请先启动设备")
+    if req.mode == "dataset" and (req.channel_id is None or not req.item):
+        raise ValidationError("DataSet 自动读取必须指定 channel_id 和 item")
+    if any(point_type not in (0, 1, 2, 3) for point_type in req.point_types):
+        raise ValidationError("point_types 仅支持 0、1、2、3")
+    config = AutoReadConfig(
+        mode=AutoReadMode(req.mode),
+        cycle_interval_ms=req.cycle_interval_ms,
+        request_interval_ms=req.request_interval_ms,
+        slave_id=req.slave_id,
+        channel_id=req.channel_id,
+        category=req.category,
+        item=req.item,
+        point_types=tuple(req.point_types),
+        dlt645_prefix=req.dlt645_prefix,
+        dlt645_settlement=req.dlt645_settlement,
+    )
+    try:
+        status = await device.start_auto_read(config)
+    except AutoReadConflictError as exc:
+        raise ConflictError(str(exc), data=device.get_auto_read_status()) from exc
+    return BaseResponse(message="启动自动读取成功!", data=status)
 
 
 @device_router.post("/stop-auto-read", response_model=BaseResponse)
 async def stop_auto_read(req: DeviceInfoRequest, request: Request):
     """停止自动读取"""
     device = _get_device(req.device_name, request)
-    device.stop_auto_read()
-    return BaseResponse(message="停止自动读取成功!", data=True)
+    status = await device.stop_auto_read()
+    return BaseResponse(message="停止自动读取成功!", data=status)
 
 
 @device_router.post("/manual-read", response_model=BaseResponse)
 async def manual_read(req: ManualReadRequest, request: Request):
-    """手动读取"""
+    """提交一次后台批量、逐点或 DataSet 读取任务。"""
     device = _get_device(req.device_name, request)
+    if not device.is_protocol_running():
+        raise ValidationError("设备未连接，请先启动设备")
+    if req.mode == "dataset" and (req.channel_id is None or not req.item):
+        raise ValidationError("DataSet 读取必须指定 channel_id 和 item")
+    config = AutoReadConfig(
+        mode=AutoReadMode(req.mode),
+        cycle_interval_ms=100,
+        request_interval_ms=max(req.interval or 0, 0),
+        slave_id=req.slave_id,
+        channel_id=req.channel_id,
+        category=req.category,
+        item=req.item,
+        point_types=tuple(req.point_types),
+        dlt645_prefix=req.dlt645_prefix,
+        dlt645_settlement=req.dlt645_settlement,
+    )
+    try:
+        status = await device.start_manual_read(config)
+    except AutoReadConflictError as exc:
+        raise ConflictError(str(exc), data=device.get_manual_read_status()) from exc
+    return BaseResponse(message="后台读取任务已提交", data=status)
 
-    async def event_emitter(data):
-        # await manager.broadcast(data, req.device_name)  # TODO: ws 模块未实现
-        pass
 
-    stats = await device.single_read(event_emitter=event_emitter, interval_ms=req.interval)
-    return BaseResponse(message="手动读取成功!", data=stats)
+@device_router.post("/manual-read-status", response_model=BaseResponse)
+async def manual_read_status(req: DeviceInfoRequest, request: Request):
+    device = _get_device(req.device_name, request)
+    return BaseResponse(message="获取后台读取状态成功", data=device.get_manual_read_status())
+
+
+@device_router.post("/stop-manual-read", response_model=BaseResponse)
+async def stop_manual_read(req: DeviceInfoRequest, request: Request):
+    device = _get_device(req.device_name, request)
+    status = await device.stop_manual_read()
+    return BaseResponse(message="后台读取停止请求已提交", data=status)
 
 
 @device_router.post("/iec104-interrogation", response_model=BaseResponse)

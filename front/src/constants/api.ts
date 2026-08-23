@@ -58,6 +58,8 @@ export const DEVICE_API = {
   START_AUTO_READ: "/api/devices/start-auto-read",
   STOP_AUTO_READ: "/api/devices/stop-auto-read",
   MANUAL_READ: "/api/devices/manual-read",
+  MANUAL_READ_STATUS: "/api/devices/manual-read-status",
+  STOP_MANUAL_READ: "/api/devices/stop-manual-read",
   MESSAGES: "/api/devices/messages",
   MESSAGE_DETAIL: "/api/devices/message-detail",
   CLEAR_MESSAGES: "/api/devices/clear-messages",

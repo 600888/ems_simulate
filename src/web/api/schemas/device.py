@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from src.enums.point_data import SimulateMethod
@@ -9,6 +11,20 @@ class DeviceNameListResponse:
 
 class DeviceInfoRequest(BaseModel):
     device_name: str
+
+
+class AutoReadStartRequest(BaseModel):
+    device_name: str
+    mode: Literal["batch", "single", "dataset"] = "batch"
+    cycle_interval_ms: int = Field(1000, ge=100, le=3_600_000)
+    request_interval_ms: int = Field(0, ge=0, le=3_600_000)
+    slave_id: int | None = None
+    channel_id: int | None = None
+    category: str = ""
+    item: str = ""
+    point_types: list[int] = Field(default_factory=list)
+    dlt645_prefix: int | None = Field(None, ge=0, le=4)
+    dlt645_settlement: int | None = Field(None, ge=0, le=12)
 
 
 class DLT645CommandRequest(BaseModel):
@@ -104,6 +120,14 @@ class DeviceGroupStatusRequest(BaseModel):
 class ManualReadRequest(BaseModel):
     device_name: str
     interval: int | None = 0
+    mode: Literal["batch", "single", "dataset"] = "batch"
+    slave_id: int | None = None
+    channel_id: int | None = None
+    category: str = ""
+    item: str = ""
+    point_types: list[int] = Field(default_factory=list)
+    dlt645_prefix: int | None = Field(None, ge=0, le=4)
+    dlt645_settlement: int | None = Field(None, ge=0, le=12)
 
 
 class MessageListRequest(BaseModel):
