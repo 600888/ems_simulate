@@ -13,6 +13,7 @@ declare module 'vue' {
     AddPointDialog: typeof import('./src/components/device/AddPointDialog.vue')['default']
     AddSlaveDialog: typeof import('./src/components/device/AddSlaveDialog.vue')['default']
     AppHeader: typeof import('./src/components/header/AppHeader.vue')['default']
+    ConnectionMonitorDialog: typeof import('./src/components/device/ConnectionMonitorDialog.vue')['default']
     CopyDeviceDialog: typeof import('./src/components/device/CopyDeviceDialog.vue')['default']
     DataSetMemberHierarchy: typeof import('./src/components/modeling/DataSetMemberHierarchy.vue')['default']
     DataSetMemberSelector: typeof import('./src/components/modeling/DataSetMemberSelector.vue')['default']

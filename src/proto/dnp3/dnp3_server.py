@@ -14,7 +14,6 @@ from typing import Any
 
 from pydnp3_pure.app.constants import CommandStatus
 from pydnp3_pure.app.layer import ApplicationLayer
-from pydnp3_pure.io.tcp_server import TcpServer
 from pydnp3_pure.link.frame import LinkFrame
 from pydnp3_pure.link.layer import LinkLayer
 from pydnp3_pure.objects.types import CROB
@@ -26,6 +25,7 @@ from pydnp3_pure.transport.layer import TransportLayer
 
 from src.config.config import Config
 from src.device.core.message.message_capture import MessageCapture
+from src.proto.dnp3.tracked_tcp_server import TrackedTcpServer
 
 
 class _OutstationHandler(IOutstationHandler):
@@ -91,7 +91,7 @@ class Dnp3Server:
     def __init__(self, log=None):
         super().__init__()
         self._log = log  # 由 Handler 传入的 logger（loguru Logger 或可调用对象）
-        self._server: TcpServer | None = None
+        self._server: TrackedTcpServer | None = None
         self._session: OutstationSession | None = None
         self._db = PointDatabase()
         self._is_running = False
@@ -100,6 +100,9 @@ class Dnp3Server:
         self._on_command_callback: Callable[[int, Any, int], None] | None = None
         self._address = 1
         self._master_address = 0
+        self._on_connection_opened = None
+        self._on_connection_activity = None
+        self._on_connection_closed = None
 
     def _log_info(self, msg: str) -> None:
         if self._log is None:
@@ -123,6 +126,11 @@ class Dnp3Server:
         """设置本端（Outstation）地址与对端（Master）地址"""
         self._address = int(local_addr)
         self._master_address = int(master_addr)
+
+    def set_connection_callbacks(self, *, on_connect=None, on_activity=None, on_disconnect=None) -> None:
+        self._on_connection_opened = on_connect
+        self._on_connection_activity = on_activity
+        self._on_connection_closed = on_disconnect
 
     def set_server_port(self, port: int) -> None:
         """设置 TCP 监听端口（默认 20000）"""
@@ -275,7 +283,13 @@ class Dnp3Server:
                 select_timeout_seconds=float(runtime.get("select_timeout_s", 10.0)),
             )
 
-            self._server = TcpServer(host=ip, port=port)
+            self._server = TrackedTcpServer(
+                host=ip,
+                port=port,
+                on_connect=self._on_connection_opened,
+                on_activity=self._on_connection_activity,
+                on_disconnect=self._on_connection_closed,
+            )
             handler = _OutstationHandler(self, self._db)
             self._session = OutstationSession(
                 config=outstation_config,

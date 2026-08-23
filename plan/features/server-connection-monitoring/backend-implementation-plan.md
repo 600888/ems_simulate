@@ -310,15 +310,13 @@ end_time_accuracy, created_at
 
 ### 9.2 DL/T 645 TCP
 
-当前 `dlt645[async]` 的 TCP 服务内部能获取 `peername` 并在 `finally` 关闭连接，但没有稳定的生命周期钩子。
-
-首选方案：在依赖项目中增加向后兼容的可选 `on_connect`、`on_activity`、`on_disconnect` 回调，发布/固定新版本后接入。备用方案是在本仓库实现受控的 tracked transport adapter，复用其协议解析器。禁止直接修改 `.venv` 中的包文件。
+已固定 `dlt645[async]==3.2.0`，通过其向后兼容的 `on_connect`、`on_activity`、`on_disconnect` 回调接入。TCP 模式记录生命周期与流量，串口模式明确返回不支持；不修改 `.venv` 中的包文件。
 
 ### 9.3 DNP3 TCP Server
 
 当前 `pydnp3-pure` TCP Server 为单活动连接，新连接可能替换旧连接。
 
-- 在固定的 fork 中增加连接生命周期回调与本地/远端端点读取。
+- 在本仓库增加 `TrackedTcpServer` 适配器，复用原协议实现并暴露生命周期与本地/远端端点。
 - 新连接替换旧连接时，旧会话使用 `connection_replaced` 结束。
 - `finally` 路径保证异常和正常断开都会进入统一关闭流程。
 
@@ -329,12 +327,11 @@ end_time_accuracy, created_at
 - 原生连接对象只用于回调期间提取信息，不能跨线程保存在 API DTO 或数据库。
 - 回调中的 connected/disconnected 状态映射到统一会话。
 - 若库只返回 IP、不返回端口，端口保持 `null`，不猜测客户端源端口。
+- 当前 SWIG 包装不接受普通 Python callable 时，通过受控的 `ctypes` C ABI 适配器注册同一个原生回调。
 
 ### 9.5 IEC 60870-5-104
 
-这是本功能最大技术风险。当前 c104 绑定可获得 `on_connect` 和连接计数，但没有满足精确历史记录要求的逐连接断开回调。
-
-推荐先扩展项目固定的 c104 fork：
+已固定个人 fork `600888/iec104-python@c7ea3988`，该版本提供精确的逐连接状态回调和历史元数据：
 
 - 暴露稳定的单连接 ID、远端/本地端点。
 - 暴露连接状态变化/断开回调和底层错误原因。
@@ -464,14 +461,16 @@ end_time_accuracy, created_at
 
 ## 15. 推荐开发任务拆分
 
-- [ ] 定义 DTO、状态、断开原因与前端字段映射。
-- [ ] 完成各协议生命周期能力探针，形成验证记录。
-- [ ] 实现 `ConnectionSessionRegistry` 及并发单测。
-- [ ] 新增 ORM 模型、持久化队列、恢复和最近 100 条策略。
-- [ ] 扩展 `ServerHandler` 与设备查询服务。
-- [ ] 实现 summary/current/history/detail API。
-- [ ] 按 Modbus → DL/T 645/DNP3 → MMS → IEC104 顺序接入。
+- [x] 定义 DTO、状态、断开原因与前端字段映射。
+- [x] 完成各协议生命周期能力探针，形成验证记录。
+- [x] 实现 `ConnectionSessionRegistry` 及并发单测。
+- [x] 新增 ORM 模型、持久化队列、恢复和最近 100 条策略。
+- [x] 扩展 `ServerHandler` 与设备查询服务。
+- [x] 实现 summary/current/history/detail API。
+- [x] 按 Modbus → DL/T 645/DNP3 → MMS → IEC104 顺序接入。
 - [ ] 完成数据库、协议集成、压力与前端联调测试。
 - [ ] 补充配置、日志指标、使用文档和发布说明。
 
 第一批开发建议完成 Phase 0～2：先交付可复用的公共核心和 Modbus 端到端闭环，同时把 IEC104 的依赖风险提前验证清楚，再并行推进其余协议。
+
+> 2026-08-23 实施记录：公共核心、SQLite 持久化、四个查询 API 及五类网络服务端协议已接入；全量自动化测试为 776 通过、25 跳过。MySQL、千次连接压力、前端联调和发布文档仍按 Phase 6 推进。

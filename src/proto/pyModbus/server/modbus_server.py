@@ -49,6 +49,9 @@ class CaptureRequestHandler(ServerRequestHandler):
         idle_timeout: float = 0,
         max_connections: int = 0,
         logger=None,
+        on_connection_opened=None,
+        on_connection_activity=None,
+        on_connection_closed=None,
     ):
         super().__init__(owner, trace_packet, trace_pdu, trace_connect)
         self.idle_timeout = idle_timeout
@@ -56,6 +59,11 @@ class CaptureRequestHandler(ServerRequestHandler):
         self._activity_logger = logger
         self._last_activity = 0.0
         self._idle_watchdog_task = None
+        self._connection_key = str(id(self))
+        self._close_reason = None
+        self._on_connection_opened = on_connection_opened
+        self._on_connection_activity = on_connection_activity
+        self._on_connection_closed = on_connection_closed
 
     def callback_connected(self) -> None:
         super().callback_connected()
@@ -69,6 +77,20 @@ class CaptureRequestHandler(ServerRequestHandler):
             if self.transport:
                 self.transport.close()
             return
+        if self._on_connection_opened and self.transport:
+            ssl_object = self.transport.get_extra_info("ssl_object")
+            security = {"tls": bool(ssl_object)}
+            if ssl_object:
+                security["version"] = ssl_object.version()
+                cipher = ssl_object.cipher()
+                if cipher:
+                    security["cipher"] = cipher[0]
+            self._on_connection_opened(
+                self._connection_key,
+                self.transport.get_extra_info("peername"),
+                self.transport.get_extra_info("sockname"),
+                security,
+            )
         if self.idle_timeout > 0:
             self._last_activity = self.loop.time()
             self._idle_watchdog_task = self.loop.create_task(self._disconnect_when_idle())
@@ -76,6 +98,8 @@ class CaptureRequestHandler(ServerRequestHandler):
     def callback_data(self, data: bytes, addr: tuple | None = None) -> int:
         if self.idle_timeout > 0:
             self._last_activity = self.loop.time()
+        if self._on_connection_activity:
+            self._on_connection_activity(self._connection_key, len(data))
         return super().callback_data(data, addr)
 
     def callback_disconnected(self, exc: Exception | None) -> None:
@@ -83,6 +107,9 @@ class CaptureRequestHandler(ServerRequestHandler):
         if task and task is not asyncio.current_task() and not task.done():
             task.cancel()
         self._idle_watchdog_task = None
+        if self._on_connection_closed:
+            reason = self._close_reason or ("network_reset" if exc else "remote_closed")
+            self._on_connection_closed(self._connection_key, reason, str(exc) if exc else None)
         super().callback_disconnected(exc)
 
     async def _disconnect_when_idle(self) -> None:
@@ -93,6 +120,7 @@ class CaptureRequestHandler(ServerRequestHandler):
                     peername = self.transport.get_extra_info("peername")
                     if self._activity_logger:
                         self._activity_logger.info(f"Modbus 客户端空闲超时，主动断开: {peername}")
+                    self._close_reason = "idle_timeout"
                     self.transport.close()
                     return
                 await asyncio.sleep(remaining)
@@ -155,6 +183,9 @@ class ModbusServer:
         ca_certificate_path: str | None = None,
         client_idle_timeout: float = 0,
         max_connections: int = 0,
+        on_connection_opened=None,
+        on_connection_activity=None,
+        on_connection_closed=None,
     ):
         self._logger = logger
         self.server = None
@@ -173,6 +204,9 @@ class ModbusServer:
         self.ca_certificate_path = ca_certificate_path
         self.client_idle_timeout = client_idle_timeout
         self.max_connections = max_connections
+        self.on_connection_opened = on_connection_opened
+        self.on_connection_activity = on_connection_activity
+        self.on_connection_closed = on_connection_closed
         self.task = None
         self.loop = None
         self.is_running = False
@@ -227,7 +261,14 @@ class ModbusServer:
 
     def setUpServer(self, description=None, context=None, cmdline=None):
         """Run server setup."""
-        args = helper.get_commandline(server=True, description=description, cmdline=cmdline)
+        # This server is embedded in the application, so it must not parse the
+        # host process arguments (for example uvicorn or pytest options).
+        effective_cmdline = [] if cmdline is None else cmdline
+        args = helper.get_commandline(
+            server=True,
+            description=description,
+            cmdline=effective_cmdline,
+        )
         if context:
             args.context = context
         if not args.context:
@@ -394,6 +435,9 @@ class ModbusServer:
                 idle_timeout=self.client_idle_timeout,
                 max_connections=self.max_connections,
                 logger=self._logger,
+                on_connection_opened=self.on_connection_opened,
+                on_connection_activity=self.on_connection_activity,
+                on_connection_closed=self.on_connection_closed,
             )
 
         server.callback_new_connection = patched_callback_new_connection

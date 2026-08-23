@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.config.config import Config
+from src.device.core.connection import DisconnectInitiator, DisconnectReason
 from src.device.core.message.message_capture import MessageCapture
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.enums.points.base_point import BasePoint
@@ -83,6 +84,7 @@ class DNP3ServerHandler(ServerHandler):
         from src.proto.dnp3.dnp3_server import Dnp3Server
 
         self._config = config
+        self._configure_connection_monitoring(config, supported=True)
         ip = (config.get("ip") or "").strip() or Config.DEFAULT_IP
         port = config.get("port", Config.DNP3_DEFAULT_PORT)
         runtime = config.get("runtime", {})
@@ -97,6 +99,34 @@ class DNP3ServerHandler(ServerHandler):
         self._server.set_server_port(port)
         self._server.set_parameters(**runtime)
         self._server.set_message_capture(self._new_capture())
+        self._server.set_connection_callbacks(
+            on_connect=self._on_connection_opened,
+            on_activity=self._on_connection_activity,
+            on_disconnect=self._on_connection_closed,
+        )
+
+    def _on_connection_opened(self, key, remote_endpoint, local_endpoint) -> None:
+        self._open_connection(key, remote_endpoint=remote_endpoint, local_endpoint=local_endpoint)
+
+    def _on_connection_activity(self, key, direction: str, size: int) -> None:
+        if direction == "rx":
+            self._record_connection_activity(key, rx_bytes=size, rx_messages=1)
+        else:
+            self._record_connection_activity(key, tx_bytes=size, tx_messages=1)
+
+    def _on_connection_closed(self, key, reason_name: str, detail: str | None) -> None:
+        reason_map = {
+            "remote_closed": (DisconnectReason.REMOTE_CLOSED, DisconnectInitiator.REMOTE),
+            "network_reset": (DisconnectReason.NETWORK_RESET, DisconnectInitiator.NETWORK),
+            "server_stopped": (DisconnectReason.SERVER_STOPPED, DisconnectInitiator.SERVER),
+            "connection_replaced": (DisconnectReason.CONNECTION_REPLACED, DisconnectInitiator.SERVER),
+            "protocol_error": (DisconnectReason.PROTOCOL_ERROR, DisconnectInitiator.REMOTE),
+        }
+        reason, initiator = reason_map.get(
+            reason_name,
+            (DisconnectReason.UNKNOWN, DisconnectInitiator.UNKNOWN),
+        )
+        self._close_connection(key, reason=reason, initiator=initiator, detail=detail)
 
     def _new_capture(self) -> MessageCapture:
         return MessageCapture()
@@ -124,6 +154,7 @@ class DNP3ServerHandler(ServerHandler):
 
     async def stop(self) -> bool:
         if self._server:
+            self._close_all_connections()
             ok = await self._server.stop()
             self._is_running = False
             return ok

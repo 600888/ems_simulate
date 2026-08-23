@@ -9,6 +9,7 @@ import os
 import time
 from typing import Any
 
+from src.device.core.connection import DisconnectInitiator, DisconnectReason
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.enums.point_data import Yc, Yk, Yt, Yx
 from src.enums.points.base_point import BasePoint
@@ -52,6 +53,7 @@ class IEC61850ServerHandler(ServerHandler):
         from src.proto.iec61850.iec61850_server import IEC61850Server
 
         self._config = config
+        self._configure_connection_monitoring(config, supported=True)
         ip = config.get("ip", "0.0.0.0")
         port = config.get("port", 102)
         model_name = config.get("model_name")
@@ -81,6 +83,9 @@ class IEC61850ServerHandler(ServerHandler):
             file_service_directory=runtime.get("file_service_directory") or None,
             tls_configuration=self._tls_configuration,
         )
+        set_connection_callback = getattr(self._server, "set_connection_callback", None)
+        if callable(set_connection_callback):
+            set_connection_callback(self._on_connection_state_change)
         from src.device.core.message.mms_capture import MmsMessageCapture
 
         if runtime.get("mms_capture_enabled", False):
@@ -173,6 +178,7 @@ class IEC61850ServerHandler(ServerHandler):
         """停止 IEC 61850 服务器"""
         try:
             if self._server:
+                self._close_all_connections()
                 await asyncio.to_thread(self._server.stop)
                 if self._mms_capture:
                     self._mms_capture.stop()
@@ -183,6 +189,22 @@ class IEC61850ServerHandler(ServerHandler):
             if self._log:
                 self._log.error(f"停止 IEC 61850 服务器失败: {e}")
             return False
+
+    def _on_connection_state_change(self, key: str, connected: bool, peer, local) -> None:
+        if connected:
+            security = {"tls": self._tls_configuration is not None}
+            self._open_connection(
+                key,
+                remote_endpoint=peer,
+                local_endpoint=local,
+                security=security,
+            )
+        else:
+            self._close_connection(
+                key,
+                reason=DisconnectReason.REMOTE_CLOSED,
+                initiator=DisconnectInitiator.REMOTE,
+            )
 
     def read_value(self, point: BasePoint) -> Any:
         """读取测点值"""

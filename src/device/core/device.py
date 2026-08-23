@@ -182,6 +182,7 @@ class Device:
     def _build_protocol_config(self) -> dict:
         """构建协议配置字典"""
         return {
+            "channel_id": self.device_id,
             "ip": self.ip,
             "port": self.port,
             "serial_port": self.serial_port,

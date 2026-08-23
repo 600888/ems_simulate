@@ -4,6 +4,7 @@
 from src.data.model.base import Base
 from src.data.model.channel import Channel, ChannelDict
 from src.data.model.channel_configuration import ChannelProtocolParams, ChannelSecurityConfig
+from src.data.model.connection_session import ConnectionSession
 from src.data.model.device import Device, DeviceDict
 from src.data.model.device_group import DeviceGroup, DeviceGroupDict
 from src.data.model.goose_publisher import GooseEntry, GooseEntryDict, GoosePublisher, GoosePublisherDict
@@ -26,6 +27,7 @@ __all__ = [
     "ChannelDict",
     "ChannelProtocolParams",
     "ChannelSecurityConfig",
+    "ConnectionSession",
     "Slave",
     "SlaveDict",
     "PointYc",

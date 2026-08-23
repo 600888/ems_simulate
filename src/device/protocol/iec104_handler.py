@@ -4,6 +4,8 @@ IEC104 协议处理器
 支持多 Station（多从站/多公共地址）
 """
 
+from __future__ import annotations
+
 import asyncio
 import time
 from typing import Any
@@ -11,6 +13,7 @@ from typing import Any
 import c104
 
 from src.config.config import Config
+from src.device.core.connection import ConnectionState, DisconnectInitiator, DisconnectReason
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.enums.modbus_register import Decode
 from src.enums.point_data import Yc, Yk, Yt, Yx
@@ -80,6 +83,7 @@ class IEC104ServerHandler(ServerHandler):
         from src.proto.iec104.iec104server import IEC104Server
 
         self._config = config
+        self._configure_connection_monitoring(config, supported=True)
         ip = config.get("ip", Config.DEFAULT_IP)
         port = config.get("port", Config.IEC104_DEFAULT_PORT)
         runtime = config.get("runtime", {})
@@ -99,7 +103,9 @@ class IEC104ServerHandler(ServerHandler):
             max_connections=runtime.get("max_connections", 0),
             transport_security=build_transport_security(security),
             one_way_tls_config=load_one_way_tls_config(security, client=False),
+            connection_history_size=100,
         )
+        self._server.set_connection_state_callback(self._on_connection_state_change)
 
         # 预创建所有从站对应的 Station（common_address = slave_id）
         slave_id_list = config.get("slave_id_list", [])
@@ -123,6 +129,7 @@ class IEC104ServerHandler(ServerHandler):
         """停止 IEC104 服务器"""
         try:
             if self._server and hasattr(self._server, "stop"):
+                self._close_all_connections()
                 self._server.stop()
                 self._is_running = False
                 return True
@@ -131,6 +138,70 @@ class IEC104ServerHandler(ServerHandler):
             if self._log:
                 self._log.error(f"停止 IEC104 服务器失败: {e}")
             return False
+
+    def _on_connection_state_change(
+        self,
+        server: c104.Server,
+        connection: c104.ServerConnection,
+        state: c104.ServerConnectionState,
+    ) -> None:
+        """Translate the fork's exact per-connection lifecycle into the shared registry."""
+        key = f"iec104:{connection.id}"
+        if state == c104.ServerConnectionState.ESTABLISHED:
+            security = {
+                "tls": bool(connection.is_secure),
+                "version": connection.tls_version,
+                "cipher": connection.cipher_suite,
+                "client_certificate_sha256": connection.client_certificate_sha256,
+                "observed_remote_ip": connection.observed_remote_ip,
+                "observed_remote_port": connection.observed_remote_port,
+                "correlation_id": connection.correlation_id,
+            }
+            self._open_connection(
+                key,
+                remote_endpoint=(connection.remote_ip, connection.remote_port),
+                local_endpoint=(connection.local_ip, connection.local_port),
+                security={name: value for name, value in security.items() if value not in (None, "")},
+                connected_at=connection.connected_at,
+            )
+            return
+        if state == c104.ServerConnectionState.ACTIVE:
+            self._update_connection(key, state=ConnectionState.ACTIVE)
+            return
+        if state == c104.ServerConnectionState.INACTIVE:
+            self._update_connection(key, state=ConnectionState.IDLE)
+            return
+        if state not in (c104.ServerConnectionState.CLOSED, c104.ServerConnectionState.FAILED):
+            return
+
+        reason_map = {
+            "REMOTE_OR_IO_ERROR": (DisconnectReason.REMOTE_CLOSED, DisconnectInitiator.REMOTE),
+            "LOCAL_REQUEST": (DisconnectReason.SERVER_STOPPED, DisconnectInitiator.SERVER),
+            "SERVER_STOPPED": (DisconnectReason.SERVER_STOPPED, DisconnectInitiator.SERVER),
+            "PROTOCOL_ERROR": (DisconnectReason.PROTOCOL_ERROR, DisconnectInitiator.REMOTE),
+            "T1_TIMEOUT": (DisconnectReason.IDLE_TIMEOUT, DisconnectInitiator.SERVER),
+            "T3_TIMEOUT": (DisconnectReason.IDLE_TIMEOUT, DisconnectInitiator.SERVER),
+            "SECURITY_ERROR": (DisconnectReason.AUTHENTICATION_FAILED, DisconnectInitiator.SERVER),
+            "TLS_HANDSHAKE_FAILED": (DisconnectReason.TLS_HANDSHAKE_FAILED, DisconnectInitiator.SERVER),
+        }
+        reason, initiator = reason_map.get(
+            connection.close_reason.name,
+            (DisconnectReason.UNKNOWN, DisconnectInitiator.UNKNOWN),
+        )
+        self._close_connection(
+            key,
+            reason=reason,
+            initiator=initiator,
+            detail=connection.error_message,
+            disconnected_at=connection.disconnected_at,
+            final_stats={
+                "rx_bytes": connection.bytes_received,
+                "tx_bytes": connection.bytes_sent,
+                "rx_messages": connection.frames_received,
+                "tx_messages": connection.frames_sent,
+                "error_count": int(connection.error_code != 0),
+            },
+        )
 
     def read_value(self, point: BasePoint) -> Any:
         """读取测点值"""

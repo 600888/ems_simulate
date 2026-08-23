@@ -9,6 +9,7 @@ import ssl
 import tempfile
 import threading
 from typing import Any
+from uuid import uuid4
 
 import c104
 
@@ -310,12 +311,14 @@ class TlsServerBridge(_TlsBridge):
         listen_port: int,
         backend_port: int,
         context: ssl.SSLContext,
+        on_session_origin=None,
     ) -> None:
         super().__init__()
         self.listen_host = listen_host
         self.listen_port = listen_port
         self.backend_port = backend_port
         self.context = context
+        self.on_session_origin = on_session_origin
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -346,8 +349,15 @@ class TlsServerBridge(_TlsBridge):
     def _connect_backend(self, remote_socket: socket.socket) -> None:
         backend_socket = None
         try:
+            remote_endpoint = remote_socket.getpeername()
             tls_socket = self.context.wrap_socket(remote_socket, server_side=True)
             backend_socket = socket.create_connection(("127.0.0.1", self.backend_port), timeout=5)
+            if self.on_session_origin:
+                self.on_session_origin(
+                    backend_socket.getsockname(),
+                    remote_endpoint,
+                    uuid4().hex,
+                )
             self._untrack(remote_socket)
             self.last_error = None
         except (OSError, ssl.SSLError) as exc:

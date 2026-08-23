@@ -75,6 +75,8 @@ class IEC61850Server:
         self._last_import_result = None
         self._loaded_ied_ld_insts: set[str] = set()
         self._password_authenticator = None
+        self._connection_callback = None
+        self._native_connection_handler = None
 
         if self.authentication_enabled:
             from .server_auth import Iec61850ServerPasswordAuthenticator
@@ -198,9 +200,47 @@ class IEC61850Server:
                 )
             if getattr(self, "_files", None) is not None:
                 self._configure_file_service_server(server)
+            self._install_connection_handler(server)
             return server
         finally:
             iec61850.IedServerConfig_destroy(server_config)
+
+    def set_connection_callback(self, callback) -> None:
+        """Register callback(connection_key, connected, peer, local)."""
+        self._connection_callback = callback
+
+    def _install_connection_handler(self, server) -> None:
+        """Install the binding callback, falling back to the native C ABI."""
+        setter = getattr(iec61850, "IedServer_setConnectionIndicationHandler", None)
+        if setter is None:
+            return
+        self._native_connection_handler = self._handle_connection_indication
+        try:
+            setter(server, self._native_connection_handler, None)
+            return
+        except TypeError:
+            from .server_connection import Iec61850ServerConnectionMonitor
+
+            self._native_connection_handler = Iec61850ServerConnectionMonitor(self._emit_connection_indication)
+            self._native_connection_handler.install(server)
+
+    @staticmethod
+    def _connection_key(connection) -> str:
+        native = getattr(connection, "this", connection)
+        try:
+            return f"mms:{int(native)}"
+        except (TypeError, ValueError):
+            return f"mms:{native!s}"
+
+    def _handle_connection_indication(self, server, connection, connected, parameter) -> None:
+        del server, parameter
+        peer = iec61850.ClientConnection_getPeerAddress(connection)
+        local = iec61850.ClientConnection_getLocalAddress(connection)
+        self._emit_connection_indication(self._connection_key(connection), bool(connected), peer, local)
+
+    def _emit_connection_indication(self, key: str, connected: bool, peer, local) -> None:
+        if self._connection_callback:
+            self._connection_callback(key, connected, peer, local)
 
     def _configure_file_service_config(self, server_config) -> None:
         """Enable MMS file services in bindings that expose config-level APIs."""

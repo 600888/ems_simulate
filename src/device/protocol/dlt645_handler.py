@@ -5,11 +5,12 @@ DLT645 协议处理器
 
 from collections import OrderedDict
 import contextlib
-from datetime import datetime
+from datetime import UTC, datetime
 import threading
 from typing import Any
 
 from src.config.config import Config
+from src.device.core.connection import DisconnectInitiator, DisconnectReason
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.device.protocol.dlt645_compat import (
     AsyncMeterClientService,
@@ -217,6 +218,7 @@ class DLT645ServerHandler(ServerHandler):
 
         # 判断使用 TCP 还是 RTU 模式
         serial_port = config.get("serial_port")
+        self._configure_connection_monitoring(config, supported=not bool(serial_port))
 
         if serial_port:
             # RTU（串口）模式
@@ -240,7 +242,14 @@ class DLT645ServerHandler(ServerHandler):
             ip = config.get("ip", "0.0.0.0")
             port = config.get("port", 8899)
 
-            self._server = AsyncMeterServerService.new_tcp_server(ip=ip, port=port, timeout=timeout)
+            self._server = AsyncMeterServerService.new_tcp_server(
+                ip=ip,
+                port=port,
+                timeout=timeout,
+                on_connect=self._on_connection_opened,
+                on_activity=self._on_connection_activity,
+                on_disconnect=self._on_connection_closed,
+            )
 
         # 确保地址是12位BCD码字符串
         addr_str = str(self._meter_address).zfill(12)
@@ -268,6 +277,7 @@ class DLT645ServerHandler(ServerHandler):
         """停止 DLT645 服务器"""
         try:
             if self._server:
+                self._close_all_connections()
                 await self._server.stop()
                 self._is_running = False
                 return True
@@ -276,6 +286,59 @@ class DLT645ServerHandler(ServerHandler):
             if self._log:
                 self._log.error(f"停止 DLT645 服务器失败: {e}")
             return False
+
+    def _on_connection_opened(self, connection) -> None:
+        self._open_connection(
+            connection.connection_id,
+            remote_endpoint=connection.peername,
+            local_endpoint=connection.sockname,
+            connected_at=datetime.fromtimestamp(connection.connected_at, UTC),
+        )
+
+    def _on_connection_activity(self, connection, activity) -> None:
+        if activity.direction == "RX":
+            self._record_connection_activity(
+                connection.connection_id,
+                rx_bytes=len(activity.data),
+                rx_messages=1,
+            )
+        else:
+            self._record_connection_activity(
+                connection.connection_id,
+                tx_bytes=len(activity.data),
+                tx_messages=1,
+            )
+
+    def _on_connection_closed(self, connection) -> None:
+        reason_name = getattr(connection.disconnect_reason, "value", str(connection.disconnect_reason))
+        reason_map = {
+            "client_eof": (DisconnectReason.REMOTE_CLOSED, DisconnectInitiator.REMOTE),
+            "server_stopped": (DisconnectReason.SERVER_STOPPED, DisconnectInitiator.SERVER),
+            "connection_error": (DisconnectReason.NETWORK_RESET, DisconnectInitiator.NETWORK),
+            "handler_error": (DisconnectReason.PROTOCOL_ERROR, DisconnectInitiator.SERVER),
+            "cancelled": (DisconnectReason.SERVER_STOPPED, DisconnectInitiator.SERVER),
+        }
+        reason, initiator = reason_map.get(
+            reason_name,
+            (DisconnectReason.UNKNOWN, DisconnectInitiator.UNKNOWN),
+        )
+        disconnected_at = (
+            datetime.fromtimestamp(connection.disconnected_at, UTC) if connection.disconnected_at else None
+        )
+        self._close_connection(
+            connection.connection_id,
+            reason=reason,
+            initiator=initiator,
+            detail=str(connection.disconnect_error) if connection.disconnect_error else None,
+            disconnected_at=disconnected_at,
+            final_stats={
+                "rx_bytes": connection.bytes_received,
+                "tx_bytes": connection.bytes_sent,
+                "rx_messages": connection.messages_received,
+                "tx_messages": connection.messages_sent,
+                "error_count": int(connection.disconnect_error is not None),
+            },
+        )
 
     def read_value(self, point: BasePoint) -> Any:
         """读取测点值"""

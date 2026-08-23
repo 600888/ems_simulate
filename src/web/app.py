@@ -252,6 +252,10 @@ async def _background_init(application: FastAPI):
     log.info("开始后台初始化...")
 
     try:
+        from src.device.core.connection.persistence import connection_persistence
+
+        await asyncio.to_thread(connection_persistence.start)
+
         # 1. 初始化设备控制器
         device_controller = await _init_device_controller()
         application.state.device_controller = device_controller
@@ -307,6 +311,13 @@ async def _shutdown_application(application: FastAPI) -> None:
         await shutdown_device_controller()
     except Exception as exc:
         log.exception(f"关闭设备控制器失败: {exc}")
+
+    try:
+        from src.device.core.connection.persistence import connection_persistence
+
+        await asyncio.to_thread(connection_persistence.stop)
+    except Exception as exc:
+        log.exception(f"关闭连接历史持久化器失败: {exc}")
 
     try:
         from src.data.controller.db import db_controller

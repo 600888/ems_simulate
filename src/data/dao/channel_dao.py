@@ -189,6 +189,7 @@ class ChannelDao:
     def delete_channel(cls, channel_id: int) -> bool:
         """删除通道及关联测点（硬删除）"""
         from src.data.model.channel_configuration import ChannelProtocolParams, ChannelSecurityConfig
+        from src.data.model.connection_session import ConnectionSession
         from src.data.model.device import Device
         from src.data.model.goose_publisher import GooseEntry, GoosePublisher
         from src.data.model.goose_receiver import GooseReceiverConfig, GooseSubscriptionConfig
@@ -218,6 +219,7 @@ class ChannelDao:
                 # 显式清理所有不带数据库级联的通道配置，兼容旧版 SQLite 数据库。
                 session.query(ChannelProtocolParams).where(ChannelProtocolParams.channel_id == channel_id).delete()
                 session.query(ChannelSecurityConfig).where(ChannelSecurityConfig.channel_id == channel_id).delete()
+                session.query(ConnectionSession).where(ConnectionSession.channel_id == channel_id).delete()
 
                 publisher_ids = session.query(GoosePublisher.id).where(GoosePublisher.channel_id == channel_id)
                 session.query(GooseEntry).where(GooseEntry.publisher_id.in_(publisher_ids)).delete(

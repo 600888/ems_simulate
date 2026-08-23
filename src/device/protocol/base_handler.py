@@ -4,8 +4,17 @@
 """
 
 from abc import ABC, abstractmethod
+from datetime import UTC, datetime
+import threading
 from typing import Any
+from uuid import uuid4
 
+from src.device.core.connection import (
+    ConnectionState,
+    DisconnectInitiator,
+    DisconnectReason,
+    connection_registry,
+)
 from src.enums.points.base_point import BasePoint
 
 
@@ -158,6 +167,113 @@ class ProtocolHandler(ABC):
 
 class ServerHandler(ProtocolHandler):
     """服务端协议处理器基类"""
+
+    def __init__(self):
+        super().__init__()
+        self._connection_monitoring_supported = False
+        self._connection_channel_id = 0
+        self._connection_protocol_type = "unknown"
+        self._connection_server_instance_id = str(uuid4())
+        self._connection_sessions: dict[str, str] = {}
+        self._connection_sessions_lock = threading.RLock()
+
+    def _configure_connection_monitoring(self, config: dict[str, Any], *, supported: bool) -> None:
+        self._connection_monitoring_supported = bool(supported)
+        self._connection_channel_id = int(config.get("channel_id") or 0)
+        protocol_type = config.get("protocol_type", "unknown")
+        self._connection_protocol_type = str(getattr(protocol_type, "value", protocol_type))
+        self._connection_server_instance_id = str(uuid4())
+        with self._connection_sessions_lock:
+            self._connection_sessions.clear()
+
+    def supports_connection_monitoring(self) -> bool:
+        return self._connection_monitoring_supported
+
+    def _open_connection(
+        self,
+        connection_key: Any,
+        *,
+        remote_endpoint: Any = None,
+        local_endpoint: Any = None,
+        client_identity: dict[str, Any] | None = None,
+        security: dict[str, Any] | None = None,
+        state: ConnectionState = ConnectionState.ESTABLISHED,
+        connected_at=None,
+    ) -> str | None:
+        if not self._connection_monitoring_supported:
+            return None
+        key = str(connection_key)
+        session_id = connection_registry.open_session(
+            channel_id=self._connection_channel_id,
+            protocol_type=self._connection_protocol_type,
+            server_instance_id=self._connection_server_instance_id,
+            connection_key=key,
+            remote_endpoint=remote_endpoint,
+            local_endpoint=local_endpoint,
+            client_identity=client_identity,
+            security=security,
+            state=state,
+            connected_at=connected_at,
+        )
+        with self._connection_sessions_lock:
+            self._connection_sessions[key] = session_id
+        return session_id
+
+    def _update_connection(self, connection_key: Any, **kwargs: Any) -> bool:
+        with self._connection_sessions_lock:
+            session_id = self._connection_sessions.get(str(connection_key))
+        return bool(session_id and connection_registry.update_session(session_id, **kwargs))
+
+    def _record_connection_activity(self, connection_key: Any, **kwargs: int) -> bool:
+        with self._connection_sessions_lock:
+            session_id = self._connection_sessions.get(str(connection_key))
+        return bool(session_id and connection_registry.record_activity(session_id, **kwargs))
+
+    def _close_connection(
+        self,
+        connection_key: Any,
+        *,
+        reason: DisconnectReason = DisconnectReason.UNKNOWN,
+        initiator: DisconnectInitiator = DisconnectInitiator.UNKNOWN,
+        detail: str | None = None,
+        final_stats: dict[str, int] | None = None,
+        disconnected_at=None,
+    ) -> bool:
+        with self._connection_sessions_lock:
+            session_id = self._connection_sessions.pop(str(connection_key), None)
+        return bool(
+            session_id
+            and connection_registry.close_session(
+                session_id,
+                reason=reason,
+                initiator=initiator,
+                detail=detail,
+                final_stats=final_stats,
+                disconnected_at=disconnected_at,
+            )
+        )
+
+    def _close_all_connections(self) -> int:
+        with self._connection_sessions_lock:
+            self._connection_sessions.clear()
+        return connection_registry.close_server_sessions(
+            self._connection_channel_id,
+            self._connection_server_instance_id,
+        )
+
+    def get_current_connections(self) -> list[dict[str, Any]]:
+        if not self._connection_monitoring_supported:
+            return []
+        return [item.to_dict() for item in connection_registry.current(self._connection_channel_id)]
+
+    def get_connection_summary(self) -> dict[str, Any]:
+        summary = connection_registry.summary(self._connection_channel_id)
+        return {
+            "supported": self._connection_monitoring_supported,
+            "server_running": self.is_running,
+            "updated_at": datetime.now(UTC).isoformat(),
+            **summary,
+        }
 
     @abstractmethod
     def get_value_by_address(self, func_code: int, slave_id: int, address: int) -> Any:

@@ -46,6 +46,10 @@ export const CHANNEL_API = {
 export const DEVICE_API = {
   LIST: "/api/devices/list",
   INFO: "/api/devices/info",
+  CONNECTION_SUMMARY: "/api/devices/connection-summary",
+  CURRENT_CONNECTIONS: "/api/devices/current-connections",
+  CONNECTION_HISTORY: "/api/devices/connection-history",
+  CONNECTION_DETAIL: "/api/devices/connection-detail",
   START_SIMULATION: "/api/devices/start-simulation",
   STOP_SIMULATION: "/api/devices/stop-simulation",
   SIMULATION_CONFIG: "/api/devices/simulation-config",

@@ -5,6 +5,7 @@ IEC104 服务端实现
 每个从站（slave_id）映射为一个独立的 common_address 的 c104.Station。
 """
 
+import threading
 from typing import Any
 
 import c104
@@ -29,6 +30,7 @@ class IEC104Server:
         max_connections: int = 0,
         transport_security: c104.TransportSecurity | None = None,
         one_way_tls_config: IEC104OneWayTlsConfig | None = None,
+        connection_history_size: int = 100,
     ):
         """
         初始化IEC 104服务器
@@ -41,6 +43,9 @@ class IEC104Server:
         backend_ip = ip
         backend_port = port
         self._tls_bridge = None
+        self._connection_state_callback = None
+        self._pending_bridge_origins: dict[tuple[str, int], tuple[tuple[str, int], str]] = {}
+        self._bridge_origin_lock = threading.Lock()
         if one_way_tls_config:
             backend_ip = "127.0.0.1"
             backend_port = allocate_loopback_port()
@@ -49,11 +54,13 @@ class IEC104Server:
                 listen_port=port,
                 backend_port=backend_port,
                 context=one_way_tls_config.create_server_context(),
+                on_session_origin=self._on_bridge_session_origin,
             )
         self.server = c104.Server(
             ip=backend_ip,
             port=backend_port,
             transport_security=transport_security,
+            connection_history_size=connection_history_size,
         )
         self.server.protocol_parameters.connection_timeout = connection_timeout
         self.server.protocol_parameters.message_timeout = message_timeout
@@ -62,6 +69,7 @@ class IEC104Server:
         self.server.protocol_parameters.send_window_size = send_window_size
         self.server.protocol_parameters.receive_window_size = receive_window_size
         self.server.max_connections = max_connections
+        self.server.on_connection_state_change(callable=self._on_connection_state_change)
         # 多 Station 支持：common_address -> c104.Station
         self.stations: dict[int, c104.Station] = {}
         # 存储所有监控点的列表
@@ -98,6 +106,53 @@ class IEC104Server:
             self.message_capture.add_tx(data)
         except Exception as e:
             log.error(f"记录发送报文失败: {e}")
+
+    def set_connection_state_callback(self, callback) -> None:
+        """Register the application lifecycle callback."""
+        self._connection_state_callback = callback
+
+    def _on_bridge_session_origin(
+        self,
+        observed_endpoint: tuple[str, int],
+        remote_endpoint: tuple[str, int],
+        correlation_id: str,
+    ) -> None:
+        observed = (str(observed_endpoint[0]), int(observed_endpoint[1]))
+        with self._bridge_origin_lock:
+            for connection in self.server.connections:
+                if (connection.observed_remote_ip, connection.observed_remote_port) == observed:
+                    self.server.set_connection_origin(
+                        id=connection.id,
+                        remote_ip=str(remote_endpoint[0]),
+                        remote_port=int(remote_endpoint[1]),
+                        correlation_id=correlation_id,
+                    )
+                    return
+            self._pending_bridge_origins[observed] = (
+                (str(remote_endpoint[0]), int(remote_endpoint[1])),
+                correlation_id,
+            )
+
+    def _on_connection_state_change(
+        self,
+        server: c104.Server,
+        connection: c104.ServerConnection,
+        state: c104.ServerConnectionState,
+    ) -> None:
+        if state == c104.ServerConnectionState.ESTABLISHED:
+            observed = (connection.observed_remote_ip, connection.observed_remote_port)
+            with self._bridge_origin_lock:
+                origin = self._pending_bridge_origins.pop(observed, None)
+            if origin:
+                remote_endpoint, correlation_id = origin
+                server.set_connection_origin(
+                    id=connection.id,
+                    remote_ip=remote_endpoint[0],
+                    remote_port=remote_endpoint[1],
+                    correlation_id=correlation_id,
+                )
+        if self._connection_state_callback:
+            self._connection_state_callback(server, connection, state)
 
     def get_captured_messages(self, limit: int = 100) -> list[dict[str, Any]]:
         """获取捕获的报文列表"""
