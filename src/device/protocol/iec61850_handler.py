@@ -206,6 +206,20 @@ class IEC61850ServerHandler(ServerHandler):
                 initiator=DisconnectInitiator.REMOTE,
             )
 
+    def get_connection_summary(self) -> dict[str, Any]:
+        # IEC61850 连接指示回调（ctypes）会因同进程客户端持 GIL 导致关联被拒，
+        # 无法始终用于监控；因此在 registry 未记录到会话时，改用轮询
+        # IedServer_getNumberOfOpenConnections 统计连接数兜底（只能提供连接数，
+        # 无逐条 IP/端口/时长，故 detail_monitoring_supported=False）。
+        summary = super().get_connection_summary()
+        summary["detail_monitoring_supported"] = False
+        if self._server:
+            polled = self._server.get_connection_count()
+            if summary.get("current_count", 0) == 0 and polled > 0:
+                summary["current_count"] = polled
+                summary["active_count"] = polled
+        return summary
+
     def read_value(self, point: BasePoint) -> Any:
         """读取测点值"""
         if self._server:

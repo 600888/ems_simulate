@@ -221,20 +221,34 @@
             <span class="empty-icon"
               ><el-icon><SwitchButton /></el-icon
             ></span>
-            <h3>{{ t("connectionMonitor.noCurrent") }}</h3>
-            <p>
-              {{
-                t("connectionMonitor.listeningAt", {
-                  name: serverName,
-                  endpoint: endpoint || "-",
-                })
-              }}
-            </p>
-            <small>{{ t("connectionMonitor.noCurrentHint") }}</small>
-            <el-button @click="switchTab('history')"
-              ><el-icon><Timer /></el-icon
-              >{{ t("connectionMonitor.viewHistory") }}</el-button
-            >
+            <template v-if="summary.detail_monitoring_supported === false">
+              <h3>{{ t("connectionMonitor.detailUnsupported") }}</h3>
+              <p>
+                {{
+                  t("connectionMonitor.listeningAt", {
+                    name: serverName,
+                    endpoint: endpoint || "-",
+                  })
+                }}
+              </p>
+              <small>{{ t("connectionMonitor.detailUnsupportedHint") }}</small>
+            </template>
+            <template v-else>
+              <h3>{{ t("connectionMonitor.noCurrent") }}</h3>
+              <p>
+                {{
+                  t("connectionMonitor.listeningAt", {
+                    name: serverName,
+                    endpoint: endpoint || "-",
+                  })
+                }}
+              </p>
+              <small>{{ t("connectionMonitor.noCurrentHint") }}</small>
+              <el-button @click="switchTab('history')"
+                ><el-icon><Timer /></el-icon
+                >{{ t("connectionMonitor.viewHistory") }}</el-button
+              >
+            </template>
           </div>
           <footer v-if="currentConnections.length" class="content-footer">
             <span>{{
@@ -548,6 +562,7 @@ const emptySummary = (): ConnectionSummary => ({
   idle_count: 0,
   history_count: 0,
   abnormal_disconnects_today: 0,
+  detail_monitoring_supported: true,
 });
 
 const visible = computed({

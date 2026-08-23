@@ -7,6 +7,8 @@ IEC 61850 MMS 服务端封装 (门面模式)
 
 import contextlib
 import os
+import queue
+import threading
 from typing import Any
 
 from .defs import (
@@ -77,6 +79,11 @@ class IEC61850Server:
         self._password_authenticator = None
         self._connection_callback = None
         self._native_connection_handler = None
+        # 连接指示回调只做最小记录（入队），实际的连接监控记录放到独立工作线程，
+        # 避免回调在原生 C/SWIG 线程里执行重活而阻塞关联建立（同进程客户端持 GIL 时会被拒）。
+        self._event_queue: queue.Queue = queue.Queue()
+        self._event_worker: threading.Thread | None = None
+        self._event_worker_stop = threading.Event()
 
         if self.authentication_enabled:
             from .server_auth import Iec61850ServerPasswordAuthenticator
@@ -214,15 +221,21 @@ class IEC61850Server:
         setter = getattr(iec61850, "IedServer_setConnectionIndicationHandler", None)
         if setter is None:
             return
+        # 先启动连接事件工作线程，确保回调一旦触发就能异步消费，不阻塞原生线程。
+        self._start_connection_event_worker()
         self._native_connection_handler = self._handle_connection_indication
         try:
             setter(server, self._native_connection_handler, None)
             return
         except TypeError:
-            from .server_connection import Iec61850ServerConnectionMonitor
-
-            self._native_connection_handler = Iec61850ServerConnectionMonitor(self._emit_connection_indication)
-            self._native_connection_handler.install(server)
+            # 已实测：本版 pyiec61850 的 IedServer_setConnectionIndicationHandler 不接受
+            # Python 回调（抛 TypeError），而 ctypes 兜底安装会导致 libiec61850 拒绝客户端
+            # 关联（同进程客户端持 GIL 时回调无法执行 → 关联被拒，参见 CONNECTION_REJECTED=5）。
+            # 为保证连接可用，SWIG 无法安装时不再回退到 ctypes。
+            log.warning(
+                "IEC61850 连接监控回调无法通过 SWIG 安装，跳过连接指示监控（避免 ctypes 安装导致客户端关联被拒绝）"
+            )
+            return
 
     @staticmethod
     def _connection_key(connection) -> str:
@@ -234,13 +247,82 @@ class IEC61850Server:
 
     def _handle_connection_indication(self, server, connection, connected, parameter) -> None:
         del server, parameter
-        peer = iec61850.ClientConnection_getPeerAddress(connection)
-        local = iec61850.ClientConnection_getLocalAddress(connection)
-        self._emit_connection_indication(self._connection_key(connection), bool(connected), peer, local)
+        try:
+            peer = iec61850.ClientConnection_getPeerAddress(connection)
+            local = iec61850.ClientConnection_getLocalAddress(connection)
+            self._emit_connection_indication(self._connection_key(connection), bool(connected), peer, local)
+        except Exception as exc:
+            # 连接指示回调运行在原生 C/SWIG 回调中：任何异常一旦泄漏到原生层，
+            # 都会破坏连接的建立/关闭，导致客户端被拒绝（如 IED_ERROR_CONNECTION_REJECTED）
+            # 或连接被异常断开。此处必须捕获并记录，绝不能让异常穿透原生回调。
+            log.error(f"MMS 连接指示回调处理失败: {exc}", exc_info=True)
 
     def _emit_connection_indication(self, key: str, connected: bool, peer, local) -> None:
-        if self._connection_callback:
-            self._connection_callback(key, connected, peer, local)
+        """最小化连接指示回调：仅将事件入队，真正的监控记录由工作线程完成。
+
+        回调运行在原生 C/SWIG 线程上；若在这里直接执行 connection_callback
+        （其会做 registry 写入等较重的 Python 工作），在与同进程客户端争用 GIL 时
+        会阻塞关联建立，导致客户端被拒绝。入队后立即返回，避免阻塞。
+        """
+        self._event_queue.put((key, bool(connected), peer, local))
+
+    def _start_connection_event_worker(self) -> None:
+        """启动（幂等）消费连接事件的工作线程。"""
+        if self._event_worker is not None and self._event_worker.is_alive():
+            return
+        self._event_worker_stop.clear()
+        self._event_worker = threading.Thread(
+            target=self._connection_event_worker,
+            name="iec61850-conn-monitor",
+            daemon=True,
+        )
+        self._event_worker.start()
+
+    def _stop_connection_event_worker(self) -> None:
+        """停止连接事件工作线程（发送哨兵并等待线程退出）。"""
+        if self._event_worker is None:
+            return
+        self._event_worker_stop.set()
+        self._event_queue.put(None)
+        worker = self._event_worker
+        self._event_worker = None
+        worker.join(timeout=2)
+
+    def _connection_event_worker(self) -> None:
+        """消费连接事件并调用注册的 connection_callback，完成监控记录。"""
+        while not self._event_worker_stop.is_set():
+            try:
+                item = self._event_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            if item is None:
+                self._event_queue.task_done()
+                break
+            key, connected, peer, local = item
+            try:
+                if self._connection_callback:
+                    self._connection_callback(key, connected, peer, local)
+            except Exception as exc:
+                log.error(f"处理连接监控事件失败: {exc}", exc_info=True)
+            finally:
+                self._event_queue.task_done()
+
+    def get_connection_count(self) -> int:
+        """返回当前打开的客户端连接数（轮询自原生 IedServer，不依赖连接指示回调）。
+
+        连接指示回调（ctypes）会因同进程客户端持 GIL 而导致关联被拒，因此改为
+        直接读取 IedServer_getNumberOfOpenConnections 轮询计数；只能提供连接数，
+        无法枚举每一连接的 IP/端口详情。
+        """
+        if not self._server or not self._is_running:
+            return 0
+        try:
+            getter = getattr(iec61850, "IedServer_getNumberOfOpenConnections", None)
+            if getter is None:
+                return 0
+            return int(getter(self._server) or 0)
+        except Exception:
+            return 0
 
     def _configure_file_service_config(self, server_config) -> None:
         """Enable MMS file services in bindings that expose config-level APIs."""
@@ -1006,6 +1088,7 @@ class IEC61850Server:
             iec61850.IedServer_destroy(self._server)
             self._server = None
             self._is_running = False
+            self._stop_connection_event_worker()
             log.info("IEC 61850 服务器已停止")
 
     def restart(self) -> bool:

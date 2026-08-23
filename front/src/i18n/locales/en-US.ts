@@ -87,6 +87,10 @@ export default {
     listeningAt: "{name} is listening on {endpoint}",
     noCurrentHint:
       "Session information appears automatically after a client connects",
+    detailUnsupported:
+      "This server does not support per-connection detail monitoring yet",
+    detailUnsupportedHint:
+      "Only the connection count is currently available; per-connection IP/port/duration details are not provided",
     viewHistory: "View History",
     noHistory: "No connection history",
     currentTotal: "{count} current connections",

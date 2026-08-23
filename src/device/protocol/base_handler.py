@@ -272,6 +272,7 @@ class ServerHandler(ProtocolHandler):
             "supported": self._connection_monitoring_supported,
             "server_running": self.is_running,
             "updated_at": datetime.now(UTC).isoformat(),
+            "detail_monitoring_supported": True,
             **summary,
         }
 

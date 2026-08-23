@@ -55,6 +55,7 @@ export interface ConnectionSummary {
   idle_count: number;
   history_count: number;
   abnormal_disconnects_today: number;
+  detail_monitoring_supported?: boolean;
   updated_at?: string;
 }
 

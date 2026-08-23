@@ -85,6 +85,9 @@ export default {
     noCurrent: "暂无客户端连接",
     listeningAt: "{name} 服务端正在监听 {endpoint}",
     noCurrentHint: "客户端建立连接后，会话信息将自动显示在这里",
+    detailUnsupported: "该服务端暂不支持设备连接详情监控",
+    detailUnsupportedHint:
+      "当前仅支持显示连接数，暂不提供每条连接的 IP/端口/时长等详情",
     viewHistory: "查看历史连接",
     noHistory: "暂无历史连接",
     currentTotal: "共 {count} 个当前连接",
