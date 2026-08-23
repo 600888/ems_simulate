@@ -51,6 +51,21 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _serialize_dt(value: datetime | None) -> str | None:
+    """Serialize a datetime to ISO-8601 with an explicit UTC offset.
+
+    Some protocol libs (c104) and SQLite hand back *naive* datetimes whose
+    wall-clock value is actually UTC. Without an explicit offset the browser
+    parses them as local time and renders the UTC clock time (off by the TZ
+    offset) — so attach UTC when tzinfo is missing.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.isoformat()
+
+
 def endpoint_parts(endpoint: Any) -> tuple[str | None, int | None]:
     """Normalize socket-style endpoints, including IPv6 four-tuples."""
     if not endpoint:
@@ -116,10 +131,10 @@ class ConnectionSnapshot:
             "remote_port": self.remote_port,
             "local_ip": self.local_ip,
             "local_port": self.local_port,
-            "transport_connected_at": self.transport_connected_at.isoformat(),
-            "established_at": self.established_at.isoformat() if self.established_at else None,
-            "last_activity_at": self.last_activity_at.isoformat(),
-            "disconnected_at": self.disconnected_at.isoformat() if self.disconnected_at else None,
+            "transport_connected_at": _serialize_dt(self.transport_connected_at),
+            "established_at": _serialize_dt(self.established_at),
+            "last_activity_at": _serialize_dt(self.last_activity_at),
+            "disconnected_at": _serialize_dt(self.disconnected_at),
             "duration_ms": self.duration_ms,
             "disconnect_reason": self.disconnect_reason.value if self.disconnect_reason else None,
             "disconnect_initiator": self.disconnect_initiator.value if self.disconnect_initiator else None,

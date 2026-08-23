@@ -74,7 +74,6 @@ export default {
     status: "Status",
     result: "Result",
     clientAddress: "Client Address",
-    clientIdentity: "Client Identity",
     connectedAt: "Connected At",
     duration: "Duration",
     lastActivity: "Last Activity",
@@ -118,9 +117,6 @@ export default {
     durationHours: "{hours}h {minutes}m",
     durationMinutes: "{minutes}m {seconds}s",
     durationSeconds: "{seconds}s",
-    justNow: "Just now",
-    secondsAgo: "{count}s ago",
-    minutesAgo: "{count}m ago",
     states: {
       connecting: "Connecting",
       established: "Connected",

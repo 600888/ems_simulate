@@ -1,5 +1,6 @@
 """Persisted server-side client connection history."""
 
+from datetime import UTC
 import json
 from typing import Any
 
@@ -55,7 +56,13 @@ class ConnectionSession(Base):
 
     @staticmethod
     def _iso(value: Any) -> str | None:
-        return value.isoformat() if value is not None else None
+        if value is None:
+            return None
+        # SQLite stores UTC but returns naive datetimes; attach UTC so the
+        # browser renders the correct local time instead of the UTC clock time.
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
 
     def to_dict(self) -> dict[str, Any]:
         return {

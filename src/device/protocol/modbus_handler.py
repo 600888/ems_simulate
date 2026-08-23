@@ -106,8 +106,11 @@ class ModbusServerHandler(ServerHandler):
             security=security,
         )
 
-    def _on_connection_activity(self, key, size: int) -> None:
-        self._record_connection_activity(key, rx_bytes=size, rx_messages=1)
+    def _on_connection_activity(self, key, direction: str, size: int) -> None:
+        if direction == "rx":
+            self._record_connection_activity(key, rx_bytes=size, rx_messages=1)
+        else:
+            self._record_connection_activity(key, tx_bytes=size, tx_messages=1)
 
     def _on_connection_closed(self, key, reason: str, detail: str | None) -> None:
         reason_map = {

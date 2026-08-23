@@ -70,6 +70,9 @@ class IEC104ServerHandler(ServerHandler):
         self._log = log
         # 命令点 (common_address, IOA) → BasePoint 映射，用于收到客户端命令后更新应用层点值
         self._command_point_map: dict[tuple[int, int], BasePoint] = {}
+        # 连接级实时流量：key -> (rx_bytes, tx_bytes, rx_frames, tx_frames) 上次快照
+        self._traffic_snapshot: dict[str, tuple[int, int, int, int]] = {}
+        self._traffic_task = None
 
     def initialize(self, config: dict[str, Any]) -> None:
         """初始化 IEC104 服务器
@@ -118,6 +121,7 @@ class IEC104ServerHandler(ServerHandler):
             if self._server:
                 self._server.start()
                 self._is_running = True
+                self._start_traffic_poller()
                 return True
             return False
         except Exception as e:
@@ -129,6 +133,7 @@ class IEC104ServerHandler(ServerHandler):
         """停止 IEC104 服务器"""
         try:
             if self._server and hasattr(self._server, "stop"):
+                self._stop_traffic_poller()
                 self._close_all_connections()
                 self._server.stop()
                 self._is_running = False
@@ -138,6 +143,59 @@ class IEC104ServerHandler(ServerHandler):
             if self._log:
                 self._log.error(f"停止 IEC104 服务器失败: {e}")
             return False
+
+    def _start_traffic_poller(self) -> None:
+        self._stop_traffic_poller()
+        self._traffic_task = asyncio.ensure_future(self._poll_connection_traffic())
+
+    def _stop_traffic_poller(self) -> None:
+        if self._traffic_task is not None:
+            self._traffic_task.cancel()
+            self._traffic_task = None
+
+    async def _poll_connection_traffic(self) -> None:
+        """Periodically read each connection's live byte counters and record deltas.
+
+        c104's ``ServerConnection`` exposes per-connection ``bytes_received`` /
+        ``bytes_sent`` / ``frames_received`` / ``frames_sent`` counters that update
+        live while the session is open, so we snapshot them and feed the deltas to
+        the shared registry (which only accepts additive amounts).
+        """
+        try:
+            while self._is_running and self._server is not None:
+                await asyncio.sleep(2)
+                try:
+                    connections = list(getattr(self._server.server, "connections", None) or [])
+                except Exception:
+                    connections = []
+                for con in connections:
+                    key = f"iec104:{getattr(con, 'id', None)}"
+                    if key not in self._connection_sessions:
+                        continue
+                    try:
+                        rx = int(getattr(con, "bytes_received", 0) or 0)
+                        tx = int(getattr(con, "bytes_sent", 0) or 0)
+                        frx = int(getattr(con, "frames_received", 0) or 0)
+                        ftx = int(getattr(con, "frames_sent", 0) or 0)
+                    except Exception:
+                        continue
+                    last = self._traffic_snapshot.get(key)
+                    if last is None:
+                        self._traffic_snapshot[key] = (rx, tx, frx, ftx)
+                        continue
+                    if (rx, tx, frx, ftx) == last:
+                        continue
+                    self._traffic_snapshot[key] = (rx, tx, frx, ftx)
+                    lrx, ltx, lfrx, lftx = last
+                    self._record_connection_activity(
+                        key,
+                        rx_bytes=max(0, rx - lrx),
+                        tx_bytes=max(0, tx - ltx),
+                        rx_messages=max(0, frx - lfrx),
+                        tx_messages=max(0, ftx - lftx),
+                    )
+        except asyncio.CancelledError:
+            pass
 
     def _on_connection_state_change(
         self,

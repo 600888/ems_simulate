@@ -73,7 +73,6 @@ export default {
     status: "状态",
     result: "结果",
     clientAddress: "客户端地址",
-    clientIdentity: "客户端标识",
     connectedAt: "连接时间",
     duration: "连接时长",
     lastActivity: "最后活动",
@@ -116,9 +115,6 @@ export default {
     durationHours: "{hours}小时{minutes}分",
     durationMinutes: "{minutes}分{seconds}秒",
     durationSeconds: "{seconds}秒",
-    justNow: "刚刚",
-    secondsAgo: "{count}秒前",
-    minutesAgo: "{count}分钟前",
     states: {
       connecting: "连接中",
       established: "已连接",

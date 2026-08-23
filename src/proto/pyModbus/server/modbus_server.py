@@ -99,8 +99,19 @@ class CaptureRequestHandler(ServerRequestHandler):
         if self.idle_timeout > 0:
             self._last_activity = self.loop.time()
         if self._on_connection_activity:
-            self._on_connection_activity(self._connection_key, len(data))
+            self._on_connection_activity(self._connection_key, "rx", len(data))
         return super().callback_data(data, addr)
+
+    def pdu_send(self, pdu, addr: tuple | None = None) -> None:
+        """Count server→client response bytes (TX) before dispatching the frame."""
+        if self._on_connection_activity and pdu is not None:
+            try:
+                size = len(self.framer.buildFrame(pdu))
+            except Exception:
+                size = 0
+            if size:
+                self._on_connection_activity(self._connection_key, "tx", size)
+        return super().pdu_send(pdu, addr)
 
     def callback_disconnected(self, exc: Exception | None) -> None:
         task = self._idle_watchdog_task

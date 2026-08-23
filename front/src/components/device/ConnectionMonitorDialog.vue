@@ -130,100 +130,93 @@
         </div>
 
         <template v-if="activeTab === 'current'">
-          <el-table
-            v-if="currentConnections.length"
-            :data="currentConnections"
-            stripe
-            height="350"
-            class="connections-table"
-            @row-dblclick="openDetail"
-          >
-            <el-table-column
-              :label="t('connectionMonitor.status')"
-              width="86"
-              fixed
+          <div v-if="currentConnections.length" class="table-wrap">
+            <el-table
+              :data="currentConnections"
+              stripe
+              height="100%"
+              class="connections-table"
+              @row-dblclick="openDetail"
             >
-              <template #default="{ row }">
-                <span :class="['state-pill', `state-${row.state}`]">
-                  <i />{{ stateLabel(row.state) }}
-                </span>
-              </template>
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.clientAddress')"
-              min-width="170"
-            >
-              <template #default="{ row }"
-                ><code>{{
-                  endpointText(row.remote_ip, row.remote_port)
-                }}</code></template
+              <el-table-column
+                :label="t('connectionMonitor.status')"
+                width="86"
+                fixed
               >
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.clientIdentity')"
-              min-width="128"
-            >
-              <template #default="{ row }">{{
-                identityText(row.client_identity)
-              }}</template>
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.connectedAt')"
-              min-width="158"
-            >
-              <template #default="{ row }">{{
-                formatDateTime(row.transport_connected_at)
-              }}</template>
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.duration')"
-              min-width="106"
-            >
-              <template #default="{ row }">{{
-                formatDuration(row.duration_ms)
-              }}</template>
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.lastActivity')"
-              min-width="148"
-            >
-              <template #default="{ row }">{{
-                relativeTime(row.last_activity_at)
-              }}</template>
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.traffic')"
-              min-width="126"
-            >
-              <template #default="{ row }">
-                <div class="traffic-cell">
-                  <span>RX {{ formatBytes(row.rx_bytes) }}</span
-                  ><span>TX {{ formatBytes(row.tx_bytes) }}</span>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.security')"
-              min-width="104"
-            >
-              <template #default="{ row }"
-                ><span :class="['security-pill', { secure: hasTls(row) }]">{{
-                  securityText(row)
-                }}</span></template
+                <template #default="{ row }">
+                  <span :class="['state-pill', `state-${row.state}`]">
+                    <i />{{ stateLabel(row.state) }}
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.clientAddress')"
+                min-width="170"
               >
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.actions')"
-              width="72"
-              fixed="right"
-            >
-              <template #default="{ row }"
-                ><el-button link type="primary" @click="openDetail(row)">{{
-                  t("connectionMonitor.detail")
-                }}</el-button></template
+                <template #default="{ row }"
+                  ><code>{{
+                    endpointText(row.remote_ip, row.remote_port)
+                  }}</code></template
+                >
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.connectedAt')"
+                min-width="158"
               >
-            </el-table-column>
-          </el-table>
+                <template #default="{ row }">{{
+                  formatDateTime(row.transport_connected_at)
+                }}</template>
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.duration')"
+                min-width="106"
+              >
+                <template #default="{ row }">{{
+                  formatDuration(row.duration_ms)
+                }}</template>
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.lastActivity')"
+                min-width="148"
+              >
+                <template #default="{ row }">{{
+                  formatDateTime(row.last_activity_at)
+                }}</template>
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.traffic')"
+                min-width="126"
+              >
+                <template #default="{ row }">
+                  <div class="traffic-cell">
+                    <span>RX {{ formatBytes(row.rx_bytes) }}</span
+                    ><span>TX {{ formatBytes(row.tx_bytes) }}</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.security')"
+                min-width="104"
+              >
+                <template #default="{ row }"
+                  ><span :class="['security-pill', { secure: hasTls(row) }]">{{
+                    securityText(row)
+                  }}</span></template
+                >
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.actions')"
+                width="72"
+                fixed="right"
+              >
+                <template #default="{ row }"
+                  ><el-button link type="primary" @click="openDetail(row)">{{
+                    t("connectionMonitor.detail")
+                  }}</el-button></template
+                >
+              </el-table-column>
+            </el-table>
+          </div>
           <div v-else class="empty-state">
             <span class="empty-icon"
               ><el-icon><SwitchButton /></el-icon
@@ -256,99 +249,93 @@
         </template>
 
         <template v-else>
-          <el-table
-            :data="history.items"
-            stripe
-            height="350"
-            class="connections-table"
-            @row-dblclick="openDetail"
-          >
-            <el-table-column
-              :label="t('connectionMonitor.result')"
-              width="86"
-              fixed
+          <div class="table-wrap">
+            <el-table
+              :data="history.items"
+              stripe
+              height="100%"
+              class="connections-table"
+              @row-dblclick="openDetail"
             >
-              <template #default="{ row }"
-                ><span :class="['state-pill', `state-${row.state}`]"
-                  ><i />{{ historyStateLabel(row) }}</span
-                ></template
+              <el-table-column
+                :label="t('connectionMonitor.result')"
+                width="86"
+                fixed
               >
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.clientAddress')"
-              min-width="170"
-            >
-              <template #default="{ row }"
-                ><code>{{
-                  endpointText(row.remote_ip, row.remote_port)
-                }}</code></template
+                <template #default="{ row }"
+                  ><span :class="['state-pill', `state-${row.state}`]"
+                    ><i />{{ historyStateLabel(row) }}</span
+                  ></template
+                >
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.clientAddress')"
+                min-width="170"
               >
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.clientIdentity')"
-              min-width="128"
-            >
-              <template #default="{ row }">{{
-                identityText(row.client_identity)
-              }}</template>
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.connectedAt')"
-              min-width="150"
-            >
-              <template #default="{ row }">{{
-                formatDateTime(row.transport_connected_at, true)
-              }}</template>
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.duration')"
-              min-width="106"
-            >
-              <template #default="{ row }">{{
-                formatDuration(row.duration_ms)
-              }}</template>
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.disconnectedAt')"
-              min-width="150"
-            >
-              <template #default="{ row }">{{
-                disconnectedAtText(row)
-              }}</template>
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.disconnectReason')"
-              min-width="138"
-            >
-              <template #default="{ row }">{{
-                disconnectReasonLabel(row.disconnect_reason)
-              }}</template>
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.security')"
-              min-width="104"
-            >
-              <template #default="{ row }"
-                ><span :class="['security-pill', { secure: hasTls(row) }]">{{
-                  securityText(row)
-                }}</span></template
+                <template #default="{ row }"
+                  ><code>{{
+                    endpointText(row.remote_ip, row.remote_port)
+                  }}</code></template
+                >
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.connectedAt')"
+                min-width="150"
               >
-            </el-table-column>
-            <el-table-column
-              :label="t('connectionMonitor.actions')"
-              width="72"
-              fixed="right"
-            >
-              <template #default="{ row }"
-                ><el-button link type="primary" @click="openDetail(row)">{{
-                  t("connectionMonitor.detail")
-                }}</el-button></template
+                <template #default="{ row }">{{
+                  formatDateTime(row.transport_connected_at, true)
+                }}</template>
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.duration')"
+                min-width="106"
               >
-            </el-table-column>
-            <template #empty
-              ><el-empty :description="t('connectionMonitor.noHistory')"
-            /></template>
-          </el-table>
+                <template #default="{ row }">{{
+                  formatDuration(row.duration_ms)
+                }}</template>
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.disconnectedAt')"
+                min-width="150"
+              >
+                <template #default="{ row }">{{
+                  disconnectedAtText(row)
+                }}</template>
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.disconnectReason')"
+                min-width="138"
+              >
+                <template #default="{ row }">{{
+                  disconnectReasonLabel(row.disconnect_reason)
+                }}</template>
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.security')"
+                min-width="104"
+              >
+                <template #default="{ row }"
+                  ><span :class="['security-pill', { secure: hasTls(row) }]">{{
+                    securityText(row)
+                  }}</span></template
+                >
+              </el-table-column>
+              <el-table-column
+                :label="t('connectionMonitor.actions')"
+                width="72"
+                fixed="right"
+              >
+                <template #default="{ row }"
+                  ><el-button link type="primary" @click="openDetail(row)">{{
+                    t("connectionMonitor.detail")
+                  }}</el-button></template
+                >
+              </el-table-column>
+              <template #empty
+                ><el-empty :description="t('connectionMonitor.noHistory')"
+              /></template>
+            </el-table>
+          </div>
           <footer class="content-footer history-footer">
             <span>{{
               t("connectionMonitor.retentionNote", {
@@ -406,10 +393,7 @@
               <code>{{
                 endpointText(detail.remote_ip, detail.remote_port)
               }}</code
-              ><span
-                >{{ protocolLabel(detail.protocol_type) }} ·
-                {{ identityText(detail.client_identity) }}</span
-              >
+              ><span>{{ protocolLabel(detail.protocol_type) }}</span>
             </div>
           </div>
           <div class="security-summary">
@@ -437,7 +421,7 @@
           <article>
             <el-icon><Refresh /></el-icon
             ><span>{{ t("connectionMonitor.lastActivity") }}</span
-            ><strong>{{ relativeTime(detail.last_activity_at) }}</strong>
+            ><strong>{{ formatDateTime(detail.last_activity_at) }}</strong>
           </article>
         </section>
 
@@ -477,8 +461,6 @@
               <dd>{{ endpointText(detail.local_ip, detail.local_port) }}</dd>
               <dt>{{ t("connectionMonitor.transportProtocol") }}</dt>
               <dd>TCP / {{ ipVersion(detail.remote_ip) }}</dd>
-              <dt>{{ t("connectionMonitor.clientIdentity") }}</dt>
-              <dd>{{ identityText(detail.client_identity) }}</dd>
             </dl>
           </article>
           <article>
@@ -743,21 +725,6 @@ const formatBytes = (value: number) => {
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(2)} MB`;
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
 };
-const relativeTime = (value: string | null) => {
-  if (!value) return "-";
-  const seconds = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(value).getTime()) / 1000),
-  );
-  if (seconds < 5) return t("connectionMonitor.justNow");
-  if (seconds < 60)
-    return t("connectionMonitor.secondsAgo", { count: seconds });
-  if (seconds < 3600)
-    return t("connectionMonitor.minutesAgo", {
-      count: Math.floor(seconds / 60),
-    });
-  return formatDateTime(value);
-};
 const stateLabel = (state: ConnectionState) =>
   t(`connectionMonitor.states.${state}`);
 const disconnectReasonLabel = (reason: DisconnectReason | null) =>
@@ -767,18 +734,6 @@ const historyStateLabel = (row: ConnectionRecord) => {
   if (row.disconnect_reason === "idle_timeout")
     return t("connectionMonitor.timeout");
   return t("connectionMonitor.states.closed");
-};
-const identityText = (identity: Record<string, unknown>) => {
-  const entries = Object.entries(identity || {}).filter(
-    ([, value]) => value !== null && value !== "",
-  );
-  if (!entries.length) return "-";
-  return entries
-    .map(
-      ([key, value]) =>
-        `${key.replace(/_/g, " ")} ${Array.isArray(value) ? value.join(", ") : String(value)}`,
-    )
-    .join(" · ");
 };
 const hasTls = (row: ConnectionRecord) =>
   Boolean(row.security?.tls || row.security?.version);
@@ -824,8 +779,14 @@ onBeforeUnmount(stopPolling);
   }
 }
 
+/* Element Plus 的 .el-dialog 自带 padding:16px，会令内容四周内缩、
+   表头不贴顶、左右留出可见边距。这里清掉，让内容通栏满宽并与设计稿一致。 */
+.el-overlay-dialog .connection-monitor-dialog {
+  padding: 0;
+}
+
 .connection-monitor-dialog {
-  max-height: 86vh;
+  height: 92vh;
 
   .monitor-header,
   .detail-header {
@@ -865,9 +826,13 @@ onBeforeUnmount(stopPolling);
 }
 
 .monitor-body {
-  min-height: 635px;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .server-summary {
+  flex-shrink: 0;
   height: 82px;
   display: grid;
   grid-template-columns: minmax(240px, 1.8fr) repeat(4, minmax(105px, 1fr));
@@ -931,6 +896,7 @@ onBeforeUnmount(stopPolling);
 }
 
 .connection-tabs {
+  flex-shrink: 0;
   height: 49px;
   display: flex;
   align-items: flex-end;
@@ -971,9 +937,14 @@ onBeforeUnmount(stopPolling);
 }
 
 .connections-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   padding: 16px 24px 18px;
 }
 .connections-toolbar {
+  flex-shrink: 0;
   height: 34px;
   margin-bottom: 12px;
   display: flex;
@@ -1011,7 +982,12 @@ onBeforeUnmount(stopPolling);
   }
 }
 
+.table-wrap {
+  flex: 1;
+  min-height: 0;
+}
 .connections-table {
+  height: 100%;
   border: 1px solid var(--border-color);
   border-radius: 7px;
   overflow: hidden;
@@ -1070,7 +1046,8 @@ onBeforeUnmount(stopPolling);
 }
 
 .empty-state {
-  height: 350px;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1101,6 +1078,7 @@ onBeforeUnmount(stopPolling);
   color: var(--text-secondary);
 }
 .content-footer {
+  flex-shrink: 0;
   min-height: 34px;
   padding-top: 12px;
   display: flex;
