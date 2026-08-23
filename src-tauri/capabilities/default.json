@@ -5,7 +5,17 @@
   "permissions": [
     "core:default",
     "core:webview:allow-create-webview-window",
-    "opener:allow-open-url",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://gitee.com/chen-dongyu123", "app": "msedge" },
+        { "url": "https://github.com/600888", "app": "msedge" },
+        {
+          "url": "https://600888.github.io/ems_simulate/",
+          "app": "msedge"
+        }
+      ]
+    },
     "opener:allow-open-path",
     "opener:allow-reveal-item-in-dir",
     "dialog:allow-open",
