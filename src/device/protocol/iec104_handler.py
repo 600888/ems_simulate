@@ -86,7 +86,6 @@ class IEC104ServerHandler(ServerHandler):
         from src.proto.iec104.iec104server import IEC104Server
 
         self._config = config
-        self._configure_connection_monitoring(config, supported=True)
         ip = config.get("ip", Config.DEFAULT_IP)
         port = config.get("port", Config.IEC104_DEFAULT_PORT)
         runtime = config.get("runtime", {})
@@ -110,6 +109,14 @@ class IEC104ServerHandler(ServerHandler):
         )
         self._server.set_connection_state_callback(self._on_connection_state_change)
 
+        # 连接监控是否可用，取决于当前 c104 是否编译了连接监控回调。
+        # 某些平台（如 ARM）的 c104 裁剪版没有这些回调：此时监控关闭，
+        # 但 IEC104 设备本身（Station/测点/读写）仍正常工作。
+        self._configure_connection_monitoring(
+            config,
+            supported=hasattr(self._server.server, "on_connection_state_change"),
+        )
+
         # 预创建所有从站对应的 Station（common_address = slave_id）
         slave_id_list = config.get("slave_id_list", [])
         for slave_id in slave_id_list:
@@ -121,7 +128,8 @@ class IEC104ServerHandler(ServerHandler):
             if self._server:
                 self._server.start()
                 self._is_running = True
-                self._start_traffic_poller()
+                if self._connection_monitoring_supported:
+                    self._start_traffic_poller()
                 return True
             return False
         except Exception as e:

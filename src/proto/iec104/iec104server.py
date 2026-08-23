@@ -69,7 +69,9 @@ class IEC104Server:
         self.server.protocol_parameters.send_window_size = send_window_size
         self.server.protocol_parameters.receive_window_size = receive_window_size
         self.server.max_connections = max_connections
-        self.server.on_connection_state_change(callable=self._on_connection_state_change)
+        # 某些平台/裁剪版 c104 可能未编译连接监控回调，缺省则跳过，避免初始化崩溃
+        if hasattr(self.server, "on_connection_state_change"):
+            self.server.on_connection_state_change(callable=self._on_connection_state_change)
         # 多 Station 支持：common_address -> c104.Station
         self.stations: dict[int, c104.Station] = {}
         # 存储所有监控点的列表
@@ -88,10 +90,12 @@ class IEC104Server:
         # 报文捕获器
         self.message_capture = MessageCapture()
 
-        # 注册原始报文回调
+        # 注册原始报文回调（监控缺失时跳过，不影响服务器运行）
         if self.server:
-            self.server.on_receive_raw(callable=self._on_receive_raw)
-            self.server.on_send_raw(callable=self._on_send_raw)
+            if hasattr(self.server, "on_receive_raw"):
+                self.server.on_receive_raw(callable=self._on_receive_raw)
+            if hasattr(self.server, "on_send_raw"):
+                self.server.on_send_raw(callable=self._on_send_raw)
 
     def _on_receive_raw(self, server: c104.Server, data: bytes) -> None:
         """接收原始报文回调"""
