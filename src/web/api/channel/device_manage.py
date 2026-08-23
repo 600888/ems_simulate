@@ -1,5 +1,7 @@
 """通道管理 - 设备管理路由（创建启动/重启/重载/复制）"""
 
+import asyncio
+
 from fastapi import APIRouter, Request
 
 from src.config.config import Config
@@ -61,6 +63,8 @@ async def create_and_start_device(req: ChannelIdRequest, request: Request):
     device_controller = request.app.state.device_controller
     device_controller.device_list.append(general_device)
     device_controller.device_map[general_device.name] = general_device
+    mappings = await asyncio.to_thread(PointMappingService.get_all_mappings)
+    await asyncio.to_thread(general_device.set_device_provider, device_controller, mappings)
 
     log.info(f"设备 {channel_name} 创建并启动成功")
     return BaseResponse(message="设备创建并启动成功", data={"device_name": channel_name})

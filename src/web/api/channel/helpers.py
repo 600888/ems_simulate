@@ -7,6 +7,7 @@ from typing import Any
 from src.config.config import Config
 from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
+from src.data.service.point_mapping_service import PointMappingService
 from src.device.factory.general_device_builder import GeneralDeviceBuilder
 from src.device.types.circuit_breaker import CircuitBreaker
 from src.device.types.general_device import GeneralDevice
@@ -175,6 +176,12 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
 
     device_controller.device_list.append(new_device)
     device_controller.device_map[new_device.name] = new_device
+
+    # 重建设备后必须恢复映射计算器的 Controller 引用。设备可能已经由
+    # new_device.start() 启动过计算器，因此 set_device_provider() 也需要支持
+    # 对运行中计算器重载映射并重新订阅当前内存中的新测点。
+    mappings = await asyncio.to_thread(PointMappingService.get_all_mappings)
+    await asyncio.to_thread(new_device.set_device_provider, device_controller, mappings)
 
     log.info(f"设备 {device_name} 实例已更新 (启动状态: {is_start})")
     return new_device

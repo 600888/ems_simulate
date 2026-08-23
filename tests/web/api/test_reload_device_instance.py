@@ -5,7 +5,7 @@
 """
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -38,6 +38,8 @@ def _new_device(name: str = "dlt645-server"):
     return SimpleNamespace(
         name=name,
         device_id=1,
+        start=AsyncMock(return_value=True),
+        set_device_provider=Mock(),
         data_update_thread=SimpleNamespace(start=lambda: None),
     )
 
@@ -46,12 +48,13 @@ def _new_device(name: str = "dlt645-server"):
 async def test_reload_non_start_removes_old_after_build():
     """非启动场景：先构建新实例，构建完成后再移除旧实例（无空窗）。"""
     controller = _controller()
+    mappings = [{"id": 7}]
     with (
         patch.object(
             helpers.asyncio,
             "to_thread",
-            side_effect=[_channel(), _new_device()],
-        ),
+            side_effect=[_channel(), _new_device(), mappings, None],
+        ) as to_thread,
         patch.object(helpers, "log", SimpleNamespace(info=lambda *a, **k: None)),
     ):
         result = await helpers.reload_device_instance(controller, 1, is_start=False)
@@ -60,6 +63,7 @@ async def test_reload_non_start_removes_old_after_build():
     assert controller.device_map["dlt645-server"] is result
     # remove 只调用一次，且发生在新实例构建完成之后
     assert controller.remove_device_by_id.await_count == 1
+    assert to_thread.await_args_list[-1].args == (result.set_device_provider, controller, mappings)
 
 
 @pytest.mark.asyncio
@@ -94,7 +98,7 @@ async def test_reload_client_start_stops_old_before_start():
         patch.object(
             helpers.asyncio,
             "to_thread",
-            side_effect=[_channel(protocol="Dlt645Client"), new_device],
+            side_effect=[_channel(protocol="Dlt645Client"), new_device, [], None],
         ),
         patch.object(helpers, "log", SimpleNamespace(info=lambda *a, **k: None)),
     ):

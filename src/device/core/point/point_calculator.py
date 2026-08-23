@@ -55,8 +55,12 @@ class PointCalculator:
     def set_device_provider(self, provider: Any, mappings: list[dict[str, Any]] | None = None):
         """设置设备提供者"""
         self._device_provider = provider
-        # 立即启动计算器（加载映射并订阅事件）
-        self.start(mappings)
+        # 运行中的设备可能是先启动协议、后注册到 DeviceController 的重建实例。
+        # 此时 start() 会直接返回，必须显式重载才能恢复测点订阅和目标点锁定。
+        if self._running:
+            self.reload_mappings(mappings)
+        else:
+            self.start(mappings)
 
     def start(self, mappings: list[dict[str, Any]] | None = None):
         """启动计算器"""

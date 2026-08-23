@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from src.device.core.point.point_calculator import PointCalculator
+from src.device.core.point.point_manager import PointManager
+from src.enums.points.yc import Yc
 from src.web.api.channel.goose_websocket import WebSocketSessionManager
 
 
@@ -107,3 +109,48 @@ def test_mapping_scheduler_coalesces_high_frequency_changes():
 
     calculator.stop()
     assert calls == 2
+
+
+def test_running_mapping_calculator_reloads_when_device_provider_is_attached():
+    """重建设备先启动计算器时，后注入 Controller 也必须恢复映射订阅。"""
+    device = SimpleNamespace(name="target", point_manager=MagicMock())
+    calculator = PointCalculator(device)
+    calculator._running = True
+    calculator.reload_mappings = MagicMock()
+    provider = SimpleNamespace(device_map={"target": device})
+    mappings = [{"id": 1}]
+
+    calculator.set_device_provider(provider, mappings)
+
+    assert calculator._device_provider is provider
+    calculator.reload_mappings.assert_called_once_with(mappings)
+
+
+def test_mapping_reload_subscribes_points_added_after_calculator_start():
+    """手工添加的新测点在保存映射后应立即进入订阅表并锁定目标点。"""
+    point_manager = PointManager()
+    device = SimpleNamespace(name="device-a", point_manager=point_manager)
+    provider = SimpleNamespace(device_map={"device-a": device})
+    calculator = PointCalculator(device)
+    calculator._device_provider = provider
+    calculator._running = True
+    calculator._schedule_mapping = MagicMock()
+
+    source = Yc(code="SOURCE", name="Source")
+    target = Yc(code="NEW_TARGET", name="Target")
+    point_manager.add_point(1, source)
+    point_manager.add_point(1, target)
+    mapping = {
+        "id": 9,
+        "device_name": "device-a",
+        "target_point_code": "NEW_TARGET",
+        "source_point_codes": '[{"device_name":"device-a","point_code":"SOURCE","alias":"source"}]',
+        "formula": "source * 2",
+        "enable": True,
+    }
+
+    calculator.reload_mappings([mapping])
+
+    assert calculator._sender_map[id(source)] == [9]
+    assert source.is_send_signal is True
+    assert target.is_locked_by_mapping is True

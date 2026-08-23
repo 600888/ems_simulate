@@ -9,6 +9,7 @@ from src.data.dao.point_dao import PointDao
 from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
 from src.data.service.device_group_service import DeviceGroupService
+from src.data.service.point_mapping_service import PointMappingService
 from src.device.protocol.runtime_config import normalize_protocol_params
 from src.enums.modbus_def import ProtocolType
 from src.web.api.channel.helpers import (
@@ -249,6 +250,8 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
         new_device.name = req.name
         device_controller.device_list.append(new_device)
         device_controller.device_map[new_device.name] = new_device
+        mappings = await asyncio.to_thread(PointMappingService.get_all_mappings)
+        await asyncio.to_thread(new_device.set_device_provider, device_controller, mappings)
         log.info(f"设备 {req.name} (ID: {channel_id}) 已在内存中动态创建")
     except Exception as e:
         log.error(f"内存同步创建设备失败: {e}")
