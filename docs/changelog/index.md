@@ -7,6 +7,7 @@
 
 | 文档 | 说明 |
 |------|------|
+| [自动读取后端任务化整改](./04-auto-read-backend-task-refactoring) | 批量、逐点与 DataSet 读取迁移到后端任务，统一取消、状态、缓存与实时计数 — 日期：2026-08-23 |
 | [协议解析专题](./protocol/) | DL/T 645、Modbus RTU/TCP、IEC104、GOOSE 的字段级报文解析、原始字节定位与测点关联 |
 | [报文详情精确解析与原始字节定位](./protocol/01-message-detail-parsing) | 统一详情契约、独立协议解析器、Tauri 详情抽屉、GOOSE DataSet 定位与性能优化 — 日期：2026-07-13 |
 | [IEC104 协议全 ASDU 类型支持](./01-iec104-asdu-type-support) | IEC104 全 ASDU 类型支持 — 日期：2026-04-29 |

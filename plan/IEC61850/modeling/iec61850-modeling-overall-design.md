@@ -1,6 +1,6 @@
 # IEC 61850 可视化建模功能整体方案
 
-> 本文为早期方案草稿。当前通用建模配置工具的权威设计基线请参见 `plan/iec61850-general-modeling-tool-design.md`。
+> 本文为早期方案草稿。当前通用建模配置工具的权威设计基线请参见 `plan/IEC61850/modeling/iec61850-general-modeling-tool-design.md`。
 
 ## 1. 方案结论
 
