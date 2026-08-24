@@ -95,8 +95,9 @@ if (-not $nv) { WriteErr "Node.js not found" }
 WriteOk "Rust: $rv"
 WriteOk "Node.js: $nv"
 
-# Generate icons (skip if all icons already exist and are newer than source)
-$iconSource = Join-Path $PROJECT_ROOT "resources\icon.png"
+# Generate icons (skip if all icons already exist and are newer than source/script)
+$iconSource = Join-Path $PROJECT_ROOT "resources\m.ico"
+$tauriIconScript = Join-Path $SCRIPT_DIR "generate_tauri_icons.py"
 $tauriIcons = @(
     (Join-Path $TAURI_DIR "icons\32x32.png"),
     (Join-Path $TAURI_DIR "icons\128x128.png"),
@@ -106,14 +107,14 @@ $tauriIcons = @(
 )
 $iconsUpToDate = $true
 foreach ($ic in $tauriIcons) {
-    if (-not (IsUpToDate $ic @($iconSource))) { $iconsUpToDate = $false; break }
+    if (-not (IsUpToDate $ic @($iconSource, $tauriIconScript))) { $iconsUpToDate = $false; break }
 }
 
 if ($iconsUpToDate) {
     WriteSkip "Tauri icons are up-to-date"
 } else {
     WriteStep "Generating Tauri icons..."
-    & $PYTHON_EXE scripts/generate_tauri_icons.py
+    & $PYTHON_EXE $tauriIconScript
     if ($LASTEXITCODE -ne 0) { WriteErr "Icon generation failed" }
     WriteOk "Tauri icons generated"
 }
@@ -291,12 +292,13 @@ if ($Msix) {
     # Generate MSIX assets (skip if already generated and source icon hasn't changed)
     $assetsDir = Join-Path $PROJECT_ROOT "Assets"
     $msixAssetScript = Join-Path $SCRIPT_DIR "generate_msix_assets.py"
+    $msixIconSource = Join-Path $TAURI_DIR "icons\icon.png"
     $storeLogo = Join-Path $assetsDir "StoreLogo.png"
-    if ((Test-Path $storeLogo) -and (IsUpToDate $storeLogo @($iconSource))) {
+    if ((Test-Path $storeLogo) -and (IsUpToDate $storeLogo @($msixIconSource, $msixAssetScript))) {
         WriteSkip "MSIX icon assets are up-to-date"
     } else {
         WriteStep "Generating MSIX icon assets..."
-        & $PYTHON_EXE $msixAssetScript
+        & $PYTHON_EXE $msixAssetScript --source $msixIconSource
         if ($LASTEXITCODE -ne 0) { WriteErr "MSIX asset generation failed" }
         WriteOk "MSIX icon assets generated"
     }

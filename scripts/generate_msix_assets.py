@@ -3,8 +3,8 @@
 
 MSIX 需要以下图标尺寸（含高 DPI 缩放版本）：
 - Square44x44Logo.png (44x44) 及 scale-125/150/200/400 变体
-- Square44x44Logo.targetsize-16/24/32/48/64/256.png (任务栏 targetsize)
-- Square44x44Logo.targetsize-24_altform-unplated.png (无背景板任务栏图标)
+- Square44x44Logo.targetsize-*.png (任务栏 targetsize)
+- 每个 targetsize 对应的 _altform-unplated.png（无背景板任务栏图标）
 - Square150x150Logo.png (150x150) 及 scale 变体
 - Wide310x150Logo.png (310x150) 及 scale 变体
 - StoreLogo.png (50x50) 及 scale 变体
@@ -13,7 +13,8 @@ MSIX 需要以下图标尺寸（含高 DPI 缩放版本）：
 使用方法:
     python scripts/generate_msix_assets.py [--source ICON_PATH]
 
-如果没有指定源图标，将使用 src-tauri/icons/icon.png
+如果没有指定源图标，将使用 src-tauri/icons/icon.png。
+所有输出都保留源图 Alpha 通道，不会合成背景色或阴影。
 """
 
 import argparse
@@ -25,6 +26,37 @@ try:
 except ImportError:
     print("需要 Pillow 库，请运行: pip install Pillow")
     sys.exit(1)
+
+
+TRANSPARENT = (0, 0, 0, 0)
+TARGET_SIZES = [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256]
+
+
+def resize_icon(img: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """使用预乘 Alpha 缩放图标，避免透明边缘出现暗色光晕。"""
+
+    return (
+        img.convert("RGBa")
+        .resize(size, Image.Resampling.LANCZOS)
+        .convert("RGBA")
+    )
+
+
+def place_on_transparent_canvas(
+    img: Image.Image,
+    canvas_size: tuple[int, int],
+    icon_size: tuple[int, int],
+) -> Image.Image:
+    """将图标居中放到透明画布，并完整保留 Alpha 通道。"""
+
+    canvas = Image.new("RGBA", canvas_size, TRANSPARENT)
+    icon = resize_icon(img, icon_size)
+    offset = (
+        (canvas_size[0] - icon_size[0]) // 2,
+        (canvas_size[1] - icon_size[1]) // 2,
+    )
+    canvas.alpha_composite(icon, dest=offset)
+    return canvas
 
 
 def generate_assets(source_path: str, output_dir: str):
@@ -63,7 +95,7 @@ def generate_assets(source_path: str, output_dir: str):
             factor = scale / 100.0
             actual_size = int(size * factor)
             filename = f"{name}.scale-{scale}.png"
-            resized = img.resize((actual_size, actual_size), Image.Resampling.LANCZOS)
+            resized = resize_icon(img, (actual_size, actual_size))
             resized.save(os.path.join(output_dir, filename), "PNG")
             print(f"  [OK] {filename} ({actual_size}x{actual_size})")
 
@@ -72,12 +104,12 @@ def generate_assets(source_path: str, output_dir: str):
             factor = scale / 100.0
             actual_w, actual_h = int(w * factor), int(h * factor)
             filename = f"{name}.scale-{scale}.png"
-            canvas = Image.new("RGBA", (actual_w, actual_h), (26, 26, 46, 255))
             icon_size = int(130 * factor)
-            icon_resized = img.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
-            offset_x = (actual_w - icon_size) // 2
-            offset_y = (actual_h - icon_size) // 2
-            canvas.paste(icon_resized, (offset_x, offset_y), icon_resized)
+            canvas = place_on_transparent_canvas(
+                img,
+                (actual_w, actual_h),
+                (icon_size, icon_size),
+            )
             canvas.save(os.path.join(output_dir, filename), "PNG")
             print(f"  [OK] {filename} ({actual_w}x{actual_h})")
 
@@ -86,48 +118,38 @@ def generate_assets(source_path: str, output_dir: str):
             factor = scale / 100.0
             actual_w, actual_h = int(w * factor), int(h * factor)
             filename = f"{name}.scale-{scale}.png"
-            canvas = Image.new("RGBA", (actual_w, actual_h), (26, 26, 46, 255))
             icon_size = int(180 * factor)
-            icon_resized = img.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
-            offset_x = (actual_w - icon_size) // 2
-            offset_y = (actual_h - icon_size) // 2
-            canvas.paste(icon_resized, (offset_x, offset_y), icon_resized)
+            canvas = place_on_transparent_canvas(
+                img,
+                (actual_w, actual_h),
+                (icon_size, icon_size),
+            )
             canvas.save(os.path.join(output_dir, filename), "PNG")
             print(f"  [OK] {filename} ({actual_w}x{actual_h})")
 
-    # 2) 生成 targetsize 图标（任务栏使用，按像素尺寸而非缩放比例）
-    # 这些是任务栏实际使用的图标尺寸，Windows 会根据 DPI 选择最接近的
-    target_sizes = [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256]
-    for ts in target_sizes:
-        resized = img.resize((ts, ts), Image.Resampling.LANCZOS)
-        filename = f"Square44x44Logo.targetsize-{ts}.png"
-        resized.save(os.path.join(output_dir, filename), "PNG")
-        print(f"  [OK] {filename} ({ts}x{ts})")
+    # 2) 生成 targetsize 图标（任务栏使用，按像素尺寸而非缩放比例）。
+    # 普通版和无背景板版必须使用同一份缩放结果、覆盖相同尺寸集合，
+    # 避免 Windows 在不同 DPI/显示入口选择资源后出现样式差异。
+    for ts in TARGET_SIZES:
+        resized = resize_icon(img, (ts, ts))
+        for suffix in ("", "_altform-unplated"):
+            filename = f"Square44x44Logo.targetsize-{ts}{suffix}.png"
+            resized.save(os.path.join(output_dir, filename), "PNG")
+            print(f"  [OK] {filename} ({ts}x{ts})")
 
-    # 3) 生成 altform-unplated 版本（无系统背景板的任务栏图标）
-    for ts in [16, 20, 24, 32, 48, 64, 256]:
-        resized = img.resize((ts, ts), Image.Resampling.LANCZOS)
-        filename = f"Square44x44Logo.targetsize-{ts}_altform-unplated.png"
-        resized.save(os.path.join(output_dir, filename), "PNG")
-        print(f"  [OK] {filename} ({ts}x{ts})")
-
-    # 4) 生成基础 1x 版本（兼容旧 manifest 引用）
+    # 3) 生成基础 1x 版本（兼容旧 manifest 引用）
     for name, size in base_assets:
-        resized = img.resize((size, size), Image.Resampling.LANCZOS)
+        resized = resize_icon(img, (size, size))
         resized.save(os.path.join(output_dir, f"{name}.png"), "PNG")
         print(f"  [OK] {name}.png ({size}x{size})")
 
     for name, (w, h) in wide_assets:
-        canvas = Image.new("RGBA", (w, h), (26, 26, 46, 255))
-        icon_resized = img.resize((130, 130), Image.Resampling.LANCZOS)
-        canvas.paste(icon_resized, ((w - 130) // 2, (h - 130) // 2), icon_resized)
+        canvas = place_on_transparent_canvas(img, (w, h), (130, 130))
         canvas.save(os.path.join(output_dir, f"{name}.png"), "PNG")
         print(f"  [OK] {name}.png ({w}x{h})")
 
     for name, (w, h) in splash_assets:
-        canvas = Image.new("RGBA", (w, h), (26, 26, 46, 255))
-        icon_resized = img.resize((180, 180), Image.Resampling.LANCZOS)
-        canvas.paste(icon_resized, ((w - 180) // 2, (h - 180) // 2), icon_resized)
+        canvas = place_on_transparent_canvas(img, (w, h), (180, 180))
         canvas.save(os.path.join(output_dir, f"{name}.png"), "PNG")
         print(f"  [OK] {name}.png ({w}x{h})")
 
