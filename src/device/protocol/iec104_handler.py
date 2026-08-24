@@ -114,7 +114,7 @@ class IEC104ServerHandler(ServerHandler):
         # 但 IEC104 设备本身（Station/测点/读写）仍正常工作。
         self._configure_connection_monitoring(
             config,
-            supported=hasattr(self._server.server, "on_connection_state_change"),
+            supported=self._server.connection_monitoring_supported,
         )
 
         # 预创建所有从站对应的 Station（common_address = slave_id）

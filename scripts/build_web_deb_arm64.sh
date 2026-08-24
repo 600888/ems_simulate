@@ -130,6 +130,9 @@ else
     "${VENV_PY}" -c \
         "import importlib.metadata, platform, c104; assert importlib.metadata.version('c104') == '${C104_PYPI_VERSION}'; assert platform.machine() in {'aarch64', 'arm64'}" \
         || die "PyPI c104 ARM64 校验失败"
+    PYTHONPATH="${PROJECT_ROOT}" "${VENV_PY}" -c \
+        "from src.proto.iec104.iec104server import IEC104Server; server = IEC104Server(ip='127.0.0.1', port=2404); assert not server.connection_monitoring_supported" \
+        || die "PyPI c104 ARM64 IEC104 服务端冒烟测试失败"
 
     info "运行 PyInstaller"
     EMS_PYINSTALLER_MODE=onedir \

@@ -1,9 +1,13 @@
-from types import SimpleNamespace
+import importlib.util
+import sys
+from types import ModuleType, SimpleNamespace
+from typing import Any
 
 import c104
 
 import src.proto.iec104.iec104client as iec104client_module
 from src.proto.iec104.iec104client import IEC104Client
+import src.proto.iec104.iec104server as iec104server_module
 from src.proto.iec104.iec104server import IEC104Server
 
 
@@ -93,3 +97,50 @@ def test_server_applies_all_link_parameters():
         "t2": 3,
         "t3": 22,
     }
+
+
+def test_server_disables_fork_monitoring_for_official_c104(monkeypatch):
+    captured_kwargs = {}
+
+    class OfficialServerStub:
+        def __init__(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            self.protocol_parameters = SimpleNamespace()
+            self.max_connections = 0
+
+        def on_receive_raw(self, callable):
+            pass
+
+        def on_send_raw(self, callable):
+            pass
+
+    monkeypatch.setattr(iec104server_module, "_has_connection_monitoring_extension", lambda: False)
+    monkeypatch.setattr(iec104server_module.c104, "Server", OfficialServerStub)
+
+    server = IEC104Server(ip="127.0.0.1", port=2404)
+
+    assert "connection_history_size" not in captured_kwargs
+    assert server.connection_monitoring_supported is False
+
+
+def test_server_module_imports_without_fork_connection_types(monkeypatch):
+    class OfficialC104Proxy(ModuleType):
+        def __getattr__(self, name):
+            if name in {"ServerConnection", "ServerConnectionState"}:
+                raise AttributeError(name)
+            return getattr(c104, name)
+
+    monkeypatch.setitem(sys.modules, "c104", OfficialC104Proxy("c104"))
+    spec = importlib.util.spec_from_file_location(
+        "tests.iec104server_official_compat",
+        iec104server_module.__file__,
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    server = module.IEC104Server(ip="127.0.0.1", port=0)
+
+    assert module.ServerConnection is Any
+    assert module.ServerConnectionState is Any
+    assert server.connection_monitoring_supported is False
