@@ -1035,6 +1035,8 @@ export default {
     cache: "Cache:",
     appIdLabel: "APPID:",
     time: "Time",
+    sendTime: "Send time",
+    e2eDelay: "End-to-end delay",
     srcMac: "Src MAC",
     stNum: "stNum",
     sqNum: "sqNum",

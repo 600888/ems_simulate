@@ -259,11 +259,19 @@
     >
       <template v-if="detailPacket">
         <el-descriptions :column="3" border size="small">
-          <el-descriptions-item :label="$t('goose.time')" :span="2">{{
-            formatGooseTime(detailPacket.timestamp)
+          <el-descriptions-item :label="$t('goose.sendTime')">{{
+            formatGooseTime(detailPacket.send_timestamp)
+          }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.receiveTime')">{{
+            formatGooseTime(
+              detailPacket.receive_timestamp ?? detailPacket.timestamp,
+            )
           }}</el-descriptions-item>
           <el-descriptions-item :label="$t('goose.length')">{{
             $t("goose.bytes", { count: detailPacket.length })
+          }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('goose.e2eDelay')" :span="3">{{
+            formatE2eDelay(detailPacket)
           }}</el-descriptions-item>
           <el-descriptions-item :label="$t('goose.srcMac')">{{
             detailPacket.src_mac
@@ -341,11 +349,11 @@
             min-width="130"
           />
           <el-table-column prop="name" :label="$t('goose.field')" width="145" />
-          <el-table-column
-            prop="display_value"
-            :label="$t('goose.parsedValue')"
-            min-width="180"
-          />
+          <el-table-column :label="$t('goose.parsedValue')" min-width="180">
+            <template #default="{ row }">{{
+              formatGooseParsedValue(row)
+            }}</template>
+          </el-table-column>
           <el-table-column
             prop="description"
             :label="$t('goose.explanation')"
@@ -548,6 +556,64 @@ function formatCapturedValue(value: GooseCapturedDataValue) {
     : String(value.value ?? "-");
 }
 
+/** 把时间戳（毫秒或秒）统一换算为 epoch 毫秒；与 formatGooseTime 的阈值逻辑一致。 */
+function toEpochMs(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || value === 0) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.abs(n) >= 100_000_000_000 ? n : n * 1000;
+}
+
+/** 端到端延时 = 接收时间 − 报文发出时间，单位 ms。 */
+function packetE2eDelayMs(
+  packet: {
+    timestamp?: number | null | undefined;
+    receive_timestamp?: number | null | undefined;
+    send_timestamp?: number | null | undefined;
+  } | null,
+): number | null {
+  if (!packet) return null;
+  const recv = toEpochMs(packet.receive_timestamp ?? packet.timestamp);
+  const send = toEpochMs(packet.send_timestamp);
+  if (recv === null || send === null || send <= 0) return null;
+  return recv - send;
+}
+
+/** 格式化端到端延时 */
+function formatE2eDelay(
+  packet: {
+    timestamp?: number | null | undefined;
+    receive_timestamp?: number | null | undefined;
+    send_timestamp?: number | null | undefined;
+  } | null,
+): string {
+  const ms = packetE2eDelayMs(packet);
+  if (ms === null) return "-";
+  if (Math.abs(ms) < 1000) return `${ms} ms`;
+  return `${(ms / 1000).toFixed(3)} s`;
+}
+
+/** 协议字段的解析值：时间戳字段在原值后追加格式化时间，如 {..} (2026-08-24 07:56:23.100)。 */
+function formatGooseParsedValue(field: {
+  display_value: string;
+  value?: unknown;
+}): string {
+  const raw = field.display_value ?? "";
+  const v = field.value;
+  if (
+    v &&
+    typeof v === "object" &&
+    !Array.isArray(v) &&
+    "unix_seconds" in (v as Record<string, unknown>)
+  ) {
+    const obj = v as { unix_seconds?: unknown; fraction?: unknown };
+    const ts = Number(obj.unix_seconds) + Number(obj.fraction || 0);
+    const formatted = formatGooseTime(ts);
+    if (formatted && formatted !== "-") return `${raw} (${formatted})`;
+  }
+  return raw;
+}
+
 // 详情对话框
 const detailVisible = ref(false);
 const detailPacket = ref<GooseCapturedPacket | null>(null);
@@ -698,6 +764,10 @@ cleanups.push(
 
 /** 收到指令响应 — 使用 seq 机制过滤过期响应 */
 let lastListSeq = 0;
+// 同一命令可能被多个重复订阅的处理器消费，按 cmdSeq 去重，避免成功消息弹两次
+let messagedStartSeq = 0;
+let messagedStopSeq = 0;
+let messagedClearSeq = 0;
 cleanups.push(
   ws.on(
     WsEventType.RESPONSE,
@@ -713,7 +783,10 @@ cleanups.push(
         starting.value = false;
         if (res.success) {
           captureRunning.value = true;
-          ElMessage.success(t("goose.captureStarted"));
+          if (messagedStartSeq !== curSeq) {
+            messagedStartSeq = curSeq;
+            ElMessage.success(t("goose.captureStarted"));
+          }
           lastListSeq = curSeq;
           ws.list({ channel_id: props.channelId });
         } else {
@@ -731,7 +804,10 @@ cleanups.push(
         if (curSeq !== cmdSeq) return;
         if (res.success) {
           captureRunning.value = false;
-          ElMessage.success(t("goose.captureStopped"));
+          if (messagedStopSeq !== curSeq) {
+            messagedStopSeq = curSeq;
+            ElMessage.success(t("goose.captureStopped"));
+          }
         } else {
           captureRunning.value = true;
           showErrorOnce(res.message || t("goose.publishFailed"));
@@ -757,7 +833,10 @@ cleanups.push(
           pendingPackets = [];
           currentPage.value = 1;
           statistics.value = null;
-          ElMessage.success(t("goose.clearSuccess"));
+          if (messagedClearSeq !== curSeq) {
+            messagedClearSeq = curSeq;
+            ElMessage.success(t("goose.clearSuccess"));
+          }
         }
       } else if (res.command === "status") {
         if (res.success && res.data?.captures?.length > 0) {

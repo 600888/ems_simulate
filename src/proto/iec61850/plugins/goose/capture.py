@@ -55,6 +55,9 @@ class CapturedPacket:
     vlan_prio: int = 0
     has_vlan: bool = False
     interface: str = ""
+    # 报文发出时间（GOOSE 帧内 goose_timestamp 字段，epoch 秒）；解析不到时为 0
+    send_timestamp: float = 0.0
+    receive_timestamp: float = 0.0
 
     @property
     def formatted_time(self) -> str:
@@ -67,6 +70,8 @@ class CapturedPacket:
             "src_mac": self.src_mac,
             "dst_mac": self.dst_mac,
             "timestamp": self.timestamp,
+            "receive_timestamp": self.receive_timestamp or self.timestamp,
+            "send_timestamp": self.send_timestamp,
             "time": self.formatted_time,
             "length": self.length,
             "app_id": self.app_id,
@@ -427,8 +432,20 @@ class GooseCaptureEngine:
             return
 
         # 创建不可变报文记录
+        # 报文的"发出时间"取自 GOOSE 帧内的 goose_timestamp（事件时间），
+        # 接收时间即捕获时刻 (time.time())。
+        now_ts = time.time()
+        goose_time = parsed.get("goose_timestamp")
+        send_ts = 0.0
+        if isinstance(goose_time, dict):
+            seconds = goose_time.get("unix_seconds")
+            fraction = goose_time.get("fraction")
+            if isinstance(seconds, (int, float)):
+                send_ts = float(seconds) + float(fraction or 0)
         packet = CapturedPacket(
-            timestamp=time.time(),
+            timestamp=now_ts,
+            receive_timestamp=now_ts,
+            send_timestamp=send_ts,
             src_mac=src_mac,
             dst_mac=dst_mac,
             raw_bytes=raw_data,

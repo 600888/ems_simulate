@@ -1016,6 +1016,8 @@ export default {
     cache: "缓存:",
     appIdLabel: "APPID:",
     time: "时间",
+    sendTime: "报文发出时间",
+    e2eDelay: "端到端延时",
     srcMac: "源MAC",
     dstMacLabel: "目标MAC",
     stNum: "状态号",

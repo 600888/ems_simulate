@@ -4,8 +4,8 @@
  * 所有接口使用 POST 方法，参数放在 JSON body 中
  */
 
-import { requestApi } from './http';
-import { GOOSE_API } from '@/constants';
+import { requestApi } from "./http";
+import { GOOSE_API } from "@/constants";
 
 // ===== 类型定义 =====
 
@@ -72,7 +72,7 @@ export interface GooseSubscriptionStatus {
   sq_num: number;
   time_allowed_to_live: number;
   timestamp: number;
-  state: 'init' | 'connected' | 'lost' | 'error';
+  state: "init" | "connected" | "lost" | "error";
   last_update: number;
   description: string;
   dst_mac: string;
@@ -126,7 +126,11 @@ export interface GoosePublisherCreateRequest {
   vlan_id?: number;
   vlan_prio?: number;
   simulation?: boolean;
-  entries?: { name: string; value: boolean | number | string; iec_type: string }[];
+  entries?: {
+    name: string;
+    value: boolean | number | string;
+    iec_type: string;
+  }[];
 }
 
 /** 更新 Publisher 请求 */
@@ -182,7 +186,10 @@ export interface GooseSubscriptionCreateRequest {
   dataset_entries?: GooseDataSetMember[];
 }
 
-export interface GooseSubscriptionUpdateRequest extends Omit<GooseSubscriptionCreateRequest, 'go_cb_ref'> {
+export interface GooseSubscriptionUpdateRequest extends Omit<
+  GooseSubscriptionCreateRequest,
+  "go_cb_ref"
+> {
   new_go_cb_ref?: string;
 }
 
@@ -195,7 +202,7 @@ export interface DiscoveredGooseItem {
   conf_rev: number;
   name: string;
   ld_inst: string;
-  detail_status?: 'complete' | 'partial';
+  detail_status?: "complete" | "partial";
   discovery_error_code?: number | null;
   discovery_error?: string;
   attempted_refs?: string[];
@@ -221,8 +228,10 @@ export interface NetworkInterfaceInfo {
   supports_raw_ethernet: boolean;
 }
 
-export async function getGooseNetworkInterfaces(): Promise<NetworkInterfaceInfo[]> {
-  const data = await requestApi(GOOSE_API.NETWORK_INTERFACES, 'get', null);
+export async function getGooseNetworkInterfaces(): Promise<
+  NetworkInterfaceInfo[]
+> {
+  const data = await requestApi(GOOSE_API.NETWORK_INTERFACES, "get", null);
   return data?.items || [];
 }
 
@@ -231,7 +240,7 @@ export async function replaceGooseSubscriptions(
   receiverId: string,
   subscriptions: GooseSubscriptionCreateRequest[],
 ): Promise<GooseReceiverStatus | null> {
-  return await requestApi(GOOSE_API.RECEIVER_SUBSCRIPTIONS_REPLACE, 'post', {
+  return await requestApi(GOOSE_API.RECEIVER_SUBSCRIPTIONS_REPLACE, "post", {
     channel_id: channelId,
     receiver_id: receiverId,
     subscriptions,
@@ -239,42 +248,57 @@ export async function replaceGooseSubscriptions(
 }
 
 /** 获取客户端发现的远端 GOOSE 控制块列表 */
-export async function getDiscoveredGoose(channelId: number): Promise<DiscoveredGooseItem[]> {
-  const data = await requestApi(GOOSE_API.DISCOVERED_LIST, 'post', { channel_id: channelId });
-  return (data?.items || []).map((item: DiscoveredGooseItem & {
-    app_id?: number | string | null;
-    dst_mac?: string | number[];
-  }) => ({
-    ...item,
-    app_id: parseGooseAppId(item.app_id),
-    dst_mac: formatGooseMac(item.dst_mac),
-  }));
+export async function getDiscoveredGoose(
+  channelId: number,
+): Promise<DiscoveredGooseItem[]> {
+  const data = await requestApi(GOOSE_API.DISCOVERED_LIST, "post", {
+    channel_id: channelId,
+  });
+  return (data?.items || []).map(
+    (
+      item: DiscoveredGooseItem & {
+        app_id?: number | string | null;
+        dst_mac?: string | number[];
+      },
+    ) => ({
+      ...item,
+      app_id: parseGooseAppId(item.app_id),
+      dst_mac: formatGooseMac(item.dst_mac),
+    }),
+  );
 }
 
 function formatGooseMac(value: string | number[] | null | undefined): string {
   if (Array.isArray(value)) {
     return value.length === 6
-      ? value.map((part) => Number(part).toString(16).padStart(2, '0')).join(':').toUpperCase()
-      : '';
+      ? value
+          .map((part) => Number(part).toString(16).padStart(2, "0"))
+          .join(":")
+          .toUpperCase()
+      : "";
   }
-  return String(value ?? '').trim();
+  return String(value ?? "").trim();
 }
 
-export function parseGooseAppId(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value === 'number') return Number.isInteger(value) ? value : null;
+export function parseGooseAppId(
+  value: number | string | null | undefined,
+): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isInteger(value) ? value : null;
   const text = String(value).trim();
-  const parsed = /^0x/i.test(text) ? Number.parseInt(text.slice(2), 16) : Number.parseInt(text, 10);
+  const parsed = /^0x/i.test(text)
+    ? Number.parseInt(text.slice(2), 16)
+    : Number.parseInt(text, 10);
   return Number.isInteger(parsed) ? parsed : null;
 }
 
 /** 将发现的远端 GOOSE 控制块导入为 Receiver 订阅 */
 export async function importDiscoveredGoose(
   channelId: number,
-  iface = 'eth0',
+  iface = "eth0",
   goCbRefs: string[] = [],
 ): Promise<{ imported: number; receiver: GooseReceiverStatus | null }> {
-  const data = await requestApi(GOOSE_API.DISCOVERED_IMPORT, 'post', {
+  const data = await requestApi(GOOSE_API.DISCOVERED_IMPORT, "post", {
     channel_id: channelId,
     interface: iface,
     go_cb_refs: goCbRefs,
@@ -285,19 +309,31 @@ export async function importDiscoveredGoose(
 // ===== Publisher API =====
 
 /** 获取所有 GOOSE Publisher 列表 */
-export async function getGoosePublishers(channelId: number): Promise<GoosePublisherStatus[]> {
-  const data = await requestApi(GOOSE_API.PUBLISHERS_LIST, 'post', { channel_id: channelId });
+export async function getGoosePublishers(
+  channelId: number,
+): Promise<GoosePublisherStatus[]> {
+  const data = await requestApi(GOOSE_API.PUBLISHERS_LIST, "post", {
+    channel_id: channelId,
+  });
   return data?.items || [];
 }
 
 /** 获取指定 GOOSE Publisher 状态 */
-export async function getGoosePublisher(channelId: number, publisherId: string): Promise<GoosePublisherStatus | null> {
-  return await requestApi(GOOSE_API.PUBLISHER_DETAIL, 'post', { channel_id: channelId, publisher_id: publisherId });
+export async function getGoosePublisher(
+  channelId: number,
+  publisherId: string,
+): Promise<GoosePublisherStatus | null> {
+  return await requestApi(GOOSE_API.PUBLISHER_DETAIL, "post", {
+    channel_id: channelId,
+    publisher_id: publisherId,
+  });
 }
 
 /** 创建 GOOSE Publisher */
-export async function createGoosePublisher(req: GoosePublisherCreateRequest): Promise<GoosePublisherStatus | null> {
-  return await requestApi(GOOSE_API.PUBLISHERS, 'post', req);
+export async function createGoosePublisher(
+  req: GoosePublisherCreateRequest,
+): Promise<GoosePublisherStatus | null> {
+  return await requestApi(GOOSE_API.PUBLISHERS, "post", req);
 }
 
 /** 更新 GOOSE Publisher */
@@ -305,30 +341,57 @@ export async function updateGoosePublisher(
   publisherId: string,
   req: GoosePublisherUpdateRequest,
 ): Promise<GoosePublisherStatus | null> {
-  return await requestApi(GOOSE_API.PUBLISHER_UPDATE, 'post', { publisher_id: publisherId, ...req });
+  return await requestApi(GOOSE_API.PUBLISHER_UPDATE, "post", {
+    publisher_id: publisherId,
+    ...req,
+  });
 }
 
 /** 删除 GOOSE Publisher */
-export async function deleteGoosePublisher(channelId: number, publisherId: string): Promise<boolean> {
-  const data = await requestApi(GOOSE_API.PUBLISHER_DELETE, 'post', { channel_id: channelId, publisher_id: publisherId });
+export async function deleteGoosePublisher(
+  channelId: number,
+  publisherId: string,
+): Promise<boolean> {
+  const data = await requestApi(GOOSE_API.PUBLISHER_DELETE, "post", {
+    channel_id: channelId,
+    publisher_id: publisherId,
+  });
   return data !== null;
 }
 
 /** 启动 GOOSE Publisher */
-export async function startGoosePublisher(channelId: number, publisherId: string): Promise<boolean> {
-  const data = await requestApi(GOOSE_API.PUBLISHER_START, 'post', { channel_id: channelId, publisher_id: publisherId });
+export async function startGoosePublisher(
+  channelId: number,
+  publisherId: string,
+): Promise<boolean> {
+  const data = await requestApi(GOOSE_API.PUBLISHER_START, "post", {
+    channel_id: channelId,
+    publisher_id: publisherId,
+  });
   return data !== null;
 }
 
 /** 停止 GOOSE Publisher */
-export async function stopGoosePublisher(channelId: number, publisherId: string): Promise<boolean> {
-  const data = await requestApi(GOOSE_API.PUBLISHER_STOP, 'post', { channel_id: channelId, publisher_id: publisherId });
+export async function stopGoosePublisher(
+  channelId: number,
+  publisherId: string,
+): Promise<boolean> {
+  const data = await requestApi(GOOSE_API.PUBLISHER_STOP, "post", {
+    channel_id: channelId,
+    publisher_id: publisherId,
+  });
   return data !== null;
 }
 
 /** 立即发布 GOOSE 报文 */
-export async function publishGooseNow(channelId: number, publisherId: string): Promise<boolean> {
-  const data = await requestApi(GOOSE_API.PUBLISHER_PUBLISH, 'post', { channel_id: channelId, publisher_id: publisherId });
+export async function publishGooseNow(
+  channelId: number,
+  publisherId: string,
+): Promise<boolean> {
+  const data = await requestApi(GOOSE_API.PUBLISHER_PUBLISH, "post", {
+    channel_id: channelId,
+    publisher_id: publisherId,
+  });
   return data !== null;
 }
 
@@ -341,7 +404,7 @@ export async function addGoosePublisherEntry(
   value: boolean | number | string,
   iec_type: string,
 ): Promise<any> {
-  return await requestApi(GOOSE_API.PUBLISHER_ENTRIES_ADD, 'post', {
+  return await requestApi(GOOSE_API.PUBLISHER_ENTRIES_ADD, "post", {
     publisher_id: publisherId,
     entry: { name, value, iec_type },
   });
@@ -353,7 +416,7 @@ export async function updateGoosePublisherEntry(
   entryIndex: number,
   value: boolean | number | string,
 ): Promise<any> {
-  return await requestApi(GOOSE_API.PUBLISHER_ENTRIES_UPDATE, 'post', {
+  return await requestApi(GOOSE_API.PUBLISHER_ENTRIES_UPDATE, "post", {
     publisher_id: publisherId,
     index: entryIndex,
     value,
@@ -365,16 +428,23 @@ export async function deleteGoosePublisherEntry(
   publisherId: string,
   entryIndex: number,
 ): Promise<boolean> {
-  const data = await requestApi(GOOSE_API.PUBLISHER_ENTRIES_REMOVE, 'post', { publisher_id: publisherId, index: entryIndex });
+  const data = await requestApi(GOOSE_API.PUBLISHER_ENTRIES_REMOVE, "post", {
+    publisher_id: publisherId,
+    index: entryIndex,
+  });
   return data !== null;
 }
 
 export async function replaceGoosePublisherEntries(
   channelId: number,
   publisherId: string,
-  entries: { name: string; value: boolean | number | string; iec_type: string }[],
+  entries: {
+    name: string;
+    value: boolean | number | string;
+    iec_type: string;
+  }[],
 ): Promise<GoosePublisherStatus | null> {
-  return await requestApi(GOOSE_API.PUBLISHER_ENTRIES_REPLACE, 'post', {
+  return await requestApi(GOOSE_API.PUBLISHER_ENTRIES_REPLACE, "post", {
     channel_id: channelId,
     publisher_id: publisherId,
     entries,
@@ -384,27 +454,44 @@ export async function replaceGoosePublisherEntries(
 // ===== Receiver API =====
 
 /** 获取所有 GOOSE Receiver 列表 */
-export async function getGooseReceivers(channelId: number): Promise<GooseReceiverStatus[]> {
-  const data = await requestApi(GOOSE_API.RECEIVERS_LIST, 'post', { channel_id: channelId });
+export async function getGooseReceivers(
+  channelId: number,
+): Promise<GooseReceiverStatus[]> {
+  const data = await requestApi(GOOSE_API.RECEIVERS_LIST, "post", {
+    channel_id: channelId,
+  });
   return data?.items || [];
 }
 
 /** 获取指定 GOOSE Receiver 状态 */
-export async function getGooseReceiver(channelId: number, receiverId: string): Promise<GooseReceiverStatus | null> {
-  return await requestApi(GOOSE_API.RECEIVER_DETAIL, 'post', { channel_id: channelId, receiver_id: receiverId });
+export async function getGooseReceiver(
+  channelId: number,
+  receiverId: string,
+): Promise<GooseReceiverStatus | null> {
+  return await requestApi(GOOSE_API.RECEIVER_DETAIL, "post", {
+    channel_id: channelId,
+    receiver_id: receiverId,
+  });
 }
 
 /** 创建 GOOSE Receiver */
-export async function createGooseReceiver(req: GooseReceiverCreateRequest): Promise<GooseReceiverStatus | null> {
-  return await requestApi(GOOSE_API.RECEIVERS, 'post', req);
+export async function createGooseReceiver(
+  req: GooseReceiverCreateRequest,
+): Promise<GooseReceiverStatus | null> {
+  return await requestApi(GOOSE_API.RECEIVERS, "post", req);
 }
 
 export async function updateGooseReceiver(
   channelId: number,
   receiverId: string,
-  req: { interface: string; name: string; description: string; auto_start: boolean },
+  req: {
+    interface: string;
+    name: string;
+    description: string;
+    auto_start: boolean;
+  },
 ): Promise<GooseReceiverStatus | null> {
-  return await requestApi(GOOSE_API.RECEIVER_UPDATE, 'post', {
+  return await requestApi(GOOSE_API.RECEIVER_UPDATE, "post", {
     channel_id: channelId,
     receiver_id: receiverId,
     ...req,
@@ -412,20 +499,38 @@ export async function updateGooseReceiver(
 }
 
 /** 删除 GOOSE Receiver */
-export async function deleteGooseReceiver(channelId: number, receiverId: string): Promise<boolean> {
-  const data = await requestApi(GOOSE_API.RECEIVER_DELETE, 'post', { channel_id: channelId, receiver_id: receiverId });
+export async function deleteGooseReceiver(
+  channelId: number,
+  receiverId: string,
+): Promise<boolean> {
+  const data = await requestApi(GOOSE_API.RECEIVER_DELETE, "post", {
+    channel_id: channelId,
+    receiver_id: receiverId,
+  });
   return data !== null;
 }
 
 /** 启动 GOOSE Receiver */
-export async function startGooseReceiver(channelId: number, receiverId: string): Promise<boolean> {
-  const data = await requestApi(GOOSE_API.RECEIVER_START, 'post', { channel_id: channelId, receiver_id: receiverId });
+export async function startGooseReceiver(
+  channelId: number,
+  receiverId: string,
+): Promise<boolean> {
+  const data = await requestApi(GOOSE_API.RECEIVER_START, "post", {
+    channel_id: channelId,
+    receiver_id: receiverId,
+  });
   return data !== null;
 }
 
 /** 停止 GOOSE Receiver */
-export async function stopGooseReceiver(channelId: number, receiverId: string): Promise<boolean> {
-  const data = await requestApi(GOOSE_API.RECEIVER_STOP, 'post', { channel_id: channelId, receiver_id: receiverId });
+export async function stopGooseReceiver(
+  channelId: number,
+  receiverId: string,
+): Promise<boolean> {
+  const data = await requestApi(GOOSE_API.RECEIVER_STOP, "post", {
+    channel_id: channelId,
+    receiver_id: receiverId,
+  });
   return data !== null;
 }
 
@@ -436,7 +541,10 @@ export async function addGooseSubscription(
   receiverId: string,
   req: GooseSubscriptionCreateRequest,
 ): Promise<GooseSubscriptionStatus | null> {
-  return await requestApi(GOOSE_API.RECEIVER_SUBSCRIPTIONS_ADD, 'post', { receiver_id: receiverId, ...req });
+  return await requestApi(GOOSE_API.RECEIVER_SUBSCRIPTIONS_ADD, "post", {
+    receiver_id: receiverId,
+    ...req,
+  });
 }
 
 /** 移除订阅 */
@@ -444,7 +552,11 @@ export async function removeGooseSubscription(
   receiverId: string,
   goCbRef: string,
 ): Promise<boolean> {
-  const data = await requestApi(GOOSE_API.RECEIVER_SUBSCRIPTIONS_REMOVE, 'post', { receiver_id: receiverId, go_cb_ref: goCbRef });
+  const data = await requestApi(
+    GOOSE_API.RECEIVER_SUBSCRIPTIONS_REMOVE,
+    "post",
+    { receiver_id: receiverId, go_cb_ref: goCbRef },
+  );
   return data !== null;
 }
 
@@ -454,7 +566,7 @@ export async function updateGooseSubscription(
   goCbRef: string,
   req: GooseSubscriptionUpdateRequest,
 ): Promise<GooseReceiverStatus | null> {
-  return await requestApi(GOOSE_API.RECEIVER_SUBSCRIPTIONS_UPDATE, 'post', {
+  return await requestApi(GOOSE_API.RECEIVER_SUBSCRIPTIONS_UPDATE, "post", {
     channel_id: channelId,
     receiver_id: receiverId,
     go_cb_ref: goCbRef,
@@ -468,16 +580,18 @@ export async function getGooseSubscriptionHistory(
   goCbRef: string,
   limit = 100,
 ): Promise<GooseMessageHistoryItem[]> {
-  const data = await requestApi(GOOSE_API.RECEIVER_SUBSCRIPTIONS_HISTORY, 'post', {
-    channel_id: channelId,
-    receiver_id: receiverId,
-    go_cb_ref: goCbRef,
-    limit,
-  });
+  const data = await requestApi(
+    GOOSE_API.RECEIVER_SUBSCRIPTIONS_HISTORY,
+    "post",
+    {
+      channel_id: channelId,
+      receiver_id: receiverId,
+      go_cb_ref: goCbRef,
+      limit,
+    },
+  );
   return data?.items || [];
 }
-
-
 
 // ===== ICD 导入 =====
 // ICD 文件统一导入在 /import-icd (channelApi.ts)，含 MMS 测点 + GOOSE 配置
@@ -529,6 +643,8 @@ export interface GooseCapturedPacket {
   dst_mac: string;
   timestamp: number;
   time: string;
+  receive_timestamp?: number;
+  send_timestamp?: number;
   length: number;
   app_id: number;
   app_id_hex: string;
@@ -583,14 +699,18 @@ export interface GooseCaptureStartRequest {
 // ===== GOOSE 报文抓包 API =====
 
 /** 启动 GOOSE 报文抓包 */
-export async function startGooseCapture(req: GooseCaptureStartRequest): Promise<boolean> {
-  const data = await requestApi(GOOSE_API.CAPTURE_START, 'post', req);
+export async function startGooseCapture(
+  req: GooseCaptureStartRequest,
+): Promise<boolean> {
+  const data = await requestApi(GOOSE_API.CAPTURE_START, "post", req);
   return data !== null;
 }
 
 /** 停止 GOOSE 报文抓包 */
 export async function stopGooseCapture(channelId: number): Promise<boolean> {
-  const data = await requestApi(GOOSE_API.CAPTURE_STOP, 'post', { channel_id: channelId });
+  const data = await requestApi(GOOSE_API.CAPTURE_STOP, "post", {
+    channel_id: channelId,
+  });
   return data !== null;
 }
 
@@ -604,22 +724,36 @@ export async function getGooseCapturedPackets(
   statistics: GooseCaptureStatistics;
   status: GooseCaptureStatus;
 }> {
-  const data = await requestApi(GOOSE_API.CAPTURE_LIST, 'post', {
+  const data = await requestApi(GOOSE_API.CAPTURE_LIST, "post", {
     channel_id: channelId,
     count: count || 0,
     filter_app_id: filterAppId ?? null,
   });
-  return data || { packets: [], statistics: {} as GooseCaptureStatistics, status: {} as GooseCaptureStatus };
+  return (
+    data || {
+      packets: [],
+      statistics: {} as GooseCaptureStatistics,
+      status: {} as GooseCaptureStatus,
+    }
+  );
 }
 
 /** 清空捕获的报文 */
-export async function clearGooseCapturedPackets(channelId: number): Promise<boolean> {
-  const data = await requestApi(GOOSE_API.CAPTURE_CLEAR, 'post', { channel_id: channelId });
+export async function clearGooseCapturedPackets(
+  channelId: number,
+): Promise<boolean> {
+  const data = await requestApi(GOOSE_API.CAPTURE_CLEAR, "post", {
+    channel_id: channelId,
+  });
   return data !== null;
 }
 
 /** 获取抓包状态 */
-export async function getGooseCaptureStatus(channelId: number): Promise<{ captures: GooseCaptureStatus[] }> {
-  const data = await requestApi(GOOSE_API.CAPTURE_STATUS, 'post', { channel_id: channelId });
+export async function getGooseCaptureStatus(
+  channelId: number,
+): Promise<{ captures: GooseCaptureStatus[] }> {
+  const data = await requestApi(GOOSE_API.CAPTURE_STATUS, "post", {
+    channel_id: channelId,
+  });
   return data || { captures: [] };
 }
