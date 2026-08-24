@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 
 from ...core.connection import Iec61850Connection
 from ...defs.constants import HAS_IEC61850
+from ...defs.error_codes import format_ied_error
 from ...log import log
 from .types import FileEntry, FileType
 
@@ -125,7 +126,7 @@ class DirectoryBrowser:
                 error_code = iec61850.IED_ERROR_OK
 
             if error_code != iec61850.IED_ERROR_OK:
-                log.warning(f"获取文件目录失败 (directory={directory!r}), 错误码: {error_code}")
+                log.warning(f"获取文件目录失败 (directory={directory!r}), error={format_ied_error(error_code)}")
                 return []
 
             if not file_list:

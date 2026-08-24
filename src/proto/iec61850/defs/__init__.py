@@ -47,6 +47,7 @@ from .da_patterns import (
     SKIP_DA_NAMES,
     STRUCT_DA_EXPAND_ONLINE,
 )
+from .error_codes import IedClientErrorCode, describe_ied_error, format_ied_error
 from .ln_classes import (
     ALL_LN_CLASSES,
     SIGNAL_DOS,
@@ -103,6 +104,9 @@ __all__ = [
     "mms_type_from_iec_type",
     "iec_type_from_mms_type",
     "infer_mms_type_from_path",
+    "IedClientErrorCode",
+    "describe_ied_error",
+    "format_ied_error",
     # ln_classes
     "YC_LN_CLASSES",
     "YX_LN_CLASSES",

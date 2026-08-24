@@ -16,6 +16,7 @@ from src.proto.iec61850.core import Iec61850Connection
 from ...core.linked_list import get_list_from_linked_list
 from ...core.native_calls import call_gil_safe
 from ...defs.constants import HAS_IEC61850, AcsiClass
+from ...defs.error_codes import format_ied_error
 from ...defs.types import OptFields, RCBInfo, ReportDataEntry, TrgOps
 from ...log import log
 from ..base import Iec61850Plugin
@@ -257,9 +258,7 @@ class ReportsPlugin:
                 raw = result[0] if isinstance(result, (list, tuple)) else result
                 error = result[1] if isinstance(result, (list, tuple)) and len(result) > 1 else 0
                 if error != iec61850.IED_ERROR_OK or raw is None:
-                    error_text = str(error)
-                    with contextlib.suppress(Exception):
-                        error_text = f"{error}({iec61850.IedClientError_toString(error)})"
+                    error_text = format_ied_error(error)
                     log.warning(
                         f"缓存 RCB 目录预热失败: association={association}, "
                         f"ln={ln_ref}, type={rcb_type}, error={error_text}"
@@ -1134,7 +1133,7 @@ class ReportsPlugin:
                 error = 0
 
             if error != iec61850.IED_ERROR_OK:
-                log.debug(f"获取 LN 目录失败: {ld}, error={error}")
+                log.debug(f"获取 LN 目录失败: {ld}, error={format_ied_error(error)}")
                 return []
 
             if ln_raw:

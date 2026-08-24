@@ -7,6 +7,7 @@ from typing import Any
 
 from ...core.native_calls import call_gil_safe
 from ...defs.constants import HAS_IEC61850
+from ...defs.error_codes import format_ied_error
 from ...log import log
 
 if HAS_IEC61850:
@@ -75,5 +76,5 @@ class GooseClientControl:
                     with contextlib.suppress(Exception):
                         iec61850.ClientGooseControlBlock_destroy(block)
 
-        log.error(f"设置远端 GoCB GoEna 失败: ref={go_cb_ref}, enabled={enabled}, error={last_error}")
+        log.error(f"设置远端 GoCB GoEna 失败: ref={go_cb_ref}, enabled={enabled}, error={format_ied_error(last_error)}")
         return False

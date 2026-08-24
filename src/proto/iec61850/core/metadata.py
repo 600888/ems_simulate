@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ..defs.constants import HAS_IEC61850
+from ..defs.error_codes import format_ied_error
 from ..log import log
 from .native_calls import call_gil_safe
 
@@ -211,7 +212,9 @@ class MetadataReader:
                     error = result[1] if isinstance(result, (list, tuple)) and len(result) > 1 else 0
 
                     if error != iec61850.IED_ERROR_OK or not mms_value:
-                        log.debug(f"readObject (quality) 失败: ref={ref}, fc={fc_name}, error={error}")
+                        log.debug(
+                            f"readObject (quality) 失败: ref={ref}, fc={fc_name}, error={format_ied_error(error)}"
+                        )
                         continue
 
                     value_type = iec61850.MmsValue_getType(mms_value)
@@ -255,7 +258,9 @@ class MetadataReader:
                     error = result[1] if isinstance(result, (list, tuple)) and len(result) > 1 else 0
 
                     if error != iec61850.IED_ERROR_OK or not mms_value:
-                        log.debug(f"readObject (timestamp) 失败: ref={ref}, fc={fc_name}, error={error}")
+                        log.debug(
+                            f"readObject (timestamp) 失败: ref={ref}, fc={fc_name}, error={format_ied_error(error)}"
+                        )
                         continue
 
                     value_type = iec61850.MmsValue_getType(mms_value)

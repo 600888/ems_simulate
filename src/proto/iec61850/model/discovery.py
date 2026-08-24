@@ -29,6 +29,7 @@ from ..defs.da_patterns import (
     STRUCT_DA_EXPAND_ONLINE,
     get_intrinsic_da_override,
 )
+from ..defs.error_codes import describe_ied_error
 from ..defs.ln_classes import (
     SIGNAL_DOS,
     SKIP_SYSTEM_DOS,
@@ -1291,20 +1292,10 @@ class ModelDiscoveryService:
 
     @staticmethod
     def _ied_error_name(error: Any) -> str:
-        """将原生 IedClientError 转成人类可读名称。"""
+        """将原生 IedClientError 转成枚举名和中文含义。"""
         if error is None:
             return ""
-        converter = getattr(iec61850, "IedClientError_toString", None)
-        if callable(converter):
-            with contextlib.suppress(Exception):
-                value = converter(error)
-                if isinstance(value, bytes):
-                    return value.decode(errors="replace")
-                if value:
-                    return str(value)
-        if int(error) == 99:
-            return "IED_ERROR_UNKNOWN"
-        return f"IED_ERROR_{int(error)}"
+        return describe_ied_error(error)
 
     # ===== 推断逻辑 (从 DataModelsPlugin 和 ModelExporter 合并) =====
 

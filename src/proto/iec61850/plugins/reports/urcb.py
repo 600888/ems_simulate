@@ -11,6 +11,7 @@ import contextlib
 from ...core.mms_value import mms_value_to_python
 from ...core.native_calls import call_gil_safe
 from ...defs.constants import HAS_IEC61850
+from ...defs.error_codes import format_ied_error
 from ...defs.types import OptFields, RCBInfo, TrgOps
 from ...log import log
 
@@ -119,10 +120,7 @@ class UrcbHandler:
     @staticmethod
     def _error_text(error) -> str:
         """把底层 IED 错误码转换为便于诊断的文本。"""
-        if isinstance(error, int):
-            with contextlib.suppress(Exception):
-                return f"{error}({iec61850.IedClientError_toString(error)})"
-        return str(error)
+        return format_ied_error(error)
 
     @staticmethod
     def _trigger_gi_write_object(conn, rcb_ref: str) -> bool:
@@ -182,7 +180,7 @@ class UrcbHandler:
                 if error == iec61850.IED_ERROR_OK:
                     log.info(f"URCB GI direct trigger ok: {rcb_ref} (ref={ref})")
                     return True
-                log.debug(f"URCB GI direct trigger failed: ref={ref}, error={error}")
+                log.debug(f"URCB GI direct trigger failed: ref={ref}, error={UrcbHandler._error_text(error)}")
             except Exception as e:
                 log.debug(f"URCB GI direct trigger exception: ref={ref}, {e}")
         return False
@@ -223,7 +221,10 @@ class UrcbHandler:
                     error = UrcbHandler._extract_error(result)
                     if error != iec61850.IED_ERROR_OK:
                         last_error = error
-                        log.debug(f"获取 URCB 值失败，尝试下一个引用: ref={rcb_ref}, nref={nref}, error={error}")
+                        log.debug(
+                            f"获取 URCB 值失败，尝试下一个引用: ref={rcb_ref}, nref={nref}, "
+                            f"error={UrcbHandler._error_text(error)}"
+                        )
                         continue
 
                     if nref != UrcbHandler._normalize_ref(rcb_ref):
@@ -233,7 +234,7 @@ class UrcbHandler:
                     with contextlib.suppress(Exception):
                         iec61850.ClientReportControlBlock_destroy(rcb)
 
-            log.debug(f"获取 URCB 值失败: ref={rcb_ref}, error={last_error}")
+            log.debug(f"获取 URCB 值失败: ref={rcb_ref}, error={UrcbHandler._error_text(last_error)}")
             return None
         except Exception as e:
             log.error(f"获取 URCB 值异常: {rcb_ref}, {e}")
@@ -257,7 +258,7 @@ class UrcbHandler:
             result = call_gil_safe(iec61850, "IedConnection_getRCBValues", conn, nref, rcb)
             error = UrcbHandler._extract_error(result)
             if error != iec61850.IED_ERROR_OK:
-                log.warning(f"设置 URCB RptId 前读取失败: ref={rcb_ref}, error={error}")
+                log.warning(f"设置 URCB RptId 前读取失败: ref={rcb_ref}, error={UrcbHandler._error_text(error)}")
                 return False
 
             iec61850.ClientReportControlBlock_setRptId(rcb, rpt_id)
@@ -271,7 +272,9 @@ class UrcbHandler:
             )
             error = UrcbHandler._extract_error(result)
             if error != iec61850.IED_ERROR_OK:
-                log.warning(f"设置 URCB RptId 失败: ref={rcb_ref}, rpt_id={rpt_id!r}, error={error}")
+                log.warning(
+                    f"设置 URCB RptId 失败: ref={rcb_ref}, rpt_id={rpt_id!r}, error={UrcbHandler._error_text(error)}"
+                )
                 return False
 
             log.info(f"URCB RptId 已更新: ref={rcb_ref}, rpt_id={rpt_id!r}")
@@ -313,7 +316,8 @@ class UrcbHandler:
                     if error != iec61850.IED_ERROR_OK:
                         last_error = error
                         log.debug(
-                            f"设置 URCB RptEna 前读取失败，尝试下一个引用: ref={rcb_ref}, nref={nref}, error={error}"
+                            f"设置 URCB RptEna 前读取失败，尝试下一个引用: ref={rcb_ref}, nref={nref}, "
+                            f"error={UrcbHandler._error_text(error)}"
                         )
                         continue
 
@@ -377,7 +381,10 @@ class UrcbHandler:
                     set_error = UrcbHandler._extract_error(result)
                     if set_error != iec61850.IED_ERROR_OK:
                         last_error = set_error
-                        log.debug(f"设置 URCB 值失败，尝试下一个引用: ref={rcb_ref}, nref={nref}, error={set_error}")
+                        log.debug(
+                            f"设置 URCB 值失败，尝试下一个引用: ref={rcb_ref}, nref={nref}, "
+                            f"error={UrcbHandler._error_text(set_error)}"
+                        )
                         continue
 
                     if nref != UrcbHandler._normalize_ref(rcb_ref):
@@ -388,7 +395,7 @@ class UrcbHandler:
                     with contextlib.suppress(Exception):
                         iec61850.ClientReportControlBlock_destroy(rcb)
 
-            log.warning(f"设置 URCB RptEna 失败: ref={rcb_ref}, error={last_error}")
+            log.warning(f"设置 URCB RptEna 失败: ref={rcb_ref}, error={UrcbHandler._error_text(last_error)}")
             return False
         except Exception as e:
             log.error(f"设置 URCB RptEna 异常: {rcb_ref}, {e}")
@@ -419,7 +426,10 @@ class UrcbHandler:
                     set_error = UrcbHandler._extract_error(result)
                     if set_error != iec61850.IED_ERROR_OK:
                         last_error = set_error
-                        log.debug(f"URCB 禁用失败，尝试下一个引用: ref={rcb_ref}, nref={nref}, error={set_error}")
+                        log.debug(
+                            f"URCB 禁用失败，尝试下一个引用: ref={rcb_ref}, nref={nref}, "
+                            f"error={UrcbHandler._error_text(set_error)}"
+                        )
                         continue
 
                     if nref != UrcbHandler._normalize_ref(rcb_ref):
@@ -430,7 +440,7 @@ class UrcbHandler:
                     with contextlib.suppress(Exception):
                         iec61850.ClientReportControlBlock_destroy(rcb)
 
-            log.warning(f"URCB 禁用失败: ref={rcb_ref}, error={last_error}")
+            log.warning(f"URCB 禁用失败: ref={rcb_ref}, error={UrcbHandler._error_text(last_error)}")
             return False
         except Exception as e:
             log.error(f"URCB 禁用异常: {rcb_ref}, {e}")

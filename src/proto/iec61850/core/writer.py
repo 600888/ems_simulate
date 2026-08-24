@@ -14,6 +14,7 @@ from ..defs.constants import (
     IEC_TYPE_INTEGER,
     IEC_TYPE_UNKNOWN,
 )
+from ..defs.error_codes import format_ied_error
 from ..defs.mms_types import MmsType, mms_type_from_iec_type
 from ..log import log
 
@@ -137,7 +138,7 @@ class Iec61850Writer:
 
             if not iec61850.ControlObjectClient_operate(control, ctl_value, 0):
                 error = iec61850.ControlObjectClient_getLastError(control)
-                log.error(f"IEC61850 控制操作失败: ref={object_ref}, error={error}")
+                log.error(f"IEC61850 控制操作失败: ref={object_ref}, error={format_ied_error(error)}")
                 return False
             return True
         except Exception as e:
@@ -168,7 +169,10 @@ class Iec61850Writer:
                 if isinstance(error, (list, tuple)):
                     error = error[1]
                 if error != iec61850.IED_ERROR_OK:
-                    log.error(f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=FLOAT, error={error}")
+                    log.error(
+                        f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=FLOAT, "
+                        f"error={format_ied_error(error)}"
+                    )
                 return error == iec61850.IED_ERROR_OK
 
             if mms_type is MmsType.BOOLEAN:
@@ -176,7 +180,10 @@ class Iec61850Writer:
                 if isinstance(error, (list, tuple)):
                     error = error[1]
                 if error != iec61850.IED_ERROR_OK:
-                    log.error(f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=BOOLEAN, error={error}")
+                    log.error(
+                        f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=BOOLEAN, "
+                        f"error={format_ied_error(error)}"
+                    )
                 return error == iec61850.IED_ERROR_OK
 
             if mms_type is MmsType.INTEGER:
@@ -184,7 +191,10 @@ class Iec61850Writer:
                 if isinstance(error, (list, tuple)):
                     error = error[1]
                 if error != iec61850.IED_ERROR_OK:
-                    log.error(f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=INTEGER, error={error}")
+                    log.error(
+                        f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=INTEGER, "
+                        f"error={format_ied_error(error)}"
+                    )
                 return error == iec61850.IED_ERROR_OK
 
             if mms_type is MmsType.UNSIGNED:
@@ -192,7 +202,10 @@ class Iec61850Writer:
                 if isinstance(error, (list, tuple)):
                     error = error[1]
                 if error != iec61850.IED_ERROR_OK:
-                    log.error(f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=UNSIGNED, error={error}")
+                    log.error(
+                        f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=UNSIGNED, "
+                        f"error={format_ied_error(error)}"
+                    )
                 return error == iec61850.IED_ERROR_OK
 
             if mms_type is MmsType.VISIBLE_STRING:
@@ -200,7 +213,10 @@ class Iec61850Writer:
                 if isinstance(error, (list, tuple)):
                     error = error[1]
                 if error != iec61850.IED_ERROR_OK:
-                    log.error(f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=VISIBLE_STRING, error={error}")
+                    log.error(
+                        f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type=VISIBLE_STRING, "
+                        f"error={format_ied_error(error)}"
+                    )
                 return error == iec61850.IED_ERROR_OK
 
             mms_value = self._new_mms_value(address, value, mms_type)
@@ -213,7 +229,8 @@ class Iec61850Writer:
                     error = error[1]
                 if error != iec61850.IED_ERROR_OK:
                     log.error(
-                        f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type={mms_type.value}, error={error}"
+                        f"IEC61850 写入失败: ref={ref}, fc_val={fc_val}, mms_type={mms_type.value}, "
+                        f"error={format_ied_error(error)}"
                     )
                 return error == iec61850.IED_ERROR_OK
             finally:

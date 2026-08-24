@@ -12,6 +12,7 @@ import threading
 import time
 
 from ..defs.constants import FC_MX, HAS_IEC61850
+from ..defs.error_codes import format_ied_error
 from ..log import log
 
 
@@ -177,7 +178,7 @@ class Iec61850Connection:
 
                     return True
                 else:
-                    log.error(f"IEC 61850 连接失败, 错误码: {error}")
+                    log.error(f"IEC 61850 连接失败, error={format_ied_error(error)}")
                     self._is_connected = False
                     self._cleanup_connection()
                     return False
@@ -298,7 +299,7 @@ class Iec61850Connection:
                     self._last_alive_check = now
                     return True
 
-                log.warning(f"IEC 61850 MMS 心跳失败，标记连接失效: error={error}")
+                log.warning(f"IEC 61850 MMS 心跳失败，标记连接失效: error={format_ied_error(error)}")
             except Exception as e:
                 log.warning(f"IEC 61850 MMS 心跳异常，标记连接失效: {e}")
 

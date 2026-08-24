@@ -26,25 +26,12 @@ import os
 
 from ...core.connection import Iec61850Connection
 from ...defs.constants import HAS_IEC61850
+from ...defs.error_codes import format_ied_error
 from ...log import log
 from .types import TransferProgress, TransferStatus
 
 # 进度回调类型: (progress: TransferProgress) -> None
 ProgressCallback = Callable[[TransferProgress], None]
-
-
-def _ied_error_name(error_code) -> str:
-    """将 IED 错误码转换为可读名称"""
-    if error_code is None or error_code == 0:
-        return "OK"
-    _map = {}
-    try:
-        from pyiec61850 import pyiec61850 as iec
-
-        _map = {v: k for k, v in vars(iec).items() if k.startswith("IED_ERROR") and isinstance(v, int)}
-    except Exception:
-        pass
-    return _map.get(error_code, f"UNKNOWN({error_code})")
 
 
 def _mms_error_name(error_code) -> str:
@@ -447,18 +434,18 @@ class FileTransfer:
 
             # 解析返回值: 统一格式 (data, error_code)
             error_code = self._parse_error_code(result)
-            err_name = _ied_error_name(error_code)
+            err_name = format_ied_error(error_code)
 
             if error_code == iec61850.IED_ERROR_OK:
                 progress.status = TransferStatus.COMPLETED
                 progress.bytes_transferred = progress.total_bytes
                 log.info(f"文件上传完成(setFile): {local_path} → {remote_filename}")
             else:
-                log.warning(f"setFile 上传失败: {err_name}({error_code}), 尝试 obtainFile...")
+                log.warning(f"setFile 上传失败: {err_name}, 尝试 obtainFile...")
 
                 # 方式 2: MmsConnection_obtainFile (备选)
                 error_code = self._upload_via_obtain_file(iec61850, conn, local_dir_fwd, local_name, remote_filename)
-                err_name = _ied_error_name(error_code)
+                err_name = format_ied_error(error_code)
 
                 if error_code == iec61850.IED_ERROR_OK:
                     progress.status = TransferStatus.COMPLETED
@@ -466,8 +453,8 @@ class FileTransfer:
                     log.info(f"文件上传完成(obtainFile): {local_path} → {remote_filename}")
                 else:
                     progress.status = TransferStatus.FAILED
-                    progress.error = f"上传失败: {err_name}({error_code})"
-                    log.error(f"上传文件失败: {local_path} → {remote_filename}, 错误码: {err_name}({error_code})")
+                    progress.error = f"上传失败: {err_name}"
+                    log.error(f"上传文件失败: {local_path} → {remote_filename}, error={err_name}")
 
         except Exception as e:
             progress.status = TransferStatus.FAILED
@@ -517,7 +504,7 @@ class FileTransfer:
 
             error_code = self._parse_error_code(result)
             if error_code != iec61850.IED_ERROR_OK:
-                log.warning(f"obtainFile 上传失败: {_ied_error_name(error_code)}({error_code})")
+                log.warning(f"obtainFile 上传失败: {format_ied_error(error_code)}")
             return error_code
 
         except Exception as e:
@@ -563,10 +550,10 @@ class FileTransfer:
             # 返回值格式: (data, error_code)
             result = iec61850.IedConnection_deleteFile(conn, remote_filename)
             error_code = self._parse_error_code(result)
-            err_name = _ied_error_name(error_code)
+            err_name = format_ied_error(error_code)
 
             if error_code != iec61850.IED_ERROR_OK:
-                log.error(f"删除远程文件失败: {remote_filename}, 错误: {err_name}({error_code})")
+                log.error(f"删除远程文件失败: {remote_filename}, error={err_name}")
                 return False
 
             log.info(f"远程文件已删除: {remote_filename}")

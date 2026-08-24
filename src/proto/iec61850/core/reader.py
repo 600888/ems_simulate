@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from ..defs.address import infer_fc_from_address, infer_iec_type_from_address
 from ..defs.constants import HAS_IEC61850
+from ..defs.error_codes import format_ied_error
 from ..defs.mms_types import (
     MmsType,
     iec_type_from_mms_type,
@@ -110,7 +111,7 @@ class FloatReader:
             value, error = iec61850.IedConnection_readFloatValue(conn, ref, fc_val)
             if error == iec61850.IED_ERROR_OK:
                 return float(value)
-            log.debug(f"读取浮点值失败: ref={ref}, error={error}")
+            log.debug(f"读取浮点值失败: ref={ref}, error={format_ied_error(error)}")
         except Exception as e:
             log.debug(f"读取浮点值异常: ref={ref}, error={e}")
         return None
@@ -127,7 +128,7 @@ class BooleanReader:
             value, error = iec61850.IedConnection_readBooleanValue(conn, ref, fc_val)
             if error == iec61850.IED_ERROR_OK:
                 return bool(value)
-            log.debug(f"读取布尔值失败: ref={ref}, error={error}")
+            log.debug(f"读取布尔值失败: ref={ref}, error={format_ied_error(error)}")
         except Exception as e:
             log.debug(f"读取布尔值异常: ref={ref}, error={e}")
         return None

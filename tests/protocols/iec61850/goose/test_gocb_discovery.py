@@ -99,7 +99,7 @@ def test_gocb_read_preserves_partial_result_and_error_details():
 
     assert result.detail_status == "partial"
     assert result.discovery_error_code == 99
-    assert result.discovery_error == "IED_ERROR_UNKNOWN"
+    assert result.discovery_error == "IED_ERROR_UNKNOWN（未知错误）"
     assert result.attempted_refs == (
         "IEDLD/LLN0.gocbPub1",
         "IEDLD/LLN0.GO.gocbPub1",

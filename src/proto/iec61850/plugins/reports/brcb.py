@@ -11,6 +11,7 @@ import datetime
 from ...core.mms_value import mms_value_to_python
 from ...core.native_calls import call_gil_safe
 from ...defs.constants import HAS_IEC61850
+from ...defs.error_codes import format_ied_error
 from ...defs.types import OptFields, RCBInfo, TrgOps
 from ...log import log
 
@@ -91,7 +92,7 @@ class BrcbHandler:
                 if error == iec61850.IED_ERROR_OK:
                     log.info(f"BRCB GI direct trigger ok: {rcb_ref} (ref={ref})")
                     return True
-                log.debug(f"BRCB GI direct trigger failed: ref={ref}, error={error}")
+                log.debug(f"BRCB GI direct trigger failed: ref={ref}, error={format_ied_error(error)}")
             except Exception as e:
                 log.debug(f"BRCB GI direct trigger exception: ref={ref}, {e}")
         return False
@@ -140,7 +141,7 @@ class BrcbHandler:
                 error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if error != iec61850.IED_ERROR_OK:
-                    log.debug(f"获取 BRCB 值失败: ref={rcb_ref}, error={error}")
+                    log.debug(f"获取 BRCB 值失败: ref={rcb_ref}, error={format_ied_error(error)}")
                     return None
 
                 # 提取属性值
@@ -171,7 +172,7 @@ class BrcbHandler:
             result = call_gil_safe(iec61850, "IedConnection_getRCBValues", conn, nref, rcb)
             error = BrcbHandler._extract_error(result)
             if error != iec61850.IED_ERROR_OK:
-                log.warning(f"设置 BRCB RptId 前读取失败: ref={rcb_ref}, error={error}")
+                log.warning(f"设置 BRCB RptId 前读取失败: ref={rcb_ref}, error={format_ied_error(error)}")
                 return False
 
             iec61850.ClientReportControlBlock_setRptId(rcb, rpt_id)
@@ -185,7 +186,7 @@ class BrcbHandler:
             )
             error = BrcbHandler._extract_error(result)
             if error != iec61850.IED_ERROR_OK:
-                log.warning(f"设置 BRCB RptId 失败: ref={rcb_ref}, rpt_id={rpt_id!r}, error={error}")
+                log.warning(f"设置 BRCB RptId 失败: ref={rcb_ref}, rpt_id={rpt_id!r}, error={format_ied_error(error)}")
                 return False
 
             log.info(f"BRCB RptId 已更新: ref={rcb_ref}, rpt_id={rpt_id!r}")
@@ -231,7 +232,7 @@ class BrcbHandler:
                 result = call_gil_safe(iec61850, "IedConnection_getRCBValues", conn, nref, rcb)
                 error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if error != iec61850.IED_ERROR_OK:
-                    log.warning(f"设置 BRCB RptEna 前读取失败: ref={rcb_ref}, error={error}")
+                    log.warning(f"设置 BRCB RptEna 前读取失败: ref={rcb_ref}, error={format_ied_error(error)}")
                     return False
 
                 changes = 0
@@ -283,7 +284,7 @@ class BrcbHandler:
                 set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:
-                    log.warning(f"设置 BRCB 值失败: ref={rcb_ref}, error={set_error}")
+                    log.warning(f"设置 BRCB 值失败: ref={rcb_ref}, error={format_ied_error(set_error)}")
                     return False
 
                 log.info(f"BRCB RptEna 已{'使能' if enable else '禁用'}: {rcb_ref}")
@@ -334,7 +335,7 @@ class BrcbHandler:
                 set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:
-                    log.warning(f"BRCB GI 触发失败: ref={rcb_ref}, error={set_error}")
+                    log.warning(f"BRCB GI 触发失败: ref={rcb_ref}, error={format_ied_error(set_error)}")
                     return False
 
                 log.info(f"BRCB GI 已触发: {rcb_ref}")
@@ -367,7 +368,7 @@ class BrcbHandler:
                 set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:
-                    log.warning(f"BRCB 直接禁用失败: ref={rcb_ref}, error={set_error}")
+                    log.warning(f"BRCB 直接禁用失败: ref={rcb_ref}, error={format_ied_error(set_error)}")
                     return False
 
                 log.info(f"BRCB RptEna 已禁用 (直接): {rcb_ref}")
@@ -407,7 +408,7 @@ class BrcbHandler:
                 set_error = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
 
                 if set_error != iec61850.IED_ERROR_OK:
-                    log.warning(f"BRCB 清除缓冲失败: ref={rcb_ref}, error={set_error}")
+                    log.warning(f"BRCB 清除缓冲失败: ref={rcb_ref}, error={format_ied_error(set_error)}")
                     return False
 
                 log.info(f"BRCB 缓冲已清除: {rcb_ref}")
