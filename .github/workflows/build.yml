@@ -42,10 +42,6 @@ jobs:
   build:
     needs: version
     timeout-minutes: 120
-    env:
-      # c104's vendored native sources create deep object paths on Windows.
-      # runner.temp is both ASCII-only and shorter than github.workspace.
-      UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
     strategy:
       fail-fast: false
       matrix:
@@ -87,6 +83,18 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+
+      - name: Configure short uv cache path
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+
+          # c104's vendored native sources create deep object paths on Windows.
+          # RUNNER_TEMP is both ASCII-only and shorter than github.workspace.
+          cache_dir = Path(os.environ["RUNNER_TEMP"]) / "uv-cache"
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"UV_CACHE_DIR={cache_dir}\n")
 
       - name: Install c104 build toolchain (Linux)
         if: runner.os == 'Linux'
