@@ -9,6 +9,7 @@ $TAURI_DIR = Join-Path $PROJECT_ROOT "src-tauri"
 $BUILD_DIR = Join-Path $PROJECT_ROOT "build"
 $BINARIES_DIR = Join-Path $TAURI_DIR "binaries"
 $PYTHON_EXE = Join-Path $PROJECT_ROOT ".venv\Scripts\python.exe"
+$NATIVE_OPTIMIZER = Join-Path $SCRIPT_DIR "optimize_windows_native_extensions.ps1"
 
 function WriteStep($m) { Write-Host "[STEP] $m" -ForegroundColor Cyan }
 function WriteOk($m)   { Write-Host "[SUCCESS] $m" -ForegroundColor Green }
@@ -157,7 +158,8 @@ if (-not $SkipBackend) {
         (Join-Path $PROJECT_ROOT "uv.lock"),
         (Join-Path $PROJECT_ROOT "ems_simulate_backend.spec"),
         (Join-Path $SCRIPT_DIR "rthook_numpy_compat.py"),
-        (Join-Path $SCRIPT_DIR "build_tauri_windows.ps1")
+        (Join-Path $SCRIPT_DIR "build_tauri_windows.ps1"),
+        $NATIVE_OPTIMIZER
     )
     if ((Test-Path $BE_RUNTIME_DIR) -and (IsUpToDate $BE_SIDECAR_EXE $beSources)) {
         WriteSkip "Python backend (sidecar) is up-to-date"
@@ -230,6 +232,21 @@ if (-not $SkipBackend) {
 } else {
     WriteSkip "Python backend build (skipped by flag)"
 }
+
+# Git-based native dependencies are compiled on the build machine. A polluted
+# MinGW/DEBUG environment or a cached wheel can therefore contain tens of MiB
+# of DWARF data. Strip only anomalously large c104 builds, then enforce a hard
+# size gate before Tauri copies the runtime into the installer.
+WriteStep "Optimizing Windows native extensions..."
+if (-not (Test-Path -LiteralPath $NATIVE_OPTIMIZER -PathType Leaf)) {
+    WriteErr "Native extension optimizer not found: $NATIVE_OPTIMIZER"
+}
+try {
+    & $NATIVE_OPTIMIZER -RuntimeDir $BE_RUNTIME_DIR
+} catch {
+    WriteErr "Native extension optimization failed: $($_.Exception.Message)"
+}
+WriteOk "Windows native extensions optimized and verified"
 
 # Build Tauri
 # Keep only the target-triple sidecar and its onedir runtime.

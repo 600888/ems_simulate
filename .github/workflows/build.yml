@@ -43,8 +43,9 @@ jobs:
     needs: version
     timeout-minutes: 120
     env:
-      # c104's Windows CMake build cannot handle non-ASCII source paths.
-      UV_CACHE_DIR: ${{ github.workspace }}/.uv-cache
+      # c104's vendored native sources create deep object paths on Windows.
+      # runner.temp is both ASCII-only and shorter than github.workspace.
+      UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
     strategy:
       fail-fast: false
       matrix:
@@ -101,6 +102,11 @@ jobs:
           cache-dependency-glob: uv.lock
 
       - name: Install locked Python dependencies
+        env:
+          # c104's setup.py treats a truthy DEBUG value as a CMake Debug build.
+          # Never allow runner or cache environment state to enable DWARF data
+          # in release artifacts.
+          DEBUG: "0"
         run: uv sync --frozen --extra build --extra dev
 
       - name: Verify c104 2.2.2 TLS API

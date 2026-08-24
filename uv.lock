@@ -54,7 +54,7 @@ wheels = [
 [[package]]
 name = "c104"
 version = "2.2.2"
-source = { git = "https://github.com/600888/iec104-python.git?rev=c7ea3988cb549040898ff97a64190b88f47e6dbe#c7ea3988cb549040898ff97a64190b88f47e6dbe" }
+source = { git = "https://github.com/600888/iec104-python.git?rev=214b88d6d5d2239e1772db4023d552d68fb0784e#214b88d6d5d2239e1772db4023d552d68fb0784e" }
 
 [[package]]
 name = "cffi"
@@ -297,7 +297,7 @@ dev = [
 requires-dist = [
     { name = "altgraph", marker = "extra == 'build'", specifier = "==0.17.5" },
     { name = "blinker", specifier = "==1.9.0" },
-    { name = "c104", git = "https://github.com/600888/iec104-python.git?rev=c7ea3988cb549040898ff97a64190b88f47e6dbe" },
+    { name = "c104", git = "https://github.com/600888/iec104-python.git?rev=214b88d6d5d2239e1772db4023d552d68fb0784e" },
     { name = "cryptography", specifier = "==46.0.3" },
     { name = "dlt645", extras = ["async"], specifier = "==3.2.0" },
     { name = "fastapi", specifier = "==0.128.0" },
