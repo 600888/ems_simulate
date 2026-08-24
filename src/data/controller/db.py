@@ -7,7 +7,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import sessionmaker
 
-from src.config.config import Config
+from src.config.config import Config, resolve_config_path
 from src.config.global_config import ROOT_DIR
 from src.config.storage import get_storage_path
 from src.data.controller.db_controller import DbController
@@ -16,10 +16,8 @@ from src.data.controller.db_controller import DbController
 import src.data.model  # noqa: F401
 from src.data.model.base import Base
 
-# 加载配置
-config_path = Path(ROOT_DIR) / "etc" / "config.ini"
-if not config_path.exists():
-    config_path = Path(ROOT_DIR) / "config.ini"
+# 加载运行目录中可编辑的主配置文件
+config_path = resolve_config_path(ROOT_DIR)
 Config.load_config(str(config_path))
 
 # 初始化数据库控制器

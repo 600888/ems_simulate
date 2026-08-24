@@ -5,8 +5,19 @@
 
 from configparser import ConfigParser
 import os
+from pathlib import Path
 
 from src.enums.data_source import DataSource
+
+
+def resolve_config_path(root_dir: str | os.PathLike[str]) -> Path:
+    """Resolve the editable runtime config, with the old ``etc`` path as fallback."""
+    root = Path(root_dir)
+    primary = root / "config.ini"
+    legacy = root / "etc" / "config.ini"
+    if primary.is_file() or not legacy.is_file():
+        return primary
+    return legacy
 
 
 class Config:

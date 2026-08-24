@@ -1,6 +1,7 @@
 """EMS Simulate 后端入口 - FastAPI 应用
 
 用法:
+    python start_back_end.py
     python start_back_end.py --port 8991
     python start_back_end.py --port 8991 --root-dir ./data
 
@@ -19,7 +20,7 @@ import sys
 def _parse_args() -> argparse.Namespace:
     """解析命令行参数（Tauri sidecar / direct spawn 传入 --port）"""
     parser = argparse.ArgumentParser(description="EMS Simulate Backend")
-    parser.add_argument("--port", type=int, default=8991, help="服务端口号")
+    parser.add_argument("--port", type=int, default=None, help="服务端口号（缺省时读取 config.ini）")
     parser.add_argument("--root-dir", type=str, default=None, help="数据根目录（优先级低于 EMS_ROOT_DIR 环境变量）")
     return parser.parse_args()
 
@@ -70,16 +71,27 @@ def _prepare_runtime_root(root_dir: Path) -> None:
                 (point_csv_target / f.name).write_bytes(f.read_bytes())
 
 
+def _activate_runtime_config(root_dir: Path):
+    """Pin all late imports to one runtime root and load its editable config."""
+    resolved_root = root_dir.expanduser().resolve(strict=False)
+    os.environ["EMS_ROOT_DIR"] = str(resolved_root)
+
+    from src.config.config import Config, resolve_config_path
+
+    Config.load_config(str(resolve_config_path(resolved_root)))
+    return Config
+
+
 if __name__ == "__main__":
     args = _parse_args()
-    root_dir = _get_root_dir(args.root_dir)
+    root_dir = _get_root_dir(args.root_dir).expanduser().resolve(strict=False)
     _prepare_runtime_root(root_dir)
+    Config = _activate_runtime_config(root_dir)
 
     # Late imports keep CLI parsing and runtime root setup deterministic.
     from fastapi.staticfiles import StaticFiles
     import uvicorn
 
-    from src.config.config import Config
     from src.web.app import app
 
     # 挂载静态文件（前端打包产物）
@@ -93,7 +105,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "src.web.app:app",
         host=Config.web_host,
-        port=args.port,
+        port=args.port if args.port is not None else Config.web_port,
         log_level="info",
         reload=False,
     )

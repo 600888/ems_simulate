@@ -7,6 +7,7 @@ Type=simple
 User=root
 # PyInstaller onedir 安装目录
 WorkingDirectory=/usr/share/ems-simulate-web
+Environment=EMS_ROOT_DIR=/usr/share/ems-simulate-web
 ExecStart=/usr/share/ems-simulate-web/ems_simulate_web
 Restart=always
 RestartSec=5
