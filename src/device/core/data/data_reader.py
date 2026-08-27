@@ -120,8 +120,8 @@ class DataReader:
         Returns:
             Tuple[int, int]: (成功点数, 失败点数)
 
-        对于 Modbus 客户端，会将连续地址的测点合并为一次批量读取请求。
-        对于其他协议或服务端，回退到逐点读取模式。
+        Modbus 客户端会合并连续地址；IEC 61850 使用类型/DataSet 批读；
+        DNP3 客户端使用单次 Class 0 完整性轮询；其他协议回退到逐点读取。
         """
         if not self._handler:
             if self._device._logger:
@@ -133,11 +133,13 @@ class DataReader:
             return 0, 0
 
         # 检查是否支持批量读取优化
+        from src.device.protocol.dnp3_handler import DNP3ClientHandler
         from src.device.protocol.iec61850_handler import IEC61850ClientHandler
         from src.device.protocol.modbus_handler import ModbusClientHandler
 
         is_modbus_client = isinstance(self._handler, ModbusClientHandler)
         is_iec61850_client = isinstance(self._handler, IEC61850ClientHandler)
+        is_dnp3_client = isinstance(self._handler, DNP3ClientHandler)
 
         if is_modbus_client:
             # Modbus 批量读取优化
@@ -154,10 +156,18 @@ class DataReader:
                 stop_event=stop_event,
                 progress_callback=progress_callback,
             )
+        elif is_dnp3_client:
+            # DNP3 Class 0 完整性轮询一次即可刷新全部静态点。
+            return await self._dnp3_batch_read_async(
+                all_points,
+                stop_event=stop_event,
+                progress_callback=progress_callback,
+            )
         else:
             # 回退到逐点读取
             return await self._single_read_async(
                 all_points,
+                interval_ms=interval_ms,
                 stop_event=stop_event,
                 progress_callback=progress_callback,
             )
@@ -213,9 +223,44 @@ class DataReader:
 
         return success_count, fail_count
 
+    async def _dnp3_batch_read_async(
+        self,
+        points: Sequence[BasePoint],
+        *,
+        stop_event: asyncio.Event | None = None,
+        progress_callback: Callable[[int, int, int, int], None] | None = None,
+    ) -> tuple[int, int]:
+        """DNP3 批量读取：单次完整性轮询后映射全部测点。"""
+        if stop_event is not None and stop_event.is_set():
+            return 0, 0
+
+        batch_results = await self._handler.read_points_batch_async(points)
+        success_count = 0
+        fail_count = 0
+        change_source = self._get_change_source()
+        client_info = self._get_client_info()
+
+        for point in points:
+            if stop_event is not None and stop_event.is_set():
+                break
+            value = batch_results.get(point.code)
+            if value is not None:
+                with track_change(change_source, f"DNP3批量同步 {point.code}", client_info):
+                    point.value = value
+                point.is_valid = True
+                success_count += 1
+            else:
+                point.is_valid = False
+                fail_count += 1
+            if progress_callback is not None:
+                progress_callback(success_count + fail_count, len(points), success_count, fail_count)
+
+        return success_count, fail_count
+
     async def _single_read_async(
         self,
         points: Sequence[BasePoint],
+        interval_ms: int | None = 0,
         *,
         stop_event: asyncio.Event | None = None,
         progress_callback: Callable[[int, int, int, int], None] | None = None,
@@ -224,7 +269,7 @@ class DataReader:
         success_count = 0
         fail_count = 0
         change_source = self._get_change_source()
-        for point in points:
+        for index, point in enumerate(points):
             if stop_event is not None and stop_event.is_set():
                 break
             try:
@@ -247,6 +292,16 @@ class DataReader:
                 fail_count += 1
             if progress_callback is not None:
                 progress_callback(success_count + fail_count, len(points), success_count, fail_count)
+            if interval_ms is not None and interval_ms > 0 and index < len(points) - 1:
+                if stop_event is None:
+                    await asyncio.sleep(interval_ms / 1000.0)
+                else:
+                    try:
+                        await asyncio.wait_for(stop_event.wait(), timeout=interval_ms / 1000.0)
+                    except TimeoutError:
+                        pass
+                    if stop_event.is_set():
+                        break
         return success_count, fail_count
 
     async def _batch_read_async(

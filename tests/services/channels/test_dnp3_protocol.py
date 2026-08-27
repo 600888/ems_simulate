@@ -7,6 +7,9 @@
 - DNP3 报文解析器：解析 pydnp3_pure 生成的真实链路帧
 """
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 
 from src.data.service.channel_service import ChannelService
@@ -152,3 +155,45 @@ def test_dnp3_service_create_points(protocol_type):
     # 十进制 index 无歧义
     yc10 = YcService._create_point(_dnp3_item("10"), protocol_type)
     assert yc10 is not None and int(yc10.address) == 10
+
+
+@pytest.mark.asyncio
+async def test_dnp3_handler_batch_read_uses_one_integrity_refresh_for_all_points():
+    """DNP3 批量读取不能退化成每个测点各发一次完整性轮询。"""
+    from src.device.protocol.dnp3_handler import DNP3ClientHandler
+
+    client = SimpleNamespace(
+        read_points_active=AsyncMock(
+            return_value={
+                (3, 30): 12.5,
+                (7, 1): True,
+            }
+        )
+    )
+    handler = DNP3ClientHandler()
+    handler._client = client
+    analog = SimpleNamespace(code="AI-3", address=3, frame_type=0)
+    binary = SimpleNamespace(code="BI-7", address=7, frame_type=1)
+
+    values = await handler.read_points_batch_async([analog, binary])
+
+    client.read_points_active.assert_awaited_once_with([(3, 30), (7, 1)])
+    assert values == {"AI-3": 12.5, "BI-7": True}
+
+
+@pytest.mark.asyncio
+async def test_dnp3_client_batch_read_sends_exactly_one_integrity_poll(monkeypatch):
+    from src.proto.dnp3.dnp3_client import Dnp3Client
+
+    client = Dnp3Client()
+    monkeypatch.setattr(client, "_session_ready", lambda: True)
+    client.send_integrity_poll = AsyncMock(return_value=True)
+    client.read_point = Mock(side_effect=lambda index, group: f"{group}:{index}")
+    response_wait = AsyncMock()
+    monkeypatch.setattr("src.proto.dnp3.dnp3_client.asyncio.sleep", response_wait)
+
+    values = await client.read_points_active([(3, 30), (7, 1)])
+
+    client.send_integrity_poll.assert_awaited_once_with()
+    response_wait.assert_awaited_once_with(0.2)
+    assert values == {(3, 30): "30:3", (7, 1): "1:7"}

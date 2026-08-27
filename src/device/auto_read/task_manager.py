@@ -112,6 +112,7 @@ class AutoReadTaskManager:
     async def _run(self, task_id: str, config: AutoReadConfig, stop_event: asyncio.Event) -> None:
         try:
             while not stop_event.is_set():
+                cycle_started_at = asyncio.get_running_loop().time()
                 self._update_progress(task_id, 0, 0, 0, 0)
                 result = await self._runner(
                     config,
@@ -131,8 +132,16 @@ class AutoReadTaskManager:
                     break
                 if stop_event.is_set():
                     break
+                # cycle_interval_ms 是界面展示的轮询周期，按本轮开始时间计算，
+                # 避免把协议响应耗时额外叠加到用户设置的周期上。
+                elapsed = asyncio.get_running_loop().time() - cycle_started_at
+                remaining = max(config.cycle_interval_ms / 1000.0 - elapsed, 0.0)
+                if remaining == 0:
+                    # 慢轮次超过周期时不并发补跑，但仍让出事件循环。
+                    await asyncio.sleep(0)
+                    continue
                 try:
-                    await asyncio.wait_for(stop_event.wait(), timeout=config.cycle_interval_ms / 1000.0)
+                    await asyncio.wait_for(stop_event.wait(), timeout=remaining)
                 except TimeoutError:
                     pass
         except asyncio.CancelledError:

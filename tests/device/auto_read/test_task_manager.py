@@ -59,6 +59,44 @@ async def test_stop_interrupts_cycle_wait_without_starting_another_cycle():
 
 
 @pytest.mark.asyncio
+async def test_cycle_interval_is_measured_from_cycle_start(monkeypatch):
+    """协议读取耗时不能再次叠加到界面配置的轮询周期。"""
+    captured_timeouts = []
+    cycle_count = 0
+
+    class FakeLoop:
+        def __init__(self):
+            self.times = iter((10.0, 10.025, 10.1))
+
+        def time(self):
+            return next(self.times)
+
+    async def fake_wait_for(awaitable, *, timeout):
+        awaitable.close()
+        captured_timeouts.append(timeout)
+        raise TimeoutError
+
+    async def runner(config, stop_event, progress):
+        nonlocal cycle_count
+        cycle_count += 1
+        if cycle_count == 2:
+            stop_event.set()
+        return CycleResult(total=1, success=1)
+
+    fake_loop = FakeLoop()
+    monkeypatch.setattr("src.device.auto_read.task_manager.asyncio.get_running_loop", lambda: fake_loop)
+    monkeypatch.setattr("src.device.auto_read.task_manager.asyncio.wait_for", fake_wait_for)
+
+    manager = AutoReadTaskManager(runner)
+    task_id = "deadline-test"
+    manager._status.task_id = task_id
+    await manager._run(task_id, AutoReadConfig(cycle_interval_ms=100), asyncio.Event())
+
+    assert cycle_count == 2
+    assert captured_timeouts == pytest.approx([0.075])
+
+
+@pytest.mark.asyncio
 async def test_stop_stays_stopping_until_current_non_cancellable_io_finishes():
     entered = asyncio.Event()
     release = asyncio.Event()

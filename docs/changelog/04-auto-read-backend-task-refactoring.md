@@ -111,7 +111,7 @@ class AutoReadConfig:
     dlt645_settlement: int | None = None
 ```
 
-`cycle_interval_ms` 表示一轮结束到下一轮开始的间隔；`request_interval_ms` 表示逐点或分组请求之间的限速间隔，不再复用一个含糊的 `interval` 表达两种含义。
+`cycle_interval_ms` 表示相邻两轮开始时间之间的轮询周期；`request_interval_ms` 表示逐点或分组请求之间的限速间隔，不再复用一个含糊的 `interval` 表达两种含义。若单轮读取耗时已经超过轮询周期，任务不会并发补跑，而是在本轮结束并让出事件循环后开始下一轮。
 
 状态快照包含：
 
@@ -152,6 +152,7 @@ self.manual_read_manager = AutoReadTaskManager(
 async def _run(self, task_id, config, stop_event):
     try:
         while not stop_event.is_set():
+            cycle_started = asyncio.get_running_loop().time()
             self._update_progress(task_id, 0, 0, 0, 0)
             result = await self._runner(
                 config,
@@ -170,11 +171,13 @@ async def _run(self, task_id, config, stop_event):
             if not self._repeat or stop_event.is_set():
                 break
 
+            cycle_elapsed = asyncio.get_running_loop().time() - cycle_started
+            remaining = max(
+                config.cycle_interval_ms / 1000.0 - cycle_elapsed,
+                0.0,
+            )
             try:
-                await asyncio.wait_for(
-                    stop_event.wait(),
-                    timeout=config.cycle_interval_ms / 1000.0,
-                )
+                await asyncio.wait_for(stop_event.wait(), timeout=remaining)
             except TimeoutError:
                 pass
     except asyncio.CancelledError:

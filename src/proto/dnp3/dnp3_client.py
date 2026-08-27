@@ -14,6 +14,7 @@ DNP3 客户端（Master）封装 —— 纯异步实现
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from typing import Any
 
 from pydnp3_pure.app.fragment import AppMessage
@@ -280,6 +281,22 @@ class Dnp3Client:
         # 短暂等待响应回填缓存（TcpClient 读循环在事件循环内处理响应）
         await asyncio.sleep(0.2)
         return self.read_point(index, group)
+
+    async def read_points_active(self, points: Sequence[tuple[int, int]]) -> dict[tuple[int, int], Any]:
+        """主动批量读取测点：一次完整性轮询后从缓存返回全部请求点。
+
+        DNP3 Class 0 完整性轮询本身会返回全部静态数据，不能为批量读取中的
+        每个测点分别发送一次轮询。这里统一刷新一次缓存，再按 ``(index, group)``
+        映射调用方需要的值。
+        """
+        if not self._session_ready():
+            return {}
+        if not await self.send_integrity_poll():
+            return {}
+        # TcpClient 的读循环在当前事件循环处理响应；与单点主动读取保持相同的
+        # 响应等待边界，避免在缓存刷新前返回旧值。
+        await asyncio.sleep(0.2)
+        return {(index, group): self.read_point(index, group) for index, group in points}
 
     async def write_analog(self, index: int, value: float) -> bool:
         """遥调：发送 Direct Operate 设定值。"""

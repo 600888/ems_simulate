@@ -10,6 +10,7 @@ DNP3 协议处理器
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from src.config.config import Config
@@ -333,6 +334,25 @@ class DNP3ClientHandler(ClientHandler):
     async def read_value_async(self, point: BasePoint) -> Any:
         """异步读取（主动读）：发网络请求获取最新值并返回。"""
         return await self.active_read_value_async(point)
+
+    async def read_points_batch_async(self, points: Sequence[BasePoint]) -> dict[str, Any]:
+        """用一次 Class 0 完整性轮询刷新并返回多个测点。
+
+        完整性轮询会同时返回 Outstation 的全部静态点，因此批量读取不能复用
+        ``read_value_async`` 逐点发送轮询，否则界面配置的轮询间隔会被每点固定
+        等待时间掩盖。
+        """
+        if not self._client or not points:
+            return {}
+        requests = [(_index_of(point), _READ_PRIMARY_GROUP(point.frame_type)) for point in points]
+        raw_values = await self._client.read_points_active(requests)
+        return {
+            point.code: _decode_value(
+                point,
+                raw_values.get((_index_of(point), _READ_PRIMARY_GROUP(point.frame_type))),
+            )
+            for point in points
+        }
 
     async def write_value_async(self, point: BasePoint, value: Any) -> bool:
         """异步写入：向对端 Outstation 下发遥控/遥调（Direct Operate）。"""
