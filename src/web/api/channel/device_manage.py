@@ -52,9 +52,8 @@ async def create_and_start_device(req: ChannelIdRequest, request: Request):
     general_device.name = channel_name
 
     if is_client_protocol(channel_protocol_type):
-        # 客户端协议：先连接服务器，再启动后端托管的自动读取任务。
+        # 客户端协议只建立连接；自动读取由用户通过界面显式开启。
         await general_device.start()
-        await general_device.start_auto_read()
     elif channel_protocol_type == ProtocolType.Iec61850Server:
         # IEC61850 服务端: 显式启动 MMS 服务器
         await general_device.start()
