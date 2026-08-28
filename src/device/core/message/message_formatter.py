@@ -129,6 +129,7 @@ class MessageFormatter:
             ProtocolType.Iec104Client,
             ProtocolType.Dlt645Client,
             ProtocolType.Iec61850Client,
+            ProtocolType.Dnp3Client,
         ]
 
         # 判断协议类型以选择解析方式
@@ -138,6 +139,7 @@ class MessageFormatter:
         is_dlt645 = protocol_type in _DLT645_TYPES
         is_iec104 = protocol_type in _IEC104_TYPES
         is_mms = protocol_type in _MMS_TYPES
+        is_dnp3 = protocol_type in _DNP3_TYPES
 
         # 统一显示格式
         result = []
@@ -183,6 +185,12 @@ class MessageFormatter:
                     description = describe_mms(bytes.fromhex(raw_hex), role=msg_type)
                 except (TypeError, ValueError):
                     description = "MMS报文格式无效"
+            elif is_dnp3 and raw_hex:
+                try:
+                    parsed = parse_dnp3(bytes.fromhex(raw_hex), role=msg_type)
+                    description = parsed["summary"]
+                except (TypeError, ValueError):
+                    description = "DNP3报文格式无效"
 
             # 原始16进制数据和长度
             hex_data = msg.get("hex_string", msg.get("data", ""))
@@ -266,6 +274,8 @@ class MessageFormatter:
             self._enrich_address_objects(detail, points, dlt645=True)
         elif protocol_type in _IEC104_TYPES:
             self._enrich_address_objects(detail, points, dlt645=False)
+        elif protocol_type in _DNP3_TYPES:
+            self._enrich_dnp3_objects(detail, points)
 
     @staticmethod
     def _point_metadata(point) -> dict:
@@ -336,6 +346,39 @@ class MessageFormatter:
                     candidate
                     for candidate in points
                     if candidate.address == address and (common_address is None or candidate.rtu_addr == common_address)
+                ),
+                None,
+            )
+            if point is None:
+                continue
+            metadata = self._point_metadata(point)
+            item["point"] = metadata
+            item["name"] = point.name or item.get("name", "")
+            value = item.get("value")
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                item["engineering_value"] = round(value * metadata["multiplier"] + metadata["addition"], 6)
+
+    def _enrich_dnp3_objects(self, detail: dict, points: list) -> None:
+        group_frame_types = {
+            30: 0,
+            32: 0,
+            1: 1,
+            2: 1,
+            10: 2,
+            12: 2,
+            40: 3,
+            41: 3,
+        }
+        for item in detail["objects"]:
+            address = item.get("address")
+            frame_type = group_frame_types.get(item.get("dnp3_group"))
+            if not isinstance(address, int) or frame_type is None:
+                continue
+            point = next(
+                (
+                    candidate
+                    for candidate in points
+                    if int(candidate.address) == address and candidate.frame_type == frame_type
                 ),
                 None,
             )

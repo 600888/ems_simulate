@@ -202,6 +202,11 @@ plan/features/device-configuration/*
 plan/features/server-connection-monitoring/*
 !plan/features/server-connection-monitoring/backend-implementation-plan.md
 
+!plan/DNP3/
+plan/DNP3/*
+!plan/DNP3/dnp3-implementation-design.md
+!plan/DNP3/dnp3-gap-priority-implementation-plan.md
+
 !plan/IEC104/
 plan/IEC104/*
 !plan/IEC104/implementation/

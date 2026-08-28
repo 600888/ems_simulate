@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import struct
 from typing import Any
 
-from .common import _fail, _field, _result, _validation
+from .common import _fail, _field, _hex, _result, _validation
 
 DNP3_LINK_CONTROL = {
     0x00: "确认 - 主->从 (ACK)",
@@ -23,25 +24,53 @@ DNP3_FUNCTION_CODES = {
     5: "直接操作 (Direct Operate)",
     6: "直接操作-无确认 (Direct Operate, No Ack)",
     7: "冻结 (Freeze)",
-    8: "冻结-清除 (Freeze, Clear)",
-    9: "冻结-无确认 (Freeze, No Ack)",
+    8: "冻结-无确认 (Freeze, No Ack)",
+    9: "冻结并清除 (Freeze, Clear)",
+    10: "冻结并清除-无确认 (Freeze, Clear, No Ack)",
+    11: "定时冻结 (Freeze at Time)",
+    12: "定时冻结-无确认 (Freeze at Time, No Ack)",
     13: "冷重启 (Cold Restart)",
     14: "热重启 (Warm Restart)",
+    15: "初始化数据 (Initialize Data)",
+    16: "初始化应用 (Initialize Application)",
+    17: "启动应用 (Start Application)",
+    18: "停止应用 (Stop Application)",
+    19: "保存配置 (Save Configuration)",
     20: "使能未请求上报 (Enable Unsolicited)",
     21: "禁止未请求上报 (Disable Unsolicited)",
     22: "分配类 (Assign Class)",
     23: "延迟测量 (Delay Measure)",
+    24: "记录当前时间 (Record Current Time)",
+    25: "打开文件 (Open File)",
+    26: "关闭文件 (Close File)",
+    27: "删除文件 (Delete File)",
+    28: "获取文件信息 (Get File Info)",
+    29: "文件认证 (Authenticate File)",
+    30: "中止文件操作 (Abort File)",
     129: "响应：成功",
-    130: "响应：不支持文件",
-    131: "响应：无对象",
-    132: "响应：对象无效",
-    133: "响应：文件不存在",
-    134: "响应：不支持对象",
-    135: "响应：文件被占用",
-    136: "响应：超出文件大小",
-    137: "响应：对象不能写入",
-    138: "响应：文件错误",
+    130: "未请求响应 (Unsolicited Response)",
 }
+
+_KNOWN_FUNCTION_CODES = frozenset(DNP3_FUNCTION_CODES)
+
+DNP3_OBJECT_GROUPS = {
+    1: "二进制输入",
+    2: "二进制输入事件",
+    10: "二进制输出状态",
+    12: "二进制输出命令",
+    20: "计数器",
+    21: "冻结计数器",
+    30: "模拟量输入",
+    32: "模拟量输入事件",
+    40: "模拟量输出状态",
+    41: "模拟量输出命令",
+    50: "日期时间",
+    60: "类数据",
+    80: "内部指示",
+}
+
+# 这些请求只携带对象选择范围，不携带对象值。
+_SELECTOR_FUNCTION_CODES = frozenset({1, 7, 8, 9, 10, 11, 12, 20, 21, 22})
 
 # 功能码 → 请求 (主->从) 或响应
 _RESPONSE_FC_START = 129
@@ -115,7 +144,12 @@ def parse_dnp3(
     header_crc_off = 3 + header_payload_len  # 头 CRC 位于 raw[8:10]
     # 用户数据区从 头CRC 之后 开始
     user_data_start = header_crc_off + 2  # = 10
-    user_data_raw = raw[user_data_start:] if length > header_payload_len else b""
+    user_data_length = length - header_payload_len
+    expected_body_length = user_data_length + 2 * ((user_data_length + 15) // 16)
+    user_data_raw = raw[user_data_start : user_data_start + expected_body_length]
+    if len(user_data_raw) < expected_body_length:
+        result["complete"] = False
+        result["warnings"].append(f"链路层数据不完整：应有 {expected_body_length} 字节，实际 {len(user_data_raw)} 字节")
 
     if len(raw) >= 4 + addr_size * 2:
         dst = int.from_bytes(raw[4 : 4 + addr_size], "little")
@@ -136,16 +170,16 @@ def parse_dnp3(
 
     # 用户数据块 CRC 校验（每 ≤16 字节一块 + 2 字节 CRC）
     block_errors: list[str] = []
-    if user_data_raw:
-        pos = 0
-        block_idx = 0
-        while pos < len(user_data_raw):
-            block_payload = user_data_raw[pos : pos + 16]
-            block_data_len = min(len(block_payload) - 2, 16) if len(block_payload) >= 2 else len(block_payload)
-            if not _check_crc_block(user_data_raw, pos, block_data_len):
-                block_errors.append(f"块{block_idx} CRC错")
-            pos += block_data_len + 2
-            block_idx += 1
+    pos = 0
+    remaining = user_data_length
+    block_idx = 0
+    while remaining > 0:
+        block_data_len = min(remaining, 16)
+        if not _check_crc_block(user_data_raw, pos, block_data_len):
+            block_errors.append(f"块{block_idx} CRC错或数据不完整")
+        pos += block_data_len + 2
+        remaining -= block_data_len
+        block_idx += 1
     _validation(
         result,
         "数据块CRC",
@@ -156,18 +190,49 @@ def parse_dnp3(
     # 用户数据 = 去掉各块尾部的 CRC
     user_data = bytearray()
     pos = 0
-    while pos < len(user_data_raw):
-        chunk = user_data_raw[pos : pos + 16]
-        real = min(len(chunk) - 2, 16) if len(chunk) >= 2 else len(chunk)
-        user_data.extend(chunk[:real])
-        pos += real + 2
+    remaining = user_data_length
+    while remaining > 0:
+        block_data_len = min(remaining, 16)
+        available = min(block_data_len, max(len(user_data_raw) - pos, 0))
+        user_data.extend(user_data_raw[pos : pos + available])
+        if available < block_data_len:
+            break
+        pos += block_data_len + 2
+        remaining -= block_data_len
 
     result["frame_kind"] = "链路数据帧"
     result["purpose"] = "从站→主站数据" if _link_is_server_data(ctrl) else "链路层数据帧"
 
-    # ---- 应用层 ----
-    if len(user_data) >= 1:
-        app_ctrl = user_data[0]
+    # ---- 传输层 / 应用层 ----
+    app_offset = 0
+    if _has_transport_header(user_data):
+        transport = user_data[0]
+        transport_fir = bool(transport & 0x80)
+        transport_fin = bool(transport & 0x40)
+        transport_seq = transport & 0x3F
+        fields.append(
+            _field(
+                "transport_control",
+                "传输控制字",
+                user_data_start,
+                bytes([transport]),
+                f"0x{transport:02X}",
+                f"FIR={transport_fir} FIN={transport_fin} SEQ={transport_seq}",
+            )
+        )
+        app_offset = 1
+        if not transport_fir:
+            result["frame_kind"] = "传输层后续分段"
+            result["summary"] = f"DNP3传输层后续分段 SEQ={transport_seq}"
+            result["purpose"] = "传输层分段数据"
+            result["complete"] = False
+            result["warnings"].append("当前链路帧不包含应用层首部，需结合前序分段解析")
+            if request_context:
+                result["correlation"] = request_context
+            return result
+
+    if len(user_data) > app_offset:
+        app_ctrl = user_data[app_offset]
         seq = app_ctrl & 0x0F
         fir = bool(app_ctrl & 0x80)
         fin = bool(app_ctrl & 0x40)
@@ -177,30 +242,52 @@ def parse_dnp3(
             _field(
                 "app_control",
                 "应用控制字",
-                user_data_start,
+                _user_wire_offset(user_data_start, app_offset),
                 bytes([app_ctrl]),
                 f"0x{app_ctrl:02X}",
                 f"FIR={fir} FIN={fin} CON={con} UNS={uns} SEQ={seq}",
             )
         )
-        if len(user_data) >= 2:
-            fc = user_data[1]
+        if len(user_data) >= app_offset + 2:
+            fc = user_data[app_offset + 1]
             fc_name = DNP3_FUNCTION_CODES.get(fc, f"未知0x{fc:02X}")
             fields.append(
-                _field("function_code", "功能码", user_data_start + 1, user_data[1:2], f"0x{fc:02X} {fc_name}")
+                _field(
+                    "function_code",
+                    "功能码",
+                    _user_wire_offset(user_data_start, app_offset + 1),
+                    user_data[app_offset + 1 : app_offset + 2],
+                    f"0x{fc:02X} {fc_name}",
+                )
             )
             result["summary"] = fc_name
             result["purpose"] = "应用层请求/响应"
             result["frame_kind"] = "应用帧(请求)" if fc < _RESPONSE_FC_START else "应用帧(响应)"
             # IIN（响应帧才有）
-            if fc >= _RESPONSE_FC_START and len(user_data) >= 4:
-                iin1, iin2 = user_data[2], user_data[3]
+            if fc >= _RESPONSE_FC_START and len(user_data) >= app_offset + 4:
+                iin1, iin2 = user_data[app_offset + 2], user_data[app_offset + 3]
                 iin_desc = _decoded_iin(iin1, iin2)
                 fields.append(
                     _field(
-                        "iin", "内部指示(IIN)", user_data_start + 2, user_data[2:4], f"0x{iin1:02X}{iin2:02X}", iin_desc
+                        "iin",
+                        "内部指示(IIN)",
+                        _user_wire_offset(user_data_start, app_offset + 2),
+                        user_data[app_offset + 2 : app_offset + 4],
+                        f"0x{iin1:02X}{iin2:02X}",
+                        iin_desc,
                     )
                 )
+
+            object_offset = app_offset + (4 if fc >= _RESPONSE_FC_START else 2)
+            if len(user_data) > object_offset:
+                _parse_application_objects(
+                    result,
+                    bytes(user_data[object_offset:]),
+                    user_data_start=user_data_start,
+                    logical_base=object_offset,
+                    function_code=fc,
+                )
+                _append_object_summary(result)
 
     if request_context:
         result["correlation"] = request_context
@@ -224,16 +311,354 @@ def _link_is_server_data(ctrl: int) -> bool:
     return (ctrl & 0x80) == 0 and (ctrl & 0x40) == 0 and (ctrl & 0x0F) == 3
 
 
+def _has_transport_header(user_data: bytes | bytearray) -> bool:
+    """兼容历史上直接把应用层数据放入链路帧的测试/抓包。"""
+    if len(user_data) < 3:
+        return False
+    transport = user_data[0]
+    app_control = user_data[1]
+    function_code = user_data[2]
+    return bool(transport & 0x80) and (app_control & 0xC0) == 0xC0 and function_code in _KNOWN_FUNCTION_CODES
+
+
+def _user_wire_offset(user_data_start: int, logical_offset: int) -> int:
+    """将去 CRC 后的用户数据偏移换算为原始链路帧偏移。"""
+    return user_data_start + logical_offset + (logical_offset // 16) * 2
+
+
+def _wire_span_length(logical_offset: int, logical_length: int) -> int:
+    """返回一段用户数据在原始帧中占用的长度（包含中间的数据块 CRC）。"""
+    if logical_length <= 0:
+        return 0
+    start = logical_offset + (logical_offset // 16) * 2
+    end_offset = logical_offset + logical_length
+    end = end_offset + ((end_offset - 1) // 16) * 2
+    return end - start
+
+
+def _parse_application_objects(
+    result: dict[str, Any],
+    payload: bytes,
+    *,
+    user_data_start: int,
+    logical_base: int,
+    function_code: int,
+) -> None:
+    """解析 DNP3 对象头，并把响应数据逐点转换成通用详情对象。"""
+    try:
+        from pydnp3_pure.app.object_header import parse_object_header
+        from pydnp3_pure.objects import get_handler
+        from pydnp3_pure.util.buffer import ReadBuffer
+    except ImportError:
+        result["complete"] = False
+        result["warnings"].append("DNP3对象解析组件不可用")
+        return
+
+    buffer = ReadBuffer(payload)
+    while buffer.remaining > 0:
+        header_start = buffer.offset
+        try:
+            header = parse_object_header(buffer)
+        except (IndexError, ValueError, struct.error):
+            result["complete"] = False
+            result["warnings"].append("DNP3对象头不完整或限定词不受支持")
+            break
+
+        header_end = buffer.offset
+        group_name = DNP3_OBJECT_GROUPS.get(header.group, "未知对象组")
+        header_description = _object_header_description(header)
+        header_logical_offset = logical_base + header_start
+        header_raw = payload[header_start:header_end]
+        result["fields"].append(
+            _field(
+                f"object_header_{len(result['objects'])}",
+                f"对象头 G{header.group}V{header.variation}",
+                _user_wire_offset(user_data_start, header_logical_offset),
+                header_raw,
+                header_description,
+                group_name,
+            )
+        )
+
+        if function_code in _SELECTOR_FUNCTION_CODES or header.count == 0:
+            _append_selector_objects(
+                result,
+                header,
+                header_raw,
+                user_data_start=user_data_start,
+                logical_offset=header_logical_offset,
+                group_name=group_name,
+            )
+            continue
+
+        handler = get_handler(header.group)
+        if handler is None:
+            result["complete"] = False
+            result["warnings"].append(f"G{header.group}V{header.variation} 的对象值暂不支持解析")
+            _append_selector_objects(
+                result,
+                header,
+                header_raw,
+                user_data_start=user_data_start,
+                logical_offset=header_logical_offset,
+                group_name=group_name,
+            )
+            break
+
+        data_start = buffer.offset
+        try:
+            points = handler.parse(
+                variation=header.variation,
+                qualifier=header.qualifier,
+                count=header.count,
+                start=header.start,
+                buf=buffer,
+            )
+        except (IndexError, ValueError, struct.error):
+            result["complete"] = False
+            result["warnings"].append(f"G{header.group}V{header.variation} 对象数据不完整或格式不支持")
+            break
+        data_end = buffer.offset
+        if not points and header.count:
+            result["complete"] = False
+            result["warnings"].append(f"G{header.group}V{header.variation} 未解析出对象值")
+            break
+        _append_value_objects(
+            result,
+            payload,
+            header,
+            points,
+            handler,
+            data_start=data_start,
+            data_end=data_end,
+            user_data_start=user_data_start,
+            logical_base=logical_base,
+            group_name=group_name,
+        )
+
+
+def _object_header_description(header: Any) -> str:
+    qualifier_name = getattr(header.qualifier, "name", f"0x{int(header.qualifier):02X}")
+    if header.count:
+        if header.stop >= header.start:
+            address = f"，地址 {header.start}～{header.stop}"
+        else:
+            address = ""
+        return f"G{header.group}V{header.variation}，{qualifier_name}{address}，数量 {header.count}"
+    return f"G{header.group}V{header.variation}，{qualifier_name}，全部点"
+
+
+def _append_selector_objects(
+    result: dict[str, Any],
+    header: Any,
+    header_raw: bytes,
+    *,
+    user_data_start: int,
+    logical_offset: int,
+    group_name: str,
+) -> None:
+    addresses: list[int | None]
+    if int(header.qualifier) in (0x00, 0x01, 0x02) and header.count and header.stop >= header.start:
+        addresses = list(range(header.start, header.stop + 1))
+    else:
+        addresses = [None]
+    if len(addresses) > 4096:
+        addresses = [None]
+        result["warnings"].append("对象地址范围过大，详情中仅显示范围")
+
+    for address in addresses:
+        value = "全部点" if address is None else "对象选择"
+        result["objects"].append(
+            {
+                "index": len(result["objects"]),
+                "offset": _user_wire_offset(user_data_start, logical_offset),
+                "length": _wire_span_length(logical_offset, len(header_raw)),
+                "address": address,
+                "value": value,
+                "raw_value": _hex(header_raw),
+                "quality": None,
+                "timestamp": None,
+                "fields": [],
+                "name": f"G{header.group}V{header.variation} {group_name}",
+                "dnp3_group": header.group,
+                "dnp3_variation": header.variation,
+                "address_range": [header.start, header.stop] if header.count else None,
+            }
+        )
+
+
+def _append_value_objects(
+    result: dict[str, Any],
+    payload: bytes,
+    header: Any,
+    points: list[Any],
+    handler: Any,
+    *,
+    data_start: int,
+    data_end: int,
+    user_data_start: int,
+    logical_base: int,
+    group_name: str,
+) -> None:
+    point_size = handler.point_size(header.variation)
+    prefix_size = header.index_size
+    for ordinal, point in enumerate(points):
+        if point_size < 0:
+            point_start = data_start + ordinal // 8
+            point_length = 1
+            value_start = point_start
+        else:
+            point_length = prefix_size + point_size
+            point_start = data_start + ordinal * point_length
+            value_start = point_start + prefix_size
+        point_end = min(point_start + point_length, data_end)
+        raw_value = payload[value_start:point_end]
+        logical_offset = logical_base + point_start
+        address, value, flags, status, timestamp = _normalize_point(point, header.start + ordinal)
+        quality = _decode_point_flags(flags) if flags is not None else None
+        if status is not None:
+            quality = {**(quality or {}), "status": status}
+        timestamp_text = _format_timestamp(timestamp)
+        point_fields = [
+            _field(
+                "object_address",
+                "对象索引",
+                _user_wire_offset(user_data_start, logical_offset),
+                payload[point_start:value_start],
+                address,
+                "无索引前缀时由对象头起始地址递增",
+            ),
+            _field(
+                "object_value",
+                "对象值",
+                _user_wire_offset(user_data_start, logical_base + value_start),
+                raw_value,
+                value,
+            ),
+        ]
+        result["objects"].append(
+            {
+                "index": len(result["objects"]),
+                "offset": _user_wire_offset(user_data_start, logical_offset),
+                "length": _wire_span_length(logical_offset, max(point_end - point_start, 1)),
+                "address": address,
+                "value": value,
+                "raw_value": _hex(raw_value),
+                "quality": quality,
+                "timestamp": timestamp_text,
+                "fields": point_fields,
+                "name": f"G{header.group}V{header.variation} {group_name}",
+                "dnp3_group": header.group,
+                "dnp3_variation": header.variation,
+            }
+        )
+
+
+def _normalize_point(point: Any, default_index: int) -> tuple[int, Any, int | None, int | None, Any]:
+    address = default_index
+    value_source = point
+    if isinstance(point, tuple) and len(point) == 2:
+        address, value_source = point
+    else:
+        address = int(getattr(point, "index", default_index))
+
+    flags = getattr(value_source, "flags", None)
+    status = getattr(value_source, "status", None)
+    timestamp = getattr(value_source, "timestamp", None)
+    if hasattr(value_source, "value"):
+        value: Any = value_source.value
+    elif hasattr(value_source, "ms_since_epoch"):
+        timestamp = value_source
+        value = _format_timestamp(value_source)
+    elif hasattr(value_source, "control"):
+        value = {
+            "control": value_source.control,
+            "count": value_source.count,
+            "on_time_ms": value_source.on_time_ms,
+            "off_time_ms": value_source.off_time_ms,
+        }
+    else:
+        value = value_source
+    return (
+        int(address),
+        value,
+        int(flags) if flags is not None else None,
+        int(status) if status is not None else None,
+        timestamp,
+    )
+
+
+def _decode_point_flags(flags: int) -> dict[str, Any]:
+    return {
+        "raw": f"0x{flags:02X}",
+        "online": bool(flags & 0x01),
+        "restart": bool(flags & 0x02),
+        "communication_lost": bool(flags & 0x04),
+        "remote_forced": bool(flags & 0x08),
+        "local_forced": bool(flags & 0x10),
+        "over_range_or_chatter": bool(flags & 0x20),
+        "reference_error_or_discontinuity": bool(flags & 0x40),
+    }
+
+
+def _format_timestamp(timestamp: Any) -> str | None:
+    if timestamp is None:
+        return None
+    if hasattr(timestamp, "to_datetime"):
+        timestamp = timestamp.to_datetime()
+    if hasattr(timestamp, "isoformat"):
+        return timestamp.isoformat(sep=" ", timespec="milliseconds")
+    return str(timestamp)
+
+
+def _append_object_summary(result: dict[str, Any]) -> None:
+    objects = result["objects"]
+    if not objects:
+        return
+    groups = list(dict.fromkeys(f"G{item['dnp3_group']}V{item['dnp3_variation']}" for item in objects))
+    addresses = [item["address"] for item in objects if isinstance(item.get("address"), int)]
+    suffix = f"，{','.join(groups)}"
+    if addresses:
+        if len(addresses) == 1:
+            suffix += f"，地址 {addresses[0]}"
+        elif addresses == list(range(addresses[0], addresses[-1] + 1)):
+            suffix += f"，地址 {addresses[0]}～{addresses[-1]}"
+        else:
+            shown = "、".join(str(address) for address in addresses[:8])
+            suffix += f"，地址 {shown}" + ("…" if len(addresses) > 8 else "")
+    elif any(item.get("address_range") is None for item in objects):
+        suffix += "，全部点"
+    result["summary"] += suffix
+
+
 def _decoded_iin(iin1: int, iin2: int) -> str:
     flags = []
     if iin1 & 0x01:
-        flags.append("设备重启")
+        flags.append("收到全站广播")
+    if iin1 & 0x02:
+        flags.append("有1类事件")
     if iin1 & 0x04:
-        flags.append("功能码不支持")
+        flags.append("有2类事件")
     if iin1 & 0x08:
-        flags.append("对象未知")
-    if iin2 & 0x01:
-        flags.append("事件缓冲溢出")
-    if iin2 & 0x04:
+        flags.append("有3类事件")
+    if iin1 & 0x10:
         flags.append("时间不同步")
+    if iin1 & 0x20:
+        flags.append("本地控制")
+    if iin1 & 0x40:
+        flags.append("设备故障")
+    if iin1 & 0x80:
+        flags.append("设备重启")
+    if iin2 & 0x01:
+        flags.append("功能码不支持")
+    if iin2 & 0x02:
+        flags.append("对象未知")
+    if iin2 & 0x04:
+        flags.append("参数错误")
+    if iin2 & 0x08:
+        flags.append("事件缓冲溢出")
+    if iin2 & 0x10:
+        flags.append("已在执行")
+    if iin2 & 0x20:
+        flags.append("配置损坏")
     return ", ".join(flags) if flags else "无特殊指示"

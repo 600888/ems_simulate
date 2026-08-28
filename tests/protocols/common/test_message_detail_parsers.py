@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from src.device.core.message.message_formatter import MessageFormatter
-from src.device.core.message.parsers import parse_dlt645, parse_iec104, parse_modbus
+from src.device.core.message.parsers import parse_dlt645, parse_dnp3, parse_iec104, parse_modbus
 from src.enums.modbus_def import ProtocolType
 
 
@@ -40,6 +40,162 @@ def test_iec104_u_frame_keeps_complete_raw_frame():
     assert detail["raw_hex"] == "68 04 07 00 00 00"
     assert detail["frame_kind"] == "U格式帧"
     assert "STARTDT_ACT" in detail["summary"]
+
+
+def _dnp3_frame(user_data: bytes) -> bytes:
+    from pydnp3_pure.link.frame import LinkFrame
+
+    return LinkFrame.create(
+        destination=1,
+        source=1024,
+        primary=True,
+        function=3,
+        user_data=user_data,
+    ).serialize()
+
+
+def test_dnp3_detail_parses_transport_and_application_headers():
+    # 传输控制 C0 + 应用控制 C0 + READ + G60V1 全部点。
+    raw = _dnp3_frame(bytes.fromhex("C0 C0 01 3C 01 06"))
+
+    detail = parse_dnp3(raw, role="Request")
+
+    assert detail["valid"] is True
+    assert detail["summary"] == "读 (Read)，G60V1，全部点"
+    assert next(field for field in detail["fields"] if field["key"] == "transport_control")["offset"] == 10
+    assert next(field for field in detail["fields"] if field["key"] == "function_code")["offset"] == 12
+    assert detail["objects"][0]["name"] == "G60V1 类数据"
+    assert detail["objects"][0]["address"] is None
+
+
+def test_dnp3_detail_validates_all_16_byte_data_blocks():
+    # 超过 16 字节，覆盖 DNP3 每 16 数据字节追加一次 CRC 的布局。
+    from pydnp3_pure.app.constants import Qualifier
+    from pydnp3_pure.app.fragment import ObjectData, build_response
+    from pydnp3_pure.app.header import IIN
+    from pydnp3_pure.app.object_header import ObjectHeader
+    from pydnp3_pure.objects.types import AnalogPoint
+
+    header = ObjectHeader(30, 1, Qualifier.RANGE_16_START_STOP, 3, 6, 4)
+    points = [AnalogPoint(index=index, value=index * 10) for index in range(3, 7)]
+    app = build_response(0, IIN(), [ObjectData(header, points)])
+    raw = _dnp3_frame(b"\xc0" + app)
+
+    detail = parse_dnp3(raw, role="Response")
+
+    assert next(item for item in detail["validation"] if item["name"] == "数据块CRC")["passed"] is True
+    assert detail["summary"] == "响应：成功，G30V1，地址 3～6"
+    assert [item["address"] for item in detail["objects"]] == [3, 4, 5, 6]
+    assert [item["value"] for item in detail["objects"]] == [30, 40, 50, 60]
+    assert all(item["quality"]["online"] for item in detail["objects"])
+
+
+def test_formatter_populates_dnp3_description_and_client_direction():
+    raw = _dnp3_frame(bytes.fromhex("C0 C0 01 3C 01 06"))
+    handler = SimpleNamespace(
+        get_captured_messages=lambda _limit: [
+            {
+                "sequence_id": 1,
+                "direction": "TX",
+                "data": raw.hex(),
+                "timestamp": 1.0,
+                "time": "t1",
+                "length": len(raw),
+            }
+        ]
+    )
+    device = SimpleNamespace(protocol_handler=handler, protocol_type=ProtocolType.Dnp3Client)
+
+    message = MessageFormatter(device).get_messages()[0]
+
+    assert message["msg_type"] == "Request"
+    assert message["description"] == "读 (Read)，G60V1，全部点"
+
+
+def test_formatter_enriches_dnp3_objects_with_configured_point():
+    from pydnp3_pure.app.constants import Qualifier
+    from pydnp3_pure.app.fragment import ObjectData, build_response
+    from pydnp3_pure.app.header import IIN
+    from pydnp3_pure.app.object_header import ObjectHeader
+    from pydnp3_pure.objects.types import AnalogPoint
+
+    header = ObjectHeader(30, 1, Qualifier.RANGE_16_START_STOP, 3, 3, 1)
+    app = build_response(0, IIN(), [ObjectData(header, [AnalogPoint(index=3, value=220)])])
+    raw = _dnp3_frame(b"\xc0" + app)
+    handler = SimpleNamespace(
+        get_captured_messages=lambda _limit: [
+            {
+                "sequence_id": 1,
+                "direction": "RX",
+                "data": raw.hex(),
+                "timestamp": 1.0,
+                "time": "t1",
+                "length": len(raw),
+            }
+        ]
+    )
+    point = SimpleNamespace(
+        rtu_addr=1,
+        func_code=0,
+        address=3,
+        name="母线电压",
+        code="BUS_V",
+        frame_type=0,
+        decode="0x41",
+        iec_type_id=None,
+        mul_coe=0.1,
+        add_coe=1,
+    )
+    device = SimpleNamespace(
+        protocol_handler=handler,
+        protocol_type=ProtocolType.Dnp3Client,
+        point_manager=SimpleNamespace(get_all_points=lambda: [point]),
+    )
+
+    detail = MessageFormatter(device).get_message_detail(1)
+
+    assert detail is not None
+    assert detail["objects"][0]["address"] == 3
+    assert detail["objects"][0]["point"]["name"] == "母线电压"
+    assert detail["objects"][0]["engineering_value"] == 23.0
+
+
+def test_dnp3_read_range_expands_concrete_addresses():
+    from pydnp3_pure.app.constants import FunctionCode, Qualifier
+    from pydnp3_pure.app.fragment import ObjectData, build_request
+    from pydnp3_pure.app.object_header import ObjectHeader
+
+    header = ObjectHeader(30, 1, Qualifier.RANGE_16_START_STOP, 10, 12, 3)
+    app = build_request(FunctionCode.READ, 0, [ObjectData(header)])
+
+    detail = parse_dnp3(_dnp3_frame(b"\xc0" + app), role="Request")
+
+    assert detail["summary"] == "读 (Read)，G30V1，地址 10～12"
+    assert [item["address"] for item in detail["objects"]] == [10, 11, 12]
+    assert all(item["value"] == "对象选择" for item in detail["objects"])
+
+
+def test_dnp3_direct_operate_decodes_index_and_command_value():
+    from pydnp3_pure.app.constants import FunctionCode, Qualifier
+    from pydnp3_pure.app.fragment import ObjectData, build_request
+    from pydnp3_pure.app.object_header import ObjectHeader
+    from pydnp3_pure.objects.types import CROB
+
+    header = ObjectHeader(12, 1, Qualifier.INDEX_16, 0, 0, 1)
+    command = CROB(control=3, count=1, on_time_ms=100, off_time_ms=200)
+    app = build_request(FunctionCode.DIRECT_OPERATE, 0, [ObjectData(header, [(7, command)])])
+
+    detail = parse_dnp3(_dnp3_frame(b"\xc0" + app), role="Request")
+
+    assert detail["summary"] == "直接操作 (Direct Operate)，G12V1，地址 7"
+    assert detail["objects"][0]["address"] == 7
+    assert detail["objects"][0]["value"] == {
+        "control": 3,
+        "count": 1,
+        "on_time_ms": 100,
+        "off_time_ms": 200,
+    }
+    assert detail["objects"][0]["quality"] == {"status": 0}
 
 
 def _dlt_frame(control: int, decoded_data: bytes) -> bytes:
