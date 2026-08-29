@@ -411,6 +411,13 @@ class PointOperator:
                 need_resync = True  # 品质变更需要重新同步
                 protocol_config_changed = True
 
+        if "dnp3_config" in metadata:
+            from src.proto.dnp3.point_config import Dnp3PointConfig
+
+            point.dnp3_config = Dnp3PointConfig.from_mapping(point.frame_type, metadata["dnp3_config"]).to_dict()
+            metadata["dnp3_config"] = point.dnp3_config
+            protocol_config_changed = True
+
         # 处理 code 修改
         if "code" in metadata and metadata["code"] and metadata["code"] != point_code:
             new_code = metadata["code"]

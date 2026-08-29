@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 from pydnp3_pure.app.constants import CommandStatus, FunctionCode, Qualifier
@@ -14,6 +15,7 @@ from src.proto.dnp3.application import parse_application_fragment
 from src.proto.dnp3.dnp3_client import Dnp3Client
 from src.proto.dnp3.dnp3_server import Dnp3Server, _OutstationHandler
 from src.proto.dnp3.outstation_session import _object_for_points
+from src.proto.dnp3.reliable_link import ReliableLinkEndpoint
 from src.proto.dnp3.wire import FragmentCorrelator, WireFrameExtractor, accepts_link_address
 
 
@@ -30,11 +32,67 @@ def test_wire_extractor_preserves_frame_boundaries_for_split_and_sticky_tcp_data
     assert all(parse_dnp3(frame)["valid"] for frame in captured)
 
 
+def test_fixed_wire_fixture_parses_class0_request_independently_of_frame_builder():
+    fixture = Path("tests/fixtures/dnp3/class0_read_request.hex").read_text(encoding="utf-8")
+    raw = bytes.fromhex(" ".join(line for line in fixture.splitlines() if not line.startswith("#")))
+
+    parsed = parse_dnp3(raw, role="Request")
+
+    assert parsed["valid"]
+    assert parsed["application_function_code"] == int(FunctionCode.READ)
+    assert parsed["application_sequence"] == 0
+    assert parsed["objects"][0]["dnp3_group"] == 60
+    assert parsed["objects"][0]["dnp3_variation"] == 1
+
+
+def test_parser_preserves_unknown_object_and_recovers_following_known_object():
+    application = bytes.fromhex("C0 81 00 00 63 01 07 01 AA 34 02 07 01 05 00")
+    raw = LinkFrame.create(0, 1, True, 4, bytes([0xC0]) + application, direction=False).serialize()
+
+    parsed = parse_dnp3(raw, role="Response")
+
+    assert parsed["objects"][0]["dnp3_group"] == 99
+    assert parsed["objects"][0]["raw_value"] == "AA"
+    assert parsed["objects"][1]["dnp3_group"] == 52
+    assert parsed["objects"][1]["value"] == 5
+
+
 def test_link_address_filter_accepts_exact_and_broadcast_destinations_only():
     assert accepts_link_address(1, 0, local=1, remote=0)
     assert accepts_link_address(0xFFFF, 0, local=1, remote=0)
     assert not accepts_link_address(2, 0, local=1, remote=0)
     assert not accepts_link_address(1, 7, local=1, remote=0)
+
+
+@pytest.mark.asyncio
+async def test_link_confirmation_retries_toggles_fcb_and_deduplicates_received_data():
+    written = []
+    delivered = []
+    endpoint = ReliableLinkEndpoint(
+        enabled=True,
+        local_is_master=True,
+        write_frame=written.append,
+        deliver_frame=delivered.append,
+        timeout_seconds=0.05,
+        max_retries=1,
+    )
+    outgoing = LinkFrame.create(1, 0, True, 4, b"payload")
+    endpoint.send(outgoing)
+    assert written[-1].header.function == 3
+    assert written[-1].header.fcb is False
+    await asyncio.sleep(0.06)
+    assert len(written) == 2
+    endpoint.on_frame(LinkFrame.create(0, 1, False, 0, direction=False))
+
+    endpoint.send(outgoing)
+    assert written[-1].header.fcb is True
+    endpoint.on_frame(LinkFrame.create(0, 1, False, 0, direction=False))
+
+    incoming = LinkFrame.create(0, 1, True, 3, b"event", direction=False, fcb=False, fcv=True)
+    endpoint.on_frame(incoming)
+    endpoint.on_frame(incoming)
+    assert [frame.user_data for frame in delivered] == [b"event"]
+    endpoint.reset()
 
 
 def test_transport_segments_share_a_fragment_correlation_id():

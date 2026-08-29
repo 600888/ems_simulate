@@ -440,9 +440,29 @@ class DNP3ClientHandler(ClientHandler):
             metadata = self._client.read_point_metadata(index, group)
             if metadata is not None:
                 timestamp = metadata.get("timestamp")
-                if hasattr(timestamp, "isoformat"):
-                    timestamp = timestamp.isoformat()
-                return {**metadata, "timestamp": timestamp}
+                timestamp_ms = int(timestamp.timestamp() * 1000) if hasattr(timestamp, "timestamp") else None
+                quality = dict(metadata.get("quality") or {})
+                invalid = not metadata.get("valid", False) or quality.get("communication_lost", False)
+                quality.update(
+                    validity=2 if invalid else 0,
+                    detailQuality=f"flags=0x{int(metadata.get('flags') or 0):02X}",
+                    source=1 if quality.get("remote_forced") else 0,
+                    test=False,
+                    operatorBlocked=bool(quality.get("local_forced")),
+                )
+                return {
+                    **metadata,
+                    "quality": quality,
+                    "timestamp": {
+                        "unixTimestampMs": timestamp_ms,
+                        "seconds": timestamp_ms / 1000 if timestamp_ms is not None else None,
+                        "timeAccuracy": None,
+                        "leapSecondsKnown": None,
+                        "clockFailure": False,
+                        "clockNotSynchronized": False,
+                        "iso": timestamp.isoformat() if hasattr(timestamp, "isoformat") else None,
+                    },
+                }
         return {"quality": {}, "timestamp": {}}
 
     async def active_read_value_async(self, point: BasePoint) -> Any:

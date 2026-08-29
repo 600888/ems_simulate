@@ -1,0 +1,3 @@
+# Standard DNP3 Master READ Class 0 request (destination 1, source 0).
+# Kept as a fixed wire sample so parser regression does not build its own input.
+05 64 0B C4 01 00 00 00 8C 85 C0 C0 01 3C 01 06 FF 50

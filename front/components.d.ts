@@ -26,6 +26,7 @@ declare module 'vue' {
     Dlt645CommandDialog: typeof import('./src/components/device/Dlt645CommandDialog.vue')['default']
     Dlt645WriteDialog: typeof import('./src/components/device/Dlt645WriteDialog.vue')['default']
     EditPoint: typeof import('./src/components/point/EditPoint.vue')['default']
+    EditPointDnp3: typeof import('./src/components/point/EditPointDnp3.vue')['default']
     EditPointIec104: typeof import('./src/components/point/EditPointIec104.vue')['default']
     EditPointLimit: typeof import('./src/components/point/EditPointLimit.vue')['default']
     EditPointMetadata: typeof import('./src/components/point/EditPointMetadata.vue')['default']

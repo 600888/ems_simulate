@@ -730,6 +730,7 @@ const handleSubmit = async () => {
       for (let i = 0; i < batchCount.value; i++) {
         points.push({
           ...formData,
+          dnp3_config: isDnp3.value ? { ...formData.dnp3_config! } : undefined,
           code: `${codePrefix.value}${String(i + 1).padStart(3, "0")}`,
           name: `${namePrefix.value}${i + 1}`,
           reg_addr: String(startAddr + i * span),
@@ -759,7 +760,10 @@ const handleSubmit = async () => {
         qualityFlags,
         formData.frame_type,
       );
-      const success = await addPoint(props.deviceName, formData);
+      const success = await addPoint(props.deviceName, {
+        ...formData,
+        dnp3_config: isDnp3.value ? { ...formData.dnp3_config! } : undefined,
+      });
       if (success) {
         ElMessage.success(t("point.addSuccess"));
         emit("success");

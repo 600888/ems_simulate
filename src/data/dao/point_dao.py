@@ -238,7 +238,7 @@ class PointDao:
         try:
             with local_session() as session, session.begin():
                 # 依次在四个表中查找
-                for model in [PointYc, PointYx, PointYk, PointYt]:
+                for frame_type, model in enumerate([PointYc, PointYx, PointYk, PointYt]):
                     query = session.query(model).where(model.code == code)
                     if channel_id is not None:
                         query = query.where(model.channel_id == channel_id)
@@ -293,6 +293,9 @@ class PointDao:
                         # IEC61850 FC
                         if "fc" in metadata:
                             result.fc = metadata["fc"] if metadata["fc"] else None
+
+                        if "dnp3_config" in metadata:
+                            result.dnp3_config = _serialize_dnp3_config(metadata, frame_type)
 
                         return True
                 return False

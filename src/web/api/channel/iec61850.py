@@ -1736,14 +1736,31 @@ async def iec61850_read_metadata(
     body: Iec61850ReadMetadataRequest,
     request: Request,
 ):
-    """IEC61850 按需读取测点的品质(q)与时标(t)元数据
+    """IEC61850/DNP3 按需读取测点的品质(q)与时标(t)元数据
 
     不纳入常规轮询，仅当前端请求时调用。返回 quality + timestamp 子属性字典。
     """
-    device = _get_iec61850_device(request, body.channel_id)
-
     if not body.point_code:
         raise ValidationError("测点编码不能为空")
+
+    channel = ChannelService.get_channel_by_id(body.channel_id)
+    if not channel:
+        raise NotFoundError("通道不存在")
+
+    # DNP3 使用统一的 Device/PointOperator 元数据读取链路，数据来自客户端缓存，
+    # 不会额外触发一次协议轮询。
+    if channel.get("protocol_type", -1) == 5:
+        device_controller = request.app.state.device_controller
+        device = device_controller.get_device_by_channel_id(body.channel_id)
+        if not device:
+            raise NotFoundError("设备未找到")
+        metadata = await device.read_point_metadata_async(body.point_code)
+        return BaseResponse(
+            message="读取元数据成功",
+            data={"point_code": body.point_code, **metadata},
+        )
+
+    device = _get_iec61850_device(request, body.channel_id)
 
     # 直接传 point_code，客户端内部 parse_ref 提取 DO 引用
     handler = device.point_operator._handler

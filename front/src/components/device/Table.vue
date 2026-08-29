@@ -84,6 +84,14 @@
                     :protocolType="String(protocolType)"
                     @update-success="emit('refresh')"
                   />
+                  <EditPointDnp3
+                    :deviceName="deviceName"
+                    :pointCode="scope.row['测点编码']"
+                    :active="activeName === 'propertyEdit'"
+                    :protocolType="String(protocolType)"
+                    :channelId="channelId"
+                    @update-success="emit('refresh')"
+                  />
                 </div>
               </el-tab-pane>
 
@@ -760,6 +768,7 @@ import EditPointLimit from "../point/EditPointLimit.vue";
 import PointSimulator from "../point/PointSimulator.vue";
 import EditPointMetadata from "../point/EditPointMetadata.vue";
 import EditPointIec104 from "../point/EditPointIec104.vue";
+import EditPointDnp3 from "../point/EditPointDnp3.vue";
 import PointMappingConfig from "../point/PointMappingConfig.vue";
 import PointChangeHistory from "../point/PointChangeHistory.vue";
 import WritePointDialog from "./WritePointDialog.vue";

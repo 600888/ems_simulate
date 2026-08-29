@@ -23,7 +23,7 @@
             <el-input v-model="metadataForm.reg_addr" />
           </el-form-item>
         </el-col>
-        <el-col :span="12" v-if="!isIec104">
+        <el-col :span="12" v-if="!isIec104 && !isDnp3">
           <el-form-item
             :label="$t('editMetadata.decodeCode')"
             class="form-item"
@@ -74,7 +74,7 @@
         </el-col>
       </el-row>
       <el-row :gutter="20">
-        <el-col :span="12" v-if="!isIec104">
+        <el-col :span="12" v-if="!isIec104 && !isDnp3">
           <el-form-item :label="$t('table.funcCode')" class="form-item">
             <el-input v-model.number="metadataForm.func_code" type="number" />
           </el-form-item>
@@ -141,6 +141,10 @@ const props = withDefaults(defineProps<Props>(), {
 const isIec104 = computed(() => {
   const pt = props.protocolType || "";
   return pt === "Iec104Client" || pt === "Iec104Server";
+});
+const isDnp3 = computed(() => {
+  const pt = props.protocolType || "";
+  return pt === "Dnp3Client" || pt === "Dnp3Server";
 });
 const emit = defineEmits(["update-success"]);
 
