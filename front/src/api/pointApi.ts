@@ -21,6 +21,20 @@ export interface PointCreateData {
   add_coe: number;
   iec_type_id?: string | null;
   iec_quality?: number;
+  dnp3_config?: {
+    static_variation: number;
+    event_variation: number;
+    event_class: number;
+    deadband: number;
+    control_mode: "direct" | "sbo";
+    crob_operation: "latch" | "pulse";
+    pulse_on_ms: number;
+    pulse_off_ms: number;
+    pulse_count: number;
+    initial_quality: number;
+    event_enabled: boolean;
+    timestamp_enabled: boolean;
+  };
 }
 
 export interface ChangeRecord {

@@ -26,7 +26,24 @@
 | P2 | 增强互操作、规模和部署能力，可分版本交付 |
 | P3 | 高级标准能力或低频场景，按项目需求实现 |
 
-## 2. 当前实现边界
+### 1.1 P0 实施状态（2026-08-29）
+
+P0 已在 EMS Simulate 适配层完成，并通过本系统 Master ↔ Outstation 的真实 TCP 自环测试。
+
+| 编号 | 状态 | 已落地内容 |
+| --- | --- | --- |
+| DNP3-P0-01 | 已完成 | Master 默认地址修正为 0→1，收包校验源/目的/广播地址 |
+| DNP3-P0-02 | 已完成 | 4 位序号 pending 事务、响应匹配、超时、重试、迟到/错误序号隔离 |
+| DNP3-P0-03 | 已完成 | 单点范围读取；批读按对象组与连续地址合并；移除固定 200 ms 等待 |
+| DNP3-P0-04 | 已完成（现有点模型范围） | G12/G41 状态回传，真实 DO/SBO，Select 内容与超时校验，错误状态可见 |
+| DNP3-P0-05 | 已完成 | 建连超时、连接回调、pending 清理、会话重置、指数退避与重连次数配置 |
+| DNP3-P0-06 | 已完成 | TCP 拆包/粘包后按完整链路帧捕获，保留 CRC，跨链路帧 fragment 关联与详情跳转 |
+| DNP3-P0-07 | 已完成 | 连续/稀疏地址选择 RANGE/INDEX 8/16，控制自动选择 INDEX8/16，拒绝越界 index |
+| DNP3-P0-08 | 已完成 | 关键异常改为日志和稳定错误详情；界面隐藏尚未生效参数；旧配置兼容丢弃 |
+
+说明：点级 CROB 类型、脉冲时间、SBO/DO 策略和模拟量变体仍需新增 DNP3 点配置模型，继续归入 P1-04；Link/App Confirm、未请求上报、协议级事件轮询和时间同步仍按 P1 实施，不再以无效开关形式出现在界面。
+
+## 2. P0 实施前基线（保留用于差距追踪）
 
 ### 2.1 已实现
 
@@ -281,26 +298,27 @@ Outstation 当前大量使用 `RANGE_8_START_STOP`，并假设列表从首地址
 | Device Attributes | 增加设备能力和身份对象，便于第三方 Master 发现 |
 | 一致性测试 | 建立 IEEE 1815 conformance profile、模糊测试和长时间稳定性测试 |
 
-## 7. 运行参数处理计划
+## 7. 运行参数处理结果与后续计划
 
 在实现前先把当前参数分为“已生效、待实现、应移除”，避免继续扩散无效配置。
 
 | 参数 | 当前状态 | 计划 |
 | --- | --- | --- |
-| `local_address` / `remote_address` | 已传入协议栈，但默认值错误且接收不校验 | P0 修正默认值并校验 |
-| `address_size` | 未使用，当前链路固定 2 字节 | 从界面和默认配置移除；如保留需说明仅兼容旧配置 |
-| `link_confirm` | 未使用 | P1 完成链路确认状态机前标记不支持 |
-| `app_confirm` | 未使用 | P1 与事件确认一起实现 |
-| `time_sync_enabled` | 未使用 | P1 实现时间同步后启用 |
-| `integrity_interval_s` | 仅存入配置，无底层调度 | 与产品自动读取合并，避免重复调度 |
-| `event_interval_s` | 仅存入配置，无底层调度 | P1 作为事件轮询任务生效 |
-| `enable_unsolicited` | Master 不自动发送 enable；Outstation 不主动上报 | P1 完成完整闭环 |
-| `connection_timeout_ms` | 未使用 | P0 应用到建连和连接状态机 |
-| `command_timeout_ms` | 传入但未消费 | P0 由事务管理器消费 |
-| `max_retries` | 传入但未消费 | P0 由事务管理器消费 |
+| `local_address` / `remote_address` | P0 已生效 | 默认 Master 0→Outstation 1，并校验收包地址 |
+| `address_size` | P0 已移除 | 标准链路固定 2 字节；旧配置读取时丢弃 |
+| `link_confirm` | 界面已隐藏 | P1 完成链路确认状态机后再开放 |
+| `app_confirm` | 界面已隐藏 | P1 与事件确认一起实现后再开放 |
+| `time_sync_enabled` | 界面已隐藏 | P1 实现时间同步后再开放 |
+| `integrity_interval_s` | 界面已隐藏 | 产品自动读取统一负责完整性刷新，避免双调度器 |
+| `event_interval_s` | 界面已隐藏 | P1 作为事件轮询任务生效后再开放 |
+| `enable_unsolicited` | 界面已隐藏 | P1 完成完整闭环后再开放 |
+| `connection_timeout_ms` | P0 已生效 | 用于 TCP 建连超时 |
+| `command_timeout_ms` | P0 已生效 | 用于每次请求响应事务超时 |
+| `max_retries` | P0 已生效 | 用于同一事务超时重试 |
+| `reconnect_initial_interval_ms` / `reconnect_max_interval_ms` / `reconnect_max_attempts` | P0 新增并生效 | 指数退避；0 禁用，-1 无限次，正数为上限 |
 | `event_buffer_size` | 已用于三个 Class 的队列大小 | 保留，并补溢出 IIN 与分类配置 |
-| `select_timeout_s` | 传入但没有 Select 状态 | P0 由 SBO 状态机消费 |
-| `max_connections` | 未使用，实际单连接 | P2 多 Master 前标记为不支持 |
+| `select_timeout_s` | P0 已生效 | 由 SBO Select 状态过期校验消费 |
+| `max_connections` | 界面已隐藏 | P2 多 Master 实现前不再宣称可配置 |
 
 ## 8. 推荐实施顺序
 

@@ -66,6 +66,45 @@ def test_iec104_client_defaults_match_modbus_reconnect_policy():
     assert values["reconnect_max_attempts"] == 0
 
 
+def test_dnp3_defaults_are_interoperable_and_only_expose_effective_parameters():
+    client = get_protocol_param_defaults(5, 1)
+    server = get_protocol_param_defaults(5, 2)
+
+    assert (client["local_address"], client["remote_address"]) == (0, 1)
+    assert (server["local_address"], server["remote_address"]) == (1, 0)
+    assert client["connection_timeout_ms"] == 3000
+    assert client["reconnect_max_attempts"] == 0
+    assert client["event_interval_s"] == 5
+    assert client["time_sync_enabled"] is False
+    assert client["enable_unsolicited"] is False
+    assert client["cache_ttl_ms"] == 0
+    assert client["link_confirm"] is False
+    assert server["app_confirm"] is True
+    assert server["enable_unsolicited"] is False
+    for unsupported in (
+        "address_size",
+        "integrity_interval_s",
+        "max_connections",
+    ):
+        assert unsupported not in client
+        assert unsupported not in server
+
+
+def test_dnp3_legacy_ineffective_parameters_are_dropped_during_normalization():
+    values = normalize_protocol_params(
+        5,
+        1,
+        {
+            "address_size": 1,
+            "link_confirm": False,
+            "integrity_interval_s": 5,
+            "max_connections": 8,
+        },
+    )
+
+    assert values == get_protocol_param_defaults(5, 1)
+
+
 def test_reconnect_attempt_semantics_accept_minus_one_and_reject_lower_values():
     values = normalize_protocol_params(2, 1, {"reconnect_max_attempts": -1})
     assert values["reconnect_max_attempts"] == -1

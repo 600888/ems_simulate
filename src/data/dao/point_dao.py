@@ -3,6 +3,8 @@
 提供四类测点的 CRUD 操作，通过 channel_id 查询
 """
 
+import json
+
 from src.data.controller.db import local_session
 from src.data.log import log
 from src.data.model.point_yc import PointYc, PointYcDict
@@ -10,6 +12,7 @@ from src.data.model.point_yk import PointYk, PointYkDict
 from src.data.model.point_yt import PointYt, PointYtDict
 from src.data.model.point_yx import PointYx, PointYxDict
 from src.enums.modbus_register import Decode
+from src.proto.dnp3.point_config import Dnp3PointConfig
 
 
 def _format_reg_addr(addr: str) -> str:
@@ -38,6 +41,21 @@ def _format_reg_addr(addr: str) -> str:
         except ValueError:
             # 无法解析，原样返回（让后续验证处理）
             return addr
+
+
+def _serialize_dnp3_config(point_data: dict, frame_type: int) -> str | None:
+    raw = point_data.get("dnp3_config")
+    if raw in (None, ""):
+        return None
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    if not isinstance(raw, dict):
+        raise ValueError("dnp3_config 必须是对象")
+    return json.dumps(
+        Dnp3PointConfig.from_mapping(frame_type, raw).to_dict(),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
 
 
 class PointDao:
@@ -357,6 +375,7 @@ class PointDao:
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
+                    dnp3_config=_serialize_dnp3_config(point_data, 0),
                     enable=point_data.get("enable", True),
                 )
                 session.add(point)
@@ -386,6 +405,7 @@ class PointDao:
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
+                    dnp3_config=_serialize_dnp3_config(point_data, 1),
                     enable=point_data.get("enable", True),
                 )
                 session.add(point)
@@ -416,6 +436,7 @@ class PointDao:
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
+                    dnp3_config=_serialize_dnp3_config(point_data, 2),
                     enable=point_data.get("enable", True),
                 )
                 session.add(point)
@@ -453,6 +474,7 @@ class PointDao:
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
+                    dnp3_config=_serialize_dnp3_config(point_data, 3),
                     enable=point_data.get("enable", True),
                 )
                 session.add(point)
@@ -512,6 +534,7 @@ class PointDao:
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
+                            dnp3_config=_serialize_dnp3_config(point_data, 0),
                             enable=point_data.get("enable", True),
                         )
                     elif frame_type == 1:  # 遥信
@@ -530,6 +553,7 @@ class PointDao:
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
+                            dnp3_config=_serialize_dnp3_config(point_data, 1),
                             enable=point_data.get("enable", True),
                         )
                     elif frame_type == 2:  # 遥控
@@ -549,6 +573,7 @@ class PointDao:
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
+                            dnp3_config=_serialize_dnp3_config(point_data, 2),
                             enable=point_data.get("enable", True),
                         )
                     elif frame_type == 3:  # 遥调
@@ -575,6 +600,7 @@ class PointDao:
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
+                            dnp3_config=_serialize_dnp3_config(point_data, 3),
                             enable=point_data.get("enable", True),
                         )
                     else:

@@ -5,7 +5,7 @@ frame_type = 2
 
 from typing import TypedDict
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.data.model.base import Base
@@ -71,6 +71,7 @@ class PointYk(Base):
     fc: Mapped[str | None] = mapped_column(
         String(8), nullable=True, comment="IEC61850功能约束(FC), 如MX/ST/CO/DC/CF/SF等"
     )
+    dnp3_config: Mapped[str | None] = mapped_column(Text, nullable=True, comment="DNP3点级配置(JSON)")
 
     enable: Mapped[bool] = mapped_column(Boolean, server_default="1", comment="是否启用")
 

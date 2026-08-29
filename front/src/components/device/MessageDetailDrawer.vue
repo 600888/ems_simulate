@@ -267,6 +267,34 @@
           </el-table>
         </section>
 
+        <section v-if="detail.fragment_correlation" class="section">
+          <h3>{{ $t("device.messageFragmentLink") }}</h3>
+          <el-descriptions :column="2" border>
+            <el-descriptions-item :label="$t('device.messageFragmentId')">
+              {{ detail.fragment_correlation.id }}
+            </el-descriptions-item>
+            <el-descriptions-item :label="$t('device.messageTransportSeq')">
+              {{ detail.fragment_correlation.transport_sequence }}
+            </el-descriptions-item>
+            <el-descriptions-item
+              :label="$t('device.messageRelatedFrames')"
+              :span="2"
+            >
+              <el-button
+                v-for="sequenceId in detail.fragment_correlation
+                  .frame_sequence_ids"
+                :key="sequenceId"
+                link
+                type="primary"
+                :disabled="sequenceId === detail.sequence_id"
+                @click="open(sequenceId)"
+              >
+                #{{ sequenceId }}
+              </el-button>
+            </el-descriptions-item>
+          </el-descriptions>
+        </section>
+
         <section v-if="detail.correlation" class="section">
           <h3>{{ $t("device.messageReqResLink") }}</h3>
           <el-descriptions :column="2" border>

@@ -7,12 +7,19 @@ from typing import Any
 
 from .common import _fail, _field, _hex, _result, _validation
 
-DNP3_LINK_CONTROL = {
-    0x00: "确认 - 主->从 (ACK)",
-    0x01: "确认 - 主<-从",
-    0x10: "请求复位远程链路 (RESET_LINK)",
-    0x13: "请求链路状态 (TEST_LINK)",
-    0x81: "确认从站 (CONFIRMED_USER_DATA P)",
+_PRIMARY_LINK_FUNCTIONS = {
+    0: "复位远程链路 (RESET_LINK_STATES)",
+    1: "复位用户进程 (RESET_USER_PROCESS)",
+    2: "测试链路状态 (TEST_LINK_STATES)",
+    3: "确认用户数据 (CONFIRMED_USER_DATA)",
+    4: "无确认用户数据 (UNCONFIRMED_USER_DATA)",
+    9: "请求链路状态 (REQUEST_LINK_STATUS)",
+}
+_SECONDARY_LINK_FUNCTIONS = {
+    0: "确认 (ACK)",
+    1: "否定确认 (NACK)",
+    11: "链路状态 (LINK_STATUS)",
+    14: "不支持 (NOT_SUPPORTED)",
 }
 
 DNP3_FUNCTION_CODES = {
@@ -56,15 +63,26 @@ _KNOWN_FUNCTION_CODES = frozenset(DNP3_FUNCTION_CODES)
 DNP3_OBJECT_GROUPS = {
     1: "二进制输入",
     2: "二进制输入事件",
+    11: "二进制输出状态事件",
+    13: "二进制输出命令事件",
     10: "二进制输出状态",
     12: "二进制输出命令",
     20: "计数器",
     21: "冻结计数器",
+    22: "计数器事件",
+    23: "冻结计数器事件",
     30: "模拟量输入",
+    31: "冻结模拟量输入",
     32: "模拟量输入事件",
+    33: "冻结模拟量输入事件",
+    34: "模拟量输入死区",
     40: "模拟量输出状态",
     41: "模拟量输出命令",
+    42: "模拟量输出状态事件",
+    43: "模拟量输出命令事件",
     50: "日期时间",
+    51: "CTO 公共时间",
+    52: "时间延迟",
     60: "类数据",
     80: "内部指示",
 }
@@ -261,6 +279,9 @@ def parse_dnp3(
                 )
             )
             result["summary"] = fc_name
+            result["application_sequence"] = seq
+            result["application_function_code"] = fc
+            result["application_function"] = fc_name
             result["purpose"] = "应用层请求/响应"
             result["frame_kind"] = "应用帧(请求)" if fc < _RESPONSE_FC_START else "应用帧(响应)"
             # IIN（响应帧才有）
@@ -295,18 +316,21 @@ def parse_dnp3(
 
 
 def _link_control_desc(ctrl: int) -> str:
-    parts = []
-    if ctrl & 0x80:
-        parts.append("主站")
+    """将链路控制字解析为中文描述文本。"""
+    primary = bool(ctrl & 0x40)
+    function = ctrl & 0x0F
+    parts = ["主站方向" if ctrl & 0x80 else "从站方向", f"PRM={int(primary)}"]
+    if primary:
+        parts.extend([f"FCB={int(bool(ctrl & 0x20))}", f"FCV={int(bool(ctrl & 0x10))}"])
+        parts.append(_PRIMARY_LINK_FUNCTIONS.get(function, f"主站功能码0x{function:02X}"))
     else:
-        parts.append("从站")
-    if ctrl & 0x40:
-        parts.append("PRM")
-    parts.append(DNP3_LINK_CONTROL.get(ctrl & 0xFF, f"功能码0x{ctrl & 0x0F:02X}"))
+        parts.extend([f"DFC={int(bool(ctrl & 0x10))}"])
+        parts.append(_SECONDARY_LINK_FUNCTIONS.get(function, f"从站功能码0x{function:02X}"))
     return " ".join(parts)
 
 
 def _link_is_server_data(ctrl: int) -> bool:
+    """判断控制字是否为从站方向、PRM=0 的确认数据帧。"""
     # 从站发出的数据帧（主站PRM=1，从站PRM=0）
     return (ctrl & 0x80) == 0 and (ctrl & 0x40) == 0 and (ctrl & 0x0F) == 3
 
@@ -349,6 +373,8 @@ def _parse_application_objects(
         from pydnp3_pure.app.object_header import parse_object_header
         from pydnp3_pure.objects import get_handler
         from pydnp3_pure.util.buffer import ReadBuffer
+
+        import src.proto.dnp3.objects  # noqa: F401
     except ImportError:
         result["complete"] = False
         result["warnings"].append("DNP3对象解析组件不可用")
@@ -395,15 +421,30 @@ def _parse_application_objects(
         if handler is None:
             result["complete"] = False
             result["warnings"].append(f"G{header.group}V{header.variation} 的对象值暂不支持解析")
-            _append_selector_objects(
-                result,
-                header,
-                header_raw,
-                user_data_start=user_data_start,
-                logical_offset=header_logical_offset,
-                group_name=group_name,
+            raw_start = buffer.offset
+            next_header = _find_next_known_object(payload, raw_start + 1)
+            raw_end = next_header if next_header is not None else len(payload)
+            unknown_raw = payload[raw_start:raw_end]
+            result["objects"].append(
+                {
+                    "index": len(result["objects"]),
+                    "offset": _user_wire_offset(user_data_start, header_logical_offset),
+                    "length": _wire_span_length(header_logical_offset, header_end - header_start + len(unknown_raw)),
+                    "address": header.start if header.count == 1 else None,
+                    "address_range": [header.start, header.stop] if header.count else None,
+                    "value": "未知对象原始数据",
+                    "raw_value": _hex(unknown_raw),
+                    "raw_offset": raw_start,
+                    "quality": None,
+                    "timestamp": None,
+                    "fields": [],
+                    "name": f"G{header.group}V{header.variation} {group_name}",
+                    "dnp3_group": header.group,
+                    "dnp3_variation": header.variation,
+                }
             )
-            break
+            buffer.seek(raw_end)
+            continue
 
         data_start = buffer.offset
         try:
@@ -437,7 +478,28 @@ def _parse_application_objects(
         )
 
 
+def _find_next_known_object(payload: bytes, start: int) -> int | None:
+    """Best-effort recovery after an unknown object while retaining its raw bytes."""
+    from pydnp3_pure.app.object_header import parse_object_header
+    from pydnp3_pure.objects import get_handler
+    from pydnp3_pure.util.buffer import ReadBuffer
+
+    for offset in range(start, len(payload) - 2):
+        candidate = ReadBuffer(payload[offset:])
+        try:
+            header = parse_object_header(candidate)
+            handler = get_handler(header.group)
+            if handler is None or header.variation not in handler.supported_variations:
+                continue
+            handler.parse(header.variation, header.qualifier, header.count, header.start, candidate)
+        except (IndexError, ValueError, struct.error):
+            continue
+        return offset
+    return None
+
+
 def _object_header_description(header: Any) -> str:
+    """生成 DNP3 对象头的可读描述文本。"""
     qualifier_name = getattr(header.qualifier, "name", f"0x{int(header.qualifier):02X}")
     if header.count:
         if header.stop >= header.start:
@@ -457,6 +519,7 @@ def _append_selector_objects(
     logical_offset: int,
     group_name: str,
 ) -> None:
+    """将仅选择而无值的对象（如读请求）追加为通用详情对象。"""
     addresses: list[int | None]
     if int(header.qualifier) in (0x00, 0x01, 0x02) and header.count and header.stop >= header.start:
         addresses = list(range(header.start, header.stop + 1))
@@ -500,6 +563,7 @@ def _append_value_objects(
     logical_base: int,
     group_name: str,
 ) -> None:
+    """将解析出的对象值按测点逐个追加为通用详情对象。"""
     point_size = handler.point_size(header.variation)
     prefix_size = header.index_size
     for ordinal, point in enumerate(points):
@@ -555,6 +619,7 @@ def _append_value_objects(
 
 
 def _normalize_point(point: Any, default_index: int) -> tuple[int, Any, int | None, int | None, Any]:
+    """将解析对象归一化为地址、值、品质、状态与时间戳。"""
     address = default_index
     value_source = point
     if isinstance(point, tuple) and len(point) == 2:
@@ -589,6 +654,7 @@ def _normalize_point(point: Any, default_index: int) -> tuple[int, Any, int | No
 
 
 def _decode_point_flags(flags: int) -> dict[str, Any]:
+    """将品质标志位解码为布尔集合字典。"""
     return {
         "raw": f"0x{flags:02X}",
         "online": bool(flags & 0x01),
@@ -602,6 +668,7 @@ def _decode_point_flags(flags: int) -> dict[str, Any]:
 
 
 def _format_timestamp(timestamp: Any) -> str | None:
+    """将时间戳对象统一格式化为 ISO 字符串。"""
     if timestamp is None:
         return None
     if hasattr(timestamp, "to_datetime"):
@@ -612,6 +679,7 @@ def _format_timestamp(timestamp: Any) -> str | None:
 
 
 def _append_object_summary(result: dict[str, Any]) -> None:
+    """在解析结果摘要中追加对象组、地址范围等信息。"""
     objects = result["objects"]
     if not objects:
         return
@@ -632,6 +700,7 @@ def _append_object_summary(result: dict[str, Any]) -> None:
 
 
 def _decoded_iin(iin1: int, iin2: int) -> str:
+    """将 IIN1/IIN2 字节解码为中文指示描述列表。"""
     flags = []
     if iin1 & 0x01:
         flags.append("收到全站广播")

@@ -112,6 +112,39 @@ def test_formatter_populates_dnp3_description_and_client_direction():
     assert message["description"] == "读 (Read)，G60V1，全部点"
 
 
+def test_formatter_exposes_dnp3_fragment_related_frames():
+    raw = _dnp3_frame(bytes.fromhex("C0 C0 01 3C 01 06"))
+    captured = [
+        {
+            "sequence_id": sequence,
+            "direction": "TX",
+            "data": raw.hex(),
+            "timestamp": float(sequence),
+            "time": f"t{sequence}",
+            "length": len(raw),
+            "fragment_correlation_id": "dnp3-tx-7",
+            "transport_sequence": sequence,
+            "transport_first": sequence == 1,
+            "transport_final": sequence == 2,
+        }
+        for sequence in (1, 2)
+    ]
+    handler = SimpleNamespace(get_captured_messages=lambda _limit: captured)
+    device = SimpleNamespace(protocol_handler=handler, protocol_type=ProtocolType.Dnp3Client)
+
+    formatter = MessageFormatter(device)
+    detail = formatter.get_message_detail(1)
+
+    assert detail is not None
+    assert detail["fragment_correlation"] == {
+        "id": "dnp3-tx-7",
+        "frame_sequence_ids": [1, 2],
+        "transport_sequence": 1,
+        "first": True,
+        "final": False,
+    }
+
+
 def test_formatter_enriches_dnp3_objects_with_configured_point():
     from pydnp3_pure.app.constants import Qualifier
     from pydnp3_pure.app.fragment import ObjectData, build_response

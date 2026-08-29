@@ -8,6 +8,7 @@ from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import Yk
 from src.tools.transform import decimal_to_hex, process_hex_address, transform
 
+from .dnp3_point_config import apply_dnp3_point_config
 from .point_protocol_filter import reject_foreign_protocol_points
 
 
@@ -138,16 +139,20 @@ class YkService:
 
         elif protocol_type in [ProtocolType.Dnp3Server, ProtocolType.Dnp3Client]:
             # DNP3 以 index 寻址：reg_addr 存十进制 index
-            return Yk(
-                rtu_addr=item["rtu_addr"],
-                address=process_hex_address(item["reg_addr"]),
-                bit=item.get("bit"),
-                func_code=item["func_code"] if item.get("func_code") else 5,
-                name=item["name"],
-                code=item["code"],
-                value=0,
-                frame_type=2,
-                command_type=item.get("command_type", 0),
+            return apply_dnp3_point_config(
+                Yk(
+                    rtu_addr=item["rtu_addr"],
+                    address=process_hex_address(item["reg_addr"]),
+                    bit=item.get("bit"),
+                    func_code=item["func_code"] if item.get("func_code") else 5,
+                    name=item["name"],
+                    code=item["code"],
+                    value=0,
+                    frame_type=2,
+                    command_type=item.get("command_type", 0),
+                ),
+                item,
+                2,
             )
 
         return None

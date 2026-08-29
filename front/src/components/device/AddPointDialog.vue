@@ -218,6 +218,117 @@
         </el-form-item>
       </template>
 
+      <template v-if="isDnp3 && formData.dnp3_config">
+        <el-divider content-position="left">DNP3</el-divider>
+        <el-form-item :label="$t('point.dnp3StaticVariation')">
+          <el-select
+            v-model="formData.dnp3_config.static_variation"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="v in dnp3StaticVariations"
+              :key="v"
+              :label="`V${v}`"
+              :value="v"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="$t('point.dnp3EventVariation')">
+          <el-select
+            v-model="formData.dnp3_config.event_variation"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="v in dnp3EventVariations"
+              :key="v"
+              :label="`V${v}`"
+              :value="v"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="$t('point.dnp3EventClass')">
+          <el-select
+            v-model="formData.dnp3_config.event_class"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="v in [1, 2, 3]"
+              :key="v"
+              :label="`Class ${v}`"
+              :value="v"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item
+          v-if="formData.frame_type === 0"
+          :label="$t('point.dnp3Deadband')"
+        >
+          <el-input-number
+            v-model="formData.dnp3_config.deadband"
+            :min="0"
+            :step="0.1"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <template v-if="[2, 3].includes(formData.frame_type)">
+          <el-form-item :label="$t('point.dnp3ControlMode')">
+            <el-select
+              v-model="formData.dnp3_config.control_mode"
+              style="width: 100%"
+            >
+              <el-option label="Direct Operate" value="direct" />
+              <el-option label="Select Before Operate" value="sbo" />
+            </el-select>
+          </el-form-item>
+        </template>
+        <template v-if="formData.frame_type === 2">
+          <el-form-item :label="$t('point.dnp3CrobOperation')">
+            <el-select
+              v-model="formData.dnp3_config.crob_operation"
+              style="width: 100%"
+            >
+              <el-option label="Latch" value="latch" />
+              <el-option label="Pulse" value="pulse" />
+            </el-select>
+          </el-form-item>
+          <template v-if="formData.dnp3_config.crob_operation === 'pulse'">
+            <el-form-item :label="$t('point.dnp3PulseOn')"
+              ><el-input-number
+                v-model="formData.dnp3_config.pulse_on_ms"
+                :min="0"
+                style="width: 100%"
+            /></el-form-item>
+            <el-form-item :label="$t('point.dnp3PulseOff')"
+              ><el-input-number
+                v-model="formData.dnp3_config.pulse_off_ms"
+                :min="0"
+                style="width: 100%"
+            /></el-form-item>
+            <el-form-item :label="$t('point.dnp3PulseCount')"
+              ><el-input-number
+                v-model="formData.dnp3_config.pulse_count"
+                :min="1"
+                :max="255"
+                style="width: 100%"
+            /></el-form-item>
+          </template>
+        </template>
+        <el-form-item :label="$t('point.dnp3InitialQuality')">
+          <el-input-number
+            v-model="formData.dnp3_config.initial_quality"
+            :min="0"
+            :max="255"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item :label="$t('point.dnp3EventEnabled')"
+          ><el-switch v-model="formData.dnp3_config.event_enabled"
+        /></el-form-item>
+        <el-form-item :label="$t('point.dnp3TimestampEnabled')"
+          ><el-switch v-model="formData.dnp3_config.timestamp_enabled"
+        /></el-form-item>
+      </template>
+
       <el-form-item
         v-if="isIec104"
         :label="$t('point.iec104Type')"
@@ -388,7 +499,37 @@ const formData = reactive<PointCreateData>({
   add_coe: 0.0,
   iec_type_id: null,
   iec_quality: 0,
+  dnp3_config: {
+    static_variation: 5,
+    event_variation: 7,
+    event_class: 1,
+    deadband: 0,
+    control_mode: "direct",
+    crob_operation: "latch",
+    pulse_on_ms: 100,
+    pulse_off_ms: 100,
+    pulse_count: 1,
+    initial_quality: 1,
+    event_enabled: true,
+    timestamp_enabled: true,
+  },
 });
+
+const dnp3StaticVariations = computed(
+  () =>
+    ({ 0: [1, 2, 3, 4, 5, 6], 1: [1, 2], 2: [1, 2], 3: [1, 2, 3, 4] })[
+      formData.frame_type
+    ] || [1],
+);
+const dnp3EventVariations = computed(
+  () =>
+    ({
+      0: [1, 2, 3, 4, 5, 6, 7, 8],
+      1: [1, 2, 3],
+      2: [1, 2],
+      3: [1, 2, 3, 4, 5, 6, 7, 8],
+    })[formData.frame_type] || [1],
+);
 
 // 品质描述符标志位
 const qualityFlags = reactive({
@@ -433,6 +574,15 @@ watch(
     if (isIec104.value) {
       formData.iec_type_id = getDefaultIec104Type(newType);
       formData.reg_addr = String(iec104AddressOffset[newType] ?? 0);
+    }
+    if (isDnp3.value && formData.dnp3_config) {
+      const defaults = { 0: [5, 7], 1: [2, 2], 2: [2, 1], 3: [3, 3] }[
+        newType
+      ] || [1, 1];
+      formData.dnp3_config.static_variation = defaults[0];
+      formData.dnp3_config.event_variation = defaults[1];
+      formData.dnp3_config.event_class = [2, 3].includes(newType) ? 2 : 1;
+      formData.dnp3_config.event_enabled = [0, 1].includes(newType);
     }
   },
 );

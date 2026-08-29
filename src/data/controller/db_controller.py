@@ -76,6 +76,7 @@ class DbController:
             # 创建所有表
             Base.metadata.create_all(self.db_config.engine)
             self._migrate_channel_point_table_mode_schema()
+            self._migrate_dnp3_point_config_schema()
             self._migrate_goose_schema()
             self._migrate_channel_security_schema()
 
@@ -158,6 +159,7 @@ class DbController:
             self._reset_legacy_iec61850_modeling_schema()
             Base.metadata.create_all(self.db_config.engine)
             self._migrate_channel_point_table_mode_schema()
+            self._migrate_dnp3_point_config_schema()
             self._migrate_goose_schema()
             self._migrate_channel_security_schema()
 
@@ -198,6 +200,23 @@ class DbController:
                     text("ALTER TABLE channel ADD COLUMN dlt645_point_mode VARCHAR(16) NOT NULL DEFAULT 'import'")
                 )
             self._backfill_legacy_dlt645_standard_tables()
+
+    def _migrate_dnp3_point_config_schema(self) -> None:
+        """Add one extensible JSON field to every legacy point table."""
+        if not self.db_config:
+            return
+        from sqlalchemy import inspect, text
+
+        engine = self.db_config.engine
+        inspector = inspect(engine)
+        tables = set(inspector.get_table_names())
+        for table in ("point_yc", "point_yx", "point_yk", "point_yt"):
+            if table not in tables:
+                continue
+            columns = {column["name"] for column in inspector.get_columns(table)}
+            if "dnp3_config" not in columns:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN dnp3_config TEXT"))
 
     def _backfill_legacy_dlt645_standard_tables(self) -> None:
         """Recognize legacy standard tables by their complete DI code set."""

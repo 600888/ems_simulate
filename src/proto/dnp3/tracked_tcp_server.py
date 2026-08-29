@@ -16,9 +16,11 @@ class TrackedTcpServer(TcpServer):
 
     @property
     def active_connection_key(self) -> str | None:
+        """返回当前活跃连接的标识键。"""
         return self._active_connection_key
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        """处理单个客户端连接：接管旧连接并持续读取数据。"""
         peer = writer.get_extra_info("peername")
         local = writer.get_extra_info("sockname")
         previous = self._writer
@@ -75,6 +77,7 @@ class TrackedTcpServer(TcpServer):
                 self._on_disconnect(key, reason, detail)
 
     def send(self, data: bytes) -> None:
+        """向当前活跃连接发送数据并触发发送活动回调。"""
         key = self._active_connection_key
         super().send(data)
         if key and self._on_activity:

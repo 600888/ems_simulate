@@ -182,18 +182,20 @@ async def test_dnp3_handler_batch_read_uses_one_integrity_refresh_for_all_points
 
 
 @pytest.mark.asyncio
-async def test_dnp3_client_batch_read_sends_exactly_one_integrity_poll(monkeypatch):
+async def test_dnp3_client_batch_read_sends_one_addressed_request():
     from src.proto.dnp3.dnp3_client import Dnp3Client
 
     client = Dnp3Client()
-    monkeypatch.setattr(client, "_session_ready", lambda: True)
-    client.send_integrity_poll = AsyncMock(return_value=True)
+    client._request = AsyncMock(return_value=SimpleNamespace(header=SimpleNamespace(iin=None)))
     client.read_point = Mock(side_effect=lambda index, group: f"{group}:{index}")
-    response_wait = AsyncMock()
-    monkeypatch.setattr("src.proto.dnp3.dnp3_client.asyncio.sleep", response_wait)
 
     values = await client.read_points_active([(3, 30), (7, 1)])
 
-    client.send_integrity_poll.assert_awaited_once_with()
-    response_wait.assert_awaited_once_with(0.2)
+    client._request.assert_awaited_once()
+    function, objects = client._request.await_args.args
+    assert function.name == "READ"
+    assert [(obj.header.group, obj.header.start, obj.header.stop) for obj in objects] == [
+        (30, 3, 3),
+        (1, 7, 7),
+    ]
     assert values == {(3, 30): "30:3", (7, 1): "1:7"}

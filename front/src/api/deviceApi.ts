@@ -20,6 +20,10 @@ export interface MessageRecord {
   protocol_type: string;
   /** Modbus Unit ID or IEC104 common address; control frames have no slave ID. */
   slave_id: number | null;
+  fragment_correlation_id?: string | null;
+  transport_sequence?: number | null;
+  transport_first?: boolean | null;
+  transport_final?: boolean | null;
 }
 
 export interface AvgTimeStats {
@@ -520,6 +524,13 @@ export interface MessageDetail {
     quantity?: number;
     match_method?: string;
   } | null;
+  fragment_correlation?: {
+    id: string;
+    frame_sequence_ids: number[];
+    transport_sequence: number | null;
+    first: boolean | null;
+    final: boolean | null;
+  };
   warnings: string[];
   errors: string[];
 }

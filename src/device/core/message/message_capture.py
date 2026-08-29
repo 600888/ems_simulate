@@ -8,11 +8,18 @@ from typing import Any
 class MessageRecord:
     """单条报文记录"""
 
-    def __init__(self, direction: str, data: bytes, sequence_id: int = 0):
+    def __init__(
+        self,
+        direction: str,
+        data: bytes,
+        sequence_id: int = 0,
+        metadata: dict[str, Any] | None = None,
+    ):
         self.direction = direction
         self.data = data
         self.timestamp = time.time()
         self.sequence_id = sequence_id
+        self.metadata = dict(metadata or {})
         self.hex_string = self._bytes_to_spaced_hex(data)
 
     def _bytes_to_spaced_hex(self, data: bytes) -> str:
@@ -37,6 +44,7 @@ class MessageRecord:
             "timestamp": self.timestamp,
             "time": self.formatted_time,
             "length": len(self.data),
+            **self.metadata,
         }
 
 
@@ -68,7 +76,7 @@ class MessageCapture:
         self._sequence_counter += 1
         return self._sequence_counter
 
-    def add_tx(self, data: bytes):
+    def add_tx(self, data: bytes, metadata: dict[str, Any] | None = None):
         """添加发送报文"""
         if not self._enabled:
             return
@@ -87,9 +95,9 @@ class MessageCapture:
                 self._pending_tx_time = now
 
             seq = self._get_next_sequence()
-            self._queue.append(MessageRecord("TX", data, seq))
+            self._queue.append(MessageRecord("TX", data, seq, metadata))
 
-    def add_rx(self, data: bytes):
+    def add_rx(self, data: bytes, metadata: dict[str, Any] | None = None):
         """添加接收报文"""
         if not self._enabled:
             return
@@ -108,7 +116,7 @@ class MessageCapture:
                 self._pending_rx_time = now
 
             seq = self._get_next_sequence()
-            self._queue.append(MessageRecord("RX", data, seq))
+            self._queue.append(MessageRecord("RX", data, seq, metadata))
 
     def get_avg_time(self) -> dict[str, Any]:
         """获取平均收发时间

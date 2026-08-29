@@ -10,7 +10,9 @@ DNP3 协议处理器
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
+import time
 from typing import Any
 
 from src.config.config import Config
@@ -26,7 +28,10 @@ from src.enums.points.yx import Yx
 
 def _index_of(point: BasePoint) -> int:
     """DNP3 以 index 寻址，测点 address 承载 DNP3 索引。"""
-    return int(point.address)
+    index = int(point.address)
+    if not 0 <= index <= 0xFFFF:
+        raise ValueError(f"DNP3点索引必须在 0 到 65535 之间: {index}")
+    return index
 
 
 def _decode_value(point: BasePoint, value: Any) -> Any:
@@ -57,10 +62,12 @@ _READ_PRIMARY_GROUP_MAP: dict[int, int] = {
 
 
 def _READ_GROUPS(frame_type: int) -> tuple[int, ...]:
+    """返回测点类型对应的可命中对象组集合。"""
     return _READ_GROUPS_MAP.get(frame_type, (30,))
 
 
 def _READ_PRIMARY_GROUP(frame_type: int) -> int:
+    """返回测点类型对应的主动读取主对象组。"""
     return _READ_PRIMARY_GROUP_MAP.get(frame_type, 30)
 
 
@@ -107,15 +114,18 @@ class DNP3ServerHandler(ServerHandler):
         )
 
     def _on_connection_opened(self, key, remote_endpoint, local_endpoint) -> None:
+        """连接建立时记录连接监控信息。"""
         self._open_connection(key, remote_endpoint=remote_endpoint, local_endpoint=local_endpoint)
 
     def _on_connection_activity(self, key, direction: str, size: int) -> None:
+        """连接收发活动时累计收发字节与消息数。"""
         if direction == "rx":
             self._record_connection_activity(key, rx_bytes=size, rx_messages=1)
         else:
             self._record_connection_activity(key, tx_bytes=size, tx_messages=1)
 
     def _on_connection_closed(self, key, reason_name: str, detail: str | None) -> None:
+        """连接断开时映射断开原因与发起方并记录。"""
         reason_map = {
             "remote_closed": (DisconnectReason.REMOTE_CLOSED, DisconnectInitiator.REMOTE),
             "network_reset": (DisconnectReason.NETWORK_RESET, DisconnectInitiator.NETWORK),
@@ -130,6 +140,7 @@ class DNP3ServerHandler(ServerHandler):
         self._close_connection(key, reason=reason, initiator=initiator, detail=detail)
 
     def _new_capture(self) -> MessageCapture:
+        """新建一个报文捕获器。"""
         return MessageCapture()
 
     def get_value_by_address(self, func_code: int, slave_id: int, address: int) -> Any:
@@ -144,6 +155,7 @@ class DNP3ServerHandler(ServerHandler):
             self._server.set_point_value(int(address), value, frame_type=int(func_code))
 
     async def start(self) -> bool:
+        """启动 DNP3 服务端。"""
         if self._server:
             # 已有 capture 由 initialize 建立，保持复用；仅当基类显式设置了才同步
             if self._message_capture is not None:
@@ -154,6 +166,7 @@ class DNP3ServerHandler(ServerHandler):
         return False
 
     async def stop(self) -> bool:
+        """关闭所有连接并停止 DNP3 服务端。"""
         if self._server:
             self._close_all_connections()
             ok = await self._server.stop()
@@ -162,6 +175,7 @@ class DNP3ServerHandler(ServerHandler):
         return False
 
     def read_value(self, point: BasePoint) -> Any:
+        """读取指定测点在服务端数据库中的当前值。"""
         if self._server:
             index = _index_of(point)
             value = self._server.get_point_value(index, frame_type=point.frame_type)
@@ -177,9 +191,11 @@ class DNP3ServerHandler(ServerHandler):
         return False
 
     async def read_value_async(self, point: BasePoint) -> Any:
+        """异步读取指定测点值（服务端本地读取）。"""
         return self.read_value(point)
 
     async def write_value_async(self, point: BasePoint, value: Any) -> bool:
+        """异步设置指定测点值（服务端本地写入）。"""
         return self.write_value(point, value)
 
     def add_points(self, points: list[BasePoint]) -> None:
@@ -190,14 +206,15 @@ class DNP3ServerHandler(ServerHandler):
         for point in points:
             index = _index_of(point)
             frame_type = point.frame_type
+            point_config = getattr(point, "dnp3_config", None)
             if frame_type == 0:  # 遥测
-                self._server.add_analog_input(index)
+                self._server.add_analog_input(index, dnp3_config=point_config)
             elif frame_type == 1:  # 遥信
-                self._server.add_binary_input(index)
+                self._server.add_binary_input(index, dnp3_config=point_config)
             elif frame_type == 2:  # 遥控
-                self._server.add_binary_output(index)
+                self._server.add_binary_output(index, dnp3_config=point_config)
             elif frame_type == 3:  # 遥调
-                self._server.add_analog_output(index)
+                self._server.add_analog_output(index, dnp3_config=point_config)
             self._point_map[(frame_type, index)] = point
 
         self._server.set_on_command_callback(self._on_command_received)
@@ -219,15 +236,18 @@ class DNP3ServerHandler(ServerHandler):
                 self._log.error(f"DNP3 应用控制值失败: {e}")
 
     def get_captured_messages(self, limit: int = 100) -> list[dict[str, Any]]:
+        """获取服务端捕获的收发报文列表。"""
         if self._server:
             return self._server.get_captured_messages(limit)
         return []
 
     def clear_captured_messages(self) -> None:
+        """清空服务端捕获的报文。"""
         if self._server:
             self._server.clear_captured_messages()
 
     def get_avg_time(self) -> dict:
+        """获取服务端报文捕获的平均处理时间统计。"""
         if self._server and hasattr(self._server, "message_capture"):
             cap = self._server.message_capture if hasattr(self._server, "message_capture") else None
             if cap and hasattr(cap, "get_avg_time"):
@@ -247,8 +267,12 @@ class DNP3ClientHandler(ClientHandler):
         super().__init__()
         self._client = None
         self._log = log
+        self._event_poll_task: asyncio.Task[None] | None = None
+        self._time_sync_task: asyncio.Task[None] | None = None
+        self._last_time_sync: dict[str, Any] | None = None
 
     def initialize(self, config: dict[str, Any]) -> None:
+        """初始化 DNP3 客户端配置，创建底层 Dnp3Client 对象。"""
         from src.proto.dnp3.dnp3_client import Dnp3Client
 
         self._config = config
@@ -265,8 +289,44 @@ class DNP3ClientHandler(ClientHandler):
         self._client.set_server_port(port)
         self._client.set_parameters(**runtime)
         self._client.set_message_capture(self._new_capture())
+        self._client.set_connection_callbacks(
+            on_connect=self._on_connection_opened,
+            on_activity=self._on_connection_activity,
+            on_disconnect=self._on_connection_closed,
+            on_timeout=self._on_request_timeout,
+        )
+
+    def _on_connection_opened(self, remote_endpoint, local_endpoint) -> None:
+        """连接建立后置运行标志，并按需启动时间同步任务。"""
+        self._is_running = True
+        if self._config.get("runtime", {}).get("time_sync_enabled", False):
+            if self._time_sync_task is None or self._time_sync_task.done():
+                self._time_sync_task = asyncio.create_task(self._sync_time())
+        if self._log:
+            self._log.info(f"DNP3连接已建立: remote={remote_endpoint}, local={local_endpoint}")
+
+    def _on_connection_activity(self, direction: str, size: int) -> None:
+        """连接收发活动时记录 debug 日志。"""
+        if self._log and hasattr(self._log, "debug"):
+            self._log.debug(f"DNP3连接活动: direction={direction}, bytes={size}")
+
+    def _on_connection_closed(self, reason: str, detail: str | None) -> None:
+        """连接断开时置停止标志并记录警告日志。"""
+        self._is_running = False
+        if self._log:
+            self._log.warning(f"DNP3连接断开: reason={reason}, detail={detail or '-'}")
+
+    def _on_request_timeout(self, pending) -> None:
+        """请求超时时记录包含功能码、序号与尝试次数的警告。"""
+        if self._log:
+            self._log.warning(
+                "DNP3请求超时: "
+                f"function={pending.function.name}, seq={pending.sequence}, "
+                f"attempt={pending.attempt + 1}, objects={pending.objects}"
+            )
 
     def _new_capture(self) -> MessageCapture:
+        """新建一个报文捕获器。"""
         return MessageCapture()
 
     async def connect(self) -> bool:
@@ -274,6 +334,8 @@ class DNP3ClientHandler(ClientHandler):
         if self._client:
             ok = await self._client.start()
             self._is_running = ok
+            if ok:
+                self._start_event_polling()
             return ok
         return False
 
@@ -282,23 +344,81 @@ class DNP3ClientHandler(ClientHandler):
         self._is_running = False
 
     async def start(self) -> bool:
+        """启动 DNP3 客户端并连接对端，成功后启动事件轮询。"""
         if self._client:
             # 已有 capture 由 initialize 建立，保持复用；仅当基类显式设置了才同步
             if self._message_capture is not None:
                 self._client.set_message_capture(self._message_capture)
             ok = await self._client.start()
             self._is_running = ok
+            if ok:
+                self._start_event_polling()
             return ok
         return False
 
     async def stop(self) -> bool:
+        """停止事件轮询与时间同步任务，并关闭 DNP3 客户端。"""
+        await self._stop_event_polling()
+        if self._time_sync_task is not None:
+            self._time_sync_task.cancel()
+            try:
+                await self._time_sync_task
+            except asyncio.CancelledError:
+                pass
+            self._time_sync_task = None
         if self._client:
             ok = await self._client.stop()
             self._is_running = False
             return ok
         return False
 
+    def _start_event_polling(self) -> None:
+        """按配置启动事件轮询任务（周期小于等于0 则不启动）。"""
+        runtime = self._config.get("runtime", {})
+        interval = int(runtime.get("event_interval_s", 0))
+        if interval <= 0 or self._event_poll_task is not None:
+            return
+        if bool(runtime.get("enable_unsolicited", False)):
+            interval = max(interval, 60)
+        self._event_poll_task = asyncio.create_task(self._event_poll_loop(interval))
+
+    async def _stop_event_polling(self) -> None:
+        """取消并等待事件轮询任务结束。"""
+        if self._event_poll_task is None:
+            return
+        self._event_poll_task.cancel()
+        try:
+            await self._event_poll_task
+        except asyncio.CancelledError:
+            pass
+        self._event_poll_task = None
+
+    async def _event_poll_loop(self, interval: int) -> None:
+        """按固定周期发送事件轮询请求。"""
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                if not self._client or not self._client.is_connected:
+                    continue
+                if not await self._client.send_event_poll() and self._log:
+                    self._log.warning(f"DNP3事件轮询失败: {self._client.last_error}")
+        except asyncio.CancelledError:
+            return
+
+    async def _sync_time(self) -> None:
+        """执行一次时间同步并记录同步结果。"""
+        started = time.time()
+        ok = bool(self._client and await self._client.sync_time())
+        self._last_time_sync = {
+            "success": ok,
+            "timestamp": started,
+            "error": None if ok or not self._client else self._client.last_error,
+        }
+        if not ok and self._log:
+            self._log.warning(f"DNP3时间同步失败: {self._last_time_sync['error']}")
+
     def read_value(self, point: BasePoint) -> Any:
+        """从客户端缓存读取测点值，优先命中主对象组。"""
         if not self._client:
             return None
         index = _index_of(point)
@@ -310,6 +430,20 @@ class DNP3ClientHandler(ClientHandler):
             if value is not None:
                 return _decode_value(point, value)
         return None
+
+    async def read_metadata_async(self, point: BasePoint) -> dict[str, Any]:
+        """读取测点的缓存元数据（品质与时间戳）。"""
+        if not self._client:
+            return {"quality": {}, "timestamp": {}}
+        index = _index_of(point)
+        for group in _READ_GROUPS(point.frame_type):
+            metadata = self._client.read_point_metadata(index, group)
+            if metadata is not None:
+                timestamp = metadata.get("timestamp")
+                if hasattr(timestamp, "isoformat"):
+                    timestamp = timestamp.isoformat()
+                return {**metadata, "timestamp": timestamp}
+        return {"quality": {}, "timestamp": {}}
 
     async def active_read_value_async(self, point: BasePoint) -> Any:
         """DNP3 主动读取单个测点：触发完整性轮询刷新缓存，等待响应后返回该 index 最新值。
@@ -361,13 +495,19 @@ class DNP3ClientHandler(ClientHandler):
         index = _index_of(point)
         try:
             if point.frame_type == 2:  # 遥控
-                return await self._client.operate_binary(index, bool(value), sbo=False)
+                return await self._client.operate_binary_configured(
+                    index, bool(value), getattr(point, "dnp3_config", None)
+                )
             if point.frame_type == 3:  # 遥调
-                return await self._client.write_analog(index, float(value))
+                return await self._client.operate_analog_configured(
+                    index, float(value), getattr(point, "dnp3_config", None)
+                )
             if point.frame_type == 1:  # 遥信（通常只读）
                 return await self._client.write_binary(index, bool(value))
             return await self._client.write_analog(index, float(value))
-        except Exception:
+        except (ConnectionError, TimeoutError, ValueError, RuntimeError) as exc:
+            if self._log:
+                self._log.error(f"DNP3写入失败: index={index}, frame_type={point.frame_type}, error={exc}")
             return False
 
     def add_points(self, points: list[BasePoint]) -> None:
@@ -375,25 +515,30 @@ class DNP3ClientHandler(ClientHandler):
         pass
 
     async def send_integrity_poll(self) -> bool:
+        """发送 Class 0 完整性轮询并返回是否成功。"""
         if self._client:
             return await self._client.send_integrity_poll()
         return False
 
     async def send_event_poll(self) -> bool:
+        """发送事件轮询并返回是否成功。"""
         if self._client:
             return await self._client.send_event_poll()
         return False
 
     def get_captured_messages(self, limit: int = 100) -> list[dict[str, Any]]:
+        """获取客户端捕获的收发报文列表。"""
         if self._client:
             return self._client.get_captured_messages(limit)
         return []
 
     def clear_captured_messages(self) -> None:
+        """清空客户端捕获的报文。"""
         if self._client:
             self._client.clear_captured_messages()
 
     def get_avg_time(self) -> dict:
+        """获取客户端报文捕获的平均处理时间统计。"""
         if self._client and hasattr(self._client, "message_capture"):
             cap = self._client.message_capture if hasattr(self._client, "message_capture") else None
             if cap and hasattr(cap, "get_avg_time"):
@@ -404,3 +549,13 @@ class DNP3ClientHandler(ClientHandler):
     def client(self):
         """获取底层 DNP3 客户端对象（供 Device.client 使用）"""
         return self._client
+
+    @property
+    def last_error(self) -> str | None:
+        """获取客户端最后一条错误信息。"""
+        return self._client.last_error if self._client else None
+
+    @property
+    def last_time_sync(self) -> dict[str, Any] | None:
+        """获取最近一次时间同步的结果记录。"""
+        return self._last_time_sync

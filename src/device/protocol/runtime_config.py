@@ -78,31 +78,45 @@ IEC61850_SERVER_DEFAULTS = {
 
 # DNP3 客户端（Master）默认运行参数
 DNP3_CLIENT_DEFAULTS = {
-    "local_address": 1,
-    "remote_address": 0,
-    "address_size": 2,
-    "link_confirm": True,
-    "app_confirm": True,
-    "time_sync_enabled": True,
-    "integrity_interval_s": 60,
-    "event_interval_s": 5,
-    "enable_unsolicited": False,
+    "local_address": 0,
+    "remote_address": 1,
     "connection_timeout_ms": 3000,
     "command_timeout_ms": 3000,
     "max_retries": 3,
+    "reconnect_initial_interval_ms": 1000,
+    "reconnect_max_interval_ms": 30000,
+    "reconnect_max_attempts": 0,
+    "time_sync_enabled": False,
+    "event_interval_s": 5,
+    "enable_unsolicited": False,
+    "cache_ttl_ms": 0,
+    "link_confirm": False,
+    "link_confirm_timeout_ms": 1000,
+    "link_confirm_max_retries": 2,
 }
 
 # DNP3 服务端（Outstation）默认运行参数
 DNP3_SERVER_DEFAULTS = {
     "local_address": 1,
     "remote_address": 0,
-    "address_size": 2,
-    "link_confirm": True,
-    "app_confirm": True,
-    "enable_unsolicited": False,
     "event_buffer_size": 1000,
     "select_timeout_s": 10,
-    "max_connections": 0,
+    "app_confirm": True,
+    "enable_unsolicited": False,
+    "confirm_timeout_ms": 5000,
+    "confirm_max_retries": 2,
+    "link_confirm": False,
+    "link_confirm_timeout_ms": 1000,
+    "link_confirm_max_retries": 2,
+}
+
+# Older saved channels may still contain these UI fields. They never affected the
+# current protocol stack, so accept-and-drop them during normalization instead of
+# breaking existing channels or continuing to advertise unsupported behavior.
+_DNP3_LEGACY_IGNORED = {
+    "address_size",
+    "integrity_interval_s",
+    "max_connections",
 }
 
 # Keys use the persisted protocol_type and conn_type values.
@@ -158,6 +172,11 @@ _RANGES: dict[str, tuple[int, int]] = {
     "event_buffer_size": (1, 100000),
     "select_timeout_s": (1, 60),
     "max_retries": (0, 100),
+    "cache_ttl_ms": (0, 86400000),
+    "confirm_timeout_ms": (100, 120000),
+    "confirm_max_retries": (0, 100),
+    "link_confirm_timeout_ms": (100, 120000),
+    "link_confirm_max_retries": (0, 100),
 }
 
 _AP_TITLE_FIELDS = {"remote_ap_title", "local_ap_title"}
@@ -185,6 +204,9 @@ def get_protocol_param_defaults(protocol_type: int, conn_type: int) -> dict[str,
 def normalize_protocol_params(protocol_type: int, conn_type: int, values: dict[str, Any] | None) -> dict[str, Any]:
     defaults = get_protocol_param_defaults(protocol_type, conn_type)
     incoming = dict(values or {})
+    if protocol_type == 5:
+        for legacy_name in _DNP3_LEGACY_IGNORED:
+            incoming.pop(legacy_name, None)
     if protocol_type == 2:
         for legacy_name, current_name in _IEC104_LEGACY_TIME_PARAMS.items():
             if legacy_name not in incoming:

@@ -212,6 +212,10 @@ class MessageFormatter:
                     "length": length,
                     "protocol_type": protocol_type.value,
                     "slave_id": self._extract_slave_id(raw_hex, protocol_type),
+                    "fragment_correlation_id": msg.get("fragment_correlation_id"),
+                    "transport_sequence": msg.get("transport_sequence"),
+                    "transport_first": msg.get("transport_first"),
+                    "transport_final": msg.get("transport_final"),
                 }
             )
 
@@ -249,7 +253,8 @@ class MessageFormatter:
         elif protocol_type in _MMS_TYPES:
             detail = parse_mms(raw, role=role)
         elif protocol_type in _DNP3_TYPES:
-            detail = parse_dnp3(raw, role=role)
+            request_context = self._find_dnp3_request_context(messages, message)
+            detail = parse_dnp3(raw, role=role, request_context=request_context)
         else:
             return None
         detail.update(
@@ -259,8 +264,64 @@ class MessageFormatter:
             timestamp=message.get("timestamp", 0),
             formatted_time=message.get("formatted_time", ""),
         )
+        fragment_id = message.get("fragment_correlation_id")
+        if fragment_id:
+            related = [item["sequence_id"] for item in messages if item.get("fragment_correlation_id") == fragment_id]
+            detail["fragment_correlation"] = {
+                "id": fragment_id,
+                "frame_sequence_ids": related,
+                "transport_sequence": message.get("transport_sequence"),
+                "first": message.get("transport_first"),
+                "final": message.get("transport_final"),
+            }
         self._enrich_with_points(detail, protocol_type)
         return detail
+
+    @staticmethod
+    def _find_dnp3_request_context(messages: list[dict], message: dict) -> dict | None:
+        """Correlate application responses by the four-bit application sequence."""
+        try:
+            current = parse_dnp3(bytes.fromhex(message.get("raw_hex", "")), role=message.get("msg_type", ""))
+        except (TypeError, ValueError):
+            return None
+        sequence = current.get("application_sequence")
+        function = current.get("application_function_code")
+        if sequence is None or function not in (129, 130):
+            return None
+        current_id = message.get("sequence_id", 0)
+        for candidate in reversed(messages):
+            if candidate.get("sequence_id", 0) >= current_id or candidate.get("msg_type") != "Request":
+                continue
+            try:
+                parsed = parse_dnp3(bytes.fromhex(candidate.get("raw_hex", "")), role="Request")
+            except (TypeError, ValueError):
+                continue
+            if parsed.get("application_sequence") != sequence:
+                continue
+            context = {
+                "application_sequence": sequence,
+                "request_sequence_id": candidate.get("sequence_id"),
+                "request_function_code": parsed.get("application_function_code"),
+                "request_function": parsed.get("application_function"),
+            }
+            if parsed.get("application_function_code") == 4:
+                operate_addresses = {item.get("address") for item in parsed.get("objects", [])}
+                for selected in reversed(messages):
+                    selected_id = selected.get("sequence_id", 0)
+                    if selected_id >= candidate.get("sequence_id", 0) or selected.get("msg_type") != "Request":
+                        continue
+                    try:
+                        select_detail = parse_dnp3(bytes.fromhex(selected.get("raw_hex", "")), role="Request")
+                    except (TypeError, ValueError):
+                        continue
+                    select_addresses = {item.get("address") for item in select_detail.get("objects", [])}
+                    if select_detail.get("application_function_code") == 3 and (
+                        not operate_addresses or operate_addresses == select_addresses
+                    ):
+                        context["select_sequence_id"] = selected_id
+                        break
+            return context
+        return None
 
     def _enrich_with_points(self, detail: dict, protocol_type: ProtocolType) -> None:
         """Attach configured point semantics without mixing point lookup into wire parsers."""
