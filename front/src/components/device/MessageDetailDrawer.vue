@@ -88,13 +88,12 @@
           <div class="raw-hint">{{ $t("device.messageClickToHighlight") }}</div>
         </section>
 
-        <section class="section">
+        <section class="section section-parse">
           <h3>{{ $t("device.messageFieldParse") }}</h3>
           <el-table
             :data="detail.fields"
             border
             size="small"
-            max-height="360"
             highlight-current-row
             :header-cell-style="{ whiteSpace: 'nowrap' }"
             @row-click="selectField"
@@ -459,6 +458,13 @@ defineExpose({ open });
 </script>
 
 <style scoped>
+/* 统一压缩报文详情抽屉的上下留白（所有协议共用本组件） */
+:global(.message-detail-drawer .el-drawer__header) {
+  margin-bottom: 12px;
+}
+:global(.message-detail-drawer .el-drawer__body) {
+  padding: 12px 16px 16px;
+}
 .drawer-title-content {
   display: flex;
   align-items: center;
@@ -482,10 +488,24 @@ defineExpose({ open });
   color: var(--el-color-primary);
 }
 .detail-body {
-  min-height: 180px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 .section {
   margin-top: 18px;
+}
+/* 报文精确解析：表格在内容不足时延伸到底部，消除下方留白 */
+.section-parse {
+  flex: 1 1 auto;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+.section-parse .el-table {
+  flex: 1 1 auto;
+  width: 100%;
+  border-bottom: var(--el-table-border);
 }
 .section h3 {
   margin: 0 0 10px;

@@ -291,10 +291,17 @@
             ? tagFilters
             : header === 'IEC104类型'
               ? iec104TypeFilters
-              : undefined
+              : header === 'DNP3事件类别'
+                ? dnp3EventClassFilters
+                : undefined
         "
+        :filter-multiple="header !== 'DNP3事件类别'"
         :column-key="header"
-        :fixed="['帧类型', '状态'].includes(header) ? 'right' : undefined"
+        :fixed="
+          ['DNP3事件类别', '帧类型', '状态'].includes(header)
+            ? 'right'
+            : undefined
+        "
       >
         <template #header>
           <div class="header-content">
@@ -334,6 +341,14 @@
                 ? scope.row[header]
                 : t(getIec104TypeLabelKey(scope.row[header]))
             }}
+          </el-tag>
+          <el-tag
+            v-else-if="header === 'DNP3事件类别' && scope.row[header]"
+            :type="getDnp3EventTagType(scope.row[header])"
+            effect="light"
+            class="status-tag"
+          >
+            {{ translateDnp3EventClass(scope.row[header]) }}
           </el-tag>
           <el-tag
             v-else-if="isIec61850 && header === '测点类型' && scope.row[header]"
@@ -750,6 +765,7 @@ import {
   COLUMN_WIDTH_MAP,
   FRAME_TYPE_FILTERS,
   IEC104_TYPE_FILTERS,
+  DNP3_EVENT_CLASS_FILTERS,
   FRAME_TYPE_TAG_MAP,
   getIec104TagType,
   getMmsTagType,
@@ -758,7 +774,7 @@ import {
   CLIENT_PROTOCOL_NAMES,
   HEADER_I18N_MAP,
 } from "@/constants/table";
-import { isDlt645Protocol } from "@/constants/protocol";
+import { isDlt645Protocol, isDnp3Protocol } from "@/constants/protocol";
 import { formatTableRealValue } from "@/utils/tableValue";
 
 import SingleRegister from "../register/SingleRegister.vue";
@@ -863,6 +879,7 @@ const isModbus = computed(() => {
 });
 
 const isDlt645 = computed(() => isDlt645Protocol(props.protocolType));
+const isDnp3 = computed(() => isDnp3Protocol(props.protocolType));
 
 const isClientDevice = computed(() => {
   const t = String(props.protocolType);
@@ -918,6 +935,11 @@ const hiddenColumns = computed(() => {
   // 非IEC104协议，隐藏IEC104类型列
   if (!isIec104.value) {
     hidden.push("IEC104类型");
+  }
+
+  // 事件类别是 DNP3 测点属性，其他协议不显示该列。
+  if (!isDnp3.value) {
+    hidden.push("DNP3事件类别");
   }
 
   // 非客户端设备且非 IEC61850 设备，隐藏状态列
@@ -1023,6 +1045,26 @@ const tagFilters = computed(() =>
 const iec104TypeFilters = computed(() =>
   IEC104_TYPE_FILTERS.map((f) => ({ text: t(f.text), value: f.value })),
 );
+
+const dnp3EventClassFilters = computed(() =>
+  DNP3_EVENT_CLASS_FILTERS.map((filter) => ({
+    text: filter.text.startsWith("table.") ? t(filter.text) : filter.text,
+    value: filter.value,
+  })),
+);
+
+const translateDnp3EventClass = (value: string): string => {
+  if (value === "none") return t("table.dnp3NoEvents");
+  const match = /^class([1-3])$/.exec(value);
+  return match ? `Class ${match[1]}` : value;
+};
+
+const getDnp3EventTagType = (value: string): string => {
+  if (value === "class1") return "danger";
+  if (value === "class2") return "warning";
+  if (value === "class3") return "primary";
+  return "info";
+};
 
 const handleFilterChange = (f: any) => emit("update:activeFilters", f);
 const handleSortChange = ({

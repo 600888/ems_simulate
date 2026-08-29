@@ -64,6 +64,8 @@ class DeviceTableRequest(BaseModel):
     iec104_types: list[str] | None = None  # 为空表示全部 IEC104 ASDU 类型
     dlt645_prefix: int | None = Field(None, ge=0, le=4)
     dlt645_settlement: int | None = Field(None, ge=0, le=12)
+    dnp3_event_class: int | None = Field(None, ge=1, le=3)
+    dnp3_event_enabled: bool | None = None
 
 
 class SimulationStartRequest(BaseModel):

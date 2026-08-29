@@ -228,6 +228,8 @@ async def get_table_by_slave_id(req: DeviceTableRequest, request: Request):
         iec104_types=req.iec104_types,
         dlt645_prefix=req.dlt645_prefix,
         dlt645_settlement=req.dlt645_settlement,
+        dnp3_event_class=req.dnp3_event_class,
+        dnp3_event_enabled=req.dnp3_event_enabled,
     )
     data_dict = {"total": total, "table_data": table_data}
     return BaseResponse(message="获取从机信息成功!", data=data_dict)

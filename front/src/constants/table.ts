@@ -67,6 +67,7 @@ export const TABLE_COLUMN_NAMES = {
   DATA_ID: "数据标识",
   DATA_LENGTH: "数据长度",
   STATUS: "状态",
+  DNP3_EVENT_CLASS: "DNP3事件类别",
 } as const;
 
 /**
@@ -89,6 +90,7 @@ export const TABLE_HEADERS: readonly string[] = [
   "IEC104类型",
   "状态",
   "FC",
+  "DNP3事件类别",
 ] as const;
 
 /** 中文列名 → i18n key 后缀映射 */
@@ -108,6 +110,7 @@ export const HEADER_I18N_MAP: Record<string, string> = {
   IEC104类型: "iec104Type",
   状态: "status",
   FC: "fc",
+  DNP3事件类别: "dnp3EventClass",
 };
 
 // ===== 列宽度映射 =====
@@ -132,8 +135,18 @@ export const COLUMN_WIDTH_MAP: Record<string, number> = {
   数据标识: 120,
   数据长度: 80,
   状态: 80,
+  DNP3事件类别: 120,
   default: 100,
 } as const;
+
+// ===== DNP3 事件类别筛选选项 =====
+
+export const DNP3_EVENT_CLASS_FILTERS = [
+  { text: "Class 1", value: "class1" },
+  { text: "Class 2", value: "class2" },
+  { text: "Class 3", value: "class3" },
+  { text: "table.dnp3NoEvents", value: "none" },
+] as const;
 
 // ===== 帧类型筛选选项 =====
 

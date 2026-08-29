@@ -55,7 +55,7 @@ DNP3_FUNCTION_CODES = {
     29: "文件认证 (Authenticate File)",
     30: "中止文件操作 (Abort File)",
     129: "响应：成功",
-    130: "未请求响应 (Unsolicited Response)",
+    130: "服务端主动上报 (Unsolicited Response)",
 }
 
 _KNOWN_FUNCTION_CODES = frozenset(DNP3_FUNCTION_CODES)

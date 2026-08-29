@@ -187,9 +187,11 @@ export async function getDeviceTable(
   iec104Types: string[] = [],
   dlt645Prefix: number | null = null,
   dlt645Settlement: number | null = null,
+  dnp3EventClass: number | null = null,
+  dnp3EventEnabled: boolean | null = null,
 ): Promise<Map<string, any>> {
   try {
-    const data = await requestApi(DEVICE_API.TABLE, "post", {
+    const payload: Record<string, unknown> = {
       device_name: deviceName,
       slave_id: slaveId,
       point_name: pointName,
@@ -201,7 +203,14 @@ export async function getDeviceTable(
       iec104_types: iec104Types,
       dlt645_prefix: dlt645Prefix,
       dlt645_settlement: dlt645Settlement,
-    });
+    };
+    if (dnp3EventClass !== null) {
+      payload.dnp3_event_class = dnp3EventClass;
+    }
+    if (dnp3EventEnabled !== null) {
+      payload.dnp3_event_enabled = dnp3EventEnabled;
+    }
+    const data = await requestApi(DEVICE_API.TABLE, "post", payload);
     return new Map<string, any>(Object.entries(data));
   } catch (error) {
     console.error("Error get device table:", error);

@@ -781,6 +781,21 @@ const iec104Types = computed<string[]>(() => {
     : [];
 });
 
+const dnp3EventFilter = computed<string | null>(() => {
+  const filters = activeFilters.value["DNP3事件类别"];
+  return Array.isArray(filters) && typeof filters[0] === "string"
+    ? filters[0]
+    : null;
+});
+const dnp3EventClass = computed<number | null>(() => {
+  const match = /^class([1-3])$/.exec(dnp3EventFilter.value || "");
+  return match ? Number(match[1]) : null;
+});
+const dnp3EventEnabled = computed<boolean | null>(() => {
+  if (dnp3EventFilter.value === "none") return false;
+  return dnp3EventClass.value === null ? null : true;
+});
+
 const handlePageIndexChange = (idx: number) => {
   pageIndex.value = idx;
   handleSearch(currentSlaveId.value);
@@ -929,6 +944,8 @@ const fetchDeviceTable = async (
     iec104Types.value,
     dlt645Prefix.value,
     dlt645Settlement.value,
+    dnp3EventClass.value,
+    dnp3EventEnabled.value,
   );
   if (data) {
     const fetchedTotal = Number(data.get("total") || 0);

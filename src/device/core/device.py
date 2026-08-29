@@ -1200,6 +1200,8 @@ class Device:
         iec104_types: list[str] | None = None,
         dlt645_prefix: int | None = None,
         dlt645_settlement: int | None = None,
+        dnp3_event_class: int | None = None,
+        dnp3_event_enabled: bool | None = None,
     ) -> tuple[list[list[str]], int]:
         # 对于 IEC104 客户端，在获取表格数据前同步 c104.Point 的值到内部点
         if self.protocol_type == ProtocolType.Iec104Client and self.protocol_handler:
@@ -1227,6 +1229,9 @@ class Device:
             iec104_types=iec104_types,
             dlt645_prefix=dlt645_prefix,
             dlt645_settlement=dlt645_settlement,
+            dnp3_event_class=dnp3_event_class,
+            dnp3_event_enabled=dnp3_event_enabled,
+            include_dnp3_event_class=self.protocol_type in (ProtocolType.Dnp3Server, ProtocolType.Dnp3Client),
         )
 
     def _sync_iec104_client_values(self, slave_id: int) -> None:

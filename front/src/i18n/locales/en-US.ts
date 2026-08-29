@@ -757,6 +757,8 @@ export default {
     multiplier: "Multiplier",
     offset: "Offset",
     iec104Type: "IEC104 Type",
+    dnp3EventClass: "Event Class",
+    dnp3NoEvents: "No Events",
     fc: "FC",
     daPath: "DA Path",
     lastUpdate: "Last Update",

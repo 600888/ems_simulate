@@ -46,6 +46,9 @@ class DataExporter:
         iec104_types: list[str] | None = None,
         dlt645_prefix: int | None = None,
         dlt645_settlement: int | None = None,
+        dnp3_event_class: int | None = None,
+        dnp3_event_enabled: bool | None = None,
+        include_dnp3_event_class: bool = False,
     ) -> tuple[list[list[str]], int]:
         """获取表格数据
 
@@ -59,6 +62,9 @@ class DataExporter:
             order_by: 排序字段 (地址, 功能码, 解析码)
             order_direction: 排序方向 (ascending, descending)
             iec104_types: IEC104 ASDU 类型标识列表
+            dnp3_event_class: DNP3 事件类别（1、2 或 3）
+            dnp3_event_enabled: DNP3 测点是否产生事件
+            include_dnp3_event_class: 是否在每行末尾附加 DNP3 事件类别
 
         Returns:
             (数据列表, 总数)
@@ -82,10 +88,30 @@ class DataExporter:
                 return False
             return dlt645_settlement is None or (address & 0xFF) == dlt645_settlement
 
+        def get_dnp3_event(point: BasePoint) -> tuple[bool, int]:
+            config = getattr(point, "dnp3_config", None)
+            if not isinstance(config, dict):
+                config = {}
+            frame_type = int(getattr(point, "frame_type", 0))
+            event_enabled = bool(config.get("event_enabled", frame_type in (0, 1)))
+            try:
+                event_class = int(config.get("event_class", 2 if frame_type in (2, 3) else 1))
+            except (TypeError, ValueError):
+                event_class = 1
+            return event_enabled, event_class
+
+        def matches_dnp3_event(point: BasePoint) -> bool:
+            event_enabled, event_class = get_dnp3_event(point)
+
+            if dnp3_event_enabled is not None and event_enabled is not dnp3_event_enabled:
+                return False
+            return dnp3_event_class is None or event_class == dnp3_event_class
+
         # 先筛选和排序轻量的测点对象，分页后只格式化当前页。
         # 大通道不再为一页少量数据构造数万行字符串。
         matched_points: list[tuple[BasePoint, bool]] = []
         frame_type_dict = PointManager.frame_type_dict()
+        has_dnp3_event_filter = dnp3_event_class is not None or dnp3_event_enabled is not None
 
         def append_matches(points: list[BasePoint], is_analog: bool) -> None:
             for point in points:
@@ -93,6 +119,7 @@ class DataExporter:
                     (name is None or name in str(point.name))
                     and matches_iec104_type(point)
                     and matches_dlt645_branch(point)
+                    and (not has_dnp3_event_filter or matches_dnp3_event(point))
                 ):
                     matched_points.append((point, is_analog))
 
@@ -144,14 +171,17 @@ class DataExporter:
             start = (page_index - 1) * page_size
             matched_points = matched_points[start : start + page_size]
 
-        table_data = [
-            (
+        table_data: list[list[str]] = []
+        for point, is_analog in matched_points:
+            row = (
                 self._format_yc_row(point, frame_type_dict, mask_error)
                 if is_analog
                 else self._format_yx_row(point, frame_type_dict, mask_error)
             )
-            for point, is_analog in matched_points
-        ]
+            if include_dnp3_event_class:
+                event_enabled, event_class = get_dnp3_event(point)
+                row.append(f"class{event_class}" if event_enabled else "none")
+            table_data.append(row)
         return table_data, total
 
     def _format_yc_row(self, point: Yc, frame_type_dict: dict[int, str], mask_error: bool = True) -> list[str]:
