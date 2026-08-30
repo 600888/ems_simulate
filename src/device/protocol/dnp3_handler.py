@@ -20,6 +20,7 @@ from src.device.core.connection import DisconnectInitiator, DisconnectReason
 from src.device.core.message.message_capture import MessageCapture
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.enums.points.base_point import BasePoint
+from src.enums.points.change_tracker import ChangeSource, track_change
 from src.enums.points.yc import Yc
 from src.enums.points.yk import Yk
 from src.enums.points.yt import Yt
@@ -58,6 +59,18 @@ _READ_PRIMARY_GROUP_MAP: dict[int, int] = {
     1: 1,
     2: 10,
     3: 40,
+}
+
+# DNP3 对象组 → 应用层测点类型。静态响应和事件/主动上报使用同一映射。
+_FRAME_TYPE_BY_GROUP: dict[int, int] = {
+    30: 0,
+    32: 0,
+    1: 1,
+    2: 1,
+    10: 2,
+    12: 2,
+    40: 3,
+    41: 3,
 }
 
 
@@ -270,6 +283,8 @@ class DNP3ClientHandler(ClientHandler):
         self._event_poll_task: asyncio.Task[None] | None = None
         self._time_sync_task: asyncio.Task[None] | None = None
         self._last_time_sync: dict[str, Any] | None = None
+        # (frame_type, index) → BasePoint，用于把协议缓存更新同步到界面数据模型。
+        self._point_map: dict[tuple[int, int], BasePoint] = {}
 
     def initialize(self, config: dict[str, Any]) -> None:
         """初始化 DNP3 客户端配置，创建底层 Dnp3Client 对象。"""
@@ -295,6 +310,7 @@ class DNP3ClientHandler(ClientHandler):
             on_disconnect=self._on_connection_closed,
             on_timeout=self._on_request_timeout,
         )
+        self._client.set_on_point_update_callback(self._on_point_update)
 
     def _on_connection_opened(self, remote_endpoint, local_endpoint) -> None:
         """连接建立后置运行标志，并按需启动时间同步任务。"""
@@ -531,8 +547,26 @@ class DNP3ClientHandler(ClientHandler):
             return False
 
     def add_points(self, points: list[BasePoint]) -> None:
-        """Master 模式无出站点注册，忽略。"""
-        pass
+        """注册 Master 测点映射，使轮询和主动上报能更新应用层测点。"""
+        for point in points:
+            self._point_map[(int(point.frame_type), _index_of(point))] = point
+
+    def _on_point_update(self, group: int, index: int, value: Any, source: str) -> None:
+        """把底层 Master 缓存更新同步到设备测点，供表格自动刷新读取。"""
+        frame_type = _FRAME_TYPE_BY_GROUP.get(int(group))
+        if frame_type is None:
+            return
+        point = self._point_map.get((frame_type, int(index)))
+        if point is None:
+            if self._log and hasattr(self._log, "debug"):
+                self._log.debug(f"DNP3收到未配置测点: group={group}, index={index}, source={source}")
+            return
+
+        new_value = _decode_value(point, value)
+        detail = "DNP3主动上报" if source == "unsolicited" else "DNP3响应更新"
+        with track_change(ChangeSource.CLIENT_READ, f"{detail} {point.code}"):
+            point.value = new_value
+        point.is_valid = True
 
     async def send_integrity_poll(self) -> bool:
         """发送 Class 0 完整性轮询并返回是否成功。"""

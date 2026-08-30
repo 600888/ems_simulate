@@ -50,9 +50,10 @@ class _MasterHandler:
         self._values: dict[tuple[int, int], Any] = {}
         self._metadata: dict[tuple[int, int], dict[str, Any]] = {}
 
-    def update(self, message: AppMessage, *, source: str) -> None:
-        """将响应报文中的测点值及其元数据写入缓存。"""
+    def update(self, message: AppMessage, *, source: str) -> list[tuple[int, int, Any]]:
+        """将响应报文写入缓存，并返回本次更新的 ``(group, index, value)``。"""
         received_at = time.time()
+        updates: list[tuple[int, int, Any]] = []
         for obj in message.objects:
             group = obj.header.group
             for ordinal, point in enumerate(obj.points):
@@ -64,6 +65,7 @@ class _MasterHandler:
                 value = getattr(value_source, "value", value_source)
                 key = (group, int(index))
                 self._values[key] = value
+                updates.append((group, int(index), value))
                 self._metadata[key] = {
                     "group": group,
                     "variation": obj.header.variation,
@@ -76,6 +78,7 @@ class _MasterHandler:
                     "valid": True,
                     "communication_lost": False,
                 }
+        return updates
 
     def mark_communication_lost(self) -> None:
         """将所有缓存测点标记为通信中断，品质转无效。"""
@@ -111,6 +114,7 @@ class Dnp3Client:
         self._on_connection_activity: Callable[..., None] | None = None
         self._on_connection_closed: Callable[..., None] | None = None
         self._on_timeout: Callable[[PendingRequest], None] | None = None
+        self._on_point_update: Callable[[int, int, Any, str], None] | None = None
         self.last_error: str | None = None
         self.last_command_statuses: list[int] = []
 
@@ -169,6 +173,23 @@ class Dnp3Client:
         self._on_connection_activity = on_activity
         self._on_connection_closed = on_disconnect
         self._on_timeout = on_timeout
+
+    def set_on_point_update_callback(self, callback: Callable[[int, int, Any, str], None] | None) -> None:
+        """注册缓存测点更新回调，参数依次为对象组、索引、原始值和数据来源。"""
+        self._on_point_update = callback
+
+    def _notify_point_updates(self, updates: list[tuple[int, int, Any]], source: str) -> None:
+        """将已解析的缓存更新通知给上层设备模型，回调异常不影响协议处理。"""
+        if self._on_point_update is None:
+            return
+        for group, index, value in updates:
+            try:
+                self._on_point_update(group, index, value, source)
+            except Exception as exc:
+                self._log_message(
+                    "error",
+                    f"DNP3测点更新回调失败: group={group}, index={index}, source={source}, error={exc}",
+                )
 
     @property
     def is_connected(self) -> bool:
@@ -345,9 +366,10 @@ class Dnp3Client:
             )
             return
         if control.uns:
-            self._handler.update(message, source="unsolicited")
+            updates = self._handler.update(message, source="unsolicited")
             if control.con:
                 self._send_confirm(control.seq, unsolicited=True)
+            self._notify_point_updates(updates, "unsolicited")
             return
         pending = self._pending.get(control.seq)
         if pending and not pending.future.done():
@@ -366,9 +388,10 @@ class Dnp3Client:
                     f"response={sorted(response_groups)}",
                 )
                 return
-            self._handler.update(message, source="solicited")
+            updates = self._handler.update(message, source="solicited")
             if control.con:
                 self._send_confirm(control.seq, unsolicited=False)
+            self._notify_point_updates(updates, "solicited")
             pending.future.set_result(message)
         else:
             self._log_message("warning", f"收到无匹配请求的DNP3响应: seq={control.seq}")

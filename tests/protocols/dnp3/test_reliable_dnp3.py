@@ -355,6 +355,8 @@ async def test_unsolicited_event_updates_master_cache_and_is_confirmed():
     client.set_server_ip("127.0.0.1")
     client.set_server_port(port)
     client.set_parameters(command_timeout_ms=500, max_retries=0, enable_unsolicited=True)
+    point_updates = []
+    client.set_on_point_update_callback(lambda *update: point_updates.append(update))
     try:
         assert await client.start()
         server.update_binary_input(12, True)
@@ -365,6 +367,7 @@ async def test_unsolicited_event_updates_master_cache_and_is_confirmed():
         assert client.read_point(12, 2) is True
         metadata = client.read_point_metadata(12, 2)
         assert metadata is not None and metadata["source"] == "unsolicited"
+        assert (2, 12, True, "unsolicited") in point_updates
         for _ in range(50):
             assert server._session is not None
             if not server._session._events.has_events:
