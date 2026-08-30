@@ -283,7 +283,7 @@
         :label="getHeaderLabel(header)"
         :min-width="addressFilteredWidthList[index]"
         :show-overflow-tooltip="
-          !['帧类型', 'IEC104类型', '测点类型'].includes(header)
+          !['帧类型', 'IEC104类型', '测点类型', 'DNP3点位类型'].includes(header)
         "
         :sortable="['功能码', '解析码'].includes(header) ? 'custom' : false"
         :filters="
@@ -341,6 +341,14 @@
                 ? scope.row[header]
                 : t(getIec104TypeLabelKey(scope.row[header]))
             }}
+          </el-tag>
+          <el-tag
+            v-else-if="header === 'DNP3点位类型' && scope.row[header]"
+            type="primary"
+            effect="light"
+            class="status-tag"
+          >
+            {{ scope.row[header] }}
           </el-tag>
           <el-tag
             v-else-if="header === 'DNP3事件类别' && scope.row[header]"
@@ -938,8 +946,9 @@ const hiddenColumns = computed(() => {
     hidden.push("IEC104类型");
   }
 
-  // 事件类别是 DNP3 测点属性，其他协议不显示该列。
+  // DNP3 专用点位属性，其他协议不显示。
   if (!isDnp3.value) {
+    hidden.push("DNP3点位类型");
     hidden.push("DNP3事件类别");
   }
 

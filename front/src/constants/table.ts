@@ -67,6 +67,7 @@ export const TABLE_COLUMN_NAMES = {
   DATA_ID: "数据标识",
   DATA_LENGTH: "数据长度",
   STATUS: "状态",
+  DNP3_POINT_TYPE: "DNP3点位类型",
   DNP3_EVENT_CLASS: "DNP3事件类别",
 } as const;
 
@@ -90,6 +91,7 @@ export const TABLE_HEADERS: readonly string[] = [
   "IEC104类型",
   "状态",
   "FC",
+  "DNP3点位类型",
   "DNP3事件类别",
 ] as const;
 
@@ -110,6 +112,7 @@ export const HEADER_I18N_MAP: Record<string, string> = {
   IEC104类型: "iec104Type",
   状态: "status",
   FC: "fc",
+  DNP3点位类型: "dnp3PointType",
   DNP3事件类别: "dnp3EventClass",
 };
 
@@ -135,6 +138,7 @@ export const COLUMN_WIDTH_MAP: Record<string, number> = {
   数据标识: 120,
   数据长度: 80,
   状态: 80,
+  DNP3点位类型: 140,
   DNP3事件类别: 120,
   default: 100,
 } as const;

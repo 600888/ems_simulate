@@ -72,10 +72,11 @@ def test_dnp3_event_filter_is_applied_before_pagination() -> None:
         point_types=[0],
         dnp3_event_class=2,
         dnp3_event_enabled=True,
+        include_dnp3_point_type=True,
         include_dnp3_event_class=True,
     )
 
-    assert rows == [["3", "class2"]]
+    assert rows == [["3", "Analog Input", "class2"]]
     assert total == 2
 
     rows, total = exporter.get_table_data(

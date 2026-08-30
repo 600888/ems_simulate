@@ -741,6 +741,7 @@ export default {
     multiplier: "乘法系数",
     offset: "加法系数",
     iec104Type: "IEC104类型",
+    dnp3PointType: "DNP3点位类型",
     dnp3EventClass: "事件类别",
     dnp3NoEvents: "无事件",
     fc: "FC",

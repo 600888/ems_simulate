@@ -1247,6 +1247,7 @@ class Device:
             dlt645_settlement=dlt645_settlement,
             dnp3_event_class=dnp3_event_class,
             dnp3_event_enabled=dnp3_event_enabled,
+            include_dnp3_point_type=self.protocol_type in (ProtocolType.Dnp3Server, ProtocolType.Dnp3Client),
             include_dnp3_event_class=self.protocol_type in (ProtocolType.Dnp3Server, ProtocolType.Dnp3Client),
         )
 

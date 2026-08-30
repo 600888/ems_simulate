@@ -10,6 +10,13 @@ from src.enums.point_data import BasePoint, Yc, Yx
 class DataExporter:
     """数据导出器"""
 
+    DNP3_POINT_TYPES = {
+        0: "Analog Input",
+        1: "Binary Input",
+        2: "Binary Output",
+        3: "Analog Output",
+    }
+
     def __init__(self, point_manager: PointManager):
         self._point_manager = point_manager
 
@@ -48,6 +55,7 @@ class DataExporter:
         dlt645_settlement: int | None = None,
         dnp3_event_class: int | None = None,
         dnp3_event_enabled: bool | None = None,
+        include_dnp3_point_type: bool = False,
         include_dnp3_event_class: bool = False,
     ) -> tuple[list[list[str]], int]:
         """获取表格数据
@@ -64,6 +72,7 @@ class DataExporter:
             iec104_types: IEC104 ASDU 类型标识列表
             dnp3_event_class: DNP3 事件类别（1、2 或 3）
             dnp3_event_enabled: DNP3 测点是否产生事件
+            include_dnp3_point_type: 是否在每行末尾附加 DNP3 点位类型
             include_dnp3_event_class: 是否在每行末尾附加 DNP3 事件类别
 
         Returns:
@@ -178,6 +187,8 @@ class DataExporter:
                 if is_analog
                 else self._format_yx_row(point, frame_type_dict, mask_error)
             )
+            if include_dnp3_point_type:
+                row.append(self.DNP3_POINT_TYPES.get(int(getattr(point, "frame_type", 0)), ""))
             if include_dnp3_event_class:
                 event_enabled, event_class = get_dnp3_event(point)
                 row.append(f"class{event_class}" if event_enabled else "none")

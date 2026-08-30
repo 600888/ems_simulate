@@ -757,6 +757,7 @@ export default {
     multiplier: "Multiplier",
     offset: "Offset",
     iec104Type: "IEC104 Type",
+    dnp3PointType: "DNP3 Point Type",
     dnp3EventClass: "Event Class",
     dnp3NoEvents: "No Events",
     fc: "FC",
