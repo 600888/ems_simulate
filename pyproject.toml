@@ -1,7 +1,7 @@
 [project]
 name = "ems_simulate"
 version = "5.0.0"
-description = "电力模拟仿真系统，支持 IEC61850 / IEC104 / Modbus / DLT645 协议"
+description = "电力模拟仿真系统，支持 IEC61850 / IEC101 / IEC104 / Modbus / DLT645 / DNP3 协议"
 requires-python = ">=3.11"
 dependencies = [
     "pymodbus==3.12.0",

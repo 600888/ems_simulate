@@ -15,18 +15,14 @@ import c104
 from src.config.config import Config
 from src.device.core.connection import ConnectionState, DisconnectInitiator, DisconnectReason
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
-from src.enums.modbus_register import Decode
+from src.device.protocol.iec60870_common import decode_point_value, resolve_asdu_type
 from src.enums.point_data import Yc, Yk, Yt, Yx
 from src.enums.points.base_point import BasePoint
 from src.enums.points.iec104_quality import (
     encode_quality_for_c104,
     supports_quality,
 )
-from src.enums.points.iec104_type import (
-    decode_iec104_value,
-    encode_iec104_value,
-    resolve_iec104_type,
-)
+from src.enums.points.iec104_type import encode_iec104_value
 
 
 def _resolve_c104_type(point: BasePoint) -> c104.Type:
@@ -38,27 +34,12 @@ def _resolve_c104_type(point: BasePoint) -> c104.Type:
     Returns:
         c104.Type 枚举值
     """
-    iec_type = resolve_iec104_type(point.iec_type_id, point.frame_type)
+    iec_type = resolve_asdu_type(point)
     # c104 库使用 TypeID 字符串作为属性名映射到 c104.Type
     return getattr(c104.Type, iec_type.value)
 
 
-def _decode_c104_point_value(point: BasePoint, value: Any) -> Any:
-    """Convert a c104 value to the raw value stored by a point.
-
-    This follows the same boundary as Modbus handlers: protocol handlers only
-    encode/decode wire values, while Yc/Yt apply mul_coe/add_coe when their
-    ``value`` property updates ``real_value``.
-    """
-    if isinstance(point, (Yx, Yk)):
-        return int(bool(value))
-    if isinstance(point, (Yc, Yt)):
-        decoded = decode_iec104_value(value, point.iec_type_id)
-        info = Decode.get_info(point.decode)
-        if info.is_float:
-            return float(decoded)
-        return int(round(decoded))
-    return value
+_decode_c104_point_value = decode_point_value
 
 
 class IEC104ServerHandler(ServerHandler):

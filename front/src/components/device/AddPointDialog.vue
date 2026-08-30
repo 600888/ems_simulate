@@ -432,7 +432,12 @@ const props = defineProps<{
 // 判断是否为 IEC104 协议（IEC104 不需要功能码）
 const isIec104 = computed(() => {
   const pt = props.protocolType || "";
-  return pt === "Iec104Client" || pt === "Iec104Server";
+  return [
+    "Iec104Client",
+    "Iec104Server",
+    "Iec101Client",
+    "Iec101Server",
+  ].includes(pt);
 });
 
 // 判断是否为 IEC61850 协议（IEC61850 不需要从机地址）

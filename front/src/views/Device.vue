@@ -316,6 +316,7 @@ import {
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { HTTP_TIMEOUT_MODEL_DISCOVERY } from "@/constants";
+import { isSerialConnectionType } from "@/constants/protocol";
 import { showError, showErrorOnce } from "@/api/http";
 
 const route = useRoute();
@@ -333,6 +334,7 @@ const ip = ref<any>("");
 const port = ref<any>("");
 const serialPort = ref<string | null>(null);
 const baudrate = ref<number>(9600);
+const connectionType = ref<number | null>(null);
 const communicationType = ref<any>("");
 const deviceStatus = ref<boolean>(false);
 const simulationStatus = ref<boolean>(false);
@@ -390,12 +392,7 @@ const simulationStatusStr = computed(() => {
 });
 
 const isSerialMode = computed(() => {
-  const type = communicationType.value;
-  return (
-    type &&
-    (type.includes("Dlt645") || type.startsWith("ModbusRtu")) &&
-    serialPort.value
-  );
+  return isSerialConnectionType(connectionType.value);
 });
 
 const isClientDevice = computed(() => {
@@ -687,6 +684,7 @@ const fetchDeviceInfo = async () => {
     port.value = info.get("port") || null;
     serialPort.value = info.get("serial_port") || null;
     baudrate.value = info.get("baudrate") || 9600;
+    connectionType.value = info.get("conn_type") ?? null;
     communicationType.value = info.get("type") || null;
     channelId.value = info.get("channel_id") ?? null;
     const serverStatus = info.get("server_status");

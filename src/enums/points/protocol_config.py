@@ -148,6 +148,8 @@ def get_default_protocol_config(protocol_type: str) -> Any | None:
         "ModbusTcpClient": ModbusConfig(),
         "Iec104Server": IEC104Config(),
         "Iec104Client": IEC104Config(),
+        "Iec101Server": IEC104Config(),
+        "Iec101Client": IEC104Config(),
         "Dlt645Server": DLT645Config(),
         "Dlt645Client": DLT645Config(),
         "Iec61850Server": IEC61850Config(),
@@ -167,7 +169,7 @@ def create_protocol_config(protocol_type: str, data: dict[str, Any]) -> Any | No
         "ModbusTcpClient",
     ]:
         return ModbusConfig.from_dict(data)
-    elif protocol_type in ["Iec104Server", "Iec104Client"]:
+    elif protocol_type in ["Iec104Server", "Iec104Client", "Iec101Server", "Iec101Client"]:
         return IEC104Config.from_dict(data)
     elif protocol_type in ["Dlt645Server", "Dlt645Client"]:
         return DLT645Config.from_dict(data)

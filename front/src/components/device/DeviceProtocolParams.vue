@@ -571,6 +571,100 @@ const iec104Server: FieldDefinition[] = [
   },
 ];
 
+const iec101Common: FieldDefinition[] = [
+  {
+    key: "link_mode",
+    label: "protocolParams.iec101LinkMode",
+    kind: "text",
+    default: "unbalanced",
+    tip: "protocolParams.iec101LinkModeTip",
+  },
+  {
+    key: "link_address",
+    label: "protocolParams.iec101LinkAddress",
+    min: 0,
+    max: 65535,
+    step: 1,
+    default: 1,
+  },
+  {
+    key: "link_address_size",
+    label: "protocolParams.iec101LinkAddressSize",
+    min: 1,
+    max: 2,
+    step: 1,
+    unit: "protocolParams.bytesUnit",
+    default: 1,
+  },
+  {
+    key: "cause_size",
+    label: "protocolParams.iec101CauseSize",
+    min: 1,
+    max: 2,
+    step: 1,
+    unit: "protocolParams.bytesUnit",
+    default: 2,
+    advanced: true,
+  },
+  {
+    key: "common_address_size",
+    label: "protocolParams.iec101CommonAddressSize",
+    min: 1,
+    max: 2,
+    step: 1,
+    unit: "protocolParams.bytesUnit",
+    default: 2,
+    advanced: true,
+  },
+  {
+    key: "io_address_size",
+    label: "protocolParams.iec101IoAddressSize",
+    min: 1,
+    max: 3,
+    step: 1,
+    unit: "protocolParams.bytesUnit",
+    default: 3,
+    advanced: true,
+  },
+  {
+    key: "response_timeout_ms",
+    label: "protocolParams.iec101ResponseTimeout",
+    min: 100,
+    max: 120000,
+    step: 100,
+    unit: "protocolParams.ms",
+    default: 1000,
+  },
+];
+
+const iec101Client: FieldDefinition[] = [
+  ...iec101Common,
+  {
+    key: "poll_interval_ms",
+    label: "protocolParams.iec101PollInterval",
+    min: 10,
+    max: 60000,
+    step: 10,
+    unit: "protocolParams.ms",
+    default: 200,
+  },
+  {
+    key: "originator_address",
+    label: "protocolParams.originatorAddress",
+    min: 0,
+    max: 255,
+    step: 1,
+    default: 0,
+    advanced: true,
+  },
+  {
+    key: "general_interrogation_on_connect",
+    label: "protocolParams.generalInterrogationOnConnect",
+    kind: "boolean",
+    default: true,
+  },
+];
+
 const dlt645Client: FieldDefinition[] = [
   {
     key: "command_timeout_ms",
@@ -951,6 +1045,8 @@ const fields = computed<FieldDefinition[]>(() => {
   if (key === "4:2") return iec61850Server;
   if (key === "5:1") return dnp3Client;
   if (key === "5:2") return dnp3Server;
+  if (key === "6:0") return iec101Client;
+  if (key === "6:3") return iec101Common;
   return [];
 });
 

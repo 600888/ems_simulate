@@ -33,12 +33,18 @@ async def _sync_imported_points(request: Request, channel_id: int, *, rebuild: b
         log.warning(f"导入点表后未找到内存设备 (ID: {channel_id})，需要手动加载或重启")
         return
 
-    if device.protocol_type in (ProtocolType.Iec104Server, ProtocolType.Iec104Client):
+    if device.protocol_type in (
+        ProtocolType.Iec104Server,
+        ProtocolType.Iec104Client,
+        ProtocolType.Iec101Server,
+        ProtocolType.Iec101Client,
+    ):
         was_running = device.is_protocol_running()
         auto_read_status = device.get_auto_read_status()
         auto_read_config = (
             device.auto_read_manager.current_config()
-            if device.protocol_type == ProtocolType.Iec104Client and auto_read_status.get("state") == "running"
+            if device.protocol_type in (ProtocolType.Iec104Client, ProtocolType.Iec101Client)
+            and auto_read_status.get("state") == "running"
             else None
         )
         new_device = await reload_device_instance(device_controller, channel_id, is_start=False)

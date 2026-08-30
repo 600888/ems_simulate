@@ -108,11 +108,19 @@ const emit = defineEmits(["update-success"]);
 
 const isIec104 = computed(() => {
   const pt = props.protocolType || "";
-  return pt === "Iec104Client" || pt === "Iec104Server";
+  return [
+    "Iec104Client",
+    "Iec104Server",
+    "Iec101Client",
+    "Iec101Server",
+  ].includes(pt);
 });
 
 const isIec104Server = computed(() => {
-  return props.protocolType === "Iec104Server";
+  return (
+    props.protocolType === "Iec104Server" ||
+    props.protocolType === "Iec101Server"
+  );
 });
 
 const iec104Form = reactive({

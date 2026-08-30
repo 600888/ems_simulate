@@ -1,6 +1,6 @@
 # EMS Simulate - 能源管理系统模拟器
 
-一个用于模拟能源管理系统（EMS）中关键设备行为的软件系统，主要用于测试和开发场景。系统支持多种工业通信协议（Modbus TCP/RTU、IEC 60870-5-104、DL/T 645-2007、IEC 61850），可模拟真实工业设备（如PCS储能变流器、BMS电池管理系统、电表、断路器等）的数据交互。
+一个用于模拟能源管理系统（EMS）中关键设备行为的软件系统，主要用于测试和开发场景。系统支持多种工业通信协议（Modbus TCP/RTU、IEC 60870-5-101/104、DL/T 645-2007、IEC 61850、DNP3），可模拟真实工业设备（如PCS储能变流器、BMS电池管理系统、电表、断路器等）的数据交互。
 
 > 📖 **[查看在线文档 / Online Documentation](https://600888.github.io/ems_simulate/)**
 
@@ -19,7 +19,7 @@ https://apps.microsoft.com/detail/9N3MMM0CH93F?hl=zh-cn&gl=CN&ocid=pdpshare
 
 ## 功能特性
 
-- 🔌 **多协议支持**：Modbus TCP/RTU、IEC 60870-5-104、DL/T 645-2007、IEC 61850 (MMS/GOOSE/Reports)
+- 🔌 **多协议支持**：Modbus TCP/RTU、IEC 60870-5-101/104、DL/T 645-2007、IEC 61850 (MMS/GOOSE/Reports)、DNP3
 - ⚡ **设备模拟**：PCS储能变流器、BMS电池管理系统、电表、断路器等
 - 🎯 **数据模拟**：支持随机模拟、步进模拟等多种方式
 - ⚙️ **灵活配置**：支持数据库配置和CSV文件导入
@@ -79,7 +79,7 @@ https://apps.microsoft.com/detail/9N3MMM0CH93F?hl=zh-cn&gl=CN&ocid=pdpshare
 
 ### 协议模块
 
-EMS Simulate 支持 5 种工业通信协议，每种协议均可配置为**服务端**（模拟设备）或**客户端**（读取真实设备），并提供专属的操作界面。
+EMS Simulate 支持 6 种工业通信协议，每种协议均可配置为**服务端/从站**（模拟设备）或**客户端/主站**（读取真实设备），并提供专属的操作界面。
 
 #### Modbus TCP / RTU
 
@@ -116,6 +116,19 @@ EMS Simulate 支持 5 种工业通信协议，每种协议均可配置为**服�
 ![IEC104 协议操作](resources/img/iec104-operation.png)
 
 > 完整实现四遥（YC/YX/YK/YT）体系，支持总召、时钟同步、品质描述符等高级特性。
+
+#### IEC 60870-5-101
+
+IEC104 的串行远动协议版本，与 IEC104 共用 ASDU、四遥点表、品质描述符、传送原因和数值换算。
+
+| 属性 | 说明 |
+|------|------|
+| 传输介质 | 串口（主站 / 从站） |
+| 链路层 | FT1.2 定长帧、变长帧、单字符确认、校验和、FCB/FCV |
+| 地址长度 | 链路地址 1/2 字节、COT 1/2 字节、公共地址 1/2 字节、IOA 1~3 字节 |
+| 应用功能 | 一级/二级数据轮询、总召唤、读命令、遥控/遥调、时钟同步、自发上送 |
+
+> 默认采用非平衡传输模式；协议运行参数中可以配置地址宽度、响应超时与轮询间隔。
 
 #### 报文查看
 
@@ -373,6 +386,7 @@ ems_simulate/
 │   │   │   ├── base_handler.py      # 基类
 │   │   │   ├── modbus_handler.py    # Modbus
 │   │   │   ├── iec104_handler.py    # IEC104
+│   │   │   ├── iec101_handler.py    # IEC101
 │   │   │   ├── dlt645_handler.py    # DLT645
 │   │   │   └── iec61850_handler.py  # IEC61850
 │   │   ├── simulator/         # 模拟控制
@@ -384,6 +398,8 @@ ems_simulate/
 │   ├── proto/                  # 底层协议实现
 │   │   ├── pyModbus/          # Modbus 服务端/客户端
 │   │   ├── iec104/            # IEC104 服务端/客户端
+│   │   ├── iec101/            # IEC101 FT1.2 主站/从站
+│   │   ├── iec60870/           # IEC101/IEC104 公共 ASDU 层
 │   │   ├── dlt645/            # DLT645 协议库
 │   │   └── iec61850/          # IEC61850 MMS/GOOSE/Reports/Files/SV
 │   └── web/                    # Web API

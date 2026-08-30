@@ -30,6 +30,7 @@ from src.device.core.slave_manager import SlaveManager
 from src.device.protocol import ProtocolHandler
 from src.device.protocol.dlt645_handler import DLT645ClientHandler, DLT645ServerHandler
 from src.device.protocol.dnp3_handler import DNP3ClientHandler, DNP3ServerHandler
+from src.device.protocol.iec101_handler import IEC101ClientHandler, IEC101ServerHandler
 from src.device.protocol.iec104_handler import IEC104ClientHandler, IEC104ServerHandler
 from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
 from src.device.protocol.modbus_handler import ModbusClientHandler, ModbusServerHandler
@@ -127,6 +128,8 @@ class Device:
     @property
     def server(self):
         """获取底层服务器对象"""
+        if isinstance(self.protocol_handler, (IEC101ServerHandler, IEC104ServerHandler)):
+            return self.protocol_handler.server
         if isinstance(self.protocol_handler, IEC61850ServerHandler):
             return self.protocol_handler.server
         if isinstance(self.protocol_handler, DNP3ServerHandler):
@@ -136,6 +139,8 @@ class Device:
     @property
     def client(self):
         """获取底层客户端对象"""
+        if isinstance(self.protocol_handler, (IEC101ClientHandler, IEC104ClientHandler)):
+            return self.protocol_handler.client
         if isinstance(self.protocol_handler, IEC61850ClientHandler):
             return self.protocol_handler.client
         if isinstance(self.protocol_handler, DNP3ClientHandler):
@@ -167,6 +172,8 @@ class Device:
             ProtocolType.ModbusTcpClient: lambda: ModbusClientHandler(self.log),
             ProtocolType.Iec104Server: lambda: IEC104ServerHandler(self.log),
             ProtocolType.Iec104Client: lambda: IEC104ClientHandler(self.log),
+            ProtocolType.Iec101Server: lambda: IEC101ServerHandler(self.log),
+            ProtocolType.Iec101Client: lambda: IEC101ClientHandler(self.log),
             ProtocolType.Dlt645Server: lambda: DLT645ServerHandler(self.log),
             ProtocolType.Dlt645Client: lambda: DLT645ClientHandler(self.log),
             ProtocolType.Iec61850Server: lambda: IEC61850ServerHandler(self.log),
@@ -251,6 +258,16 @@ class Device:
     def initIec104Client(self) -> None:
         """初始化 IEC104 客户端"""
         self.protocol_type = ProtocolType.Iec104Client
+        self.initProtocol()
+
+    def initIec101Server(self) -> None:
+        """初始化 IEC101 从站。"""
+        self.protocol_type = ProtocolType.Iec101Server
+        self.initProtocol()
+
+    def initIec101Client(self) -> None:
+        """初始化 IEC101 主站。"""
+        self.protocol_type = ProtocolType.Iec101Client
         self.initProtocol()
 
     def initDlt645Server(self) -> None:
@@ -857,22 +874,19 @@ class Device:
             return await self.point_operator.active_read_single_point_async(point_code, slave_id)
 
     async def send_iec104_interrogation(self) -> bool:
-        """发送 IEC104 总召唤命令(C_IC_NA_1)
+        """发送 IEC101/IEC104 总召唤命令(C_IC_NA_1)
 
-        触发后服务端会发送所有点的最新值，c104 库自动更新本地缓存，
-        然后同步到应用层测点。
+        触发后从站会发送所有点的最新值，并更新应用层测点缓存。
 
         Returns:
             bool: 是否成功发送
         """
-        from src.device.protocol.iec104_handler import IEC104ClientHandler
-
-        if not isinstance(self.protocol_handler, IEC104ClientHandler):
-            self.log.error("仅 IEC104 客户端支持总召唤")
+        if not isinstance(self.protocol_handler, (IEC101ClientHandler, IEC104ClientHandler)):
+            self.log.error("仅 IEC101/IEC104 客户端支持总召唤")
             return False
 
         if not self.protocol_handler.is_running:
-            self.log.error("IEC104 客户端未连接")
+            self.log.error("IEC101/IEC104 客户端未连接")
             return False
 
         # 发送总召唤
@@ -882,9 +896,10 @@ class Device:
             import asyncio
 
             await asyncio.sleep(0.5)
-            # 同步所有从机的缓存值到应用层测点
-            for slave_id in self.slave_id_list:
-                self._sync_iec104_client_values(slave_id)
+            # IEC104 的 c104 点缓存需要显式同步；IEC101 接收回调已实时同步。
+            if isinstance(self.protocol_handler, IEC104ClientHandler):
+                for slave_id in self.slave_id_list:
+                    self._sync_iec104_client_values(slave_id)
             self.log.info("总召唤完成，已同步所有从机数据")
         return result
 
@@ -1213,6 +1228,7 @@ class Device:
             ProtocolType.ModbusTcpClient,
             ProtocolType.ModbusRtuClient,
             ProtocolType.Iec104Client,
+            ProtocolType.Iec101Client,
             ProtocolType.Dlt645Client,
             ProtocolType.Iec61850Client,
         ]

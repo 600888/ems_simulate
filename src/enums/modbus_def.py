@@ -11,6 +11,8 @@ class ProtocolType(Enum):
     ModbusRtuOverTcp = "ModbusRtuOverTcp"
     Iec104Server = "Iec104Server"
     Iec104Client = "Iec104Client"
+    Iec101Server = "Iec101Server"
+    Iec101Client = "Iec101Client"
     Dlt645Server = "Dlt645Server"
     Dlt645Client = "Dlt645Client"
     Iec61850Server = "Iec61850Server"

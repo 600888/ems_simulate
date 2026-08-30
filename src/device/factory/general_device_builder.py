@@ -86,6 +86,12 @@ class GeneralDeviceBuilder:
     def initIec104Client(self) -> None:
         self.general_device.initIec104Client()
 
+    def initIec101Server(self) -> None:
+        self.general_device.initIec101Server()
+
+    def initIec101Client(self) -> None:
+        self.general_device.initIec101Client()
+
     def initDlt645Server(self) -> None:
         self.general_device.initDlt645Server()
 
@@ -137,6 +143,10 @@ class GeneralDeviceBuilder:
             return self.generalDeviceIec104Server
         elif protocol_type == ProtocolType.Iec104Client:
             return self.generalDeviceIec104Client
+        elif protocol_type == ProtocolType.Iec101Server:
+            return self.generalDeviceIec101Server
+        elif protocol_type == ProtocolType.Iec101Client:
+            return self.generalDeviceIec101Client
         elif protocol_type == ProtocolType.Dlt645Server:
             return self.generalDeviceDlt645Server
         elif protocol_type == ProtocolType.Dlt645Client:
@@ -177,6 +187,24 @@ class GeneralDeviceBuilder:
         if self.is_start and isinstance(self.general_device.client, IEC104Client):
             print(f"start client: {self.general_device.client.ip} port: {self.general_device.client.port}")
             self.general_device.client.connect()
+        return self.general_device
+
+    @property
+    def generalDeviceIec101Server(self) -> Device:
+        self.setDeviceId(self.device_id)
+        self.setDeviceName(name=self.device_name)
+        self.importDataPoints()
+        self.initIec101Server()
+        self.general_device.setSpecialDataPointValues()
+        return self.general_device
+
+    @property
+    def generalDeviceIec101Client(self) -> Device:
+        self.setDeviceId(self.device_id)
+        self.setDeviceName(name=self.device_name)
+        self.importDataPoints()
+        self.initIec101Client()
+        self.general_device.setSpecialDataPointValues()
         return self.general_device
 
     @property

@@ -19,7 +19,7 @@ hero:
 features:
   - icon: 🔌
     title: 多协议支持
-    details: 支持 Modbus TCP/RTU、IEC 60870-5-104、DL/T 645-2007 等工业通信协议
+    details: 支持 Modbus TCP/RTU、IEC 60870-5-101/104、DL/T 645-2007 等工业通信协议
   - icon: 🎯
     title: 设备模拟
     details: 可模拟 PCS 储能变流器、BMS 电池管理系统、电表、断路器等设备

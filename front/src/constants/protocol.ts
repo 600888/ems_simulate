@@ -10,6 +10,7 @@ export const PROTOCOL_TYPE = {
   DLT645: 3,
   IEC61850: 4,
   DNP3: 5,
+  IEC101: 6,
 } as const;
 
 // 连接类型枚举值
@@ -19,6 +20,15 @@ export const CONN_TYPE = {
   TCP_SERVER: 2,
   SERIAL_SLAVE: 3,
 } as const;
+
+/** 判断通道是否使用串口介质，与具体协议无关。 */
+export function isSerialConnectionType(
+  connType: number | null | undefined,
+): boolean {
+  return (
+    connType === CONN_TYPE.SERIAL_MASTER || connType === CONN_TYPE.SERIAL_SLAVE
+  );
+}
 
 // 协议默认端口映射
 export const PROTOCOL_DEFAULT_PORTS: Record<number, number> = {
@@ -102,6 +112,12 @@ export const IEC61850_PROTOCOL_NAMES = [
 // 判断 IEC104 协议的字符串标识
 export const IEC104_PROTOCOL_NAMES = ["Iec104Client", "Iec104Server"] as const;
 
+export const IEC101_PROTOCOL_NAMES = ["Iec101Client", "Iec101Server"] as const;
+export const IEC60870_PROTOCOL_NAMES = [
+  ...IEC101_PROTOCOL_NAMES,
+  ...IEC104_PROTOCOL_NAMES,
+] as const;
+
 export const DLT645_PROTOCOL_NAMES = ["Dlt645Client", "Dlt645Server"] as const;
 
 // 判断是否为 IEC61850 协议
@@ -112,6 +128,10 @@ export function isIec61850Protocol(protocolStr: string | number): boolean {
 // 判断是否为 IEC104 协议
 export function isIec104Protocol(protocolStr: string | number): boolean {
   return IEC104_PROTOCOL_NAMES.includes(protocolStr as any);
+}
+
+export function isIec60870Protocol(protocolStr: string | number): boolean {
+  return IEC60870_PROTOCOL_NAMES.includes(protocolStr as any);
 }
 
 export function isDlt645Protocol(protocolStr: string | number): boolean {

@@ -17,6 +17,7 @@ from src.device.core.message.parsers import (
     describe_mms,
     parse_dlt645,
     parse_dnp3,
+    parse_iec101,
     parse_iec104,
     parse_mms,
     parse_modbus,
@@ -55,6 +56,11 @@ _DLT645_TYPES = {
 _IEC104_TYPES = {
     ProtocolType.Iec104Server,
     ProtocolType.Iec104Client,
+}
+
+_IEC101_TYPES = {
+    ProtocolType.Iec101Server,
+    ProtocolType.Iec101Client,
 }
 
 _MMS_TYPES = {
@@ -98,6 +104,13 @@ class MessageFormatter:
             if len(raw) < 12 or raw[0] != 0x68 or raw[2] & 0x01:
                 return None
             return int.from_bytes(raw[10:12], "little")
+        if protocol_type in _IEC101_TYPES:
+            if not raw:
+                return None
+            if raw[0] == 0x10 and len(raw) >= 5:
+                return raw[2]
+            if raw[0] == 0x68 and len(raw) >= 8:
+                return raw[5]
         return None
 
     @property
@@ -127,6 +140,7 @@ class MessageFormatter:
         is_client = self._device.protocol_type in [
             ProtocolType.ModbusTcpClient,
             ProtocolType.Iec104Client,
+            ProtocolType.Iec101Client,
             ProtocolType.Dlt645Client,
             ProtocolType.Iec61850Client,
             ProtocolType.Dnp3Client,
@@ -138,6 +152,7 @@ class MessageFormatter:
         is_tcp = protocol_type in _MODBUS_TCP_TYPES
         is_dlt645 = protocol_type in _DLT645_TYPES
         is_iec104 = protocol_type in _IEC104_TYPES
+        is_iec101 = protocol_type in _IEC101_TYPES
         is_mms = protocol_type in _MMS_TYPES
         is_dnp3 = protocol_type in _DNP3_TYPES
 
@@ -180,6 +195,15 @@ class MessageFormatter:
                 description = DLT645MessageParser.parse(raw_hex)
             elif is_iec104 and raw_hex:
                 description = IEC104MessageParser.parse(raw_hex)
+            elif is_iec101 and raw_hex:
+                try:
+                    description = parse_iec101(
+                        bytes.fromhex(raw_hex),
+                        role=msg_type,
+                        link_address_size=int(self._device.runtime_config.get("link_address_size", 1)),
+                    )["summary"]
+                except (TypeError, ValueError):
+                    description = "IEC101报文格式无效"
             elif is_mms and raw_hex:
                 try:
                     description = describe_mms(bytes.fromhex(raw_hex), role=msg_type)
@@ -250,6 +274,12 @@ class MessageFormatter:
             detail = parse_dlt645(raw, role=role)
         elif protocol_type in _IEC104_TYPES:
             detail = parse_iec104(raw, role=role)
+        elif protocol_type in _IEC101_TYPES:
+            detail = parse_iec101(
+                raw,
+                role=role,
+                link_address_size=int(self._device.runtime_config.get("link_address_size", 1)),
+            )
         elif protocol_type in _MMS_TYPES:
             detail = parse_mms(raw, role=role)
         elif protocol_type in _DNP3_TYPES:
@@ -334,6 +364,8 @@ class MessageFormatter:
         elif protocol_type in _DLT645_TYPES:
             self._enrich_address_objects(detail, points, dlt645=True)
         elif protocol_type in _IEC104_TYPES:
+            self._enrich_address_objects(detail, points, dlt645=False)
+        elif protocol_type in _IEC101_TYPES:
             self._enrich_address_objects(detail, points, dlt645=False)
         elif protocol_type in _DNP3_TYPES:
             self._enrich_dnp3_objects(detail, points)

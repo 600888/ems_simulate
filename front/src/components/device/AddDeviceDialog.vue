@@ -246,6 +246,7 @@ import {
   getTlsMaterialRequirements,
   shouldSaveChannelSecurity,
 } from "@/utils/channelEdit";
+import { isSerialConnectionType } from "@/constants/protocol";
 
 const props = defineProps<{
   visible: boolean;
@@ -514,8 +515,9 @@ const loadChannelData = async (id: number) => {
       tls_mode: securityConfig.tls_mode,
     };
     originalName.value = data.name || "";
-    mediaType.value =
-      data.conn_type === 0 || data.conn_type === 3 ? "serial" : "network";
+    mediaType.value = isSerialConnectionType(data.conn_type)
+      ? "serial"
+      : "network";
     // 让子组件先在 loading 状态下完成协议类型与持久化参数的同一轮渲染，
     // 避免协议切换监听器把刚回填的认证配置重置为默认值。
     await nextTick();

@@ -229,6 +229,7 @@ export const CLIENT_PROTOCOL_NAMES = [
   "ModbusTcpClient",
   "ModbusRtuClient",
   "Iec104Client",
+  "Iec101Client",
   "Dlt645Client",
   "Iec61850Client",
   "Dnp3Client",

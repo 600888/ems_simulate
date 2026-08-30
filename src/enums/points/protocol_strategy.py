@@ -172,6 +172,8 @@ def get_protocol_strategy(protocol_type: str) -> ProtocolStrategy:
         "ModbusTcpClient": ModbusStrategy(),
         "Iec104Server": IEC104Strategy(),
         "Iec104Client": IEC104Strategy(),
+        "Iec101Server": IEC104Strategy(),
+        "Iec101Client": IEC104Strategy(),
         "Dlt645Server": DLT645Strategy(),
         "Dlt645Client": DLT645Strategy(),
         "Iec61850": IEC61850Strategy(),

@@ -30,7 +30,7 @@ import { TABLE_REFRESH_INTERVAL, READ_PROGRESS_DELAY } from "@/constants";
 import {
   isDlt645Protocol,
   isIec61850Protocol,
-  isIec104Protocol,
+  isIec60870Protocol,
 } from "@/constants/protocol";
 
 interface AutoReadOptions {
@@ -138,7 +138,7 @@ export function useAutoRead(options: AutoReadOptions) {
   // 判断是否需要显示自动读取控件
   const needsAutoReadControls = computed(() => {
     const protocolStr = String(protocolType.value);
-    if (isIec104Protocol(protocolStr)) return false;
+    if (isIec60870Protocol(protocolStr)) return false;
     return connType.value === 0 || connType.value === 1;
   });
 

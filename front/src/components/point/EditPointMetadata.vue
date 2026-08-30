@@ -140,7 +140,12 @@ const props = withDefaults(defineProps<Props>(), {
 // 判断是否为 IEC104 协议
 const isIec104 = computed(() => {
   const pt = props.protocolType || "";
-  return pt === "Iec104Client" || pt === "Iec104Server";
+  return [
+    "Iec104Client",
+    "Iec104Server",
+    "Iec101Client",
+    "Iec101Server",
+  ].includes(pt);
 });
 const isDnp3 = computed(() => {
   const pt = props.protocolType || "";

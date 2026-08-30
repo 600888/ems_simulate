@@ -441,7 +441,7 @@ import { useAutoRead } from "@/composables";
 import {
   isDlt645Protocol,
   isIec61850Protocol,
-  isIec104Protocol,
+  isIec60870Protocol,
 } from "@/constants/protocol";
 import { isAutoRefreshPaused } from "@/composables/autoRefreshGate";
 import { TABLE_HEADERS } from "@/constants/table";
@@ -739,7 +739,10 @@ const isIec61850Filtered = computed(() => {
 // IEC104 客户端判断
 const isIec104Client = computed(() => {
   const protocolStr = String(protocolType.value);
-  return isIec104Protocol(protocolStr) && protocolStr === "Iec104Client";
+  return (
+    isIec60870Protocol(protocolStr) &&
+    ["Iec104Client", "Iec101Client"].includes(protocolStr)
+  );
 });
 
 // 总召唤按钮状态

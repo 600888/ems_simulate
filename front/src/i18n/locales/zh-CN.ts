@@ -1712,6 +1712,17 @@ export default {
     seconds: "秒",
     timesUnit: "次",
     iec104SpecificParams: "IEC 104 专属参数",
+    iec101LinkMode: "链路传输模式",
+    iec101LinkModeTip:
+      "unbalanced 为召唤/轮询方式；balanced 为平衡链路兼容模式",
+    iec101LinkAddress: "链路地址",
+    iec101LinkAddressSize: "链路地址长度",
+    iec101CauseSize: "传送原因长度",
+    iec101CommonAddressSize: "公共地址长度",
+    iec101IoAddressSize: "信息对象地址长度",
+    iec101ResponseTimeout: "链路响应超时",
+    iec101PollInterval: "一级/二级数据轮询间隔",
+    bytesUnit: "字节",
     asciiOnlyPathError:
       "文件服务目录路径必须使用英文、数字和英文符号，不能包含中文字符。",
     chooseDirectory: "选择目录",

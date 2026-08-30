@@ -54,10 +54,10 @@ async def create_and_start_device(req: ChannelIdRequest, request: Request):
     if is_client_protocol(channel_protocol_type):
         # 客户端协议只建立连接；自动读取由用户通过界面显式开启。
         await general_device.start()
-    elif channel_protocol_type == ProtocolType.Iec61850Server:
-        # IEC61850 服务端: 显式启动 MMS 服务器
+    elif channel_protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec101Server):
+        # IEC61850 与 IEC101 服务端均需显式启动监听。
         await general_device.start()
-        log.info(f"IEC 61850 服务端已启动: {channel_name}")
+        log.info(f"{channel_protocol_type.value} 服务端已启动: {channel_name}")
 
     device_controller = request.app.state.device_controller
     device_controller.device_list.append(general_device)

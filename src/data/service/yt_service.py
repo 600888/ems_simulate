@@ -100,7 +100,12 @@ class YtService:
                 decode=item["decode_code"] if item.get("decode_code") else "0x41",
             )
 
-        elif protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
+        elif protocol_type in [
+            ProtocolType.Iec104Server,
+            ProtocolType.Iec104Client,
+            ProtocolType.Iec101Server,
+            ProtocolType.Iec101Client,
+        ]:
             address = decimal_to_hex(int(item["reg_addr"], 0))
             iec_type_id = item.get("iec_type_id")
             iec_quality = item.get("iec_quality", 0)

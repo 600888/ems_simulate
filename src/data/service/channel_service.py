@@ -69,6 +69,7 @@ class ChannelService:
             # 串口主站
             (0, 0): ProtocolType.ModbusRtuClient,
             (0, 3): ProtocolType.Dlt645Client,
+            (0, 6): ProtocolType.Iec101Client,
             # TCP 客户端
             (1, 1): ProtocolType.ModbusTcpClient,
             (1, 2): ProtocolType.Iec104Client,
@@ -88,10 +89,13 @@ class ChannelService:
 
         # 串口从站（服务端模式 - 被采集）
         elif conn_type == 3:
-            if protocol == 0:
-                return ProtocolType.ModbusRtuServer  # Modbus RTU 从站（服务端）
-            elif protocol == 3:
-                return ProtocolType.Dlt645Server  # DLT645 从站模拟电表
+            serial_server_mapping = {
+                0: ProtocolType.ModbusRtuServer,
+                3: ProtocolType.Dlt645Server,
+                6: ProtocolType.Iec101Server,
+            }
+            if protocol in serial_server_mapping:
+                return serial_server_mapping[protocol]
 
         return ProtocolType.ModbusTcpServer
 

@@ -110,7 +110,12 @@ class SlaveManager:
                 server.remove_slave(slave_id)
 
             # 5. 如果是 IEC104，需要重新初始化
-            if self._device.protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
+            if self._device.protocol_type in [
+                ProtocolType.Iec104Server,
+                ProtocolType.Iec104Client,
+                ProtocolType.Iec101Server,
+                ProtocolType.Iec101Client,
+            ]:
                 self._device._reinit_protocol_for_iec104()
 
             self._log.info(f"动态删除从机成功: {slave_id}")
@@ -195,7 +200,12 @@ class SlaveManager:
                 server.remove_slave(old_slave_id)
 
             # 7. 协议重置 (IEC104)
-            if self._device.protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
+            if self._device.protocol_type in [
+                ProtocolType.Iec104Server,
+                ProtocolType.Iec104Client,
+                ProtocolType.Iec101Server,
+                ProtocolType.Iec101Client,
+            ]:
                 self._device._reinit_protocol_for_iec104()
 
             self._log.info(f"动态编辑从机成功: {old_slave_id} -> {new_slave_id}")
@@ -239,7 +249,12 @@ class SlaveManager:
                     d[slave_id] = []
 
             # 5. IEC104 协议需要重新初始化
-            if self._device.protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
+            if self._device.protocol_type in [
+                ProtocolType.Iec104Server,
+                ProtocolType.Iec104Client,
+                ProtocolType.Iec101Server,
+                ProtocolType.Iec101Client,
+            ]:
                 self._device._reinit_protocol_for_iec104()
 
             self._log.info(f"清空从机 {slave_id} 的测点成功，共删除 {deleted_count} 个测点")

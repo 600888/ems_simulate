@@ -33,7 +33,12 @@ from src.web.log import log
 
 point_router = APIRouter(prefix="/api/points", tags=["测点管理"])
 
-_IEC104_PROTOCOLS = (ProtocolType.Iec104Server, ProtocolType.Iec104Client)
+_IEC104_PROTOCOLS = (
+    ProtocolType.Iec104Server,
+    ProtocolType.Iec104Client,
+    ProtocolType.Iec101Server,
+    ProtocolType.Iec101Client,
+)
 _IEC61850_PROTOCOLS = (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client)
 
 
@@ -54,6 +59,8 @@ async def edit_point_data(req: PointEditDataRequest, request: Request):
         ProtocolType.ModbusRtuClient,
         ProtocolType.ModbusRtuServer,
         ProtocolType.ModbusRtuOverTcp,
+        ProtocolType.Iec101Client,
+        ProtocolType.Iec101Server,
     ):
         client_info = device.serial_port or "未知串口"
     else:
@@ -163,25 +170,25 @@ async def edit_point_metadata(req: PointMetadataEditRequest, request: Request):
 
 @point_router.post("/edit-iec104-metadata", response_model=BaseResponse)
 async def edit_iec104_metadata(req: Iec104MetadataEditRequest, request: Request):
-    """修改IEC104协议专属测点属性（ASDU类型、品质描述符）"""
+    """修改 IEC101/IEC104 共用的 ASDU 类型和品质描述符。"""
     device = _get_device(req.device_name, request)
     if device.protocol_type not in _IEC104_PROTOCOLS:
-        raise ValidationError("只有 IEC 104 设备可以编辑 IEC 104 专属测点属性", data=False)
+        raise ValidationError("只有 IEC 101/104 设备可以编辑 IEC 60870-5 测点属性", data=False)
     metadata = {
         "iec_type_id": req.iec_type_id,
         "iec_quality": req.iec_quality,
     }
     success = await asyncio.to_thread(device.edit_point_metadata, req.point_code, metadata)
     if not success:
-        raise ValidationError("编辑IEC104属性失败!", data=False)
-    return BaseResponse(message="编辑IEC104属性成功!", data=True)
+        raise ValidationError("编辑 IEC101/104 属性失败!", data=False)
+    return BaseResponse(message="编辑 IEC101/104 属性成功!", data=True)
 
 
 @point_router.post("/read-single", response_model=BaseResponse)
 async def read_single_point(req: PointInfoRequest, request: Request):
     """读取单个测点值
 
-    当 active_read=True 且协议为 IEC104 客户端时，会发送网络请求
+    当 active_read=True 且协议为 IEC101/IEC104 客户端时，会发送协议请求
     （C_RD_NA_1 或总召唤）获取最新值；否则读取本地缓存。
     """
     device = _get_device(req.device_name, request)

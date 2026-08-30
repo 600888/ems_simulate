@@ -430,7 +430,12 @@ class PointOperator:
         if need_resync and self._handler:
             # IEC104 协议下 iec_type_id 变更需要重新同步（影响编码方式）
             protocol_type = self._device.protocol_type
-            if protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
+            if protocol_type in [
+                ProtocolType.Iec104Server,
+                ProtocolType.Iec104Client,
+                ProtocolType.Iec101Server,
+                ProtocolType.Iec101Client,
+            ]:
                 try:
                     if isinstance(point, Yc):
                         # 遥测的协议值是原始值；系数修改只改变真实值。
@@ -547,7 +552,12 @@ class PointOperator:
             # 5. 添加到协议处理器
             if self._handler:
                 # IEC104 协议需要重新初始化
-                if protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
+                if protocol_type in [
+                    ProtocolType.Iec104Server,
+                    ProtocolType.Iec104Client,
+                    ProtocolType.Iec101Server,
+                    ProtocolType.Iec101Client,
+                ]:
                     self._device._reinit_protocol_for_iec104()
                 else:
                     self._handler.add_points([point])
@@ -614,7 +624,12 @@ class PointOperator:
 
             # 5. 添加到协议处理器
             if self._handler:
-                if protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
+                if protocol_type in [
+                    ProtocolType.Iec104Server,
+                    ProtocolType.Iec104Client,
+                    ProtocolType.Iec101Server,
+                    ProtocolType.Iec101Client,
+                ]:
                     self._device._reinit_protocol_for_iec104()
                 else:
                     self._handler.add_points(memory_points)
@@ -661,7 +676,12 @@ class PointOperator:
                 self._pm.remove_point_from_index(point_code, slave_id)
 
             # 3. IEC104 协议需要重新初始化（如果需要）
-            if self._device.protocol_type in [ProtocolType.Iec104Server, ProtocolType.Iec104Client]:
+            if self._device.protocol_type in [
+                ProtocolType.Iec104Server,
+                ProtocolType.Iec104Client,
+                ProtocolType.Iec101Server,
+                ProtocolType.Iec101Client,
+            ]:
                 self._device._reinit_protocol_for_iec104()
 
             self._log.info(f"动态删除测点成功: {point_code}")

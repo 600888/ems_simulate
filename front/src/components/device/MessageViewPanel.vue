@@ -236,7 +236,8 @@ const supportsSlaveClassification = computed(() =>
   messages.value.some(
     (message) =>
       message.protocol_type?.startsWith("Modbus") ||
-      message.protocol_type?.startsWith("Iec104"),
+      message.protocol_type?.startsWith("Iec104") ||
+      message.protocol_type?.startsWith("Iec101"),
   ),
 );
 const slaveOptions = computed(() =>

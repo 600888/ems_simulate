@@ -919,7 +919,8 @@ watch(
 const isIec104 = computed(() => {
   const t = props.protocolType;
   return (
-    typeof t === "string" && (t === "Iec104Server" || t === "Iec104Client")
+    typeof t === "string" &&
+    ["Iec104Server", "Iec104Client", "Iec101Server", "Iec101Client"].includes(t)
   );
 });
 
@@ -1322,7 +1323,7 @@ const handleReadPoint = async (pointCode: string) => {
     const protocolStr = String(props.protocolType);
     const useActiveRead =
       isClientDevice.value &&
-      (protocolStr === "Iec104Client" || protocolStr === "Dnp3Client");
+      ["Iec104Client", "Iec101Client", "Dnp3Client"].includes(protocolStr);
     const value = await readSinglePoint(
       deviceName.value,
       pointCode,

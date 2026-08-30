@@ -40,6 +40,7 @@ def configure_builder_network(builder, conn_type, protocol_type, ip, port, chann
         )
     elif protocol_type in [
         ProtocolType.Iec104Client,
+        ProtocolType.Iec101Client,
         ProtocolType.ModbusTcpClient,
         ProtocolType.Dlt645Client,
         ProtocolType.Iec61850Client,
@@ -76,6 +77,7 @@ def is_client_protocol(protocol_type) -> bool:
     return protocol_type in [
         ProtocolType.ModbusTcpClient,
         ProtocolType.Iec104Client,
+        ProtocolType.Iec101Client,
         ProtocolType.Dlt645Client,
         ProtocolType.Iec61850Client,
         ProtocolType.Dnp3Client,
@@ -154,6 +156,7 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         is_client_protocol(channel_protocol_type)
         or channel_protocol_type == ProtocolType.Iec61850Server
         or channel_protocol_type == ProtocolType.Dnp3Server
+        or channel_protocol_type == ProtocolType.Iec101Server
     )
     if needs_stop_before_start:
         await device_controller.remove_device_by_id(channel_id)
@@ -175,6 +178,9 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         # DNP3 服务端（Outstation）: 不在 is_client_protocol 中，需显式启动监听
         await new_device.start()
         log.info(f"DNP3 服务端已启动: {device_name}")
+    elif is_start and channel_protocol_type == ProtocolType.Iec101Server:
+        await new_device.start()
+        log.info(f"IEC101 从站已启动: {device_name}")
 
     if not needs_stop_before_start:
         # 非启动场景（或无需先停的启动场景）：新实例已构建完成，
