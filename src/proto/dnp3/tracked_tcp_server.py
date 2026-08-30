@@ -4,6 +4,8 @@ import asyncio
 
 from pydnp3_pure.io.tcp_server import TcpServer
 
+from src.proto.dnp3.tls import connection_security
+
 
 class TrackedTcpServer(TcpServer):
     def __init__(self, *args, on_connect=None, on_activity=None, on_disconnect=None, **kwargs) -> None:
@@ -18,6 +20,11 @@ class TrackedTcpServer(TcpServer):
     def active_connection_key(self) -> str | None:
         """返回当前活跃连接的标识键。"""
         return self._active_connection_key
+
+    @property
+    def security(self) -> dict[str, object]:
+        """Return TLS negotiation details for the active connection."""
+        return connection_security(self._writer)
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """处理单个客户端连接：接管旧连接并持续读取数据。"""

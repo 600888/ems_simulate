@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+import ssl
 import time
 from typing import Any
 
@@ -22,7 +23,7 @@ from src.config.config import Config
 from src.device.core.message.message_capture import MessageCapture
 from src.proto.dnp3.objects import DelayValue
 from src.proto.dnp3.point_config import Dnp3PointConfig
-from src.proto.dnp3.reliable_link import ReliableLinkEndpoint
+from src.proto.dnp3.reliable_link import LINK_STATUS, ReliableLinkEndpoint
 from src.proto.dnp3.tracked_tcp_client import TrackedTcpClient
 from src.proto.dnp3.wire import FragmentCorrelator, WireFrameExtractor, accepts_link_address
 
@@ -93,6 +94,7 @@ class Dnp3Client:
     def __init__(self, log=None):
         self._log = log
         self._client: TrackedTcpClient | None = None
+        self._ssl_context: ssl.SSLContext | None = None
         self._handler = _MasterHandler()
         self._is_running = False
         self._desired_running = False
@@ -110,6 +112,8 @@ class Dnp3Client:
         self._pending: dict[int, PendingRequest] = {}
         self._sequence = 0
         self._reconnect_task: asyncio.Task[None] | None = None
+        self._link_status_waiter: asyncio.Future[None] | None = None
+        self._transport_endpoints: tuple[object, object] | None = None
         self._on_connection_opened: Callable[..., None] | None = None
         self._on_connection_activity: Callable[..., None] | None = None
         self._on_connection_closed: Callable[..., None] | None = None
@@ -148,6 +152,10 @@ class Dnp3Client:
     def set_server_ip(self, ip: str) -> None:
         """设置对端 Outstation 的 IP 地址。"""
         self._config["ip"] = ip
+
+    def set_ssl_context(self, context: ssl.SSLContext | None) -> None:
+        """Set the optional TLS context used for subsequent connections and reconnects."""
+        self._ssl_context = context
 
     def set_parameters(self, **kwargs) -> None:
         """合并设置运行时参数（超时、重连、链路确认等）。"""
@@ -225,21 +233,60 @@ class Dnp3Client:
         client = TrackedTcpClient(
             ip,
             port,
-            on_connect=self._handle_connected,
+            ssl_context=self._ssl_context,
+            on_connect=self._handle_transport_connected,
             on_activity=self._handle_activity,
             on_disconnect=self._handle_disconnected,
         )
         client.set_receive_callback(self._on_rx)
         self._client = client
         await client.open(timeout)
+        try:
+            await self._verify_link_status(
+                min(
+                    timeout,
+                    max(0.1, float(runtime.get("link_confirm_timeout_ms", 1000)) / 1000.0),
+                )
+            )
+        except (OSError, TimeoutError, ConnectionError):
+            await client.close()
+            if self._client is client:
+                self._client = None
+            self._reset_stack()
+            raise
         self._is_running = True
         self.last_error = None
-        self._log_message("info", f"DNP3 客户端已连接 {ip}:{port}")
+        remote, local = self._transport_endpoints or (None, None)
+        self._handle_connected(remote, local)
+        transport = "TLS" if self._ssl_context else "TCP"
+        self._log_message("info", f"DNP3 客户端已通过 {transport} 连接 {ip}:{port}")
         if self._link_endpoint and self._link_endpoint.enabled:
             self._link_endpoint.reset_remote_link(self._outstation_address, self._address)
         if bool(runtime.get("enable_unsolicited", False)):
             if not await self.enable_unsolicited(True):
                 self._log_message("warning", f"DNP3启用未请求上报失败: {self.last_error}")
+
+    async def _verify_link_status(self, timeout_seconds: float) -> None:
+        """Require a DNP3 link response before reporting the device as started.
+
+        A TCP handshake alone is insufficient: a plaintext client can complete it
+        against a TLS listener and otherwise appear online until the server closes
+        the socket. REQUEST_LINK_STATUS makes that mismatch fail immediately and
+        also verifies that the peer is an actual DNP3 endpoint.
+        """
+        if not self._link_endpoint:
+            raise ConnectionError("DNP3链路层未初始化")
+        loop = asyncio.get_running_loop()
+        waiter = loop.create_future()
+        self._link_status_waiter = waiter
+        try:
+            self._link_endpoint.request_link_status(self._outstation_address, self._address)
+            await asyncio.wait_for(waiter, timeout=timeout_seconds)
+        except TimeoutError as exc:
+            raise ConnectionError("DNP3链路状态确认超时") from exc
+        finally:
+            if self._link_status_waiter is waiter:
+                self._link_status_waiter = None
 
     async def stop(self) -> bool:
         """停止客户端：取消重连、关闭连接并复位协议栈。"""
@@ -314,6 +361,10 @@ class Dnp3Client:
                 f"忽略地址不匹配的DNP3帧: src={frame.header.source}, dst={frame.header.destination}",
             )
             return
+        if not frame.header.primary and frame.header.function == LINK_STATUS:
+            waiter = self._link_status_waiter
+            if waiter and not waiter.done():
+                waiter.set_result(None)
         if self._link_endpoint:
             self._link_endpoint.on_frame(frame)
 
@@ -403,8 +454,12 @@ class Dnp3Client:
         if self._transport:
             self._transport.send_fragment(fragment, direction=True)
 
+    def _handle_transport_connected(self, remote, local) -> None:
+        """Remember TCP endpoints while protocol establishment is pending."""
+        self._transport_endpoints = (remote, local)
+
     def _handle_connected(self, remote, local) -> None:
-        """连接建立后触发 on_connect 回调。"""
+        """协议链路确认后触发 on_connect 回调。"""
         if self._on_connection_opened:
             self._on_connection_opened(remote, local)
 
@@ -416,6 +471,10 @@ class Dnp3Client:
     def _handle_disconnected(self, reason: str, detail: str | None) -> None:
         """处理连接断开：标记通信丢失、失败挂起请求并按需启动重连。"""
         self._is_running = False
+        self._transport_endpoints = None
+        waiter = self._link_status_waiter
+        if waiter and not waiter.done():
+            waiter.set_exception(ConnectionError(detail or reason))
         self._handler.mark_communication_lost()
         self._fail_pending(ConnectionError(detail or reason))
         self._reset_stack()

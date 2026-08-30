@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 import math
+import ssl
 import time
 from typing import Any
 
@@ -178,6 +179,7 @@ class Dnp3Server:
         super().__init__()
         self._log = log  # 由 Handler 传入的 logger（loguru Logger 或可调用对象）
         self._server: TrackedTcpServer | None = None
+        self._ssl_context: ssl.SSLContext | None = None
         self._session: ReliableOutstationSession | None = None
         self._outstation_handler: _OutstationHandler | None = None
         self._db = PointDatabase()
@@ -243,6 +245,15 @@ class Dnp3Server:
     def set_server_ip(self, ip: str) -> None:
         """设置监听 IP（默认 0.0.0.0）"""
         self._config["ip"] = ip
+
+    def set_ssl_context(self, context: ssl.SSLContext | None) -> None:
+        """Set the optional TLS context used by the TCP listener."""
+        self._ssl_context = context
+
+    @property
+    def connection_security(self) -> dict[str, object]:
+        """Return security metadata for the active Master connection."""
+        return self._server.security if self._server else {"tls": False}
 
     def set_parameters(self, **kwargs) -> None:
         """设置运行参数：
@@ -447,6 +458,7 @@ class Dnp3Server:
             self._server = TrackedTcpServer(
                 host=ip,
                 port=port,
+                ssl_context=self._ssl_context,
                 on_connect=self._handle_connection_opened,
                 on_activity=self._on_connection_activity,
                 on_disconnect=self._on_connection_closed,
@@ -469,7 +481,8 @@ class Dnp3Server:
 
             await self._server.open()  # 注册监听，返回后由事件循环持续处理客户端连接
             self._is_running = True
-            self._log_info(f"DNP3 服务端已监听 {ip}:{port} (address={self._address})")
+            transport = "TLS" if self._ssl_context else "TCP"
+            self._log_info(f"DNP3 服务端已通过 {transport} 监听 {ip}:{port} (address={self._address})")
             return True
         except Exception as e:
             self._log_error(f"启动 DNP3 服务端失败: {e}")

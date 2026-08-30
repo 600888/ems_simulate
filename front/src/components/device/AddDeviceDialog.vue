@@ -246,7 +246,10 @@ import {
   getTlsMaterialRequirements,
   shouldSaveChannelSecurity,
 } from "@/utils/channelEdit";
-import { isSerialConnectionType } from "@/constants/protocol";
+import {
+  isSerialConnectionType,
+  TLS_SUPPORTED_PROTOCOLS,
+} from "@/constants/protocol";
 
 const props = defineProps<{
   visible: boolean;
@@ -283,7 +286,6 @@ const caCertificateFile = ref<File | null>(null);
 const deviceGroupOptions = ref<DeviceGroupInfo[]>([]);
 const serialPorts = ref<Array<{ device: string; description: string }>>([]);
 const protocols = ref<ProtocolOption[]>([]);
-const TLS_SUPPORTED_PROTOCOLS = new Set([1, 2, 4]);
 const protocolParams = reactive({
   schema_version: 1,
   values: {} as Record<string, number | boolean | string>,

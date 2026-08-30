@@ -171,6 +171,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { supportsTlsProtocol } from "@/constants/protocol";
 import type { SecurityConfig } from "@/types/channel";
 import { getTlsMaterialRequirements } from "@/utils/channelEdit";
 
@@ -182,12 +183,7 @@ const props = defineProps<{
   disabled?: boolean;
 }>();
 
-const tlsSupported = computed(
-  () =>
-    props.protocolType === 1 ||
-    props.protocolType === 2 ||
-    props.protocolType === 4,
-);
+const tlsSupported = computed(() => supportsTlsProtocol(props.protocolType));
 const materialRequirements = computed(() =>
   getTlsMaterialRequirements(props.modelValue.tls_mode, props.connType),
 );

@@ -1,6 +1,11 @@
 /// <reference types="jest" />
 
-import { CONN_TYPE, isSerialConnectionType } from "@/constants/protocol";
+import {
+  CONN_TYPE,
+  isSerialConnectionType,
+  PROTOCOL_TYPE,
+  supportsTlsProtocol,
+} from "@/constants/protocol";
 
 describe("protocol connection type", () => {
   it("recognizes both serial roles independently of protocol", () => {
@@ -13,5 +18,12 @@ describe("protocol connection type", () => {
     expect(isSerialConnectionType(CONN_TYPE.TCP_SERVER)).toBe(false);
     expect(isSerialConnectionType(null)).toBe(false);
     expect(isSerialConnectionType(undefined)).toBe(false);
+  });
+});
+
+describe("protocol TLS support", () => {
+  it("includes DNP3 and excludes serial-only protocols", () => {
+    expect(supportsTlsProtocol(PROTOCOL_TYPE.DNP3)).toBe(true);
+    expect(supportsTlsProtocol(PROTOCOL_TYPE.DLT645)).toBe(false);
   });
 });

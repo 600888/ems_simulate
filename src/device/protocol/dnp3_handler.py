@@ -109,6 +109,9 @@ class DNP3ServerHandler(ServerHandler):
         ip = (config.get("ip") or "").strip() or Config.DEFAULT_IP
         port = config.get("port", Config.DNP3_DEFAULT_PORT)
         runtime = config.get("runtime", {})
+        security = config.get("security", {})
+
+        from src.proto.dnp3.tls import create_server_ssl_context
 
         # DNP3 地址：优先 runtime，其次默认
         local_addr = int(runtime.get("local_address", 1))
@@ -118,6 +121,7 @@ class DNP3ServerHandler(ServerHandler):
         self._server.set_addresses(local_addr, master_addr)
         self._server.set_server_ip(ip)
         self._server.set_server_port(port)
+        self._server.set_ssl_context(create_server_ssl_context(security))
         self._server.set_parameters(**runtime)
         self._server.set_message_capture(self._new_capture())
         self._server.set_connection_callbacks(
@@ -128,7 +132,13 @@ class DNP3ServerHandler(ServerHandler):
 
     def _on_connection_opened(self, key, remote_endpoint, local_endpoint) -> None:
         """连接建立时记录连接监控信息。"""
-        self._open_connection(key, remote_endpoint=remote_endpoint, local_endpoint=local_endpoint)
+        security = self._server.connection_security if self._server else {"tls": False}
+        self._open_connection(
+            key,
+            remote_endpoint=remote_endpoint,
+            local_endpoint=local_endpoint,
+            security=security,
+        )
 
     def _on_connection_activity(self, key, direction: str, size: int) -> None:
         """连接收发活动时累计收发字节与消息数。"""
@@ -294,6 +304,9 @@ class DNP3ClientHandler(ClientHandler):
         ip = (config.get("ip") or "").strip() or "127.0.0.1"
         port = config.get("port", Config.DNP3_DEFAULT_PORT)
         runtime = config.get("runtime", {})
+        security = config.get("security", {})
+
+        from src.proto.dnp3.tls import create_client_ssl_context
 
         local_addr = int(runtime.get("local_address", 0))
         outstation_addr = int(runtime.get("remote_address", 1))
@@ -302,6 +315,7 @@ class DNP3ClientHandler(ClientHandler):
         self._client.set_addresses(local_addr, outstation_addr)
         self._client.set_server_ip(ip)
         self._client.set_server_port(port)
+        self._client.set_ssl_context(create_client_ssl_context(security))
         self._client.set_parameters(**runtime)
         self._client.set_message_capture(self._new_capture())
         self._client.set_connection_callbacks(

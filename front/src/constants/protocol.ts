@@ -21,6 +21,20 @@ export const CONN_TYPE = {
   SERIAL_SLAVE: 3,
 } as const;
 
+/** Network protocols whose runtimes support channel-level TLS. */
+export const TLS_SUPPORTED_PROTOCOLS = new Set<number>([
+  PROTOCOL_TYPE.MODBUS_TCP,
+  PROTOCOL_TYPE.IEC104,
+  PROTOCOL_TYPE.IEC61850,
+  PROTOCOL_TYPE.DNP3,
+]);
+
+export function supportsTlsProtocol(
+  protocolType: number | null | undefined,
+): boolean {
+  return protocolType != null && TLS_SUPPORTED_PROTOCOLS.has(protocolType);
+}
+
 /** 判断通道是否使用串口介质，与具体协议无关。 */
 export function isSerialConnectionType(
   connType: number | null | undefined,

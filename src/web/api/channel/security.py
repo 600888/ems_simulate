@@ -20,6 +20,12 @@ router = APIRouter(tags=["channel"])
 _MAX_FILE_SIZE = 5 * 1024 * 1024
 _CERTIFICATE_SUFFIXES = {".crt", ".cer", ".pem"}
 _PRIVATE_KEY_SUFFIXES = {".key", ".pem"}
+_TLS_SUPPORTED_PROTOCOLS = {1, 2, 4, 5}
+
+
+def _validate_tls_protocol(protocol_type: int) -> None:
+    if protocol_type not in _TLS_SUPPORTED_PROTOCOLS:
+        raise ValidationError("当前协议暂不支持 TLS")
 
 
 def _validate_tls_mode(protocol_type: int, tls_mode: str) -> None:
@@ -118,8 +124,8 @@ async def upload_security_config(
         raise NotFoundError("通道不存在")
     if tls_enabled and channel.get("conn_type") not in (1, 2):
         raise ValidationError("串口模式不支持 TLS")
-    if tls_enabled and channel.get("protocol_type") not in (1, 2, 4):
-        raise ValidationError("当前协议暂不支持 TLS")
+    if tls_enabled:
+        _validate_tls_protocol(channel.get("protocol_type"))
     _validate_tls_mode(channel.get("protocol_type"), tls_mode)
 
     current = ChannelConfigurationService.get_runtime_security(channel_id)

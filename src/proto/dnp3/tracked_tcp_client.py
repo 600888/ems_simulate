@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+import ssl
+
+from src.proto.dnp3.tls import connection_security
 
 
 class TrackedTcpClient:
@@ -12,12 +15,14 @@ class TrackedTcpClient:
         host: str,
         port: int,
         *,
+        ssl_context: ssl.SSLContext | None = None,
         on_connect: Callable[[object, object], None] | None = None,
         on_activity: Callable[[str, int], None] | None = None,
         on_disconnect: Callable[[str, str | None], None] | None = None,
     ) -> None:
         self._host = host
         self._port = port
+        self._ssl_context = ssl_context
         self._on_connect = on_connect
         self._on_activity = on_activity
         self._on_disconnect = on_disconnect
@@ -36,10 +41,20 @@ class TrackedTcpClient:
         """设置接收数据的回调函数。"""
         self._receive_callback = callback
 
+    @property
+    def security(self) -> dict[str, object]:
+        """Return TLS negotiation details for the active connection."""
+        return connection_security(self._writer)
+
     async def open(self, timeout_seconds: float) -> None:
         """在指定超时内建立 TCP 连接并启动接收循环。"""
         self._reader, self._writer = await asyncio.wait_for(
-            asyncio.open_connection(self._host, self._port),
+            asyncio.open_connection(
+                self._host,
+                self._port,
+                ssl=self._ssl_context,
+                server_hostname=None,
+            ),
             timeout=timeout_seconds,
         )
         self._running = True

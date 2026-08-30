@@ -1,6 +1,10 @@
 import pytest
 
-from src.web.api.channel.security import _tls_material_requirements, _validate_tls_mode
+from src.web.api.channel.security import (
+    _tls_material_requirements,
+    _validate_tls_mode,
+    _validate_tls_protocol,
+)
 from src.web.api.exceptions import ValidationError
 
 
@@ -9,9 +13,19 @@ def test_iec61850_accepts_one_way_and_mutual_tls():
     _validate_tls_mode(4, "mutual")
 
 
-@pytest.mark.parametrize("protocol_type", [1, 2])
+@pytest.mark.parametrize("protocol_type", [1, 2, 5])
 def test_other_tls_protocols_accept_one_way_mode(protocol_type):
     _validate_tls_mode(protocol_type, "one_way")
+
+
+@pytest.mark.parametrize("protocol_type", [1, 2, 4, 5])
+def test_tls_supported_protocols_include_dnp3(protocol_type):
+    _validate_tls_protocol(protocol_type)
+
+
+def test_serial_only_protocol_is_not_tls_supported():
+    with pytest.raises(ValidationError, match="暂不支持"):
+        _validate_tls_protocol(3)
 
 
 def test_removed_basic_mode_is_rejected():

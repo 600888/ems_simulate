@@ -495,15 +495,11 @@ defineExpose({ open });
 .section {
   margin-top: 18px;
 }
-/* 报文精确解析：表格在内容不足时延伸到底部，消除下方留白 */
+/* 字段解析表格按实际行数自适应，不占满抽屉剩余高度。 */
 .section-parse {
-  flex: 1 1 auto;
-  min-height: 200px;
-  display: flex;
-  flex-direction: column;
+  flex: none;
 }
 .section-parse .el-table {
-  flex: 1 1 auto;
   width: 100%;
   border-bottom: var(--el-table-border);
 }
