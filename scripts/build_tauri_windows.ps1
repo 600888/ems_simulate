@@ -69,7 +69,7 @@ if (-not (Test-Path -PathType Leaf $PYTHON_EXE)) {
 
 & $PYTHON_EXE -c "import PyInstaller" 2>$null
 if ($LASTEXITCODE -ne 0) {
-    WriteErr 'PyInstaller is not installed in .venv. Run: .\.venv\Scripts\python.exe -m pip install -e ".[build]"'
+    WriteErr 'PyInstaller is not installed in .venv. Run once: uv sync --extra build'
 }
 
 # Sync version to tauri.conf.json and package.json

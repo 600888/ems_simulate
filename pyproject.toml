@@ -13,7 +13,7 @@ dependencies = [
     "pydantic==2.12.5",
     "loguru==0.7.3",
     "openpyxl==3.1.5",
-    "c104 @ git+https://github.com/600888/iec104-python.git@214b88d6d5d2239e1772db4023d552d68fb0784e",
+    "c104==2.2.2",
     "fastapi==0.128.0",
     "uvicorn[standard]==0.40.0",
     "python-multipart==0.0.21",
@@ -28,6 +28,12 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["ruff==0.15.15", "pytest==8.4.2", "pytest-asyncio==1.4.0"]
 build = ["pyinstaller==6.18.0", "altgraph==0.17.5", "Pillow>=10.0.0"]
+
+# Keep the portable project metadata version-based so a locally compiled
+# c104 2.2.2 satisfies pip without cloning and rebuilding the native module.
+# uv (including CI) still resolves the tested EMS fork at the pinned commit.
+[tool.uv.sources]
+c104 = { git = "https://github.com/600888/iec104-python.git", rev = "214b88d6d5d2239e1772db4023d552d68fb0784e" }
 
 [tool.ruff]
 # 目标 Python 版本

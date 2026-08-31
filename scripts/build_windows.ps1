@@ -14,6 +14,7 @@ $ErrorActionPreference = "Stop"
 $APP_NAME = "ems-simulate"
 $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PROJECT_ROOT = Split-Path -Parent $SCRIPT_DIR
+$PYTHON_EXE = Join-Path $PROJECT_ROOT ".venv\Scripts\python.exe"
 # 从 pyproject.toml 读取版本号（单一真相源）
 $PYPROJECT_PATH = Join-Path $PROJECT_ROOT "pyproject.toml"
 $VERSION = (Get-Content $PYPROJECT_PATH | Select-String 'version\s*=\s*"([^"]+)"').Matches.Groups[1].Value
@@ -53,7 +54,7 @@ Options:
 
 This script:
 1. Builds the Vue.js frontend (npm run build:fast)
-2. Installs Python dependencies
+2. Verifies the existing Python environment (does not reinstall dependencies)
 3. Creates a standalone Windows executable using PyInstaller
 4. Packages everything into a zip file
 
@@ -70,9 +71,18 @@ Write-Host "  EMS Simulate Windows Packaging" -ForegroundColor Magenta
 Write-Host "========================================" -ForegroundColor Magenta
 Write-Host ""
 
+# Always package with the managed environment. The EMS c104 fork is compiled
+# and installed there once; using a global Python would select an incompatible
+# PyPI c104 build and force pip to replace it during every project install.
+if (-not (Test-Path -LiteralPath $PYTHON_EXE -PathType Leaf)) {
+    Write-Error "Project Python environment not found: $PYTHON_EXE"
+    Write-Info "Create it once with: uv sync --extra build"
+    exit 1
+}
+
 # Sync version to tauri.conf.json and package.json
 Write-Step "Syncing version to config files..."
-python "$SCRIPT_DIR\sync_version.py"
+& $PYTHON_EXE "$SCRIPT_DIR\sync_version.py"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Version sync failed"
     exit 1
@@ -129,21 +139,28 @@ New-Item -ItemType Directory -Force -Path $OUTPUT_DIR | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $BUILD_DIR "build_pyinstaller") | Out-Null
 Write-Success "Build directories created"
 
-# Step 3: Install Python dependencies
-Write-Step "Installing Python dependencies..."
-$PROJECT_ROOT_DIR = Split-Path $PSScriptRoot -Parent
+# Step 3: Verify the existing Python environment. Never run `pip install .`
+# here: resolving the project after a version-only edit makes pip clone the
+# Git-backed c104 source and rebuild its native extension unnecessarily.
+Write-Step "Checking Python build environment..."
+$DEPENDENCY_CHECK = @'
+import importlib.metadata as metadata
 
-if (Test-Path (Join-Path $PROJECT_ROOT_DIR "pyproject.toml")) {
-    pip install .
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to install Python dependencies"
-        exit 1
-    }
-    Write-Success "Python dependencies installed"
-} else {
-    Write-Error "requirements.txt not found"
+import c104
+import PyInstaller
+
+if metadata.version("c104") != "2.2.2":
+    raise SystemExit(f"c104 2.2.2 is required, found {metadata.version('c104')}")
+if not hasattr(c104.TransportSecurity(), "set_hostname_verification"):
+    raise SystemExit("installed c104 lacks the required EMS TLS API")
+'@
+& $PYTHON_EXE -c $DEPENDENCY_CHECK
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Python build environment is incomplete"
+    Write-Info "Install missing build tools once with: uv sync --extra build"
     exit 1
 }
+Write-Success "Python dependencies already available; installation skipped"
 
 # Step 4: Build backend with PyInstaller
 Write-Step "Building backend with PyInstaller..."
@@ -163,7 +180,7 @@ $PYINSTALLER_ARGS = @(
 )
 
 Write-Info "Running PyInstaller..."
-pyinstaller @PYINSTALLER_ARGS
+& $PYTHON_EXE -m PyInstaller @PYINSTALLER_ARGS
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "PyInstaller build failed"
