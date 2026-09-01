@@ -14,8 +14,10 @@ from typing import Any, cast
 from src.proto.iec61850.plugins.datamodels import DataModelsPlugin
 from src.proto.iec61850.plugins.datasets import DataSetsPlugin
 from src.proto.iec61850.plugins.files import FilesPlugin
+from src.proto.iec61850.plugins.log_plugin import LogPlugin
 from src.proto.iec61850.plugins.model_exporter import ModelExporterPlugin
 from src.proto.iec61850.plugins.reports import ReportsPlugin
+from src.proto.iec61850.plugins.setting_groups import SettingGroupsPlugin
 
 from .core import (
     Iec61850Connection,
@@ -320,6 +322,16 @@ class IEC61850Client:
     def files(self) -> FilesPlugin | None:
         """获取 Files 插件 (文件下载服务)"""
         return cast(FilesPlugin | None, self._plugins.get("files"))
+
+    @property
+    def setting_groups(self) -> SettingGroupsPlugin | None:
+        """获取定值组控制块插件。"""
+        return cast(SettingGroupsPlugin | None, self._plugins.get("setting_groups"))
+
+    @property
+    def logs(self) -> LogPlugin | None:
+        """获取日志控制块与 MMS Journal 插件。"""
+        return cast(LogPlugin | None, self._plugins.get("log"))
 
     # ===== 文件操作 (委托给 Files 插件) =====
 

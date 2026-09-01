@@ -43,11 +43,14 @@ from ..model.scl_document import (
     SclLDevice,
     SclLN,
     SclLNodeType,
+    SclLog,
+    SclLogControl,
     SclOptFields,
     SclP,
     SclReportControl,
     SclSDO,
     SclServer,
+    SclSettingControl,
     SclSubNetwork,
     SclTrgOps,
 )
@@ -496,6 +499,53 @@ class SclParser:
         for gse_elem in self._ns.findall(elem, "GSEControl"):
             gse_controls.append(self._parse_gse_control(gse_elem))
 
+        # SettingControl (IEC 61850-6 allows one in LN0)
+        setting_control = None
+        setting_elem = self._ns.find(elem, "SettingControl")
+        if setting_elem is not None:
+            try:
+                num_of_sg = max(1, int(setting_elem.get("numOfSGs", "1")))
+            except ValueError:
+                num_of_sg = 1
+            try:
+                act_sg = int(setting_elem.get("actSG", "1"))
+            except ValueError:
+                act_sg = 1
+            setting_control = SclSettingControl(num_of_sg=num_of_sg, act_sg=min(max(1, act_sg), num_of_sg))
+
+        # Log / LogControl
+        logs = [SclLog(name=item.get("name", ""), desc=item.get("desc", "")) for item in self._ns.findall(elem, "Log")]
+        log_controls = []
+        for item in self._ns.findall(elem, "LogControl"):
+            name = item.get("name", "")
+            log_name = item.get("logName", "")
+            if not name or not log_name:
+                continue
+            trg_ops = SclTrgOps()
+            trg_elem = self._ns.find(item, "TrgOps")
+            if trg_elem is not None:
+                trg_ops.dchg = trg_elem.get("dchg", "false").lower() == "true"
+                trg_ops.qchg = trg_elem.get("qchg", "false").lower() == "true"
+                trg_ops.dupd = trg_elem.get("dupd", "false").lower() == "true"
+                trg_ops.period = trg_elem.get("period", "false").lower() == "true"
+                trg_ops.gi = trg_elem.get("gi", "false").lower() == "true"
+            try:
+                intg_period = max(0, int(item.get("intgPd", "0")))
+            except ValueError:
+                intg_period = 0
+            log_controls.append(
+                SclLogControl(
+                    name=name,
+                    dat_set=item.get("datSet", ""),
+                    log_name=log_name,
+                    intg_period=intg_period,
+                    log_ena=item.get("logEna", "true").lower() == "true",
+                    reason_code=item.get("reasonCode", "true").lower() == "true",
+                    desc=item.get("desc", ""),
+                    trg_ops=trg_ops,
+                )
+            )
+
         # Inputs/ExtRef 描述的是当前 IED 对外部 GOOSE/SMV/Report 数据的
         # 订阅关系，不能从本 IED 的 GSEControl 反向猜测。
         inputs = []
@@ -514,6 +564,9 @@ class SclParser:
             datasets=datasets,
             report_controls=report_controls,
             gse_controls=gse_controls,
+            setting_control=setting_control,
+            log_controls=log_controls,
+            logs=logs,
             inputs=inputs,
         )
 

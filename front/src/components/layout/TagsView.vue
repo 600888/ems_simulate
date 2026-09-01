@@ -145,7 +145,13 @@ const isActive = (tag: TagView) => {
   if (normalizePath(tag.path) === normalizePath(route.path)) return true;
   // GOOSE/报告/文件是设备的子页面，高亮对应的设备标签
   if (
-    ["/goose", "/reports", "/files"].includes(route.path) &&
+    [
+      "/goose",
+      "/reports",
+      "/setting-groups",
+      "/iec61850-logs",
+      "/files",
+    ].includes(route.path) &&
     route.query.channel_id
   ) {
     const deviceName = getDeviceNameByChannelId(Number(route.query.channel_id));

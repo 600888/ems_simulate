@@ -41,7 +41,7 @@ export function buildIEC61850Children(
   channelId?: number,
 ): TreeNode[] {
   const children: TreeNode[] = [];
-  // 为 Reports/GOOSE/Files 构造带 channel_id 的导航链接
+  // 为 IEC61850 设备内工作台构造带 channel_id 的导航链接
   const makeLinkTo = (basePath: string) => {
     return channelId ? `${basePath}?channel_id=${channelId}` : basePath;
   };
@@ -191,6 +191,34 @@ export function buildIEC61850Children(
           linkTo: makeLinkTo("/reports"),
         });
         return;
+      } else if (cat.key === "SettingGroups") {
+        children.push({
+          nodeKey: `${keyPrefix}-${deviceName}-${cat.key}`,
+          label: cat.label,
+          isGroup: false,
+          id: 0,
+          isIec61850Child: true,
+          iec61850Level: "category" as const,
+          name: cat.label,
+          deviceName,
+          type: cat.label,
+          linkTo: makeLinkTo("/setting-groups"),
+        });
+        return;
+      } else if (cat.key === "Logs") {
+        children.push({
+          nodeKey: `${keyPrefix}-${deviceName}-${cat.key}`,
+          label: cat.label,
+          isGroup: false,
+          id: 0,
+          isIec61850Child: true,
+          iec61850Level: "category" as const,
+          name: cat.label,
+          deviceName,
+          type: cat.label,
+          linkTo: makeLinkTo("/iec61850-logs"),
+        });
+        return;
       } else {
         // 其他分类: 仍然为扁平列表
         categoryChildren = items.map((item: string, itemIndex: number) => ({
@@ -221,9 +249,13 @@ export function buildIEC61850Children(
             ? makeLinkTo("/goose")
             : cat.key === "Reports"
               ? makeLinkTo("/reports")
-              : cat.key === "Files"
-                ? makeLinkTo("/files")
-                : undefined,
+              : cat.key === "SettingGroups"
+                ? makeLinkTo("/setting-groups")
+                : cat.key === "Logs"
+                  ? makeLinkTo("/iec61850-logs")
+                  : cat.key === "Files"
+                    ? makeLinkTo("/files")
+                    : undefined,
         children: categoryChildren,
       });
     } else {
@@ -242,9 +274,13 @@ export function buildIEC61850Children(
             ? makeLinkTo("/goose")
             : cat.key === "Reports"
               ? makeLinkTo("/reports")
-              : cat.key === "Files"
-                ? makeLinkTo("/files")
-                : undefined,
+              : cat.key === "SettingGroups"
+                ? makeLinkTo("/setting-groups")
+                : cat.key === "Logs"
+                  ? makeLinkTo("/iec61850-logs")
+                  : cat.key === "Files"
+                    ? makeLinkTo("/files")
+                    : undefined,
       });
     }
   });
@@ -258,6 +294,13 @@ export function buildFallbackIEC61850Children(
   deviceName: string,
   keyPrefix: string,
 ): TreeNode[] {
+  const routeByCategory: Record<string, string> = {
+    GOOSE: "/goose",
+    Reports: "/reports",
+    SettingGroups: "/setting-groups",
+    Logs: "/iec61850-logs",
+    Files: "/files",
+  };
   return IEC61850_CATEGORIES.map((cat) => ({
     nodeKey: `${keyPrefix}-${deviceName}-${cat.key}`,
     label: cat.label,
@@ -268,6 +311,7 @@ export function buildFallbackIEC61850Children(
     name: cat.label,
     deviceName: deviceName,
     type: cat.label,
+    linkTo: routeByCategory[cat.key],
   }));
 }
 

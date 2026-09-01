@@ -75,6 +75,7 @@ export const IEC61850_CATEGORIES: ReadonlyArray<{
   { key: "GOOSE", label: "GOOSE" },
   { key: "Reports", label: "Reports" },
   { key: "SettingGroups", label: "SettingGroups" },
+  { key: "Logs", label: "Logs" },
   { key: "Files", label: "Files" },
   { key: "DataSets", label: "DataSets" },
   { key: "DataModel", label: "DataModel" },

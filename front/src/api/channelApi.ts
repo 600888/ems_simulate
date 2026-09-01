@@ -106,6 +106,7 @@ export interface IEC61850Structure {
   GOOSE: string[];
   Reports: string[];
   SettingGroups: string[];
+  Logs: string[];
   Files: string[];
   DataSets: IEC61850DataSetLdItem[];
   DataModel: IEC61850DataModelItem[];

@@ -18,7 +18,9 @@ from .log import log
 from .plugins.datamodels.builder import IedModelBuilder
 from .plugins.datasets.server import ServerDataSetManager
 from .plugins.files.server import ServerFileService
+from .plugins.log_plugin.server import ServerLogManager
 from .plugins.reports.manager import ReportManager
+from .plugins.setting_groups.server import ServerSettingGroupsManager
 
 if HAS_IEC61850:
     from pyiec61850 import pyiec61850 as iec61850
@@ -66,6 +68,8 @@ class IEC61850Server:
         self.model_name = self._builder.model_name  # 同步
         self._ds_manager = ServerDataSetManager(self._builder, self.model_name)
         self._report_manager = ReportManager(self._builder, self.model_name)
+        self._setting_group_manager = ServerSettingGroupsManager(self)
+        self._log_manager = ServerLogManager(self)
 
         self._server = None
         self._is_running = False
@@ -192,6 +196,12 @@ class IEC61850Server:
         server_config = iec61850.IedServerConfig_create()
         try:
             iec61850.IedServerConfig_setMaxMmsConnections(server_config, self.max_connections)
+            enable_edit_sg = getattr(iec61850, "IedServerConfig_enableEditSG", None)
+            if enable_edit_sg is not None:
+                enable_edit_sg(server_config, True)
+            enable_log_service = getattr(iec61850, "IedServerConfig_enableLogService", None)
+            if enable_log_service is not None:
+                enable_log_service(server_config, True)
             if getattr(self, "_files", None) is not None:
                 self._configure_file_service_config(server_config)
             if getattr(self, "tls_configuration", None) is None:
@@ -531,6 +541,8 @@ class IEC61850Server:
         self._builder = IedModelBuilder(self.model_name, self.ied_name, self.ld_name)
         self._ds_manager = ServerDataSetManager(self._builder, self.model_name)
         self._report_manager = ReportManager(self._builder, self.model_name)
+        self._setting_group_manager = ServerSettingGroupsManager(self)
+        self._log_manager = ServerLogManager(self)
         self._model_changed = True
         self._model_loaded = False
         self._loaded_icd_path = ""
@@ -619,8 +631,22 @@ class IEC61850Server:
             if not selected_ld_insts or report.ld_inst in selected_ld_insts
         ]
 
-        # 为每个逻辑设备创建 LD
+        # 先按 SCL 层级创建全部 LD/LN。控制块可能位于没有业务测点的
+        # LLN0 中，不能再依赖 point 列表间接创建父节点。
         seen_lds: set[str] = set()
+        for doc_ied in getattr(result.doc, "ieds", []):
+            if doc_ied.name != ied_name:
+                continue
+            for access_point in doc_ied.access_points:
+                if not access_point.server:
+                    continue
+                for ld in access_point.server.ldevices:
+                    seen_lds.add(ld.inst)
+                    self._get_or_create_ld(ld.inst)
+                    for ln in ([ld.ln0] + ld.lns) if ld.ln0 else ld.lns:
+                        self._get_or_create_ln(ld.inst, ln.ln_name)
+
+        # 兼容非标准导入结果：为测点中出现但 SCL 层级未声明的 LD/LN 补建节点。
         for point in loaded_points:
             address = point.reg_addr
             if "/" not in address:
@@ -816,6 +842,11 @@ class IEC61850Server:
                 )
             except Exception as e:
                 log.warning(f"注册 ReportControl 失败: {rc.name}, error={e}")
+
+        # 7. 注册 SettingControl、Log 与 LogControl。它们属于本地服务端
+        # 模型能力，必须在 IedServer_create 之前挂到原生 IedModel 上。
+        self._setting_group_manager.load_from_scl(result.doc, ied_name)
+        self._log_manager.load_from_scl(result.doc, ied_name)
 
         self._model_loaded = True
         self._loaded_icd_path = icd_path
@@ -1233,6 +1264,8 @@ class IEC61850Server:
                     iec61850.IedServer_updateInt32AttributeValue(self._server, da, int(value))
         except Exception as e:
             log.error(f"IEC61850 调用底层设置值函数失败: address={address}, value={value}, error={e}")
+        else:
+            self._log_manager.record(address, value)
 
     def set_point_values(self, values: list[tuple[Any, Any, str]]) -> bool:
         """在一次数据模型事务中批量更新测点。
@@ -1272,6 +1305,16 @@ class IEC61850Server:
     def reports(self):
         """获取 Reports 管理对象"""
         return self._report_manager
+
+    @property
+    def setting_groups(self):
+        """获取服务端定值组管理对象。"""
+        return self._setting_group_manager
+
+    @property
+    def logs(self):
+        """获取服务端日志管理对象。"""
+        return self._log_manager
 
     def set_du_descriptions(self, descriptions: dict[str, str]) -> None:
         """存储 DO 的 dU 描述值，服务器运行后自动应用

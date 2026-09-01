@@ -200,6 +200,23 @@ export const REPORT_API = {
   REFRESH: "/api/channels/iec61850/reports/refresh",
 } as const;
 
+// ===== IEC 61850 定值组相关 =====
+export const SETTING_GROUP_API = {
+  LIST: "/api/channels/iec61850/setting-groups/list",
+  DETAIL: "/api/channels/iec61850/setting-groups/detail",
+  SELECT_EDIT: "/api/channels/iec61850/setting-groups/select-edit",
+  WRITE: "/api/channels/iec61850/setting-groups/write",
+  CONFIRM: "/api/channels/iec61850/setting-groups/confirm",
+  ACTIVATE: "/api/channels/iec61850/setting-groups/activate",
+} as const;
+
+// ===== IEC 61850 日志相关 =====
+export const IEC61850_LOG_API = {
+  CONTROLS: "/api/channels/iec61850/logs/controls",
+  ENABLE: "/api/channels/iec61850/logs/enable",
+  QUERY: "/api/channels/iec61850/logs/query",
+} as const;
+
 // ===== SCL 文件管理相关 =====
 // 后端 API 端点 (FastAPI, RESTful 风格)
 export const SCL_API = {

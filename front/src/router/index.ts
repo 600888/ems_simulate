@@ -23,6 +23,16 @@ const menuRouter = createRouter({
       component: () => import("../views/ReportsView.vue"),
     },
     {
+      path: "/setting-groups",
+      name: "setting-groups-manager",
+      component: () => import("../views/SettingGroupsView.vue"),
+    },
+    {
+      path: "/iec61850-logs",
+      name: "iec61850-logs",
+      component: () => import("../views/Iec61850LogsView.vue"),
+    },
+    {
       path: "/files",
       name: "files-explorer",
       component: () => import("../views/FilesView.vue"),
@@ -89,7 +99,7 @@ const menuRouter = createRouter({
 
 // 全局后置钩子，用于收集访问过的页面作为标签页
 menuRouter.afterEach((to) => {
-  // GOOSE/Reports/Files 都属于具体设备，复用设备标签；仅设备和 SCL 页面创建独立标签。
+  // IEC61850 子页面都属于具体设备，复用设备标签；仅设备和 SCL 页面创建独立标签。
   if (!to.path.startsWith("/device") && !to.path.startsWith("/scl")) return;
 
   // addView 内部已按 path 去重：存在则更新，不存在则新增

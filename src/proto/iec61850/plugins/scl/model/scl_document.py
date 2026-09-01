@@ -199,6 +199,36 @@ class SclGSEControl:
 
 
 @dataclass(slots=True)
+class SclSettingControl:
+    """SettingControl — 定值组控制块配置。"""
+
+    num_of_sg: int = 1
+    act_sg: int = 1
+
+
+@dataclass(slots=True)
+class SclLogControl:
+    """LogControl — 日志控制块配置。"""
+
+    name: str = ""
+    dat_set: str = ""
+    log_name: str = ""
+    intg_period: int = 0
+    log_ena: bool = True
+    reason_code: bool = True
+    desc: str = ""
+    trg_ops: SclTrgOps = field(default_factory=SclTrgOps)
+
+
+@dataclass(slots=True)
+class SclLog:
+    """Log — 服务端日志实例。"""
+
+    name: str = ""
+    desc: str = ""
+
+
+@dataclass(slots=True)
 class SclExtRef:
     """Inputs/ExtRef — 本 IED 对外部数据流的工程绑定。"""
 
@@ -241,6 +271,9 @@ class SclLN:
     datasets: list[SclDataSet] = field(default_factory=list)
     report_controls: list[SclReportControl] = field(default_factory=list)
     gse_controls: list[SclGSEControl] = field(default_factory=list)
+    setting_control: SclSettingControl | None = None
+    log_controls: list[SclLogControl] = field(default_factory=list)
+    logs: list[SclLog] = field(default_factory=list)
     inputs: list[SclExtRef] = field(default_factory=list)
 
     @property

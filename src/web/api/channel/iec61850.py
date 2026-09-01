@@ -1249,6 +1249,7 @@ async def get_iec61850_structure(body: Iec61850StructureRequest, request: Reques
         "GOOSE": goose_items,
         "Reports": report_items,
         "SettingGroups": [],
+        "Logs": [],
         "Files": file_items,
         "DataSets": dataset_items,
         "DataModel": data_model,
