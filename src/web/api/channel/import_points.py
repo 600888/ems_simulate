@@ -59,6 +59,14 @@ async def _sync_imported_points(request: Request, channel_id: int, *, rebuild: b
         await reload_device_instance(device_controller, channel_id, is_start=was_running)
         return
 
+    if device.protocol_type in (ProtocolType.Dnp3Server, ProtocolType.Dnp3Client):
+        # DNP3 的点不仅存在于 PointManager，还会在初始化时注册到底层
+        # Outstation 点库 / Master 点映射中。仅重复导入 PointManager 会保留
+        # 旧点并让协议层继续使用导入前的点库，因此必须完整重建设备。
+        was_running = device.is_protocol_running()
+        await reload_device_instance(device_controller, channel_id, is_start=was_running)
+        return
+
     if rebuild:
         # Standard-table replacement must discard every stale in-memory point.
         was_running = device.is_protocol_running()

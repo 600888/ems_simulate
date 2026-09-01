@@ -54,8 +54,12 @@ async def create_and_start_device(req: ChannelIdRequest, request: Request):
     if is_client_protocol(channel_protocol_type):
         # 客户端协议只建立连接；自动读取由用户通过界面显式开启。
         await general_device.start()
-    elif channel_protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec101Server):
-        # IEC61850 与 IEC101 服务端均需显式启动监听。
+    elif channel_protocol_type in (
+        ProtocolType.Iec61850Server,
+        ProtocolType.Iec101Server,
+        ProtocolType.Dnp3Server,
+    ):
+        # asyncio 服务端均需显式启动监听。
         await general_device.start()
         log.info(f"{channel_protocol_type.value} 服务端已启动: {channel_name}")
 
