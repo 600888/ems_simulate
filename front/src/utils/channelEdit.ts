@@ -2,15 +2,21 @@ import {
   PROTOCOL_DEFAULT_CLIENT_IP,
   PROTOCOL_DEFAULT_PORTS,
 } from "@/constants/protocol";
-import type { ChannelCreateRequest, ProtocolOption } from "@/types/channel";
+import type {
+  ChannelCreateRequest,
+  ProtocolOption,
+  TlsVersion,
+} from "@/types/channel";
 
 export interface SecuritySaveState {
   isEdit: boolean;
   tlsSupported: boolean;
   tlsEnabled: boolean;
   tlsMode: "one_way" | "mutual";
+  tlsVersion: TlsVersion;
   originalTlsEnabled: boolean;
   originalTlsMode: "one_way" | "mutual";
+  originalTlsVersion: TlsVersion;
   hasNewFiles: boolean;
 }
 
@@ -30,12 +36,18 @@ export function getTlsMaterialRequirements(
   };
 }
 
+/** Normalize a persisted TLS version; unknown values fall back to 1.2. */
+export function normalizeTlsVersion(value: unknown): TlsVersion {
+  return value === "1.3" ? "1.3" : "1.2";
+}
+
 /** Avoid saving/reloading TLS when an edit did not change its configuration. */
 export function shouldSaveChannelSecurity(state: SecuritySaveState): boolean {
   if (!state.tlsSupported) return false;
   const settingsChanged =
     state.tlsEnabled !== state.originalTlsEnabled ||
-    state.tlsMode !== state.originalTlsMode;
+    state.tlsMode !== state.originalTlsMode ||
+    state.tlsVersion !== state.originalTlsVersion;
   return (
     state.hasNewFiles || settingsChanged || (!state.isEdit && state.tlsEnabled)
   );

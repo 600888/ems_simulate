@@ -47,6 +47,16 @@
           </div>
         </el-form-item>
 
+        <el-form-item :label="$t('device.tlsVersion')" required>
+          <el-radio-group v-model="modelValue.tls_version" :disabled="disabled">
+            <el-radio-button value="1.2">TLS 1.2</el-radio-button>
+            <el-radio-button value="1.3">TLS 1.3</el-radio-button>
+          </el-radio-group>
+          <div class="mode-description">
+            {{ $t("device.tlsVersionDesc") }}
+          </div>
+        </el-form-item>
+
         <el-form-item
           v-if="materialRequirements.identity"
           :label="$t('device.localCert')"

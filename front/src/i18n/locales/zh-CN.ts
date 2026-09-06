@@ -377,6 +377,8 @@ export default {
     tlsMode: "TLS 模式",
     tlsOneWay: "单向认证 TLS",
     tlsMutual: "双向认证 TLS",
+    tlsVersion: "TLS 版本",
+    tlsVersionDesc: "选择后连接将固定使用所选的 TLS 协议版本。",
     tlsOneWayClientDesc:
       "仅使用 CA 校验服务端证书链，不发送本端证书，不校验主机名或 IP。",
     tlsOneWayServerDesc: "服务端提供本端证书和私钥，不要求客户端证书。",

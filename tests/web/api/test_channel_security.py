@@ -1,6 +1,7 @@
 import pytest
 
 from src.web.api.channel.security import (
+    _normalize_tls_version,
     _tls_material_requirements,
     _validate_tls_mode,
     _validate_tls_protocol,
@@ -31,6 +32,17 @@ def test_serial_only_protocol_is_not_tls_supported():
 def test_removed_basic_mode_is_rejected():
     with pytest.raises(ValidationError, match="单向认证"):
         _validate_tls_mode(1, "basic")
+
+
+@pytest.mark.parametrize("tls_version", ["1.2", "1.3"])
+def test_tls_version_accepts_supported_versions(tls_version):
+    assert _normalize_tls_version(tls_version) == tls_version
+
+
+@pytest.mark.parametrize("tls_version", ["1.0", "1.1", "unknown", ""])
+def test_tls_version_rejects_unsupported_versions(tls_version):
+    with pytest.raises(ValidationError, match="TLS 版本"):
+        _normalize_tls_version(tls_version)
 
 
 @pytest.mark.parametrize(

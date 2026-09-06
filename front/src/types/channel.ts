@@ -68,9 +68,12 @@ export interface ProtocolParamsConfig {
   values: Record<string, number | boolean | string>;
 }
 
+export type TlsVersion = "1.2" | "1.3";
+
 export interface SecurityConfig {
   tls_enabled: boolean;
   tls_mode: "one_way" | "mutual";
+  tls_version?: TlsVersion;
   certificate_configured: boolean;
   certificate_filename?: string | null;
   private_key_configured: boolean;

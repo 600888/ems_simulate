@@ -10,6 +10,7 @@ import type {
   PointImportResult,
   ProtocolConfigResponse,
   SecurityConfig,
+  TlsVersion,
 } from "@/types/channel";
 
 // ===== 类型定义 =====
@@ -360,6 +361,7 @@ export async function uploadChannelSecurity(
   channelId: number,
   tlsEnabled: boolean,
   tlsMode: "one_way" | "mutual",
+  tlsVersion: TlsVersion = "1.2",
   certificate?: File | null,
   privateKey?: File | null,
   caCertificate?: File | null,
@@ -368,6 +370,7 @@ export async function uploadChannelSecurity(
   formData.append("channel_id", channelId.toString());
   formData.append("tls_enabled", tlsEnabled ? "true" : "false");
   formData.append("tls_mode", tlsMode);
+  formData.append("tls_version", tlsVersion);
   if (certificate) formData.append("certificate", certificate);
   if (privateKey) formData.append("private_key", privateKey);
   if (caCertificate) formData.append("ca_certificate", caCertificate);

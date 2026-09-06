@@ -350,6 +350,7 @@ class DbController:
         existing = {column["name"] for column in inspector.get_columns("channel_security_config")}
         definitions = {
             "tls_mode": "VARCHAR(16) NOT NULL DEFAULT 'one_way'",
+            "tls_version": "VARCHAR(16) NOT NULL DEFAULT '1.2'",
             "ca_certificate_path": "VARCHAR(512)",
             "ca_certificate_filename": "VARCHAR(255)",
         }

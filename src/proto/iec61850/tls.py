@@ -31,6 +31,17 @@ def _mode(config: dict[str, Any]) -> str:
     return mode
 
 
+def _version_pair(config: dict[str, Any], iec61850) -> tuple[int, int]:
+    version = str(config.get("tls_version") or "1.2")
+    mapping = {
+        "1.2": (iec61850.TLS_VERSION_TLS_1_2, iec61850.TLS_VERSION_TLS_1_2),
+        "1.3": (iec61850.TLS_VERSION_TLS_1_3, iec61850.TLS_VERSION_TLS_1_3),
+    }
+    if version not in mapping:
+        raise IEC61850TlsConfigurationError("IEC61850 TLS 版本必须是 1.2 或 1.3")
+    return mapping[version]
+
+
 @contextlib.contextmanager
 def _native_file_paths(
     certificate: str | None,
@@ -107,8 +118,9 @@ def create_native_tls_configuration(
     try:
         if client:
             iec61850.TLSConfiguration_setClientMode(native)
-        iec61850.TLSConfiguration_setMinTlsVersion(native, iec61850.TLS_VERSION_TLS_1_2)
-        iec61850.TLSConfiguration_setMaxTlsVersion(native, iec61850.TLS_VERSION_TLS_1_3)
+        minimum_version, maximum_version = _version_pair(settings, iec61850)
+        iec61850.TLSConfiguration_setMinTlsVersion(native, minimum_version)
+        iec61850.TLSConfiguration_setMaxTlsVersion(native, maximum_version)
         # 单向客户端和双向模式校验对端 CA 链；单向服务端不要求客户端证书。
         validate_peer = requires_ca
         if not validate_peer:

@@ -189,6 +189,7 @@ class ModbusServer:
         stopbits: int = 1,
         tls_enabled: bool = False,
         tls_mode: str = "one_way",
+        tls_version: str = "1.2",
         certificate_path: str | None = None,
         private_key_path: str | None = None,
         ca_certificate_path: str | None = None,
@@ -210,6 +211,7 @@ class ModbusServer:
         self.stopbits = stopbits
         self.tls_enabled = tls_enabled
         self.tls_mode = tls_mode
+        self.tls_version = tls_version
         self.certificate_path = certificate_path
         self.private_key_path = private_key_path
         self.ca_certificate_path = ca_certificate_path
@@ -349,6 +351,7 @@ class ModbusServer:
                 address = (self.ip if self.ip else "", self.port if self.port else None)
                 ssl_context = create_server_ssl_context(
                     tls_mode=self.tls_mode,
+                    tls_version=self.tls_version,
                     certificate_path=self.certificate_path,
                     private_key_path=self.private_key_path,
                     ca_certificate_path=self.ca_certificate_path,

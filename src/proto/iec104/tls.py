@@ -93,15 +93,26 @@ class IEC104OneWayTlsConfig:
         certificate_path: str | None = None,
         private_key_path: str | None = None,
         ca_certificate_path: str | None = None,
+        tls_version: str | None = None,
     ) -> None:
         self.certificate_path = certificate_path
         self.private_key_path = private_key_path
         self.ca_certificate_path = ca_certificate_path
+        self.tls_version = tls_version
+
+    def _version_range(self) -> tuple[ssl.TLSVersion, ssl.TLSVersion]:
+        version = str(self.tls_version or "1.2")
+        mapping = {
+            "1.2": (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_2),
+            "1.3": (ssl.TLSVersion.TLSv1_3, ssl.TLSVersion.TLSv1_3),
+        }
+        if version not in mapping:
+            raise IEC104TlsConfigurationError("IEC104 TLS 版本必须是 1.2 或 1.3")
+        return mapping[version]
 
     def create_client_context(self) -> ssl.SSLContext:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        context.minimum_version = ssl.TLSVersion.TLSv1_2
-        context.maximum_version = ssl.TLSVersion.TLSv1_3
+        context.minimum_version, context.maximum_version = self._version_range()
         context.check_hostname = False
         context.verify_mode = ssl.CERT_REQUIRED
         if not self.ca_certificate_path:
@@ -111,8 +122,7 @@ class IEC104OneWayTlsConfig:
 
     def create_server_context(self) -> ssl.SSLContext:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.minimum_version = ssl.TLSVersion.TLSv1_2
-        context.maximum_version = ssl.TLSVersion.TLSv1_3
+        context.minimum_version, context.maximum_version = self._version_range()
         context.verify_mode = ssl.CERT_NONE
         if not self.certificate_path or not self.private_key_path:
             raise IEC104TlsConfigurationError("IEC104 服务端单向 TLS 缺少证书或私钥")
@@ -128,14 +138,19 @@ def load_one_way_tls_config(
     config = security or {}
     if not config.get("tls_enabled") or str(config.get("tls_mode") or "one_way") != "one_way":
         return None
+    tls_version = str(config.get("tls_version") or "1.2")
+    if tls_version not in {"1.2", "1.3"}:
+        raise IEC104TlsConfigurationError("IEC104 TLS 版本必须是 1.2 或 1.3")
     tls_config = (
         IEC104OneWayTlsConfig(
             ca_certificate_path=_required_file(config, "ca_certificate_path", "CA 证书"),
+            tls_version=tls_version,
         )
         if client
         else IEC104OneWayTlsConfig(
             certificate_path=_required_file(config, "certificate_path", "证书"),
             private_key_path=_required_file(config, "private_key_path", "私钥"),
+            tls_version=tls_version,
         )
     )
     try:
@@ -161,6 +176,13 @@ def build_transport_security(
         raise IEC104TlsConfigurationError("IEC104 TLS 模式必须是 one_way 或 mutual")
     if tls_mode == "one_way":
         return None
+    tls_version = str(config.get("tls_version") or "1.2")
+    version_map = {
+        "1.2": (c104.TlsVersion.TLS_1_2, c104.TlsVersion.TLS_1_2),
+        "1.3": (c104.TlsVersion.TLS_1_3, c104.TlsVersion.TLS_1_3),
+    }
+    if tls_version not in version_map:
+        raise IEC104TlsConfigurationError("IEC104 TLS 版本必须是 1.2 或 1.3")
     certificate_path = _required_file(config, "certificate_path", "证书")
     private_key_path = _required_file(config, "private_key_path", "私钥")
     ca_certificate_path = _required_file(config, "ca_certificate_path", "CA 证书")
@@ -173,7 +195,8 @@ def build_transport_security(
     try:
         transport_security = c104.TransportSecurity(validate=True, only_known=False)
         transport_security.set_certificate(certificate_path, private_key_path)
-        transport_security.set_version(c104.TlsVersion.TLS_1_2, c104.TlsVersion.TLS_1_3)
+        minimum_version, maximum_version = version_map[tls_version]
+        transport_security.set_version(minimum_version, maximum_version)
         transport_security.set_ca_certificate(ca_certificate_path)
 
         return transport_security

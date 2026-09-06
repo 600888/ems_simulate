@@ -102,12 +102,36 @@ def test_tls_contexts_match_shared_one_way_and_mutual_semantics(tls_files):
 
     assert one_way_client is not None
     assert one_way_client.minimum_version == ssl.TLSVersion.TLSv1_2
-    assert one_way_client.maximum_version == ssl.TLSVersion.TLSv1_3
+    assert one_way_client.maximum_version == ssl.TLSVersion.TLSv1_2
     assert one_way_client.check_hostname is False
     assert one_way_client.verify_mode == ssl.CERT_REQUIRED
     assert one_way_server is not None and one_way_server.verify_mode == ssl.CERT_NONE
     assert mutual_client is not None and mutual_client.verify_mode == ssl.CERT_REQUIRED
     assert mutual_server is not None and mutual_server.verify_mode == ssl.CERT_REQUIRED
+
+
+@pytest.mark.parametrize(
+    ("tls_version", "expected_version"),
+    [
+        ("1.2", ssl.TLSVersion.TLSv1_2),
+        ("1.3", ssl.TLSVersion.TLSv1_3),
+    ],
+)
+def test_tls_version_pins_client_and_server_contexts(tls_files, tls_version, expected_version):
+    client = create_client_ssl_context({**_settings(tls_files, "client", "one_way"), "tls_version": tls_version})
+    server = create_server_ssl_context({**_settings(tls_files, "server", "one_way"), "tls_version": tls_version})
+
+    assert client is not None
+    assert client.minimum_version == expected_version
+    assert client.maximum_version == expected_version
+    assert server is not None
+    assert server.minimum_version == expected_version
+    assert server.maximum_version == expected_version
+
+
+def test_tls_version_rejects_unsupported_value(tls_files):
+    with pytest.raises(Dnp3TlsConfigurationError, match="版本"):
+        create_client_ssl_context({**_settings(tls_files, "client", "one_way"), "tls_version": "1.1"})
 
 
 def test_tls_rejects_missing_material_and_invalid_mode(tls_files):

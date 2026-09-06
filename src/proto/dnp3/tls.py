@@ -27,6 +27,19 @@ def _mode(config: dict[str, Any]) -> str:
     return mode
 
 
+TLS_VERSION_MAP = {
+    "1.2": (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_2),
+    "1.3": (ssl.TLSVersion.TLSv1_3, ssl.TLSVersion.TLSv1_3),
+}
+
+
+def _version_range(config: dict[str, Any]) -> tuple[ssl.TLSVersion, ssl.TLSVersion]:
+    version = str(config.get("tls_version") or "1.2")
+    if version not in TLS_VERSION_MAP:
+        raise Dnp3TlsConfigurationError("DNP3 TLS 版本必须是 1.2 或 1.3")
+    return TLS_VERSION_MAP[version]
+
+
 def create_client_ssl_context(config: dict[str, Any] | None) -> ssl.SSLContext | None:
     """Create the DNP3 Master TLS context using the shared channel semantics."""
     settings = config or {}
@@ -34,9 +47,10 @@ def create_client_ssl_context(config: dict[str, Any] | None) -> ssl.SSLContext |
         return None
 
     mode = _mode(settings)
+    minimum_version, maximum_version = _version_range(settings)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
-    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    context.minimum_version = minimum_version
+    context.maximum_version = maximum_version
     # Industrial endpoints are commonly addressed by IP. Match the other
     # protocols: validate the certificate chain, but not a DNS/IP identity.
     context.check_hostname = False
@@ -57,9 +71,10 @@ def create_server_ssl_context(config: dict[str, Any] | None) -> ssl.SSLContext |
         return None
 
     mode = _mode(settings)
+    minimum_version, maximum_version = _version_range(settings)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
-    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    context.minimum_version = minimum_version
+    context.maximum_version = maximum_version
     context.load_cert_chain(
         certfile=_required_file(settings, "certificate_path", "证书"),
         keyfile=_required_file(settings, "private_key_path", "私钥"),

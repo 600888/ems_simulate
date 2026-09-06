@@ -74,6 +74,7 @@ class Device:
         self.security_config: dict[str, Any] = {
             "tls_enabled": False,
             "tls_mode": "one_way",
+            "tls_version": "1.2",
             "certificate_path": None,
             "private_key_path": None,
             "ca_certificate_path": None,

@@ -101,10 +101,54 @@ def test_one_way_tls_client_uses_only_ca_and_disables_hostname_check(tls_files):
     )
 
     assert client.minimum_version == ssl.TLSVersion.TLSv1_2
-    assert client.maximum_version == ssl.TLSVersion.TLSv1_3
+    assert client.maximum_version == ssl.TLSVersion.TLSv1_2
     assert client.check_hostname is False
     assert client.verify_mode == ssl.CERT_REQUIRED
     assert server.verify_mode == ssl.CERT_NONE
+
+
+@pytest.mark.parametrize(
+    ("tls_version", "expected_version"),
+    [
+        ("1.2", ssl.TLSVersion.TLSv1_2),
+        ("1.3", ssl.TLSVersion.TLSv1_3),
+    ],
+)
+def test_tls_version_pins_client_context_to_selected_version(tls_files, tls_version, expected_version):
+    client = create_client_ssl_context(
+        tls_mode="one_way",
+        certificate_path=None,
+        private_key_path=None,
+        ca_certificate_path=tls_files["ca"],
+        tls_version=tls_version,
+    )
+
+    assert client.minimum_version == expected_version
+    assert client.maximum_version == expected_version
+
+
+def test_tls_version_pins_server_context_to_selected_version(tls_files):
+    server = create_server_ssl_context(
+        tls_mode="one_way",
+        certificate_path=tls_files["server_certificate"],
+        private_key_path=tls_files["server_key"],
+        ca_certificate_path=None,
+        tls_version="1.3",
+    )
+
+    assert server.minimum_version == ssl.TLSVersion.TLSv1_3
+    assert server.maximum_version == ssl.TLSVersion.TLSv1_3
+
+
+def test_invalid_tls_version_is_rejected_by_client(tls_files):
+    with pytest.raises(ModbusTlsConfigurationError, match="版本"):
+        create_client_ssl_context(
+            tls_mode="one_way",
+            certificate_path=None,
+            private_key_path=None,
+            ca_certificate_path=tls_files["ca"],
+            tls_version="1.1",
+        )
 
 
 def test_mutual_tls_requires_and_validates_peer_certificates(tls_files):

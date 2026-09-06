@@ -244,6 +244,7 @@ import {
 } from "@/utils/dlt645PointMode";
 import {
   getTlsMaterialRequirements,
+  normalizeTlsVersion,
   shouldSaveChannelSecurity,
 } from "@/utils/channelEdit";
 import {
@@ -293,6 +294,7 @@ const protocolParams = reactive({
 const securityConfig = reactive<SecurityConfig>({
   tls_enabled: false,
   tls_mode: "one_way",
+  tls_version: "1.2",
   certificate_configured: false,
   certificate_filename: null,
   private_key_configured: false,
@@ -303,6 +305,7 @@ const securityConfig = reactive<SecurityConfig>({
 const originalSecuritySettings = ref({
   tls_enabled: false,
   tls_mode: "one_way" as SecurityConfig["tls_mode"],
+  tls_version: "1.2" as NonNullable<SecurityConfig["tls_version"]>,
 });
 
 // GOOSE 预览状态
@@ -322,6 +325,7 @@ let channelLoadRequest = 0;
 const defaultSecurityConfig = (): SecurityConfig => ({
   tls_enabled: false,
   tls_mode: "one_way",
+  tls_version: "1.2",
   certificate_configured: false,
   certificate_filename: null,
   private_key_configured: false,
@@ -337,6 +341,8 @@ const applyPersistedSecurityConfig = (persisted?: SecurityConfig) => {
     // 兼容旧数据库；basic 已整改为会校验 CA 的单向 TLS。
     tls_mode:
       (persisted?.tls_mode as string) === "mutual" ? "mutual" : "one_way",
+    // 旧数据库没有版本字段，统一回落到 TLS 1.2。
+    tls_version: normalizeTlsVersion(persisted?.tls_version),
     // 开关只认后端持久化的布尔值，不根据证书或本地点击状态推断。
     tls_enabled:
       persisted?.tls_enabled === true &&
@@ -515,6 +521,7 @@ const loadChannelData = async (id: number) => {
     originalSecuritySettings.value = {
       tls_enabled: securityConfig.tls_enabled,
       tls_mode: securityConfig.tls_mode,
+      tls_version: securityConfig.tls_version ?? "1.2",
     };
     originalName.value = data.name || "";
     mediaType.value = isSerialConnectionType(data.conn_type)
@@ -555,6 +562,7 @@ const resetForm = () => {
   originalSecuritySettings.value = {
     tls_enabled: false,
     tls_mode: "one_way",
+    tls_version: "1.2",
   };
   clearPendingPointFiles();
   goosePreviewData.value = null;
@@ -673,8 +681,10 @@ const handleSubmit = async () => {
         tlsSupported: tlsSupportedProtocol.value,
         tlsEnabled: securityConfig.tls_enabled,
         tlsMode: securityConfig.tls_mode,
+        tlsVersion: securityConfig.tls_version ?? "1.2",
         originalTlsEnabled: originalSecuritySettings.value.tls_enabled,
         originalTlsMode: originalSecuritySettings.value.tls_mode,
+        originalTlsVersion: originalSecuritySettings.value.tls_version,
         hasNewFiles: hasNewSecurityFiles,
       });
 
@@ -696,6 +706,7 @@ const handleSubmit = async () => {
           resultId,
           securityConfig.tls_enabled,
           securityConfig.tls_mode,
+          securityConfig.tls_version ?? "1.2",
           certificateFile.value,
           privateKeyFile.value,
           caCertificateFile.value,
@@ -704,6 +715,7 @@ const handleSubmit = async () => {
         originalSecuritySettings.value = {
           tls_enabled: securityConfig.tls_enabled,
           tls_mode: securityConfig.tls_mode,
+          tls_version: securityConfig.tls_version ?? "1.2",
         };
       }
 

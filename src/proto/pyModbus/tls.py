@@ -8,6 +8,12 @@ class ModbusTlsConfigurationError(ValueError):
     """Raised when Modbus TLS settings or certificate files are invalid."""
 
 
+TLS_VERSION_MAP = {
+    "1.2": (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_2),
+    "1.3": (ssl.TLSVersion.TLSv1_3, ssl.TLSVersion.TLSv1_3),
+}
+
+
 def _required_file(path_value: str | None, label: str) -> str:
     if not path_value:
         raise ModbusTlsConfigurationError(f"Modbus TLS 缺少{label}")
@@ -23,20 +29,29 @@ def _validate_mode(tls_mode: str) -> str:
     return tls_mode
 
 
+def _version_range(tls_version: str | None) -> tuple[ssl.TLSVersion, ssl.TLSVersion]:
+    version = str(tls_version or "1.2")
+    if version not in TLS_VERSION_MAP:
+        raise ModbusTlsConfigurationError("Modbus TLS 版本必须是 1.2 或 1.3")
+    return TLS_VERSION_MAP[version]
+
+
 def create_client_ssl_context(
     *,
     tls_mode: str,
     certificate_path: str | None,
     private_key_path: str | None,
     ca_certificate_path: str | None,
+    tls_version: str | None = None,
 ) -> ssl.SSLContext:
     """Create a CA-validating TLS client context for one-way TLS or mTLS."""
     mode = _validate_mode(tls_mode)
     ca_certificate = _required_file(ca_certificate_path, "CA 证书")
+    minimum_version, maximum_version = _version_range(tls_version)
 
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
-    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    context.minimum_version = minimum_version
+    context.maximum_version = maximum_version
     context.check_hostname = False
     context.verify_mode = ssl.CERT_REQUIRED
     context.load_verify_locations(cafile=ca_certificate)
@@ -53,15 +68,17 @@ def create_server_ssl_context(
     certificate_path: str | None,
     private_key_path: str | None,
     ca_certificate_path: str | None,
+    tls_version: str | None = None,
 ) -> ssl.SSLContext:
     """Create a TLS server context for one-way TLS or mTLS."""
     mode = _validate_mode(tls_mode)
     certificate = _required_file(certificate_path, "证书")
     private_key = _required_file(private_key_path, "私钥")
+    minimum_version, maximum_version = _version_range(tls_version)
 
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
-    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    context.minimum_version = minimum_version
+    context.maximum_version = maximum_version
     context.load_cert_chain(certfile=certificate, keyfile=private_key)
     if mode == "one_way":
         context.verify_mode = ssl.CERT_NONE

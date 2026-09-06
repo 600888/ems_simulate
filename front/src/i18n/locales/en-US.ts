@@ -324,6 +324,9 @@ export default {
     tlsMode: "TLS Mode",
     tlsOneWay: "One-way TLS",
     tlsMutual: "Mutual TLS",
+    tlsVersion: "TLS Version",
+    tlsVersionDesc:
+      "Connections will be pinned to the selected TLS protocol version.",
     tlsOneWayClientDesc:
       "Validates only the server certificate chain with the CA; no client certificate or hostname/IP verification.",
     tlsOneWayServerDesc:

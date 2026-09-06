@@ -88,6 +88,23 @@ def test_mutual_tls_requires_ca(tls_files):
         create_client_tls_configuration(settings)
 
 
+def test_unsupported_tls_version_is_rejected(tls_files):
+    settings = _settings(tls_files, "client", "mutual")
+    settings["tls_version"] = "1.1"
+    with pytest.raises(IEC61850TlsConfigurationError, match="版本"):
+        create_client_tls_configuration(settings)
+
+
+@pytest.mark.parametrize("tls_version", ["1.2", "1.3"])
+def test_supported_tls_versions_load_native_configuration(tls_files, tls_version):
+    settings = {**_settings(tls_files, "server", "mutual"), "tls_version": tls_version}
+    configuration = create_server_tls_configuration(settings)
+    try:
+        assert configuration is not None and configuration.native is not None
+    finally:
+        configuration.close()
+
+
 def test_one_way_tls_uses_server_identity_and_client_ca_only(tls_files):
     server = create_server_tls_configuration(_settings(tls_files, "server", "one_way"))
     client = create_client_tls_configuration(_settings(tls_files, "client", "one_way"))

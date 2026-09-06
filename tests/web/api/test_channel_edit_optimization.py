@@ -27,6 +27,7 @@ def test_unchanged_security_does_not_save_or_reload_device():
     runtime_security = {
         "tls_enabled": False,
         "tls_mode": "mutual",
+        "tls_version": "1.2",
         "certificate_path": None,
         "private_key_path": None,
         "ca_certificate_path": None,
@@ -59,6 +60,7 @@ def test_unchanged_security_does_not_save_or_reload_device():
                 channel_id=1,
                 tls_enabled=False,
                 tls_mode="mutual",
+                tls_version="1.2",
                 certificate=None,
                 private_key=None,
                 ca_certificate=None,

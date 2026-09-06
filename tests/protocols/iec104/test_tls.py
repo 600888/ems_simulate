@@ -166,6 +166,69 @@ def test_invalid_tls_mode_is_rejected(tmp_path):
         )
 
 
+@pytest.mark.parametrize(
+    ("tls_version", "expected_version"),
+    [
+        ("1.2", ssl.TLSVersion.TLSv1_2),
+        ("1.3", ssl.TLSVersion.TLSv1_3),
+    ],
+)
+def test_one_way_tls_version_pins_context(tmp_path, tls_version, expected_version):
+    _, ca_certificate = _create_ca()
+    ca_path = tmp_path / "one-way-ca.pem"
+    ca_path.write_bytes(ca_certificate.public_bytes(serialization.Encoding.PEM))
+
+    tls_config = load_one_way_tls_config(
+        {
+            "tls_enabled": True,
+            "tls_mode": "one_way",
+            "ca_certificate_path": str(ca_path),
+            "tls_version": tls_version,
+        },
+        client=True,
+    )
+
+    assert tls_config is not None
+    context = tls_config.create_client_context()
+    assert context.minimum_version == expected_version
+    assert context.maximum_version == expected_version
+
+
+def test_one_way_tls_rejects_unsupported_version(tmp_path):
+    _, ca_certificate = _create_ca()
+    ca_path = tmp_path / "one-way-ca.pem"
+    ca_path.write_bytes(ca_certificate.public_bytes(serialization.Encoding.PEM))
+
+    with pytest.raises(IEC104TlsConfigurationError, match="版本"):
+        load_one_way_tls_config(
+            {
+                "tls_enabled": True,
+                "tls_mode": "one_way",
+                "ca_certificate_path": str(ca_path),
+                "tls_version": "1.1",
+            },
+            client=True,
+        )
+
+
+def test_mutual_tls_rejects_unsupported_version(tmp_path):
+    certificate = tmp_path / "identity.pem"
+    private_key = tmp_path / "identity.key"
+    certificate.write_text("invalid")
+    private_key.write_text("invalid")
+    with pytest.raises(IEC104TlsConfigurationError, match="版本"):
+        build_transport_security(
+            {
+                "tls_enabled": True,
+                "tls_mode": "mutual",
+                "tls_version": "1.0",
+                "certificate_path": str(certificate),
+                "private_key_path": str(private_key),
+                "ca_certificate_path": str(certificate),
+            }
+        )
+
+
 def test_iec104_client_and_server_connect_over_one_way_tls(tmp_path):
     server_ca_key, server_ca = _create_ca()
     server_key, server_certificate = _create_identity(
