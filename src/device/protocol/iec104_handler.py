@@ -7,6 +7,7 @@ IEC104 协议处理器
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 import time
 from typing import Any
 
@@ -40,6 +41,15 @@ def _resolve_c104_type(point: BasePoint) -> c104.Type:
 
 
 _decode_c104_point_value = decode_point_value
+
+
+def _c104_connection_time_utc(value: datetime | None) -> datetime | None:
+    """Normalize c104's native local datetime before registry storage.
+
+    The chrono binding returns local wall time without tzinfo. astimezone
+    interprets that in the host timezone and also handles aware values.
+    """
+    return value.astimezone(UTC) if value is not None else None
 
 
 class IEC104ServerHandler(ServerHandler):
@@ -209,7 +219,7 @@ class IEC104ServerHandler(ServerHandler):
                 remote_endpoint=(connection.remote_ip, connection.remote_port),
                 local_endpoint=(connection.local_ip, connection.local_port),
                 security={name: value for name, value in security.items() if value not in (None, "")},
-                connected_at=connection.connected_at,
+                connected_at=_c104_connection_time_utc(connection.connected_at),
             )
             return
         if state == c104.ServerConnectionState.ACTIVE:
@@ -240,7 +250,7 @@ class IEC104ServerHandler(ServerHandler):
             reason=reason,
             initiator=initiator,
             detail=connection.error_message,
-            disconnected_at=connection.disconnected_at,
+            disconnected_at=_c104_connection_time_utc(connection.disconnected_at),
             final_stats={
                 "rx_bytes": connection.bytes_received,
                 "tx_bytes": connection.bytes_sent,

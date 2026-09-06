@@ -54,8 +54,9 @@ def utc_now() -> datetime:
 def _serialize_dt(value: datetime | None) -> str | None:
     """Serialize a datetime to ISO-8601 with an explicit UTC offset.
 
-    Some protocol libs (c104) and SQLite hand back *naive* datetimes whose
-    wall-clock value is actually UTC. Without an explicit offset the browser
+    SQLite hands back *naive* datetimes whose wall-clock value is UTC.
+    Protocol adapters must normalize native local times to UTC before storage.
+    Without an explicit offset the browser
     parses them as local time and renders the UTC clock time (off by the TZ
     offset) — so attach UTC when tzinfo is missing.
     """
