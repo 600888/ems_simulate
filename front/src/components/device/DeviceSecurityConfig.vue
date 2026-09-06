@@ -55,6 +55,7 @@
           <div class="file-config">
             <div class="file-action-row">
               <el-upload
+                class="certificate-upload"
                 ref="certificateUploadRef"
                 action="#"
                 :auto-upload="true"
@@ -93,6 +94,7 @@
           <div class="file-config">
             <div class="file-action-row">
               <el-upload
+                class="certificate-upload"
                 ref="privateKeyUploadRef"
                 action="#"
                 :auto-upload="true"
@@ -131,6 +133,7 @@
           <div class="file-config">
             <div class="file-action-row">
               <el-upload
+                class="certificate-upload"
                 ref="caCertificateUploadRef"
                 action="#"
                 :auto-upload="true"
@@ -251,10 +254,14 @@ defineExpose({ clearFiles });
 
 .file-action-row {
   display: grid;
-  grid-template-columns: 116px max-content;
+  grid-template-columns: 300px max-content;
   align-items: start;
   column-gap: 12px;
   min-height: 32px;
+}
+
+.certificate-upload {
+  min-width: 0;
 }
 
 .persisted-file {
