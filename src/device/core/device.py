@@ -525,6 +525,13 @@ class Device:
         # GOOSE 控制块只作为发现结果缓存；订阅必须在设备 GOOSE 页面
         # 选择本机网卡并显式确认，不能在发现回调中产生隐式配置写入。
 
+        # 批次内一次性建立去重索引，避免新增每个测点都扫描已有全表。
+        existing_keys = {
+            (point.address, frame_type)
+            for frame_type in range(4)
+            for point in self.point_manager.get_points_by_type(frame_type)
+        }
+
         for dp in discovered_points:
             if dp.get("_type") == "goose":
                 continue
@@ -533,8 +540,7 @@ class Device:
             dp["ref"]
 
             # 检查是否已存在（根据 address + frame_type 去重）
-            existing = self.point_manager.find_point_by_address_and_type(addr, ft)
-            if existing:
+            if (addr, ft) in existing_keys:
                 continue
 
             # 根据 frame_type 创建对应的 BasePoint 对象
@@ -593,6 +599,7 @@ class Device:
             if point:
                 # 添加到测点管理器
                 self.point_manager.add_point(slave_id, point)
+                existing_keys.add((addr, ft))
 
                 # 添加到模拟控制器
                 self.simulation_controller.add_point(point, SimulateMethod.Random, 1)

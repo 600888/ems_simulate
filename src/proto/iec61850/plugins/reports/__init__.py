@@ -125,6 +125,28 @@ class ReportsPlugin:
 
     # ==================== RCB 发现 ====================
 
+    def reuse_discovered_rcbs(self, model, details: dict[str, RCBInfo]) -> list[dict[str, Any]]:
+        """复用本轮在线发现的完整 RCB 响应，仅补读首次失败的控制块。
+
+        保留使能、预留/占用信息及真实 DataSet 引用；显式刷新状态仍实时读取。
+        """
+        rcbs = []
+        self._rcb_detail_cache.clear()
+        self._rcb_type_map.clear()
+        for ld in model.lds:
+            for ln in ld.lns:
+                for rcb in ln.rcb_list:
+                    detail = details.get(rcb.ref)
+                    if detail is not None:
+                        item = self._rcb_info_to_dict(detail)
+                    else:
+                        item = self._get_rcb_info(rcb.ref, rcb.rcb_type, ld.name, ln.name)
+                    self._rcb_detail_cache[rcb.ref] = item
+                    self._rcb_type_map[rcb.ref] = rcb.rcb_type
+                    rcbs.append(item)
+        log.info(f"复用在线发现 RCB: count={len(rcbs)}, reused={sum(r['ref'] in details for r in rcbs)}")
+        return rcbs
+
     def discover_rcbs(self, ld: str = "", ln: str = "") -> list[dict[str, Any]]:
         """发现报告控制块 (BRCB 和 URCB)
 

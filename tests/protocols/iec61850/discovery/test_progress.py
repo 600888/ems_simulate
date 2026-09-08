@@ -64,6 +64,23 @@ def test_remote_discovery_exception_finishes_in_failed_state():
     assert progress["message"] == "browse failed"
 
 
+def test_handler_reuses_online_rcbs_without_a_second_directory_scan():
+    client = Mock()
+    client.connect.return_value = True
+    client.remote_discover_model.return_value = True
+    client._discovered_goose_items = []
+    client.get_discovered_datasets.return_value = []
+    client.get_discovered_points.return_value = []
+    client.get_discovered_rcbs.return_value = [{"ref": "LD0/GGIO1.report01", "rpt_ena": True}]
+    handler = _make_handler(client)
+
+    assert handler.remote_discover_model()
+
+    client.reports.discover_rcbs.assert_not_called()
+    client.get_discovered_rcbs.assert_called_once_with()
+    assert handler.get_discovered_rcbs() == client.get_discovered_rcbs.return_value
+
+
 def test_remote_discovery_stops_when_fresh_mms_association_cannot_be_created():
     client = Mock(is_connected=True)
     client.connect.return_value = False

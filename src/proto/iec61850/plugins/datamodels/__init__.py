@@ -452,8 +452,8 @@ class DataModelsPlugin:
                                 ):
                                     continue
                                 description = str(iec61850.MmsValue_toString(value) or "").strip()
-                                if description:
-                                    descriptions[do_ref] = description
+                                # 空字符串也是成功响应，不应再触发四次逐点补读。
+                                descriptions[do_ref] = description
                         except Exception as exc:
                             log.debug(
                                 f"批量读取 dU 描述失败: domain={domain}, "

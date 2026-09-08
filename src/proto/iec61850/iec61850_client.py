@@ -9,6 +9,7 @@ v3.0 变更: 集成 ModelDiscoveryService，连接时一次发现 → IedModel �
 
 from collections.abc import Callable
 import contextlib
+import time
 from typing import Any, cast
 
 from src.proto.iec61850.plugins.datamodels import DataModelsPlugin
@@ -429,7 +430,7 @@ class IEC61850Client:
         for index, do_ref in enumerate(do_refs, start=1):
             description_das = description_names[do_ref]
             du_desc = batch_descriptions.get(do_ref, "")
-            if not du_desc and description_das != ():
+            if do_ref not in batch_descriptions and description_das != ():
                 du_desc = self._read_du_description(do_ref)
             if du_desc:
                 # O(1) 索引查找取代 O(N) 内层遍历
@@ -455,6 +456,12 @@ class IEC61850Client:
     def get_discovered_datasets(self) -> list[dict[str, Any]]:
         """获取当前已发现的 DataSet 列表"""
         return list(self._registry.discovered_datasets)
+
+    def get_discovered_rcbs(self) -> list[dict[str, Any]]:
+        """复用在线发现阶段已读取的 RCB 属性，供 Handler 整理资源。"""
+        if self.reports and self.model is not None:
+            return self.reports.reuse_discovered_rcbs(self.model, self._discovery.rcb_details)
+        return []
 
     # ===== 浏览方法 (优先使用已发现的 IedModel，MMS 实时浏览作为 fallback) =====
 
@@ -1095,12 +1102,14 @@ class IEC61850Client:
             return False
 
         # 3. 在线发现
+        started = time.perf_counter()
         operation = self._conn.native_operation()
         guard = operation if hasattr(operation, "__enter__") else contextlib.nullcontext(self._conn.connection)
         with guard as conn:
             if conn is None:
                 return False
             model = self._discovery.discover(self._conn, progress=progress)
+        model_finished = time.perf_counter()
         report_conn = getattr(self, "_report_conn", None)
         if report_conn is not None:
             report_conn._discovered_lds = list(self._conn._discovered_lds)
@@ -1110,6 +1119,7 @@ class IEC61850Client:
             discovered = build_registry_from_model(model, self._registry)
             if self.datasets:
                 self.datasets.invalidate_catalog()
+            registry_finished = time.perf_counter()
             if progress:
                 progress("descriptions", 0, 1, "正在读取模型描述")
             # dU 是 DO 的在线描述值，不包含在目录发现结果中，需要在
@@ -1117,11 +1127,18 @@ class IEC61850Client:
             self._fill_du_names(discovered, progress=progress)
             # 将 dU 名称写回模型的 _point_refs，确保缓存文件包含名称
             self._update_model_point_names(model, discovered)
+            descriptions_finished = time.perf_counter()
             cache.set(cache_key, model)
             self._offline_model_source = None
             if progress:
                 progress("descriptions", 1, 1, "模型描述读取完成")
-            log.info(f"远程模型发现完成并已缓存: {cache_key}")
+            log.info(
+                f"远程模型发现完成并已缓存: {cache_key}, "
+                f"model={(model_finished - started) * 1000:.2f}ms, "
+                f"registry={(registry_finished - model_finished) * 1000:.2f}ms, "
+                f"descriptions={(descriptions_finished - registry_finished) * 1000:.2f}ms, "
+                f"cache={(time.perf_counter() - descriptions_finished) * 1000:.2f}ms"
+            )
             return True
 
         log.warning("远程模型发现失败")

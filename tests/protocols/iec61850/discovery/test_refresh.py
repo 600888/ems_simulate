@@ -97,6 +97,26 @@ def test_remote_discovery_forces_online_refresh_and_replaces_registry():
     client._fill_du_names.assert_called_once_with(discovered, progress=None)
 
 
+def test_fill_du_names_does_not_retry_successful_empty_description():
+    """空描述是成功读取的值，只有缺失的结果才允许单点补读。"""
+    client = IEC61850Client.__new__(IEC61850Client)
+    client._registry = Mock()
+    client._discovery = Mock()
+    client._discovery.description_da_names.return_value = ("dU",)
+    client._read_du_description = Mock(return_value="补读描述")
+    datamodels = Mock()
+    datamodels._read_du_descriptions_batch.return_value = {"LD0/MMXU1.Empty": ""}
+    client._plugins = Mock()
+    client._plugins.get.return_value = datamodels
+    points = [{"address": "LD0/MMXU1.Empty.mag.f"}, {"address": "LD0/MMXU1.Missing.mag.f"}]
+
+    client._fill_du_names(points)
+
+    client._read_du_description.assert_called_once_with("LD0/MMXU1.Missing")
+    assert "name" not in points[0]
+    assert points[1]["name"] == "补读描述"
+
+
 def test_remote_discovery_can_reuse_cache_for_internal_callers():
     client = IEC61850Client.__new__(IEC61850Client)
     client.ip = "127.0.0.1"

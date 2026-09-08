@@ -218,7 +218,7 @@ class ModelCache:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             tmp = file_path.with_suffix(".tmp")
             tmp.write_text(
-                json.dumps(data, ensure_ascii=False, indent=2),
+                json.dumps(data, ensure_ascii=False, separators=(",", ":")),
                 encoding="utf-8",
             )
             tmp.replace(file_path)

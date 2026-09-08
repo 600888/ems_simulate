@@ -40,6 +40,7 @@ from ..defs.ln_classes import (
     YX_LN_CLASSES,
 )
 from ..defs.mms_types import MmsType, infer_mms_type_from_path, mms_type_from_native
+from ..defs.types import RCBInfo
 from ..log import log
 from ..plugins.datasets.directory import browse_dataset_members
 from .ied_model import (
@@ -195,6 +196,7 @@ class ModelDiscoveryService:
         self._description_da_cache: dict[str, tuple[str, ...]] = {}
         self._type_probe_cache: dict[tuple[str, str], MmsType] = {}
         self._wire_layout_cache: dict[tuple[str, str], dict[str, tuple[MmsType, tuple[str, ...]]]] = {}
+        self.rcb_details: dict[str, RCBInfo] = {}
         self._type_probe_stats: dict[str, int] = {
             "total": 0,
             "spec": 0,
@@ -217,6 +219,7 @@ class ModelDiscoveryService:
 
     def install_model(self, model: IedModel) -> None:
         """安装从离线 SCL 文档构建的模型。"""
+        self.rcb_details.clear()
         self._model = model
         self._model_timestamp = time.time()
 
@@ -233,6 +236,7 @@ class ModelDiscoveryService:
         self._description_da_cache.clear()
         self._type_probe_cache.clear()
         self._wire_layout_cache.clear()
+        self.rcb_details.clear()
         self._variable_spec_failures = 0
         self._variable_spec_disabled = False
 
@@ -269,6 +273,7 @@ class ModelDiscoveryService:
         self._struct_sub_da_cache.clear()
         self._type_probe_cache.clear()
         self._wire_layout_cache.clear()
+        self.rcb_details.clear()
         self._description_da_cache.clear()
         self._type_probe_stats = {
             "total": 0,
@@ -1230,6 +1235,13 @@ class ModelDiscoveryService:
                 result = call_gil_safe(iec61850, "IedConnection_getRCBValues", conn, nref, rcb)
                 err = (result[1] if len(result) > 1 else 0) if isinstance(result, (list, tuple)) else result
                 if err == iec61850.IED_ERROR_OK:
+                    # 保存同一响应的完整 Python 快照，避免发现结束后逐 RCB 重读。
+                    from ..plugins.reports.brcb import BrcbHandler
+                    from ..plugins.reports.urcb import UrcbHandler
+
+                    ref = f"{ln_ref}.{rcb_name}"
+                    parser = BrcbHandler if fc_seg == "BR" else UrcbHandler
+                    self.rcb_details[ref] = parser._parse_rcb(rcb, ref, "BRCB" if fc_seg == "BR" else "URCB")
                     rpt_id = ""
                     try:
                         value = iec61850.ClientReportControlBlock_getRptId(rcb)

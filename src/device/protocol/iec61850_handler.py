@@ -667,6 +667,7 @@ class IEC61850ClientHandler(ClientHandler):
         # 会把数据模型目录绑定到 association；即使 Python 侧模型缓存已清空，
         # 复用旧连接仍可能继续浏览到切换前的模型。
         self._begin_progress("discover", self.PHASE_CONNECTING, 5, "正在重建 MMS 连接")
+        started = time.perf_counter()
 
         try:
             if self._log:
@@ -677,6 +678,7 @@ class IEC61850ClientHandler(ClientHandler):
             self._ensure_mms_capture_started()
             is_connected = self._client.connect(auto_discover=False)
             self._is_running = is_connected
+            connected_at = time.perf_counter()
             if not is_connected:
                 message = "重新建立 MMS 连接失败"
                 self._finish_progress(False, message)
@@ -705,6 +707,7 @@ class IEC61850ClientHandler(ClientHandler):
                 self._update_progress(self.PHASE_DISCOVERING, percent, message)
 
             success = self._client.remote_discover_model(progress=on_discovery_progress)
+            discovered_at = time.perf_counter()
             if not success:
                 self._finish_progress(False, "远程模型发现失败")
                 return False
@@ -730,12 +733,12 @@ class IEC61850ClientHandler(ClientHandler):
                     )
 
             # 缓存报告控制块
-            self._update_progress(self.PHASE_DISCOVERING, 92, "正在发现报告控制块")
+            self._update_progress(self.PHASE_DISCOVERING, 92, "正在整理报告控制块")
             self._discovered_rcbs.clear()
             client = getattr(self, "_client", None)
             if client and getattr(client, "reports", None):
                 try:
-                    self._discovered_rcbs.extend(client.reports.discover_rcbs())
+                    self._discovered_rcbs.extend(client.get_discovered_rcbs())
                     if self._discovered_rcbs and self._log:
                         self._log.info(f"发现 {len(self._discovered_rcbs)} 个报告控制块")
                 except Exception as e:
@@ -743,6 +746,7 @@ class IEC61850ClientHandler(ClientHandler):
                         self._log.warning(f"缓存 RCB 失败: {e}")
 
             # 通知上层发现的测点
+            resources_at = time.perf_counter()
             self._update_progress(self.PHASE_DISCOVERING, 96, "正在刷新测点")
             if self._on_points_discovered:
                 discovered = self._client.get_discovered_points()
@@ -754,6 +758,14 @@ class IEC61850ClientHandler(ClientHandler):
                             self._log.error(f"处理发现的测点时出错: {e}")
 
             self._model_loaded = True
+            if self._log:
+                self._log.info(
+                    f"IEC61850 discovery stages: connect={(connected_at - started) * 1000:.2f}ms, "
+                    f"model={(discovered_at - connected_at) * 1000:.2f}ms, "
+                    f"resources={(resources_at - discovered_at) * 1000:.2f}ms, "
+                    f"register={(time.perf_counter() - resources_at) * 1000:.2f}ms, "
+                    f"total={(time.perf_counter() - started) * 1000:.2f}ms"
+                )
             self._finish_progress(True, "远程模型发现完成")
             return True
         except Exception as e:
