@@ -27,6 +27,80 @@ def test_proxy_sps_status_value_remains_boolean():
     assert da.iec_type == "boolean"
 
 
+@pytest.mark.parametrize("fc", ["ST", "MX"])
+def test_online_discovery_uses_directory_fc_for_quality_and_time(monkeypatch, fc):
+    """状态/测量共用 q/t 名称，必须使用在线 FC，且不增加类型探测。"""
+    fake_native = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IedConnection_getDataDirectoryFC=lambda _conn, _ref: (["dU[DC]", f"q[{fc}]", "stVal[ST]", f"t[{fc}]"], 0),
+    )
+    monkeypatch.setattr(discovery_module, "iec61850", fake_native)
+    monkeypatch.setattr(discovery_module, "get_list_from_linked_list", list)
+    service = ModelDiscoveryService()
+    das = service._discover_data_attributes(object(), "LD0/MMBC1.RackState", "RackState", "MMBC1", 0)
+
+    assert {da.name: da.fc for da in das} == {"dU": "DC", "q": fc, "stVal": "ST", "t": fc}
+    assert service._description_da_cache["LD0/MMBC1.RackState"] == ("dU",)
+
+
+def test_online_discovery_legacy_directory_infers_status_metadata_from_main_value(monkeypatch):
+    """旧绑定没有 FC 目录时，测量 LN 中的状态 DO 也应使用 ST 品质/时标。"""
+    monkeypatch.setattr(
+        discovery_module,
+        "iec61850",
+        SimpleNamespace(
+            IED_ERROR_OK=0,
+            IedConnection_getDataDirectory=lambda _conn, _ref: (["q", "stVal", "t"], 0),
+        ),
+    )
+    monkeypatch.setattr(discovery_module, "get_list_from_linked_list", list)
+    das = ModelDiscoveryService()._discover_data_attributes(object(), "LD0/MMBC1.RackState", "RackState", "MMBC1", 0)
+    assert all(da.fc == "ST" for da in das if da.name in ("q", "stVal", "t"))
+
+
+def test_wire_spec_restores_status_order_and_is_reused_per_ln_fc(monkeypatch):
+    """字母序 q/stVal/t 必须恢复为服务端 stVal/q/t，两次 DO 查询只取一次 LN 规格。"""
+    from src.proto.iec61850.model.ied_model import DARef
+
+    def node(name, mms_type, *children):
+        return SimpleNamespace(name=name, mms_type=mms_type, children=children)
+
+    spec = node(
+        "GGIO1", 1, *(node(name, 1, node("stVal", 4), node("q", 3), node("t", 14)) for name in ("State1", "State2"))
+    )
+    requests, destroyed = [], []
+
+    def get_spec(_conn, ref, fc):
+        requests.append((ref, fc))
+        return spec, 0
+
+    fake_native = SimpleNamespace(
+        IED_ERROR_OK=0,
+        IEC61850_FC_ST=0,
+        MMS_STRUCTURE=1,
+        MMS_INTEGER=4,
+        MMS_BIT_STRING=3,
+        MMS_UTC_TIME=14,
+        IedConnection_getVariableSpecification=get_spec,
+        MmsVariableSpecification_getType=lambda item: item.mms_type,
+        MmsVariableSpecification_getName=lambda item: item.name,
+        MmsVariableSpecification_getSize=lambda item: len(item.children),
+        MmsVariableSpecification_getChildSpecificationByIndex=lambda item, index: item.children[index],
+        MmsVariableSpecification_destroy=destroyed.append,
+    )
+    monkeypatch.setattr(discovery_module, "iec61850", fake_native)
+    service = ModelDiscoveryService()
+    attributes = [DARef(name=name, path=name, fc="ST") for name in ("q", "stVal", "t")]
+    for name in ("State1", "State2"):
+        das = service._apply_wire_layout(object(), f"LD0/GGIO1.{name}", attributes)
+        assert [da.name for da in das] == ["stVal", "q", "t"]
+        assert [da.mms_type for da in das] == ["MMS_INTEGER", "MMS_BIT_STRING", "MMS_UTC_TIME"]
+    assert requests == [("LD0/GGIO1", 0)]
+    assert destroyed == [spec]
+    service.invalidate()
+    assert not service._wire_layout_cache
+
+
 def test_online_discovery_keeps_intrinsic_status_attributes(monkeypatch):
     directories = {
         "LD0/LLN0.Mod": ["stVal", "q", "t", "ctlModel", "Oper"],

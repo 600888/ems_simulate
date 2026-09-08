@@ -209,6 +209,8 @@ class DataSetsPlugin:
         started = time.perf_counter()
         catalog = self._get_catalog()
         plan = DatasetReadPlanner(catalog).plan(requested)
+        planning_ms = (time.perf_counter() - started) * 1000
+        dataset_started = time.perf_counter()
         dataset_total = len(plan.datasets)
         self._emit_progress(progress, "planning", 0, max(dataset_total, 1), f"计划读取 {dataset_total} 个 DataSet")
         results, request_count = self._execute_plan(plan.datasets, catalog, progress=progress)
@@ -232,7 +234,11 @@ class DataSetsPlugin:
             request_count += retry_count
             missing = tuple(address for address in requested if address not in results)
 
+        dataset_ms = (time.perf_counter() - dataset_started) * 1000
+        fallback_started = time.perf_counter()
         fallback_count = len(missing)
+        uncovered_addresses = set(plan.uncovered)
+        uncovered_count = sum(address in uncovered_addresses for address in missing)
         if missing:
             self._emit_progress(
                 progress,
@@ -245,6 +251,7 @@ class DataSetsPlugin:
             results.update(fallback(missing, missing_fc))
             self._emit_progress(progress, "fallback", 1, 1, f"回退读取完成，共 {fallback_count} 个测点")
 
+        fallback_ms = (time.perf_counter() - fallback_started) * 1000
         failed = sum(1 for address in requested if address not in results)
         elapsed_ms = (time.perf_counter() - started) * 1000
         stats = DatasetBatchStats(
@@ -260,7 +267,9 @@ class DataSetsPlugin:
             "IEC61850 DataSet batch: "
             f"requested={stats.requested}, datasets={stats.datasets}, covered={stats.covered}, "
             f"fallback={stats.fallback}, failed={stats.failed}, requests={stats.mms_requests}, "
-            f"elapsed={stats.elapsed_ms:.2f}ms"
+            f"elapsed={stats.elapsed_ms:.2f}ms, planning={planning_ms:.2f}ms, "
+            f"dataset_read={dataset_ms:.2f}ms, fallback_read={fallback_ms:.2f}ms, "
+            f"uncovered={uncovered_count}, covered_but_failed={fallback_count - uncovered_count}"
         )
         # DataSet 可能包含本批未请求的其他成员。公开批读接口只返回调用方
         # 请求的地址，避免上层 Handler 意外生成额外 point.code。
@@ -291,7 +300,7 @@ class DataSetsPlugin:
                 reason_counts: dict[str, int] = {}
                 for error in read_result.errors:
                     reason_counts[error.reason] = reason_counts.get(error.reason, 0) + 1
-                log.debug(
+                log.warning(
                     f"DataSet partial read: ref={dataset.ref}, values={len(read_result.values)}, "
                     f"errors={len(read_result.errors)}, reasons={reason_counts}"
                 )

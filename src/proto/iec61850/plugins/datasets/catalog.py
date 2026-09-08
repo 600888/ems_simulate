@@ -117,7 +117,15 @@ class DatasetCatalog:
         """从注册表、统一模型和兼容字典构造强类型目录。"""
         address_to_ref = cls._address_index(registry, model_name)
         registered_refs = frozenset(address_to_ref.values())
-        leaf_index = cls._model_leaf_index(model, model_name)
+        model_exact, model_children = cls._projection_index(cls._model_leaf_index(model, model_name))
+        registry_exact, registry_children = cls._projection_index(
+            ((ref, "") for ref in dict.fromkeys(address_to_ref.values())), value_only=True
+        )
+        unverified = {
+            (normalize_point_ref(do.ref, model_name), fc)
+            for _, _, do in (model.iter_dos() if model is not None else ())
+            for fc in getattr(do, "unverified_fcs", ())
+        }
         descriptors: list[DatasetDescriptor] = []
 
         for raw_dataset in datasets:
@@ -131,7 +139,20 @@ class DatasetCatalog:
                 if not member_ref:
                     continue
                 fc = str(raw_member.get("fc", "") or suffix_fc).upper()
-                leaf_refs = cls._project_member(member_ref, fc, leaf_index, address_to_ref.values())
+                leaf_refs = (
+                    model_exact.get((member_ref, fc))
+                    or model_children.get((member_ref, fc))
+                    or registry_exact.get((member_ref, ""))
+                    or registry_children.get((member_ref, ""))
+                    or ()
+                )
+                # 目录可确认标量地址，但无规格时不能证明 DO/结构值的字段顺序。
+                # 保留精确标量读取；结构成员交给已有单点回退，避免错位写值。
+                do_ref = ".".join(member_ref.split(".", 2)[:2])
+                if not model_exact.get((member_ref, fc)) and (
+                    (do_ref, fc) in unverified or (not fc and any(root == do_ref for root, _ in unverified))
+                ):
+                    leaf_refs = ()
                 scalar_candidates = tuple(ref for ref in leaf_refs if ref in registered_refs)
                 scalar_ref = scalar_candidates[0] if len(scalar_candidates) == 1 else ""
                 members.append(
@@ -211,44 +232,31 @@ class DatasetCatalog:
         return [(ref, fc)] if path else []
 
     @staticmethod
-    def _project_member(
-        member_ref: str,
-        fc: str,
-        model_leaves: tuple[tuple[str, str], ...],
-        point_refs: Iterable[str],
-    ) -> tuple[str, ...]:
-        """把 FCDA 投影为叶子引用；不能由模型证明时只接受精确匹配。"""
-        exact_model = tuple(ref for ref, leaf_fc in model_leaves if ref == member_ref and (not fc or leaf_fc == fc))
-        if exact_model:
-            return exact_model
+    def _projection_index(
+        leaves: Iterable[tuple[str, str]], *, value_only: bool = False
+    ) -> tuple[dict[tuple[str, str], tuple[str, ...]], dict[tuple[str, str], tuple[str, ...]]]:
+        """一次遍历建立精确/祖先引用索引，保留模型线序和 FC 隔离。
 
-        aggregate = tuple(
-            ref for ref, leaf_fc in model_leaves if ref.startswith(f"{member_ref}.") and (not fc or leaf_fc == fc)
+        每个成员查表即可投影，避免数千个成员分别全表扫描上万叶子。
+        无模型的注册表兼容路径仍只按值属性展开，精确匹配不受此限制。
+        """
+        exact: dict[tuple[str, str], list[str]] = {}
+        children: dict[tuple[str, str], list[str]] = {}
+        for ref, fc in leaves:
+            fcs = (fc, "") if fc else ("",)
+            for key_fc in fcs:
+                exact.setdefault((ref, key_fc), []).append(ref)
+            if value_only and ref.rsplit(".", 1)[-1] not in _VALUE_TERMINALS:
+                continue
+            parent = ref
+            while "." in parent:
+                parent = parent.rsplit(".", 1)[0]
+                for key_fc in fcs:
+                    children.setdefault((parent, key_fc), []).append(ref)
+        return (
+            {key: tuple(refs) for key, refs in exact.items()},
+            {key: tuple(refs) for key, refs in children.items()},
         )
-        if aggregate:
-            return aggregate
-
-        # 仅从 ICD 加载时可能没有 IedModel。FCDA 与注册表叶子精确匹配时
-        # 不存在结构体展开或线序错位风险，因此厂商自定义 DA 以及 q/t 等
-        # 标量元数据都可以安全覆盖。名称白名单只用于下方的结构体推测。
-        exact_registry = tuple(dict.fromkeys(ref for ref in point_refs if ref == member_ref))
-        if exact_registry:
-            return exact_registry
-
-        # 无模型时，将结构体级成员投影到注册的叶子引用上。
-        # 仅包含值属性（如 mag.f / stVal / ctlVal），排除 q/t/dU 等元数据，
-        # 与发现模型时 _wire_leaves 只投影值路径的行为保持一致。
-        aggregate_registry = tuple(
-            dict.fromkeys(
-                ref
-                for ref in point_refs
-                if ref.startswith(f"{member_ref}.") and ref.rsplit(".", 1)[-1] in _VALUE_TERMINALS
-            )
-        )
-        if aggregate_registry:
-            return aggregate_registry
-
-        return ()
 
     def addresses_for_ref(self, ref: str) -> tuple[str, ...]:
         """查找一个规范 MMS 引用对应的全部应用测点地址。"""
@@ -273,12 +281,14 @@ class DatasetReadPlanner:
             for address in requested
             for dataset in self._catalog.point_to_datasets.get(address, ())
         }
+        candidate_addresses: dict[str, set[str]] = {ref: set() for ref in candidates}
+        for address in requested:
+            for dataset in self._catalog.point_to_datasets.get(address, ()):
+                candidate_addresses[dataset.ref].add(address)
         while remaining and candidates:
             ranked: list[tuple[int, int, str, DatasetDescriptor, set[str]]] = []
             for dataset in candidates.values():
-                covered = {
-                    address for address in remaining if dataset in self._catalog.point_to_datasets.get(address, ())
-                }
+                covered = remaining.intersection(candidate_addresses[dataset.ref])
                 if covered:
                     ranked.append((-len(covered), len(dataset.members), dataset.ref, dataset, covered))
             if not ranked:

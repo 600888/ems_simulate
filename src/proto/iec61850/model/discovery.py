@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import contextlib
 from contextlib import contextmanager
+from dataclasses import replace
 import time
 from typing import Any, Protocol
 
@@ -193,6 +194,7 @@ class ModelDiscoveryService:
         self._struct_sub_da_cache: dict[str, list[DARef]] = {}
         self._description_da_cache: dict[str, tuple[str, ...]] = {}
         self._type_probe_cache: dict[tuple[str, str], MmsType] = {}
+        self._wire_layout_cache: dict[tuple[str, str], dict[str, tuple[MmsType, tuple[str, ...]]]] = {}
         self._type_probe_stats: dict[str, int] = {
             "total": 0,
             "spec": 0,
@@ -230,6 +232,7 @@ class ModelDiscoveryService:
         self._struct_sub_da_cache.clear()
         self._description_da_cache.clear()
         self._type_probe_cache.clear()
+        self._wire_layout_cache.clear()
         self._variable_spec_failures = 0
         self._variable_spec_disabled = False
 
@@ -265,6 +268,7 @@ class ModelDiscoveryService:
         # 与强制重新发现必须使用相同的在线遍历状态。
         self._struct_sub_da_cache.clear()
         self._type_probe_cache.clear()
+        self._wire_layout_cache.clear()
         self._description_da_cache.clear()
         self._type_probe_stats = {
             "total": 0,
@@ -695,6 +699,11 @@ class ModelDiscoveryService:
                     cdc=cdc,
                     frame_type=frame_type,
                     das=tuple(das),
+                    unverified_fcs=tuple(
+                        fc
+                        for fc in dict.fromkeys(da.fc for da in das)
+                        if do_ref not in self._wire_layout_cache.get((ln_ref, fc), {})
+                    ),
                 )
             )
             if progress is not None:
@@ -724,9 +733,17 @@ class ModelDiscoveryService:
         优先保留 MMS 目录返回的全部固有属性；当目录缺少 q/t/dU 时再补齐默认项。
         """
         da_refs = []
+        directory_fcs: dict[str, str] = {}
 
         try:
-            result = call_gil_safe(iec61850, "IedConnection_getDataDirectory", conn, do_ref)
+            # FC 目录与普通目录复用已浏览的 MMS 模型，不增加逐 DA 类型探测。
+            # q/t 的 FC 随所属对象变化，不能固定按名称推断为 MX。
+            directory_function = (
+                "IedConnection_getDataDirectoryFC"
+                if callable(getattr(iec61850, "IedConnection_getDataDirectoryFC", None))
+                else "IedConnection_getDataDirectory"
+            )
+            result = call_gil_safe(iec61850, directory_function, conn, do_ref)
             if isinstance(result, (list, tuple)) and len(result) >= 2:
                 da_list, error = result[0], result[1]
                 if error != iec61850.IED_ERROR_OK:
@@ -734,6 +751,15 @@ class ModelDiscoveryService:
             else:
                 da_list = result
             da_names = get_list_from_linked_list(da_list) if da_list is not None else []
+            normalized_names = []
+            for entry in da_names:
+                da_name, separator, suffix = entry.rpartition("[")
+                if separator and suffix.endswith("]"):
+                    directory_fcs[da_name] = suffix[:-1].upper()
+                    normalized_names.append(da_name)
+                else:
+                    normalized_names.append(entry)
+            da_names = normalized_names
             if da_list is not None:
                 self._description_da_cache[do_ref] = tuple(name for name in ("dU", "d") if name in da_names)
         except Exception as e:
@@ -746,7 +772,9 @@ class ModelDiscoveryService:
 
             # 解析 DA 信息 (fc, iec_type, path)
             da_info = self._resolve_da_info(da_name, do_name, ln_name, do_frame_type)
-            da_fc = da_info.fc
+            da_fc = directory_fcs.get(da_name, da_info.fc)
+            if da_name in ("q", "t") and da_name not in directory_fcs and "stVal" in da_names:
+                da_fc = "ST"
             specified_type = None
             if not da_fc:
                 da_fc, specified_type = self._probe_mms_type_across_fcs(
@@ -877,7 +905,81 @@ class ModelDiscoveryService:
                 )
             )
 
-        return da_refs
+        return self._apply_wire_layout(conn, do_ref, da_refs)
+
+    def _get_wire_layout(self, conn, ln_ref: str, fc: str) -> dict[str, tuple[MmsType, tuple[str, ...]]]:
+        """每个 LN/FC 只查询一次规格，取得真实类型及结构字段顺序。
+
+        MMS 名称目录按字母排序，不能作为结构值的线序。缓存只持有 Python
+        元数据，原生规格（含全部子规格）在本次查询结束后统一释放。
+        """
+        key = (ln_ref, fc)
+        if key in self._wire_layout_cache:
+            return self._wire_layout_cache[key]
+        layout: dict[str, tuple[MmsType, tuple[str, ...]]] = {}
+        self._wire_layout_cache[key] = layout
+        required = (
+            "IedConnection_getVariableSpecification",
+            "MmsVariableSpecification_getType",
+            "MmsVariableSpecification_getSize",
+            "MmsVariableSpecification_getName",
+            "MmsVariableSpecification_getChildSpecificationByIndex",
+            "MmsVariableSpecification_destroy",
+        )
+        fc_value = getattr(iec61850, f"IEC61850_FC_{fc}", None)
+        if fc_value is None or not all(callable(getattr(iec61850, name, None)) for name in required):
+            return layout
+        spec = None
+        try:
+            spec, error = call_gil_safe(iec61850, "IedConnection_getVariableSpecification", conn, ln_ref, fc_value)
+            if error != iec61850.IED_ERROR_OK or spec is None:
+                return layout
+
+            def collect(node, ref: str) -> None:
+                """按规格的原始序号复制字段名，不排序、不猜测同类型字段的位置。"""
+                mms_type = mms_type_from_native(int(iec61850.MmsVariableSpecification_getType(node)), iec61850)
+                children = []
+                if mms_type is MmsType.STRUCTURE:
+                    for index in range(int(iec61850.MmsVariableSpecification_getSize(node))):
+                        child = iec61850.MmsVariableSpecification_getChildSpecificationByIndex(node, index)
+                        name = str(iec61850.MmsVariableSpecification_getName(child))
+                        children.append(name)
+                        collect(child, f"{ref}.{name}")
+                layout[ref] = (mms_type, tuple(children))
+
+            collect(spec, ln_ref)
+        except Exception as exc:
+            layout.clear()
+            log.debug(f"读取 LN/FC 结构规格失败: ref={ln_ref}, fc={fc}, error={exc}")
+        finally:
+            if spec is not None:
+                iec61850.MmsVariableSpecification_destroy(spec)
+        return layout
+
+    def _apply_wire_layout(self, conn, do_ref: str, das: list[DARef]) -> list[DARef]:
+        """以已缓存规格校正 DA/BDA 顺序与类型，保留现有业务路径。"""
+        ln_ref = do_ref.split(".", 1)[0]
+        ordered: list[DARef] = []
+        for fc in dict.fromkeys(da.fc for da in das):
+            layout = self._get_wire_layout(conn, ln_ref, fc)
+
+            def reorder(parent_ref: str, attributes: list[DARef], wire_layout=layout) -> list[DARef]:
+                """递归同步已发现节点的线序；没有规格的节点维持原样。"""
+                child_order = wire_layout.get(parent_ref, (MmsType.UNKNOWN, ()))[1]
+                ranks = {name: index for index, name in enumerate(child_order)}
+                result = []
+                for da in sorted(attributes, key=lambda item: ranks.get(item.name, len(ranks))):
+                    ref = f"{parent_ref}.{da.name}"
+                    metadata = wire_layout.get(ref)
+                    if metadata is None:
+                        result.append(da)
+                        continue
+                    sub_das = tuple(reorder(ref, list(da.sub_das))) if da.sub_das else ()
+                    result.append(replace(da, mms_type=metadata[0], sub_das=sub_das))
+                return result
+
+            ordered.extend(reorder(do_ref, [da for da in das if da.fc == fc]))
+        return ordered
 
     def _discover_sub_das(
         self,

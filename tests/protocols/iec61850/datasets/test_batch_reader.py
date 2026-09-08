@@ -184,6 +184,31 @@ def test_icd_import_aggregate_registry_filters_q_t_du():
     assert DatasetReadPlanner(catalog).plan(["power_f", "power_i"]).uncovered == ()
 
 
+def test_unverified_wire_order_allows_exact_scalar_but_rejects_aggregate_projection():
+    """规格查询失败时宁可回退，不把字母序字段与结构值按位置错误配对。"""
+    root = "IEDLD0/GGIO1.State"
+    data_object = DORef(
+        name="State",
+        ref=root,
+        unverified_fcs=("ST",),
+        das=tuple(DARef(name=name, path=name, fc="ST") for name in ("q", "stVal", "t")),
+    )
+    # 缓存持久化后仍须保持此保护，不能在重启后再次信任名称目录的顺序。
+    data_object = DORef.from_dict(data_object.to_dict())
+    model = IedModel(lds=(LDModel(name="IEDLD0", lns=(LNModel(name="GGIO1", dos=(data_object,)),)),))
+    catalog = DatasetCatalog.from_sources(
+        [
+            {"ref": "IEDLD0/LLN0$aggregate", "members": [{"ref": root, "fc": "ST"}]},
+            {"ref": "IEDLD0/LLN0$scalar", "members": [{"ref": f"{root}.stVal", "fc": "ST"}]},
+        ],
+        registry=SimpleNamespace(point_refs={"status": f"{root}.stVal"}),
+        model=model,
+    )
+    assert catalog.datasets[0].members[0].leaf_refs == ()
+    assert catalog.datasets[1].members[0].leaf_refs == (f"{root}.stVal",)
+    assert [ds.name for ds in DatasetReadPlanner(catalog).plan(["status"]).datasets] == ["scalar"]
+
+
 class _FakeValue:
     """供原生传输测试使用的最小 MMS 值。"""
 

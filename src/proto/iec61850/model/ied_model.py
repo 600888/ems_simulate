@@ -86,6 +86,8 @@ class DORef:
     cdc: str = ""
     frame_type: int = -1
     das: tuple[DARef, ...] = ()
+    # 在线名称目录不能证明结构线序；规格不可用的 FC 禁止按位置投影。
+    unverified_fcs: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         """把DORef转换为可序列化字典。"""
@@ -95,6 +97,7 @@ class DORef:
             "cdc": self.cdc,
             "frameType": self.frame_type,
             "dataAttributes": [da.to_dict() for da in self.das],
+            **({"unverifiedFCs": list(self.unverified_fcs)} if self.unverified_fcs else {}),
         }
 
     @classmethod
@@ -107,6 +110,7 @@ class DORef:
             cdc=data.get("cdc", ""),
             frame_type=data.get("frameType", -1),
             das=das,
+            unverified_fcs=tuple(data.get("unverifiedFCs", ())),
         )
 
     @property
