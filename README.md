@@ -108,7 +108,7 @@ EMS Simulate 已上架微软应用商店，可直接在 Windows 10/11 上安装�
 
 客户端支持单点、批量和后台自动读取。自动读取在切换页面后继续运行，回到设备页面可恢复查看任务状态；停止设备时结束对应任务。
 
-> ![](E:\github_project\ems_simulate\resources\img\point-auto-read.png)
+> ![](resources/img/point-auto-read.png)
 
 #### 测点映射、公式与变化追踪
 
@@ -116,7 +116,7 @@ EMS Simulate 已上架微软应用商店，可直接在 Windows 10/11 上安装�
 
 > ![](resources/img/point-mapping.png)
 
-> ![](E:\github_project\ems_simulate\resources\img\point-change-history.png)
+> ![](resources/img/point-change-history.png)
 
 #### 应用设置与日志
 
@@ -208,7 +208,7 @@ IEC104 的串行远动协议版本，与 IEC104 共用 ASDU、四遥点表、品
 ##### 报文查看
 
 > 📷 **IEC101 报文查看** — 展示 FT1.2 收发帧及链路层、ASDU 字段解析。
-![](E:\github_project\ems_simulate\resources\img\iec101-message.png)
+![](resources/img/iec101-message.png)
 
 ---
 
@@ -346,7 +346,7 @@ IEC104 的串行远动协议版本，与 IEC104 共用 ASDU、四遥点表、品
 
 > 📷 **DNP3 报文查看** — 展示收发方向、链路地址、应用功能码、对象组/变体及原始字节。
 >
-> ![](resources\img\dnp3-message.png)
+> ![](resources/img/dnp3-message.png)
 
 ---
 
