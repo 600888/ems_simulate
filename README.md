@@ -288,14 +288,14 @@ IEC104 的串行远动协议版本，与 IEC104 共用 ASDU、四遥点表、品
 
 > 📷 **IEC61850 定值组** — 展示当前激活组、编辑组、定值列表及操作结果。
 >
-> ![](E:\github_project\ems_simulate\resources\img\iec61850-setting-groups.png)
+> ![](resources/img/iec61850-setting-groups.png)
 
 
 ##### Logs 日志服务
 
 管理日志控制块
 
-![](E:\github_project\ems_simulate\resources\img\iec61850-logs.png)
+![](resources/img/iec61850-logs.png)
 
 
 ##### SCL 文件管理与图形化建模
