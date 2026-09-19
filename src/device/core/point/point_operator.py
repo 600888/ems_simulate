@@ -546,8 +546,7 @@ class PointOperator:
             self._pm.add_point(slave_id, point)
 
             # 4. 添加到模拟控制器
-            self._device.simulation_controller.add_point(point, SimulateMethod.Random, 1)
-            self._device.simulation_controller.set_point_status(point, True)
+            self._device.simulation_controller.add_point(point, SimulateMethod.Random, 1, is_running=True)
 
             # 5. 添加到协议处理器
             if self._handler:
@@ -617,8 +616,7 @@ class PointOperator:
                     self._pm.add_point(slave_id, point)
 
                 # 4. 添加到模拟控制器
-                self._device.simulation_controller.add_point(point, SimulateMethod.Random, 1)
-                self._device.simulation_controller.set_point_status(point, True)
+                self._device.simulation_controller.add_point(point, SimulateMethod.Random, 1, is_running=True)
 
                 memory_points.append(point)
 

@@ -453,8 +453,7 @@ class Device:
                 self.point_manager.add_point(slave_id, point)
 
                 # 添加到模拟控制器
-                self.simulation_controller.add_point(point, SimulateMethod.Random, 1)
-                self.simulation_controller.set_point_status(point, True)
+                self.simulation_controller.add_point(point, SimulateMethod.Random, 1, is_running=True)
 
                 added_count += 1
 
@@ -602,8 +601,7 @@ class Device:
                 existing_keys.add((addr, ft))
 
                 # 添加到模拟控制器
-                self.simulation_controller.add_point(point, SimulateMethod.Random, 1)
-                self.simulation_controller.set_point_status(point, True)
+                self.simulation_controller.add_point(point, SimulateMethod.Random, 1, is_running=True)
 
                 added_count += 1
         if added_count > 0:
@@ -1178,8 +1176,7 @@ class Device:
     def initSimulationPointList(self) -> None:
         """初始化模拟点列表"""
         for point in self.point_manager.get_all_points():
-            self.simulation_controller.add_point(point, SimulateMethod.Random, 1)
-            self.simulation_controller.set_point_status(point, True)
+            self.simulation_controller.add_point(point, SimulateMethod.Random, 1, is_running=True)
 
     def setSpecialDataPointValues(self) -> None:
         """设置特殊数据点值（子类可重写）"""

@@ -101,6 +101,10 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         if old_device is not None and old_auto_read_status.get("state") == "running"
         else None
     )
+    previous_simulation_config = (
+        old_device.simulation_controller.snapshot_configuration() if old_device is not None else None
+    )
+    was_simulating = old_device.isSimulationRunning() if old_device is not None else False
     channel = await asyncio.to_thread(ChannelService.get_channel_by_id, channel_id)
     if not channel:
         raise NotFoundError(f"通道 {channel_id} 不存在")
@@ -151,6 +155,14 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
 
     new_device = await asyncio.to_thread(build_device)
 
+    same_protocol = old_device is not None and old_device.protocol_type == channel_protocol_type
+    if same_protocol and previous_simulation_config is not None:
+        await asyncio.to_thread(
+            new_device.simulation_controller.restore_configuration,
+            previous_simulation_config,
+            defer_missing=channel_protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client),
+        )
+
     # 需要在新实例启动前停止旧实例（释放端口/连接）的场景
     needs_stop_before_start = is_start and (
         is_client_protocol(channel_protocol_type)
@@ -198,6 +210,9 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
 
     if is_start and previous_auto_read_config is not None:
         await new_device.start_auto_read(previous_auto_read_config)
+
+    if is_start and same_protocol and was_simulating and new_device.is_protocol_running():
+        new_device.startSimulation()
 
     log.info(f"设备 {device_name} 实例已更新 (启动状态: {is_start})")
     return new_device
