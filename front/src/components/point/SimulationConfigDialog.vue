@@ -290,7 +290,10 @@
                   :loading="simToggling"
                   :disabled="
                     (!selectedLeaves.length && !simRunning) ||
-                    (!deviceRunning && !simRunning)
+                    (!deviceRunning && !simRunning) ||
+                    loading ||
+                    saving ||
+                    !configLoaded
                   "
                   @click="toggleSimulation"
                 >
@@ -418,7 +421,12 @@
       <el-button @click="emit('update:modelValue', false)">
         {{ t("common.cancel") }}
       </el-button>
-      <el-button type="primary" :loading="saving" @click="handleSave">
+      <el-button
+        type="primary"
+        :loading="saving"
+        :disabled="loading || !configLoaded || simToggling"
+        @click="handleSave"
+      >
         {{ t("common.save") }}
       </el-button>
     </template>
@@ -451,17 +459,18 @@ import {
   startSimulation,
   stopSimulation,
   applySimulationConfig,
+  getSimulationConfig,
   type SimulationConfigItem,
 } from "@/api/deviceApi";
 import {
   getPointTree,
-  type DeviceNode,
   type GroupNode,
   type PointLeaf,
 } from "@/api/pointTreeApi";
 import { showErrorOnce } from "@/api/http";
 import { batchPointValues } from "@/api/pointApi";
 import { FRAME_TYPE_TAG_MAP } from "@/constants/table";
+import { notifySimulationConfigChanged } from "@/composables/useSimulationConfigSync";
 
 const { t } = useI18n();
 
@@ -472,14 +481,10 @@ const props = defineProps<{
   deviceRunning?: boolean;
   /** 设备模拟是否运行中（页签2“状态”列展示） */
   simulationRunning?: boolean;
-  /** 父组件暂存的已保存配置（打开时优先回显） */
-  savedConfig: SimulationConfigItem[] | null;
 }>();
 
 const emit = defineEmits<{
   (e: "update:modelValue", v: boolean): void;
-  /** 保存配置：由父组件持有，点"开始模拟"时应用 */
-  (e: "save", config: SimulationConfigItem[]): void;
   /** 模拟开始/停止状态变化（供父组件立即同步外部按钮） */
   (e: "simulation-changed", running: boolean): void;
 }>();
@@ -513,6 +518,7 @@ interface SimTreeGroup {
 // ===== 状态 =====
 
 const loading = ref(false);
+const configLoaded = ref(false);
 const saving = ref(false);
 const keyword = ref("");
 const selectedKeyword = ref("");
@@ -598,7 +604,8 @@ function collectCurrentConfig(): SimulationConfigItem[] {
 
 /** 开启/停止模拟：与主界面按钮一致（开始前应用当前配置） */
 async function toggleSimulation(): Promise<void> {
-  if (simToggling.value) return;
+  if (simToggling.value || saving.value || loading.value) return;
+  if (!simRunning.value && !configLoaded.value) return;
   simToggling.value = true;
   try {
     if (simRunning.value) {
@@ -606,8 +613,7 @@ async function toggleSimulation(): Promise<void> {
       simRunning.value = false;
       emit("simulation-changed", false);
     } else {
-      const config = collectCurrentConfig();
-      await applySimulationConfig(props.deviceName, config);
+      if (!(await saveCurrentConfig())) return;
       await startSimulation(props.deviceName);
       simRunning.value = true;
       emit("simulation-changed", true);
@@ -621,7 +627,8 @@ async function toggleSimulation(): Promise<void> {
 
 function startAutoRefresh(): void {
   stopAutoRefresh();
-  if (!autoRefresh.value || !selectedLeaves.value.length) return;
+  if (!props.modelValue || !autoRefresh.value || !selectedLeaves.value.length)
+    return;
   refreshTimer = setTimeout(async () => {
     try {
       await refreshValues();
@@ -640,7 +647,9 @@ function stopAutoRefresh(): void {
   }
 }
 
-watch([autoRefresh, pollInterval], () => startAutoRefresh());
+watch([autoRefresh, pollInterval, () => props.modelValue], () =>
+  startAutoRefresh(),
+);
 watch(
   () => selectedLeaves.value.length,
   () => {
@@ -686,9 +695,6 @@ watch(
 watch(selectedKeyword, () => {
   currentPage.value = 1;
 });
-
-/** 已保存配置快照（保存后保持回显一致） */
-let savedSnapshot: SimulationConfigItem[] | null = null;
 
 const treeProps = { children: "children", label: "label", value: "id" };
 
@@ -753,47 +759,46 @@ async function handleOpen(): Promise<void> {
   activeTab.value = "select";
   keyword.value = "";
   selectedKeyword.value = "";
-  await loadTree();
-  await nextTick();
-  measureTree();
-  // 回显仅限用户保存过的配置（数量可控）。
-  // 不自动带入后端当前配置：默认状态为"全部测点参与模拟"（2 万点全选会
-  // 一次性渲染海量行导致卡死）；用户未配置时保持全不选，点"开始模拟"
-  // 仍走后端默认逻辑。
-  if (savedSnapshot?.length) {
-    mergeConfig(savedSnapshot);
-  } else {
-    moveAllOut();
+  loading.value = true;
+  configLoaded.value = false;
+  moveAllOut();
+  try {
+    const [, configs] = await Promise.all([
+      loadTree(),
+      getSimulationConfig(props.deviceName),
+    ]);
+    mergeConfig(configs);
+    configLoaded.value = true;
+    await nextTick();
+    measureTree();
+  } catch (error) {
+    showErrorOnce(t("simConfig.loadTreeFailed"));
+    console.error("load simulation config failed:", error);
+  } finally {
+    loading.value = false;
   }
 }
 
 async function loadTree(): Promise<void> {
-  loading.value = true;
-  try {
-    // 后端已按设备名过滤；DLT645 设备的遥测分组由后端完成
-    const tree = await getPointTree(props.deviceName);
-    const deviceNode = tree.find((n) => n.label === props.deviceName);
-    treeData.value = [];
-    defaultExpandedKeys.value = [];
-    if (deviceNode) {
-      const groups: SimTreeGroup[] = [];
-      for (const [index, typeNode] of (deviceNode.children ?? []).entries()) {
-        const group = buildTypeGroup(typeNode, index);
-        if (group.children.length) {
-          groups.push(group);
-        }
+  // 后端已按设备名过滤；DLT645 设备的遥测分组由后端完成
+  const tree = await getPointTree(props.deviceName);
+  const deviceNode = tree.find((n) => n.label === props.deviceName);
+  treeData.value = [];
+  indexTree([]);
+  defaultExpandedKeys.value = [];
+  if (deviceNode) {
+    const groups: SimTreeGroup[] = [];
+    for (const [index, typeNode] of (deviceNode.children ?? []).entries()) {
+      const group = buildTypeGroup(typeNode, index);
+      if (group.children.length) {
+        groups.push(group);
       }
-      treeData.value = groups;
-      indexTree(groups);
-      // 默认只展开"含子组的组"（叶子组折叠），避免 el-tree-v2 在 2 万
-      // 展开节点上每次展开/收起全量重建 flattenTree 导致卡顿
-      defaultExpandedKeys.value = collectExpandKeys(groups);
     }
-  } catch (error) {
-    showErrorOnce(t("simConfig.loadTreeFailed"));
-    console.error("load point tree failed:", error);
-  } finally {
-    loading.value = false;
+    treeData.value = groups;
+    indexTree(groups);
+    // 默认只展开"含子组的组"（叶子组折叠），避免 el-tree-v2 在 2 万
+    // 展开节点上每次展开/收起全量重建 flattenTree 导致卡顿
+    defaultExpandedKeys.value = collectExpandKeys(groups);
   }
 }
 
@@ -1104,15 +1109,16 @@ function setGroupSelected(group: SimTreeGroup, selected: boolean): void {
 /** 按树顺序全量应用勾选集（用于配置回显/移入全部，仅一次 O(N)） */
 function selectCodesInOrder(codes: Set<string>): void {
   selectedCodes.clear();
-  selectedLeaves.value = [];
+  const leaves: SimTreeLeaf[] = [];
   for (const gid of Object.keys(groupSelCount)) groupSelCount[gid] = 0;
   walkLeaves(treeData.value, (leaf) => {
     if (codes.has(leaf.point_code)) {
       selectedCodes.add(leaf.point_code);
       leaf.enabled = true;
-      selectedLeaves.value.push(leaf);
+      leaves.push(leaf);
     }
   });
+  selectedLeaves.value = leaves;
   rebuildGroupCounts();
 }
 
@@ -1184,20 +1190,31 @@ async function refreshValues(): Promise<void> {
 
 // ===== 保存 =====
 
+async function saveCurrentConfig(): Promise<boolean> {
+  const result = await applySimulationConfig(
+    props.deviceName,
+    collectCurrentConfig(),
+  );
+  // 批量接口可能部分成功，已展开的测点面板也需要读取实际生效的配置。
+  notifySimulationConfigChanged(props.deviceName);
+  if (result.failed.length) {
+    showErrorOnce(
+      `${t("pointSimulator.saveFailed")}: ${result.failed.map((item) => `${item.point_code}: ${item.reason}`).join("; ")}`,
+    );
+    return false;
+  }
+  return true;
+}
+
 async function handleSave(): Promise<void> {
+  if (saving.value || loading.value || !configLoaded.value || simToggling.value)
+    return;
   saving.value = true;
   try {
-    const config: SimulationConfigItem[] = selectedLeaves.value.map((leaf) => ({
-      point_code: leaf.point_code,
-      enabled: true,
-      simulate_method: leaf.simulate_method,
-      step: leaf.step,
-      fixed_value: leaf.fixed_value,
-    }));
-    savedSnapshot = config;
-    emit("save", config);
-    // 保存成功后不关闭对话框，顶部轻提示
+    if (!(await saveCurrentConfig())) return;
     ElMessage.success(t("simConfig.saveSuccess"));
+  } catch (error) {
+    console.error("save simulation config failed:", error);
   } finally {
     saving.value = false;
   }

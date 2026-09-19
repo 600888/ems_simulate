@@ -442,7 +442,7 @@ export default {
     noSearchResults: "No matching selected points",
     itemCount: "{count} points",
     autoRefresh: "Auto Refresh",
-    saveSuccess: 'Simulation config saved. Click "Start" to apply.',
+    saveSuccess: "Simulation config saved.",
     selectedCount: "{count} selected",
     noSelected: "Check points on the left to add",
     moveIn: "Move In",

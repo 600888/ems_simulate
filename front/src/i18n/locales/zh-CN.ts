@@ -429,7 +429,7 @@ export default {
     noSearchResults: "未找到匹配的已选测点",
     itemCount: "{count} 个测点",
     autoRefresh: "自动刷新",
-    saveSuccess: '模拟配置已保存，点击"开启模拟"后生效',
+    saveSuccess: "模拟配置已保存",
     selectedCount: "已选 {count} 个测点",
     noSelected: "请从左侧勾选测点",
     moveIn: "移入",

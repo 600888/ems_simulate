@@ -251,10 +251,8 @@
     <SimulationConfigDialog
       v-model="showSimConfigDialog"
       :device-name="routeName"
-      :saved-config="savedSimConfig"
       :device-running="deviceStatus"
       :simulation-running="simulationStatus"
-      @save="handleSaveSimConfig"
       @simulation-changed="(v: boolean) => (simulationStatus = v)"
     />
   </el-col>
@@ -291,12 +289,8 @@ import {
   discoverIEC61850Model,
   checkIEC61850ModelCache,
   loadIEC61850ModelFromCache,
-  applySimulationConfig,
 } from "@/api/deviceApi";
-import type {
-  IEC61850ConnectProgress,
-  SimulationConfigItem,
-} from "@/api/deviceApi";
+import type { IEC61850ConnectProgress } from "@/api/deviceApi";
 import { triggerSidebarRefresh } from "@/composables";
 import {
   acquireAutoRefreshPause,
@@ -453,12 +447,6 @@ const isAnyModelProcessing = computed(
 
 // 测点级模拟配置 Dialog
 const showSimConfigDialog = ref<boolean>(false);
-const savedSimConfig = ref<SimulationConfigItem[] | null>(null);
-
-const handleSaveSimConfig = (config: SimulationConfigItem[]) => {
-  // D1：保存仅暂存前端；点"开始模拟"时再应用
-  savedSimConfig.value = config;
-};
 
 const isDeviceProcessing = ref<boolean>(false);
 const isSimProcessing = ref<boolean>(false);
@@ -730,10 +718,6 @@ const startFunction = async () => {
         simulationStatus.value = false;
       }
     } else {
-      // D1：开始模拟前先应用本地保存的测点模拟配置（未保存过则走后端默认全量模拟）
-      if (savedSimConfig.value !== null) {
-        await applySimulationConfig(routeName.value, savedSimConfig.value);
-      }
       if (await startSimulation(routeName.value)) {
         simulationStatus.value = true;
       }

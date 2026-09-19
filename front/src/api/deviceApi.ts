@@ -116,7 +116,7 @@ export async function getSimulationConfig(
   }
 }
 
-/** 批量应用测点模拟配置（开始模拟前调用） */
+/** 批量应用测点模拟配置（保存或开始模拟时调用） */
 export async function applySimulationConfig(
   deviceName: string,
   points: Pick<
