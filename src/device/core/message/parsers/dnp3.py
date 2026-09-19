@@ -9,7 +9,6 @@ from .common import _fail, _field, _hex, _result, _validation
 
 _PRIMARY_LINK_FUNCTIONS = {
     0: "复位远程链路 (RESET_LINK_STATES)",
-    1: "复位用户进程 (RESET_USER_PROCESS)",
     2: "测试链路状态 (TEST_LINK_STATES)",
     3: "确认用户数据 (CONFIRMED_USER_DATA)",
     4: "无确认用户数据 (UNCONFIRMED_USER_DATA)",
@@ -19,7 +18,7 @@ _SECONDARY_LINK_FUNCTIONS = {
     0: "确认 (ACK)",
     1: "否定确认 (NACK)",
     11: "链路状态 (LINK_STATUS)",
-    14: "不支持 (NOT_SUPPORTED)",
+    15: "不支持 (NOT_SUPPORTED)",
 }
 
 DNP3_FUNCTION_CODES = {
@@ -57,8 +56,6 @@ DNP3_FUNCTION_CODES = {
     129: "响应：成功",
     130: "服务端主动上报 (Unsolicited Response)",
 }
-
-_KNOWN_FUNCTION_CODES = frozenset(DNP3_FUNCTION_CODES)
 
 DNP3_OBJECT_GROUPS = {
     1: "二进制输入",
@@ -107,9 +104,9 @@ def _crc16_dnp3(data: bytes) -> int:
         # 兜底：本地实现（多项式 0x3D65 反向 0xA6BC，初值 0，计算后取反）
         crc = 0x0000
         for byte in data:
-            crc ^= byte << 8
+            crc ^= byte
             for _ in range(8):
-                crc = ((crc << 1) ^ 0x3D65) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+                crc = (crc >> 1) ^ 0xA6BC if crc & 1 else crc >> 1
         return (~crc) & 0xFFFF
 
 
@@ -135,6 +132,8 @@ def parse_dnp3(
     """
     result = _result("DNP3", raw)
     result["role"] = role.lower()
+    if request_context:
+        result["correlation"] = request_context
     fields = result["fields"]
 
     # ---- 链路层 ----
@@ -152,10 +151,19 @@ def parse_dnp3(
 
     ctrl = raw[3]
     fields.append(_field("link_control", "链路控制字", 3, raw[3:4], f"0x{ctrl:02X}", _link_control_desc(ctrl)))
+    primary = bool(ctrl & 0x40)
+    link_function = ctrl & 0x0F
+    functions = _PRIMARY_LINK_FUNCTIONS if primary else _SECONDARY_LINK_FUNCTIONS
+    link_name = functions.get(link_function, f"未知链路功能码 0x{link_function:02X} (PRM={int(primary)})")
+    has_link_data = primary and link_function in (3, 4)
+    result["frame_kind"] = "链路数据帧" if has_link_data else "链路控制帧"
+    result["summary"] = link_name
+    result["purpose"] = "主站→从站" if ctrl & 0x80 else "从站→主站"
+    _validation(result, "链路功能码", link_function in functions, link_name)
 
     # DNP3 帧布局（2 字节地址）：
     #   起始字(2) + length(1) + ctrl(1) + 目的地址(2) + 源地址(2) +
-    #   头CRC(2，对 ctrl+地址) + 用户数据块(≤16字节) + 块CRC(2) ...
+    #   头CRC(2，对前8字节) + 用户数据块(≤16字节) + 块CRC(2) ...
     #  length = 1(ctrl) + 4(地址) + 用户数据字节数
     addr_size = 2
     header_payload_len = 1 + addr_size * 2  # ctrl + 目的地址 + 源地址 = 5，位于 raw[3:8]
@@ -164,6 +172,13 @@ def parse_dnp3(
     user_data_start = header_crc_off + 2  # = 10
     user_data_length = length - header_payload_len
     expected_body_length = user_data_length + 2 * ((user_data_length + 15) // 16)
+    expected_length = user_data_start + expected_body_length
+    _validation(
+        result,
+        "帧长度",
+        len(raw) == expected_length,
+        f"声明帧长度 {expected_length} 字节，实际 {len(raw)} 字节",
+    )
     user_data_raw = raw[user_data_start : user_data_start + expected_body_length]
     if len(user_data_raw) < expected_body_length:
         result["complete"] = False
@@ -179,12 +194,16 @@ def parse_dnp3(
 
     # 头部 CRC 校验：DNP3 链路头 CRC 对整个 8 字节头（起始字+长度+控制字+地址）计算，
     # 与 pydnp3_pure 的 serialize() 一致（compute_crc(header_block)）。
-    _validation(
-        result,
-        "链路头CRC",
-        _check_crc_block(raw, 0, 8),
-        "链路头 CRC 通过",
-    )
+    header_crc_valid = _check_crc_block(raw, 0, 8)
+    fields.append(_field("header_crc", "链路头CRC", 8, raw[8:10], f"0x{int.from_bytes(raw[8:10], 'little'):04X}"))
+    _validation(result, "链路头CRC", header_crc_valid, "链路头 CRC 通过" if header_crc_valid else "链路头 CRC 错误")
+
+    # 链路控制报文本身就是完整报文，不要求传输层或应用层首部。
+    if not has_link_data:
+        _validation(result, "链路控制帧数据长度", user_data_length == 0, "链路控制帧不应携带用户数据")
+        return result
+    if not user_data_length:
+        return _fail(result, f"{link_name}：缺少传输层数据")
 
     # 用户数据块 CRC 校验（每 ≤16 字节一块 + 2 字节 CRC）
     block_errors: list[str] = []
@@ -218,15 +237,13 @@ def parse_dnp3(
         pos += block_data_len + 2
         remaining -= block_data_len
 
-    result["frame_kind"] = "链路数据帧"
-    result["purpose"] = "从站→主站数据" if _link_is_server_data(ctrl) else "链路层数据帧"
-
     # ---- 传输层 / 应用层 ----
     app_offset = 0
-    if _has_transport_header(user_data):
+    # 标准链路用户数据的第一个字节始终为传输控制字，不能靠应用功能码猜测。
+    if user_data:
         transport = user_data[0]
-        transport_fir = bool(transport & 0x80)
-        transport_fin = bool(transport & 0x40)
+        transport_fir = bool(transport & 0x40)
+        transport_fin = bool(transport & 0x80)
         transport_seq = transport & 0x3F
         fields.append(
             _field(
@@ -239,15 +256,17 @@ def parse_dnp3(
             )
         )
         app_offset = 1
-        if not transport_fir:
-            result["frame_kind"] = "传输层后续分段"
-            result["summary"] = f"DNP3传输层后续分段 SEQ={transport_seq}"
+        if not transport_fir or not transport_fin:
+            segment_kind = "首分段" if transport_fir else ("末分段" if transport_fin else "中间分段")
+            result["frame_kind"] = f"传输层{segment_kind}"
+            result["summary"] = f"DNP3传输层{segment_kind} SEQ={transport_seq}"
             result["purpose"] = "传输层分段数据"
             result["complete"] = False
-            result["warnings"].append("当前链路帧不包含应用层首部，需结合前序分段解析")
-            if request_context:
-                result["correlation"] = request_context
+            result["warnings"].append("当前链路帧仅包含应用片段的一部分，需重组传输层分段后解析")
             return result
+
+    if len(user_data) < app_offset + 2:
+        return _fail(result, "DNP3 应用层首部不完整")
 
     if len(user_data) > app_offset:
         app_ctrl = user_data[app_offset]
@@ -285,9 +304,13 @@ def parse_dnp3(
             result["purpose"] = "应用层请求/响应"
             result["frame_kind"] = "应用帧(请求)" if fc < _RESPONSE_FC_START else "应用帧(响应)"
             # IIN（响应帧才有）
+            if fc >= _RESPONSE_FC_START and len(user_data) < app_offset + 4:
+                return _fail(result, "DNP3 响应首部不完整：缺少内部指示(IIN)")
             if fc >= _RESPONSE_FC_START and len(user_data) >= app_offset + 4:
                 iin1, iin2 = user_data[app_offset + 2], user_data[app_offset + 3]
                 iin_desc = _decoded_iin(iin1, iin2)
+                if fc == 129 and iin2 & 0x3F:
+                    result["summary"] = f"响应：{iin_desc}"
                 fields.append(
                     _field(
                         "iin",
@@ -310,8 +333,6 @@ def parse_dnp3(
                 )
                 _append_object_summary(result)
 
-    if request_context:
-        result["correlation"] = request_context
     return result
 
 
@@ -319,30 +340,14 @@ def _link_control_desc(ctrl: int) -> str:
     """将链路控制字解析为中文描述文本。"""
     primary = bool(ctrl & 0x40)
     function = ctrl & 0x0F
-    parts = ["主站方向" if ctrl & 0x80 else "从站方向", f"PRM={int(primary)}"]
+    parts = ["主站→从站" if ctrl & 0x80 else "从站→主站", f"PRM={int(primary)}"]
     if primary:
         parts.extend([f"FCB={int(bool(ctrl & 0x20))}", f"FCV={int(bool(ctrl & 0x10))}"])
-        parts.append(_PRIMARY_LINK_FUNCTIONS.get(function, f"主站功能码0x{function:02X}"))
+        parts.append(_PRIMARY_LINK_FUNCTIONS.get(function, f"启动站功能码0x{function:02X}"))
     else:
         parts.extend([f"DFC={int(bool(ctrl & 0x10))}"])
-        parts.append(_SECONDARY_LINK_FUNCTIONS.get(function, f"从站功能码0x{function:02X}"))
+        parts.append(_SECONDARY_LINK_FUNCTIONS.get(function, f"从动站功能码0x{function:02X}"))
     return " ".join(parts)
-
-
-def _link_is_server_data(ctrl: int) -> bool:
-    """判断控制字是否为从站方向、PRM=0 的确认数据帧。"""
-    # 从站发出的数据帧（主站PRM=1，从站PRM=0）
-    return (ctrl & 0x80) == 0 and (ctrl & 0x40) == 0 and (ctrl & 0x0F) == 3
-
-
-def _has_transport_header(user_data: bytes | bytearray) -> bool:
-    """兼容历史上直接把应用层数据放入链路帧的测试/抓包。"""
-    if len(user_data) < 3:
-        return False
-    transport = user_data[0]
-    app_control = user_data[1]
-    function_code = user_data[2]
-    return bool(transport & 0x80) and (app_control & 0xC0) == 0xC0 and function_code in _KNOWN_FUNCTION_CODES
 
 
 def _user_wire_offset(user_data_start: int, logical_offset: int) -> int:

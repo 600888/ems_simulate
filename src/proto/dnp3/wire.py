@@ -40,8 +40,8 @@ class FragmentCorrelator:
         if not user_data:
             return {}
         transport = user_data[0]
-        first = bool(transport & 0x80)
-        final = bool(transport & 0x40)
+        first = bool(transport & 0x40)
+        final = bool(transport & 0x80)
         if first or self._current_id is None:
             self._counter += 1
             self._current_id = f"{self._prefix}-{self._counter}"

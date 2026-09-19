@@ -20,8 +20,8 @@ from src.proto.dnp3.wire import FragmentCorrelator, WireFrameExtractor, accepts_
 
 
 def test_wire_extractor_preserves_frame_boundaries_for_split_and_sticky_tcp_data():
-    first = LinkFrame.create(1, 0, True, 4, b"\xc0\x01").serialize()
-    second = LinkFrame.create(1, 0, True, 4, b"\xc1\x01").serialize()
+    first = LinkFrame.create(1, 0, True, 4, b"\xc0\xc0\x01").serialize()
+    second = LinkFrame.create(1, 0, True, 4, b"\xc1\xc1\x01").serialize()
     captured = []
     extractor = WireFrameExtractor(captured.append)
 
@@ -97,8 +97,8 @@ async def test_link_confirmation_retries_toggles_fcb_and_deduplicates_received_d
 
 def test_transport_segments_share_a_fragment_correlation_id():
     correlator = FragmentCorrelator("rx")
-    first = LinkFrame.create(1, 0, True, 4, bytes([0x80 | 7]) + b"part-1").serialize()
-    final = LinkFrame.create(1, 0, True, 4, bytes([0x40 | 8]) + b"part-2").serialize()
+    first = LinkFrame.create(1, 0, True, 4, bytes([0x40 | 7]) + b"part-1").serialize()
+    final = LinkFrame.create(1, 0, True, 4, bytes([0x80 | 8]) + b"part-2").serialize()
 
     first_meta = correlator.metadata(first)
     final_meta = correlator.metadata(final)
