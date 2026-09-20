@@ -5,6 +5,7 @@ import {
   applyProtocolTypeDefaults,
   getTlsMaterialRequirements,
   normalizeTlsVersion,
+  selectFirstProtocolForConnectionType,
   shouldSaveChannelSecurity,
 } from "@/utils/channelEdit";
 import type { ChannelCreateRequest, ProtocolOption } from "@/types/channel";
@@ -93,6 +94,30 @@ describe("channel edit endpoint hydration", () => {
     applyConnectionTypeDefaults(form, 1);
 
     expect(form.ip).toBe("127.0.0.1");
+  });
+});
+
+describe("media type protocol selection", () => {
+  const protocols: ProtocolOption[] = [
+    { value: 0, label: "Modbus RTU", conn_types: [0, 3] },
+    { value: 1, label: "Modbus TCP", conn_types: [1, 2] },
+    { value: 2, label: "IEC104", conn_types: [1, 2] },
+  ];
+
+  it("replaces a serial protocol with the first network protocol", () => {
+    const form = {
+      code: "serial-device",
+      name: "serial-device",
+      protocol_type: 0,
+      conn_type: 3,
+      ip: "0.0.0.0",
+      port: 502,
+    };
+
+    selectFirstProtocolForConnectionType(form, protocols, 2);
+
+    expect(form.conn_type).toBe(2);
+    expect(form.protocol_type).toBe(1);
   });
 });
 

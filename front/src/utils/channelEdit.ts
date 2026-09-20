@@ -98,3 +98,18 @@ export function applyConnectionTypeDefaults(
     form.ip = "0.0.0.0";
   }
 }
+
+/** Select the first protocol that supports the newly selected connection mode. */
+export function selectFirstProtocolForConnectionType(
+  form: ChannelCreateRequest,
+  protocols: ProtocolOption[],
+  connType: number,
+): void {
+  form.conn_type = connType;
+  const firstProtocol = protocols.find((protocol) =>
+    protocol.conn_types.includes(connType),
+  );
+  if (firstProtocol) {
+    form.protocol_type = firstProtocol.value;
+  }
+}

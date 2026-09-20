@@ -142,6 +142,7 @@ import { BAUD_RATES } from "@/constants/protocol";
 import {
   applyConnectionTypeDefaults,
   applyProtocolTypeDefaults,
+  selectFirstProtocolForConnectionType,
 } from "@/utils/channelEdit";
 
 const props = defineProps<{
@@ -195,11 +196,11 @@ watch(
 
 const onMediaTypeChange = (val: any) => {
   emit("update:mediaType", val);
-  // 切换介质时自动调整 conn_type
-  if (val === "serial") {
-    props.modelValue.conn_type = 3;
-  } else {
-    props.modelValue.conn_type = 2;
-  }
+  // 切换介质时，避免保留不支持新连接方式的旧协议。
+  selectFirstProtocolForConnectionType(
+    props.modelValue,
+    props.protocols,
+    val === "serial" ? 3 : 2,
+  );
 };
 </script>
