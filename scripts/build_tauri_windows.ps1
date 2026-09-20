@@ -178,6 +178,7 @@ if (-not $SkipBackend) {
         $env:EMS_PYINSTALLER_MODE = "onedir"
         $env:EMS_PYINSTALLER_NAME = "ems_simulate_backend"
         $env:EMS_PYINSTALLER_CONTENTS_DIR = "ems_simulate_backend_runtime"
+        $env:EMS_PYINSTALLER_BUNDLE_CONFIG = "1"
         $env:EMS_PYINSTALLER_DATA_SCOPE = "point_csv"
         $env:EMS_PYINSTALLER_CONSOLE = "1"
         $pyArgs = @(

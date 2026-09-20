@@ -31,6 +31,8 @@ def _get_root_dir(cli_root: str | None) -> Path:
         return Path(env_root)
     if cli_root:
         return Path(cli_root)
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
 
 
@@ -47,7 +49,14 @@ def _prepare_runtime_root(root_dir: Path) -> None:
     (root_dir / "data" / "point_csv").mkdir(parents=True, exist_ok=True)
 
     config_target = root_dir / "config.ini"
-    config_source = _bundled_path("config.ini")
+    # Web 包的配置与可执行文件同级；桌面 sidecar 仍可使用内置初始配置。
+    config_source = (
+        Path(sys.executable).resolve().parent / "config.ini"
+        if getattr(sys, "frozen", False)
+        else _bundled_path("config.ini")
+    )
+    if not config_source.is_file():
+        config_source = _bundled_path("config.ini")
     if not config_target.exists() and config_source.exists():
         config_target.write_bytes(config_source.read_bytes())
 

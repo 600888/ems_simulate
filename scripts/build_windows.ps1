@@ -169,6 +169,7 @@ Write-Step "Building backend with PyInstaller..."
 $env:EMS_PYINSTALLER_MODE = "onedir"
 $env:EMS_PYINSTALLER_NAME = "ems_simulate"
 $env:EMS_PYINSTALLER_CONTENTS_DIR = "_internal"
+$env:EMS_PYINSTALLER_BUNDLE_CONFIG = "0"
 $env:EMS_PYINSTALLER_DATA_SCOPE = "point_csv"
 $env:EMS_PYINSTALLER_CONSOLE = "1"
 $PYINSTALLER_ARGS = @(

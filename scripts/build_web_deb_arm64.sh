@@ -138,6 +138,7 @@ else
     EMS_PYINSTALLER_MODE=onedir \
     EMS_PYINSTALLER_NAME="${BACKEND_NAME}" \
     EMS_PYINSTALLER_CONTENTS_DIR=_internal \
+    EMS_PYINSTALLER_BUNDLE_CONFIG=0 \
     EMS_PYINSTALLER_DATA_SCOPE=all \
     EMS_PYINSTALLER_CONSOLE=1 \
     uv run --python "${VENV_PY}" --no-project -m PyInstaller \
@@ -162,6 +163,9 @@ fi
 
 info "组装 Debian 包"
 cp -r "${PYINSTALLER_OUTPUT}/." "${INSTALL_DIR}/"
+# 与 x86 Web 包一致：配置只放在程序根目录。
+cp "${PROJECT_ROOT}/config.ini" "${INSTALL_DIR}/config.ini"
+rm -f "${INSTALL_DIR}/_internal/config.ini"
 ln -sf "../share/${APP_NAME}/${BACKEND_NAME}" "${DEB_DIR}/usr/bin/${APP_NAME}"
 
 INSTALLED_SIZE="$(du -s "${INSTALL_DIR}" | cut -f1)"

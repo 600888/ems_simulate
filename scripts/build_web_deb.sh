@@ -61,6 +61,7 @@ PROJECT_ROOT=$(pwd)
 EMS_PYINSTALLER_MODE=onedir \
 EMS_PYINSTALLER_NAME="${APP_NAME//-/_}" \
 EMS_PYINSTALLER_CONTENTS_DIR=_internal \
+EMS_PYINSTALLER_BUNDLE_CONFIG=0 \
 EMS_PYINSTALLER_DATA_SCOPE=all \
 EMS_PYINSTALLER_CONSOLE=1 \
 pyinstaller --noconfirm --clean \
@@ -85,6 +86,9 @@ if ! find "$PYINSTALLER_OUTPUT" -type f -path '*/src/modeling/profile_packages/*
 fi
 
 cp -r "${PYINSTALLER_OUTPUT}/"* "$INSTALL_DIR/"
+# 配置只放在程序根目录，并清理复用组装目录时遗留的旧副本。
+cp "${PROJECT_ROOT}/config.ini" "${INSTALL_DIR}/config.ini"
+rm -f "${INSTALL_DIR}/_internal/config.ini"
 
 # 创建 /usr/bin 下的软链接
 ln -sf "../share/${APP_NAME}/${APP_NAME//-/_}" "${DEB_DIR}/usr/bin/${APP_NAME}"

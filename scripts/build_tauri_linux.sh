@@ -199,6 +199,7 @@ if ! $SKIP_BACKEND; then
         mkdir -p "$BUILD_DIR"
 
         EMS_PYINSTALLER_MODE=onefile \
+        EMS_PYINSTALLER_BUNDLE_CONFIG=1 \
         EMS_PYINSTALLER_NAME=ems_simulate_backend \
         EMS_PYINSTALLER_DATA_SCOPE=all \
         EMS_PYINSTALLER_CONSOLE=1 \

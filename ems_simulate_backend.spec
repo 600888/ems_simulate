@@ -12,6 +12,8 @@ APP_NAME = os.environ.get("EMS_PYINSTALLER_NAME", "ems_simulate_backend")
 CONTENTS_DIRECTORY = os.environ.get("EMS_PYINSTALLER_CONTENTS_DIR", "_internal")
 DATA_SCOPE = os.environ.get("EMS_PYINSTALLER_DATA_SCOPE", "point_csv").lower()
 CONSOLE = os.environ.get("EMS_PYINSTALLER_CONSOLE", "0") == "1"
+# Web onedir 包只在可执行文件旁分发可编辑配置；桌面 sidecar 可显式内置初始配置。
+BUNDLE_CONFIG = os.environ.get("EMS_PYINSTALLER_BUNDLE_CONFIG", "1" if BUILD_MODE == "onefile" else "0") == "1"
 
 if BUILD_MODE not in {"onefile", "onedir"}:
     raise ValueError(f"Unsupported EMS_PYINSTALLER_MODE: {BUILD_MODE}")
@@ -19,7 +21,6 @@ if DATA_SCOPE not in {"point_csv", "all"}:
     raise ValueError(f"Unsupported EMS_PYINSTALLER_DATA_SCOPE: {DATA_SCOPE}")
 
 datas = [
-    (str(PROJECT_ROOT / "config.ini"), "."),
     (str(PROJECT_ROOT / "www"), "www"),
     (
         str(PROJECT_ROOT / "src" / "modeling" / "profile_packages"),
@@ -30,6 +31,8 @@ datas = [
         "src/modeling/standard_packages",
     ),
 ]
+if BUNDLE_CONFIG:
+    datas.append((str(PROJECT_ROOT / "config.ini"), "."))
 if DATA_SCOPE == "all":
     datas.append((str(PROJECT_ROOT / "data"), "data"))
 else:

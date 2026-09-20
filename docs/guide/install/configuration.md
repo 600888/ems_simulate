@@ -6,6 +6,10 @@ EMS Simulate 支持通过配置文件和环境变量进行灵活配置。
 
 主配置文件位于项目根目录的 `config.ini`：
 
+Web 打包版本（Windows、Linux x86_64 和 ARM64）读取可执行文件同级的 `config.ini`，
+`_internal` 中不包含该配置文件。修改配置后重启服务即可生效。
+显式指定 `EMS_ROOT_DIR` 或 `--root-dir` 时，读取该运行目录中的配置，环境变量优先。
+
 ```ini
 [server]
 port = 8991
