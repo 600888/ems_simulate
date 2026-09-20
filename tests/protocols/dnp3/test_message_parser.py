@@ -131,7 +131,7 @@ def test_real_transport_segments_are_not_misparsed_as_application_headers():
     assert metadata[-1]["transport_final"] is True
 
 
-@pytest.mark.parametrize("payload", [b"", b"\xc0", b"\xc0\xc0", b"\xc0\xc0\x81", b"\xc0\xc0\x81\x00"])
+@pytest.mark.parametrize("payload", [b"", b"\xc0", b"\xc0\x01", b"\xc0\xc0", b"\xc0\xc0\x81", b"\xc0\xc0\x81\x00"])
 def test_missing_transport_or_application_headers_are_reported_as_incomplete(payload):
     detail = parse_dnp3(_frame(0xC4, payload))
     assert detail["valid"] is False

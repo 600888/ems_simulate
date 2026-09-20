@@ -76,16 +76,24 @@ def test_dnp3_server_command_callback():
 def test_dnp3_parser_real_frame():
     """用 pydnp3_pure 生成的真实 DNP3 链路帧验证解析器。"""
     from pydnp3_pure.link.frame import LinkFrame
+    from pydnp3_pure.transport.segmenter import Segmenter
 
-    frame = LinkFrame.create(destination=1, source=10, primary=True, function=3, user_data=b"\xc0\x01")
+    # LinkFrame 只封装链路层；先为 Read 应用片段添加传输控制字。
+    segment = Segmenter().segment(b"\xc0\x01")[0]
+    frame = LinkFrame.create(destination=1, source=10, primary=True, function=3, user_data=segment)
     raw = frame.serialize()
     result = parse_dnp3(raw)
     assert result["protocol"] == "DNP3"
-    assert result["valid"] is True  # CRC 校验通过
+    assert result["valid"] is True
+    assert result["complete"] is True
     # 头 CRC 与数据块 CRC 均通过
     validation = {v["name"]: v["passed"] for v in result["validation"]}
     assert validation.get("链路头CRC") is True
     assert validation.get("数据块CRC") is True
+    fields = {field["key"]: field for field in result["fields"]}
+    assert fields["transport_control"]["offset"] == 10
+    assert fields["app_control"]["offset"] == 11
+    assert fields["function_code"]["offset"] == 12
     # 应用层解析出 Read 请求（功能码 01）
     fc_field = next((f for f in result["fields"] if f["key"] == "function_code"), None)
     assert fc_field is not None and "Read" in str(fc_field["display_value"])
