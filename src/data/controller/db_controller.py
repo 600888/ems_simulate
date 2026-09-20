@@ -155,7 +155,7 @@ class DbController:
         try:
             self.db_config = DbMysqlConfig()
             self.db_config.set_db_config(ip, port, user_name, pass_word)
-            self.db_config.create_engine(database, is_create_db=False)
+            self.db_config.create_engine(database)
             self._reset_legacy_iec61850_modeling_schema()
             Base.metadata.create_all(self.db_config.engine)
             self._migrate_channel_point_table_mode_schema()

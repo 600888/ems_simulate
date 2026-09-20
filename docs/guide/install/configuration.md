@@ -42,6 +42,9 @@ password = your_password
 database = ems_simulate
 ```
 
+启动时会自动创建尚不存在的 MySQL 数据库（使用 `utf8mb4` 字符集），随后初始化表结构。
+首次建库需要配置的账号拥有对应数据库的 `CREATE` 权限；数据库已存在时直接使用，保留已有数据。
+
 ## 日志配置
 
 日志配置位于 `src/config/log/` 目录，支持：

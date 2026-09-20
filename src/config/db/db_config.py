@@ -2,7 +2,7 @@ import json
 import os
 
 from sqlalchemy import URL, create_engine, event, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from src.config.env import conf_path
@@ -94,7 +94,7 @@ class DbMysqlConfig(DbConfig):
         self._user_name = user_name
         self._password = pass_word
 
-    def get_url(self, db_name: str) -> URL:
+    def get_url(self, db_name: str | None) -> URL:
         return URL.create(
             "mysql+pymysql",
             username=self._user_name,
@@ -104,13 +104,33 @@ class DbMysqlConfig(DbConfig):
             database=db_name,
         )
 
-    def create_engine(self, db_name: str, is_create_db: bool = False) -> None:
-        mysql_url = self.get_url(db_name)
+    def _ensure_database(self, db_name: str) -> None:
+        """仅在数据库不存在时建库，已有库不要求额外的 CREATE 权限。"""
+        # 使用同步驱动，也供异步引擎创建前的初始化流程复用。
+        mysql_url = DbMysqlConfig.get_url(self, db_name)
+        probe_engine = create_engine(mysql_url, echo=False)
+        try:
+            with probe_engine.connect():
+                return
+        except OperationalError as exc:
+            if not exc.orig.args or exc.orig.args[0] != 1049:  # ER_BAD_DB_ERROR
+                raise
+        finally:
+            probe_engine.dispose()
+
+        server_engine = create_engine(DbMysqlConfig.get_url(self, None), echo=False, isolation_level="AUTOCOMMIT")
+        try:
+            # 数据库名是标识符，不能使用值参数绑定；由 MySQL 方言转义。
+            quoted_name = server_engine.dialect.identifier_preparer.quote_identifier(db_name)
+            with server_engine.connect() as connection:
+                connection.exec_driver_sql(f"CREATE DATABASE IF NOT EXISTS {quoted_name} CHARACTER SET utf8mb4")
+        finally:
+            server_engine.dispose()
+
+    def create_engine(self, db_name: str, is_create_db: bool = True) -> None:
         if is_create_db:
-            self.engine = create_engine(mysql_url, echo=False)
-            with self.engine.connect() as connection:
-                connection.execute(text("DROP DATABASE IF EXISTS " + db_name))
-                connection.execute(text("CREATE DATABASE IF NOT EXISTS " + db_name))
+            self._ensure_database(db_name)
+        mysql_url = self.get_url(db_name)
         self.engine = create_engine(
             mysql_url,
             echo=False,
@@ -135,7 +155,7 @@ class DbMysqlAsyncConfig(DbMysqlConfig):
     def get_engine(self):
         return self.engine
 
-    def get_url(self, db_name: str) -> URL:
+    def get_url(self, db_name: str | None) -> URL:
         return URL.create(
             "mysql+aiomysql",
             username=self._user_name,
@@ -145,13 +165,10 @@ class DbMysqlAsyncConfig(DbMysqlConfig):
             database=db_name,
         )
 
-    def create_async_engine(self, db_name: str, is_create_db: bool = False) -> None:
-        mysql_url = self.get_url(db_name)
+    def create_async_engine(self, db_name: str, is_create_db: bool = True) -> None:
         if is_create_db:
-            self.engine = create_engine(mysql_url, echo=False)
-            with self.engine.connect() as connection:
-                connection.execute(text("DROP DATABASE IF EXISTS " + db_name))
-                connection.execute(text("CREATE DATABASE IF NOT EXISTS " + db_name))
+            self._ensure_database(db_name)
+        mysql_url = self.get_url(db_name)
         self.engine = create_async_engine(
             mysql_url,
             echo=False,
