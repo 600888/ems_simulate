@@ -76,6 +76,7 @@ class DbController:
             # 创建所有表
             Base.metadata.create_all(self.db_config.engine)
             self._migrate_channel_point_table_mode_schema()
+            self._migrate_channel_change_tracking_schema()
             self._migrate_dnp3_point_config_schema()
             self._migrate_goose_schema()
             self._migrate_channel_security_schema()
@@ -159,6 +160,7 @@ class DbController:
             self._reset_legacy_iec61850_modeling_schema()
             Base.metadata.create_all(self.db_config.engine)
             self._migrate_channel_point_table_mode_schema()
+            self._migrate_channel_change_tracking_schema()
             self._migrate_dnp3_point_config_schema()
             self._migrate_goose_schema()
             self._migrate_channel_security_schema()
@@ -176,6 +178,21 @@ class DbController:
     def is_mysql(self) -> bool:
         """是否使用 MySQL"""
         return self._db_type == "mysql"
+
+    def _migrate_channel_change_tracking_schema(self) -> None:
+        """Persist the device-wide history setting, defaulting existing channels to off."""
+        if not self.db_config:
+            return
+        from sqlalchemy import inspect, text
+
+        engine = self.db_config.engine
+        inspector = inspect(engine)
+        if "channel" not in inspector.get_table_names():
+            return
+        columns = {column["name"] for column in inspector.get_columns("channel")}
+        if "change_tracking_enabled" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE channel ADD COLUMN change_tracking_enabled BOOLEAN NOT NULL DEFAULT 0"))
 
     def _migrate_channel_point_table_mode_schema(self) -> None:
         """Add the persisted DLT645 point-table source to existing databases.

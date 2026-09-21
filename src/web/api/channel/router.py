@@ -193,6 +193,7 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
         parity=req.parity,
         rtu_addr=req.rtu_addr if req.protocol_type == 3 else "1",
         dlt645_point_mode=req.dlt645_point_mode if req.protocol_type == 3 else "import",
+        change_tracking_enabled=req.change_tracking_enabled,
         model_name=req.model_name if req.protocol_type == 4 else None,
     )
 
@@ -366,6 +367,7 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
             "data_bits",
             "stop_bits",
             "parity",
+            "change_tracking_enabled",
         )
         if (value := getattr(req, field)) is not None
     }
@@ -453,6 +455,10 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
                     device_controller.device_map.pop(key, None)
                 device.name = req.name
                 device_controller.device_map[req.name] = device
+        if req.change_tracking_enabled is not None:
+            device = device_controller.get_device_by_id(channel_id)
+            if device is not None:
+                device.point_manager.set_change_tracking_enabled(req.change_tracking_enabled)
     except Exception as e:
         log.error(f"更新配置后同步运行时设备失败: {e}")
     return BaseResponse(message="更新通道成功", data=True)

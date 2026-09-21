@@ -61,6 +61,7 @@ export interface ChannelCreateRequest {
   group_id?: number | null;
   protocol_params?: ProtocolParamsConfig;
   dlt645_point_mode?: "standard" | "import";
+  change_tracking_enabled?: boolean;
 }
 
 export interface ProtocolParamsConfig {
@@ -106,6 +107,7 @@ export interface ChannelInfo {
   protocol_params?: ProtocolParamsConfig;
   security_config?: SecurityConfig;
   dlt645_point_mode?: "standard" | "import";
+  change_tracking_enabled?: boolean;
 }
 
 // 点表导入结果

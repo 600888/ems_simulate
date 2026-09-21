@@ -131,6 +131,11 @@ class GeneralDeviceBuilder:
         self.is_start = is_start
         self.protocol_type = protocol_type
 
+        channel = ChannelService.get_channel_by_id(self.channel_id)
+        self.general_device.point_manager.set_change_tracking_enabled(
+            bool(channel and channel.get("change_tracking_enabled", False))
+        )
+
         if protocol_type in [ProtocolType.ModbusTcpServer, ProtocolType.ModbusRtuOverTcp]:
             return self.generalDeviceModbusTcp
         elif protocol_type == ProtocolType.ModbusTcpClient:

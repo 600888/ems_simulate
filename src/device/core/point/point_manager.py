@@ -15,6 +15,7 @@ class PointManager:
     """测点管理器"""
 
     def __init__(self):
+        self.change_tracking_enabled: bool = False
         # 按从机 ID 分组存储
         self.yc_dict: dict[int, list[Yc]] = {}
         self.yx_dict: dict[int, list[Yx]] = {}
@@ -37,6 +38,18 @@ class PointManager:
         # 初始化字典
         self._init_dicts()
 
+    def set_change_tracking_enabled(self, enabled: bool) -> None:
+        """Apply the device setting to existing points and future registrations."""
+        self.change_tracking_enabled = enabled
+        for point in self.get_all_points():
+            self._apply_change_tracking(point)
+
+    def _apply_change_tracking(self, point: BasePoint) -> None:
+        if self.change_tracking_enabled:
+            point.enable_change_tracking()
+        else:
+            point.disable_change_tracking()
+
     def _init_dicts(self) -> None:
         """初始化测点字典"""
         for slave_id in range(256):
@@ -52,6 +65,7 @@ class PointManager:
             slave_id: 从机 ID
             point: 测点对象
         """
+        self._apply_change_tracking(point)
         # 添加到对应的字典
         if isinstance(point, Yt):
             self.yt_dict[slave_id].append(point)
@@ -161,6 +175,7 @@ class PointManager:
 
         供外部代码（如 data_importer）使用，避免直接操作 code_map 导致索引不一致。
         """
+        self._apply_change_tracking(point)
         if not point.code:
             return
         composite_key = f"{slave_id}:{point.code}"

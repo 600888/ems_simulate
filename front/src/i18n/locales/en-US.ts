@@ -308,6 +308,10 @@ export default {
     clientNoIcdNeeded:
       "IEC61850 client will discover data points dynamically from server, no ICD file needed",
     pointTable: "Point Table Import",
+    changeTrackingConfig: "Change History Config",
+    changeTrackingEnabled: "Enable History",
+    changeTrackingTip:
+      "Off by default. Saving enables or disables change history for all points, including newly imported points.",
     pointFile: "Point File",
     selectExcel: "Select Excel File",
     excelTip: "Supports .xlsx format with YC/YX/YK/YT sheets",

@@ -305,6 +305,10 @@ export default {
     clientNoIcdNeeded:
       "IEC61850 客户端将从服务端动态发现数据点，无需导入 ICD 文件",
     pointTable: "点表导入",
+    changeTrackingConfig: "变化回溯配置",
+    changeTrackingEnabled: "开启变化回溯",
+    changeTrackingTip:
+      "默认关闭。保存后，开启将启用全部测点的变化回溯，关闭将禁用全部测点的变化回溯；新导入的测点也按此配置生效。",
     pointFile: "测点表格",
     selectExcel: "选择 Excel 文件",
     excelTip: "支持 .xlsx 格式，包含遥测/遥信/遥控/遥调 四个 sheet",

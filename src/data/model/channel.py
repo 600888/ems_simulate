@@ -34,6 +34,7 @@ class ChannelDict(TypedDict):
     timeout: int
     enable: bool
     dlt645_point_mode: str
+    change_tracking_enabled: bool
     # IEC 61850 专用
     model_name: str | None
     icd_path: str | None
@@ -75,6 +76,9 @@ class Channel(Base):
     rtu_addr: Mapped[str] = mapped_column(String(16), server_default="1", comment="电表地址(DLT645)")
     timeout: Mapped[int] = mapped_column(Integer, server_default="5", comment="超时时间(秒)")
     enable: Mapped[bool] = mapped_column(Boolean, server_default="1", comment="是否启用")
+    change_tracking_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0", comment="全部测点变化回溯开关"
+    )
     dlt645_point_mode: Mapped[str] = mapped_column(
         String(16),
         nullable=False,

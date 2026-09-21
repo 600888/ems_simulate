@@ -41,6 +41,22 @@
             @icd-file-change="handleIcdFileChange"
             @point-mode-change="(mode) => (dlt645PointMode = mode)"
           />
+
+          <el-divider content-position="left">{{
+            $t("device.changeTrackingConfig")
+          }}</el-divider>
+          <el-form-item :label="$t('device.changeTrackingEnabled')">
+            <el-switch
+              v-model="form.change_tracking_enabled"
+              :disabled="saving || loadingChannel"
+            />
+          </el-form-item>
+          <el-alert
+            :title="$t('device.changeTrackingTip')"
+            type="info"
+            :closable="false"
+            show-icon
+          />
         </el-tab-pane>
 
         <el-tab-pane :label="$t('addDevice.tabProtocol')" name="protocol">
@@ -72,7 +88,7 @@
       </el-tabs>
 
       <!-- 操作进度条 -->
-      <div v-if="saving" class="icd-import-progress">
+      <div v-if="saving" ref="importProgressRef" class="icd-import-progress">
         <el-progress
           :percentage="100"
           :indeterminate="true"
@@ -316,6 +332,7 @@ const previewDone = ref(false);
 
 // 操作进度
 const saving = ref(false);
+const importProgressRef = ref<HTMLElement | null>(null);
 const loadingChannel = ref(false);
 const progressText = ref("");
 const importElapsed = ref(0);
@@ -393,6 +410,7 @@ const form = reactive<ChannelCreateRequest>({
   group_id: null,
   protocol_params: protocolParams,
   dlt645_point_mode: "standard",
+  change_tracking_enabled: false,
 });
 
 const rules = computed<FormRules>(() => {
@@ -505,6 +523,7 @@ const loadChannelData = async (id: number) => {
     const data = await getChannel(id);
     if (!data || requestId !== channelLoadRequest) return;
     Object.assign(form, data);
+    form.change_tracking_enabled = data.change_tracking_enabled ?? false;
     originalDlt645PointMode.value = normalizeDlt645PointMode(
       data.dlt645_point_mode,
     );
@@ -556,6 +575,7 @@ const resetForm = () => {
     group_id: null,
     protocol_params: protocolParams,
     dlt645_point_mode: "standard",
+    change_tracking_enabled: false,
   });
   applyPersistedProtocolParams();
   applyPersistedSecurityConfig();
@@ -690,6 +710,13 @@ const handleSubmit = async () => {
 
       // 1. 保存通道
       progressText.value = t("addDevice.savingChannel");
+      // 等待进度区域渲染后滚动到可见位置，让后续点表导入状态始终有明确反馈。
+      await nextTick();
+      importProgressRef.value?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "nearest",
+      });
       if (isEditMode.value && props.channelId) {
         // When TLS also changed, its endpoint performs the single required reload.
         await updateChannel(props.channelId, form, shouldSaveSecurity);

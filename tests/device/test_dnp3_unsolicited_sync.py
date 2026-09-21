@@ -7,6 +7,7 @@ from src.enums.points.yx import Yx
 def test_unsolicited_analog_update_syncs_protocol_cache_to_application_point():
     handler = DNP3ClientHandler()
     point = Yc(address=7, code="AI-7", value=0, mul_coe=0.1, add_coe=5)
+    point.enable_change_tracking()
     handler.add_points([point])
 
     handler._on_point_update(32, 7, 100, "unsolicited")

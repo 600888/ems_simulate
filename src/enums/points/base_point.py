@@ -77,8 +77,8 @@ class BasePoint:
         self.is_valid: bool | None = None  # 数据是否有效（None:未知, True:成功, False:失败）
         self.is_locked_by_mapping = False  # 是否被映射锁定（如果为True，则模拟器不应修改此值）
 
-        # 变更追溯（默认开启）
-        self._change_tracking_enabled: bool = True
+        # 变更追溯（默认关闭，由设备配置或测点开关启用）
+        self._change_tracking_enabled: bool = False
         self._change_history_maxlen: int = 50
         self._change_history: deque[ChangeRecord] = deque(maxlen=self._change_history_maxlen)
 
