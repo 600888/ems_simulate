@@ -1,5 +1,7 @@
 # EMS Simulate - 能源管理系统模拟器
 
+[简体中文](README.md) | [English](README.en.md)
+
 一个用于模拟能源管理系统（EMS）中关键设备行为的软件系统，主要用于测试和开发场景。系统支持多种工业通信协议（Modbus TCP/RTU、IEC 60870-5-101/104、DL/T 645-2007、IEC 61850、DNP3），可模拟真实工业设备（如PCS储能变流器、BMS电池管理系统、电表、断路器等）的数据交互。
 
 > 📖 **[查看在线文档 / Online Documentation](https://600888.github.io/ems_simulate/)**
