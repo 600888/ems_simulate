@@ -254,3 +254,25 @@ section.VPSidebarItem.level-0,
     margin-top: 16px !important;
     margin-bottom: 4px !important;
 }
+
+.doc-comments {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--vp-c-divider);
+}
+
+.doc-comments h2 {
+    margin-bottom: 16px;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.doc-comments .utterances {
+    max-width: 100%;
+}
+
+.home-comments {
+    max-width: 1152px;
+    margin: 0 auto;
+    padding: 0 24px 64px;
+}
