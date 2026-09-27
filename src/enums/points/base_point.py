@@ -8,6 +8,7 @@ from collections import deque
 
 from blinker import Signal
 
+from src.enums.modbus_register import Decode
 from src.enums.points.change_tracker import (
     ChangeRecord,
     get_current_client_info,
@@ -35,7 +36,7 @@ class BasePoint:
         code: str = "",
         value: int = 0,
         frame_type: int = 0,
-        decode: str = "0x41",
+        decode: str = "INT32_ABCD",
         iec_type_id: str | None = None,
         iec_quality: int | None = None,
         fc: str = "",
@@ -64,7 +65,7 @@ class BasePoint:
         self._frame_type: int = frame_type
         self._is_simulated: bool = False
         self._is_plan: bool = False
-        self._decode = decode
+        self._decode = Decode.normalize(decode)
         self._iec_type_id: str | None = iec_type_id
         self._iec_quality: IEC104QualityDescriptor = IEC104QualityDescriptor.from_int(iec_quality or 0)
         self._fc: str = fc
@@ -150,10 +151,11 @@ class BasePoint:
 
     @property
     def decode(self) -> str:
-        return getattr(self, "_decode", "0x20")
+        return getattr(self, "_decode", "UINT16_AB")
 
     @decode.setter
     def decode(self, decode: str):
+        decode = Decode.normalize(decode)
         old_decode = getattr(self, "_decode", None)
         if old_decode != decode:
             self._decode = decode

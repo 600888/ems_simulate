@@ -1,85 +1,64 @@
 # 解析码系统
 
-解析码（Decode）定义了 Modbus 寄存器数据的解析方式，包括数据类型、字节序和位数。
+解析码格式为 `类型位数_字节顺序`。字母表示数值按大端表示时的字节；后缀表示这些字节在 Modbus 寄存器中的实际顺序。例如 `INT32_CDAB` 把数值的 `AB CD` 两个寄存器按 `CD AB` 存储。8 位值存放在一个 16 位寄存器中，`AB` 取低字节，`BA` 取高字节。
 
-## 解析码一览表
+## 可用类型
 
-### 16位整数 (1个寄存器)
+| 类型 | 字节顺序 | 寄存器数 |
+|---|---|---:|
+| `UINT8`、`INT8` | `AB`、`BA` | 1 |
+| `UINT16`、`INT16` | `AB`、`BA` | 1 |
+| `UINT32`、`INT32`、`FLOAT32` | `ABCD`、`BADC`、`CDAB`、`DCBA` | 2 |
+| `UINT64`、`INT64` | `ABCDEFGH`、`GHEFCDAB` | 4 |
+| `DOUBLE` | `ABCDEFGH`、`BADCFEHG`、`GHEFCDAB`、`HGFEDCBA` | 4 |
 
-| 解析码 | 名称 | 说明 | 字节序 |
-|--------|------|------|--------|
-| `0x20` | UINT16_BE | 16位无符号整数 | 大端 (AB) |
-| `0x21` | INT16_BE | 16位有符号整数 | 大端 (AB) |
-| `0xC0` | UINT16_LE | 16位无符号整数 | 小端 (BA) |
-| `0xC1` | INT16_LE | 16位有符号整数 | 小端 (BA) |
+`DOUBLE` 是 IEEE 754 64 位双精度浮点数。所有新配置均保存语义化解析码；读取旧配置或导入旧点表时仍接受下面的十六进制码。升级数据库时旧码按此表迁移。同义旧码会归并。
 
-### 32位整数/浮点 (2个寄存器)
+## 旧码迁移表
 
-| 解析码 | 名称 | 说明 | 字节序 |
-|--------|------|------|--------|
-| `0x40` | UINT32_BE | 32位无符号整数 | 大端 (ABCD) |
-| `0x41` | INT32_BE | 32位有符号整数 | 大端 (ABCD) |
-| `0x42` | FLOAT_BE | 32位浮点数 | 大端 (ABCD) |
-| `0xD0` | UINT32_LE | 32位无符号整数 | 小端 (DCBA) |
-| `0xD1` | INT32_LE | 32位有符号整数 | 小端 (DCBA) |
-| `0xD2` | FLOAT_LE | 32位浮点数 | 小端 (DCBA) |
-| `0x43` | UINT32_BE_SWAP | 32位无符号整数 | 大端字交换 (CDAB) |
-| `0x44` | INT32_BE_SWAP | 32位有符号整数 | 大端字交换 (CDAB) |
-| `0x45` | FLOAT_BE_SWAP | 32位浮点数 | 大端字交换 (CDAB) |
+| 旧码 | 新解析码 |
+|---|---|
+| `0x10` | `UINT8_AB` |
+| `0x11` | `INT8_AB` |
+| `0x20` | `UINT16_AB` |
+| `0x21` | `INT16_AB` |
+| `0x22` | `UINT16_AB` |
+| `0xB0` | `UINT16_AB` |
+| `0xB1` | `INT16_AB` |
+| `0xC0` | `UINT16_BA` |
+| `0xC1` | `INT16_BA` |
+| `0x40` | `UINT32_ABCD` |
+| `0x41` | `INT32_ABCD` |
+| `0x42` | `FLOAT32_ABCD` |
+| `0x43` | `UINT32_DCBA` |
+| `0x44` | `INT32_DCBA` |
+| `0x45` | `FLOAT32_DCBA` |
+| `0xD0` | `UINT32_CDAB` |
+| `0xD1` | `INT32_CDAB` |
+| `0xD2` | `FLOAT32_CDAB` |
+| `0xD3` | `FLOAT32_CDAB` |
+| `0xD4` | `UINT32_CDAB` |
+| `0xD5` | `INT32_CDAB` |
+| `0x60` | `UINT64_ABCDEFGH` |
+| `0x61` | `INT64_ABCDEFGH` |
+| `0x62` | `DOUBLE_ABCDEFGH` |
+| `0xE0` | `UINT64_GHEFCDAB` |
+| `0xE1` | `INT64_GHEFCDAB` |
+| `0xE2` | `DOUBLE_GHEFCDAB` |
 
-### 64位整数/浮点 (4个寄存器)
+这张表依据旧版 Modbus 客户端和服务端的实际寄存器读写顺序。部分旧版界面文字与实际行为不符，尤其是 `0x22`、`0x43`、`0xD0` 和 `0xE2`。`0x10`、`0x11` 的旧版 8 位范围处理不一致，升级后按真实 8 位数值处理。
 
-| 解析码 | 名称 | 说明 | 字节序 |
-|--------|------|------|--------|
-| `0x60` | UINT64_BE | 64位无符号整数 | 大端 |
-| `0x61` | INT64_BE | 64位有符号整数 | 大端 |
-| `0x62` | DOUBLE_BE | 64位双精度浮点 | 大端 |
-| `0xE0` | UINT64_LE | 64位无符号整数 | 小端 |
-| `0xE1` | INT64_LE | 64位有符号整数 | 小端 |
-| `0xE2` | DOUBLE_LE | 64位双精度浮点 | 小端 |
-
-## 字节序说明
-
-以32位浮点数 `1234.5` 为例，其十六进制表示为 `449A5000`：
-
-| 字节序类型 | 存储顺序 | 说明 |
-|------------|----------|------|
-| **大端 (BE)** | `44 9A 50 00` | 高字节在前，标准网络字节序 |
-| **小端 (LE)** | `00 50 9A 44` | 低字节在前，x86架构常用 |
-| **大端字交换 (BE_SWAP)** | `50 00 44 9A` | 寄存器内大端，寄存器间交换 |
-| **小端字交换 (LE_SWAP)** | `9A 44 00 50` | 寄存器内小端，寄存器间交换 |
-
-## 代码使用示例
+## 代码示例
 
 ```python
-from src.enums.modbus_register import Decode, DecodeCode
+from src.enums.modbus_register import Decode
 
-# 使用解析码字符串
-info = Decode.get_info("0x41")
-print(f"寄存器数量: {info.register_cnt}")  # 2
-print(f"是否有符号: {info.is_signed}")      # True
-print(f"字节序: {info.endian}")             # >
+registers = Decode.encode_registers("DOUBLE_HGFEDCBA", 1234.5)
+value = Decode.decode_registers("DOUBLE_HGFEDCBA", registers)
+assert value == 1234.5
 
-# 使用枚举（推荐）
-info = DecodeCode.FLOAT_BE.value
-print(f"解析码: {info.code}")              # 0x42
-print(f"描述: {info.description}")         # 32位浮点数(大端)
-
-# 数据打包/解包
-packed = Decode.pack_value(info.pack_format, 1234.5)
-value = Decode.unpack_value(info.pack_format, packed)
+# 旧码仍可作为输入，但 normalize 返回应保存的新名称。
+assert Decode.normalize("0xE2") == "DOUBLE_GHEFCDAB"
 ```
 
-## 真实值转换
-
-遥测和遥调类型支持系数转换：
-
-```
-真实值 = 寄存器值 × 乘法系数 + 加法系数
-寄存器值 = (真实值 - 加法系数) ÷ 乘法系数
-```
-
-| 属性 | 说明 | 默认值 |
-|------|------|--------|
-| `mul_coe` | 乘法系数 | 1.0 |
-| `add_coe` | 加法系数 | 0.0 |
+遥测和遥调的工程值仍按 `工程值 = 寄存器值 × 乘法系数 + 加法系数` 计算。

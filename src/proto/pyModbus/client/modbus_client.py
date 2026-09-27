@@ -1,5 +1,4 @@
 # from pymodbus.pdu import ModbusRequest
-import struct
 
 from pymodbus.exceptions import ModbusException
 
@@ -396,7 +395,7 @@ class ModbusClient:
         func_code: int,
         slave_id: int,
         address: int,
-        decode: str = "0x41",
+        decode: str = "INT32_ABCD",
     ) -> int | float | None:
         """
         根据解析码读取寄存器值并解析为指定数据类型
@@ -445,21 +444,7 @@ class ModbusClient:
         if not registers:
             return None
 
-        # 将寄存器值打包为字节
-        if register_cnt == 4:  # 64位
-            packed = struct.pack(">HHHH" if info.is_big_endian else "<HHHH", *registers)
-        elif register_cnt == 2:  # 32位
-            packed = struct.pack(">HH" if info.is_big_endian else "<HH", *registers)
-        else:  # 16位
-            value = registers[0]
-            if not info.is_big_endian:  # 小端序处理
-                value = ((value & 0xFF) << 8) | ((value >> 8) & 0xFF)
-            if info.is_signed and value > 0x7FFF:
-                value -= 0x10000
-            return value
-
-        # 使用统一的解包方法
-        return Decode.unpack_value(info.pack_format, packed)
+        return Decode.decode_registers(decode, registers)
 
     def write_value_by_address(
         self,
@@ -467,7 +452,7 @@ class ModbusClient:
         slave_id: int,
         address: int,
         value: int | float,
-        decode: str = "0x41",
+        decode: str = "INT32_ABCD",
     ) -> bool:
         """
         根据解析码将值写入寄存器
@@ -486,25 +471,7 @@ class ModbusClient:
         if not self.connected:
             return False
 
-        # 获取解析码完整信息
-        info = Decode.get_info(decode)
-        register_cnt = info.register_cnt
-
-        # 使用统一的打包方法
-        packed = Decode.pack_value(info.pack_format, value)
-
-        # 将打包后的字节转换为寄存器值列表
-        if register_cnt == 4:  # 64位
-            registers = list(struct.unpack(">HHHH" if info.is_big_endian else "<HHHH", packed))
-        elif register_cnt == 2:  # 32位
-            registers = list(struct.unpack(">HH" if info.is_big_endian else "<HH", packed))
-        else:  # 16位
-            val = int(value)
-            if info.is_signed and val < 0:
-                val = (1 << 16) + val
-            registers = [val & 0xFFFF]
-            if not info.is_big_endian:  # 小端序处理
-                registers[0] = ((registers[0] & 0xFF) << 8) | ((registers[0] >> 8) & 0xFF)
+        registers = Decode.encode_registers(decode, value)
 
         # 写入寄存器值
         if func_code in [1, 5, 15]:  # 线圈操作 (01 读线圈也可转写)

@@ -46,7 +46,7 @@ def _item_limits(item: object) -> tuple[float, float]:
         max_limit = getattr(item, "max_value", None)
 
     if min_limit is None or max_limit is None:
-        default_max, default_min = Decode.get_limits_by_code("0x41", 1.0, 0.0)
+        default_max, default_min = Decode.get_limits_by_code("INT32_ABCD", 1.0, 0.0)
         if min_limit is None:
             min_limit = default_min
         if max_limit is None:
@@ -76,7 +76,7 @@ class Dlt645StandardPointImporter:
                     rtu_addr=1,
                     reg_addr=_storage_address(di),
                     func_code=3,
-                    decode_code="0x41",
+                    decode_code="INT32_ABCD",
                     mul_coe=1.0,
                     add_coe=0.0,
                     max_limit=max_limit,

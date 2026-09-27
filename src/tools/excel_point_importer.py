@@ -286,7 +286,7 @@ class ExcelPointImporter:
             for excel_row, row in enumerate(rows, start=2):
                 if not row[0]:  # 跳过空行
                     continue
-                decode_code = str(row[5]) if row[5] else "0x41"
+                decode_code = str(row[5]) if row[5] else "INT32_ABCD"
                 mul_coe = float(row[6]) if row[6] else 1.0
                 add_coe = float(row[7]) if row[7] else 0.0
                 calc_max, calc_min = Decode.get_limits_by_code(decode_code, mul_coe, add_coe)
@@ -325,7 +325,7 @@ class ExcelPointImporter:
                     rtu_addr=int(row[2]) if row[2] else 1,
                     reg_addr=str(row[3]) if row[3] else "0x0000",
                     func_code=int(row[4]) if row[4] else 1,
-                    decode_code=str(row[5]) if row[5] else "0x20",
+                    decode_code=str(row[5]) if row[5] else "UINT16_AB",
                     bit=int(row[6]) if row[6] else None,
                     reverse=bool(row[7]) if len(row) > 7 and row[7] else False,
                     iec_type_id=self._iec104_type(sheet, row),
@@ -348,7 +348,7 @@ class ExcelPointImporter:
                     rtu_addr=int(row[2]) if row[2] else 1,
                     reg_addr=str(row[3]) if row[3] else "0x0000",
                     func_code=int(row[4]) if row[4] else 5,
-                    decode_code=str(row[5]) if row[5] else "0x20",
+                    decode_code=str(row[5]) if row[5] else "UINT16_AB",
                     bit=int(row[6]) if row[6] else None,
                     command_type=int(row[7]) if len(row) > 7 and row[7] else 0,
                     # related_yx_id 需要后续通过 code 查找
@@ -365,7 +365,7 @@ class ExcelPointImporter:
             for excel_row, row in enumerate(rows, start=2):
                 if not row[0]:
                     continue
-                decode_code = str(row[5]) if row[5] else "0x41"
+                decode_code = str(row[5]) if row[5] else "INT32_ABCD"
                 mul_coe = float(row[6]) if row[6] else 1.0
                 add_coe = float(row[7]) if row[7] else 0.0
                 calc_max, calc_min = Decode.get_limits_by_code(decode_code, mul_coe, add_coe)
@@ -498,12 +498,12 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
 
     if protocol == "modbus":
         sample_yc = [
-            ["PCS_DC_V", "直流母线电压", 1, "0x0000", 3, "0x41", 0.1, 0, 1000, 0],
-            ["PCS_DC_I", "直流母线电流", 1, "0x0002", 3, "0x41", 0.1, 0, 500, -500],
-            ["PCS_AC_P", "交流有功功率", 1, "0x0004", 3, "0x41", 0.1, 0, 1000, -1000],
-            ["PCS_AC_Q", "交流无功功率", 1, "0x0006", 3, "0x41", 0.1, 0, 500, -500],
-            ["BMS_SOC", "电池SOC", 2, "0x0000", 3, "0x41", 0.1, 0, 100, 0],
-            ["BMS_TEMP", "电池温度", 2, "0x0002", 3, "0x41", 0.1, 0, 60, -20],
+            ["PCS_DC_V", "直流母线电压", 1, "0x0000", 3, "INT32_ABCD", 0.1, 0, 1000, 0],
+            ["PCS_DC_I", "直流母线电流", 1, "0x0002", 3, "INT32_ABCD", 0.1, 0, 500, -500],
+            ["PCS_AC_P", "交流有功功率", 1, "0x0004", 3, "INT32_ABCD", 0.1, 0, 1000, -1000],
+            ["PCS_AC_Q", "交流无功功率", 1, "0x0006", 3, "INT32_ABCD", 0.1, 0, 500, -500],
+            ["BMS_SOC", "电池SOC", 2, "0x0000", 3, "INT32_ABCD", 0.1, 0, 100, 0],
+            ["BMS_TEMP", "电池温度", 2, "0x0002", 3, "INT32_ABCD", 0.1, 0, 60, -20],
         ]
     elif protocol == "iec104":
         sample_yc = [
@@ -514,10 +514,10 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
         ]
     else:  # dlt645
         sample_yc = [
-            ["METER_E_P", "正向有功电能", 1, "0x00010000", 3, "0x41", 0.01, 0, 999999, 0],
-            ["METER_E_N", "反向有功电能", 1, "0x00020000", 3, "0x41", 0.01, 0, 999999, 0],
-            ["METER_V_A", "A相电压", 1, "0x02010100", 3, "0x41", 0.1, 0, 300, 0],
-            ["METER_I_A", "A相电流", 1, "0x02020100", 3, "0x41", 0.001, 0, 100, 0],
+            ["METER_E_P", "正向有功电能", 1, "0x00010000", 3, "INT32_ABCD", 0.01, 0, 999999, 0],
+            ["METER_E_N", "反向有功电能", 1, "0x00020000", 3, "INT32_ABCD", 0.01, 0, 999999, 0],
+            ["METER_V_A", "A相电压", 1, "0x02010100", 3, "INT32_ABCD", 0.1, 0, 300, 0],
+            ["METER_I_A", "A相电流", 1, "0x02020100", 3, "INT32_ABCD", 0.001, 0, 100, 0],
         ]
 
     for row in sample_yc:
@@ -531,11 +531,11 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
 
     if protocol == "modbus":
         sample_yx = [
-            ["PCS_RUN", "PCS运行状态", 1, "0x0100", 1, "0x20", 0, 0],
-            ["PCS_FAULT", "PCS故障", 1, "0x0100", 1, "0x20", 1, 0],
-            ["PCS_CHARGE", "充电状态", 1, "0x0100", 1, "0x20", 2, 0],
-            ["BMS_RUN", "BMS运行状态", 2, "0x0100", 1, "0x20", 0, 0],
-            ["BMS_FAULT", "BMS故障", 2, "0x0100", 1, "0x20", 1, 0],
+            ["PCS_RUN", "PCS运行状态", 1, "0x0100", 1, "UINT16_AB", 0, 0],
+            ["PCS_FAULT", "PCS故障", 1, "0x0100", 1, "UINT16_AB", 1, 0],
+            ["PCS_CHARGE", "充电状态", 1, "0x0100", 1, "UINT16_AB", 2, 0],
+            ["BMS_RUN", "BMS运行状态", 2, "0x0100", 1, "UINT16_AB", 0, 0],
+            ["BMS_FAULT", "BMS故障", 2, "0x0100", 1, "UINT16_AB", 1, 0],
         ]
     elif protocol == "iec104":
         sample_yx = [
@@ -568,9 +568,9 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
 
     if protocol == "modbus":
         sample_yk = [
-            ["PCS_START", "PCS启动", 1, "0x0200", 5, "0x20", 0, 0, "PCS_RUN"],
-            ["PCS_STOP", "PCS停止", 1, "0x0201", 5, "0x20", 0, 0, "PCS_RUN"],
-            ["PCS_RESET", "PCS复位", 1, "0x0202", 5, "0x20", 0, 0, "PCS_FAULT"],
+            ["PCS_START", "PCS启动", 1, "0x0200", 5, "UINT16_AB", 0, 0, "PCS_RUN"],
+            ["PCS_STOP", "PCS停止", 1, "0x0201", 5, "UINT16_AB", 0, 0, "PCS_RUN"],
+            ["PCS_RESET", "PCS复位", 1, "0x0202", 5, "UINT16_AB", 0, 0, "PCS_FAULT"],
         ]
     elif protocol == "iec104":
         sample_yk = [
@@ -604,10 +604,10 @@ def create_sample_excel(file_path: str, protocol: str = "modbus") -> None:
 
     if protocol == "modbus":
         sample_yt = [
-            ["PCS_P_SET", "有功功率设定", 1, "0x0300", 6, "0x41", 0.1, 0, 1000, -1000, "PCS_AC_P"],
-            ["PCS_Q_SET", "无功功率设定", 1, "0x0302", 6, "0x41", 0.1, 0, 500, -500, "PCS_AC_Q"],
-            ["BMS_SOC_UP", "SOC上限设定", 2, "0x0300", 6, "0x41", 0.1, 0, 100, 0, "BMS_SOC"],
-            ["BMS_SOC_LOW", "SOC下限设定", 2, "0x0302", 6, "0x41", 0.1, 0, 100, 0, "BMS_SOC"],
+            ["PCS_P_SET", "有功功率设定", 1, "0x0300", 6, "INT32_ABCD", 0.1, 0, 1000, -1000, "PCS_AC_P"],
+            ["PCS_Q_SET", "无功功率设定", 1, "0x0302", 6, "INT32_ABCD", 0.1, 0, 500, -500, "PCS_AC_Q"],
+            ["BMS_SOC_UP", "SOC上限设定", 2, "0x0300", 6, "INT32_ABCD", 0.1, 0, 100, 0, "BMS_SOC"],
+            ["BMS_SOC_LOW", "SOC下限设定", 2, "0x0302", 6, "INT32_ABCD", 0.1, 0, 100, 0, "BMS_SOC"],
         ]
     elif protocol == "iec104":
         sample_yt = [

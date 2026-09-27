@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-import struct
 from typing import TYPE_CHECKING
 
 from src.device.protocol.base_handler import ClientHandler
@@ -526,29 +525,8 @@ class DataReader:
         if not registers:
             return None
 
-        reg_count = decode_info.register_cnt
-
         try:
-            if reg_count == 4:  # 64位
-                packed = struct.pack(
-                    ">HHHH" if decode_info.is_big_endian else "<HHHH",
-                    *registers[:4],
-                )
-            elif reg_count == 2:  # 32位
-                packed = struct.pack(
-                    ">HH" if decode_info.is_big_endian else "<HH",
-                    *registers[:2],
-                )
-            else:  # 16位
-                value = registers[0]
-                if not decode_info.is_big_endian:
-                    value = ((value & 0xFF) << 8) | ((value >> 8) & 0xFF)
-                if decode_info.is_signed and value > 0x7FFF:
-                    value -= 0x10000
-                return value
-
-            # 使用 Decode 的解包方法
-            return Decode.unpack_value(decode_info.pack_format, packed)
+            return Decode.decode_registers(decode_info.code, registers[: decode_info.register_cnt])
 
         except Exception as e:
             self._log.error(f"Decode error: {e}, registers={registers}")

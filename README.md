@@ -442,88 +442,9 @@ npm install -g @tauri-apps/cli
 
 解析码定义了 Modbus 寄存器数据的解析方式，包括数据类型、字节序和位数。
 
-### 解析码一览表
+### 解析码
 
-#### 16位整数 (1个寄存器)
-
-| 解析码 | 名称 | 说明 | 字节序 |
-|--------|------|------|--------|
-| `0x20` | UINT16_BE | 16位无符号整数 | 大端 (AB) |
-| `0x21` | INT16_BE | 16位有符号整数 | 大端 (AB) |
-| `0xC0` | UINT16_LE | 16位无符号整数 | 小端 (BA) |
-| `0xC1` | INT16_LE | 16位有符号整数 | 小端 (BA) |
-| `0xB0` | UINT16_BE_SWAP | 16位无符号整数 | 大端字交换 |
-| `0xB1` | INT16_BE_SWAP | 16位有符号整数 | 大端字交换 |
-
-#### 32位整数/浮点 (2个寄存器)
-
-| 解析码 | 名称 | 说明 | 字节序 |
-|--------|------|------|--------|
-| `0x40` | UINT32_BE | 32位无符号整数 | 大端 (ABCD) |
-| `0x41` | INT32_BE | 32位有符号整数 | 大端 (ABCD) |
-| `0x42` | FLOAT_BE | 32位浮点数 | 大端 (ABCD) |
-| `0xD0` | UINT32_LE | 32位无符号整数 | 小端 (DCBA) |
-| `0xD1` | INT32_LE | 32位有符号整数 | 小端 (DCBA) |
-| `0xD2` | FLOAT_LE | 32位浮点数 | 小端 (DCBA) |
-| `0x43` | UINT32_BE_SWAP | 32位无符号整数 | 大端字交换 (CDAB) |
-| `0x44` | INT32_BE_SWAP | 32位有符号整数 | 大端字交换 (CDAB) |
-| `0x45` | FLOAT_BE_SWAP | 32位浮点数 | 大端字交换 (CDAB) |
-| `0xD4` | UINT32_LE_SWAP | 32位无符号整数 | 小端字交换 (BADC) |
-| `0xD5` | INT32_LE_SWAP | 32位有符号整数 | 小端字交换 (BADC) |
-| `0xD3` | FLOAT_LE_SWAP | 32位浮点数 | 小端字交换 (BADC) |
-
-#### 64位整数/浮点 (4个寄存器)
-
-| 解析码 | 名称 | 说明 | 字节序 |
-|--------|------|------|--------|
-| `0x60` | UINT64_BE | 64位无符号整数 | 大端 |
-| `0x61` | INT64_BE | 64位有符号整数 | 大端 |
-| `0x62` | DOUBLE_BE | 64位双精度浮点 | 大端 |
-| `0xE0` | UINT64_LE | 64位无符号整数 | 小端 |
-| `0xE1` | INT64_LE | 64位有符号整数 | 小端 |
-| `0xE2` | DOUBLE_LE | 64位双精度浮点 | 小端 |
-
-#### 8位字符 (1个寄存器)
-
-| 解析码 | 名称 | 说明 |
-|--------|------|------|
-| `0x10` | CHAR_8_BE | 8位无符号字符 |
-| `0x11` | CHAR_8_BE_SIGNED | 8位有符号字符 |
-
-### 字节序说明
-
-以32位浮点数 `1234.5` 为例，其十六进制表示为 `449A5000`：
-
-| 字节序类型 | 存储顺序 | 说明 |
-|------------|----------|------|
-| **大端 (BE)** | `44 9A 50 00` | 高字节在前，标准网络字节序 |
-| **小端 (LE)** | `00 50 9A 44` | 低字节在前，x86架构常用 |
-| **大端字交换 (BE_SWAP)** | `50 00 44 9A` | 寄存器内大端，寄存器间交换 |
-| **小端字交换 (LE_SWAP)** | `9A 44 00 50` | 寄存器内小端，寄存器间交换 |
-
-### 代码使用示例
-
-```python
-from src.enums.modbus_register import Decode, DecodeCode
-
-# 方式一：使用解析码字符串
-info = Decode.get_info("0x41")
-print(f"寄存器数量: {info.register_cnt}")  # 2
-print(f"是否有符号: {info.is_signed}")      # True
-print(f"字节序: {info.endian}")             # >
-
-# 方式二：使用枚举（推荐）
-info = DecodeCode.FLOAT_BE.value
-print(f"解析码: {info.code}")              # 0x42
-print(f"描述: {info.description}")         # 32位浮点数(大端)
-
-# 数据打包/解包
-packed = Decode.pack_value(info.pack_format, 1234.5)
-value = Decode.unpack_value(info.pack_format, packed)
-
-# 获取所有解析码（供前端下拉菜单使用）
-all_codes = Decode.get_all_codes()
-```
+使用 `类型位数_字节顺序` 命名，例如 `INT8_AB`、`INT32_CDAB`、`FLOAT32_CDAB`。支持 8/16/32/64 位整数、32 位浮点和 64 位双精度浮点。双精度解析码为 `DOUBLE_ABCDEFGH`、`DOUBLE_BADCFEHG`、`DOUBLE_GHEFCDAB`、`DOUBLE_HGFEDCBA`。完整类型和字节顺序见 [解析码系统](docs/guide/point/register-parsing.md)。
 
 ### 真实值转换
 

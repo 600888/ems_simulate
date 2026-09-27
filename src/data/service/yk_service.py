@@ -86,7 +86,7 @@ class YkService:
                 code=item["code"],
                 value=0,
                 frame_type=2,
-                decode=item["decode_code"] if item.get("decode_code") else "0x20",
+                decode=item["decode_code"] if item.get("decode_code") else "UINT16_AB",
                 command_type=item.get("command_type", 0),
             )
 
@@ -138,7 +138,7 @@ class YkService:
                 code=item["code"],
                 value=0,
                 frame_type=2,
-                decode=item["decode_code"] if item.get("decode_code") else "0x20",
+                decode=item["decode_code"] if item.get("decode_code") else "UINT16_AB",
                 command_type=item.get("command_type", 0),
             )
 

@@ -75,6 +75,7 @@ class DbController:
 
             # 创建所有表
             Base.metadata.create_all(self.db_config.engine)
+            self._migrate_decode_codes()
             self._migrate_channel_point_table_mode_schema()
             self._migrate_channel_change_tracking_schema()
             self._migrate_dnp3_point_config_schema()
@@ -159,6 +160,7 @@ class DbController:
             self.db_config.create_engine(database)
             self._reset_legacy_iec61850_modeling_schema()
             Base.metadata.create_all(self.db_config.engine)
+            self._migrate_decode_codes()
             self._migrate_channel_point_table_mode_schema()
             self._migrate_channel_change_tracking_schema()
             self._migrate_dnp3_point_config_schema()
@@ -174,6 +176,37 @@ class DbController:
     def is_sqlite(self) -> bool:
         """是否使用 SQLite"""
         return self._db_type == "sqlite"
+
+    def _migrate_decode_codes(self) -> None:
+        """Upgrade all point tables to descriptive decode codes, repeatedly safe."""
+        if not self.db_config:
+            return
+        from sqlalchemy import inspect, text
+
+        from src.enums.modbus_register import LEGACY_CODES
+
+        engine = self.db_config.engine
+        inspector = inspect(engine)
+        tables = set(inspector.get_table_names())
+        defaults = {"point_yc": "INT32_ABCD", "point_yt": "UINT16_AB", "point_yx": "UINT16_AB", "point_yk": "UINT16_AB"}
+        for table, default in defaults.items():
+            if table not in tables:
+                continue
+            columns = {column["name"]: column for column in inspector.get_columns(table)}
+            if "decode_code" not in columns:
+                continue
+            with engine.begin() as conn:
+                if self.is_mysql() and getattr(columns["decode_code"]["type"], "length", 0) < 32:
+                    conn.execute(
+                        text(f"ALTER TABLE {table} MODIFY COLUMN decode_code VARCHAR(32) NOT NULL DEFAULT '{default}'")
+                    )
+                # SQLite does not enforce the declared VARCHAR length. Existing
+                # VARCHAR(10) columns can store the new names without a table rebuild.
+                for old, new in LEGACY_CODES.items():
+                    conn.execute(
+                        text(f"UPDATE {table} SET decode_code = :new WHERE decode_code = :old"),
+                        {"new": new, "old": old},
+                    )
 
     def is_mysql(self) -> bool:
         """是否使用 MySQL"""

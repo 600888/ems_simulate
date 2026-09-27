@@ -410,13 +410,10 @@ class MessageFormatter:
                 item.setdefault("warnings", []).append("响应寄存器不足，无法按测点解析码组合")
                 continue
             try:
-                buffer = b"".join(bytes.fromhex(str(register["raw_value"])) for register in registers)
-                expected_size = info.register_cnt * 2
-                if info.pack_format[-1:] in ("b", "B"):
-                    buffer = buffer[:1]
-                elif len(buffer) != expected_size:
-                    raise ValueError("register byte count mismatch")
-                decoded = Decode.unpack_value(info.pack_format, buffer)
+                raw_registers = [
+                    int.from_bytes(bytes.fromhex(str(register["raw_value"])), "big") for register in registers
+                ]
+                decoded = Decode.decode_registers(point.decode, raw_registers)
                 item["decoded_value"] = decoded
                 item["engineering_value"] = round(decoded * metadata["multiplier"] + metadata["addition"], 6)
                 item["combined_raw"] = _join_object_raw(registers)

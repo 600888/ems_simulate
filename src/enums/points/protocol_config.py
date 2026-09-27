@@ -6,6 +6,7 @@
 from dataclasses import dataclass
 from typing import Any
 
+from src.enums.modbus_register import Decode
 from src.enums.points.iec104_quality import IEC104QualityDescriptor
 
 
@@ -13,11 +14,14 @@ from src.enums.points.iec104_quality import IEC104QualityDescriptor
 class ModbusConfig:
     """Modbus 协议配置"""
 
-    decode_code: str = "0x41"  # 解析码（数据格式）
+    decode_code: str = "INT32_ABCD"  # 解析码（数据格式）
     register_count: int = 2  # 寄存器数量
     is_signed: bool = True  # 是否有符号
     byteorder: str = "big"  # 字节序（big/little）
     wordorder: str = "big"  # 字序（big/little）
+
+    def __post_init__(self) -> None:
+        self.decode_code = Decode.normalize(self.decode_code)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -31,7 +35,7 @@ class ModbusConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ModbusConfig":
         return cls(
-            decode_code=data.get("decode_code", "0x41"),
+            decode_code=data.get("decode_code", "INT32_ABCD"),
             register_count=data.get("register_count", 2),
             is_signed=data.get("is_signed", True),
             byteorder=data.get("byteorder", "big"),

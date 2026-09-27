@@ -6,9 +6,10 @@ frame_type = 0
 from typing import TypedDict
 
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from src.data.model.base import Base
+from src.enums.modbus_register import Decode
 
 
 class PointYcDict(TypedDict):
@@ -49,7 +50,12 @@ class PointYc(Base):
     rtu_addr: Mapped[int] = mapped_column(Integer, server_default="1", comment="从机地址/IEC104信息对象地址")
     reg_addr: Mapped[str] = mapped_column(String(128), nullable=False, comment="寄存器地址")
     func_code: Mapped[int] = mapped_column(Integer, server_default="3", comment="功能码")
-    decode_code: Mapped[str] = mapped_column(String(10), server_default="0x41", comment="解析码(Modbus专用)")
+    decode_code: Mapped[str] = mapped_column(
+        String(32),
+        default="INT32_ABCD",
+        server_default="INT32_ABCD",
+        comment="解析码(Modbus专用)",
+    )
 
     # 遥测特有字段
     mul_coe: Mapped[float] = mapped_column(Float, server_default="1.0", comment="乘系数")
@@ -82,6 +88,10 @@ class PointYc(Base):
         UniqueConstraint("code", "channel_id", "rtu_addr", name="uq_point_yc_code_channel_rtu"),
         {"comment": "遥测测点表"},
     )
+
+    @validates("decode_code")
+    def _normalize_decode_code(self, _key: str, value: str) -> str:
+        return Decode.normalize(value)
 
     @property
     def frame_type(self) -> int:

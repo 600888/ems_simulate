@@ -261,7 +261,7 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
                 "rtu_addr": point.get("rtu_addr", 1),
                 "reg_addr": point.get("reg_addr", "0"),
                 "func_code": point.get("func_code", 3),
-                "decode_code": point.get("decode_code", "0x41"),
+                "decode_code": point.get("decode_code", "INT32_ABCD"),
                 "iec_common_address": point.get("iec_common_address"),
                 "iec_cot": point.get("iec_cot", 3),
                 "iec_type_id": point.get("iec_type_id"),

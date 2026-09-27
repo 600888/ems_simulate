@@ -213,7 +213,7 @@ class ModbusServerHandler(ServerHandler):
                         from src.enums.modbus_register import Decode
 
                         point_end_addr = (
-                            point.address + Decode.get_decode_register_cnt(getattr(point, "decode", "0x41")) - 1
+                            point.address + Decode.get_decode_register_cnt(getattr(point, "decode", "INT32_ABCD")) - 1
                         )
 
                     # 判断地址是否有交集

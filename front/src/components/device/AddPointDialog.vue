@@ -139,65 +139,16 @@
           :placeholder="$t('point.selectDecodeCode')"
           style="width: 100%"
         >
-          <el-option-group :label="$t('decode.bit8')">
-            <el-option label="0x10 - Byte (unsigned)" value="0x10" />
-            <el-option label="0x11 - Byte (signed)" value="0x11" />
-          </el-option-group>
-          <el-option-group :label="$t('decode.int16')">
-            <el-option label="0x20 - Short AB (big endian)" value="0x20" />
-            <el-option label="0x21 - Short AB (signed)" value="0x21" />
-            <el-option label="0x22 - Short BA (byte swap)" value="0x22" />
-            <el-option label="0xB0 - Short BA (unsigned)" value="0xB0" />
-            <el-option label="0xB1 - Short BA (signed)" value="0xB1" />
-            <el-option label="0xC0 - Short CD (little endian)" value="0xC0" />
-            <el-option label="0xC1 - Short CD (signed)" value="0xC1" />
-          </el-option-group>
-          <el-option-group :label="$t('decode.int32')">
-            <el-option label="0x40 - Long AB CD (big endian)" value="0x40" />
-            <el-option label="0x41 - Long AB CD (signed)" value="0x41" />
-            <el-option label="0x43 - Long BA DC (big word swap)" value="0x43" />
-            <el-option label="0x44 - Long BA DC (signed)" value="0x44" />
-            <el-option label="0xD0 - Long DC BA (little endian)" value="0xD0" />
-            <el-option label="0xD1 - Long DC BA (signed)" value="0xD1" />
+          <el-option-group
+            v-for="group in DECODE_GROUPS"
+            :key="group.labelKey"
+            :label="$t(group.labelKey)"
+          >
             <el-option
-              label="0xD4 - Long CD AB (little word swap)"
-              value="0xD4"
-            />
-            <el-option label="0xD5 - Long CD AB (signed)" value="0xD5" />
-          </el-option-group>
-          <el-option-group :label="$t('decode.float32')">
-            <el-option label="0x42 - Float AB CD (big endian)" value="0x42" />
-            <el-option
-              label="0x45 - Float BA DC (big word swap)"
-              value="0x45"
-            />
-            <el-option
-              label="0xD2 - Float DC BA (little endian)"
-              value="0xD2"
-            />
-            <el-option
-              label="0xD3 - Float CD AB (little word swap)"
-              value="0xD3"
-            />
-          </el-option-group>
-          <el-option-group :label="$t('decode.int64')">
-            <el-option
-              label="0x60 - Int64 AB CD EF GH (big endian)"
-              value="0x60"
-            />
-            <el-option label="0x61 - Int64 AB CD EF GH (signed)" value="0x61" />
-            <el-option
-              label="0x62 - Double AB CD EF GH (big endian)"
-              value="0x62"
-            />
-            <el-option
-              label="0xE0 - Int64 HG FE DC BA (little endian)"
-              value="0xE0"
-            />
-            <el-option label="0xE1 - Int64 HG FE DC BA (signed)" value="0xE1" />
-            <el-option
-              label="0xE2 - Double HG FE DC BA (little endian)"
-              value="0xE2"
+              v-for="code in group.codes"
+              :key="code"
+              :label="getDecodeOptionLabel(code, $t)"
+              :value="code"
             />
           </el-option-group>
         </el-select>
@@ -409,6 +360,11 @@ import { useI18n } from "vue-i18n";
 import type { FormInstance, FormRules } from "element-plus";
 import { ElMessage } from "element-plus";
 import { showErrorOnce } from "@/api/http";
+import {
+  DECODE_GROUPS,
+  getDecodeOptionLabel,
+  getRegisterSpan,
+} from "@/constants/decode";
 import { addPoint, addPointsBatch, type PointCreateData } from "@/api/pointApi";
 import {
   IEC104_TYPES_BY_FRAME_TYPE,
@@ -498,7 +454,7 @@ const formData = reactive<PointCreateData>({
   rtu_addr: 1,
   reg_addr: "0",
   func_code: 3,
-  decode_code: "0x20",
+  decode_code: "UINT16_AB",
   bit: null,
   mul_coe: 1.0,
   add_coe: 0.0,
@@ -617,35 +573,6 @@ const validFuncCodes = computed(() => {
 
   return allCodes;
 });
-
-// 根据解析码计算寄存器跨度
-const getRegisterSpan = (decodeCode: string): number => {
-  // 64位解析码占4个寄存器
-  if (["0x60", "0x61", "0x62", "0xE0", "0xE1", "0xE2"].includes(decodeCode)) {
-    return 4;
-  }
-  // 32位解析码占2个寄存器
-  if (
-    [
-      "0x40",
-      "0x41",
-      "0x42",
-      "0x43",
-      "0x44",
-      "0x45",
-      "0xD0",
-      "0xD1",
-      "0xD2",
-      "0xD3",
-      "0xD4",
-      "0xD5",
-    ].includes(decodeCode)
-  ) {
-    return 2;
-  }
-  // 8位和16位占1个寄存器
-  return 1;
-};
 
 const rules = computed<FormRules>(() => ({
   frame_type: [

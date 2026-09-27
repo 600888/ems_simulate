@@ -356,7 +356,7 @@ class PointDao:
         """创建遥测点"""
         try:
             with local_session() as session, session.begin():
-                decode_code = point_data.get("decode_code", "0x41")
+                decode_code = point_data.get("decode_code", "INT32_ABCD")
                 mul_coe = point_data.get("mul_coe", 1.0)
                 add_coe = point_data.get("add_coe", 0.0)
                 calc_max, calc_min = Decode.get_limits_by_code(decode_code, mul_coe, add_coe)
@@ -400,7 +400,7 @@ class PointDao:
                     rtu_addr=point_data.get("rtu_addr", 1),
                     reg_addr=_format_reg_addr(point_data["reg_addr"]),
                     func_code=point_data.get("func_code", 2),
-                    decode_code=point_data.get("decode_code", "0x10"),
+                    decode_code=point_data.get("decode_code", "UINT8_AB"),
                     bit=point_data.get("bit"),
                     reverse=point_data.get("reverse", False),
                     iec_common_address=point_data.get("iec_common_address"),
@@ -430,7 +430,7 @@ class PointDao:
                     rtu_addr=point_data.get("rtu_addr", 1),
                     reg_addr=_format_reg_addr(point_data["reg_addr"]),
                     func_code=point_data.get("func_code", 5),
-                    decode_code=point_data.get("decode_code", "0x10"),
+                    decode_code=point_data.get("decode_code", "UINT8_AB"),
                     bit=point_data.get("bit"),
                     command_type=point_data.get("command_type", 0),
                     related_yx_id=point_data.get("related_yx_id"),
@@ -454,7 +454,7 @@ class PointDao:
         """创建遥调点"""
         try:
             with local_session() as session, session.begin():
-                decode_code = point_data.get("decode_code", "0x41")
+                decode_code = point_data.get("decode_code", "INT32_ABCD")
                 mul_coe = point_data.get("mul_coe", 1.0)
                 add_coe = point_data.get("add_coe", 0.0)
                 calc_max, calc_min = Decode.get_limits_by_code(decode_code, mul_coe, add_coe)
@@ -515,7 +515,7 @@ class PointDao:
             with local_session() as session, session.begin():
                 for point_data in points_data_list:
                     if frame_type == 0:  # 遥测
-                        decode_code = point_data.get("decode_code", "0x41")
+                        decode_code = point_data.get("decode_code", "INT32_ABCD")
                         mul_coe = point_data.get("mul_coe", 1.0)
                         add_coe = point_data.get("add_coe", 0.0)
                         calc_max, calc_min = Decode.get_limits_by_code(decode_code, mul_coe, add_coe)
@@ -548,7 +548,7 @@ class PointDao:
                             rtu_addr=point_data.get("rtu_addr", 1),
                             reg_addr=_format_reg_addr(point_data["reg_addr"]),
                             func_code=point_data.get("func_code", 2),
-                            decode_code=point_data.get("decode_code", "0x10"),
+                            decode_code=point_data.get("decode_code", "UINT8_AB"),
                             bit=point_data.get("bit"),
                             reverse=point_data.get("reverse", False),
                             iec_common_address=point_data.get("iec_common_address"),
@@ -567,7 +567,7 @@ class PointDao:
                             rtu_addr=point_data.get("rtu_addr", 1),
                             reg_addr=_format_reg_addr(point_data["reg_addr"]),
                             func_code=point_data.get("func_code", 5),
-                            decode_code=point_data.get("decode_code", "0x10"),
+                            decode_code=point_data.get("decode_code", "UINT8_AB"),
                             bit=point_data.get("bit"),
                             command_type=point_data.get("command_type", 0),
                             related_yx_id=point_data.get("related_yx_id"),
@@ -580,7 +580,7 @@ class PointDao:
                             enable=point_data.get("enable", True),
                         )
                     elif frame_type == 3:  # 遥调
-                        decode_code = point_data.get("decode_code", "0x41")
+                        decode_code = point_data.get("decode_code", "INT32_ABCD")
                         mul_coe = point_data.get("mul_coe", 1.0)
                         add_coe = point_data.get("add_coe", 0.0)
                         calc_max, calc_min = Decode.get_limits_by_code(decode_code, mul_coe, add_coe)

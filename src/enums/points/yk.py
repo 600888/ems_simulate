@@ -20,7 +20,7 @@ class Yk(BasePoint):
         code: str = "",
         value: int = 0,
         frame_type: int = 2,  # 遥控帧类型
-        decode: str = "0x20",
+        decode: str = "UINT16_AB",
         related_yx_address: int | None = None,
         command_type: int = 0,
         iec_type_id: str | None = None,

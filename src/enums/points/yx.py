@@ -20,7 +20,7 @@ class Yx(BasePoint):
         code: str = "",
         value: int = 0,
         frame_type: int = 1,
-        decode: str = "0x20",
+        decode: str = "UINT16_AB",
         iec_type_id: str | None = None,
         iec_quality: int | None = None,
         fc: str = "",

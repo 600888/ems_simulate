@@ -5,44 +5,22 @@
 
 import { PointType } from "@/types/point";
 import { IEC104_TYPES_BY_FRAME_TYPE } from "@/types/point";
+import { DECODE_GROUPS } from "@/constants/decode";
 
 // ===== 寄存器解析码分类 =====
 
-export const INT_REGISTER_DECODE_LIST = [
-  "0x10",
-  "0x11",
-  "0x20",
-  "0x21",
-  "0x22",
-  "0xB0",
-  "0xB1",
-  "0xC0",
-  "0xC1",
-] as const;
-
-export const LONG_REGISTER_DECODE_LIST = [
-  "0x40",
-  "0x41",
-  "0x43",
-  "0x44",
-  "0xD0",
-  "0xD1",
-  "0xD4",
-  "0xD5",
-  "0x60",
-  "0x61",
-  "0xE0",
-  "0xE1",
-] as const;
-
-export const FLOAT_REGISTER_DECODE_LIST = [
-  "0x42",
-  "0x45",
-  "0xD2",
-  "0xD3",
-  "0x62",
-  "E2",
-] as const;
+export const INT_REGISTER_DECODE_LIST: string[] = [
+  ...DECODE_GROUPS[0].codes,
+  ...DECODE_GROUPS[1].codes,
+];
+export const LONG_REGISTER_DECODE_LIST: string[] = [
+  ...DECODE_GROUPS[2].codes,
+  ...DECODE_GROUPS[4].codes,
+];
+export const FLOAT_REGISTER_DECODE_LIST: string[] = [
+  ...DECODE_GROUPS[3].codes,
+  ...DECODE_GROUPS[5].codes,
+];
 
 // ===== 表格列名映射 =====
 
@@ -223,7 +201,7 @@ export function getMmsTagType(mmsType: string): string {
 // ===== 提示文本 =====
 
 export const DECODE_CODE_TOOLTIP =
-  "解析码说明: 16位(0x20/21/C0/C1), 32位整(0x40/41/D0/D1), 32位浮(0x42/D2), 64位(0x60/61/E0/E1)";
+  "解析码格式：类型位数_字节顺序，例如 INT16_AB、FLOAT32_CDAB、DOUBLE_ABCDEFGH";
 export const FUNC_CODE_TOOLTIP =
   "01:读线圈(可读写→05写) 02:读离散输入(只读) 03:读保持寄存器(可读写→06写) 04:读输入寄存器(只读)";
 

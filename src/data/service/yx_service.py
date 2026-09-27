@@ -85,7 +85,7 @@ class YxService:
                 code=item["code"],
                 value=0,
                 frame_type=1,
-                decode=item["decode_code"] if item.get("decode_code") else "0x20",
+                decode=item["decode_code"] if item.get("decode_code") else "UINT16_AB",
             )
 
         elif protocol_type in [

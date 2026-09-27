@@ -43,13 +43,7 @@ Modbus 以"数据区 + 地址"寻址，共四类数据区：
 
 ## 解析码系统
 
-不同厂商设备的寄存器字节序各异，EMS Simulate 内置 **27 种解析码**，覆盖常见的数据格式：
-
-- **8 位**：Byte（无符号 / 有符号）；
-- **16 位**：Short AB（大端）、Short BA（字节交换）、Short CD（小端），各有符号/无符号；
-- **32 位整数**：Long AB CD（大端）、Long BA DC（大端字交换）、Long DC BA（小端）、Long CD AB（小端字交换），各有符号/无符号；
-- **32 位浮点**：Float AB CD、Float BA DC、Float CD AB（对应不同字节序）；
-- **64 位**：Int64、Double（大端 / 小端）。
+不同厂商设备的寄存器字节序各异。解析码直接写明类型、位数和字节顺序，例如 `INT16_AB`、`FLOAT32_CDAB`、`DOUBLE_HGFEDCBA`。完整类型与旧码迁移表见 [解析码系统](../../point/register-parsing.md)。
 
 配合**乘法系数**与**加法系数**可将原始值换算为工程值：
 

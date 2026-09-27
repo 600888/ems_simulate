@@ -1,7 +1,8 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from src.enums.modbus_register import Decode
 from src.enums.point_data import SimulateMethod
 
 
@@ -23,6 +24,13 @@ class PointMetadataEditRequest(BaseModel):
     device_name: str
     point_code: str
     metadata: dict[str, Any]
+
+    @field_validator("metadata")
+    @classmethod
+    def normalize_decode_metadata(cls, metadata: dict[str, Any]) -> dict[str, Any]:
+        if metadata.get("decode_code"):
+            return {**metadata, "decode_code": Decode.normalize(metadata["decode_code"])}
+        return metadata
 
 
 class Iec104MetadataEditRequest(BaseModel):
@@ -80,12 +88,17 @@ class PointCreateRequest(BaseModel):
     rtu_addr: int = Field(1, description="从机地址")
     reg_addr: str = Field(..., description="寄存器地址")
     func_code: int = Field(3, description="功能码")
-    decode_code: str = Field("0x41", description="解析码")
+    decode_code: str = Field("INT32_ABCD", description="解析码")
     bit: int | None = Field(None, description="位偏移")
     mul_coe: float = Field(1.0, description="乘系数（仅遥测/遥调）")
     add_coe: float = Field(0.0, description="加系数（仅遥测/遥调）")
     iec_type_id: str | None = Field(None, description="IEC104 ASDU类型标识（如M_ME_NC_1）", max_length=16)
     iec_quality: int | None = Field(0, description="IEC104品质描述符(位标志: OV=0x01 BL=0x02 SB=0x04 NT=0x08 IV=0x10)")
+
+    @field_validator("decode_code")
+    @classmethod
+    def normalize_decode_code(cls, code: str) -> str:
+        return Decode.normalize(code)
 
 
 class PointDeleteRequest(BaseModel):
@@ -101,12 +114,17 @@ class PointItem(BaseModel):
     rtu_addr: int = Field(1, description="从机地址")
     reg_addr: str = Field(..., description="寄存器地址")
     func_code: int = Field(3, description="功能码")
-    decode_code: str = Field("0x41", description="解析码")
+    decode_code: str = Field("INT32_ABCD", description="解析码")
     bit: int | None = Field(None, description="位偏移")
     mul_coe: float = Field(1.0, description="乘系数（仅遥测/遥调）")
     add_coe: float = Field(0.0, description="加系数（仅遥测/遥调）")
     iec_type_id: str | None = Field(None, description="IEC104 ASDU类型标识（如M_ME_NC_1）", max_length=16)
     iec_quality: int | None = Field(0, description="IEC104品质描述符(位标志: OV=0x01 BL=0x02 SB=0x04 NT=0x08 IV=0x10)")
+
+    @field_validator("decode_code")
+    @classmethod
+    def normalize_decode_code(cls, code: str) -> str:
+        return Decode.normalize(code)
 
 
 class PointsBatchCreateRequest(BaseModel):

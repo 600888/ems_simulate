@@ -438,88 +438,9 @@ The system supports four point types:
 
 Decode codes specify how Modbus register data is interpreted, including data type, byte order, and bit width.
 
-### Decode-code reference
+### Decode codes
 
-#### 16-bit integers (1 register)
-
-| Code | Name | Description | Byte order |
-|------|------|-------------|------------|
-| `0x20` | UINT16_BE | 16-bit unsigned integer | Big-endian (AB) |
-| `0x21` | INT16_BE | 16-bit signed integer | Big-endian (AB) |
-| `0xC0` | UINT16_LE | 16-bit unsigned integer | Little-endian (BA) |
-| `0xC1` | INT16_LE | 16-bit signed integer | Little-endian (BA) |
-| `0xB0` | UINT16_BE_SWAP | 16-bit unsigned integer | Big-endian, word swap |
-| `0xB1` | INT16_BE_SWAP | 16-bit signed integer | Big-endian, word swap |
-
-#### 32-bit integers and floats (2 registers)
-
-| Code | Name | Description | Byte order |
-|------|------|-------------|------------|
-| `0x40` | UINT32_BE | 32-bit unsigned integer | Big-endian (ABCD) |
-| `0x41` | INT32_BE | 32-bit signed integer | Big-endian (ABCD) |
-| `0x42` | FLOAT_BE | 32-bit float | Big-endian (ABCD) |
-| `0xD0` | UINT32_LE | 32-bit unsigned integer | Little-endian (DCBA) |
-| `0xD1` | INT32_LE | 32-bit signed integer | Little-endian (DCBA) |
-| `0xD2` | FLOAT_LE | 32-bit float | Little-endian (DCBA) |
-| `0x43` | UINT32_BE_SWAP | 32-bit unsigned integer | Big-endian, word swap (CDAB) |
-| `0x44` | INT32_BE_SWAP | 32-bit signed integer | Big-endian, word swap (CDAB) |
-| `0x45` | FLOAT_BE_SWAP | 32-bit float | Big-endian, word swap (CDAB) |
-| `0xD4` | UINT32_LE_SWAP | 32-bit unsigned integer | Little-endian, word swap (BADC) |
-| `0xD5` | INT32_LE_SWAP | 32-bit signed integer | Little-endian, word swap (BADC) |
-| `0xD3` | FLOAT_LE_SWAP | 32-bit float | Little-endian, word swap (BADC) |
-
-#### 64-bit integers and floats (4 registers)
-
-| Code | Name | Description | Byte order |
-|------|------|-------------|------------|
-| `0x60` | UINT64_BE | 64-bit unsigned integer | Big-endian |
-| `0x61` | INT64_BE | 64-bit signed integer | Big-endian |
-| `0x62` | DOUBLE_BE | 64-bit double | Big-endian |
-| `0xE0` | UINT64_LE | 64-bit unsigned integer | Little-endian |
-| `0xE1` | INT64_LE | 64-bit signed integer | Little-endian |
-| `0xE2` | DOUBLE_LE | 64-bit double | Little-endian |
-
-#### 8-bit characters (1 register)
-
-| Code | Name | Description |
-|------|------|-------------|
-| `0x10` | CHAR_8_BE | 8-bit unsigned character |
-| `0x11` | CHAR_8_BE_SIGNED | 8-bit signed character |
-
-### Byte order
-
-For example, the 32-bit float `1234.5` has the hexadecimal representation `449A5000`:
-
-| Order | Stored bytes | Description |
-|-------|--------------|-------------|
-| **Big-endian (BE)** | `44 9A 50 00` | Most significant byte first; standard network byte order |
-| **Little-endian (LE)** | `00 50 9A 44` | Least significant byte first; common on x86 |
-| **Big-endian word swap (BE_SWAP)** | `50 00 44 9A` | Big-endian within registers, registers swapped |
-| **Little-endian word swap (LE_SWAP)** | `9A 44 00 50` | Little-endian within registers, registers swapped |
-
-### Code example
-
-```python
-from src.enums.modbus_register import Decode, DecodeCode
-
-# Option 1: use a decode-code string
-info = Decode.get_info("0x41")
-print(f"Register count: {info.register_cnt}")  # 2
-print(f"Signed: {info.is_signed}")             # True
-print(f"Byte order: {info.endian}")            # >
-
-# Option 2: use the enum (recommended)
-info = DecodeCode.FLOAT_BE.value
-print(f"Decode code: {info.code}")             # 0x42
-print(f"Description: {info.description}")
-
-# Pack/unpack data
-packed = Decode.pack_value(info.pack_format, 1234.5)
-value = Decode.unpack_value(info.pack_format, packed)
-
-# List all decode codes for a frontend dropdown
-all_codes = Decode.get_all_codes()
-```
+Codes use `type-and-width_byte-order` names such as `INT8_AB`, `INT32_CDAB`, and `FLOAT32_CDAB`. The system supports 8/16/32/64-bit integers, 32-bit floats, and IEEE 754 doubles. Double codes are `DOUBLE_ABCDEFGH`, `DOUBLE_BADCFEHG`, `DOUBLE_GHEFCDAB`, and `DOUBLE_HGFEDCBA`. See the [decode-code reference](docs/guide/point/register-parsing.md) for the supported types and byte orders.
 
 ### Engineering-value conversion
 

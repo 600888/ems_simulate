@@ -1,6 +1,8 @@
-"""
-Modbus 解析码模块
-提供统一的数据类型解析配置
+"""Modbus register types and byte-order-aware codecs.
+
+The suffix is the order of bytes on the wire, relative to the usual big-endian
+representation of the value. Legacy hexadecimal codes are accepted at input
+boundaries, but all newly persisted codes use the descriptive names below.
 """
 
 from dataclasses import dataclass
@@ -10,290 +12,253 @@ import struct
 
 @dataclass(frozen=True)
 class DecodeInfo:
-    """解析码配置数据类
-
-    定义单个解析码的所有属性，作为单一数据源。
-
-    Attributes:
-        code: 解析码字符串，如 "0x41"
-        name: 语义化名称，如 "INT32_BE"
-        description: 中文描述
-        register_cnt: 占用寄存器数量 (1=16位, 2=32位)
-        is_signed: 是否有符号
-        is_float: 是否浮点数
-        is_big_endian: 是否大端字节序
-        word_swap: 是否字内反序（ABCD <-> CDAB）
-        pack_format: struct 模块打包格式
-    """
-
     code: str
     name: str
     description: str
     register_cnt: int
     is_signed: bool
     is_float: bool
-    is_big_endian: bool
-    word_swap: bool
     pack_format: str
+    order: str
+    bit_width: int
+
+    @property
+    def is_big_endian(self) -> bool:
+        return self.order == "ABCDEFGH" or self.order == "ABCD" or self.order == "AB"
+
+    @property
+    def word_swap(self) -> bool:
+        return self.order in {"CDAB", "GHEFCDAB"}
 
     @property
     def endian(self) -> str:
-        """返回字节序标识符"""
         return ">" if self.is_big_endian else "<"
 
     @property
     def decode_type(self) -> "DecodeType":
-        """返回解码类型枚举"""
         if self.is_float:
             return DecodeType.Float
-        if self.register_cnt == 2:
+        if self.bit_width > 16:
             return DecodeType.SignedLong if self.is_signed else DecodeType.UnsignedLong
         return DecodeType.SignedInt if self.is_signed else DecodeType.UnsignedInt
 
 
 class DecodeType(Enum):
-    """解码数据类型"""
+    SignedInt = 1
+    UnsignedInt = 2
+    SignedLong = 3
+    UnsignedLong = 4
+    Float = 5
 
-    SignedInt = 1  # 16位有符号整数
-    UnsignedInt = 2  # 16位无符号整数
-    SignedLong = 3  # 32位有符号整数
-    UnsignedLong = 4  # 32位无符号整数
-    Float = 5  # 32位浮点数
+
+def _info(name: str) -> DecodeInfo:
+    kind, order = name.split("_", 1)
+    width = 64 if kind == "DOUBLE" else int(kind.removeprefix("UINT").removeprefix("INT").removeprefix("FLOAT"))
+    is_float = kind in {"DOUBLE", "FLOAT32"}
+    is_signed = kind.startswith("INT")
+    fmt = (
+        ("d" if width == 64 else "f")
+        if is_float
+        else {
+            (8, False): "B",
+            (8, True): "b",
+            (16, False): "H",
+            (16, True): "h",
+            (32, False): "I",
+            (32, True): "i",
+            (64, False): "Q",
+            (64, True): "q",
+        }[(width, is_signed)]
+    )
+    value_type = "浮点数" if is_float else "有符号整数" if is_signed else "无符号整数"
+    return DecodeInfo(
+        name,
+        name,
+        f"{width}位{value_type} ({order})",
+        max(1, width // 16),
+        is_signed,
+        is_float,
+        ">" + fmt,
+        order,
+        width,
+    )
 
 
 class DecodeCode(Enum):
-    """解析码枚举 - 所有解析码的单一数据源
+    UINT8_AB = _info("UINT8_AB")
+    INT8_AB = _info("INT8_AB")
+    UINT8_BA = _info("UINT8_BA")
+    INT8_BA = _info("INT8_BA")
+    UINT16_AB = _info("UINT16_AB")
+    INT16_AB = _info("INT16_AB")
+    UINT16_BA = _info("UINT16_BA")
+    INT16_BA = _info("INT16_BA")
+    UINT32_ABCD = _info("UINT32_ABCD")
+    INT32_ABCD = _info("INT32_ABCD")
+    FLOAT32_ABCD = _info("FLOAT32_ABCD")
+    UINT32_BADC = _info("UINT32_BADC")
+    INT32_BADC = _info("INT32_BADC")
+    FLOAT32_BADC = _info("FLOAT32_BADC")
+    UINT32_CDAB = _info("UINT32_CDAB")
+    INT32_CDAB = _info("INT32_CDAB")
+    FLOAT32_CDAB = _info("FLOAT32_CDAB")
+    UINT32_DCBA = _info("UINT32_DCBA")
+    INT32_DCBA = _info("INT32_DCBA")
+    FLOAT32_DCBA = _info("FLOAT32_DCBA")
+    UINT64_ABCDEFGH = _info("UINT64_ABCDEFGH")
+    INT64_ABCDEFGH = _info("INT64_ABCDEFGH")
+    UINT64_GHEFCDAB = _info("UINT64_GHEFCDAB")
+    INT64_GHEFCDAB = _info("INT64_GHEFCDAB")
+    DOUBLE_ABCDEFGH = _info("DOUBLE_ABCDEFGH")
+    DOUBLE_BADCFEHG = _info("DOUBLE_BADCFEHG")
+    DOUBLE_GHEFCDAB = _info("DOUBLE_GHEFCDAB")
+    DOUBLE_HGFEDCBA = _info("DOUBLE_HGFEDCBA")
 
-    命名规则: {类型}_{位数}_{字节序}[_SWAP]
-    - 类型: UINT/INT/FLOAT/CHAR
-    - 位数: 8/16/32
-    - 字节序: BE(大端)/LE(小端)
-    - SWAP: 字内反序
-    """
 
-    # ===== 8位字符类型 (使用16位寄存器存储) =====
-    CHAR_8_BE = DecodeInfo("0x10", "CHAR_8_BE", "8位字符(大端)", 1, False, False, True, False, ">B")
-    CHAR_8_BE_SIGNED = DecodeInfo("0x11", "CHAR_8_BE_SIGNED", "8位有符号字符(大端)", 1, True, False, True, False, ">b")
-
-    # ===== 16位整数 - 大端 =====
-    UINT16_BE = DecodeInfo("0x20", "UINT16_BE", "16位无符号整数(大端 ABCD)", 1, False, False, True, False, ">H")
-    INT16_BE = DecodeInfo("0x21", "INT16_BE", "16位有符号整数(大端 ABCD)", 1, True, False, True, False, ">h")
-    UINT16_BE_BYTE_SWAP = DecodeInfo(
-        "0x22", "UINT16_BE_BYTE_SWAP", "16位无符号整数(大端字节交换 BADC)", 1, False, False, True, True, ">H"
-    )
-
-    # ===== 16位整数 - 大端字内反序 (0xB_) =====
-    UINT16_BE_SWAP = DecodeInfo(
-        "0xB0", "UINT16_BE_SWAP", "16位无符号整数(大端字交换 BADC)", 1, False, False, True, True, "=H"
-    )
-    INT16_BE_SWAP = DecodeInfo(
-        "0xB1", "INT16_BE_SWAP", "16位有符号整数(大端字交换 BADC)", 1, True, False, True, True, "=h"
-    )
-
-    # ===== 32位整数/浮点 - 大端 (0x4_) =====
-    UINT32_BE = DecodeInfo("0x40", "UINT32_BE", "32位无符号整数(大端 ABCD)", 2, False, False, True, False, ">I")
-    INT32_BE = DecodeInfo("0x41", "INT32_BE", "32位有符号整数(大端 ABCD)", 2, True, False, True, False, ">i")
-    FLOAT_BE = DecodeInfo("0x42", "FLOAT_BE", "32位浮点数(大端 ABCD)", 2, False, True, True, False, ">f")
-
-    # ===== 32位整数/浮点 - 大端字内反序 =====
-    UINT32_BE_SWAP = DecodeInfo(
-        "0x43", "UINT32_BE_SWAP", "32位无符号整数(大端字交换 BADC)", 2, False, False, True, True, "=I"
-    )
-    INT32_BE_SWAP = DecodeInfo(
-        "0x44", "INT32_BE_SWAP", "32位有符号整数(大端字交换 BADC)", 2, True, False, True, True, "=i"
-    )
-    FLOAT_BE_SWAP = DecodeInfo("0x45", "FLOAT_BE_SWAP", "32位浮点数(大端字交换 BADC)", 2, False, True, True, True, "=f")
-
-    # ===== 16位整数 - 小端 (0xC_) =====
-    UINT16_LE = DecodeInfo("0xC0", "UINT16_LE", "16位无符号整数(小端 DCBA)", 1, False, False, False, False, "<H")
-    INT16_LE = DecodeInfo("0xC1", "INT16_LE", "16位有符号整数(小端 DCBA)", 1, True, False, False, False, "<h")
-
-    # ===== 32位整数/浮点 - 小端 (0xD_) =====
-    UINT32_LE = DecodeInfo("0xD0", "UINT32_LE", "32位无符号整数(小端 DCBA)", 2, False, False, False, False, "<I")
-    INT32_LE = DecodeInfo("0xD1", "INT32_LE", "32位有符号整数(小端 DCBA)", 2, True, False, False, False, "<i")
-    FLOAT_LE = DecodeInfo("0xD2", "FLOAT_LE", "32位浮点数(小端 DCBA)", 2, False, True, False, False, "<f")
-
-    # ===== 32位整数/浮点 - 小端字内反序 =====
-    FLOAT_LE_SWAP = DecodeInfo(
-        "0xD3", "FLOAT_LE_SWAP", "32位浮点数(大端字交换 CDAB)", 2, False, True, True, True, ">f_"
-    )
-    UINT32_LE_SWAP = DecodeInfo(
-        "0xD4", "UINT32_LE_SWAP", "32位无符号整数(大端字交换 CDAB)", 2, False, False, True, True, ">I_"
-    )
-    INT32_LE_SWAP = DecodeInfo(
-        "0xD5", "INT32_LE_SWAP", "32位有符号整数(大端字交换 CDAB)", 2, True, False, True, True, ">i_"
-    )
-
-    # ===== 64位类型 (4个寄存器) =====
-    UINT64_BE = DecodeInfo("0x60", "UINT64_BE", "64位无符号整数(大端)", 4, False, False, True, False, ">Q")
-    INT64_BE = DecodeInfo("0x61", "INT64_BE", "64位有符号整数(大端)", 4, True, False, True, False, ">q")
-    DOUBLE_BE = DecodeInfo("0x62", "DOUBLE_BE", "64位双精度浮点(大端)", 4, False, True, True, False, ">d")
-    UINT64_LE = DecodeInfo("0xE0", "UINT64_LE", "64位无符号整数(小端)", 4, False, False, False, False, "<Q")
-    INT64_LE = DecodeInfo("0xE1", "INT64_LE", "64位有符号整数(小端)", 4, True, False, False, False, "<q")
-    DOUBLE_LE = DecodeInfo("0xE2", "DOUBLE_LE", "64位双精度浮点(小端)", 4, False, True, False, False, "<d")
+# These aliases follow the actual Modbus client/server register behavior before
+# this refactor. Several old descriptions claimed a different byte order.
+LEGACY_CODES: dict[str, str] = {
+    "0x10": "UINT8_AB",
+    "0x11": "INT8_AB",
+    "0x20": "UINT16_AB",
+    "0x21": "INT16_AB",
+    "0x22": "UINT16_AB",
+    "0xB0": "UINT16_AB",
+    "0xB1": "INT16_AB",
+    "0xC0": "UINT16_BA",
+    "0xC1": "INT16_BA",
+    "0x40": "UINT32_ABCD",
+    "0x41": "INT32_ABCD",
+    "0x42": "FLOAT32_ABCD",
+    "0x43": "UINT32_DCBA",
+    "0x44": "INT32_DCBA",
+    "0x45": "FLOAT32_DCBA",
+    "0xD0": "UINT32_CDAB",
+    "0xD1": "INT32_CDAB",
+    "0xD2": "FLOAT32_CDAB",
+    "0xD3": "FLOAT32_CDAB",
+    "0xD4": "UINT32_CDAB",
+    "0xD5": "INT32_CDAB",
+    "0x60": "UINT64_ABCDEFGH",
+    "0x61": "INT64_ABCDEFGH",
+    "0x62": "DOUBLE_ABCDEFGH",
+    "0xE0": "UINT64_GHEFCDAB",
+    "0xE1": "INT64_GHEFCDAB",
+    "0xE2": "DOUBLE_GHEFCDAB",
+}
+_LEGACY_UPPER = {old.upper(): new for old, new in LEGACY_CODES.items()}
 
 
 class Decode:
-    """解析码工具类
-
-    提供向后兼容的静态方法接口，内部代理到 DecodeCode 枚举。
-    """
-
-    # 构建解析码映射表（启动时一次性构建）
     _CODE_MAP: dict[str, DecodeInfo] = {item.value.code: item.value for item in DecodeCode}
+    DEFAULT = DecodeCode.INT32_ABCD.value
 
-    # 默认解析码
-    DEFAULT = DecodeCode.INT32_BE.value
+    @classmethod
+    def normalize(cls, decode: str) -> str:
+        if not isinstance(decode, str):
+            raise ValueError(f"未知解析码: {decode!r}")
+        code = _LEGACY_UPPER.get(decode.upper(), decode.upper())
+        if code not in cls._CODE_MAP:
+            raise ValueError(f"未知解析码: {decode!r}")
+        return code
 
     @classmethod
     def get_info(cls, decode: str) -> DecodeInfo:
-        """获取解析码完整信息
-
-        Args:
-            decode: 解析码字符串，如 "0x41"
-
-        Returns:
-            DecodeInfo 对象，如未找到返回默认值
-        """
-        return cls._CODE_MAP.get(decode, cls.DEFAULT)
+        return cls._CODE_MAP[cls.normalize(decode)]
 
     @classmethod
-    def get_all_codes(cls) -> list:
-        """获取所有解析码列表（供前端使用）"""
+    def get_all_codes(cls) -> list[dict]:
         return [
             {
-                "code": item.value.code,
-                "name": item.value.name,
-                "description": item.value.description,
-                "register_cnt": item.value.register_cnt,
+                "code": info.code,
+                "name": info.name,
+                "description": info.description,
+                "register_cnt": info.register_cnt,
+                "order": info.order,
+                "bit_width": info.bit_width,
             }
-            for item in DecodeCode
+            for info in cls._CODE_MAP.values()
         ]
 
     @classmethod
     def get_decode_register_cnt(cls, decode: str) -> int:
-        """获取解析码占用的寄存器数量"""
         return cls.get_info(decode).register_cnt
 
     @classmethod
     def get_endian(cls, decode: str) -> str:
-        """获取字节序标识 ('>' 大端, '<' 小端)"""
         return cls.get_info(decode).endian
 
     @classmethod
     def is_decode_signed(cls, decode: str) -> bool:
-        """判断是否有符号"""
         return cls.get_info(decode).is_signed
 
     @classmethod
     def get_decode_type(cls, decode: str) -> DecodeType:
-        """获取解码数据类型"""
         return cls.get_info(decode).decode_type
 
     @classmethod
     def get_byteorder(cls, decode: str) -> str:
-        """获取 struct 打包格式"""
         return cls.get_info(decode).pack_format
 
     @classmethod
     def get_limits_by_code(cls, decode: str, mul_coe: float = 1.0, add_coe: float = 0.0) -> tuple[float, float]:
-        """根据解析码获取寄存器真实极值 (受乘法系数和加法系数影响)
-
-        Args:
-            decode: 解析码字符串
-            mul_coe: 乘法系数
-            add_coe: 加法系数
-
-        Returns:
-            (max_limit, min_limit)
-        """
-        decode_type = cls.get_decode_type(decode)
-
-        if decode_type == DecodeType.SignedInt:
-            raw_min, raw_max = -32768, 32767
-        elif decode_type == DecodeType.UnsignedInt:
-            raw_min, raw_max = 0, 65535
-        elif decode_type == DecodeType.SignedLong:
-            raw_min, raw_max = -2147483648, 2147483647
-        elif decode_type == DecodeType.UnsignedLong:
-            raw_min, raw_max = 0, 4294967295
-        elif decode_type == DecodeType.Float:  # Include Float / Double as 32/64
-            # 使用一个较大的合理浮点边界，因为完全使用 e38 前端表单可能不便
+        info = cls.get_info(decode)
+        if info.is_float:
             raw_min, raw_max = -999999999.0, 999999999.0
+        elif info.is_signed:
+            raw_min, raw_max = -(1 << (info.bit_width - 1)), (1 << (info.bit_width - 1)) - 1
         else:
-            raw_min, raw_max = -9999999.0, 9999999.0  # fallback
+            raw_min, raw_max = 0, (1 << info.bit_width) - 1
+        low = raw_min * mul_coe + add_coe
+        high = raw_max * mul_coe + add_coe
+        return max(low, high), min(low, high)
 
-        calc_min = raw_min * mul_coe + add_coe
-        calc_max = raw_max * mul_coe + add_coe
+    @classmethod
+    def encode_registers(cls, decode: str, value: int | float) -> list[int]:
+        info = cls.get_info(decode)
+        raw = struct.pack(info.pack_format, float(value) if info.is_float else int(value))
+        if info.bit_width == 8:
+            wire = b"\x00" + raw if info.order == "AB" else raw + b"\x00"
+        else:
+            canonical = "ABCDEFGH"[: len(raw)]
+            wire = bytes(raw[canonical.index(letter)] for letter in info.order)
+        return [int.from_bytes(wire[i : i + 2], "big") for i in range(0, len(wire), 2)]
 
-        if mul_coe < 0:
-            return (
-                calc_min,
-                calc_max,
-            )  # calc_min(由raw_max得出) 是 max_limit, calc_max(由raw_min得出) 是 min_limit，已倒置
-
-        return calc_max, calc_min
+    @classmethod
+    def decode_registers(cls, decode: str, registers: list[int]) -> int | float:
+        info = cls.get_info(decode)
+        if len(registers) != info.register_cnt:
+            raise ValueError(f"{info.code} 需要 {info.register_cnt} 个寄存器")
+        wire = b"".join(int(reg).to_bytes(2, "big") for reg in registers)
+        if info.bit_width == 8:
+            raw = wire[1:2] if info.order == "AB" else wire[:1]
+        else:
+            canonical = "ABCDEFGH"[: len(wire)]
+            raw = bytes(wire[info.order.index(letter)] for letter in canonical)
+        return struct.unpack(info.pack_format, raw)[0]
 
     @classmethod
     def pack_value(cls, byteorder: str, value) -> bytes:
-        """将值打包为字节（支持字内反序）
-
-        Args:
-            byteorder: struct 格式字符串，如 ">f" 或 "<I_"（下划线表示字交换）
-            value: 要打包的值
-
-        Returns:
-            打包后的字节串
-        """
-        if byteorder.endswith("_"):  # 处理字交换情况 (CDAB)
-            fmt = byteorder[:-1]
-            packed = struct.pack(fmt, float(value) if "f" in fmt or "d" in fmt else int(value))
-            # 字交换逻辑：交换16位字的位置 (ABCD → CDAB)
-            if len(packed) >= 4:
-                words = [packed[i : i + 2] for i in range(0, len(packed), 2)]
-                # 每4字节(2个word)为一组，交换word位置
-                swapped_words = []
-                for i in range(0, len(words), 2):
-                    if i + 1 < len(words):
-                        swapped_words.extend([words[i + 1], words[i]])
-                    else:
-                        swapped_words.append(words[i])
-                return b"".join(swapped_words)
-            return packed[::-1]
-        return struct.pack(byteorder, float(value) if "f" in byteorder or "d" in byteorder else int(value))
+        """Compatibility helper for external struct-format callers."""
+        fmt = byteorder.rstrip("_")
+        packed = struct.pack(fmt, float(value) if fmt[-1] in "fd" else int(value))
+        if byteorder.endswith("_"):
+            words = [packed[i : i + 2] for i in range(0, len(packed), 2)]
+            return b"".join(words[i ^ 1] for i in range(len(words))) if len(words) % 2 == 0 else packed
+        return packed
 
     @classmethod
     def unpack_value(cls, byteorder: str, buffer: bytes):
-        """将字节解包为值（支持字内反序）
-
-        Args:
-            byteorder: struct 格式字符串
-            buffer: 要解包的字节串
-
-        Returns:
-            解包后的值
-        """
-        if byteorder.endswith("_"):  # 处理字交换情况 (CDAB)
-            fmt = byteorder[:-1]
-            if len(buffer) >= 4:
-                words = [buffer[i : i + 2] for i in range(0, len(buffer), 2)]
-                # 每4字节(2个word)为一组，交换word位置
-                swapped_words = []
-                for i in range(0, len(words), 2):
-                    if i + 1 < len(words):
-                        swapped_words.extend([words[i + 1], words[i]])
-                    else:
-                        swapped_words.append(words[i])
-                swapped = b"".join(swapped_words)
-            else:
-                swapped = buffer[::-1]
-            return struct.unpack(fmt, swapped)[0]
-        return struct.unpack(byteorder, buffer)[0]
+        fmt = byteorder.rstrip("_")
+        if byteorder.endswith("_"):
+            words = [buffer[i : i + 2] for i in range(0, len(buffer), 2)]
+            if len(words) % 2 == 0:
+                buffer = b"".join(words[i ^ 1] for i in range(len(words)))
+        return struct.unpack(fmt, buffer)[0]
 
 
-# ===== 向后兼容：保留 ByteOrder 枚举 =====
 class ByteOrder(Enum):
-    """字节序枚举（向后兼容，建议使用 DecodeCode）"""
+    """Legacy struct formats retained for callers outside the code registry."""
 
     BigEndFloat = ">f"
     LittleEndFloat = "<f"

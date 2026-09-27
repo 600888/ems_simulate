@@ -24,7 +24,7 @@ class Yc(BasePoint):
         mul_coe: float = 1.0,
         add_coe: float = 0,
         frame_type: int = 0,
-        decode: str = "0x41",
+        decode: str = "INT32_ABCD",
         iec_type_id: str | None = None,
         iec_quality: int | None = None,
         fc: str = "",
@@ -135,8 +135,8 @@ class Yc(BasePoint):
                 self._value = value
 
                 # 根据数据类型选择转换方式
-                byteorder = Decode.get_byteorder(self.decode)
-                buffer = Decode.pack_value(byteorder, value)
+                registers = Decode.encode_registers(self.decode, value)
+                buffer = b"".join(register.to_bytes(2, "big") for register in registers)
 
                 hex_str = "".join(f"{b:02X}" for b in buffer)
                 self._hex_value = f"0x{hex_str}"

@@ -96,7 +96,7 @@ class YcService:
                 add_coe=item["add_coe"],
                 mul_coe=item["mul_coe"],
                 frame_type=0,
-                decode=item["decode_code"] if item.get("decode_code") else "0x41",
+                decode=item["decode_code"] if item.get("decode_code") else "INT32_ABCD",
             )
 
         elif protocol_type in [
