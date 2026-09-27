@@ -35,6 +35,7 @@
           :data="selectOptions"
           :props="{ label: 'name', value: 'id', children: 'children' }"
           :placeholder="$t('addGroup.parentPlaceholder')"
+          popper-class="device-group-select-popper"
           check-strictly
           clearable
           style="width: 100%"

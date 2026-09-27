@@ -57,6 +57,11 @@ body,
   color: var(--text-primary);
 }
 
+/* 设备组树形选择器的选项行高与普通下拉选项（34px）一致。 */
+.device-group-select-popper .el-tree-node__content {
+  height: 34px;
+}
+
 body.theme-dark {
   .el-card,
   .el-dialog,

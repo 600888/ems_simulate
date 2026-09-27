@@ -24,6 +24,7 @@
         :data="groupOptions"
         :props="{ label: 'name', value: 'id', children: 'children' }"
         :placeholder="$t('device.groupPlaceholder')"
+        popper-class="device-group-select-popper"
         check-strictly
         clearable
         :value-on-clear="null"

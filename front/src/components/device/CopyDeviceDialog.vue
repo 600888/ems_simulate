@@ -79,6 +79,7 @@
                 :data="groupSelectOptions"
                 :props="{ label: 'name', value: 'id', children: 'children' }"
                 :placeholder="$t('copyDevice.targetGroupPlaceholder')"
+                popper-class="device-group-select-popper"
                 check-strictly
                 style="width: 100%"
               />
