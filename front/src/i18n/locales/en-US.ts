@@ -1,4 +1,7 @@
+import { opcuaEnUS } from "./opcua";
+
 export default {
+  opcua: opcuaEnUS,
   common: {
     cancel: "Cancel",
     confirm: "Confirm",

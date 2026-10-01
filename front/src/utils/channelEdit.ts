@@ -1,4 +1,5 @@
 import {
+  PROTOCOL_TYPE,
   PROTOCOL_DEFAULT_CLIENT_IP,
   PROTOCOL_DEFAULT_PORTS,
 } from "@/constants/protocol";
@@ -73,6 +74,10 @@ export function applyProtocolTypeDefaults(
   }
 
   const defaultIp = PROTOCOL_DEFAULT_CLIENT_IP[newType];
+  if (newType === PROTOCOL_TYPE.OPCUA) {
+    // M1 NoSecurity endpoints are restricted to loopback on both roles.
+    form.ip = "127.0.0.1";
+  }
   if (defaultIp !== undefined) {
     const protocol = protocols.find((item) => item.value === newType);
     if (!protocol || !protocol.conn_types.includes(form.conn_type)) {
@@ -95,7 +100,8 @@ export function applyConnectionTypeDefaults(
   if (newConnType === 1) {
     form.ip = PROTOCOL_DEFAULT_CLIENT_IP[form.protocol_type] ?? "127.0.0.1";
   } else if (newConnType === 2) {
-    form.ip = "0.0.0.0";
+    form.ip =
+      form.protocol_type === PROTOCOL_TYPE.OPCUA ? "127.0.0.1" : "0.0.0.0";
   }
 }
 

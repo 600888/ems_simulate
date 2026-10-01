@@ -82,7 +82,7 @@
     </el-row>
 
     <!-- 第二行：IEC61850 模型管理 + 仿真模拟控制 -->
-    <el-row class="nodes row-model-sim" :span="24">
+    <el-row v-if="!isOpcUaProtocol" class="nodes row-model-sim" :span="24">
       <!-- IEC61850 模型区域 -->
       <div v-if="isIec61850Protocol" class="model-section">
         <div class="model-controls">
@@ -232,7 +232,14 @@
       />
       <span class="model-progress-text">{{ modelProgressText }}</span>
     </el-row>
-    <Slave ref="slaveRef" />
+    <OpcUaPanel
+      v-if="isOpcUaProtocol && channelId"
+      :channel-id="channelId"
+      :role="isClientDevice ? 'client' : 'server'"
+      :running="deviceStatus"
+      @config-changed="handleOpcUaConfigChanged"
+    />
+    <Slave v-else-if="!isOpcUaProtocol" ref="slaveRef" />
 
     <!-- 报文查看对话框 -->
     <MessageViewDialog v-model="showMessageDialog" :device-name="routeName" />
@@ -273,6 +280,7 @@ import {
 import { useRoute } from "vue-router";
 import TextNode from "@/components/common/TextNode.vue";
 import Slave from "@/components/device/Slave.vue";
+import OpcUaPanel from "@/components/device/OpcUaPanel.vue";
 import MessageViewDialog from "@/components/device/MessageViewDialog.vue";
 import ConnectionMonitorDialog from "@/components/device/ConnectionMonitorDialog.vue";
 import SimulationConfigDialog from "@/components/point/SimulationConfigDialog.vue";
@@ -395,6 +403,10 @@ const isClientDevice = computed(() => {
   // ModbusTcpClient, Iec104Client, Dlt645Client
   return String(type).includes("Client");
 });
+
+const isOpcUaProtocol = computed(() =>
+  ["OpcUaClient", "OpcUaServer"].includes(String(communicationType.value)),
+);
 
 // IEC61850 协议检测
 const isIec61850Protocol = computed(() => {
@@ -708,6 +720,11 @@ const fetchDeviceInfo = async () => {
     console.error(error);
     // error message is handled by global interceptor
   }
+};
+
+const handleOpcUaConfigChanged = async () => {
+  await fetchDeviceInfo();
+  triggerSidebarRefresh();
 };
 
 const startFunction = async () => {

@@ -28,4 +28,6 @@ def require_tabular_point_channel(channel_id: int) -> ChannelDict:
     channel = get_channel_or_raise(channel_id)
     if channel.get("protocol_type") == IEC61850_PROTOCOL_ID:
         raise ValidationError(f"通道 {channel.get('name') or channel_id} 是 IEC 61850 通道，请使用 ICD/SCL 模型导入")
+    if channel.get("protocol_type") == 7:
+        raise ValidationError("OPC UA 通道请使用专属点表预检与导入接口")
     return channel

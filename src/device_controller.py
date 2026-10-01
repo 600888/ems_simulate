@@ -172,10 +172,14 @@ class DeviceController:
                     or channel_protocol_type == ProtocolType.ModbusTcpClient
                     or channel_protocol_type == ProtocolType.Dlt645Client
                     or channel_protocol_type == ProtocolType.Iec61850Client
+                    or channel_protocol_type == ProtocolType.OpcUaClient
                 ):  # TCP 客户端
                     general_device_builder.setDeviceNetConfig(port=port, ip=ip)
                 else:  # TCP 服务端
-                    general_device_builder.setDeviceNetConfig(port=port, ip=Config.DEFAULT_IP)
+                    general_device_builder.setDeviceNetConfig(
+                        port=port,
+                        ip=ip if channel_protocol_type == ProtocolType.OpcUaServer else Config.DEFAULT_IP,
+                    )
 
                 # 传递 IEC61850 IED 模型名称
                 if channel_protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client):

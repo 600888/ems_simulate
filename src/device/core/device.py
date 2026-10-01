@@ -71,6 +71,7 @@ class Device:
 
         # 核心组件
         self.runtime_config: dict[str, Any] = {}
+        self.opcua_config: dict[str, Any] = {}
         self.security_config: dict[str, Any] = {
             "tls_enabled": False,
             "tls_mode": "one_way",
@@ -163,6 +164,7 @@ class Device:
     def _create_protocol_handler(self) -> ProtocolHandler:
         """根据协议类型创建处理器（延迟导入协议模块）"""
         from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+        from src.device.protocol.opcua_handler import OpcUaClientHandler, OpcUaServerHandler
 
         handler_map = {
             ProtocolType.ModbusTcpServer: lambda: ModbusServerHandler(self.log),
@@ -181,6 +183,8 @@ class Device:
             ProtocolType.Iec61850Client: lambda: IEC61850ClientHandler(self.log),
             ProtocolType.Dnp3Server: lambda: DNP3ServerHandler(self.log),
             ProtocolType.Dnp3Client: lambda: DNP3ClientHandler(self.log),
+            ProtocolType.OpcUaServer: lambda: OpcUaServerHandler(self.log),
+            ProtocolType.OpcUaClient: lambda: OpcUaClientHandler(self.log),
         }
         creator = handler_map.get(self.protocol_type)
         if creator:
@@ -205,6 +209,7 @@ class Device:
             "ied_name": self.model_name,  # IEC61850 IED 名称 (与 model_name 相同，对应 ICD 文件的 IED name)
             "icd_path": self.icd_path,  # ICD 文件路径 (IEC61850, v2.0)
             "runtime": dict(self.runtime_config),
+            "opcua": dict(self.opcua_config),
             "security": dict(self.security_config),
         }
 
@@ -220,7 +225,12 @@ class Device:
             self.protocol_handler.set_on_points_discovered(self._on_iec61850_points_discovered)
 
         # IEC61850 测点来自 ICD 模型文件或 MMS 在线发现，不从数据库注册测点
-        if self.protocol_type in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client):
+        if self.protocol_type in (
+            ProtocolType.Iec61850Server,
+            ProtocolType.Iec61850Client,
+            ProtocolType.OpcUaServer,
+            ProtocolType.OpcUaClient,
+        ):
             return
 
         # 添加测点
@@ -299,6 +309,14 @@ class Device:
     def initDnp3Client(self) -> None:
         """初始化 DNP3 客户端（Master）"""
         self.protocol_type = ProtocolType.Dnp3Client
+        self.initProtocol()
+
+    def initOpcUaServer(self) -> None:
+        self.protocol_type = ProtocolType.OpcUaServer
+        self.initProtocol()
+
+    def initOpcUaClient(self) -> None:
+        self.protocol_type = ProtocolType.OpcUaClient
         self.initProtocol()
 
     def get_iec61850_connect_progress(self) -> dict:
@@ -614,9 +632,13 @@ class Device:
     async def start(self) -> bool:
         """启动设备"""
         try:
-            self.point_calculator.start()
+            if self.protocol_type not in (ProtocolType.OpcUaClient, ProtocolType.OpcUaServer):
+                self.point_calculator.start()
             if self.protocol_handler:
-                return await self.protocol_handler.start()
+                started = await self.protocol_handler.start()
+                if not started:
+                    self.point_calculator.stop()
+                return started
             return False
         except Exception as e:
             self.log.error(f"启动设备失败: {e}")

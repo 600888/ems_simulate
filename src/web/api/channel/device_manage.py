@@ -8,8 +8,10 @@ from src.config.config import Config
 from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
 from src.data.service.iec61850_copy_service import Iec61850CopyResult, Iec61850CopyService
+from src.data.service.opcua_copy_service import OpcUaCopyService
 from src.data.service.point_mapping_service import PointMappingService
 from src.enums.modbus_def import ProtocolType
+from src.proto.opcua.core.transport import loopback_endpoint, make_endpoint_url
 from src.web.api.channel.helpers import (
     apply_ip_offsets,
     configure_builder_network,
@@ -53,14 +55,19 @@ async def create_and_start_device(req: ChannelIdRequest, request: Request):
 
     if is_client_protocol(channel_protocol_type):
         # 客户端协议只建立连接；自动读取由用户通过界面显式开启。
-        await general_device.start()
+        started = await general_device.start()
+        if channel_protocol_type == ProtocolType.OpcUaClient and not started:
+            raise RuntimeError(f"OPC UA 客户端启动失败: {general_device.protocol_handler.last_error}")
     elif channel_protocol_type in (
         ProtocolType.Iec61850Server,
         ProtocolType.Iec101Server,
         ProtocolType.Dnp3Server,
+        ProtocolType.OpcUaServer,
     ):
         # asyncio 服务端均需显式启动监听。
-        await general_device.start()
+        started = await general_device.start()
+        if channel_protocol_type == ProtocolType.OpcUaServer and not started:
+            raise RuntimeError(f"OPC UA 服务端启动失败: {general_device.protocol_handler.last_error}")
         log.info(f"{channel_protocol_type.value} 服务端已启动: {channel_name}")
 
     device_controller = request.app.state.device_controller
@@ -109,6 +116,7 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
     source_channel = ChannelService.get_channel_by_id(req.channel_id)
     if not source_channel:
         raise NotFoundError("源通道不存在")
+    is_opcua = source_channel.get("protocol_type") == 7
 
     source_device_id = source_channel.get("device_id")
     source_device = DeviceService.get_device_by_id(source_device_id) if source_device_id else None
@@ -119,7 +127,7 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
     )
     if target_group_id is not None and not DeviceGroupService.get_group_by_id(target_group_id):
         raise NotFoundError(f"目标设备组 {target_group_id} 不存在")
-    source_points = PointDao.get_points_by_channel(req.channel_id)
+    source_points = [] if is_opcua else PointDao.get_points_by_channel(req.channel_id)
     source_ip = source_channel.get("ip", Config.DEFAULT_IP)
     source_port = source_channel.get("port", Config.DEFAULT_PORT)
     is_iec61850 = source_channel.get("protocol_type") == Iec61850CopyService.PROTOCOL_ID
@@ -149,6 +157,12 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
         else:
             new_code = f"{prefix}{source_channel['code']}{suffix}{i}"
             new_name = f"{prefix}{source_channel['name']}{suffix}{i}"
+
+        if is_opcua:
+            try:
+                loopback_endpoint(make_endpoint_url(new_ip, new_port))
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
 
         existing = ChannelService.get_channel_by_code(new_code)
         if existing:
@@ -229,6 +243,7 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
             created_server_endpoints.append((new_ip, new_port, new_name))
 
         iec61850_copy = Iec61850CopyResult()
+        opcua_copy = None
         try:
             ChannelConfigurationService.clone_for_channel(
                 req.channel_id,
@@ -242,6 +257,8 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
                 new_device_id,
                 new_name,
             )
+            if is_opcua:
+                opcua_copy = await asyncio.to_thread(OpcUaCopyService.clone_for_channel, req.channel_id, new_channel_id)
         except Exception as e:
             log.error(f"复制通道配置失败: {new_code}: {e}")
             ChannelConfigurationService.delete_for_channel(new_channel_id)
@@ -360,6 +377,7 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
                 "ip": new_ip,
                 "port": new_port,
                 "iec61850": iec61850_copy.to_dict() if is_iec61850 else None,
+                "opcua": opcua_copy,
             }
         )
 

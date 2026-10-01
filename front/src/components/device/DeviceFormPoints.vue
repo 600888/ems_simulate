@@ -87,7 +87,7 @@
       </el-form-item>
     </template>
 
-    <!-- 其他协议: Excel 点表导入 -->
+    <!-- OPC UA 与其他协议按各自格式导入 Excel 点表 -->
     <template v-else>
       <el-divider content-position="left">{{
         $t("device.pointTable")
@@ -100,7 +100,8 @@
           :auto-upload="true"
           :limit="1"
           :http-request="handleFileRequest"
-          accept=".xlsx,.xls"
+          :disabled="disabled"
+          :accept="protocolType === 7 ? '.xlsx' : '.xlsx,.xls'"
         >
           <template #trigger>
             <el-button type="success" plain :icon="Upload">{{
@@ -109,7 +110,13 @@
           </template>
           <template #tip>
             <div class="el-upload__tip">
-              {{ $t("device.excelTip") }}
+              {{
+                $t(
+                  protocolType === 7
+                    ? "opcua.deviceFormPointsHint"
+                    : "device.excelTip",
+                )
+              }}
             </div>
           </template>
         </el-upload>

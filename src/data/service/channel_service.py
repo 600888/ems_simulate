@@ -76,12 +76,14 @@ class ChannelService:
             (1, 3): ProtocolType.Dlt645Client,
             (1, 4): ProtocolType.Iec61850Client,
             (1, 5): ProtocolType.Dnp3Client,
+            (1, 7): ProtocolType.OpcUaClient,
             # TCP 服务端
             (2, 1): ProtocolType.ModbusTcpServer,
             (2, 2): ProtocolType.Iec104Server,
             (2, 3): ProtocolType.Dlt645Server,
             (2, 4): ProtocolType.Iec61850Server,
             (2, 5): ProtocolType.Dnp3Server,
+            (2, 7): ProtocolType.OpcUaServer,
         }
         result = mapping.get((conn_type, protocol))
         if result is not None:

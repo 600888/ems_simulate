@@ -1,7 +1,7 @@
 [project]
 name = "ems_simulate"
-version = "5.3.0"
-description = "电力模拟仿真系统，支持 IEC61850 / IEC101 / IEC104 / Modbus / DLT645 / DNP3 协议"
+version = "5.5.0"
+description = "电力模拟仿真系统，支持 IEC61850 / IEC101 / IEC104 / Modbus / DLT645 / DNP3 / OPC UA 协议"
 requires-python = ">=3.11"
 dependencies = [
     "pymodbus==3.12.0",
@@ -23,6 +23,7 @@ dependencies = [
     "scapy==2.7.0",
     "xmltodict==1.0.4",
     "psutil==7.2.2",
+    "asyncua==2.0.1",
 ]
 
 [project.optional-dependencies]

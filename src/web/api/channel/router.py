@@ -9,6 +9,8 @@ from src.data.dao.point_dao import PointDao
 from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
 from src.data.service.device_group_service import DeviceGroupService
+from src.data.service.opcua_node_service import OpcUaNodeService
+from src.data.service.opcua_point_import import OpcUaPointImportService
 from src.data.service.point_mapping_service import PointMappingService
 from src.device.protocol.runtime_config import normalize_protocol_params
 from src.enums.modbus_def import ProtocolType
@@ -76,6 +78,7 @@ PROTOCOL_OPTIONS = [
     {"value": 4, "label": "IEC 61850", "conn_types": [1, 2]},
     {"value": 5, "label": "DNP3", "conn_types": [1, 2]},
     {"value": 6, "label": "IEC 101", "conn_types": [0, 3]},
+    {"value": 7, "label": "OPC UA", "conn_types": [1, 2]},
 ]
 
 # 连接类型映射
@@ -164,6 +167,13 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
 
     if req.conn_type == 2:
         _validate_server_endpoint_unique(req.ip, req.port)
+    if req.protocol_type == 7:
+        from src.proto.opcua.core.transport import loopback_endpoint, make_endpoint_url
+
+        try:
+            loopback_endpoint(make_endpoint_url(req.ip, req.port))
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
 
     params = req.protocol_params
     try:
@@ -219,10 +229,14 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
                 ProtocolType.Dlt645Client,
                 ProtocolType.Iec61850Client,
                 ProtocolType.Dnp3Client,
+                ProtocolType.OpcUaClient,
             ]:
                 builder.setDeviceNetConfig(port=req.port, ip=req.ip)
             else:
-                builder.setDeviceNetConfig(port=req.port, ip=Config.DEFAULT_IP)
+                builder.setDeviceNetConfig(
+                    port=req.port,
+                    ip=req.ip if protocol_enum == ProtocolType.OpcUaServer else Config.DEFAULT_IP,
+                )
 
         # 传递 IEC61850 IED 模型名称
         if protocol_enum in (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client):
@@ -319,13 +333,25 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
     _validate_protocol_connection(protocol_to_use, conn_type_to_use)
 
     old_protocol = existing.get("protocol_type", 1)
+    if old_protocol == 7 and conn_type_to_use != existing.get("conn_type"):
+        has_nodes = await asyncio.to_thread(OpcUaNodeService.has_nodes, channel_id)
+        has_points = await asyncio.to_thread(OpcUaPointImportService.has_points, channel_id)
+        if has_nodes or has_points:
+            raise ConflictError("已有 OPC UA 测点或节点定义时不能切换客户端/服务端角色")
     if protocol_to_use != old_protocol:
         point_count = await asyncio.to_thread(PointDao.count_points_by_channel, channel_id)
+        has_opcua_nodes = old_protocol == 7 and await asyncio.to_thread(OpcUaNodeService.has_nodes, channel_id)
+        has_opcua_points = old_protocol == 7 and await asyncio.to_thread(OpcUaPointImportService.has_points, channel_id)
         has_iec61850_model = bool(existing.get("icd_path") or existing.get("model_name"))
-        if point_count or has_iec61850_model:
+        if point_count or has_iec61850_model or has_opcua_nodes or has_opcua_points:
             raise ConflictError(
-                "通道已有测点或 IEC 61850 模型，不能直接切换协议；请先显式清理原协议数据",
-                data={"point_count": point_count, "has_iec61850_model": has_iec61850_model},
+                "通道已有测点或协议模型，不能直接切换协议；请先显式清理原协议数据",
+                data={
+                    "point_count": point_count,
+                    "has_iec61850_model": has_iec61850_model,
+                    "has_opcua_nodes": has_opcua_nodes,
+                    "has_opcua_points": has_opcua_points,
+                },
             )
 
     params = req.protocol_params
@@ -389,6 +415,20 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
     # 名称、分组等无关编辑不应查询真实通道表，更不应被历史冲突数据阻断。
     new_ip = req.ip if req.ip is not None else existing.get("ip")
     new_port = req.port if req.port is not None else existing.get("port")
+    if (
+        old_protocol == 7
+        and protocol_to_use == 7
+        and conn_type_to_use == 1
+        and (new_ip != existing.get("ip") or new_port != existing.get("port"))
+    ):
+        raise ValidationError("OPC UA 客户端地址请通过完整 Endpoint URL 配置修改")
+    if protocol_to_use == 7:
+        from src.proto.opcua.core.transport import loopback_endpoint, make_endpoint_url
+
+        try:
+            loopback_endpoint(make_endpoint_url(new_ip, new_port))
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
     server_endpoint_changed = (
         conn_type_to_use != existing.get("conn_type", 1)
         or (new_ip or "").strip() != (existing.get("ip") or "").strip()

@@ -18,6 +18,7 @@ from src.web.api.exceptions import BizError
 from src.web.api.log_router import log_router
 from src.web.api.modeling import router as modeling_router
 from src.web.api.network_interfaces import router as network_interfaces_router
+from src.web.api.opcua import opcua_router
 from src.web.api.point import point_mapping_router, point_router, point_tree_router
 from src.web.api.schemas import BaseResponse
 from src.web.api.schemas.response_codes import DEFAULT_MESSAGES, Code
@@ -134,6 +135,7 @@ def create_app():
     app.include_router(settings_router)
     app.include_router(log_router)
     app.include_router(network_interfaces_router)
+    app.include_router(opcua_router)
 
     # 初始化应用状态
     app.state.initialized = False

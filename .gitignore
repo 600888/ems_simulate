@@ -207,6 +207,12 @@ plan/DNP3/*
 !plan/DNP3/dnp3-implementation-design.md
 !plan/DNP3/dnp3-gap-priority-implementation-plan.md
 
+!plan/OPCUA/
+plan/OPCUA/*
+!plan/OPCUA/implementation/
+plan/OPCUA/implementation/*
+!plan/OPCUA/implementation/opcua-asyncio-development-plan.md
+
 !plan/IEC104/
 plan/IEC104/*
 !plan/IEC104/implementation/

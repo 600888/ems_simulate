@@ -45,9 +45,12 @@ _IEC61850_PROTOCOLS = (ProtocolType.Iec61850Server, ProtocolType.Iec61850Client)
 def _get_device(device_name: str, request: Request) -> Device:
     """获取设备，不存在时抛出 NotFoundError（由全局异常处理器统一返回 404）"""
     try:
-        return request.app.state.device_controller.device_map[device_name]
+        device = request.app.state.device_controller.device_map[device_name]
     except KeyError as exc:
         raise NotFoundError(f"设备 {device_name} 不存在") from exc
+    if getattr(device, "protocol_type", None) in (ProtocolType.OpcUaClient, ProtocolType.OpcUaServer):
+        raise ValidationError("OPC UA 设备请使用专属节点与测点接口")
+    return device
 
 
 @point_router.post("/edit-data", response_model=BaseResponse)

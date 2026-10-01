@@ -102,11 +102,16 @@ class ChannelDao:
     def update_channel(cls, channel_id: int, **kwargs) -> bool:
         """更新通道"""
         from src.data.model.device import Device
+        from src.data.model.opcua_config import OpcUaConfig
 
         try:
             with local_session() as session, session.begin():
                 channel = session.query(Channel).where(Channel.id == channel_id).first()
                 if channel:
+                    if ("protocol_type" in kwargs and kwargs["protocol_type"] != channel.protocol_type) or (
+                        "conn_type" in kwargs and kwargs["conn_type"] != channel.conn_type
+                    ):
+                        session.query(OpcUaConfig).where(OpcUaConfig.channel_id == channel_id).delete()
                     # 1. 更新通道信息
                     for key, value in kwargs.items():
                         if hasattr(channel, key):
@@ -193,6 +198,9 @@ class ChannelDao:
         from src.data.model.device import Device
         from src.data.model.goose_publisher import GooseEntry, GoosePublisher
         from src.data.model.goose_receiver import GooseReceiverConfig, GooseSubscriptionConfig
+        from src.data.model.opcua_config import OpcUaConfig
+        from src.data.model.opcua_node import OpcUaNode
+        from src.data.model.opcua_point import OpcUaPoint
         from src.data.model.point_mapping import PointMapping
         from src.data.model.point_yc import PointYc
         from src.data.model.point_yk import PointYk
@@ -219,6 +227,9 @@ class ChannelDao:
                 # 显式清理所有不带数据库级联的通道配置，兼容旧版 SQLite 数据库。
                 session.query(ChannelProtocolParams).where(ChannelProtocolParams.channel_id == channel_id).delete()
                 session.query(ChannelSecurityConfig).where(ChannelSecurityConfig.channel_id == channel_id).delete()
+                session.query(OpcUaNode).where(OpcUaNode.channel_id == channel_id).delete()
+                session.query(OpcUaPoint).where(OpcUaPoint.channel_id == channel_id).delete()
+                session.query(OpcUaConfig).where(OpcUaConfig.channel_id == channel_id).delete()
                 session.query(ConnectionSession).where(ConnectionSession.channel_id == channel_id).delete()
 
                 publisher_ids = session.query(GoosePublisher.id).where(GoosePublisher.channel_id == channel_id)

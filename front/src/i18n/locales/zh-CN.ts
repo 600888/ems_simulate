@@ -1,4 +1,7 @@
+import { opcuaZhCN } from "./opcua";
+
 export default {
+  opcua: opcuaZhCN,
   common: {
     cancel: "取消",
     confirm: "确认",

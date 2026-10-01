@@ -129,6 +129,8 @@ DNP3_SERVER_DEFAULTS = {
     "link_confirm_max_retries": 2,
 }
 
+OPCUA_CLIENT_DEFAULTS = {"connect_timeout_ms": 3000}
+
 # Older saved channels may still contain these UI fields. They never affected the
 # current protocol stack, so accept-and-drop them during normalization instead of
 # breaking existing channels or continuing to advertise unsupported behavior.
@@ -155,6 +157,8 @@ _DEFAULTS: dict[tuple[int, int], dict[str, int | bool | str]] = {
     (5, 2): DNP3_SERVER_DEFAULTS,
     (6, 0): IEC101_CLIENT_DEFAULTS,
     (6, 3): IEC101_SERVER_DEFAULTS,
+    (7, 1): OPCUA_CLIENT_DEFAULTS,
+    (7, 2): {},
 }
 
 _RANGES: dict[str, tuple[int, int]] = {

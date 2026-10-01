@@ -19,6 +19,7 @@ export enum ProtocolType {
   Iec61850 = 4,
   Dnp3 = 5,
   Iec101 = 6,
+  OpcUa = 7,
 }
 
 // 协议选项

@@ -42,6 +42,9 @@ else:
 # their collection policy here so every packaging entry point behaves alike.
 pyiec_datas, pyiec_binaries, pyiec_hiddenimports = collect_all("pyiec61850")
 datas += pyiec_datas
+# asyncua loads its standard address space from binary_address_space.pickle.
+asyncua_datas, asyncua_binaries, asyncua_hiddenimports = collect_all("asyncua")
+datas += asyncua_datas
 
 hiddenimports = [
     "scapy.all",
@@ -76,12 +79,13 @@ hiddenimports = [
     "dlt645.transport.client.async_tcp_client",
     "dlt645.transport.client.async_rtu_client",
     *pyiec_hiddenimports,
+    *asyncua_hiddenimports,
 ]
 
 a = Analysis(
     [str(PROJECT_ROOT / "start_back_end.py")],
     pathex=[str(PROJECT_ROOT)],
-    binaries=pyiec_binaries,
+    binaries=pyiec_binaries + asyncua_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

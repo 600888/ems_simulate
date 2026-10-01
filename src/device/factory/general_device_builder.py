@@ -4,6 +4,7 @@
 """
 
 from src.data.service.channel_service import ChannelService
+from src.data.service.opcua_config_service import OpcUaConfigService
 from src.device.core.device import Device
 from src.enums.data_source import DataSource
 from src.enums.modbus_def import ProtocolType
@@ -54,6 +55,9 @@ class GeneralDeviceBuilder:
 
     def setDeviceRuntimeConfig(self, runtime_config: dict) -> None:
         self.general_device.runtime_config = dict(runtime_config)
+
+    def setDeviceOpcUaConfig(self, opcua_config: dict) -> None:
+        self.general_device.opcua_config = dict(opcua_config)
 
     def setDeviceSecurityConfig(self, security_config: dict) -> None:
         self.general_device.security_config = dict(security_config)
@@ -132,6 +136,8 @@ class GeneralDeviceBuilder:
         self.protocol_type = protocol_type
 
         channel = ChannelService.get_channel_by_id(self.channel_id)
+        if protocol_type in (ProtocolType.OpcUaServer, ProtocolType.OpcUaClient) and channel:
+            self.setDeviceOpcUaConfig(OpcUaConfigService.get(self.channel_id))
         self.general_device.point_manager.set_change_tracking_enabled(
             bool(channel and channel.get("change_tracking_enabled", False))
         )
@@ -164,6 +170,10 @@ class GeneralDeviceBuilder:
             return self.generalDeviceDnp3Server
         elif protocol_type == ProtocolType.Dnp3Client:
             return self.generalDeviceDnp3Client
+        elif protocol_type == ProtocolType.OpcUaServer:
+            return self.generalDeviceOpcUaServer
+        elif protocol_type == ProtocolType.OpcUaClient:
+            return self.generalDeviceOpcUaClient
         return None
 
     @property
@@ -324,4 +334,20 @@ class GeneralDeviceBuilder:
         self.initDnp3Client()
         self.general_device.setSpecialDataPointValues()
         # DNP3 为 asyncio 协议，启动由 async handler.start()（device.start()/reload）异步驱动。
+        return self.general_device
+
+    @property
+    def generalDeviceOpcUaServer(self) -> Device:
+        self.setDeviceId(self.device_id)
+        self.setDeviceName(name=self.device_name)
+        self.general_device.initLog()
+        self.general_device.initOpcUaServer()
+        return self.general_device
+
+    @property
+    def generalDeviceOpcUaClient(self) -> Device:
+        self.setDeviceId(self.device_id)
+        self.setDeviceName(name=self.device_name)
+        self.general_device.initLog()
+        self.general_device.initOpcUaClient()
         return self.general_device

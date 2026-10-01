@@ -4,6 +4,8 @@
     :title="isEditMode ? $t('addDevice.titleEdit') : $t('addDevice.titleAdd')"
     width="760px"
     :close-on-click-modal="false"
+    :close-on-press-escape="!saving"
+    :show-close="!saving"
     @close="handleClose"
     class="device-form-dialog"
   >
@@ -136,6 +138,8 @@
     </template>
   </el-dialog>
 
+  <OpcUaPointImportDialog ref="opcuaPointImportRef" />
+
   <!-- GOOSE 预览对话框 -->
   <el-dialog
     v-model="goosePreviewVisible"
@@ -232,13 +236,14 @@ import { Check, View } from "@element-plus/icons-vue";
 import DeviceFormBasic from "./DeviceFormBasic.vue";
 import DeviceFormConfig from "./DeviceFormConfig.vue";
 import DeviceFormPoints from "./DeviceFormPoints.vue";
+import OpcUaPointImportDialog from "./OpcUaPointImportDialog.vue";
+import { importDevicePointFile } from "@/utils/devicePointImport";
 import DeviceProtocolParams from "./DeviceProtocolParams.vue";
 import DeviceSecurityConfig from "./DeviceSecurityConfig.vue";
 
 // API
 import {
   createChannel,
-  importPoints,
   importDlt645StandardPoints,
   getChannel,
   updateChannel,
@@ -285,6 +290,9 @@ const emit = defineEmits<{
 // 状态
 const formRef = ref<FormInstance>();
 const uploadCompRef = ref();
+const opcuaPointImportRef = ref<InstanceType<
+  typeof OpcUaPointImportDialog
+> | null>(null);
 const protocolParamsCompRef = ref<{
   resetDefaults: () => void;
   validate: () => boolean;
@@ -758,8 +766,18 @@ const handleSubmit = async () => {
         progressText.value = t("addDevice.importingDlt645");
         await importDlt645StandardPoints(resultId);
       } else if (!isIec61850Server.value && selectedFile.value) {
-        progressText.value = t("addDevice.importingPoints");
-        await importPoints(resultId, selectedFile.value);
+        progressText.value = t(
+          form.protocol_type === 7
+            ? "opcua.reviewPoints"
+            : "addDevice.importingPoints",
+        );
+        const imported = await importDevicePointFile(
+          form.protocol_type,
+          resultId,
+          selectedFile.value,
+          (id, file) => opcuaPointImportRef.value!.open(id, file),
+        );
+        if (!imported) ElMessage.info(t("opcua.channelSavedWithoutPoints"));
       }
 
       // 4. ICD 文件导入

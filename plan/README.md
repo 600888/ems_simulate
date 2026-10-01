@@ -32,6 +32,8 @@
 
 - [DNP3 实现设计](DNP3/dnp3-implementation-design.md)
 - [DNP3 未实现功能盘点与优先级实施计划](DNP3/dnp3-gap-priority-implementation-plan.md)
+- [OPC UA 客户端与服务端开发计划（opcua-asyncio）](OPCUA/implementation/opcua-asyncio-development-plan.md)
+- [OPC UA 实施记录与验收步骤](OPCUA/implementation/progress-2026-10-01.md)
 - [IEC104 TLS 实施计划](IEC104/implementation/iec104-tls-implementation-plan.md)
 - [IEC61850 GOOSE 设备级全栈重构](IEC61850/implementation/goose-device-scoped-fullstack-refactor.md)
 - [IEC61850 通用建模工具设计](IEC61850/modeling/iec61850-general-modeling-tool-design.md)

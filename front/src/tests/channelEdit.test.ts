@@ -97,6 +97,28 @@ describe("channel edit endpoint hydration", () => {
   });
 });
 
+describe("OPC UA M1 endpoint defaults", () => {
+  const protocols: ProtocolOption[] = [
+    { value: 7, label: "OPC UA", conn_types: [1, 2] },
+  ];
+
+  it("uses loopback for the server while NoSecurity is the only endpoint", () => {
+    const form: ChannelCreateRequest = {
+      code: "ua-server",
+      name: "ua-server",
+      protocol_type: 7,
+      conn_type: 2,
+      ip: "0.0.0.0",
+      port: 502,
+    };
+    applyProtocolTypeDefaults(form, protocols, 7);
+    expect(form.ip).toBe("127.0.0.1");
+    expect(form.port).toBe(4840);
+    applyConnectionTypeDefaults(form, 2);
+    expect(form.ip).toBe("127.0.0.1");
+  });
+});
+
 describe("media type protocol selection", () => {
   const protocols: ProtocolOption[] = [
     { value: 0, label: "Modbus RTU", conn_types: [0, 3] },
