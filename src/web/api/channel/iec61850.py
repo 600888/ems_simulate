@@ -1790,13 +1790,20 @@ async def iec61850_write_single_point(
     body: Iec61850WritePointRequest,
     request: Request,
 ):
-    """IEC61850 单点写入 - 通过 channel_id 定位设备，写入指定测点的值"""
+    """IEC61850 单点写入：服务端本地设值，客户端解析控制写入目标。"""
+    from src.device.protocol.iec61850_handler import IEC61850ServerHandler
+
     device = _get_iec61850_device(request, body.channel_id)
 
     if not body.point_code:
         raise ValidationError("测点编码不能为空")
 
-    write_point_code = _resolve_control_write_code(device, body.point_code)
+    # 服务端直接更新所选属性，不受远端 MMS 写入/控制服务的 FC 和 ctlVal 限制。
+    # 尤其不能把本地 stVal 更新重定向到同一 DO 的 Oper.ctlVal。
+    if isinstance(getattr(device, "protocol_handler", None), IEC61850ServerHandler):
+        write_point_code = body.point_code
+    else:
+        write_point_code = _resolve_control_write_code(device, body.point_code)
     if not write_point_code:
         raise ValidationError(
             "未发现可写属性（控制对象应包含 Oper.ctlVal、SBOw.ctlVal 或 ctlVal）",
