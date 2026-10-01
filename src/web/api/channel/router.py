@@ -423,10 +423,11 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
     ):
         raise ValidationError("OPC UA 客户端地址请通过完整 Endpoint URL 配置修改")
     if protocol_to_use == 7:
-        from src.proto.opcua.core.transport import loopback_endpoint, make_endpoint_url
+        from src.data.service.opcua_config_service import OpcUaConfigService
+        from src.proto.opcua.core.transport import make_endpoint_url
 
         try:
-            loopback_endpoint(make_endpoint_url(new_ip, new_port))
+            OpcUaConfigService.validate_channel_endpoint(channel_id, make_endpoint_url(new_ip, new_port))
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
     server_endpoint_changed = (

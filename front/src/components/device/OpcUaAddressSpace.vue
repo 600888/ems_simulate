@@ -1,5 +1,13 @@
 <template>
   <div>
+    <OpcUaPageHeading
+      :title="t('opcua.addressSpace')"
+      :description="t('opcua.modelDescription')"
+    >
+      <el-tag effect="plain"
+        >{{ filteredNodes.length }} {{ t("opcua.runtimeNodeCount") }}</el-tag
+      >
+    </OpcUaPageHeading>
     <div class="toolbar">
       <el-input
         v-model="search"
@@ -203,6 +211,7 @@
 </template>
 
 <script setup lang="ts">
+import OpcUaPageHeading from "./OpcUaPageHeading.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -217,7 +226,11 @@ import {
   saveOpcUaVariable,
 } from "@/api/opcuaApi";
 import type { OpcUaModelPreview, OpcUaVariable } from "@/api/opcuaApi";
-import { OpcUaScalarError, parseOpcUaScalar } from "@/utils/opcuaValue";
+import {
+  OPCUA_SCALAR_TYPES,
+  OpcUaScalarError,
+  parseOpcUaScalar,
+} from "@/utils/opcuaValue";
 
 const props = defineProps<{
   channelId: number;
@@ -226,7 +239,7 @@ const props = defineProps<{
 }>();
 const { t } = useI18n();
 const emit = defineEmits<{ changed: [] }>();
-const scalarTypes = ["Boolean", "Int32", "Double"];
+const scalarTypes = OPCUA_SCALAR_TYPES;
 const nodes = ref<OpcUaVariable[]>([]);
 const loading = ref(false);
 const search = ref("");
@@ -298,7 +311,15 @@ function editVariable(node?: OpcUaVariable) {
         initial_value: 0,
         writable: false,
       };
-  valueText.value = String(variable.value.initial_value);
+  const initial = variable.value.initial_value;
+  valueText.value =
+    typeof initial === "object" && initial !== null
+      ? String(
+          (initial as { integer?: string; base64?: string }).integer ??
+            (initial as { base64?: string }).base64 ??
+            "",
+        )
+      : String(initial);
   variableVisible.value = true;
 }
 

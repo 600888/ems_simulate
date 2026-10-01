@@ -6,8 +6,10 @@ from sqlalchemy.orm import sessionmaker
 
 from src.data.model.channel import Channel
 from src.data.model.opcua_config import OpcUaConfig
+from src.data.model.opcua_feature import OpcUaFeature
 from src.data.model.opcua_node import OpcUaNode
 from src.data.model.opcua_point import OpcUaPoint
+from src.data.model.opcua_secret import OpcUaSecret
 import src.data.service.opcua_copy_service as copy_module
 import src.data.service.opcua_model_service as model_module
 import src.data.service.opcua_node_service as node_module
@@ -24,6 +26,8 @@ def model_db(monkeypatch):
             OpcUaConfig.__table__,
             OpcUaNode.__table__,
             OpcUaPoint.__table__,
+            OpcUaFeature.__table__,
+            OpcUaSecret.__table__,
         ],
     )
     sessions = sessionmaker(engine, expire_on_commit=False)

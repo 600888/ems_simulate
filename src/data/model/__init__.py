@@ -11,8 +11,10 @@ from src.data.model.goose_publisher import GooseEntry, GooseEntryDict, GoosePubl
 from src.data.model.goose_receiver import GooseReceiverConfig, GooseSubscriptionConfig
 from src.data.model.iec61850_modeling import Iec61850ModelProject, Iec61850ModelVersion
 from src.data.model.opcua_config import OpcUaConfig
+from src.data.model.opcua_feature import OpcUaFeature
 from src.data.model.opcua_node import OpcUaNode
 from src.data.model.opcua_point import OpcUaPoint
+from src.data.model.opcua_secret import OpcUaSecret
 from src.data.model.point_mapping import PointMapping, PointMappingDict
 from src.data.model.point_yc import PointYc, PointYcDict
 from src.data.model.point_yk import PointYk, PointYkDict
@@ -52,6 +54,8 @@ __all__ = [
     "Iec61850ModelProject",
     "Iec61850ModelVersion",
     "OpcUaConfig",
+    "OpcUaFeature",
+    "OpcUaSecret",
     "OpcUaNode",
     "OpcUaPoint",
 ]

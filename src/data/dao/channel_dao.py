@@ -199,8 +199,10 @@ class ChannelDao:
         from src.data.model.goose_publisher import GooseEntry, GoosePublisher
         from src.data.model.goose_receiver import GooseReceiverConfig, GooseSubscriptionConfig
         from src.data.model.opcua_config import OpcUaConfig
+        from src.data.model.opcua_feature import OpcUaFeature
         from src.data.model.opcua_node import OpcUaNode
         from src.data.model.opcua_point import OpcUaPoint
+        from src.data.model.opcua_secret import OpcUaSecret
         from src.data.model.point_mapping import PointMapping
         from src.data.model.point_yc import PointYc
         from src.data.model.point_yk import PointYk
@@ -230,6 +232,8 @@ class ChannelDao:
                 session.query(OpcUaNode).where(OpcUaNode.channel_id == channel_id).delete()
                 session.query(OpcUaPoint).where(OpcUaPoint.channel_id == channel_id).delete()
                 session.query(OpcUaConfig).where(OpcUaConfig.channel_id == channel_id).delete()
+                session.query(OpcUaFeature).where(OpcUaFeature.channel_id == channel_id).delete()
+                session.query(OpcUaSecret).where(OpcUaSecret.channel_id == channel_id).delete()
                 session.query(ConnectionSession).where(ConnectionSession.channel_id == channel_id).delete()
 
                 publisher_ids = session.query(GoosePublisher.id).where(GoosePublisher.channel_id == channel_id)

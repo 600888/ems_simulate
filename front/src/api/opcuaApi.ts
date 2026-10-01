@@ -1,4 +1,5 @@
 import { instance, requestApi } from "./http";
+import type { OpcUaScalarType } from "@/utils/opcuaValue";
 
 export interface OpcUaPoint {
   id: number;
@@ -41,8 +42,8 @@ export interface OpcUaConfig {
 export interface OpcUaVariable {
   node_id: string;
   browse_name: string;
-  data_type: "Boolean" | "Int32" | "Double";
-  initial_value: boolean | number;
+  data_type: OpcUaScalarType;
+  initial_value: unknown;
   writable: boolean;
   point_code?: string | null;
 }
@@ -249,7 +250,7 @@ export const readOpcUaNode = (
 export const writeOpcUaNode = (
   channel_id: number,
   node_id: string,
-  value: boolean | number,
+  value: unknown,
 ): Promise<OpcUaValueSnapshot> =>
   requestApi("/api/opcua/nodes/write", "post", { channel_id, node_id, value });
 
@@ -272,3 +273,125 @@ export const saveOpcUaServerModel = (
     endpoint_path,
     namespace_uri,
   });
+
+export const getOpcUaFeatures = (
+  channel_id: number,
+): Promise<Record<string, any>> =>
+  requestApi("/api/opcua/features/config", "post", { channel_id });
+
+export const saveOpcUaFeature = (
+  channel_id: number,
+  name: string,
+  config: unknown,
+) =>
+  requestApi("/api/opcua/features/save", "post", { channel_id, name, config });
+
+export interface OpcUaStreamEvent extends Partial<OpcUaValueSnapshot> {
+  sequence: number;
+  timestamp: string;
+  kind: string;
+  state?: string;
+  subscription?: string;
+  Message?: string;
+  Severity?: number;
+  SourceName?: string;
+  EventId?: unknown;
+}
+
+export const readOpcUaStream = (
+  channel_id: number,
+  after: number,
+): Promise<{
+  events: OpcUaStreamEvent[];
+  gap: boolean;
+  latest_sequence: number;
+}> => requestApi("/api/opcua/stream/read", "post", { channel_id, after });
+
+export const readOpcUaHistory = (
+  channel_id: number,
+  node_id: string,
+  start: string,
+  end: string,
+  continuation: string | null = null,
+): Promise<{
+  values: OpcUaValueSnapshot[];
+  continuation: string | null;
+}> =>
+  requestApi("/api/opcua/history/read", "post", {
+    channel_id,
+    node_id,
+    start,
+    end,
+    continuation,
+    limit: 100,
+  });
+
+export const getOpcUaDiagnostics = (
+  channel_id: number,
+): Promise<{
+  calls: Record<string, unknown>[];
+  sessions: Record<string, unknown>[];
+}> => requestApi("/api/opcua/diagnostics", "post", { channel_id });
+
+export const discoverOpcUaEndpoints = (
+  channel_id: number,
+  endpoint_url: string,
+): Promise<{
+  endpoints: Record<string, any>[];
+}> =>
+  requestApi("/api/opcua/endpoints/discover", "post", {
+    channel_id,
+    endpoint_url,
+  });
+
+export const generateOpcUaCertificate = (
+  channel_id: number,
+  application_uri: string,
+  host: string,
+) =>
+  requestApi("/api/opcua/certificates/generate", "post", {
+    channel_id,
+    application_uri,
+    host,
+  });
+
+export const trustOpcUaCertificate = (
+  channel_id: number,
+  fingerprint: string,
+  trusted: boolean,
+) =>
+  requestApi("/api/opcua/certificates/trust", "post", {
+    channel_id,
+    fingerprint,
+    trusted,
+  });
+
+export const saveOpcUaPassword = (channel_id: number, password: string) =>
+  requestApi("/api/opcua/credentials/client", "post", { channel_id, password });
+
+export const saveOpcUaUser = (
+  channel_id: number,
+  username: string,
+  role: string,
+  password: string | null,
+) =>
+  requestApi("/api/opcua/users/save", "post", {
+    channel_id,
+    username,
+    role,
+    password,
+  });
+
+export const emitOpcUaEvent = (
+  channel_id: number,
+  message: string,
+  severity: number,
+) =>
+  requestApi("/api/opcua/events/emit", "post", {
+    channel_id,
+    message,
+    severity,
+  });
+
+export const pauseOpcUaSimulation = (channel_id: number, paused: boolean) =>
+  requestApi("/api/opcua/simulation/pause", "post", { channel_id, paused });

@@ -1,6 +1,29 @@
 import { OpcUaScalarError, parseOpcUaScalar } from "@/utils/opcuaValue";
 
 describe("OPC UA scalar input", () => {
+  it("preserves Int64 precision and unsigned bounds", () => {
+    expect(parseOpcUaScalar("9223372036854775807", "Int64")).toEqual({
+      integer: "9223372036854775807",
+    });
+    expect(parseOpcUaScalar("18446744073709551615", "UInt64")).toEqual({
+      integer: "18446744073709551615",
+    });
+    expect(() => parseOpcUaScalar("18446744073709551616", "UInt64")).toThrow(
+      OpcUaScalarError,
+    );
+    expect(() => parseOpcUaScalar("-1", "UInt64")).toThrow(OpcUaScalarError);
+  });
+
+  it("preserves strings and validates UTC conversion and ByteString", () => {
+    expect(parseOpcUaScalar(" hello ", "String")).toBe(" hello ");
+    expect(parseOpcUaScalar("2026-10-01T08:00:00+08:00", "DateTime")).toBe(
+      "2026-10-01T00:00:00.000Z",
+    );
+    expect(() => parseOpcUaScalar("2026-10-01", "DateTime")).toThrow(
+      OpcUaScalarError,
+    );
+    expect(parseOpcUaScalar("AAE=", "ByteString")).toEqual({ base64: "AAE=" });
+  });
   it("preserves Boolean values and rejects truthy strings", () => {
     expect(parseOpcUaScalar("false", "Boolean")).toBe(false);
     expect(parseOpcUaScalar(" TRUE ", "Boolean")).toBe(true);

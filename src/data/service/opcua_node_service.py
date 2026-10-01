@@ -8,6 +8,7 @@ from src.data.controller.db import local_session
 from src.data.model.opcua_node import OpcUaNode
 from src.data.model.opcua_point import OpcUaPoint
 from src.proto.opcua.core.model import validate_variable
+from src.proto.opcua.core.types import _json_value
 
 
 class OpcUaNodeService:
@@ -35,7 +36,7 @@ class OpcUaNodeService:
                     "node_id": row.node_id,
                     "browse_name": row.browse_name,
                     "data_type": row.data_type,
-                    "initial_value": row.initial_value,
+                    "initial_value": _json_value(row.initial_value),
                     "writable": row.writable,
                     "point_code": point_codes.get(row.node_id),
                 }
@@ -74,7 +75,7 @@ class OpcUaNodeService:
                     raise ValueError("NodeId 已属于其他命名空间 URI")
                 for key, value in normalized.items():
                     setattr(record, key, value)
-        return {"namespace_uri": namespace_uri, **normalized}
+        return {"namespace_uri": namespace_uri, **normalized, "initial_value": _json_value(normalized["initial_value"])}
 
     @staticmethod
     def delete_variable(channel_id: int, node_id: str) -> bool:

@@ -1,18 +1,30 @@
 """Initial OPC UA status and native Browse/Read/Write endpoints."""
 
 import asyncio
-from typing import Annotated
+from datetime import datetime
+from typing import Any
 
 from asyncua import ua
-from fastapi import APIRouter, File, Form, Request, Response, UploadFile
-from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt
+from fastapi import APIRouter, File, Form, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
+from pydantic import ValidationError as PydanticValidationError
 
 from src.data.service.channel_service import ChannelService
 from src.data.service.opcua_config_service import OpcUaConfigService
+from src.data.service.opcua_feature_service import OpcUaFeatureService
 from src.data.service.opcua_model_service import OpcUaModelService
 from src.data.service.opcua_node_service import OpcUaNodeService
 from src.data.service.opcua_point_import import OpcUaPointImportService, PointImportError
+from src.data.service.opcua_security_service import OpcUaSecurityService
 from src.device.protocol.opcua_handler import OpcUaClientHandler, OpcUaServerHandler
+from src.proto.opcua.core.feature_config import (
+    EventsConfig,
+    HistoryConfig,
+    SecurityConfig,
+    SimulationConfig,
+    SubscriptionsConfig,
+)
+from src.proto.opcua.core.transport import discover_endpoints
 from src.proto.opcua.point_excel import MAX_EXCEL_BYTES
 from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import BaseResponse
@@ -36,13 +48,13 @@ class BrowseRequest(NodeRequest):
 
 
 class WriteRequest(NodeRequest):
-    value: Annotated[StrictBool | StrictInt | StrictFloat, Field()]
+    value: Any
 
 
 class UpsertVariableRequest(NodeRequest):
     browse_name: str = Field(min_length=1, max_length=255)
     data_type: str
-    initial_value: StrictBool | StrictInt | StrictFloat
+    initial_value: Any
     writable: bool = False
 
 
@@ -66,6 +78,254 @@ class PointDeleteRequest(ChannelRequest):
     point_code: str = Field(min_length=1, max_length=128)
 
 
+class FeatureRequest(ChannelRequest):
+    name: str
+    config: dict = Field(default_factory=dict)
+
+
+class StreamRequest(ChannelRequest):
+    after: int = Field(default=0, ge=0)
+    limit: int = Field(default=500, ge=1, le=500)
+
+
+class CertificateGenerateRequest(ChannelRequest):
+    application_uri: str = Field(min_length=1, max_length=255)
+    host: str = Field(min_length=1, max_length=255)
+
+
+class CertificateTrustRequest(ChannelRequest):
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    trusted: bool
+
+
+class CredentialRequest(ChannelRequest):
+    password: str = Field(min_length=8, max_length=1024, repr=False)
+
+
+class UserRequest(ChannelRequest):
+    username: str = Field(min_length=1, max_length=64)
+    role: str = "viewer"
+    password: str | None = Field(default=None, max_length=1024, repr=False)
+
+
+class HistoryReadRequest(NodeRequest):
+    start: datetime
+    end: datetime
+    limit: int = Field(default=100, ge=1, le=500)
+    continuation: str | None = Field(default=None, max_length=8192)
+    release: bool = False
+
+
+class EmitEventRequest(ChannelRequest):
+    message: str = Field(min_length=1, max_length=1024)
+    severity: int = Field(default=500, ge=0, le=1000)
+
+
+class SimulationPauseRequest(ChannelRequest):
+    paused: bool
+
+
+@router.post("/simulation/pause", response_model=BaseResponse)
+async def pause_simulation(body: SimulationPauseRequest, request: Request):
+    handler = _handler(request, body.channel_id)
+    if not isinstance(handler, OpcUaServerHandler) or not handler.is_running:
+        raise ValidationError("请先启动 OPC UA 服务端")
+    try:
+        handler.server.pause_simulation(body.paused)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    return BaseResponse(data={"paused": body.paused})
+
+
+@router.post("/history/read", response_model=BaseResponse)
+async def history_read(body: HistoryReadRequest, request: Request):
+    facade = _client(request, body.channel_id).client
+    try:
+        result = await facade.read_history(
+            body.node_id, body.start, body.end, body.limit, body.continuation, body.release
+        )
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    except Exception as exc:
+        raise OperationError(f"OPC UA HistoryRead 失败: {exc}") from exc
+    return BaseResponse(data=result)
+
+
+@router.post("/events/emit", response_model=BaseResponse)
+async def emit_event(body: EmitEventRequest, request: Request):
+    facade = _facade(request, body.channel_id)
+    handler = _handler(request, body.channel_id)
+    if not isinstance(handler, OpcUaServerHandler):
+        raise ValidationError("事件触发仅适用于 OPC UA 服务端")
+    try:
+        return BaseResponse(data=await facade.emit_event(body.message, body.severity))
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+
+
+@router.post("/diagnostics", response_model=BaseResponse)
+async def diagnostics(body: ChannelRequest, request: Request):
+    return BaseResponse(data=_facade(request, body.channel_id).diagnostics())
+
+
+@router.post("/endpoints/discover", response_model=BaseResponse)
+async def endpoints(body: ClientEndpointRequest):
+    _channel(body.channel_id)
+    try:
+        endpoints = await discover_endpoints(body.endpoint_url)
+        for endpoint in endpoints:
+            if endpoint.get("certificate"):
+                import base64
+
+                await asyncio.to_thread(
+                    OpcUaSecurityService.register_peer, body.channel_id, base64.b64decode(endpoint["certificate"])
+                )
+        return BaseResponse(data={"endpoints": endpoints})
+    except Exception as exc:
+        raise OperationError(f"Endpoint 发现失败: {exc}") from exc
+
+
+@router.post("/certificates/generate", response_model=BaseResponse)
+async def certificate_generate(body: CertificateGenerateRequest, request: Request):
+    _channel(body.channel_id)
+    _ensure_stopped(request, body.channel_id)
+    result = await asyncio.to_thread(OpcUaSecurityService.generate, body.channel_id, body.application_uri, body.host)
+    log.info(f"OPC UA 应用证书已生成: channel_id={body.channel_id}, fingerprint={result['fingerprint']}")
+    config = await asyncio.to_thread(OpcUaConfigService.get, body.channel_id)
+    await _refresh_stopped_device(request, body.channel_id, config)
+    return BaseResponse(data=result)
+
+
+@router.post("/certificates/trust", response_model=BaseResponse)
+async def certificate_trust(body: CertificateTrustRequest, request: Request):
+    _channel(body.channel_id)
+    _ensure_stopped(request, body.channel_id)
+    try:
+        await asyncio.to_thread(OpcUaSecurityService.trust, body.channel_id, body.fingerprint, body.trusted)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    log.info(
+        f"OPC UA 证书信任已更新: channel_id={body.channel_id}, trusted={body.trusted}, fingerprint={body.fingerprint}"
+    )
+    config = await asyncio.to_thread(OpcUaConfigService.get, body.channel_id)
+    await _refresh_stopped_device(request, body.channel_id, config)
+    return BaseResponse(data={"trusted": body.trusted})
+
+
+@router.post("/credentials/client", response_model=BaseResponse)
+async def client_credential(body: CredentialRequest, request: Request):
+    if _channel(body.channel_id)["conn_type"] != 1:
+        raise ValidationError("仅适用于 OPC UA 客户端")
+    _ensure_stopped(request, body.channel_id)
+    await asyncio.to_thread(OpcUaSecurityService.save_secret, body.channel_id, "password", body.password)
+    config = await asyncio.to_thread(OpcUaConfigService.get, body.channel_id)
+    await _refresh_stopped_device(request, body.channel_id, config)
+    return BaseResponse(data={"saved": True})
+
+
+@router.post("/users/save", response_model=BaseResponse)
+async def user_save(body: UserRequest, request: Request):
+    if _channel(body.channel_id)["conn_type"] != 2:
+        raise ValidationError("仅适用于 OPC UA 服务端")
+    _ensure_stopped(request, body.channel_id)
+    try:
+        await asyncio.to_thread(OpcUaSecurityService.user, body.channel_id, body.username, body.role, body.password)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    config = await asyncio.to_thread(OpcUaConfigService.get, body.channel_id)
+    await _refresh_stopped_device(request, body.channel_id, config)
+    log.info(f"OPC UA 用户权限已更新: channel_id={body.channel_id}, username={body.username}, role={body.role}")
+    return BaseResponse(data={"saved": True})
+
+
+def _facade(request, channel_id):
+    handler = _handler(request, channel_id)
+    facade = handler.client if isinstance(handler, OpcUaClientHandler) else handler.server
+    if facade is None:
+        raise OperationError("OPC UA 运行实例不可用")
+    return facade
+
+
+@router.post("/features/config", response_model=BaseResponse)
+async def feature_config(body: ChannelRequest):
+    _channel(body.channel_id)
+    return BaseResponse(data=await asyncio.to_thread(OpcUaFeatureService.load, body.channel_id))
+
+
+@router.post("/features/save", response_model=BaseResponse)
+async def save_feature(body: FeatureRequest, request: Request):
+    channel = _channel(body.channel_id)
+    models = {"simulation": (2, SimulationConfig), "subscriptions": (1, SubscriptionsConfig)}
+    models["history"] = (2, HistoryConfig)
+    models["events"] = (channel["conn_type"], EventsConfig)
+    if body.name == "security":
+        models["security"] = (channel["conn_type"], SecurityConfig)
+    if body.name not in models or channel["conn_type"] != models[body.name][0]:
+        raise ValidationError("功能名称或 OPC UA 角色不匹配")
+    if body.name != "subscriptions":
+        _ensure_stopped(request, body.channel_id)
+    try:
+        raw_config = body.config
+        if body.name == "security":
+            # Trust, certificate and user records are only changed through audited dedicated endpoints.
+            saved = (await asyncio.to_thread(OpcUaFeatureService.load, body.channel_id)).get("security", {})
+            raw_config = {
+                **body.config,
+                **{
+                    key: saved.get(key, default)
+                    for key, default in (("trusted", []), ("certificate", None), ("users", []))
+                },
+            }
+        config = models[body.name][1].model_validate(raw_config).model_dump()
+        if body.name == "security":
+            from src.proto.opcua.core.security import validate_application_identity
+
+            credentials = await asyncio.to_thread(OpcUaSecurityService.secrets, body.channel_id)
+            validate_application_identity(config, credentials)
+        if body.name == "simulation":
+            nodes = await asyncio.to_thread(OpcUaNodeService.list_nodes, body.channel_id)
+            if any(rule["node_id"] not in {node["node_id"] for node in nodes} for rule in config["rules"]):
+                raise ValueError("模拟规则包含不存在的节点")
+        await asyncio.to_thread(OpcUaFeatureService.save, body.channel_id, body.name, config)
+    except PydanticValidationError as exc:
+        message = "; ".join(error["msg"] for error in exc.errors(include_input=False, include_context=False))
+        raise ValidationError(message) from exc
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    runtime_config = await asyncio.to_thread(OpcUaConfigService.get, body.channel_id)
+    device = request.app.state.device_controller.get_device_by_id(body.channel_id)
+    handler = device.protocol_handler if device is not None else None
+    if body.name == "subscriptions" and isinstance(handler, OpcUaClientHandler) and handler.lifecycle_active:
+        await handler.client.configure_subscriptions(config)
+        return BaseResponse(data=config)
+    await _refresh_stopped_device(request, body.channel_id, runtime_config)
+    return BaseResponse(data=config)
+
+
+@router.post("/stream/read", response_model=BaseResponse)
+async def stream_read(body: StreamRequest, request: Request):
+    return BaseResponse(data=_facade(request, body.channel_id).stream.page(body.after, body.limit))
+
+
+@router.websocket("/stream/{channel_id}")
+async def value_stream(websocket: WebSocket, channel_id: int):
+    try:
+        facade = _facade(websocket, channel_id)
+        after = max(0, int(websocket.query_params.get("after", "0")))
+    except (ValueError, OperationError, ValidationError, NotFoundError):
+        await websocket.close(code=1008)
+        return
+    await websocket.accept()
+    try:
+        while True:
+            page = await facade.stream.wait(after)
+            await websocket.send_json(page)
+            if page["events"]:
+                after = page["events"][-1]["sequence"]
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+
+
 def _channel(channel_id: int) -> dict:
     channel = ChannelService.get_channel_by_id(channel_id)
     if channel is None:
@@ -86,7 +346,11 @@ def _handler(request: Request, channel_id: int) -> OpcUaClientHandler | OpcUaSer
 
 def _ensure_stopped(request: Request, channel_id: int) -> None:
     device = request.app.state.device_controller.get_device_by_id(channel_id)
-    if device is not None and device.is_protocol_running():
+    handler = device.protocol_handler if device is not None else None
+    if device is not None and (
+        device.is_protocol_running()
+        or (isinstance(handler, (OpcUaClientHandler, OpcUaServerHandler)) and handler.lifecycle_active)
+    ):
         raise ValidationError("请先停止 OPC UA 设备，再修改配置")
 
 

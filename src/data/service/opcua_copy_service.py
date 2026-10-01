@@ -8,9 +8,12 @@ from sqlalchemy import select
 from src.data.controller.db import local_session
 from src.data.model.channel import Channel
 from src.data.model.opcua_config import OpcUaConfig
+from src.data.model.opcua_feature import OpcUaFeature
 from src.data.model.opcua_node import OpcUaNode
 from src.data.model.opcua_point import OpcUaPoint
-from src.proto.opcua.core.transport import loopback_endpoint, make_endpoint_url
+from src.data.model.opcua_secret import OpcUaSecret
+from src.data.service.opcua_config_service import OpcUaConfigService
+from src.proto.opcua.core.transport import make_endpoint_url
 
 
 class OpcUaCopyService:
@@ -34,7 +37,9 @@ class OpcUaCopyService:
             source_endpoint = config.endpoint_url if config else None
             if source.conn_type == 1 and source_endpoint:
                 endpoint_path = urlparse(source_endpoint).path or "/"
-            endpoint = loopback_endpoint(make_endpoint_url(target.ip, target.port, endpoint_path))
+            endpoint = OpcUaConfigService.validate_address(
+                session, source_id, make_endpoint_url(target.ip, target.port, endpoint_path)
+            )
             session.add(
                 OpcUaConfig(
                     channel_id=target_id,
@@ -52,4 +57,26 @@ class OpcUaCopyService:
                     payload = {field: deepcopy(getattr(record, field)) for field in fields}
                     session.add(model(channel_id=target_id, **payload))
                 counts[name] = len(records)
+            features = session.scalars(select(OpcUaFeature).where(OpcUaFeature.channel_id == source_id)).all()
+            for feature in features:
+                if feature.name == "certificates":
+                    continue
+                payload = deepcopy(feature.config)
+                if feature.name == "security" and payload.get("certificate"):
+                    import base64
+
+                    from src.data.service.opcua_security_service import OpcUaSecurityService
+                    from src.proto.opcua.core.security import generate_certificate
+                    from src.proto.opcua.core.vault import protect
+
+                    uri = f"urn:ems-simulate:channel:{target_id}"
+                    certificate, key = generate_certificate(uri, payload.get("advertised_host") or target.ip)
+                    payload.update(application_uri=uri, certificate=base64.b64encode(certificate).decode())
+                    encrypted = protect(base64.b64encode(key).decode(), OpcUaSecurityService._directory())
+                    session.add(OpcUaSecret(channel_id=target_id, name="private_key", ciphertext=encrypted))
+                session.add(OpcUaFeature(channel_id=target_id, name=feature.name, config=payload))
+            secrets = session.scalars(select(OpcUaSecret).where(OpcUaSecret.channel_id == source_id)).all()
+            for secret in secrets:
+                if secret.name != "private_key":
+                    session.add(OpcUaSecret(channel_id=target_id, name=secret.name, ciphertext=secret.ciphertext))
         return counts

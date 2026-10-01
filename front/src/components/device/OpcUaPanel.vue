@@ -7,6 +7,16 @@
         "
         name="points"
       >
+        <OpcUaPageHeading
+          :title="
+            t(role === 'server' ? 'opcua.serverPoints' : 'opcua.localPoints')
+          "
+          :description="t('opcua.pointsDescription')"
+        >
+          <el-tag :type="running ? 'success' : 'info'" effect="light">{{
+            t(running ? "opcua.running" : "opcua.stopped")
+          }}</el-tag>
+        </OpcUaPageHeading>
         <div class="toolbar">
           <el-input
             v-model="search"
@@ -19,7 +29,7 @@
             style="width: 130px"
             @change="queryPoints"
           >
-            <el-option :label="t('opcua.allTypes')" :value="null" />
+            <el-option :label="t('opcua.allTypes')" :value="-1" />
             <el-option
               v-for="(label, index) in pointTypes"
               :key="index"
@@ -174,6 +184,14 @@
         :label="t('opcua.remoteBrowse')"
         name="browse"
       >
+        <OpcUaPageHeading
+          :title="t('opcua.remoteBrowse')"
+          :description="t('opcua.browseDescription')"
+        >
+          <el-tag :type="running ? 'success' : 'info'" effect="light">{{
+            t(running ? "opcua.running" : "opcua.stopped")
+          }}</el-tag>
+        </OpcUaPageHeading>
         <div class="toolbar">
           <el-input
             v-model="browseRoot"
@@ -244,9 +262,12 @@
             >{{ t("opcua.read") }}</el-button
           >
           <el-select v-model="valueType" style="width: 115px">
-            <el-option label="Boolean" value="Boolean" />
-            <el-option label="Int32" value="Int32" />
-            <el-option label="Double" value="Double" />
+            <el-option
+              v-for="type in OPCUA_SCALAR_TYPES"
+              :key="type"
+              :label="type"
+              :value="type"
+            />
           </el-select>
           <el-input v-model="writeText" :placeholder="t('opcua.writeValue')" />
           <el-button
@@ -279,7 +300,19 @@
       </el-tab-pane>
 
       <el-tab-pane :label="t('opcua.endpointConfig')" name="config">
-        <el-form v-if="config" label-width="140px" class="config-form">
+        <OpcUaPageHeading
+          :title="t('opcua.endpointConfig')"
+          :description="t('opcua.endpointDescription')"
+        >
+          <el-tag :type="running ? 'success' : 'info'" effect="light">{{
+            t(running ? "opcua.running" : "opcua.stopped")
+          }}</el-tag>
+        </OpcUaPageHeading>
+        <el-form
+          v-if="config"
+          label-width="140px"
+          class="config-form ua-section"
+        >
           <el-form-item :label="t('opcua.currentEndpoint')"
             ><span>{{ config.endpoint_url }}</span></el-form-item
           >
@@ -314,6 +347,47 @@
           </el-form-item>
         </el-form>
       </el-tab-pane>
+      <el-tab-pane
+        :label="
+          t(role === 'server' ? 'opcua.simulation' : 'opcua.subscriptions')
+        "
+        name="acquisition"
+        lazy
+      >
+        <OpcUaAcquisition
+          :channel-id="channelId"
+          :role="role"
+          :running="running"
+        />
+      </el-tab-pane>
+      <el-tab-pane
+        v-if="role === 'client'"
+        :label="t('opcua.trend')"
+        name="trend"
+        lazy
+      >
+        <OpcUaPageHeading
+          :title="t('opcua.trend')"
+          :description="t('opcua.trendDescription')"
+        />
+        <OpcUaLive :channel-id="channelId" mode="trend" />
+      </el-tab-pane>
+      <el-tab-pane :label="t('opcua.history')" name="history" lazy>
+        <OpcUaHistory :channel-id="channelId" :role="role" :running="running" />
+      </el-tab-pane>
+      <el-tab-pane :label="t('opcua.events')" name="events" lazy>
+        <OpcUaEvents :channel-id="channelId" :role="role" :running="running" />
+      </el-tab-pane>
+      <el-tab-pane :label="t('opcua.security')" name="security" lazy>
+        <OpcUaSecurity
+          :channel-id="channelId"
+          :role="role"
+          :running="running"
+        />
+      </el-tab-pane>
+      <el-tab-pane :label="t('opcua.diagnostics')" name="diagnostics" lazy>
+        <OpcUaDiagnostics :channel-id="channelId" />
+      </el-tab-pane>
     </el-tabs>
 
     <OpcUaPointImportDialog
@@ -328,10 +402,22 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { showError } from "@/api/http";
+import "@/styles/opcua.scss";
+import OpcUaPageHeading from "./OpcUaPageHeading.vue";
 import OpcUaAddressSpace from "./OpcUaAddressSpace.vue";
 import OpcUaRuntime from "./OpcUaRuntime.vue";
 import OpcUaPointImportDialog from "./OpcUaPointImportDialog.vue";
-import { OpcUaScalarError, parseOpcUaScalar } from "@/utils/opcuaValue";
+import OpcUaAcquisition from "./OpcUaAcquisition.vue";
+import OpcUaLive from "./OpcUaLive.vue";
+import OpcUaHistory from "./OpcUaHistory.vue";
+import OpcUaEvents from "./OpcUaEvents.vue";
+import OpcUaSecurity from "./OpcUaSecurity.vue";
+import OpcUaDiagnostics from "./OpcUaDiagnostics.vue";
+import {
+  OPCUA_SCALAR_TYPES,
+  OpcUaScalarError,
+  parseOpcUaScalar,
+} from "@/utils/opcuaValue";
 import {
   browseOpcUaNodes,
   clearOpcUaPoints,
@@ -370,7 +456,7 @@ const activeTab = ref("points");
 const points = ref<OpcUaPoint[]>([]);
 const pointValues = ref<Record<string, OpcUaValueSnapshot>>({});
 const search = ref("");
-const pointType = ref<number | null>(null);
+const pointType = ref(-1);
 const page = ref(1);
 const pageSize = 100;
 const total = ref(0);
@@ -392,7 +478,7 @@ const remoteTotal = ref(0);
 const remotePage = ref(1);
 const browsing = ref(false);
 const targetNode = ref("");
-const valueType = ref<"Boolean" | "Int32" | "Double">("Double");
+const valueType = ref<import("@/utils/opcuaValue").OpcUaScalarType>("Double");
 const writeText = ref("");
 const nodeResult = ref<OpcUaValueSnapshot | null>(null);
 
@@ -410,7 +496,7 @@ async function loadPoints() {
     const result = await listOpcUaPoints(
       props.channelId,
       search.value,
-      pointType.value,
+      pointType.value < 0 ? null : pointType.value,
       (page.value - 1) * pageSize,
       pageSize,
     );
@@ -626,7 +712,7 @@ onMounted(() => {
 .opcua-panel {
   margin-top: 16px;
   padding: 16px;
-  background: var(--el-bg-color);
+  background: var(--panel-bg);
   border-radius: 8px;
 }
 .toolbar {
@@ -655,7 +741,8 @@ onMounted(() => {
   background: var(--el-fill-color-light);
 }
 .config-form {
-  max-width: 720px;
+  max-width: none;
+  padding-top: 24px;
 }
 .form-hint {
   margin-left: 12px;

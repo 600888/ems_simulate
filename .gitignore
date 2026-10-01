@@ -185,6 +185,7 @@ data/*
 !data/point_csv/**
 word/
 tmp/
+.tmp/
 # plan 目录默认保留为本地资料；以下维护中的设计文档需要纳入版本控制。
 plan/*
 !plan/README.md
@@ -212,6 +213,7 @@ plan/OPCUA/*
 !plan/OPCUA/implementation/
 plan/OPCUA/implementation/*
 !plan/OPCUA/implementation/opcua-asyncio-development-plan.md
+!plan/OPCUA/implementation/progress-2026-10-01-live-features.md
 
 !plan/IEC104/
 plan/IEC104/*

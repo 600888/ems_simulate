@@ -120,7 +120,7 @@ class PluginRegistry:
                 "enabled": True,
                 "required": self._specs[name].failure_policy == "required",
                 **self._states[name],
-                "details": self._instances[name].status() if name in self._instances else {},
+                "details": self._instances[name].status() if name in self._started else {},
             }
             for name in self._order
         ] + [

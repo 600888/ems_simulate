@@ -29,6 +29,8 @@ class UaFacade:
         async with self._lifecycle_lock:
             if self.running:
                 return
+            if self._running:
+                await self._registry.stop()
             try:
                 await self._core.start()
                 await self._registry.start()
@@ -60,3 +62,6 @@ class UaFacade:
                 "reason": None,
             }
         ] + self._registry.capabilities()
+
+    def diagnostics(self) -> dict:
+        return self._core.diagnostics.snapshot()

@@ -16,6 +16,10 @@ def _json_value(value: Any, budget: list[int] | None = None, depth: int = 0) -> 
     if budget[0] < 0 or depth > 4:
         raise ValueError("OPC UA 值超过 JSON 编码大小或深度上限")
     if value is None or isinstance(value, (bool, int, float, str)):
+        if isinstance(value, str) and len(value) > 65536:
+            raise ValueError("OPC UA 字符串超过 JSON 编码大小上限")
+        if isinstance(value, int) and not isinstance(value, bool) and abs(value) > 2**53 - 1:
+            return {"integer": str(value)}
         if isinstance(value, float) and not math.isfinite(value):
             raise ValueError("OPC UA 非有限数值不能编码为 JSON")
         return value
@@ -23,6 +27,8 @@ def _json_value(value: Any, budget: list[int] | None = None, depth: int = 0) -> 
         aware = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
         return aware.isoformat()
     if isinstance(value, bytes):
+        if len(value) > 65536:
+            raise ValueError("OPC UA 二进制值超过 JSON 编码大小上限")
         import base64
 
         return {"base64": base64.b64encode(value).decode("ascii")}

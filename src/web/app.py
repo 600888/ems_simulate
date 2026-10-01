@@ -365,6 +365,9 @@ async def biz_exception_handler(request: Request, exc: BizError):
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Pydantic 请求参数校验失败：返回 422 + 字段级错误详情"""
     errors = exc.errors()
+    if request.url.path.startswith("/api/opcua/"):
+        # Pydantic normally includes the rejected input, including passwords.
+        errors = [{key: value for key, value in error.items() if key not in {"input", "ctx"}} for error in errors]
     # 提取可读的错误摘要
     details = []
     for err in errors:

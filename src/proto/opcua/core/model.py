@@ -1,7 +1,8 @@
 """Plain Python validation for the M1 scalar variable model."""
 
-import math
 from typing import Any
+
+from src.proto.opcua.core.values import validate_value
 
 
 def validate_variable(data: dict[str, Any]) -> dict[str, Any]:
@@ -12,21 +13,7 @@ def validate_variable(data: dict[str, Any]) -> dict[str, Any]:
     if not browse_name or len(browse_name) > 255:
         raise ValueError("BrowseName 必须在 1 到 255 个字符之间")
     data_type = data["data_type"]
-    value = data["initial_value"]
-    if data_type == "Boolean":
-        if not isinstance(value, bool):
-            raise ValueError("Boolean 初始值必须为布尔值")
-    elif data_type == "Int32":
-        if isinstance(value, bool) or not isinstance(value, int) or not -(2**31) <= value < 2**31:
-            raise ValueError("Int32 初始值必须为 32 位整数")
-    elif data_type == "Double":
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError("Double 初始值必须为数值")
-        value = float(value)
-        if not math.isfinite(value):
-            raise ValueError("Double 初始值必须是有限数值")
-    else:
-        raise ValueError("M1 仅支持 Boolean、Int32、Double 变量")
+    value = validate_value(data_type, data["initial_value"])
     writable = data.get("writable", False)
     if not isinstance(writable, bool):
         raise ValueError("Writable 必须为布尔值")

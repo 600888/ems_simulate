@@ -8,10 +8,11 @@ from src.config.config import Config
 from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
 from src.data.service.iec61850_copy_service import Iec61850CopyResult, Iec61850CopyService
+from src.data.service.opcua_config_service import OpcUaConfigService
 from src.data.service.opcua_copy_service import OpcUaCopyService
 from src.data.service.point_mapping_service import PointMappingService
 from src.enums.modbus_def import ProtocolType
-from src.proto.opcua.core.transport import loopback_endpoint, make_endpoint_url
+from src.proto.opcua.core.transport import make_endpoint_url
 from src.web.api.channel.helpers import (
     apply_ip_offsets,
     configure_builder_network,
@@ -160,7 +161,7 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
 
         if is_opcua:
             try:
-                loopback_endpoint(make_endpoint_url(new_ip, new_port))
+                OpcUaConfigService.validate_channel_endpoint(req.channel_id, make_endpoint_url(new_ip, new_port))
             except ValueError as exc:
                 raise ValidationError(str(exc)) from exc
 
