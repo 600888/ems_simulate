@@ -365,9 +365,8 @@
         </el-form>
       </el-tab-pane>
       <el-tab-pane
-        :label="
-          t(role === 'server' ? 'opcua.simulation' : 'opcua.subscriptions')
-        "
+        v-if="role === 'server'"
+        :label="t('opcua.simulation')"
         name="acquisition"
         lazy
       >
@@ -380,32 +379,14 @@
           :revision="modelRevision"
         />
       </el-tab-pane>
-      <el-tab-pane
-        v-if="role === 'client'"
-        :label="t('opcua.trend')"
-        name="trend"
-        lazy
-      >
-        <OpcUaPageHeading
-          :title="t('opcua.trend')"
-          :description="t('opcua.trendDescription')"
-        />
-        <OpcUaLive :channel-id="channelId" mode="trend" />
-      </el-tab-pane>
-      <el-tab-pane :label="t('opcua.history')" name="history" lazy>
-        <OpcUaHistory
+      <el-tab-pane :label="t('opcua.pubsub')" name="pubsub" lazy>
+        <OpcUaPubSub
+          :key="channelId"
           :channel-id="channelId"
           :role="role"
           :running="running"
           :revision="modelRevision"
-        />
-      </el-tab-pane>
-      <el-tab-pane :label="t('opcua.events')" name="events" lazy>
-        <OpcUaEvents
-          :channel-id="channelId"
-          :role="role"
-          :running="running"
-          :revision="modelRevision"
+          :active="activeTab === 'pubsub'"
         />
       </el-tab-pane>
       <el-tab-pane :label="t('opcua.security')" name="security" lazy>
@@ -435,9 +416,7 @@ import OpcUaAddressSpace from "./OpcUaAddressSpace.vue";
 import OpcUaRuntime from "./OpcUaRuntime.vue";
 import OpcUaPointImportDialog from "./OpcUaPointImportDialog.vue";
 import OpcUaAcquisition from "./OpcUaAcquisition.vue";
-import OpcUaLive from "./OpcUaLive.vue";
-import OpcUaHistory from "./OpcUaHistory.vue";
-import OpcUaEvents from "./OpcUaEvents.vue";
+import OpcUaPubSub from "./OpcUaPubSub.vue";
 import OpcUaSecurity from "./OpcUaSecurity.vue";
 import OpcUaDiagnostics from "./OpcUaDiagnostics.vue";
 import {

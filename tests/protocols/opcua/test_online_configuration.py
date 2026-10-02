@@ -87,6 +87,47 @@ async def save(request, name, config):
 
 
 @pytest.mark.asyncio
+async def test_pubsub_config_version_validation_and_deleted_node_reconciliation(online_routes):
+    request, server = online_routes
+    config = {
+        "enabled": False,
+        "publisher_id": "test-publisher",
+        "writers": [
+            {
+                "writer_id": 1,
+                "name": "Power",
+                "topic": "ua/power",
+                "metadata_topic": "ua/power/meta",
+                "fields": [{"node_id": NODE, "alias": "Power"}],
+            }
+        ],
+    }
+    try:
+        await server.start()
+        await save(request, "pubsub", config)
+        version = OpcUaFeatureService.load(2)["pubsub"]["config_version"]
+        await save(request, "pubsub", config)
+        assert OpcUaFeatureService.load(2)["pubsub"]["config_version"] == version
+        config["writers"][0]["fields"][0]["alias"] = "P"
+        await save(request, "pubsub", config)
+        assert OpcUaFeatureService.load(2)["pubsub"]["config_version"] == version + 1
+        before = OpcUaFeatureService.load(2)
+        invalid = {**config, "writers": [{**config["writers"][0], "topic": "ua/#"}]}
+        with pytest.raises(ValidationError, match="通配符"):
+            await save(request, "pubsub", invalid)
+        assert OpcUaFeatureService.load(2) == before
+        capability = (await api.node_capabilities(api.NodeRequest(channel_id=2, node_id=NODE), request)).data
+        assert capability["node_class"] == "Variable" and not capability["history_read"]
+        await api.delete_variable(api.NodeRequest(channel_id=2, node_id=NODE), request)
+        saved = OpcUaFeatureService.load(2)["pubsub"]
+        assert not saved["enabled"] and saved["writers"][0]["fields"] == []
+        assert saved["config_version"] == version + 2
+        assert server.running
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
 async def test_online_rules_preserve_pause_and_session_and_rollback(online_routes):
     request, server = online_routes
     client = OpcUaClient(server.endpoint_url)

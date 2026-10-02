@@ -11,6 +11,7 @@ from src.proto.opcua.plugins.address_space import AddressSpacePlugin
 from src.proto.opcua.plugins.base import PluginContext
 from src.proto.opcua.plugins.builtin import builtin_specs
 from src.proto.opcua.plugins.model_io import ModelIoPlugin
+from src.proto.opcua.plugins.pubsub import PubSubPlugin
 from src.proto.opcua.plugins.registry import PluginRegistry
 from src.proto.opcua.plugins.simulation import SimulationPlugin
 
@@ -44,6 +45,7 @@ class OpcUaServer(UaFacade):
         context = PluginContext(
             channel_id=channel_id,
             role="server",
+            ua_port=core,
             address_space_port=core,
             model_port=core,
             simulation_port=core,
@@ -74,20 +76,28 @@ class OpcUaServer(UaFacade):
     async def inspect_node(self, node_id: str) -> dict:
         return await self._core.inspect_node(node_id)
 
+    async def node_capabilities(self, node_id: str) -> dict:
+        return await self._core.node_capabilities(node_id)
+
     async def write(self, node_id: str, value: Any) -> dict:
         return await self._core.write(node_id, value)
 
     async def reset_values(self) -> int:
         return await cast(AddressSpacePlugin, self._registry.feature("address_space")).reset_values()
 
-    async def emit_event(self, message: str, severity: int) -> dict:
+    async def emit_event(self, message: str, severity: int, source_node: str | None = None) -> dict:
         self._registry.feature("events")
-        result = await self._core.emit_event(message, severity)
+        result = await self._core.emit_event(message, severity, source_node)
         await self.stream.emit({"kind": "event", **result})
         return result
 
     def pause_simulation(self, paused: bool) -> None:
         cast(SimulationPlugin, self._registry.feature("simulation")).set_paused(paused)
+
+    async def configure_feature(self, name: str, config: dict) -> None:
+        await super().configure_feature(name, config)
+        if name == "events" and "pubsub" in self._registry._started:
+            cast(PubSubPlugin, self._registry.feature("pubsub")).configure_events(config)
 
     async def configure_definitions(self, definitions: list[dict], features: dict) -> None:
         async with self._lifecycle_lock:
@@ -115,7 +125,7 @@ class OpcUaServer(UaFacade):
             simulated = {rule["node_id"] for rule in old_context.config.get("simulation", {}).get("rules", [])}
             names = [
                 name
-                for name in ("simulation", "history", "events")
+                for name in ("simulation", "history", "events", "pubsub")
                 if name in self._registry._started
                 and (
                     old_context.config.get(name, {}) != context.config.get(name, {})

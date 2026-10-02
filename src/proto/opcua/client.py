@@ -51,6 +51,9 @@ class OpcUaClient(UaFacade):
     async def read(self, node_id: str) -> dict[str, Any]:
         return await self._core.read(node_id)
 
+    async def node_capabilities(self, node_id: str) -> dict:
+        return await self._core.node_capabilities(node_id)
+
     async def read_point(self, namespace_uri: str, node_id: str) -> dict[str, Any]:
         resolved = await self._core.resolve_node_id(namespace_uri, node_id)
         return await self._core.read(resolved)
@@ -59,9 +62,16 @@ class OpcUaClient(UaFacade):
         return await self._core.write(node_id, value)
 
     async def read_history(
-        self, node_id: str, start: Any, end: Any, limit: int, continuation: str | None = None, release: bool = False
+        self,
+        node_id: str,
+        start: Any,
+        end: Any,
+        limit: int,
+        continuation: str | None = None,
+        release: bool = False,
+        **options,
     ) -> dict:
-        return await self._core.read_history(node_id, start, end, limit, continuation, release)
+        return await self._core.read_history(node_id, start, end, limit, continuation, release, **options)
 
     async def configure_subscriptions(self, config: dict) -> None:
         async with self._lifecycle_lock:

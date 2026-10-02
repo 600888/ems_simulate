@@ -22,8 +22,12 @@ class EventsPlugin:
             raise ValueError("事件插件缺少协议接口或事件出口")
 
     async def _receive(self, event: dict) -> None:
-        if event.get("Severity", 0) >= self._config.minimum_severity:
-            await self._sink.emit({"kind": "event", **event})
+        if (
+            event.get("Severity", 0) >= self._config.minimum_severity
+            and self._config.message_filter.casefold() in str(event.get("Message", "")).casefold()
+        ):
+            fields = set(self._config.returned_fields) | {"EventId", "SourceNode", "Time", "Severity", "Message"}
+            await self._sink.emit({"kind": "event", **{key: value for key, value in event.items() if key in fields}})
 
     async def _restore(self) -> None:
         await self._port.subscribe_events(self._config.model_dump(), self._receive)

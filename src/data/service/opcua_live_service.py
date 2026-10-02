@@ -45,6 +45,17 @@ class OpcUaLiveService:
                     config["rules"] = [rule for rule in config.get("rules", []) if rule["node_id"] in nodes]
                 elif row.name == "history":
                     config["nodes"] = [key for key in config.get("nodes", []) if key in nodes]
+                elif row.name == "pubsub":
+                    for writer in config.get("writers", []):
+                        writer["fields"] = [field for field in writer.get("fields", []) if field["node_id"] in nodes]
+                    if not any(
+                        w.get("enabled", True)
+                        and (w.get("fields") if w["kind"] == "variables" else w.get("source_nodes"))
+                        for w in config.get("writers", [])
+                    ):
+                        config["enabled"] = False
+                    if config != row.config:
+                        config["config_version"] = min(4294967295, config.get("config_version", 1) + 1)
                 elif row.name == "events":
                     source = config.get("source_node", "i=2253")
                     # Standard nodes remain available independently of imported definitions.

@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime
 from inspect import iscoroutinefunction
-from typing import Any
+from typing import Any, Literal
 
 from asyncua import ua
 from fastapi import APIRouter, File, Form, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
@@ -22,6 +22,7 @@ from src.device.protocol.opcua_handler import OpcUaClientHandler, OpcUaServerHan
 from src.proto.opcua.core.feature_config import (
     EventsConfig,
     HistoryConfig,
+    PubSubConfig,
     SecurityConfig,
     SimulationConfig,
     SubscriptionsConfig,
@@ -120,11 +121,28 @@ class HistoryReadRequest(NodeRequest):
     limit: int = Field(default=100, ge=1, le=500)
     continuation: str | None = Field(default=None, max_length=8192)
     release: bool = False
+    mode: Literal["raw", "processed"] = "raw"
+    aggregate: Literal["Average", "Minimum", "Maximum", "Count", "Total"] = "Average"
+    processing_interval_ms: float = Field(default=1000, ge=50, le=3600000)
+    timestamps: Literal["Source", "Server", "Both", "Neither"] = "Both"
+    return_bounds: bool = False
 
 
 class EmitEventRequest(ChannelRequest):
     message: str = Field(min_length=1, max_length=1024)
     severity: int = Field(default=500, ge=0, le=1000)
+    source_node: str | None = Field(default=None, min_length=1, max_length=512)
+
+
+@router.post("/nodes/capabilities", response_model=BaseResponse)
+async def node_capabilities(body: NodeRequest, request: Request):
+    handler = _handler(request, body.channel_id)
+    if not handler.is_running:
+        raise ValidationError("请先启动 OPC UA 连接")
+    try:
+        return BaseResponse(data=await _facade(request, body.channel_id).node_capabilities(body.node_id))
+    except Exception as exc:
+        raise OperationError(f"节点能力读取失败: {exc}") from exc
 
 
 class SimulationPauseRequest(ChannelRequest):
@@ -148,7 +166,17 @@ async def history_read(body: HistoryReadRequest, request: Request):
     facade = _client(request, body.channel_id).client
     try:
         result = await facade.read_history(
-            body.node_id, body.start, body.end, body.limit, body.continuation, body.release
+            body.node_id,
+            body.start,
+            body.end,
+            body.limit,
+            body.continuation,
+            body.release,
+            mode=body.mode,
+            aggregate=body.aggregate,
+            processing_interval_ms=body.processing_interval_ms,
+            timestamps=body.timestamps,
+            return_bounds=body.return_bounds,
         )
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
@@ -164,7 +192,7 @@ async def emit_event(body: EmitEventRequest, request: Request):
     if not isinstance(handler, OpcUaServerHandler):
         raise ValidationError("事件触发仅适用于 OPC UA 服务端")
     try:
-        return BaseResponse(data=await facade.emit_event(body.message, body.severity))
+        return BaseResponse(data=await facade.emit_event(body.message, body.severity, body.source_node))
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
 
@@ -267,6 +295,7 @@ async def save_feature(body: FeatureRequest, request: Request):
     channel = _channel(body.channel_id)
     models = {"simulation": (2, SimulationConfig), "subscriptions": (1, SubscriptionsConfig)}
     models["history"] = (2, HistoryConfig)
+    models["pubsub"] = (2, PubSubConfig)
     models["events"] = (channel["conn_type"], EventsConfig)
     if body.name == "security":
         models["security"] = (channel["conn_type"], SecurityConfig)
@@ -287,6 +316,22 @@ async def save_feature(body: FeatureRequest, request: Request):
                 },
             }
         config = models[body.name][1].model_validate(raw_config).model_dump()
+        if body.name == "pubsub":
+            saved = (await asyncio.to_thread(OpcUaFeatureService.load, body.channel_id)).get("pubsub", {})
+            # ConfigurationVersion is owned by the backend and survives restarts.
+            changed = {k: v for k, v in config.items() if k not in {"config_version", "enabled"}} != {
+                k: v
+                for k, v in PubSubConfig.model_validate(saved).model_dump().items()
+                if k not in {"config_version", "enabled"}
+            }
+            config["config_version"] = min(4294967295, saved.get("config_version", 1) + int(changed))
+            nodes = await asyncio.to_thread(OpcUaNodeService.list_nodes, body.channel_id)
+            if any(
+                field["node_id"] not in {n["node_id"] for n in nodes}
+                for w in config["writers"]
+                for field in w["fields"]
+            ):
+                raise ValueError("发布数据集包含不存在的变量")
         if body.name == "security":
             from src.proto.opcua.core.security import validate_application_identity
 

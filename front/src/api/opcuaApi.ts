@@ -348,6 +348,7 @@ export const saveOpcUaFeature = (
   requestApi("/api/opcua/features/save", "post", { channel_id, name, config });
 
 export interface OpcUaStreamEvent extends Partial<OpcUaValueSnapshot> {
+  [key: string]: unknown;
   sequence: number;
   timestamp: string;
   kind: string;
@@ -374,6 +375,7 @@ export const readOpcUaHistory = (
   start: string,
   end: string,
   continuation: string | null = null,
+  options: Partial<OpcUaHistoryOptions> = {},
 ): Promise<{
   values: OpcUaValueSnapshot[];
   continuation: string | null;
@@ -385,7 +387,31 @@ export const readOpcUaHistory = (
     end,
     continuation,
     limit: 100,
+    ...options,
   });
+
+export interface OpcUaHistoryOptions {
+  limit: number;
+  mode: "raw" | "processed";
+  aggregate: "Average" | "Minimum" | "Maximum" | "Count" | "Total";
+  processing_interval_ms: number;
+  timestamps: "Source" | "Server" | "Both" | "Neither";
+  return_bounds: boolean;
+  release: boolean;
+}
+
+export const getOpcUaNodeCapabilities = (
+  channel_id: number,
+  node_id: string,
+): Promise<
+  OpcUaObjectNode & {
+    data_type?: string;
+    history_read: boolean;
+    historizing: boolean;
+    event_notifier: boolean;
+  }
+> =>
+  requestApi("/api/opcua/nodes/capabilities", "post", { channel_id, node_id });
 
 export const getOpcUaDiagnostics = (
   channel_id: number,
@@ -447,11 +473,13 @@ export const emitOpcUaEvent = (
   channel_id: number,
   message: string,
   severity: number,
+  source_node?: string,
 ) =>
   requestApi("/api/opcua/events/emit", "post", {
     channel_id,
     message,
     severity,
+    source_node,
   });
 
 export const pauseOpcUaSimulation = (channel_id: number, paused: boolean) =>

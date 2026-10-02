@@ -65,6 +65,8 @@ hiddenimports = [
     "pydantic",
     "loguru",
     "c104",
+    "aiomqtt",
+    "paho.mqtt.client",
     # dlt645 exposes these through an eager package initializer. Listing both
     # services explicitly keeps frozen builds from discovering either service
     # for the first time inside a device-reload worker thread.

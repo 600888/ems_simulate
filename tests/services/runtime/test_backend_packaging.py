@@ -42,5 +42,6 @@ def test_backend_spec_config_placement(monkeypatch, mode, bundle_config, content
     bundled_ini = [(source, target) for source, target in data_files if Path(source).suffix == ".ini"]
     assert bundled_ini == ([(str(project / "config.ini"), ".")] if expects_config else [])
     assert (str(project / "www"), "www") in data_files
+    assert {"aiomqtt", "paho.mqtt.client"}.issubset(analysis.call_args.kwargs["hiddenimports"])
     if mode == "onedir":
         collect.assert_called_once()

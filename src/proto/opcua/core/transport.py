@@ -27,6 +27,28 @@ MAX_BROWSE_REFERENCES = 10000
 MAX_BROWSE_REQUESTS = 100
 
 
+async def _node_capabilities(node) -> dict:
+    node_class = await node.read_node_class()
+    result = {
+        "node_id": node.nodeid.to_string(),
+        "browse_name": (await node.read_browse_name()).Name,
+        "node_class": node_class.name,
+        "history_read": False,
+        "historizing": False,
+        "event_notifier": False,
+    }
+    if node_class == ua.NodeClass.Variable:
+        result["data_type"] = (await node.read_data_type_as_variant_type()).name
+        result["history_read"] = (
+            ua.AccessLevel.HistoryRead in await node.get_access_level()
+            and ua.AccessLevel.HistoryRead in await node.get_user_access_level()
+        )
+        result["historizing"] = (await node.read_attribute(ua.AttributeIds.Historizing)).Value.Value
+    elif node_class in {ua.NodeClass.Object, ua.NodeClass.View}:
+        result["event_notifier"] = ua.EventNotifier.SubscribeToEvents in await node.read_event_notifier()
+    return result
+
+
 async def _browse_page(node, limit: int, offset: int) -> dict[str, Any]:
     if not 1 <= limit <= 500 or not 0 <= offset <= 100000:
         raise ValueError("浏览分页参数超出范围")
@@ -383,7 +405,13 @@ class UaClientCore:
         await self.clear_event_subscription()
         subscription = await self._client.create_subscription(100, _EventHandler(callback), queue_maxsize=1000)
         self._event_subscription = subscription
-        await subscription.subscribe_events(self._node(config["source_node"]), self._node(config["event_type"]))
+        for source in config.get("source_nodes") or [config["source_node"]]:
+            handle = await subscription.subscribe_events(self._node(source), self._node(config["event_type"]))
+            if isinstance(handle, ua.StatusCode):
+                handle.check()
+
+    async def node_capabilities(self, node_id: str) -> dict:
+        return await _node_capabilities(self._node(node_id))
 
     @observed("HistoryRead")
     async def read_history(
@@ -394,8 +422,17 @@ class UaClientCore:
         limit: int,
         continuation: str | None = None,
         release: bool = False,
+        *,
+        mode: str = "raw",
+        aggregate: str = "Average",
+        processing_interval_ms: float = 1000,
+        timestamps: str = "Both",
+        return_bounds: bool = False,
     ) -> dict:
         import base64
+        from datetime import timedelta
+        import hashlib
+        import json
 
         if not 1 <= limit <= 500 or start.tzinfo is None or end.tzinfo is None or start >= end:
             raise ValueError("历史查询必须指定有效的带时区时间范围和 1–500 条记录")
@@ -408,20 +445,72 @@ class UaClientCore:
             StartTime=start.astimezone(UTC),
             EndTime=end.astimezone(UTC),
             NumValuesPerNode=limit,
-            ReturnBounds=False,
+            ReturnBounds=return_bounds,
         )
+        window_start, window_end, signature = start.astimezone(UTC), end.astimezone(UTC), None
+        if mode == "processed":
+            if (
+                aggregate not in {"Average", "Minimum", "Maximum", "Count", "Total"}
+                or not 50 <= processing_interval_ms <= 3600000
+            ):
+                raise ValueError("聚合函数或处理间隔无效")
+            # ReadProcessed has no NumValuesPerNode. Bound each request by the
+            # number of processing intervals, preserving native continuation points.
+            signature = hashlib.sha256(
+                json.dumps(
+                    [node_id, start.isoformat(), end.isoformat(), aggregate, processing_interval_ms, limit, timestamps]
+                ).encode()
+            ).hexdigest()
+            if token:
+                try:
+                    cursor = json.loads(token)
+                    if cursor["query"] != signature:
+                        raise ValueError("聚合 continuation 与查询不匹配")
+                    window_start = datetime.fromisoformat(cursor["start"])
+                    if window_start.tzinfo is None or not start <= window_start < end:
+                        raise ValueError("聚合 continuation 时间无效")
+                    token = base64.b64decode(cursor["native"], validate=True) if cursor["native"] else None
+                except (KeyError, TypeError, json.JSONDecodeError) as exc:
+                    raise ValueError("聚合 continuation 无效") from exc
+            if release and token is None:
+                return {"values": [], "continuation": None, "status_code": "Good"}
+            window_end = min(window_start + timedelta(milliseconds=processing_interval_ms * limit), end)
+            details = ua.ReadProcessedDetails(
+                StartTime=window_start,
+                EndTime=window_end,
+                ProcessingInterval=processing_interval_ms,
+                AggregateType=[ua.NodeId(getattr(ua.ObjectIds, f"AggregateFunction_{aggregate}"))],
+            )
+        elif mode != "raw":
+            raise ValueError("历史读取模式无效")
+        if timestamps not in {"Source", "Server", "Both", "Neither"}:
+            raise ValueError("时间戳选项无效")
         params = ua.HistoryReadParameters(
             HistoryReadDetails=details,
-            TimestampsToReturn=ua.TimestampsToReturn.Both,
+            TimestampsToReturn=ua.TimestampsToReturn[timestamps],
             ReleaseContinuationPoints=release,
             NodesToRead=[ua.HistoryReadValueId(NodeId=node.nodeid, ContinuationPoint=token)],
         )
         result = (await node.session.history_read(params))[0]
         result.StatusCode.check()
         values = [] if release else [value_snapshot(node_id, item) for item in result.HistoryData.DataValues]
+        for value in values:
+            if timestamps not in {"Source", "Both"}:
+                value["source_timestamp"] = None
+            if timestamps not in {"Server", "Both"}:
+                value["server_timestamp"] = None
+        next_token = result.ContinuationPoint if not release else None
+        if mode == "processed" and not release and (next_token or window_end < end):
+            next_token = json.dumps(
+                {
+                    "query": signature,
+                    "start": (window_start if next_token else window_end).isoformat(),
+                    "native": base64.b64encode(next_token).decode() if next_token else None,
+                }
+            ).encode()
         return {
             "values": values,
-            "continuation": base64.b64encode(result.ContinuationPoint).decode() if result.ContinuationPoint else None,
+            "continuation": base64.b64encode(next_token).decode() if next_token else None,
             "status_code": result.StatusCode.name,
         }
 
@@ -529,6 +618,9 @@ class UaServerCore:
         return await _browse_page(self._node(node_id), limit, offset)
 
     @observed("Read")
+    async def node_capabilities(self, node_id: str) -> dict:
+        return await _node_capabilities(self._node(node_id))
+
     async def inspect_node(self, node_id: str) -> dict:
         node = self._node(node_id)
         node_class = await node.read_node_class()
@@ -704,16 +796,27 @@ class UaServerCore:
         self._history_nodes = []
 
     async def enable_events(self, config: dict) -> None:
-        self._event_generator = await self._server.get_event_generator(
-            self._server.get_node(config["event_type"]), self._server.get_node(config["source_node"]).nodeid
-        )
+        generators = {}
+        for source in config.get("source_nodes") or [config["source_node"]]:
+            node = self._server.get_node(source)
+            if await node.read_node_class() != ua.NodeClass.Object:
+                raise ValueError("事件源必须是 Object 节点")
+            generators[source] = await self._server.get_event_generator(
+                self._server.get_node(config["event_type"]), node.nodeid
+            )
+        self._event_generator = generators
 
-    async def emit_event(self, message: str, severity: int) -> dict:
+    async def emit_event(self, message: str, severity: int, source_node: str | None = None) -> dict:
         if self._event_generator is None:
             raise ValueError("服务端事件功能未启用")
-        self._event_generator.event.Severity = severity
-        await self._event_generator.trigger(message=message)
-        return event_snapshot(self._event_generator.event)
+        generator = (
+            self._event_generator.get(source_node) if source_node else next(iter(self._event_generator.values()), None)
+        )
+        if generator is None:
+            raise ValueError("该事件源尚未启用")
+        generator.event.Severity = severity
+        await generator.trigger(message=message)
+        return event_snapshot(generator.event)
 
     async def disable_events(self) -> None:
         self._event_generator = None

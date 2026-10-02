@@ -7,6 +7,49 @@ from src.config.config import Config, resolve_config_path
 import start_back_end
 
 
+def test_backend_entry_loop_supports_socket_readers(tmp_path, monkeypatch):
+    """Exercise the entry's actual Uvicorn loop factory, required by aiomqtt on Windows."""
+    import asyncio
+    import runpy
+    import socket
+    from types import SimpleNamespace
+
+    import uvicorn
+
+    reached = []
+
+    async def probe():
+        loop = asyncio.get_running_loop()
+        left, right = socket.socketpair()
+        ready = loop.create_future()
+
+        def readable():
+            loop.remove_reader(left.fileno())
+            ready.set_result(left.recv(1))
+
+        try:
+            loop.add_reader(left.fileno(), readable)
+            right.send(b"1")
+            reached.append(await asyncio.wait_for(ready, 1))
+        finally:
+            loop.remove_reader(left.fileno())
+            left.close()
+            right.close()
+
+    def run(app, **kwargs):
+        factory = uvicorn.Config(app, **kwargs).get_loop_factory()
+        with asyncio.Runner(loop_factory=factory) as runner:
+            runner.run(probe())
+
+    monkeypatch.setenv("EMS_ROOT_DIR", str(tmp_path))
+    monkeypatch.setattr(sys, "argv", ["start_back_end.py"])
+    monkeypatch.setattr(Config, "load_config", lambda _: None)
+    monkeypatch.setattr(uvicorn, "run", run)
+    monkeypatch.setitem(sys.modules, "src.web.app", SimpleNamespace(app=SimpleNamespace(mount=lambda *_, **__: None)))
+    runpy.run_path(str(Path(start_back_end.__file__)), run_name="__main__")
+    assert reached == [b"1"]
+
+
 def _create_bundle(bundle_dir: Path, database: bytes = b"seed database") -> None:
     (bundle_dir / "data" / "point_csv").mkdir(parents=True)
     (bundle_dir / "config.ini").write_text("[database]\ntype = sqlite\n", encoding="utf-8")

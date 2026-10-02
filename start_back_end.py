@@ -117,4 +117,7 @@ if __name__ == "__main__":
         port=args.port if args.port is not None else Config.web_port,
         log_level="info",
         reload=False,
+        # Uvicorn 0.40 creates its own loop, bypassing event-loop policies.
+        # aiomqtt needs add_reader/add_writer, unavailable on Windows Proactor.
+        loop="asyncio:SelectorEventLoop" if sys.platform == "win32" else "auto",
     )

@@ -416,8 +416,16 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 if __name__ == "__main__":
+    import sys
+
     import uvicorn
 
     from src.config.config import Config
 
-    uvicorn.run(app, host=Config.web_host, port=Config.web_port, log_level="info")
+    uvicorn.run(
+        app,
+        host=Config.web_host,
+        port=Config.web_port,
+        log_level="info",
+        loop="asyncio:SelectorEventLoop" if sys.platform == "win32" else "auto",
+    )

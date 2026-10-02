@@ -132,3 +132,132 @@ class EventsConfig(BaseModel):
     source_node: str = Field(default="i=2253", min_length=1, max_length=512)
     event_type: str = Field(default="i=2041", min_length=1, max_length=512)
     minimum_severity: int = Field(default=0, ge=0, le=1000)
+    source_nodes: list[str] = Field(default_factory=list, max_length=100)
+    message_filter: str = Field(default="", max_length=256)
+    returned_fields: list[str] = Field(
+        default_factory=lambda: ["EventId", "EventType", "SourceNode", "SourceName", "Time", "Severity", "Message"],
+        max_length=32,
+    )
+
+    @model_validator(mode="after")
+    def validate_sources(self):
+        if len(set(self.source_nodes)) != len(self.source_nodes) or any(
+            not 1 <= len(s) <= 512 for s in self.source_nodes
+        ):
+            raise ValueError("事件源重复或 NodeId 长度无效")
+        allowed = {
+            "EventId",
+            "EventType",
+            "SourceNode",
+            "SourceName",
+            "Time",
+            "ReceiveTime",
+            "Severity",
+            "Message",
+            "ConditionId",
+            "AckedState",
+            "Retain",
+        }
+        if (
+            not self.returned_fields
+            or len(set(self.returned_fields)) != len(self.returned_fields)
+            or not set(self.returned_fields) <= allowed
+        ):
+            raise ValueError("事件返回字段无效")
+        return self
+
+
+class DataSetField(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    node_id: str = Field(min_length=1, max_length=512)
+    alias: str = Field(min_length=1, max_length=128)
+
+
+class DataSetWriterConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    writer_id: int = Field(ge=1, le=65535)
+    name: str = Field(min_length=1, max_length=128)
+    kind: Literal["variables", "events"] = "variables"
+    enabled: bool = True
+    topic: str = Field(min_length=1, max_length=1024)
+    metadata_topic: str = Field(min_length=1, max_length=1024)
+    key_frame_count: int = Field(default=1, ge=1, le=1000)
+    fields: list[DataSetField] = Field(default_factory=list, max_length=1000)
+    source_nodes: list[str] = Field(default_factory=list, max_length=100)
+    event_fields: list[str] = Field(
+        default_factory=lambda: ["EventId", "SourceNode", "SourceName", "Time", "Severity", "Message"], max_length=32
+    )
+
+    @model_validator(mode="after")
+    def unique_fields(self):
+        if any(c in topic for topic in (self.topic, self.metadata_topic) for c in ("#", "+", "\x00")):
+            raise ValueError("发布主题不能包含 MQTT 通配符或空字符")
+        if self.topic == self.metadata_topic:
+            raise ValueError("数据主题与元数据主题不能相同")
+        if len({f.node_id for f in self.fields}) != len(self.fields) or len({f.alias for f in self.fields}) != len(
+            self.fields
+        ):
+            raise ValueError("数据集 NodeId 和字段别名不能重复")
+        if len(set(self.source_nodes)) != len(self.source_nodes) or any(
+            not 1 <= len(s) <= 512 for s in self.source_nodes
+        ):
+            raise ValueError("事件源无效")
+        EventsConfig(returned_fields=self.event_fields)
+        return self
+
+
+class PubSubConfig(BaseModel):
+    """MQTT 3.1.1 / JSON, QoS 0 with reversible Variant fields."""
+
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = False
+    publisher_id: str = Field(default="ems-simulate", min_length=1, max_length=128)
+    broker_url: str = Field(default="mqtt://127.0.0.1:1883", max_length=1024)
+    writer_group_name: str = Field(default="WriterGroup1", min_length=1, max_length=128)
+    publishing_interval_ms: int = Field(default=500, ge=50, le=3600000)
+    config_version: int = Field(default=1, ge=1, le=4294967295)
+    message_content: list[
+        Literal["publisher_id", "writer_group_name", "sequence_number", "timestamp", "status", "metadata_version"]
+    ] = Field(
+        default_factory=lambda: [
+            "publisher_id",
+            "writer_group_name",
+            "sequence_number",
+            "timestamp",
+            "status",
+            "metadata_version",
+        ],
+        max_length=6,
+    )
+    field_content: list[Literal["status_code", "source_timestamp", "server_timestamp"]] = Field(
+        default_factory=lambda: ["status_code", "source_timestamp", "server_timestamp"], max_length=3
+    )
+    writers: list[DataSetWriterConfig] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_writers(self):
+        from urllib.parse import urlsplit
+
+        parsed = urlsplit(self.broker_url)
+        if (
+            parsed.scheme not in {"mqtt", "mqtts"}
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("Broker 地址应为 mqtt://host:port 或 mqtts://host:port")
+        if parsed.port is not None and not 1 <= parsed.port <= 65535:
+            raise ValueError("MQTT 端口无效")
+        if len({w.writer_id for w in self.writers}) != len(self.writers):
+            raise ValueError("DataSetWriterId 不能重复")
+        metadata_topics = [w.metadata_topic for w in self.writers]
+        if len(set(metadata_topics)) != len(metadata_topics) or set(metadata_topics) & {w.topic for w in self.writers}:
+            raise ValueError("各数据集的元数据主题必须独立于数据主题")
+        if self.enabled and not any(
+            w.enabled and (w.fields if w.kind == "variables" else w.source_nodes) for w in self.writers
+        ):
+            raise ValueError("至少配置一个有节点的已启用数据集")
+        return self
