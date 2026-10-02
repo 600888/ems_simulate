@@ -68,14 +68,28 @@
             :protocol-type="form.protocol_type"
             :conn-type="form.conn_type"
           />
+          <OpcUaEndpointParams
+            v-if="form.protocol_type === 7"
+            :model-value="opcuaConfig"
+            :conn-type="form.conn_type"
+            :disabled="saving || loadingChannel"
+          />
         </el-tab-pane>
 
         <el-tab-pane
-          v-if="tlsSupportedProtocol"
+          v-if="tlsSupportedProtocol || form.protocol_type === 7"
           :label="$t('addDevice.tabSecurity')"
           name="security"
         >
+          <OpcUaDeviceSecurityConfig
+            v-if="form.protocol_type === 7"
+            ref="opcuaSecurityCompRef"
+            :model-value="opcuaConfig"
+            :conn-type="form.conn_type"
+            :disabled="saving || loadingChannel"
+          />
           <DeviceSecurityConfig
+            v-else
             ref="securityCompRef"
             :model-value="securityConfig"
             :network-mode="mediaType === 'network'"
@@ -240,6 +254,13 @@ import OpcUaPointImportDialog from "./OpcUaPointImportDialog.vue";
 import { importDevicePointFile } from "@/utils/devicePointImport";
 import DeviceProtocolParams from "./DeviceProtocolParams.vue";
 import DeviceSecurityConfig from "./DeviceSecurityConfig.vue";
+import OpcUaEndpointParams from "./OpcUaEndpointParams.vue";
+import OpcUaDeviceSecurityConfig from "./OpcUaDeviceSecurityConfig.vue";
+import {
+  defaultOpcUaDeviceConfig,
+  opcuaDeviceConfigPayload,
+  opcuaDeviceConfigError,
+} from "@/utils/opcuaDeviceConfig";
 
 // API
 import {
@@ -298,6 +319,9 @@ const protocolParamsCompRef = ref<{
   validate: () => boolean;
 }>();
 const securityCompRef = ref();
+const opcuaSecurityCompRef =
+  ref<InstanceType<typeof OpcUaDeviceSecurityConfig>>();
+const opcuaConfig = reactive(defaultOpcUaDeviceConfig());
 const activeTab = ref<"basic" | "protocol" | "security">("basic");
 const originalName = ref("");
 const mediaType = ref<"serial" | "network">("network");
@@ -493,7 +517,8 @@ watch(
   async ([protocolType, connType]) => {
     if (!TLS_SUPPORTED_PROTOCOLS.has(protocolType)) {
       securityConfig.tls_enabled = false;
-      if (activeTab.value === "security") activeTab.value = "basic";
+      if (protocolType !== 7 && activeTab.value === "security")
+        activeTab.value = "basic";
     }
     // DLT645 电表地址统一为 12 位数字（补零），避免短地址残留
     if (protocolType === 3 && !loadingChannel.value) {
@@ -506,6 +531,13 @@ watch(
     }
     uploadCompRef.value?.clearFiles();
     if (!loadingChannel.value) {
+      Object.assign(opcuaConfig, defaultOpcUaDeviceConfig(), {
+        certificate_configured: false,
+        private_key_configured: false,
+        password_configured: false,
+        trusted_count: 0,
+      });
+      opcuaSecurityCompRef.value?.clearFiles();
       await nextTick();
       protocolParamsCompRef.value?.resetDefaults();
     }
@@ -545,6 +577,14 @@ const loadChannelData = async (id: number) => {
     applyPersistedProtocolParams(data.protocol_params);
     form.protocol_params = protocolParams;
     applyPersistedSecurityConfig(data.security_config);
+    Object.assign(
+      opcuaConfig,
+      defaultOpcUaDeviceConfig(),
+      data.opcua_config || {},
+      {
+        generate_certificate: !data.opcua_config?.certificate_configured,
+      },
+    );
     originalSecuritySettings.value = {
       tls_enabled: securityConfig.tls_enabled,
       tls_mode: securityConfig.tls_mode,
@@ -586,6 +626,12 @@ const resetForm = () => {
     change_tracking_enabled: false,
   });
   applyPersistedProtocolParams();
+  Object.assign(opcuaConfig, defaultOpcUaDeviceConfig(), {
+    certificate_configured: false,
+    private_key_configured: false,
+    password_configured: false,
+    trusted_count: 0,
+  });
   applyPersistedSecurityConfig();
   originalSecuritySettings.value = {
     tls_enabled: false,
@@ -605,6 +651,7 @@ function clearPendingPointFiles() {
   privateKeyFile.value = null;
   caCertificateFile.value = null;
   securityCompRef.value?.clearFiles();
+  opcuaSecurityCompRef.value?.clearFiles();
 }
 
 const handleIcdFileChange = async (file: File | null) => {
@@ -650,6 +697,19 @@ const handleSubmit = async () => {
   if (protocolParamsCompRef.value?.validate() === false) {
     activeTab.value = "protocol";
     return;
+  }
+  if (form.protocol_type === 7) {
+    const errorKey = opcuaDeviceConfigError(opcuaConfig, form.conn_type);
+    if (errorKey) {
+      activeTab.value =
+        errorKey === "opcua.deviceEndpointPathError" ? "protocol" : "security";
+      ElMessage.error(t(errorKey));
+      return;
+    }
+    if (opcuaSecurityCompRef.value?.validate() === false) {
+      activeTab.value = "security";
+      return;
+    }
   }
   if (securityConfig.tls_enabled) {
     const hasCertificate =
@@ -717,6 +777,26 @@ const handleSubmit = async () => {
       });
 
       // 1. 保存通道
+      const requestForm: ChannelCreateRequest = { ...form };
+      delete requestForm.opcua_config;
+      if (form.protocol_type === 7) {
+        try {
+          requestForm.opcua_config = {
+            ...opcuaDeviceConfigPayload(opcuaConfig),
+            ...(await opcuaSecurityCompRef.value?.payload()),
+          };
+        } catch (error) {
+          activeTab.value = "security";
+          ElMessage.error(
+            t(
+              error instanceof Error
+                ? error.message
+                : "opcua.deviceCertificateSizeError",
+            ),
+          );
+          return;
+        }
+      }
       progressText.value = t("addDevice.savingChannel");
       // 等待进度区域渲染后滚动到可见位置，让后续点表导入状态始终有明确反馈。
       await nextTick();
@@ -727,10 +807,10 @@ const handleSubmit = async () => {
       });
       if (isEditMode.value && props.channelId) {
         // When TLS also changed, its endpoint performs the single required reload.
-        await updateChannel(props.channelId, form, shouldSaveSecurity);
+        await updateChannel(props.channelId, requestForm, shouldSaveSecurity);
         resultId = props.channelId;
       } else {
-        const createRes = await createChannel(form);
+        const createRes = await createChannel(requestForm);
         resultId = createRes.channel_id;
       }
 

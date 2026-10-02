@@ -32,6 +32,7 @@ class OpcUaServer(UaFacade):
         credentials: dict | None = None,
         rejected=None,
         connection_observer: ConnectionObserver | None = None,
+        runtime: dict | None = None,
     ):
         core = UaServerCore(
             bind_host,
@@ -42,6 +43,7 @@ class OpcUaServer(UaFacade):
             credentials=credentials,
             rejected=rejected,
             connection_observer=connection_observer,
+            runtime=runtime,
         )
         definitions_snapshot = tuple(MappingProxyType(dict(item)) for item in (definitions or []))
         self.stream = ValueStream()

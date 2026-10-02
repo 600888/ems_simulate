@@ -129,7 +129,14 @@ DNP3_SERVER_DEFAULTS = {
     "link_confirm_max_retries": 2,
 }
 
-OPCUA_CLIENT_DEFAULTS = {"connect_timeout_ms": 3000}
+OPCUA_CLIENT_DEFAULTS = {
+    "connect_timeout_ms": 3000,
+    "command_timeout_ms": 3000,
+    "session_timeout_ms": 3600000,
+    "secure_channel_lifetime_ms": 3600000,
+}
+
+OPCUA_SERVER_DEFAULTS = {"server_name": "EMS Simulate OPC UA"}
 
 # Older saved channels may still contain these UI fields. They never affected the
 # current protocol stack, so accept-and-drop them during normalization instead of
@@ -158,7 +165,7 @@ _DEFAULTS: dict[tuple[int, int], dict[str, int | bool | str]] = {
     (6, 0): IEC101_CLIENT_DEFAULTS,
     (6, 3): IEC101_SERVER_DEFAULTS,
     (7, 1): OPCUA_CLIENT_DEFAULTS,
-    (7, 2): {},
+    (7, 2): OPCUA_SERVER_DEFAULTS,
 }
 
 _RANGES: dict[str, tuple[int, int]] = {
@@ -210,6 +217,8 @@ _RANGES: dict[str, tuple[int, int]] = {
     "io_address_size": (1, 3),
     "response_timeout_ms": (100, 120000),
     "poll_interval_ms": (10, 60000),
+    "session_timeout_ms": (1000, 86400000),
+    "secure_channel_lifetime_ms": (1000, 86400000),
 }
 
 _AP_TITLE_FIELDS = {"remote_ap_title", "local_ap_title"}
@@ -237,6 +246,9 @@ def get_protocol_param_defaults(protocol_type: int, conn_type: int) -> dict[str,
 def normalize_protocol_params(protocol_type: int, conn_type: int, values: dict[str, Any] | None) -> dict[str, Any]:
     defaults = get_protocol_param_defaults(protocol_type, conn_type)
     incoming = dict(values or {})
+    if (protocol_type, conn_type) == (7, 1) and "connect_timeout_ms" in incoming:
+        # Legacy OPC UA clients used the connection timeout for every SDK request.
+        incoming.setdefault("command_timeout_ms", incoming["connect_timeout_ms"])
     if protocol_type == 5:
         for legacy_name in _DNP3_LEGACY_IGNORED:
             incoming.pop(legacy_name, None)
@@ -261,6 +273,8 @@ def normalize_protocol_params(protocol_type: int, conn_type: int, values: dict[s
             if not isinstance(value, str):
                 raise ValueError(f"参数 {name} 必须是字符串")
             value = value.strip()
+            if name == "server_name" and not 1 <= len(value) <= 255:
+                raise ValueError("OPC UA 服务名称必须在 1 到 255 个字符之间")
             if name == "link_mode":
                 value = value.lower()
                 if value not in {"unbalanced", "balanced"}:

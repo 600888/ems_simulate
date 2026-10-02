@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Waveform interaction verification</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{margin:0;background:#f5f7fb;font-family:system-ui,sans-serif}main{max-width:1100px;margin:28px auto;padding:0 24px}h1{font-size:22px}section{padding:20px;background:white;border-radius:8px;margin:20px 0}button{padding:8px;margin-right:8px}.fixture-controls{display:flex;gap:8px;flex-wrap:wrap}</style>
+</head><body><main class="opcua-panel"><h1>数据波形交互验证</h1><div id="app"></div></main>
+<script type="module">
+import {createApp,ref} from 'vue/dist/vue.esm-bundler.js';
+import {createI18n} from 'vue-i18n';
+import ElementPlus from 'element-plus';
+import 'element-plus/dist/index.css';
+import './src/styles/opcua.scss';
+import TrendPlot from './src/components/device/OpcUaTrendPlot.vue';
+import {opcuaZhCN,opcuaEnUS} from './src/i18n/locales/opcua.ts';
+const base=Date.parse('2026-10-02T06:00:00Z');
+const makePoints=()=>Array.from({length:241},(_,i)=>({timestamp:new Date(base+i*500).toISOString(),value:100+Math.sin(i/12)*25,status:i===50?'BadNoCommunication':'Good',breakBefore:i===90}));
+const app=createApp({components:{TrendPlot},setup(){const points=ref(makePoints()),key=ref('power');return{points,key,append(){const i=points.value.length;points.value=[...points.value,{timestamp:new Date(base+i*500).toISOString(),value:135,status:'Good'}]},change(){key.value=key.value==='power'?'current':'power';points.value=makePoints().map(p=>({...p,value:p.value/10}))},clear(){points.value=[]},single(){key.value='single';points.value=[{timestamp:new Date(base).toISOString(),value:0,status:'Good'}]}}},template:`<div class="fixture-controls"><button @click="append">追加数据</button><button @click="change">切换序列</button><button @click="clear">清空</button><button @click="single">单点零值</button></div><section><TrendPlot title="数据波形" :points="points" :series-key="key"/></section><section><TrendPlot title="第二个图表" :points="points" :series-key="key"/></section>`});
+app.use(createI18n({legacy:false,locale:'zh-CN',messages:{'zh-CN':{opcua:opcuaZhCN},'en-US':{opcua:opcuaEnUS}}}));app.use(ElementPlus);app.mount('#app');
+</script></body></html>

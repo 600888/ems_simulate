@@ -208,7 +208,10 @@ export async function createChannel(
   try {
     return await requestApi(CHANNEL_API.CREATE, "post", channel, 30000);
   } catch (error) {
-    console.error("Error creating channel:", error);
+    console.error(
+      "Error creating channel:",
+      error instanceof Error ? error.message : "Request failed",
+    );
     throw error;
   }
 }
@@ -352,7 +355,10 @@ export async function updateChannel(
       30000,
     );
   } catch (error) {
-    console.error("Error updating channel:", error);
+    console.error(
+      "Error updating channel:",
+      error instanceof Error ? error.message : "Request failed",
+    );
     throw error;
   }
 }

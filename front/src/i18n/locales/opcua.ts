@@ -1,4 +1,43 @@
 export const opcuaZhCN = {
+  plotZoomIn: "放大",
+  plotPan: "平移",
+  plotSelect: "框选放大",
+  plotZoomOut: "缩小",
+  plotReset: "复位 / 跟随数据",
+  plotInspecting: "查看局部",
+  plotFollowing: "跟随数据",
+  plotQuality: "质量",
+  plotNearestSample: "最近采样",
+  plotInteractionHint:
+    "滚轮缩放时间轴 · Shift + 滚轮缩放数值轴 · 拖动平移 · Shift + 拖动框选放大 · 双击复位",
+  deviceSpecificParams: "OPC UA 专有参数",
+  deviceEndpointPath: "Endpoint 路径",
+  deviceEndpointPathHint:
+    "与基本信息中的 IP 和端口组合为完整 opc.tcp 地址，例如 /ems/。",
+  deviceNamespaceDefault: "留空时自动使用设备专属命名空间 URI",
+  deviceSessionTimeout: "请求的会话超时",
+  deviceSecureChannelLifetime: "安全通道生命周期",
+  deviceLifetimeHint: "客户端请求值，最终生效值由服务端协商确定。",
+  deviceServerName: "服务名称",
+  deviceSecurityHint:
+    "opc.tcp 使用 OPC UA 原生安全通道，支持证书认证、签名和加密；此连接不使用 TLS 1.2/1.3。",
+  deviceEnableSecurity: "启用 OPC UA 安全连接",
+  deviceSecurityPolicy: "安全策略",
+  deviceGenerateCertificate: "保存时自动生成应用证书和私钥",
+  devicePrivateKeyReady: "私钥已配置",
+  devicePeerCertificate: "可信对端证书",
+  devicePeerCertificateHint:
+    "上传即信任此对端应用证书；已有 {count} 个可信证书。双方都需信任对端，可在设备安全页面管理信任列表。",
+  deviceServerUsersHint: "关闭匿名访问后，请在设备安全页面配置登录用户。",
+  devicePasswordUnchanged: "已配置，留空保留原密码",
+  deviceEndpointPathError:
+    "Endpoint 路径必须以 / 开头，最多 255 个字符，且不含 ?、# 或反斜杠。",
+  deviceApplicationUriRequired: "安全连接需要填写 Application URI。",
+  deviceUsernameRequiresEncryption:
+    "用户名身份需要填写用户名并选择 SignAndEncrypt。",
+  deviceIdentityRequired: "请上传应用证书和私钥，或选择自动生成。",
+  devicePasswordRequired: "请填写 OPC UA 登录密码。",
+  deviceCertificateSizeError: "证书或私钥文件不能为空，且不能超过 24 KB。",
   addressSpaceTree: "地址空间",
   dropHistoryHint:
     "支持多选；按 NodeId 去重。拖入仅添加查询节点，点击查询后读取历史",
@@ -403,6 +442,51 @@ export const opcuaZhCN = {
 };
 
 export const opcuaEnUS: Record<keyof typeof opcuaZhCN, string> = {
+  plotZoomIn: "Zoom in",
+  plotPan: "Pan",
+  plotSelect: "Box zoom",
+  plotZoomOut: "Zoom out",
+  plotReset: "Reset / follow data",
+  plotInspecting: "Inspecting range",
+  plotFollowing: "Following data",
+  plotQuality: "Quality",
+  plotNearestSample: "Nearest sample",
+  plotInteractionHint:
+    "Scroll to zoom time · Shift + scroll to zoom values · Drag to pan · Shift + drag to zoom an area · Double-click to reset",
+  deviceSpecificParams: "OPC UA parameters",
+  deviceEndpointPath: "Endpoint path",
+  deviceEndpointPathHint:
+    "Combined with the IP and port in Basic information to form an opc.tcp URL, e.g. /ems/.",
+  deviceNamespaceDefault: "Leave empty to use a device-specific namespace URI",
+  deviceSessionTimeout: "Requested session timeout",
+  deviceSecureChannelLifetime: "SecureChannel lifetime",
+  deviceLifetimeHint:
+    "Requested by the client; the server negotiates the effective value.",
+  deviceServerName: "Server name",
+  deviceSecurityHint:
+    "opc.tcp uses native OPC UA SecureChannel for certificate authentication, signing and encryption. This connection does not use TLS 1.2/1.3.",
+  deviceEnableSecurity: "Enable OPC UA security",
+  deviceSecurityPolicy: "Security policy",
+  deviceGenerateCertificate:
+    "Generate an application certificate and private key when saving",
+  devicePrivateKeyReady: "Private key configured",
+  devicePeerCertificate: "Trusted peer certificate",
+  devicePeerCertificateHint:
+    "Uploading trusts this peer application certificate. {count} certificates are trusted. Both parties must trust the peer; manage trust in the device security page.",
+  deviceServerUsersHint:
+    "Configure login users in the device security page when anonymous access is disabled.",
+  devicePasswordUnchanged: "Configured; leave empty to keep the password",
+  deviceEndpointPathError:
+    "Endpoint path must start with /, contain at most 255 characters, and exclude ?, # and backslashes.",
+  deviceApplicationUriRequired:
+    "Application URI is required for a secure connection.",
+  deviceUsernameRequiresEncryption:
+    "Username identity requires a username and SignAndEncrypt.",
+  deviceIdentityRequired:
+    "Upload an application certificate and private key, or enable generation.",
+  devicePasswordRequired: "Enter the OPC UA login password.",
+  deviceCertificateSizeError:
+    "Certificate or private-key files must be nonempty and at most 24 KB.",
   addressSpaceTree: "Address space",
   dropHistoryHint:
     "Multiple nodes supported; deduplicated by NodeId. Click Query to read their history.",

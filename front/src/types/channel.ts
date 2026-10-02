@@ -61,6 +61,7 @@ export interface ChannelCreateRequest {
   // 设备组ID
   group_id?: number | null;
   protocol_params?: ProtocolParamsConfig;
+  opcua_config?: OpcUaDeviceConfig;
   dlt645_point_mode?: "standard" | "import";
   change_tracking_enabled?: boolean;
 }
@@ -71,6 +72,27 @@ export interface ProtocolParamsConfig {
 }
 
 export type TlsVersion = "1.2" | "1.3";
+
+export interface OpcUaDeviceConfig {
+  endpoint_path: string;
+  namespace_uri: string;
+  mode: "None" | "Sign" | "SignAndEncrypt";
+  policy: "Basic256Sha256";
+  application_uri: string;
+  advertised_host: string | null;
+  identity: "anonymous" | "username";
+  username: string;
+  allow_anonymous: boolean;
+  generate_certificate?: boolean;
+  certificate?: string;
+  private_key?: string;
+  peer_certificate?: string;
+  password?: string;
+  certificate_configured?: boolean;
+  private_key_configured?: boolean;
+  password_configured?: boolean;
+  trusted_count?: number;
+}
 
 export interface SecurityConfig {
   tls_enabled: boolean;
@@ -107,6 +129,7 @@ export interface ChannelInfo {
   icd_file_hash?: string | null;
   protocol_params?: ProtocolParamsConfig;
   security_config?: SecurityConfig;
+  opcua_config?: OpcUaDeviceConfig;
   dlt645_point_mode?: "standard" | "import";
   change_tracking_enabled?: boolean;
 }

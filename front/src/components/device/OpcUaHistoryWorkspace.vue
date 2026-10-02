@@ -151,7 +151,10 @@
               :key="node.node_id"
               :value="node.node_id"
               :label="node.browse_name" /></el-select
-          ><OpcUaTrendPlot :title="chartNode" :points="chartPoints"
+          ><OpcUaTrendPlot
+            :title="chartNode"
+            :points="chartPoints"
+            :series-key="`${channelId}:${chartNode}`"
         /></template>
         <el-table
           v-else

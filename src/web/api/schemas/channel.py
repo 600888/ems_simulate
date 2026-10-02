@@ -1,7 +1,7 @@
 from ipaddress import IPv4Address
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from src.config.config import Config
 
@@ -9,6 +9,24 @@ from src.config.config import Config
 class ProtocolParamsRequest(BaseModel):
     schema_version: int = Field(1, ge=1)
     values: dict[str, Any] = Field(default_factory=dict)
+
+
+class OpcUaDeviceConfigRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    endpoint_path: str = Field(default="/ems/", min_length=1, max_length=255)
+    namespace_uri: str = Field(default="", max_length=255)
+    mode: Literal["None", "Sign", "SignAndEncrypt"] = "None"
+    policy: Literal["Basic256Sha256"] = "Basic256Sha256"
+    application_uri: str = Field(default="urn:ems-simulate:application", min_length=1, max_length=255)
+    advertised_host: str | None = Field(default=None, max_length=255)
+    identity: Literal["anonymous", "username"] = "anonymous"
+    username: str = Field(default="", max_length=128)
+    allow_anonymous: bool = False
+    generate_certificate: bool = False
+    certificate: str | None = Field(default=None, max_length=32768)
+    private_key: SecretStr | None = None
+    peer_certificate: str | None = Field(default=None, max_length=32768)
+    password: SecretStr | None = None
 
 
 class ChannelCreateRequest(BaseModel):
@@ -26,6 +44,7 @@ class ChannelCreateRequest(BaseModel):
     rtu_addr: str = "1"
     group_id: int | None = None
     protocol_params: ProtocolParamsRequest | None = None
+    opcua_config: OpcUaDeviceConfigRequest | None = None
     model_name: str | None = None  # IEC61850 IED 模型名称
     dlt645_point_mode: Literal["standard", "import"] = "import"
     change_tracking_enabled: bool = False
@@ -46,6 +65,7 @@ class ChannelUpdateRequest(BaseModel):
     rtu_addr: str | None = None
     group_id: int | None = Field(None, description="设备组ID，NULL表示未分组")
     protocol_params: ProtocolParamsRequest | None = None
+    opcua_config: OpcUaDeviceConfigRequest | None = None
     model_name: str | None = None  # IEC61850 IED 模型名称
     dlt645_point_mode: Literal["standard", "import"] | None = None
     change_tracking_enabled: bool | None = None

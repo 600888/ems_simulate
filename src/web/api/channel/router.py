@@ -9,6 +9,7 @@ from src.data.dao.point_dao import PointDao
 from src.data.service.channel_configuration_service import ChannelConfigurationService
 from src.data.service.channel_service import ChannelService
 from src.data.service.device_group_service import DeviceGroupService
+from src.data.service.opcua_device_configuration_service import OpcUaDeviceConfigurationService
 from src.data.service.opcua_node_service import OpcUaNodeService
 from src.data.service.opcua_point_import import OpcUaPointImportService
 from src.data.service.point_mapping_service import PointMappingService
@@ -167,7 +168,21 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
 
     if req.conn_type == 2:
         _validate_server_endpoint_unique(req.ip, req.port)
-    if req.protocol_type == 7:
+    opcua_prepared = None
+    if req.opcua_config is not None:
+        if req.protocol_type != 7:
+            raise ValidationError("OPC UA 配置仅适用于 OPC UA 协议")
+        try:
+            opcua_prepared = await asyncio.to_thread(
+                OpcUaDeviceConfigurationService.prepare,
+                req.opcua_config,
+                req.ip,
+                req.port,
+                req.conn_type,
+            )
+        except ValueError as exc:
+            raise ValidationError(_opcua_validation_message(exc)) from exc
+    if req.protocol_type == 7 and opcua_prepared is None:
         from src.proto.opcua.core.transport import loopback_endpoint, make_endpoint_url
 
         try:
@@ -194,6 +209,7 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
         conn_type=req.conn_type,
         protocol_params=params.values if params else None,
         protocol_schema_version=params.schema_version if params else 1,
+        opcua_prepared=opcua_prepared,
         ip=req.ip,
         port=req.port,
         com_port=req.com_port,
@@ -271,6 +287,8 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
         log.info(f"设备 {req.name} (ID: {channel_id}) 已在内存中动态创建")
     except Exception as e:
         log.error(f"内存同步创建设备失败: {e}")
+        if req.protocol_type == 7:
+            raise OperationError("OPC UA 配置已保存，但设备实例创建失败，请检查配置后重试") from e
 
     return BaseResponse(
         message="创建通道成功",
@@ -312,6 +330,11 @@ async def get_channel_by_id(req: ChannelDetailRequest):
             ChannelConfigurationService.get_security_config,
             req.channel_id,
         )
+        if channel.get("protocol_type") == 7:
+            channel["opcua_config"] = await asyncio.to_thread(
+                OpcUaDeviceConfigurationService.public,
+                req.channel_id,
+            )
     if not channel:
         raise NotFoundError("通道不存在")
     return BaseResponse(message="获取通道详情成功", data=channel)
@@ -415,14 +438,47 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
     # 名称、分组等无关编辑不应查询真实通道表，更不应被历史冲突数据阻断。
     new_ip = req.ip if req.ip is not None else existing.get("ip")
     new_port = req.port if req.port is not None else existing.get("port")
+    opcua_prepared = None
+    if req.opcua_config is not None:
+        if protocol_to_use != 7:
+            raise ValidationError("OPC UA 配置仅适用于 OPC UA 协议")
+        try:
+            opcua_prepared = await asyncio.to_thread(
+                OpcUaDeviceConfigurationService.prepare,
+                req.opcua_config,
+                new_ip,
+                new_port,
+                conn_type_to_use,
+                channel_id,
+            )
+        except ValueError as exc:
+            raise ValidationError(_opcua_validation_message(exc)) from exc
+        current = (
+            await asyncio.to_thread(OpcUaDeviceConfigurationService.public, channel_id) if old_protocol == 7 else {}
+        )
+        requested = req.opcua_config.model_dump(
+            exclude={
+                "generate_certificate",
+                "certificate",
+                "private_key",
+                "peer_certificate",
+                "password",
+            }
+        )
+        config_changed = any(current.get(key) != value for key, value in requested.items())
+        config_changed = config_changed or bool(
+            opcua_prepared["secrets"] or req.opcua_config.certificate or req.opcua_config.peer_certificate
+        )
+        runtime_configuration_changed = runtime_configuration_changed or config_changed
     if (
         old_protocol == 7
         and protocol_to_use == 7
         and conn_type_to_use == 1
         and (new_ip != existing.get("ip") or new_port != existing.get("port"))
+        and opcua_prepared is None
     ):
         raise ValidationError("OPC UA 客户端地址请通过完整 Endpoint URL 配置修改")
-    if protocol_to_use == 7:
+    if protocol_to_use == 7 and opcua_prepared is None:
         from src.data.service.opcua_config_service import OpcUaConfigService
         from src.proto.opcua.core.transport import make_endpoint_url
 
@@ -460,7 +516,17 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
         if (str(value) != str(existing.get(field)) if field == "rtu_addr" else value != existing.get(field))
     }
     success = True
-    if channel_updates:
+    if opcua_prepared is not None:
+        await asyncio.to_thread(
+            OpcUaDeviceConfigurationService.update,
+            channel_id,
+            conn_type_to_use,
+            opcua_prepared,
+            channel_updates,
+            normalized_params,
+            params.schema_version if params else 1,
+        )
+    elif channel_updates:
         success = await asyncio.to_thread(
             ChannelService.update_channel,
             channel_id=channel_id,
@@ -471,7 +537,7 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
         raise OperationError("更新通道失败", data=False)
 
     protocol_params_changed = normalized_params is not None and normalized_params != existing_params
-    if protocol_params_changed or protocol_combination_changed:
+    if opcua_prepared is None and (protocol_params_changed or protocol_combination_changed):
         await asyncio.to_thread(
             ChannelConfigurationService.save_protocol_params,
             channel_id,
@@ -502,4 +568,15 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
                 device.point_manager.set_change_tracking_enabled(req.change_tracking_enabled)
     except Exception as e:
         log.error(f"更新配置后同步运行时设备失败: {e}")
+        if protocol_to_use == 7:
+            raise OperationError("OPC UA 配置已保存，但运行时重载失败，请检查配置后重试") from e
     return BaseResponse(message="更新通道成功", data=True)
+
+
+def _opcua_validation_message(exc: ValueError) -> str:
+    # Pydantic's default exception text contains input values; never echo credentials.
+    from pydantic import ValidationError as PydanticValidationError
+
+    if isinstance(exc, PydanticValidationError):
+        return "; ".join(error["msg"] for error in exc.errors(include_input=False, include_context=False))
+    return str(exc)

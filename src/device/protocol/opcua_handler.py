@@ -70,6 +70,7 @@ class OpcUaClientHandler(_OpcUaHandler):
         self.client = OpcUaClient(
             endpoint,
             runtime.get("connect_timeout_ms", 3000),
+            runtime=runtime,
             channel_id=channel_id,
             features=OpcUaFeatureService.load(channel_id) if channel_id else {},
             credentials=OpcUaSecurityService.secrets(channel_id) if channel_id else {},
@@ -156,6 +157,7 @@ class OpcUaServerHandler(_OpcUaHandler, ServerHandler):
             credentials=OpcUaSecurityService.secrets(channel_id) if channel_id else {},
             rejected=self._rejected_certificate if channel_id else None,
             connection_observer=self._on_connection_event,
+            runtime=config.get("runtime") or {},
         )
 
     def _on_connection_event(self, event: str, key: str, **data: Any) -> None:

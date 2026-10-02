@@ -243,6 +243,7 @@ class UaClientCore:
         security: dict | None = None,
         credentials: dict | None = None,
         rejected=None,
+        runtime: dict | None = None,
     ):
         self.security = security or {}
         self.credentials = credentials or {}
@@ -253,6 +254,7 @@ class UaClientCore:
             else validate_endpoint(endpoint_url)
         )
         self.timeout_ms = timeout_ms
+        self.runtime = runtime or {}
         self._client: Client | None = None
         self.connection_error: str | None = None
         self._namespace_indexes: dict[str, int] = {}
@@ -270,11 +272,18 @@ class UaClientCore:
             return
         if self._client is not None:
             await self.stop()
-        client = Client(self.endpoint_url, timeout=self.timeout_ms / 1000, auto_reconnect=False)
+        client = Client(
+            self.endpoint_url,
+            timeout=self.runtime.get("command_timeout_ms", self.timeout_ms) / 1000,
+            auto_reconnect=False,
+        )
+        client.session_timeout = self.runtime.get("session_timeout_ms", 3600000)
+        client.secure_channel_timeout = self.runtime.get("secure_channel_lifetime_ms", 3600000)
         client.connection_lost_callback = self._connection_lost
         try:
-            await configure_client(client, self.security, self.credentials, self.rejected)
-            await client.connect()
+            async with asyncio.timeout(self.timeout_ms / 1000):
+                await configure_client(client, self.security, self.credentials, self.rejected)
+                await client.connect()
         except BaseException:
             await client.disconnect()
             raise
@@ -538,8 +547,10 @@ class UaServerCore:
         credentials: dict | None = None,
         rejected=None,
         connection_observer: ConnectionObserver | None = None,
+        runtime: dict | None = None,
     ):
         self.connection_observer = connection_observer
+        self.runtime = runtime or {}
         self.security = security or {}
         self.credentials = credentials or {}
         self.rejected = rejected
@@ -581,6 +592,7 @@ class UaServerCore:
         )
         try:
             await server.init()
+            server.set_server_name(self.runtime.get("server_name", "EMS Simulate OPC UA"))
             server.set_endpoint(self.endpoint_url)
             server.socket_address = (self.bind_host, self.port)
             await configure_server(server, self.security, self.credentials, self.rejected)

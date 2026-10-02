@@ -1047,6 +1047,54 @@ const fields = computed<FieldDefinition[]>(() => {
   if (key === "5:2") return dnp3Server;
   if (key === "6:0") return iec101Client;
   if (key === "6:3") return iec101Common;
+  if (key === "7:1")
+    return [
+      {
+        key: "connect_timeout_ms",
+        label: "protocolParams.connectTimeout",
+        min: 100,
+        max: 60000,
+        unit: "protocolParams.ms",
+        default: 3000,
+      },
+      {
+        key: "command_timeout_ms",
+        label: "protocolParams.commandTimeout",
+        min: 100,
+        max: 120000,
+        unit: "protocolParams.ms",
+        default: 3000,
+      },
+      {
+        key: "session_timeout_ms",
+        label: "opcua.deviceSessionTimeout",
+        min: 1000,
+        max: 86400000,
+        unit: "protocolParams.ms",
+        default: 3600000,
+        advanced: true,
+        tip: "opcua.deviceLifetimeHint",
+      },
+      {
+        key: "secure_channel_lifetime_ms",
+        label: "opcua.deviceSecureChannelLifetime",
+        min: 1000,
+        max: 86400000,
+        unit: "protocolParams.ms",
+        default: 3600000,
+        advanced: true,
+        tip: "opcua.deviceLifetimeHint",
+      },
+    ];
+  if (key === "7:2")
+    return [
+      {
+        key: "server_name",
+        label: "opcua.deviceServerName",
+        kind: "text",
+        default: "EMS Simulate OPC UA",
+      },
+    ];
   return [];
 });
 

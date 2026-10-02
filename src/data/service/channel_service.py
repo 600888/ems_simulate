@@ -129,6 +129,7 @@ class ChannelService:
         conn_type: int,
         protocol_params: dict[str, Any] | None,
         protocol_schema_version: int = 1,
+        opcua_prepared: dict | None = None,
         **channel_values,
     ) -> tuple[int, int]:
         """在一个事务内创建设备、通道及协议配置。"""
@@ -162,6 +163,10 @@ class ChannelService:
                     params_json=normalized,
                 )
             )
+            if opcua_prepared is not None:
+                from src.data.service.opcua_device_configuration_service import OpcUaDeviceConfigurationService
+
+                OpcUaDeviceConfigurationService.persist(session, channel.id, conn_type, opcua_prepared)
             return device.id, channel.id
 
     @classmethod

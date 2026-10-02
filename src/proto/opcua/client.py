@@ -22,6 +22,7 @@ class OpcUaClient(UaFacade):
         features: dict | None = None,
         credentials: dict | None = None,
         rejected=None,
+        runtime: dict | None = None,
     ):
         core = UaClientCore(
             endpoint_url,
@@ -29,6 +30,7 @@ class OpcUaClient(UaFacade):
             security=(features or {}).get("security"),
             credentials=credentials,
             rejected=rejected,
+            runtime=runtime,
         )
         self.stream = ValueStream()
         context = PluginContext(

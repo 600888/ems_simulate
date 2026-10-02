@@ -90,7 +90,11 @@
           <h3>{{ t("opcua.trend") }}</h3>
           <span class="ua-code">{{ selected }}</span>
         </div>
-        <OpcUaTrendPlot :title="t('opcua.trend')" :points="chartPoints" />
+        <OpcUaTrendPlot
+          :title="t('opcua.trend')"
+          :points="chartPoints"
+          :series-key="`${channelId}:${selected}`"
+        />
       </section>
     </template>
     <el-table

@@ -282,6 +282,7 @@
             <OpcUaTrendPlot
               :title="t('opcua.valueWaveform')"
               :points="samples"
+              :series-key="`${channelId}:${selectedVariable.node_id}`"
             />
             <p class="ua-note">
               {{ t("opcua.selectedVariable") }} ·

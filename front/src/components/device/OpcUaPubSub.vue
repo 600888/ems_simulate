@@ -308,7 +308,11 @@
               type="warning"
               :title="t('opcua.streamGap')"
               :closable="false"
-            /><OpcUaTrendPlot :title="chartNode" :points="chartPoints" />
+            /><OpcUaTrendPlot
+              :title="chartNode"
+              :points="chartPoints"
+              :series-key="`${channelId}:${chartNode}`"
+            />
             <p class="ua-muted">{{ t("opcua.liveHint") }}</p>
           </section>
         </div>

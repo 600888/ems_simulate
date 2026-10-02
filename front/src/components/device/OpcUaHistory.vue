@@ -104,6 +104,7 @@
         <OpcUaTrendPlot
           :title="t('opcua.historyTrend')"
           :points="chartPoints"
+          :series-key="`${channelId}:${nodeId}`"
         />
       </section>
       <el-table :data="values" stripe max-height="380">
