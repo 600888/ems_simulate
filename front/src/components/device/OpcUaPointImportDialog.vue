@@ -2,14 +2,14 @@
   <el-dialog
     v-model="visible"
     :title="t('opcua.pointsPreview')"
-    width="780px"
+    width="min(780px, calc(100vw - 32px))"
     :close-on-click-modal="false"
     :close-on-press-escape="!importing"
     :show-close="!importing"
     append-to-body
     @close="finish(false)"
   >
-    <div v-loading="loading">
+    <div v-loading="loading" class="import-preview">
       <p>{{ t("opcua.file") }}: {{ file?.name }}</p>
       <el-alert
         v-if="previewError"
@@ -44,7 +44,7 @@
           <el-table-column prop="sheet" label="Sheet" width="90" />
           <el-table-column prop="row" :label="t('opcua.row')" width="60" />
           <el-table-column prop="field" :label="t('opcua.field')" width="140" />
-          <el-table-column :label="t('opcua.issue')">
+          <el-table-column :label="t('opcua.issue')" min-width="240">
             <template #default="{ row }">{{
               row.message || t("opcua.conflict", { value: row.value })
             }}</template>
@@ -70,19 +70,21 @@
       </template>
     </div>
     <template #footer>
-      <el-button :disabled="importing" @click="finish(false)">{{
-        t("opcua.cancel")
-      }}</el-button>
-      <el-button :disabled="loading || importing" @click="loadPreview">{{
-        t("opcua.refreshPreview")
-      }}</el-button>
-      <el-button
-        type="primary"
-        :loading="importing"
-        :disabled="!canImport || disabled"
-        @click="applyImport"
-        >{{ t("opcua.confirmImport") }}</el-button
-      >
+      <div class="import-actions">
+        <el-button :disabled="importing" @click="finish(false)">{{
+          t("opcua.cancel")
+        }}</el-button>
+        <el-button :disabled="loading || importing" @click="loadPreview">{{
+          t("opcua.refreshPreview")
+        }}</el-button>
+        <el-button
+          type="primary"
+          :loading="importing"
+          :disabled="!canImport || disabled"
+          @click="applyImport"
+          >{{ t("opcua.confirmImport") }}</el-button
+        >
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -186,7 +188,44 @@ defineExpose({ open });
 </script>
 
 <style scoped>
+.import-preview {
+  min-width: 0;
+}
+.import-preview p {
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
+}
+.import-preview :deep(.el-alert) {
+  margin-bottom: 14px;
+}
 .import-mode {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
   margin-top: 16px;
+}
+.import-mode :deep(.el-radio-group) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.import-mode :deep(.el-radio) {
+  height: auto;
+  min-height: 24px;
+  margin-right: 0;
+  white-space: normal;
+}
+.import-mode :deep(.el-radio__label) {
+  line-height: 20px;
+}
+.import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.import-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 </style>

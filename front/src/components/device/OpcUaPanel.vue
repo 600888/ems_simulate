@@ -81,6 +81,7 @@
           :data="points"
           stripe
           row-key="id"
+          max-height="520"
           :empty-text="t('opcua.noPoints')"
         >
           <el-table-column
@@ -119,13 +120,22 @@
             prop="initial_value"
             :label="t('opcua.initialValue')"
             width="100"
+            show-overflow-tooltip
           />
-          <el-table-column :label="t('opcua.lastValue')" width="120">
+          <el-table-column
+            :label="t('opcua.lastValue')"
+            width="120"
+            show-overflow-tooltip
+          >
             <template #default="{ row }">{{
               pointValues[row.point_code]?.value ?? "-"
             }}</template>
           </el-table-column>
-          <el-table-column :label="t('opcua.quality')" width="150">
+          <el-table-column
+            :label="t('opcua.quality')"
+            width="150"
+            show-overflow-tooltip
+          >
             <template #default="{ row }">{{
               pointValues[row.point_code]?.status_code || "-"
             }}</template>
@@ -171,7 +181,9 @@
           :channel-id="channelId"
           :running="running"
           :revision="modelRevision"
+          :active="activeTab === 'model'"
           @changed="onModelChanged"
+          @configure="openSimulation"
         />
       </el-tab-pane>
 
@@ -216,13 +228,20 @@
         <el-table
           :data="remoteNodes"
           stripe
+          max-height="420"
           :empty-text="t('opcua.noBrowseResults')"
         >
-          <el-table-column prop="node_id" label="NodeId" min-width="230" />
+          <el-table-column
+            prop="node_id"
+            label="NodeId"
+            min-width="230"
+            show-overflow-tooltip
+          />
           <el-table-column
             prop="browse_name"
             label="BrowseName"
             min-width="180"
+            show-overflow-tooltip
           />
           <el-table-column
             prop="node_class"
@@ -278,13 +297,13 @@
           >
         </div>
         <el-descriptions v-if="nodeResult" :column="2" border>
-          <el-descriptions-item label="NodeId">{{
+          <el-descriptions-item label="NodeId" :span="2">{{
             nodeResult.node_id
           }}</el-descriptions-item>
           <el-descriptions-item :label="t('opcua.dataType')">{{
             nodeResult.variant_type || "-"
           }}</el-descriptions-item>
-          <el-descriptions-item :label="t('opcua.value')">{{
+          <el-descriptions-item :label="t('opcua.value')" :span="2">{{
             formatValue(nodeResult.value)
           }}</el-descriptions-item>
           <el-descriptions-item :label="t('opcua.quality')">{{
@@ -314,7 +333,9 @@
           class="config-form ua-section"
         >
           <el-form-item :label="t('opcua.currentEndpoint')"
-            ><span>{{ config.endpoint_url }}</span></el-form-item
+            ><span class="ua-code">{{
+              config.endpoint_url
+            }}</span></el-form-item
           >
           <el-form-item
             v-if="role === 'client'"
@@ -358,6 +379,8 @@
           :channel-id="channelId"
           :role="role"
           :running="running"
+          :selected-node-id="simulationNodeId"
+          :active="activeTab === 'acquisition'"
         />
       </el-tab-pane>
       <el-tab-pane
@@ -453,6 +476,11 @@ const pointTypes = computed(() => [
   t("opcua.adjustment"),
 ]);
 const activeTab = ref("points");
+const simulationNodeId = ref("");
+function openSimulation(nodeId: string) {
+  simulationNodeId.value = nodeId;
+  activeTab.value = "acquisition";
+}
 const points = ref<OpcUaPoint[]>([]);
 const pointValues = ref<Record<string, OpcUaValueSnapshot>>({});
 const search = ref("");
@@ -714,21 +742,29 @@ onMounted(() => {
   padding: 16px;
   background: var(--panel-bg);
   border-radius: 8px;
+  min-width: 0;
 }
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
 }
 .toolbar > .el-input {
+  flex: 1 1 220px;
+  min-width: 0;
   max-width: 360px;
+}
+.toolbar > .el-select,
+.toolbar > .el-button {
+  flex-shrink: 0;
 }
 .hint {
   margin-bottom: 12px;
 }
 .pager {
-  justify-content: flex-end;
+  justify-content: safe flex-end;
   margin-top: 12px;
 }
 .node-action {
@@ -747,5 +783,25 @@ onMounted(() => {
 .form-hint {
   margin-left: 12px;
   color: var(--el-text-color-secondary);
+}
+@container (max-width: 560px) {
+  .config-form :deep(.el-form-item) {
+    display: block;
+  }
+  .config-form :deep(.el-form-item__label) {
+    width: auto !important;
+    height: auto;
+    justify-content: flex-start;
+    white-space: normal;
+    padding-bottom: 6px;
+    line-height: 20px;
+  }
+  .config-form :deep(.el-form-item__content) {
+    margin-left: 0 !important;
+    gap: 8px;
+  }
+  .form-hint {
+    margin-left: 0;
+  }
 }
 </style>

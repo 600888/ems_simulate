@@ -1,112 +1,139 @@
 <template>
   <div>
     <OpcUaPageHeading
-      :title="t('opcua.addressSpace')"
-      :description="t('opcua.modelDescription')"
+      :title="t('opcua.objectsAndValues')"
+      :description="t('opcua.objectsDescription')"
     >
-      <el-tag effect="plain"
-        >{{ filteredNodes.length }} {{ t("opcua.runtimeNodeCount") }}</el-tag
-      >
+      <el-radio-group v-model="view">
+        <el-radio-button value="values">{{
+          t("opcua.objectsAndValues")
+        }}</el-radio-button>
+        <el-radio-button value="definitions">{{
+          t("opcua.modelDefinitions")
+        }}</el-radio-button>
+      </el-radio-group>
     </OpcUaPageHeading>
-    <div class="toolbar">
-      <el-input
-        v-model="search"
-        :placeholder="t('opcua.nodeSearch')"
-        clearable
-        @input="page = 1"
+    <OpcUaObjectsValues
+      v-if="view === 'values'"
+      :channel-id="channelId"
+      :running="running"
+      :active="active"
+      :revision="revision"
+      :variables="nodes"
+      @configure="emit('configure', $event)"
+    />
+    <template v-else>
+      <div class="toolbar">
+        <el-input
+          v-model="search"
+          :placeholder="t('opcua.nodeSearch')"
+          clearable
+          @input="page = 1"
+        />
+        <el-button @click="loadNodes">{{ t("opcua.refresh") }}</el-button>
+        <el-button type="primary" :disabled="running" @click="editVariable()">{{
+          t("opcua.addVariable")
+        }}</el-button>
+        <el-button :disabled="running" @click="xmlInput?.click()">{{
+          t("opcua.importModel")
+        }}</el-button>
+        <el-button :disabled="!running || !nodes.length" @click="resetValues">{{
+          t("opcua.resetValues")
+        }}</el-button>
+        <el-button
+          :disabled="!running"
+          :loading="exporting"
+          @click="exportModel"
+          >{{ t("opcua.exportModel") }}</el-button
+        >
+        <input
+          ref="xmlInput"
+          type="file"
+          accept=".xml"
+          hidden
+          @change="selectModel"
+        />
+      </div>
+      <el-alert
+        class="hint"
+        type="info"
+        :closable="false"
+        :title="t('opcua.modelHint')"
       />
-      <el-button @click="loadNodes">{{ t("opcua.refresh") }}</el-button>
-      <el-button type="primary" :disabled="running" @click="editVariable()">{{
-        t("opcua.addVariable")
-      }}</el-button>
-      <el-button :disabled="running" @click="xmlInput?.click()">{{
-        t("opcua.importModel")
-      }}</el-button>
-      <el-button :disabled="!running || !nodes.length" @click="resetValues">{{
-        t("opcua.resetValues")
-      }}</el-button>
-      <el-button
-        :disabled="!running"
-        :loading="exporting"
-        @click="exportModel"
-        >{{ t("opcua.exportModel") }}</el-button
+      <el-table
+        v-loading="loading"
+        :data="visibleNodes"
+        stripe
+        row-key="node_id"
+        max-height="520"
       >
-      <input
-        ref="xmlInput"
-        type="file"
-        accept=".xml"
-        hidden
-        @change="selectModel"
+        <el-table-column
+          prop="node_id"
+          label="NodeId"
+          min-width="230"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="browse_name"
+          label="BrowseName"
+          min-width="150"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="data_type"
+          :label="t('opcua.type')"
+          width="100"
+        />
+        <el-table-column
+          prop="initial_value"
+          :label="t('opcua.initialValue')"
+          width="100"
+          show-overflow-tooltip
+        />
+        <el-table-column :label="t('opcua.access')" width="120">
+          <template #default="{ row }">{{
+            t(row.writable ? "opcua.readWrite" : "opcua.readOnly")
+          }}</template>
+        </el-table-column>
+        <el-table-column
+          prop="point_code"
+          :label="t('opcua.pointOwner')"
+          min-width="160"
+          show-overflow-tooltip
+        />
+        <el-table-column :label="t('opcua.actions')" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              link
+              :disabled="running || !!row.point_code"
+              @click="editVariable(row)"
+              >{{ t("opcua.edit") }}</el-button
+            >
+            <el-button
+              link
+              type="danger"
+              :disabled="running || !!row.point_code"
+              @click="removeVariable(row)"
+              >{{ t("opcua.delete") }}</el-button
+            >
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-pagination
+        class="pager"
+        layout="total, prev, pager, next"
+        :total="filteredNodes.length"
+        :page-size="50"
+        v-model:current-page="page"
       />
-    </div>
-    <el-alert
-      class="hint"
-      type="info"
-      :closable="false"
-      :title="t('opcua.modelHint')"
-    />
-    <el-table v-loading="loading" :data="visibleNodes" stripe row-key="node_id">
-      <el-table-column
-        prop="node_id"
-        label="NodeId"
-        min-width="230"
-        show-overflow-tooltip
-      />
-      <el-table-column
-        prop="browse_name"
-        label="BrowseName"
-        min-width="150"
-        show-overflow-tooltip
-      />
-      <el-table-column prop="data_type" :label="t('opcua.type')" width="100" />
-      <el-table-column
-        prop="initial_value"
-        :label="t('opcua.initialValue')"
-        width="100"
-      />
-      <el-table-column :label="t('opcua.access')" width="120">
-        <template #default="{ row }">{{
-          t(row.writable ? "opcua.readWrite" : "opcua.readOnly")
-        }}</template>
-      </el-table-column>
-      <el-table-column
-        prop="point_code"
-        :label="t('opcua.pointOwner')"
-        min-width="160"
-        show-overflow-tooltip
-      />
-      <el-table-column :label="t('opcua.actions')" width="150" fixed="right">
-        <template #default="{ row }">
-          <el-button
-            link
-            :disabled="running || !!row.point_code"
-            @click="editVariable(row)"
-            >{{ t("opcua.edit") }}</el-button
-          >
-          <el-button
-            link
-            type="danger"
-            :disabled="running || !!row.point_code"
-            @click="removeVariable(row)"
-            >{{ t("opcua.delete") }}</el-button
-          >
-        </template>
-      </el-table-column>
-    </el-table>
-    <el-pagination
-      class="pager"
-      layout="total, prev, pager, next"
-      :total="filteredNodes.length"
-      :page-size="50"
-      v-model:current-page="page"
-    />
+    </template>
 
     <el-dialog
       v-model="variableVisible"
       :title="t(editing ? 'opcua.editVariable' : 'opcua.addVariable')"
-      width="560px"
+      width="min(560px, calc(100vw - 32px))"
     >
-      <el-form label-width="120px">
+      <el-form label-position="top">
         <el-form-item label="NodeId"
           ><el-input
             v-model="variable.node_id"
@@ -117,7 +144,7 @@
           ><el-input v-model="variable.browse_name"
         /></el-form-item>
         <el-form-item :label="t('opcua.dataType')">
-          <el-select v-model="variable.data_type">
+          <el-select v-model="variable.data_type" class="variable-type">
             <el-option
               v-for="type in scalarTypes"
               :key="type"
@@ -150,10 +177,10 @@
     <el-dialog
       v-model="modelVisible"
       :title="t('opcua.modelPreview')"
-      width="760px"
+      width="min(760px, calc(100vw - 32px))"
     >
       <template v-if="modelPreview">
-        <p>
+        <p class="model-summary">
           {{ modelFile?.name }}；{{
             t("opcua.modelCounts", {
               total: modelPreview.total,
@@ -212,6 +239,7 @@
 
 <script setup lang="ts">
 import OpcUaPageHeading from "./OpcUaPageHeading.vue";
+import OpcUaObjectsValues from "./OpcUaObjectsValues.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -232,13 +260,18 @@ import {
   parseOpcUaScalar,
 } from "@/utils/opcuaValue";
 
-const props = defineProps<{
-  channelId: number;
-  running: boolean;
-  revision: number;
-}>();
+const props = withDefaults(
+  defineProps<{
+    channelId: number;
+    running: boolean;
+    revision: number;
+    active?: boolean;
+  }>(),
+  { active: true },
+);
 const { t } = useI18n();
-const emit = defineEmits<{ changed: [] }>();
+const emit = defineEmits<{ changed: []; configure: [nodeId: string] }>();
+const view = ref("values");
 const scalarTypes = OPCUA_SCALAR_TYPES;
 const nodes = ref<OpcUaVariable[]>([]);
 const loading = ref(false);
@@ -441,19 +474,40 @@ onMounted(() => {
   margin-bottom: 12px;
 }
 .toolbar > .el-input {
-  width: 300px;
+  flex: 1 1 240px;
+  min-width: 0;
+  max-width: 300px;
+}
+.toolbar > .el-button {
+  flex-shrink: 0;
 }
 .hint {
   margin-bottom: 12px;
 }
 .pager {
   margin-top: 12px;
-  justify-content: flex-end;
+  justify-content: safe flex-end;
 }
 .import-mode {
   margin-top: 16px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
+}
+.import-mode :deep(.el-radio-group) {
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+.import-mode :deep(.el-radio) {
+  margin-right: 0;
+  height: auto;
+  min-height: 32px;
+}
+.model-summary {
+  overflow-wrap: anywhere;
+}
+.variable-type {
+  width: 100%;
 }
 </style>

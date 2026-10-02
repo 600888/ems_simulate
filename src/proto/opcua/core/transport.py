@@ -27,6 +27,72 @@ MAX_BROWSE_REFERENCES = 10000
 MAX_BROWSE_REQUESTS = 100
 
 
+async def _browse_page(node, limit: int, offset: int) -> dict[str, Any]:
+    if not 1 <= limit <= 500 or not 0 <= offset <= 100000:
+        raise ValueError("浏览分页参数超出范围")
+    session = node.session
+    description = ua.BrowseDescription(
+        NodeId=node.nodeid,
+        BrowseDirection=ua.BrowseDirection.Forward,
+        ReferenceTypeId=ua.NodeId(ua.ObjectIds.HierarchicalReferences),
+        IncludeSubtypes=True,
+        ResultMask=ua.BrowseResultMask.All,
+    )
+    parameters = ua.BrowseParameters(NodesToBrowse=[description], RequestedMaxReferencesPerNode=500)
+    parameters.View.Timestamp = ua.get_win_epoch()
+    references = []
+    continuation = None
+    try:
+        async with asyncio.timeout(10):
+            results = await session.browse(parameters)
+            for request_index in range(MAX_BROWSE_REQUESTS):
+                if len(results) != 1:
+                    raise ValueError("远端 Browse 响应条数不匹配")
+                page = results[0]
+                continuation = page.ContinuationPoint
+                page.StatusCode.check()
+                if len(references) + len(page.References) > MAX_BROWSE_REFERENCES:
+                    raise ValueError(f"单层浏览超过 {MAX_BROWSE_REFERENCES} 个引用，请缩小起始节点")
+                references.extend(page.References)
+                if not continuation:
+                    break
+                if request_index == MAX_BROWSE_REQUESTS - 1:
+                    raise ValueError("远端 Browse continuation 次数超出上限")
+                results = await session.browse_next(
+                    ua.BrowseNextParameters(
+                        ContinuationPoints=[continuation],
+                        ReleaseContinuationPoints=False,
+                    )
+                )
+    finally:
+        if continuation:
+            with suppress(Exception):
+                async with asyncio.timeout(1):
+                    await session.browse_next(
+                        ua.BrowseNextParameters(
+                            ContinuationPoints=[continuation],
+                            ReleaseContinuationPoints=True,
+                        )
+                    )
+    result = []
+    for reference in references[offset : offset + limit]:
+        result.append(
+            {
+                "node_id": reference.NodeId.to_string(),
+                "browse_name": reference.BrowseName.Name,
+                "display_name": reference.DisplayName.Text,
+                "node_class": reference.NodeClass.name,
+            }
+        )
+    return {
+        "nodes": result,
+        "total": len(references),
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(result) < len(references),
+    }
+
+
 async def discover_endpoints(endpoint_url: str) -> list[dict]:
     import base64
 
@@ -289,70 +355,7 @@ class UaClientCore:
 
     @observed("Browse")
     async def browse_page(self, node_id: str = "i=85", limit: int = 100, offset: int = 0) -> dict[str, Any]:
-        if not 1 <= limit <= 500 or not 0 <= offset <= 100000:
-            raise ValueError("浏览分页参数超出范围")
-        node = self._node(node_id)
-        session = node.session
-        description = ua.BrowseDescription(
-            NodeId=node.nodeid,
-            BrowseDirection=ua.BrowseDirection.Forward,
-            ReferenceTypeId=ua.NodeId(ua.ObjectIds.HierarchicalReferences),
-            IncludeSubtypes=True,
-            ResultMask=ua.BrowseResultMask.All,
-        )
-        parameters = ua.BrowseParameters(NodesToBrowse=[description], RequestedMaxReferencesPerNode=500)
-        parameters.View.Timestamp = ua.get_win_epoch()
-        references = []
-        continuation = None
-        try:
-            async with asyncio.timeout(10):
-                results = await session.browse(parameters)
-                for request_index in range(MAX_BROWSE_REQUESTS):
-                    if len(results) != 1:
-                        raise ValueError("远端 Browse 响应条数不匹配")
-                    page = results[0]
-                    continuation = page.ContinuationPoint
-                    page.StatusCode.check()
-                    if len(references) + len(page.References) > MAX_BROWSE_REFERENCES:
-                        raise ValueError(f"单层浏览超过 {MAX_BROWSE_REFERENCES} 个引用，请缩小起始节点")
-                    references.extend(page.References)
-                    if not continuation:
-                        break
-                    if request_index == MAX_BROWSE_REQUESTS - 1:
-                        raise ValueError("远端 Browse continuation 次数超出上限")
-                    results = await session.browse_next(
-                        ua.BrowseNextParameters(
-                            ContinuationPoints=[continuation],
-                            ReleaseContinuationPoints=False,
-                        )
-                    )
-        finally:
-            if continuation:
-                with suppress(Exception):
-                    async with asyncio.timeout(1):
-                        await session.browse_next(
-                            ua.BrowseNextParameters(
-                                ContinuationPoints=[continuation],
-                                ReleaseContinuationPoints=True,
-                            )
-                        )
-        result = []
-        for reference in references[offset : offset + limit]:
-            result.append(
-                {
-                    "node_id": reference.NodeId.to_string(),
-                    "browse_name": reference.BrowseName.Name,
-                    "display_name": reference.DisplayName.Text,
-                    "node_class": reference.NodeClass.name,
-                }
-            )
-        return {
-            "nodes": result,
-            "total": len(references),
-            "offset": offset,
-            "limit": limit,
-            "has_more": offset + len(result) < len(references),
-        }
+        return await _browse_page(self._node(node_id), limit, offset)
 
     async def resolve_node_id(self, namespace_uri: str, node_id: str) -> str:
         if not self.running or self._client is None:
@@ -508,6 +511,74 @@ class UaServerCore:
             )
             if definition["writable"]:
                 await variable.set_writable()
+
+    def _node(self, node_id: str):
+        if self._server is None:
+            raise ValueError("OPC UA 服务端尚未启动")
+        try:
+            return self._server.get_node(ua.NodeId.from_string(node_id))
+        except ua.UaStringParsingError as exc:
+            raise ValueError(f"无效的 OPC UA NodeId: {node_id}") from exc
+
+    @observed("Browse")
+    async def browse_page(self, node_id: str = "i=85", limit: int = 100, offset: int = 0) -> dict:
+        return await _browse_page(self._node(node_id), limit, offset)
+
+    @observed("Read")
+    async def inspect_node(self, node_id: str) -> dict:
+        node = self._node(node_id)
+        node_class = await node.read_node_class()
+        browse_name = await node.read_browse_name()
+        description = await node.read_description()
+        namespaces = await self._server.get_namespace_array()
+        result = {
+            "node_id": node_id,
+            "browse_name": browse_name.Name,
+            "display_name": (await node.read_display_name()).Text,
+            "node_class": node_class.name,
+            "description": description.Text,
+            "namespace_uri": namespaces[node.nodeid.NamespaceIndex],
+            "data_type": None,
+            "value_rank": None,
+            "array_dimensions": None,
+            "writable": False,
+            "type_definition": None,
+        }
+        type_definition = await node.read_type_definition()
+        if type_definition is not None:
+            result["type_definition"] = (await self._server.get_node(type_definition).read_browse_name()).Name
+        if node_class == ua.NodeClass.Variable:
+            data_type = self._server.get_node(await node.read_data_type())
+            result.update(
+                data_type=(await data_type.read_browse_name()).Name,
+                value_rank=await node.read_value_rank(),
+                array_dimensions=await node.read_array_dimensions(),
+                writable=ua.AccessLevel.CurrentWrite in await node.get_access_level(),
+            )
+        references = await node.get_references()
+        result["references"] = [
+            {
+                "node_id": ref.NodeId.to_string(),
+                "browse_name": ref.BrowseName.Name,
+                "node_class": ref.NodeClass.name,
+                "reference_type": ref.ReferenceTypeId.to_string(),
+                "forward": ref.IsForward,
+            }
+            for ref in references[:500]
+        ]
+        result["references_truncated"] = len(references) > 500
+        return result
+
+    @observed("Write")
+    async def write(self, node_id: str, value: Any) -> dict:
+        node = self._node(node_id)
+        if ua.AccessLevel.CurrentWrite not in await node.get_access_level():
+            raise ValueError("该变量不允许写入")
+        variant_type = await node.read_data_type_as_variant_type()
+        rank = await node.read_value_rank()
+        value = sdk_value(variant_type.name, value, 1 if isinstance(value, list) and rank != -1 else -1)
+        await node.write_value(value, variant_type)
+        return await self.read(node_id)
 
     async def install_variables(self, definitions: list[dict[str, Any]]) -> None:
         if self._server is None or self._namespace_index is None:

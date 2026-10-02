@@ -1,5 +1,5 @@
 <template>
-  <div v-loading="loading">
+  <div ref="container" v-loading="loading">
     <OpcUaPageHeading
       :title="t('opcua.runtime')"
       :description="status?.endpoint_url || 'OPC UA'"
@@ -30,7 +30,12 @@
       <div class="ua-section-heading">
         <h3>{{ t("opcua.endpointConfig") }}</h3>
       </div>
-      <el-descriptions v-if="status" :column="2" border>
+      <el-descriptions
+        v-if="status"
+        :column="descriptionColumns"
+        class="runtime-descriptions"
+        border
+      >
         <el-descriptions-item :label="t('opcua.connectionStatus')">{{
           t(status.running ? "opcua.running" : "opcua.stopped")
         }}</el-descriptions-item>
@@ -73,7 +78,12 @@
             )
           }}</template>
         </el-table-column>
-        <el-table-column prop="reason" :label="t('opcua.reason')" />
+        <el-table-column
+          prop="reason"
+          :label="t('opcua.reason')"
+          min-width="200"
+          show-overflow-tooltip
+        />
       </el-table>
     </section>
     <el-alert
@@ -86,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import OpcUaPageHeading from "./OpcUaPageHeading.vue";
 import { useI18n } from "vue-i18n";
 import { showError } from "@/api/http";
@@ -98,6 +108,9 @@ const { t } = useI18n();
 const status = ref<OpcUaStatus | null>(null);
 const capabilities = ref<OpcUaCapability[]>([]);
 const loading = ref(false);
+const container = ref<HTMLElement | null>(null);
+const descriptionColumns = ref(2);
+let resizeObserver: ResizeObserver | undefined;
 const labels = computed<Record<string, string>>(() => ({
   transport: t("opcua.transport"),
   address_space: t("opcua.addressSpaceCapability"),
@@ -129,15 +142,23 @@ watch(
   },
 );
 onMounted(() => {
+  if (container.value) {
+    resizeObserver = new ResizeObserver(([entry]) => {
+      descriptionColumns.value = entry.contentRect.width < 640 ? 1 : 2;
+    });
+    resizeObserver.observe(container.value);
+  }
   void refresh();
 });
+onBeforeUnmount(() => resizeObserver?.disconnect());
 </script>
 
 <style scoped>
-.refresh {
-  margin-bottom: 12px;
+.runtime-descriptions :deep(.el-descriptions__table) {
+  table-layout: fixed;
 }
-.capabilities {
-  margin-top: 20px;
+.runtime-descriptions :deep(.el-descriptions__label) {
+  width: 132px;
+  overflow-wrap: anywhere;
 }
 </style>

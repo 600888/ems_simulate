@@ -46,7 +46,68 @@ export interface OpcUaVariable {
   initial_value: unknown;
   writable: boolean;
   point_code?: string | null;
+  namespace_uri?: string;
 }
+
+export interface OpcUaObjectNode {
+  node_id: string;
+  browse_name: string;
+  display_name?: string | null;
+  node_class: string;
+}
+
+export interface OpcUaNodeDetails extends OpcUaObjectNode {
+  description: string | null;
+  namespace_uri: string;
+  data_type: string | null;
+  value_rank: number | null;
+  array_dimensions: number[] | null;
+  writable: boolean;
+  references: (OpcUaObjectNode & {
+    reference_type: string;
+    forward: boolean;
+  })[];
+  type_definition: string | null;
+  references_truncated: boolean;
+}
+
+export const browseOpcUaServer = (
+  channel_id: number,
+  node_id = "i=85",
+  offset = 0,
+): Promise<{
+  nodes: OpcUaObjectNode[];
+  total: number;
+  offset: number;
+  has_more: boolean;
+}> =>
+  requestApi("/api/opcua/server/browse", "post", {
+    channel_id,
+    node_id,
+    offset,
+    limit: 50,
+  });
+
+export const inspectOpcUaServerNode = (
+  channel_id: number,
+  node_id: string,
+): Promise<OpcUaNodeDetails> =>
+  requestApi("/api/opcua/server/inspect", "post", { channel_id, node_id });
+
+export const readOpcUaServerValues = (
+  channel_id: number,
+  node_ids: string[],
+): Promise<{
+  values: OpcUaValueSnapshot[];
+  errors: { node_id: string; message: string }[];
+}> => requestApi("/api/opcua/server/values", "post", { channel_id, node_ids });
+
+export const writeOpcUaServerValue = (
+  channel_id: number,
+  node_id: string,
+  value: unknown,
+): Promise<OpcUaValueSnapshot> =>
+  requestApi("/api/opcua/server/write", "post", { channel_id, node_id, value });
 
 export interface OpcUaModelPreview {
   sha256: string;

@@ -51,6 +51,10 @@ class WriteRequest(NodeRequest):
     value: Any
 
 
+class ValuesRequest(ChannelRequest):
+    node_ids: list[str] = Field(min_length=1, max_length=50)
+
+
 class UpsertVariableRequest(NodeRequest):
     browse_name: str = Field(min_length=1, max_length=255)
     data_type: str
@@ -497,6 +501,58 @@ async def variables(body: ChannelRequest):
         raise ValidationError("该操作仅适用于 OPC UA 服务端通道")
     nodes = await asyncio.to_thread(OpcUaNodeService.list_nodes, body.channel_id)
     return BaseResponse(data={"nodes": nodes})
+
+
+def _server(request: Request, channel_id: int):
+    handler = _handler(request, channel_id)
+    if not isinstance(handler, OpcUaServerHandler):
+        raise ValidationError("该操作仅适用于 OPC UA 服务端通道")
+    if not handler.is_running or handler.server is None:
+        raise OperationError("请先启动 OPC UA 服务端")
+    return handler.server
+
+
+@router.post("/server/browse", response_model=BaseResponse)
+async def server_browse(body: BrowseRequest, request: Request):
+    facade = _server(request, body.channel_id)
+    try:
+        return BaseResponse(data=await facade.browse_page(body.node_id, body.limit, body.offset))
+    except (ValueError, ua.UaStatusCodeError) as exc:
+        raise ValidationError(str(exc)) from exc
+
+
+@router.post("/server/inspect", response_model=BaseResponse)
+async def server_inspect(body: NodeRequest, request: Request):
+    facade = _server(request, body.channel_id)
+    try:
+        return BaseResponse(data=await facade.inspect_node(body.node_id))
+    except (ValueError, ua.UaStatusCodeError) as exc:
+        raise ValidationError(str(exc)) from exc
+
+
+@router.post("/server/values", response_model=BaseResponse)
+async def server_values(body: ValuesRequest, request: Request):
+    if any(not node_id or len(node_id) > 512 for node_id in body.node_ids):
+        raise ValidationError("无效的 OPC UA NodeId")
+    facade = _server(request, body.channel_id)
+    values, errors = [], []
+    for node_id in dict.fromkeys(body.node_ids):
+        try:
+            values.append(await facade.read(node_id))
+        except (ValueError, ua.UaStatusCodeError) as exc:
+            errors.append({"node_id": node_id, "message": str(exc)})
+    return BaseResponse(data={"values": values, "errors": errors})
+
+
+@router.post("/server/write", response_model=BaseResponse)
+async def server_write(body: WriteRequest, request: Request):
+    facade = _server(request, body.channel_id)
+    try:
+        result = await facade.write(body.node_id, body.value)
+    except (ValueError, ua.UaStatusCodeError) as exc:
+        raise ValidationError(str(exc)) from exc
+    log.info(f"OPC UA 服务端变量写入成功: channel_id={body.channel_id}, node_id={body.node_id}")
+    return BaseResponse(data=result)
 
 
 @router.post("/nodes/upsert", response_model=BaseResponse)

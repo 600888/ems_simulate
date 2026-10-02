@@ -28,7 +28,13 @@
         </div>
         <el-form label-position="top" class="ua-form-grid" :disabled="running">
           <el-form-item :label="t('opcua.historyNodes')" class="ua-span-all"
-            ><el-select v-model="config.nodes" multiple filterable
+            ><el-select
+              v-model="config.nodes"
+              multiple
+              filterable
+              collapse-tags
+              collapse-tags-tooltip
+              :max-collapse-tags="3"
               ><el-option
                 v-for="node in nodes"
                 :key="node.node_id"
@@ -68,6 +74,7 @@
             ><el-date-picker
               v-model="range"
               type="datetimerange"
+              popper-class="opcua-history-range-popper"
               :start-placeholder="t('opcua.startTime')"
               :end-placeholder="t('opcua.endTime')"
           /></el-form-item>
@@ -105,7 +112,10 @@
           :label="t('opcua.sourceTimestamp')"
           min-width="240"
         />
-        <el-table-column :label="t('opcua.value')" min-width="160"
+        <el-table-column
+          :label="t('opcua.value')"
+          min-width="160"
+          show-overflow-tooltip
           ><template #default="{ row }">{{
             displayValue(row.value)
           }}</template></el-table-column
@@ -266,9 +276,14 @@ watch(
   grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr);
   gap: 18px;
 }
+.history-query :deep(.el-form-item),
+.history-query :deep(.el-form-item__content) {
+  min-width: 0;
+}
 .history-query :deep(.el-date-editor) {
   width: 100%;
   min-width: 0;
+  box-sizing: border-box;
 }
 .history-query :deep(.el-form-item__label) {
   color: var(--ua-muted);
@@ -281,6 +296,73 @@ watch(
   .history-query {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
+  }
+}
+</style>
+
+<style>
+.opcua-history-range-popper .el-date-range-picker {
+  width: min(646px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+}
+.opcua-history-range-popper .el-picker-panel__body {
+  min-width: 0;
+}
+.opcua-history-range-popper .el-picker-panel__footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.opcua-history-range-popper .el-picker-panel__footer .el-button + .el-button {
+  margin-left: 0;
+}
+@media (max-width: 680px) {
+  .opcua-history-range-popper .el-date-range-picker__content {
+    display: block;
+    width: 100%;
+    padding: 12px;
+  }
+  .opcua-history-range-popper .el-date-range-picker__content.is-left {
+    border-right: 0;
+    border-bottom: 1px solid var(--el-datepicker-inner-border-color);
+  }
+  .opcua-history-range-popper .el-date-range-picker__time-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+  }
+  .opcua-history-range-popper .el-date-range-picker__editors-wrap {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+  }
+  .opcua-history-range-popper
+    .el-date-range-picker__time-header
+    > span:not(.el-date-range-picker__editors-wrap) {
+    align-self: center;
+    line-height: 16px;
+    transform: rotate(90deg);
+  }
+  .opcua-history-range-popper .el-date-range-picker__time-picker-wrap {
+    display: block;
+    min-width: 0;
+    padding: 0;
+  }
+  .opcua-history-range-popper
+    .el-date-range-picker__time-picker-wrap
+    .el-time-panel {
+    left: auto;
+    right: 0;
+    max-width: calc(100vw - 48px);
   }
 }
 </style>

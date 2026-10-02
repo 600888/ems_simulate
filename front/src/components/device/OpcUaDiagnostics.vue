@@ -22,16 +22,19 @@
           prop="session_id"
           :label="t('opcua.session')"
           min-width="180"
+          show-overflow-tooltip
         />
         <el-table-column
           prop="application_uri"
           label="Application URI"
           min-width="240"
+          show-overflow-tooltip
         />
         <el-table-column
           prop="username"
           :label="t('opcua.username')"
           width="130"
+          show-overflow-tooltip
         />
         <el-table-column prop="state" :label="t('opcua.state')" width="120" />
         <el-table-column
@@ -43,6 +46,7 @@
           prop="reason"
           :label="t('opcua.reason')"
           min-width="200"
+          show-overflow-tooltip
         />
       </el-table>
     </section>
@@ -62,11 +66,17 @@
           :label="t('opcua.service')"
           width="150"
         />
-        <el-table-column prop="node_id" label="NodeId" min-width="220" />
+        <el-table-column
+          prop="node_id"
+          label="NodeId"
+          min-width="220"
+          show-overflow-tooltip
+        />
         <el-table-column
           prop="status_code"
           :label="t('opcua.quality')"
           min-width="190"
+          show-overflow-tooltip
         />
         <el-table-column
           prop="duration_ms"

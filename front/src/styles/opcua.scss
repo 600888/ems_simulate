@@ -10,6 +10,7 @@
   color: var(--ua-text);
   font-size: 13px;
   container-type: inline-size;
+  min-width: 0;
 
   > .el-tabs > .el-tabs__content {
     background: var(--ua-bg);
@@ -51,6 +52,8 @@
     font-size: 14px;
     font-weight: 600;
     margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .ua-section-heading span,
   .ua-muted {
@@ -68,9 +71,15 @@
   .ua-toolbar,
   .toolbar {
     margin: 0 0 14px;
+    min-width: 0;
+  }
+  .ua-toolbar > *,
+  .toolbar > * {
+    max-width: 100%;
   }
   .ua-toolbar > .el-input,
   .toolbar > .el-input {
+    min-width: 0;
     flex: 1 1 220px;
     max-width: 360px;
   }
@@ -83,6 +92,7 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+    min-width: 0;
   }
   .el-button + .el-button {
     margin-left: 0;
@@ -121,6 +131,9 @@
   .el-table .el-button {
     font-size: 12px;
   }
+  .el-table .cell > .el-button + .el-button {
+    margin-left: 8px;
+  }
   .ua-selectable .el-table__row {
     cursor: pointer;
   }
@@ -147,6 +160,14 @@
     min-width: 0;
     margin-bottom: 18px;
   }
+  .el-form-item__content {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .el-form--label-top .el-form-item__label {
+    height: auto;
+    white-space: normal;
+  }
   .ua-form-grid .el-form-item__label {
     color: var(--ua-muted);
     font-size: 12px;
@@ -156,6 +177,8 @@
   .ua-form-grid .el-select,
   .ua-form-grid .el-input-number {
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
   }
   .ua-span-2 {
     grid-column: span 2;
@@ -169,6 +192,17 @@
     gap: 8px;
     align-items: center;
     flex-wrap: wrap;
+  }
+  .ua-toolbar > .el-button,
+  .toolbar > .el-button,
+  .ua-actions > .el-button,
+  .ua-form-footer > .el-button {
+    flex-shrink: 0;
+    max-width: 100%;
+    height: auto;
+    min-height: 32px;
+    white-space: normal;
+    line-height: 20px;
   }
   .ua-metrics {
     display: grid;
@@ -217,6 +251,9 @@
     overflow-wrap: anywhere;
   }
   .ua-note {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
     padding: 10px 14px;
     border-radius: 5px;
     background: var(--status-info-bg);
@@ -241,6 +278,11 @@
     display: flex;
     justify-content: flex-end;
     margin-top: 14px;
+  }
+  .el-pagination {
+    max-width: 100%;
+    overflow-x: auto;
+    justify-content: safe flex-end;
   }
   .ua-empty {
     min-height: 200px;
@@ -268,6 +310,11 @@
   .el-descriptions__body {
     background: var(--ua-surface);
   }
+  .el-descriptions__table {
+    width: 100%;
+    table-layout: fixed;
+  }
+  .el-descriptions__label,
   .el-descriptions__content {
     overflow-wrap: anywhere;
   }

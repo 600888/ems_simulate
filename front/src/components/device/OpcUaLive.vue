@@ -134,7 +134,10 @@
           min-width="230"
           show-overflow-tooltip
         />
-        <el-table-column :label="t('opcua.value')" min-width="130"
+        <el-table-column
+          :label="t('opcua.value')"
+          min-width="130"
+          show-overflow-tooltip
           ><template #default="{ row }">{{
             displayValue(row.value)
           }}</template></el-table-column
@@ -367,7 +370,10 @@ onBeforeUnmount(() => {
   margin-bottom: 0;
 }
 .live-toolbar .curve-select {
-  width: min(420px, 100%);
+  flex: 1 1 260px;
+  width: auto;
+  min-width: 0;
+  max-width: 420px;
 }
 .event-metrics {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -379,6 +385,9 @@ onBeforeUnmount(() => {
 .event-message {
   margin-top: 12px;
   line-height: 22px;
+  overflow-wrap: anywhere;
+}
+.event-detail .ua-muted {
   overflow-wrap: anywhere;
 }
 </style>

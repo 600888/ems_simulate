@@ -67,6 +67,15 @@ class OpcUaServer(UaFacade):
     async def read(self, node_id: str) -> dict[str, Any]:
         return await self._core.read(node_id)
 
+    async def browse_page(self, node_id: str, limit: int = 100, offset: int = 0) -> dict:
+        return await self._core.browse_page(node_id, limit, offset)
+
+    async def inspect_node(self, node_id: str) -> dict:
+        return await self._core.inspect_node(node_id)
+
+    async def write(self, node_id: str, value: Any) -> dict:
+        return await self._core.write(node_id, value)
+
     async def reset_values(self) -> int:
         return await cast(AddressSpacePlugin, self._registry.feature("address_space")).reset_values()
 
