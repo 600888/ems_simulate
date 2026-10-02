@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime
+from inspect import iscoroutinefunction
 from typing import Any
 
 from asyncua import ua
@@ -12,6 +13,7 @@ from pydantic import ValidationError as PydanticValidationError
 from src.data.service.channel_service import ChannelService
 from src.data.service.opcua_config_service import OpcUaConfigService
 from src.data.service.opcua_feature_service import OpcUaFeatureService
+from src.data.service.opcua_live_service import OpcUaLiveService
 from src.data.service.opcua_model_service import OpcUaModelService
 from src.data.service.opcua_node_service import OpcUaNodeService
 from src.data.service.opcua_point_import import OpcUaPointImportService, PointImportError
@@ -203,16 +205,18 @@ async def certificate_generate(body: CertificateGenerateRequest, request: Reques
 @router.post("/certificates/trust", response_model=BaseResponse)
 async def certificate_trust(body: CertificateTrustRequest, request: Request):
     _channel(body.channel_id)
-    _ensure_stopped(request, body.channel_id)
     try:
-        await asyncio.to_thread(OpcUaSecurityService.trust, body.channel_id, body.fingerprint, body.trusted)
+        await _apply_update(
+            request,
+            body.channel_id,
+            lambda: OpcUaSecurityService.trust(body.channel_id, body.fingerprint, body.trusted),
+            "access",
+        )
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
     log.info(
         f"OPC UA 证书信任已更新: channel_id={body.channel_id}, trusted={body.trusted}, fingerprint={body.fingerprint}"
     )
-    config = await asyncio.to_thread(OpcUaConfigService.get, body.channel_id)
-    await _refresh_stopped_device(request, body.channel_id, config)
     return BaseResponse(data={"trusted": body.trusted})
 
 
@@ -231,13 +235,15 @@ async def client_credential(body: CredentialRequest, request: Request):
 async def user_save(body: UserRequest, request: Request):
     if _channel(body.channel_id)["conn_type"] != 2:
         raise ValidationError("仅适用于 OPC UA 服务端")
-    _ensure_stopped(request, body.channel_id)
     try:
-        await asyncio.to_thread(OpcUaSecurityService.user, body.channel_id, body.username, body.role, body.password)
+        await _apply_update(
+            request,
+            body.channel_id,
+            lambda: OpcUaSecurityService.user(body.channel_id, body.username, body.role, body.password),
+            "access",
+        )
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
-    config = await asyncio.to_thread(OpcUaConfigService.get, body.channel_id)
-    await _refresh_stopped_device(request, body.channel_id, config)
     log.info(f"OPC UA 用户权限已更新: channel_id={body.channel_id}, username={body.username}, role={body.role}")
     return BaseResponse(data={"saved": True})
 
@@ -266,7 +272,7 @@ async def save_feature(body: FeatureRequest, request: Request):
         models["security"] = (channel["conn_type"], SecurityConfig)
     if body.name not in models or channel["conn_type"] != models[body.name][0]:
         raise ValidationError("功能名称或 OPC UA 角色不匹配")
-    if body.name != "subscriptions":
+    if body.name == "security":
         _ensure_stopped(request, body.channel_id)
     try:
         raw_config = body.config
@@ -290,19 +296,17 @@ async def save_feature(body: FeatureRequest, request: Request):
             nodes = await asyncio.to_thread(OpcUaNodeService.list_nodes, body.channel_id)
             if any(rule["node_id"] not in {node["node_id"] for node in nodes} for rule in config["rules"]):
                 raise ValueError("模拟规则包含不存在的节点")
-        await asyncio.to_thread(OpcUaFeatureService.save, body.channel_id, body.name, config)
+        await _apply_update(
+            request,
+            body.channel_id,
+            lambda: OpcUaFeatureService.save(body.channel_id, body.name, config),
+            body.name,
+        )
     except PydanticValidationError as exc:
         message = "; ".join(error["msg"] for error in exc.errors(include_input=False, include_context=False))
         raise ValidationError(message) from exc
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
-    runtime_config = await asyncio.to_thread(OpcUaConfigService.get, body.channel_id)
-    device = request.app.state.device_controller.get_device_by_id(body.channel_id)
-    handler = device.protocol_handler if device is not None else None
-    if body.name == "subscriptions" and isinstance(handler, OpcUaClientHandler) and handler.lifecycle_active:
-        await handler.client.configure_subscriptions(config)
-        return BaseResponse(data=config)
-    await _refresh_stopped_device(request, body.channel_id, runtime_config)
     return BaseResponse(data=config)
 
 
@@ -367,6 +371,54 @@ async def _refresh_stopped_device(request: Request, channel_id: int, config: dic
         device.port = config["bind_port"]
         device.opcua_config = config
         device.initProtocol()
+
+
+async def _apply_update(request: Request, channel_id: int, mutation, target: str):
+    """Serialize a channel's writes and restore persistence if live application fails."""
+    state = request.app.state
+    if not hasattr(state, "opcua_update_locks"):
+        state.opcua_update_locks = {}
+    lock = state.opcua_update_locks.setdefault(channel_id, asyncio.Lock())
+    async with lock:
+        device = state.device_controller.get_device_by_id(channel_id)
+        handler = device.protocol_handler if device else None
+        active = isinstance(handler, (OpcUaClientHandler, OpcUaServerHandler)) and handler.lifecycle_active
+        snapshot = await asyncio.to_thread(OpcUaLiveService.snapshot, channel_id) if active else None
+        try:
+            # A cancelled HTTP request must not leave a background DB write racing rollback.
+            operation = asyncio.create_task(
+                mutation() if iscoroutinefunction(mutation) else asyncio.to_thread(mutation)
+            )
+            try:
+                result = await asyncio.shield(operation)
+            except asyncio.CancelledError:
+                await operation
+                raise
+            if target == "address_space":
+                await asyncio.to_thread(OpcUaLiveService.reconcile_features, channel_id)
+            if not active:
+                config = await asyncio.to_thread(OpcUaConfigService.get, channel_id)
+                await _refresh_stopped_device(request, channel_id, config)
+                return result
+            facade = handler.client if isinstance(handler, OpcUaClientHandler) else handler.server
+            if target == "address_space":
+                definitions = await asyncio.to_thread(OpcUaNodeService.list_nodes, channel_id)
+                features = await asyncio.to_thread(OpcUaFeatureService.load, channel_id)
+                await facade.configure_definitions(definitions, features)
+            elif target == "access":
+                features = await asyncio.to_thread(OpcUaFeatureService.load, channel_id)
+                credentials = await asyncio.to_thread(OpcUaSecurityService.secrets, channel_id)
+                await facade.configure_access(features.get("security", {}), credentials)
+            else:
+                features = await asyncio.to_thread(OpcUaFeatureService.load, channel_id)
+                await facade.configure_feature(target, features.get(target, {}))
+            return result
+        except BaseException as exc:
+            if snapshot is not None:
+                await asyncio.to_thread(OpcUaLiveService.restore, channel_id, snapshot)
+            if isinstance(exc, ua.UaError):
+                raise ValidationError(f"OPC UA 在线配置更新失败: {exc}") from exc
+            raise
 
 
 def _client(request: Request, channel_id: int) -> OpcUaClientHandler:
@@ -560,19 +612,21 @@ async def upsert_variable(body: UpsertVariableRequest, request: Request):
     channel = _channel(body.channel_id)
     if channel.get("conn_type") != 2:
         raise ValidationError("该操作仅适用于 OPC UA 服务端通道")
-    _ensure_stopped(request, body.channel_id)
     config = await asyncio.to_thread(OpcUaConfigService.get, body.channel_id)
     try:
-        result = await asyncio.to_thread(
-            OpcUaNodeService.upsert_variable,
+        result = await _apply_update(
+            request,
             body.channel_id,
-            config["namespace_uri"],
-            body.model_dump(exclude={"channel_id"}),
+            lambda: OpcUaNodeService.upsert_variable(
+                body.channel_id,
+                config["namespace_uri"],
+                body.model_dump(exclude={"channel_id"}),
+            ),
+            "address_space",
         )
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
     log.info(f"OPC UA 节点定义已保存: channel_id={body.channel_id}, node_id={body.node_id}")
-    await _refresh_stopped_device(request, body.channel_id, config)
     return BaseResponse(data=result)
 
 
@@ -605,11 +659,17 @@ async def apply_points(
     file: UploadFile = File(...),
 ):
     channel = _channel(channel_id)
-    if channel.get("conn_type") == 2:
-        _ensure_stopped(request, channel_id)
     content = await _read_point_file(file)
     try:
-        result = await asyncio.to_thread(OpcUaPointImportService.apply, channel_id, content, expected_sha256, mode)
+        if channel.get("conn_type") == 2:
+            result = await _apply_update(
+                request,
+                channel_id,
+                lambda: OpcUaPointImportService.apply(channel_id, content, expected_sha256, mode),
+                "address_space",
+            )
+        else:
+            result = await asyncio.to_thread(OpcUaPointImportService.apply, channel_id, content, expected_sha256, mode)
     except PointImportError as exc:
         raise ValidationError(
             str(exc),
@@ -620,9 +680,6 @@ async def apply_points(
         ) from exc
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
-    if channel.get("conn_type") == 2:
-        config = await asyncio.to_thread(OpcUaConfigService.get, channel_id)
-        await _refresh_stopped_device(request, channel_id, config)
     log.info(f"OPC UA 点表已导入: channel_id={channel_id}, created={result['created']}, updated={result['updated']}")
     return BaseResponse(data=result)
 
@@ -677,17 +734,20 @@ async def read_point(body: PointDeleteRequest, request: Request):
 @router.post("/points/delete", response_model=BaseResponse)
 async def delete_point(body: PointDeleteRequest, request: Request):
     channel = _channel(body.channel_id)
-    if channel.get("conn_type") == 2:
-        _ensure_stopped(request, body.channel_id)
     try:
-        removed = await asyncio.to_thread(OpcUaPointImportService.delete_point, body.channel_id, body.point_code)
+        if channel.get("conn_type") == 2:
+            removed = await _apply_update(
+                request,
+                body.channel_id,
+                lambda: OpcUaPointImportService.delete_point(body.channel_id, body.point_code),
+                "address_space",
+            )
+        else:
+            removed = await asyncio.to_thread(OpcUaPointImportService.delete_point, body.channel_id, body.point_code)
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
     if not removed:
         raise NotFoundError("测点不存在")
-    if channel.get("conn_type") == 2:
-        config = await asyncio.to_thread(OpcUaConfigService.get, body.channel_id)
-        await _refresh_stopped_device(request, body.channel_id, config)
     return BaseResponse(data={"deleted": True})
 
 
@@ -696,15 +756,17 @@ async def delete_variable(body: NodeRequest, request: Request):
     channel = _channel(body.channel_id)
     if channel.get("conn_type") != 2:
         raise ValidationError("该操作仅适用于 OPC UA 服务端通道")
-    _ensure_stopped(request, body.channel_id)
     try:
-        deleted = await asyncio.to_thread(OpcUaNodeService.delete_variable, body.channel_id, body.node_id)
+        deleted = await _apply_update(
+            request,
+            body.channel_id,
+            lambda: OpcUaNodeService.delete_variable(body.channel_id, body.node_id),
+            "address_space",
+        )
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
     if not deleted:
         raise NotFoundError("节点不存在")
-    config = await asyncio.to_thread(OpcUaConfigService.get, body.channel_id)
-    await _refresh_stopped_device(request, body.channel_id, config)
     return BaseResponse(data={"deleted": True})
 
 
@@ -712,11 +774,14 @@ async def delete_variable(body: NodeRequest, request: Request):
 async def clear_points(body: ChannelRequest, request: Request):
     channel = _channel(body.channel_id)
     if channel.get("conn_type") == 2:
-        _ensure_stopped(request, body.channel_id)
-    result = await asyncio.to_thread(OpcUaPointImportService.clear, body.channel_id)
-    if channel.get("conn_type") == 2:
-        config = await asyncio.to_thread(OpcUaConfigService.get, body.channel_id)
-        await _refresh_stopped_device(request, body.channel_id, config)
+        result = await _apply_update(
+            request,
+            body.channel_id,
+            lambda: OpcUaPointImportService.clear(body.channel_id),
+            "address_space",
+        )
+    else:
+        result = await asyncio.to_thread(OpcUaPointImportService.clear, body.channel_id)
     log.info(f"OPC UA 本地点表已清空: channel_id={body.channel_id}, count={result['deleted']}")
     return BaseResponse(data=result)
 
@@ -785,14 +850,15 @@ async def apply_model(
     channel = _channel(channel_id)
     if channel.get("conn_type") != 2:
         raise ValidationError("NodeSet XML 导入仅适用于 OPC UA 服务端通道")
-    _ensure_stopped(request, channel_id)
     content = await _read_nodeset_file(file)
     try:
-        result = await OpcUaModelService.apply_upload(channel_id, content, expected_sha256, mode)
+
+        async def commit():
+            return await OpcUaModelService.apply_upload(channel_id, content, expected_sha256, mode)
+
+        result = await _apply_update(request, channel_id, commit, "address_space")
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
-    config = await asyncio.to_thread(OpcUaConfigService.get, channel_id)
-    await _refresh_stopped_device(request, channel_id, config)
     log.info(
         f"OPC UA NodeSet 已导入: channel_id={channel_id}, created={result['created']}, updated={result['updated']}"
     )

@@ -48,7 +48,7 @@ export const opcuaZhCN = {
   simulationParameters: "固定值 / 数值范围",
   simulationRefreshInterval: "刷新间隔",
   simulationRunningHint:
-    "设备运行中，可查看模拟数据并暂停或恢复模拟；停止设备后可修改配置。",
+    "运行中可修改并保存模拟规则，立即生效；可查看实时数据并暂停或恢复模拟。",
   simulationStoppedHint: "设备已停止，启动设备后生成模拟数据。",
   simulationSavedDataHint: "此处显示已保存的模拟配置，当前修改尚未生效。",
   simulationLoadFailed: "模拟配置加载失败，请刷新后重试。",
@@ -79,7 +79,8 @@ export const opcuaZhCN = {
   subscriptionSettings: "订阅设置",
   itemSettings: "监控项设置",
   revisedParameters: "服务器修订参数",
-  simulationHint: "支持固定值、随机数、正弦波与步进递增；停止设备后保存规则。",
+  simulationHint:
+    "支持固定值、随机数、正弦波与步进递增；保存规则后在线生效，并保留暂停状态。",
   subscriptionHint:
     "发布间隔与采样间隔以服务器修订值为准；自动重连后恢复订阅。",
   securityDescription: "端点安全、受信任证书和身份认证",
@@ -138,10 +139,11 @@ export const opcuaZhCN = {
   emptyPoints: "点表中没有可导入的测点",
   channelSavedWithoutPoints: "设备已保存，点表未导入；可在设备页继续导入。",
   deviceFormPointsHint:
-    "请选择 OPC UA 专用 .xlsx 点表（遥测、遥信、遥控、遥调四个 Sheet）。保存设备后预检并确认导入；服务端需先停止。",
+    "请选择 OPC UA 专用 .xlsx 点表（遥测、遥信、遥控、遥调四个 Sheet）。保存设备后预检并确认导入；服务端支持在线更新。",
   exportPoints: "导出 Excel 点表",
   clientPointsHint: "客户端点表仅保存在本地，不会创建或删除远端服务器节点。",
-  serverPointsHint: "停止服务端后才能导入或删除节点，重新启动后地址空间生效。",
+  serverPointsHint:
+    "支持在线导入、删除测点；修改已有节点的数据类型或命名空间需先停止通道。",
   noPoints: "暂无测点",
   type: "类型",
   code: "测点编码",
@@ -168,6 +170,9 @@ export const opcuaZhCN = {
   namespaceUri: "命名空间 URI",
   saveConfig: "保存配置",
   stopFirst: "请先停止设备",
+  liveConfigHint: "运行中可保存配置，立即生效，无需重启设备。",
+  liveAccessHint:
+    "信任列表和用户可在线更新。用户角色变更或删除对已有会话生效；密码和证书信任变更在下次认证或新连接时校验。端点安全策略和应用证书仍需停止通道后修改。",
   cancel: "取消",
   confirmImport: "确认导入",
   pointsPreview: "OPC UA 点表预检",
@@ -203,7 +208,7 @@ export const opcuaZhCN = {
   exportModel: "导出 NodeSet XML",
   modelPreview: "NodeSet XML 预检",
   modelHint:
-    "支持 Objects 下的 Boolean、Int32、Double 标量变量。停止设备后可修改模型；启动后可导出当前模型。",
+    "支持 Objects 下的标量变量在线增删、改名和修改权限；已有节点的数据类型和命名空间需停止通道后修改。初始值在重置或下次启动时使用。",
   access: "访问级别",
   readWrite: "读写",
   readOnly: "只读",
@@ -212,7 +217,7 @@ export const opcuaZhCN = {
   remoteWrite: "允许远端写入",
   save: "保存",
   overwriteVariables: "覆盖已有变量",
-  variableSaved: "变量已保存，重新启动后生效",
+  variableSaved: "变量已保存；运行中已应用名称和权限，初始值用于重置或下次启动",
   deleteVariableConfirm: "删除变量 {nodeId}？",
   modelCounts: "{total} 个变量；命名空间 {namespaceUri}",
   modelImported: "模型导入成功：新增 {created}，更新 {updated}",
@@ -366,7 +371,7 @@ export const opcuaEnUS: Record<keyof typeof opcuaZhCN, string> = {
   simulationParameters: "Fixed value / Range",
   simulationRefreshInterval: "Refresh interval",
   simulationRunningHint:
-    "View live values and pause or resume simulation while running. Stop the device to edit configuration.",
+    "Edit and save simulation rules while running to apply immediately. View live values and pause or resume simulation.",
   simulationStoppedHint:
     "Device stopped. Start it to generate simulation values.",
   simulationSavedDataHint:
@@ -404,7 +409,7 @@ export const opcuaEnUS: Record<keyof typeof opcuaZhCN, string> = {
   itemSettings: "Monitored item settings",
   revisedParameters: "Server revised parameters",
   simulationHint:
-    "Supports fixed, random, sine and step values. Stop the device to save rules.",
+    "Supports fixed, random, sine and step values. Saved rules apply online and preserve the pause state.",
   subscriptionHint:
     "Publishing and sampling intervals use server revised values. Subscriptions resume after automatic reconnection.",
   securityDescription:
@@ -469,12 +474,12 @@ export const opcuaEnUS: Record<keyof typeof opcuaZhCN, string> = {
   channelSavedWithoutPoints:
     "Device saved without importing points. You can import them from its device page.",
   deviceFormPointsHint:
-    "Select an OPC UA .xlsx workbook with the four template sheets. Review and confirm the import after saving the device; stop the server first.",
+    "Select an OPC UA .xlsx workbook with the four template sheets. Review and confirm the import after saving the device. Server points can be updated online.",
   exportPoints: "Export Excel points",
   clientPointsHint:
     "Client points are stored locally. Importing or deleting them does not modify remote server nodes.",
   serverPointsHint:
-    "Stop the server before importing or deleting nodes. Restart it to apply address space changes.",
+    "Import and delete points online. Stop the channel to change an existing node data type or namespace.",
   noPoints: "No points",
   type: "Type",
   code: "Point code",
@@ -502,6 +507,10 @@ export const opcuaEnUS: Record<keyof typeof opcuaZhCN, string> = {
   namespaceUri: "Namespace URI",
   saveConfig: "Save configuration",
   stopFirst: "Stop the device first",
+  liveConfigHint:
+    "Save configuration while running to apply immediately without restarting the device.",
+  liveAccessHint:
+    "Update trust and users online. Role changes and removals apply to existing sessions; passwords and certificate trust are checked on the next authentication or new connection. Endpoint security and application certificates require stopping the channel.",
   cancel: "Cancel",
   confirmImport: "Confirm import",
   pointsPreview: "OPC UA point import preview",
@@ -538,7 +547,7 @@ export const opcuaEnUS: Record<keyof typeof opcuaZhCN, string> = {
   exportModel: "Export NodeSet XML",
   modelPreview: "NodeSet XML import preview",
   modelHint:
-    "Boolean, Int32 and Double scalar variables directly under Objects are supported. Stop the device to edit; start it to export its model.",
+    "Add, delete, rename and change permissions of scalar variables under Objects online. Stop the channel to change existing data types or namespaces. Initial values apply on reset or the next start.",
   access: "Access",
   readWrite: "Read/write",
   readOnly: "Read only",
@@ -547,7 +556,8 @@ export const opcuaEnUS: Record<keyof typeof opcuaZhCN, string> = {
   remoteWrite: "Allow remote writes",
   save: "Save",
   overwriteVariables: "Overwrite existing variables",
-  variableSaved: "Variable saved. Restart the server to apply changes.",
+  variableSaved:
+    "Variable saved. Names and permissions apply online; initial values apply on reset or the next start.",
   deleteVariableConfirm: "Delete variable {nodeId}?",
   modelCounts: "{total} variables; namespace {namespaceUri}",
   modelImported: "Model imported: {created} created, {updated} updated",

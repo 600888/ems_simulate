@@ -17,6 +17,7 @@ from src.data.model.opcua_node import OpcUaNode
 from src.data.model.opcua_point import OpcUaPoint
 from src.data.model.opcua_secret import OpcUaSecret
 import src.data.service.opcua_config_service as config_module
+import src.data.service.opcua_live_service as live_module
 import src.data.service.opcua_point_import as import_module
 from src.proto.opcua.point_excel import parse_point_excel
 from src.web.api.exceptions import ValidationError
@@ -42,6 +43,7 @@ def isolated_routes(monkeypatch):
     sessions = sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(import_module, "local_session", sessions)
     monkeypatch.setattr(config_module, "local_session", sessions)
+    monkeypatch.setattr(live_module, "local_session", sessions)
     monkeypatch.setattr(
         api_module,
         "_channel",

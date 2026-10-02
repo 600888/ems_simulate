@@ -31,10 +31,13 @@
           @input="page = 1"
         />
         <el-button @click="loadNodes">{{ t("opcua.refresh") }}</el-button>
-        <el-button type="primary" :disabled="running" @click="editVariable()">{{
-          t("opcua.addVariable")
-        }}</el-button>
-        <el-button :disabled="running" @click="xmlInput?.click()">{{
+        <el-button
+          type="primary"
+          :disabled="saving || importing"
+          @click="editVariable()"
+          >{{ t("opcua.addVariable") }}</el-button
+        >
+        <el-button :disabled="saving || importing" @click="xmlInput?.click()">{{
           t("opcua.importModel")
         }}</el-button>
         <el-button :disabled="!running || !nodes.length" @click="resetValues">{{
@@ -105,14 +108,14 @@
           <template #default="{ row }">
             <el-button
               link
-              :disabled="running || !!row.point_code"
+              :disabled="!!row.point_code || saving || importing"
               @click="editVariable(row)"
               >{{ t("opcua.edit") }}</el-button
             >
             <el-button
               link
               type="danger"
-              :disabled="running || !!row.point_code"
+              :disabled="!!row.point_code || saving || importing"
               @click="removeVariable(row)"
               >{{ t("opcua.delete") }}</el-button
             >
@@ -144,7 +147,11 @@
           ><el-input v-model="variable.browse_name"
         /></el-form-item>
         <el-form-item :label="t('opcua.dataType')">
-          <el-select v-model="variable.data_type" class="variable-type">
+          <el-select
+            v-model="variable.data_type"
+            :disabled="running && editing"
+            class="variable-type"
+          >
             <el-option
               v-for="type in scalarTypes"
               :key="type"
@@ -167,7 +174,7 @@
         <el-button
           type="primary"
           :loading="saving"
-          :disabled="running"
+          :disabled="saving || importing"
           @click="saveVariable"
           >{{ t("opcua.save") }}</el-button
         >
@@ -224,7 +231,8 @@
           type="primary"
           :loading="importing"
           :disabled="
-            running ||
+            importing ||
+            saving ||
             !modelPreview ||
             !!modelPreview.errors.length ||
             (modelMode === 'add' && !!modelPreview.conflicts.length)

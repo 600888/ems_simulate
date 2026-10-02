@@ -108,7 +108,16 @@ class UaUsers:
 
 
 class UaPermissions(SimpleRoleRuleset):
+    def __init__(self, config: dict):
+        super().__init__()
+        self.config = config
+
     def check_validity(self, user, action_type_id, body):
+        if user.name:
+            record = next((item for item in self.config.get("users", []) if item["username"] == user.name), None)
+            if record is None:
+                return False
+            user = User(role=UserRole.User if record["role"] == "operator" else UserRole.Anonymous, name=user.name)
         if user.role == UserRole.Anonymous:
             # Viewers may browse/read/subscribe; model changes and writes remain denied.
             denied = {
@@ -197,7 +206,7 @@ async def configure_server(server, config: dict, credentials: dict, rejected=Non
         return
     await server.load_certificate(base64.b64decode(config["certificate"]))
     await server.load_private_key(base64.b64decode(credentials["private_key"]))
-    server.set_security_policy([ua.SecurityPolicyType[f"Basic256Sha256_{config['mode']}"]], UaPermissions())
+    server.set_security_policy([ua.SecurityPolicyType[f"Basic256Sha256_{config['mode']}"]], UaPermissions(config))
     server.set_certificate_validator(PeerValidator(config, "client", rejected=rejected))
     tokens = [ua.UserNameIdentityToken]
     if config.get("allow_anonymous", False):

@@ -172,7 +172,7 @@
             ><el-button
               link
               type="primary"
-              :disabled="running"
+              :disabled="busy"
               @click="trust(row)"
               >{{
                 t(
@@ -186,11 +186,12 @@
         >
       </el-table>
     </section>
+    <p class="ua-note">{{ t("opcua.liveAccessHint") }}</p>
     <section v-if="role === 'server'" class="ua-section">
       <div class="ua-section-heading">
         <h3>{{ t("opcua.userIdentity") }}</h3>
       </div>
-      <el-form label-position="top" class="ua-form-grid" :disabled="running">
+      <el-form label-position="top" class="ua-form-grid" :disabled="busy">
         <el-form-item :label="t('opcua.username')"
           ><el-input v-model="username"
         /></el-form-item>
@@ -209,7 +210,7 @@
         /></el-form-item>
       </el-form>
       <div class="ua-form-footer">
-        <el-button :disabled="running" :loading="busy" @click="userSave">{{
+        <el-button :disabled="busy" :loading="busy" @click="userSave">{{
           t("opcua.saveUser")
         }}</el-button>
       </div>
@@ -223,7 +224,7 @@
         <el-table-column :label="t('opcua.actions')" width="120"
           ><template #default="{ row }"
             ><el-button
-              :disabled="running"
+              :disabled="busy"
               link
               type="danger"
               @click="removeUser(row)"

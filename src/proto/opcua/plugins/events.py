@@ -56,6 +56,8 @@ class EventsPlugin:
             self._task = None
         if self._role == "client":
             await self._port.clear_event_subscription()
+        else:
+            await self._port.disable_events()
 
     def status(self) -> dict:
         return {"enabled": self._config.enabled, "generation": self._generation, "error": self._error}

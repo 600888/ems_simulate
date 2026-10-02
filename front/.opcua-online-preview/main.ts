@@ -1,0 +1,18 @@
+import { createApp, ref } from 'vue';
+import ElementPlus from 'element-plus';
+import 'element-plus/dist/index.css';
+import MockAdapter from 'axios-mock-adapter';
+import { instance } from '../src/api/http';
+import i18n from '../src/i18n';
+import Simulation from '../src/components/device/OpcUaSimulation.vue';
+const mock = new MockAdapter(instance);
+const nodes = [{ node_id:'ns=2;s=power', browse_name:'功率', data_type:'Double', initial_value:0, writable:true }, { node_id:'ns=2;s=state', browse_name:'开关状态', data_type:'Boolean', initial_value:false, writable:true }];
+let rules = [{ node_id:'ns=2;s=power', kind:'fixed', value:3, minimum:0, maximum:100, period_s:10, interval_ms:1000, offset_s:0, step:1, enabled:true, write_policy:'overwrite' }];
+let paused = false;
+mock.onPost('/api/opcua/features/config').reply(() => [200,{code:200,data:{ simulation:{rules} }}]);
+mock.onPost('/api/opcua/nodes/variables').reply(200,{code:200,data:{nodes}});
+mock.onPost('/api/opcua/features/save').reply(config => { rules = JSON.parse(config.data).config.rules; return [200,{code:200,data:{rules}}]; });
+mock.onPost('/api/opcua/simulation/pause').reply(config => {paused=JSON.parse(config.data).paused;return [200,{code:200,data:{paused}}];});
+mock.onPost('/api/opcua/server/values').reply(() => [200,{code:200,data:{values:rules.map(rule=>({ node_id:rule.node_id,value:rule.value,status_code:'Good',source_timestamp:new Date().toISOString() })),errors:[]}}]);
+mock.onPost('/api/opcua/capabilities').reply(() => [200,{code:200,data:{capabilities:[{name:'simulation',running:true,details:{rules:rules.map(rule=>({node_id:rule.node_id,paused,error:null}))}}]}}]);
+createApp({components:{Simulation},setup(){return{};},template:'<main style="padding:24px;max-width:1380px;margin:auto"><Simulation :channel-id="2" :running="true" /></main>'}).use(ElementPlus).use(i18n).mount('#app');

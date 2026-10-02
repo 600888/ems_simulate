@@ -2,7 +2,8 @@
 
 import asyncio
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from types import MappingProxyType
 from typing import Any, Literal
 
 from src.proto.opcua.plugins.base import FeaturePlugin, PluginContext
@@ -111,6 +112,34 @@ class PluginRegistry:
             reason = self._states.get(name, {}).get("reason") or "能力尚未启动或已禁用"
             raise ValueError(f"OPC UA 能力 {name} 不可用: {reason}")
         return self._instances[name]
+
+    async def reconfigure(self, name: str, config: dict) -> None:
+        """Replace one feature without stopping transport or unrelated features."""
+        if name not in self._specs:
+            raise ValueError(f"OPC UA 能力已禁用: {name}")
+        if any(required not in self._started for required in self._specs[name].requires):
+            raise ValueError(f"OPC UA 能力 {name} 的依赖不可用")
+        context = replace(self.context, config=MappingProxyType({**self.context.config, name: config}))
+        candidate = self._specs[name].factory()
+        await candidate.initialize(context)
+        previous = self._instances.get(name)
+        was_running = name in self._started
+        if previous is not None and hasattr(candidate, "inherit_runtime"):
+            candidate.inherit_runtime(previous)
+        try:
+            if was_running:
+                await previous.stop()
+            await candidate.start()
+        except BaseException:
+            await candidate.stop()
+            if was_running:
+                await previous.start()
+            raise
+        self.context = context
+        self._instances[name] = candidate
+        if not was_running:
+            self._started.append(name)
+        self._states[name] = {"running": True, "reason": None}
 
     def capabilities(self) -> list[dict[str, Any]]:
         return [

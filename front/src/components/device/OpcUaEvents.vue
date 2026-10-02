@@ -4,16 +4,22 @@
       :title="t('opcua.events')"
       :description="t('opcua.eventsDescription')"
     />
+    <el-alert
+      v-if="running"
+      :title="t('opcua.liveConfigHint')"
+      type="info"
+      :closable="false"
+    />
     <section class="ua-section">
       <div class="ua-section-heading">
         <h3>{{ t("opcua.eventSettings") }}</h3>
         <el-switch
           v-model="config.enabled"
-          :disabled="running"
+          :disabled="saving"
           :active-text="t('opcua.enabled')"
         />
       </div>
-      <el-form label-position="top" class="ua-form-grid" :disabled="running">
+      <el-form label-position="top" class="ua-form-grid" :disabled="saving">
         <el-form-item :label="t('opcua.eventSource')"
           ><el-input v-model="config.source_node"
         /></el-form-item>
@@ -29,7 +35,7 @@
         /></el-form-item>
       </el-form>
       <div class="ua-form-footer">
-        <el-button :disabled="running" type="primary" @click="save">{{
+        <el-button :loading="saving" type="primary" @click="save">{{
           t("opcua.saveConfig")
         }}</el-button>
       </div>
@@ -64,12 +70,14 @@ import {
   saveOpcUaFeature,
   emitOpcUaEvent,
 } from "@/api/opcuaApi";
+import { ElMessage } from "element-plus";
 import { showError } from "@/api/http";
 import OpcUaLive from "./OpcUaLive.vue";
 const props = defineProps<{
   channelId: number;
   role: "client" | "server";
   running: boolean;
+  revision?: number;
 }>();
 const { t } = useI18n();
 const config = ref({
@@ -90,11 +98,16 @@ async function load() {
     showError(e);
   }
 }
+const saving = ref(false);
 async function save() {
+  saving.value = true;
   try {
     await saveOpcUaFeature(props.channelId, "events", config.value);
+    ElMessage.success(t("opcua.configSaved"));
   } catch (e) {
     showError(e);
+  } finally {
+    saving.value = false;
   }
 }
 async function emit() {
@@ -106,6 +119,7 @@ async function emit() {
 }
 onMounted(load);
 watch(() => props.channelId, load);
+watch(() => props.revision, load);
 </script>
 <style scoped>
 .emit-toolbar {

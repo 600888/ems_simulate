@@ -46,3 +46,6 @@ class AddressSpacePlugin:
 
     def status(self) -> dict[str, Any]:
         return {"node_count": len(self._definitions), "schema_version": 1}
+
+    def update_definitions(self, definitions: list[dict]) -> None:
+        self._definitions = [validate_variable(dict(item)) for item in definitions]

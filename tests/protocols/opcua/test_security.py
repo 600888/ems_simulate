@@ -84,6 +84,27 @@ async def test_encrypted_trust_user_roles_and_rejected_unknown_certificate():
             await reader.write("ns=2;s=power", 3.0)
         await writer.start()
         assert (await writer.write("ns=2;s=power", 4.0))["value"] == 4.0
+        transport, connection = server._core._server, writer._core._client
+        updated = {
+            **server_config,
+            "users": [{"username": "reader", "role": "operator"}, {"username": "writer", "role": "viewer"}],
+        }
+        await server.configure_access(updated, server_credentials)
+        assert (await reader.write("ns=2;s=power", 5.0))["value"] == 5.0
+        with pytest.raises(ua.UaStatusCodeError, match="BadUserAccessDenied"):
+            await writer.write("ns=2;s=power", 6.0)
+        await server.configure_access({**updated, "users": [updated["users"][0]], "trusted": []}, server_credentials)
+        with pytest.raises(ua.UaStatusCodeError, match="BadUserAccessDenied"):
+            await writer.read("ns=2;s=power")
+        # Trust removal affects new connections; the active secure session remains usable.
+        assert (await reader.read("ns=2;s=power"))["value"] == 5.0
+        fresh = OpcUaClient(server.endpoint_url, features={"security": client_config}, credentials=client_credentials)
+        try:
+            with pytest.raises(Exception, match="BadCertificateUntrusted"):
+                await fresh.start()
+        finally:
+            await fresh.stop()
+        assert server._core._server is transport and writer._core._client is connection
     finally:
         await unknown.stop()
         await writer.stop()

@@ -13,7 +13,7 @@
     <template v-if="role === 'server'">
       <el-alert
         v-if="running"
-        :title="t('opcua.stopFirst')"
+        :title="t('opcua.liveConfigHint')"
         type="info"
         :closable="false"
       />
@@ -22,11 +22,11 @@
           <h3>{{ t("opcua.historyStorage") }}</h3>
           <el-switch
             v-model="config.enabled"
-            :disabled="running"
+            :disabled="saving"
             :active-text="t('opcua.enabled')"
           />
         </div>
-        <el-form label-position="top" class="ua-form-grid" :disabled="running">
+        <el-form label-position="top" class="ua-form-grid" :disabled="saving">
           <el-form-item :label="t('opcua.historyNodes')" class="ua-span-all"
             ><el-select
               v-model="config.nodes"
@@ -55,7 +55,7 @@
           /></el-form-item>
         </el-form>
         <div class="ua-form-footer">
-          <el-button :disabled="running" type="primary" @click="save">{{
+          <el-button :loading="saving" type="primary" @click="save">{{
             t("opcua.saveConfig")
           }}</el-button>
         </div>
@@ -147,6 +147,7 @@ import OpcUaPageHeading from "./OpcUaPageHeading.vue";
 import OpcUaTrendPlot from "./OpcUaTrendPlot.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { ElMessage } from "element-plus";
 import {
   getOpcUaFeatures,
   listOpcUaVariables,
@@ -159,6 +160,7 @@ const props = defineProps<{
   channelId: number;
   role: "client" | "server";
   running: boolean;
+  revision?: number;
 }>();
 const { t } = useI18n();
 const config = ref({
@@ -205,11 +207,16 @@ async function load() {
     showError(e);
   }
 }
+const saving = ref(false);
 async function save() {
+  saving.value = true;
   try {
     await saveOpcUaFeature(props.channelId, "history", config.value);
+    ElMessage.success(t("opcua.configSaved"));
   } catch (e) {
     showError(e);
+  } finally {
+    saving.value = false;
   }
 }
 async function query(next: boolean) {
@@ -260,6 +267,19 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 onMounted(load);
+watch(
+  () => props.revision,
+  async () => {
+    if (props.role !== "server") return;
+    try {
+      nodes.value = (await listOpcUaVariables(props.channelId)).nodes;
+      const existing = new Set(nodes.value.map((node) => node.node_id));
+      config.value.nodes = config.value.nodes.filter((id) => existing.has(id));
+    } catch (e) {
+      showError(e);
+    }
+  },
+);
 watch(
   () => props.channelId,
   () => {

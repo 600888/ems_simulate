@@ -1,5 +1,6 @@
 """OPC UA server facade composing transport, address space, and model I/O."""
 
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Any, cast
 
@@ -87,3 +88,56 @@ class OpcUaServer(UaFacade):
 
     def pause_simulation(self, paused: bool) -> None:
         cast(SimulationPlugin, self._registry.feature("simulation")).set_paused(paused)
+
+    async def configure_definitions(self, definitions: list[dict], features: dict) -> None:
+        async with self._lifecycle_lock:
+            old_context = self._registry.context
+            context = replace(
+                old_context,
+                config=MappingProxyType({**old_context.config, **features, "definitions": tuple(definitions)}),
+            )
+            if not self._running:
+                self._registry.context = context
+                return
+            self._core.validate_variable_changes(definitions)
+            validator = SimulationPlugin()
+            await validator.initialize(context)
+            old_definitions = list(old_context.config.get("definitions", ()))
+            removed = {item["node_id"] for item in old_definitions} - {item["node_id"] for item in definitions}
+            removed_values = {key: await self._core._node(key).read_data_value() for key in removed}
+            address_space = cast(AddressSpacePlugin, self._registry.feature("address_space"))
+            old_by_id = {item["node_id"]: item for item in old_definitions}
+            access_changed = {
+                item["node_id"]
+                for item in definitions
+                if item["node_id"] in old_by_id and item["writable"] != old_by_id[item["node_id"]]["writable"]
+            }
+            simulated = {rule["node_id"] for rule in old_context.config.get("simulation", {}).get("rules", [])}
+            names = [
+                name
+                for name in ("simulation", "history", "events")
+                if name in self._registry._started
+                and (
+                    old_context.config.get(name, {}) != context.config.get(name, {})
+                    or (name == "simulation" and bool((removed | access_changed) & simulated))
+                )
+            ]
+            try:
+                for name in names:
+                    await self._registry.feature(name).stop()
+                await self._core.sync_variables(definitions)
+                self._registry.context = context
+                address_space.update_definitions(definitions)
+                for name in names:
+                    await self._registry.reconfigure(name, dict(context.config.get(name, {})))
+            except BaseException:
+                for name in names:
+                    await self._registry.feature(name).stop()
+                await self._core.sync_variables(old_definitions)
+                for key, value in removed_values.items():
+                    await self._core._node(key).write_value(value)
+                self._registry.context = old_context
+                address_space.update_definitions(old_definitions)
+                for name in names:
+                    await self._registry.reconfigure(name, dict(old_context.config.get(name, {})))
+                raise

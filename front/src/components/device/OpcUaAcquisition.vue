@@ -5,6 +5,7 @@
     :running="running"
     :active="active"
     :selected-node-id="selectedNodeId"
+    :revision="revision"
   />
   <div v-else>
     <OpcUaPageHeading
@@ -261,6 +262,7 @@ const props = defineProps<{
   running: boolean;
   selectedNodeId?: string;
   active?: boolean;
+  revision?: number;
 }>();
 const { t } = useI18n();
 const subscriptions = ref<any[]>([]),

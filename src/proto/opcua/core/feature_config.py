@@ -119,6 +119,12 @@ class HistoryConfig(BaseModel):
     retention_days: int = Field(default=7, ge=1, le=3650)
     max_values: int = Field(default=100000, ge=1, le=10000000)
 
+    @model_validator(mode="after")
+    def unique_nodes(self):
+        if len(set(self.nodes)) != len(self.nodes):
+            raise ValueError("历史节点不能重复")
+        return self
+
 
 class EventsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")

@@ -34,6 +34,8 @@ class SimulationPlugin:
         self._states: dict[str, dict] = {}
         self._rules: list[Rule] = []
         self._rng = random.Random()
+        self._origins: dict[str, float] = {}
+        self._paused = False
 
     async def initialize(self, context: PluginContext) -> None:
         self._port = context.simulation_port
@@ -60,6 +62,17 @@ class SimulationPlugin:
                 )
         self._states = {rule.node_id: {"paused": not rule.enabled, "error": None} for rule in self._rules}
 
+    def inherit_runtime(self, previous) -> None:
+        self._paused = previous._paused
+        self._origins = dict(previous._origins)
+        old_rules = {rule.node_id: rule for rule in previous._rules}
+        for rule in self._rules:
+            old = previous._states.get(rule.node_id)
+            if old and rule.enabled and old_rules[rule.node_id].enabled:
+                self._states[rule.node_id] = {"paused": old["paused"] if not old["error"] else False, "error": None}
+            if not rule.enabled or self._paused:
+                self._states[rule.node_id]["paused"] = True
+
     async def start(self) -> None:
         for rule in self._rules:
             if rule.enabled:
@@ -71,11 +84,14 @@ class SimulationPlugin:
             self._states[node_id]["paused"] = True
 
     def set_paused(self, paused: bool) -> None:
+        self._paused = paused
         for rule in self._rules:
             self._states[rule.node_id]["paused"] = paused or not rule.enabled
 
     async def _run(self) -> None:
         origin = time.monotonic()
+        for rule in self._rules:
+            self._origins.setdefault(rule.node_id, origin)
         due = dict.fromkeys(self._states, origin)
         while True:
             now = time.monotonic()
@@ -85,7 +101,9 @@ class SimulationPlugin:
                     continue
                 due[rule.node_id] = now + rule.interval_ms / 1000
                 try:
-                    value = rule_value(rule, now - origin, self._definitions[rule.node_id]["data_type"], self._rng)
+                    value = rule_value(
+                        rule, now - self._origins[rule.node_id], self._definitions[rule.node_id]["data_type"], self._rng
+                    )
                     snapshot = await self._port.write_simulated(rule.node_id, value)
                     if self._sink:
                         await self._sink.emit({"kind": "value", "source": "simulation", **snapshot})

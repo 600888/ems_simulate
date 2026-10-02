@@ -49,6 +49,8 @@ class SubscriptionPort(Protocol):
 class HistoryPort(Protocol):
     async def enable_history(self, config: dict, path: str) -> None: ...
 
+    async def disable_history(self) -> None: ...
+
 
 class EventsPort(Protocol):
     @property
@@ -62,6 +64,8 @@ class EventsPort(Protocol):
     async def clear_event_subscription(self) -> None: ...
 
     async def enable_events(self, config: dict) -> None: ...
+
+    async def disable_events(self) -> None: ...
 
 
 @dataclass(frozen=True)

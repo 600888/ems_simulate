@@ -463,6 +463,9 @@ class UaServerCore:
         self._internal_write = ContextVar("opcua_internal_write", default=False)
         self.diagnostics = CallLog()
         self._event_generator = None
+        self._history_storage = None
+        self._history_nodes: list[str] = []
+        self._live_definitions: dict[str, dict] = {}
 
     @property
     def running(self) -> bool:
@@ -493,6 +496,7 @@ class UaServerCore:
             raise
         self._server = server
         self._namespace_index = namespace_index
+        self._live_definitions = {item["node_id"]: dict(item) for item in self.definitions}
         self.node_count = len(self.definitions)
         self.diagnostics.started_at = datetime.now(UTC).isoformat()
 
@@ -585,6 +589,56 @@ class UaServerCore:
             raise RuntimeError("OPC UA 服务端尚未启动")
         await self._install(self._server, self._namespace_index, definitions)
         self.node_count += len(definitions)
+        self._live_definitions.update({item["node_id"]: dict(item) for item in definitions})
+
+    def validate_variable_changes(self, definitions: list[dict]) -> None:
+        for definition in definitions:
+            validate_variable(definition)
+            if definition.get("namespace_uri", self.namespace_uri) != self.namespace_uri:
+                raise ValueError("在线更新不能改变命名空间 URI")
+            old = self._live_definitions.get(definition["node_id"])
+            if old and old["data_type"] != definition["data_type"]:
+                raise ValueError(f"节点 {definition['node_id']} 的数据类型变化需要先停止该 OPC UA 通道")
+
+    async def sync_variables(self, definitions: list[dict]) -> None:
+        """Apply node differences; initial values are defaults, not live writes."""
+        self.validate_variable_changes(definitions)
+        desired = {item["node_id"]: dict(item) for item in definitions}
+        old = dict(self._live_definitions)
+        removed_values = {key: await self._node(key).read_data_value() for key in old.keys() - desired.keys()}
+        try:
+            for key in old.keys() - desired.keys():
+                await self._server.delete_nodes([self._node(key)])
+            for key, definition in desired.items():
+                if key not in old:
+                    await self._install(self._server, self._namespace_index, [definition])
+                elif any(old[key][field] != definition[field] for field in ("browse_name", "writable")):
+                    await self._update_variable(definition)
+        except BaseException:
+            for key in desired.keys() - old.keys():
+                with suppress(Exception):
+                    await self._server.delete_nodes([self._node(key)])
+            for key, definition in old.items():
+                if key in removed_values:
+                    with suppress(Exception):
+                        await self._install(self._server, self._namespace_index, [definition])
+                    await self._node(key).write_value(removed_values[key])
+                else:
+                    await self._update_variable(definition)
+            raise
+        self._live_definitions = desired
+        self.node_count = len(desired)
+
+    async def _update_variable(self, definition: dict) -> None:
+        node = self._node(definition["node_id"])
+        await node.write_attribute(
+            ua.AttributeIds.BrowseName,
+            ua.DataValue(ua.Variant(ua.QualifiedName(definition["browse_name"], self._namespace_index))),
+        )
+        await node.write_attribute(
+            ua.AttributeIds.DisplayName, ua.DataValue(ua.Variant(ua.LocalizedText(definition["browse_name"])))
+        )
+        await node.set_writable(definition["writable"])
 
     async def guard_simulation(self, node_id: str, policy: str, pause) -> None:
         node = self._server.get_node(node_id)
@@ -629,13 +683,25 @@ class UaServerCore:
         from src.proto.opcua.core.history_storage import UaHistorySQLite
 
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        storage = UaHistorySQLite(path, max_history_data_response_size=501)
-        await storage.init()
-        self._server.iserver.history_manager.set_storage(storage)
+        for node_id in config["nodes"]:
+            if await self._node(node_id).read_node_class() != ua.NodeClass.Variable:
+                raise ValueError(f"历史记录节点不是变量: {node_id}")
+        if self._history_storage is None:
+            storage = UaHistorySQLite(path, max_history_data_response_size=501)
+            await storage.init()
+            self._server.iserver.history_manager.set_storage(storage)
+            self._history_storage = storage
         for node_id in config["nodes"]:
             await self._server.historize_node_data_change(
                 self._server.get_node(node_id), timedelta(days=config["retention_days"]), config["max_values"]
             )
+            self._history_nodes.append(node_id)
+
+    async def disable_history(self) -> None:
+        if self._server:
+            for node_id in self._history_nodes:
+                await self._server.dehistorize_node_data_change(self._node(node_id))
+        self._history_nodes = []
 
     async def enable_events(self, config: dict) -> None:
         self._event_generator = await self._server.get_event_generator(
@@ -648,6 +714,9 @@ class UaServerCore:
         self._event_generator.event.Severity = severity
         await self._event_generator.trigger(message=message)
         return event_snapshot(self._event_generator.event)
+
+    async def disable_events(self) -> None:
+        self._event_generator = None
 
     async def reset_variables(self, definitions: list[dict[str, Any]]) -> int:
         if self._server is None:
@@ -684,5 +753,8 @@ class UaServerCore:
         self._namespace_index = None
         self.node_count = 0
         self._event_generator = None
+        self._history_nodes = []
+        self._history_storage = None
+        self._live_definitions = {}
         if server is not None:
             await server.stop()

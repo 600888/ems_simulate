@@ -38,11 +38,7 @@
             />
           </el-select>
           <el-button @click="queryPoints">{{ t("opcua.query") }}</el-button>
-          <el-button
-            type="primary"
-            :disabled="role === 'server' && running"
-            @click="selectFile"
-          >
+          <el-button type="primary" :disabled="loading" @click="selectFile">
             {{ t("opcua.importPoints") }}
           </el-button>
           <el-button :loading="exportingPoints" @click="exportPoints">{{
@@ -50,7 +46,7 @@
           }}</el-button>
           <el-button
             type="danger"
-            :disabled="!total || (role === 'server' && running)"
+            :disabled="!total || loading"
             @click="clearPoints"
             >{{ t("opcua.clearPoints") }}</el-button
           >
@@ -155,7 +151,7 @@
               <el-button
                 link
                 type="danger"
-                :disabled="role === 'server' && running"
+                :disabled="loading"
                 @click="removePoint(row)"
                 >{{ t("opcua.delete") }}</el-button
               >
@@ -381,6 +377,7 @@
           :running="running"
           :selected-node-id="simulationNodeId"
           :active="activeTab === 'acquisition'"
+          :revision="modelRevision"
         />
       </el-tab-pane>
       <el-tab-pane
@@ -396,10 +393,20 @@
         <OpcUaLive :channel-id="channelId" mode="trend" />
       </el-tab-pane>
       <el-tab-pane :label="t('opcua.history')" name="history" lazy>
-        <OpcUaHistory :channel-id="channelId" :role="role" :running="running" />
+        <OpcUaHistory
+          :channel-id="channelId"
+          :role="role"
+          :running="running"
+          :revision="modelRevision"
+        />
       </el-tab-pane>
       <el-tab-pane :label="t('opcua.events')" name="events" lazy>
-        <OpcUaEvents :channel-id="channelId" :role="role" :running="running" />
+        <OpcUaEvents
+          :channel-id="channelId"
+          :role="role"
+          :running="running"
+          :revision="modelRevision"
+        />
       </el-tab-pane>
       <el-tab-pane :label="t('opcua.security')" name="security" lazy>
         <OpcUaSecurity
@@ -413,10 +420,7 @@
       </el-tab-pane>
     </el-tabs>
 
-    <OpcUaPointImportDialog
-      ref="pointImportRef"
-      :disabled="role === 'server' && running"
-    />
+    <OpcUaPointImportDialog ref="pointImportRef" :disabled="loading" />
   </section>
 </template>
 
@@ -547,6 +551,7 @@ function queryPoints() {
 }
 
 async function onModelChanged() {
+  modelRevision.value++;
   await loadConfig();
   emit("config-changed");
 }

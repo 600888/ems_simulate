@@ -21,6 +21,8 @@ class HistoryPlugin:
         self._running = True
 
     async def stop(self) -> None:
+        if self._config.enabled and self._port is not None:
+            await self._port.disable_history()
         self._running = False
 
     def status(self) -> dict:

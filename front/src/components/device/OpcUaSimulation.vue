@@ -534,8 +534,9 @@ const props = withDefaults(
     running: boolean;
     active?: boolean;
     selectedNodeId?: string;
+    revision?: number;
   }>(),
-  { active: true },
+  { active: true, revision: 0 },
 );
 const { t } = useI18n();
 const tab = ref("select"),
@@ -552,12 +553,7 @@ const dirty = computed(
   () => loaded.value && JSON.stringify(rules.value) !== baseline.value,
 );
 const canEdit = computed(
-  () =>
-    loaded.value &&
-    !props.running &&
-    !loading.value &&
-    !saving.value &&
-    !toggling.value,
+  () => loaded.value && !loading.value && !saving.value && !toggling.value,
 );
 const nodeMap = computed(
   () => new Map(nodes.value.map((node) => [node.node_id, node])),
@@ -733,7 +729,8 @@ function selectRequestedRule() {
     nodeSearch.value = props.selectedNodeId;
   }
 }
-async function load() {
+async function load(selectRequested = false, preserveDraft = false) {
+  const draft = preserveDraft ? rules.value : null;
   const epoch = ++generation,
     channel = props.channelId;
   stopPolling();
@@ -749,10 +746,11 @@ async function load() {
     if (epoch !== generation || disposed) return;
     nodes.value = variables.nodes;
     savedRules.value = features.simulation?.rules || [];
-    rules.value = savedRules.value.map(ruleToForm);
-    baseline.value = JSON.stringify(rules.value);
+    const savedForms = savedRules.value.map(ruleToForm);
+    rules.value = draft ?? savedForms;
+    baseline.value = JSON.stringify(savedForms);
     loaded.value = true;
-    selectRequestedRule();
+    if (selectRequested) selectRequestedRule();
   } catch (error) {
     if (epoch === generation && !disposed) showError(error);
   } finally {
@@ -799,6 +797,7 @@ async function save() {
     rules.value = config.map(ruleToForm);
     baseline.value = JSON.stringify(rules.value);
     ElMessage.success(t("opcua.configSaved"));
+    restartPolling();
   } catch (error) {
     if (epoch === generation && !disposed) showError(error);
   } finally {
@@ -978,11 +977,17 @@ watch(
     nodes.value = [];
     rules.value = [];
     savedRules.value = [];
-    void load();
+    void load(true);
   },
   { immediate: true },
 );
 watch(() => props.selectedNodeId, selectRequestedRule);
+watch(
+  () => props.revision,
+  () => {
+    void load(false, dirty.value);
+  },
+);
 watch(
   () => props.running,
   () => {
