@@ -4,6 +4,7 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Any, cast
 
+from src.proto.opcua.core.connection_observer import ConnectionObserver
 from src.proto.opcua.core.stream import ValueStream
 from src.proto.opcua.core.transport import UaServerCore
 from src.proto.opcua.facade import UaFacade
@@ -30,6 +31,7 @@ class OpcUaServer(UaFacade):
         features: dict | None = None,
         credentials: dict | None = None,
         rejected=None,
+        connection_observer: ConnectionObserver | None = None,
     ):
         core = UaServerCore(
             bind_host,
@@ -39,6 +41,7 @@ class OpcUaServer(UaFacade):
             security=(features or {}).get("security"),
             credentials=credentials,
             rejected=rejected,
+            connection_observer=connection_observer,
         )
         definitions_snapshot = tuple(MappingProxyType(dict(item)) for item in (definitions or []))
         self.stream = ValueStream()

@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from src.device.protocol.base_handler import ProtocolHandler
+from src.device.core.connection import DisconnectInitiator, DisconnectReason
+from src.device.protocol.base_handler import ProtocolHandler, ServerHandler
 from src.enums.points.base_point import BasePoint
 from src.proto.opcua.client import OpcUaClient
 from src.proto.opcua.core.transport import make_endpoint_url
@@ -115,7 +116,7 @@ class OpcUaClientHandler(_OpcUaHandler):
         return await self.client.write(node_id, value)
 
 
-class OpcUaServerHandler(_OpcUaHandler):
+class OpcUaServerHandler(_OpcUaHandler, ServerHandler):
     def __init__(self, log=None):
         super().__init__(log)
         self.server: OpcUaServer | None = None
@@ -126,6 +127,7 @@ class OpcUaServerHandler(_OpcUaHandler):
 
     def initialize(self, config: dict[str, Any]) -> None:
         self._config = config
+        self._configure_connection_monitoring(config, supported=True)
         from src.data.service.opcua_feature_service import OpcUaFeatureService
         from src.data.service.opcua_node_service import OpcUaNodeService
         from src.data.service.opcua_security_service import OpcUaSecurityService
@@ -153,7 +155,32 @@ class OpcUaServerHandler(_OpcUaHandler):
             features=features,
             credentials=OpcUaSecurityService.secrets(channel_id) if channel_id else {},
             rejected=self._rejected_certificate if channel_id else None,
+            connection_observer=self._on_connection_event,
         )
+
+    def _on_connection_event(self, event: str, key: str, **data: Any) -> None:
+        if event == "opened":
+            self._open_connection(key, **data)
+        elif event == "activity":
+            self._record_connection_activity(key, **data)
+        elif event == "updated":
+            self._update_connection(key, **data)
+        elif event == "closed":
+            reason = DisconnectReason(data["reason"])
+            initiator = {
+                DisconnectReason.SERVER_STOPPED: DisconnectInitiator.SERVER,
+                DisconnectReason.MAX_CONNECTIONS_REJECTED: DisconnectInitiator.SERVER,
+                DisconnectReason.NETWORK_RESET: DisconnectInitiator.NETWORK,
+                DisconnectReason.PROTOCOL_ERROR: DisconnectInitiator.SERVER,
+                DisconnectReason.AUTHENTICATION_FAILED: DisconnectInitiator.SERVER,
+            }.get(reason, DisconnectInitiator.REMOTE)
+            self._close_connection(key, reason=reason, initiator=initiator, detail=data.get("detail"))
+
+    def get_value_by_address(self, func_code: int, slave_id: int, address: int) -> Any:
+        raise NotImplementedError("OPC UA 使用 NodeId 的异步读取接口")
+
+    def set_value_by_address(self, func_code: int, slave_id: int, address: int, value: Any) -> None:
+        raise NotImplementedError("OPC UA 使用 NodeId 的异步写入接口")
 
     async def start(self) -> bool:
         if self.is_running:
@@ -170,6 +197,9 @@ class OpcUaServerHandler(_OpcUaHandler):
 
     async def stop(self) -> bool:
         self._is_running = False
-        if self.server is not None:
-            await self.server.stop()
+        try:
+            if self.server is not None:
+                await self.server.stop()
+        finally:
+            self._close_all_connections()
         return True

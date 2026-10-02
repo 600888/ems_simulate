@@ -112,6 +112,7 @@ export default {
     encrypted: "已加密",
     unencrypted: "未加密",
     tlsVersion: "TLS 版本",
+    securityMode: "安全模式",
     cipherSuite: "密码套件",
     sessionId: "会话 ID",
     copied: "会话 ID 已复制",

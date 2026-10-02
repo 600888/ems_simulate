@@ -115,6 +115,7 @@ export default {
     encrypted: "Encrypted",
     unencrypted: "Unencrypted",
     tlsVersion: "TLS Version",
+    securityMode: "Security Mode",
     cipherSuite: "Cipher Suite",
     sessionId: "Session ID",
     copied: "Session ID copied",

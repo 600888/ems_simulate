@@ -16,6 +16,7 @@ from asyncua import Client, Server, ua
 from asyncua.client.ua_client import UaClientState
 from asyncua.common.subscription import Subscription
 
+from src.proto.opcua.core.connection_observer import ConnectionObserver, ObservedServer
 from src.proto.opcua.core.diagnostics import CallLog, observed
 from src.proto.opcua.core.model import validate_variable
 from src.proto.opcua.core.security import UaUsers, certificate_info, configure_client, configure_server
@@ -536,7 +537,9 @@ class UaServerCore:
         security: dict | None = None,
         credentials: dict | None = None,
         rejected=None,
+        connection_observer: ConnectionObserver | None = None,
     ):
+        self.connection_observer = connection_observer
         self.security = security or {}
         self.credentials = credentials or {}
         self.rejected = rejected
@@ -571,7 +574,11 @@ class UaServerCore:
             loopback_endpoint(make_endpoint_url(self.bind_host, self.port, self.endpoint_path))
             loopback_endpoint(self.endpoint_url)
         internal_server = ObservedInternalServer(self.diagnostics, UaUsers(self.security, self.credentials))
-        server = Server(iserver=internal_server)
+        server = (
+            ObservedServer(iserver=internal_server, observer=self.connection_observer)
+            if self.connection_observer is not None
+            else Server(iserver=internal_server)
+        )
         try:
             await server.init()
             server.set_endpoint(self.endpoint_url)

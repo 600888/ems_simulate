@@ -199,9 +199,10 @@
                 min-width="104"
               >
                 <template #default="{ row }"
-                  ><span :class="['security-pill', { secure: hasTls(row) }]">{{
-                    securityText(row)
-                  }}</span></template
+                  ><span
+                    :class="['security-pill', { secure: isEncrypted(row) }]"
+                    >{{ securityText(row) }}</span
+                  ></template
                 >
               </el-table-column>
               <el-table-column
@@ -329,9 +330,10 @@
                 min-width="104"
               >
                 <template #default="{ row }"
-                  ><span :class="['security-pill', { secure: hasTls(row) }]">{{
-                    securityText(row)
-                  }}</span></template
+                  ><span
+                    :class="['security-pill', { secure: isEncrypted(row) }]"
+                    >{{ securityText(row) }}</span
+                  ></template
                 >
               </el-table-column>
               <el-table-column
@@ -411,7 +413,9 @@
             </div>
           </div>
           <div class="security-summary">
-            <el-icon><Lock v-if="hasTls(detail)" /><Unlock v-else /></el-icon>
+            <el-icon
+              ><Lock v-if="isEncrypted(detail)" /><Unlock v-else
+            /></el-icon>
             <div>
               <strong>{{ securityText(detail) }}</strong
               ><span>{{ cipherText(detail) }}</span>
@@ -483,13 +487,21 @@
               <dt>{{ t("connectionMonitor.encryptionStatus") }}</dt>
               <dd>
                 {{
-                  hasTls(detail)
+                  isEncrypted(detail)
                     ? t("connectionMonitor.encrypted")
                     : t("connectionMonitor.unencrypted")
                 }}
               </dd>
-              <dt>{{ t("connectionMonitor.tlsVersion") }}</dt>
-              <dd>{{ tlsVersion(detail) }}</dd>
+              <dt>
+                {{
+                  t(
+                    detail.security?.mode
+                      ? "connectionMonitor.securityMode"
+                      : "connectionMonitor.tlsVersion",
+                  )
+                }}
+              </dt>
+              <dd>{{ securityMode(detail) }}</dd>
               <dt>{{ t("connectionMonitor.cipherSuite") }}</dt>
               <dd>{{ cipherText(detail) }}</dd>
               <dt>{{ t("connectionMonitor.disconnectReason") }}</dt>
@@ -752,12 +764,20 @@ const historyStateLabel = (row: ConnectionRecord) => {
 };
 const hasTls = (row: ConnectionRecord) =>
   Boolean(row.security?.tls || row.security?.version);
+const isEncrypted = (row: ConnectionRecord) =>
+  Boolean(row.security?.encrypted || hasTls(row));
 const tlsVersion = (row: ConnectionRecord) =>
   String(row.security?.version || (hasTls(row) ? "TLS" : "-"));
+const securityMode = (row: ConnectionRecord) =>
+  String(row.security?.mode || tlsVersion(row));
 const cipherText = (row: ConnectionRecord) =>
   String(row.security?.cipher || "-");
 const securityText = (row: ConnectionRecord) =>
-  hasTls(row) ? tlsVersion(row) : t("connectionMonitor.unencrypted");
+  row.security?.mode && row.security.mode !== "None"
+    ? String(row.security.mode)
+    : hasTls(row)
+      ? tlsVersion(row)
+      : t("connectionMonitor.unencrypted");
 const protocolLabel = (protocol: string) =>
   protocol.replace(/Server$/i, "").replace(/([a-z])([A-Z])/g, "$1 $2");
 const ipVersion = (ip: string | null) => (ip?.includes(":") ? "IPv6" : "IPv4");
