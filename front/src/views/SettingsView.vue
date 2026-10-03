@@ -20,6 +20,11 @@ import {
   ZOOM_MIN,
   ZOOM_MAX,
   ZOOM_STEP,
+  resolutionMode,
+  setResolutionMode,
+  displayInfo,
+  recommendedResolution,
+  RESOLUTION_PRESETS,
 } from "@/composables/useAppSettings";
 import type { LocaleType } from "@/i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -339,6 +344,64 @@ async function handleContactLink(link: ContactLink) {
       <div v-show="activeMenu === 'appearance'" class="settings-section">
         <h3 class="section-title">{{ t("settings.appearance") }}</h3>
         <div class="section-card">
+          <div class="display-info">
+            <div class="setting-label">{{ t("settings.currentDisplay") }}</div>
+            <dl class="display-details">
+              <div>
+                <dt>{{ t("settings.screenResolution") }}</dt>
+                <dd>
+                  {{ displayInfo.physicalWidth }} ×
+                  {{ displayInfo.physicalHeight
+                  }}<span v-if="!displayInfo.native">
+                    {{ t("settings.estimated") }}</span
+                  >
+                </dd>
+              </div>
+              <div>
+                <dt>{{ t("settings.displayScale") }}</dt>
+                <dd>{{ Math.round(displayInfo.pixelRatio * 100) }}%</dd>
+              </div>
+              <div>
+                <dt>{{ t("settings.windowSize") }}</dt>
+                <dd>
+                  {{ displayInfo.viewportWidth }} ×
+                  {{ displayInfo.viewportHeight }}
+                </dd>
+              </div>
+              <div>
+                <dt>{{ t("settings.recommendedResolution") }}</dt>
+                <dd>
+                  {{ recommendedResolution.width }} ×
+                  {{ recommendedResolution.height }}
+                </dd>
+              </div>
+            </dl>
+          </div>
+          <div class="setting-item resolution-item">
+            <div class="setting-info">
+              <div class="setting-label">{{ t("settings.resolution") }}</div>
+              <div class="setting-desc">{{ t("settings.resolutionHint") }}</div>
+            </div>
+            <div class="setting-control">
+              <el-select
+                :model-value="resolutionMode"
+                :aria-label="t('settings.resolution')"
+                @change="setResolutionMode"
+              >
+                <el-option value="auto" :label="t('settings.resolutionAuto')" />
+                <el-option
+                  v-for="preset in RESOLUTION_PRESETS"
+                  :key="preset.id"
+                  :value="preset.id"
+                  :label="`${preset.width} × ${preset.height}${preset.id === recommendedResolution.id ? ` (${t('settings.recommended')})` : ''}`"
+                />
+                <el-option
+                  value="custom"
+                  :label="t('settings.resolutionCustom')"
+                />
+              </el-select>
+            </div>
+          </div>
           <div class="setting-item">
             <div class="setting-info">
               <div class="setting-label">{{ t("settings.zoom") }}</div>
@@ -347,7 +410,8 @@ async function handleContactLink(link: ContactLink) {
             <div class="setting-control zoom-control">
               <span class="zoom-value">{{ zoomLevel }}%</span>
               <el-slider
-                v-model="zoomLevel"
+                :model-value="zoomLevel"
+                :aria-label="t('settings.zoom')"
                 :min="ZOOM_MIN"
                 :max="ZOOM_MAX"
                 :step="ZOOM_STEP"
@@ -571,7 +635,8 @@ async function handleContactLink(link: ContactLink) {
 .settings-container {
   display: flex;
   height: 600px;
-  max-height: calc(100vh - 120px);
+  max-height: calc(var(--app-viewport-height, 100vh) - 120px);
+  container-type: inline-size;
   background-color: var(--bg-main);
   border-radius: 12px;
   overflow: hidden;
@@ -839,6 +904,74 @@ async function handleContactLink(link: ContactLink) {
 .setting-control {
   flex: 1;
   min-width: 180px;
+}
+
+.display-info {
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.display-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+
+  dt {
+    color: var(--text-secondary);
+  }
+  dd {
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+  }
+}
+
+.resolution-item .el-select {
+  width: 100%;
+}
+
+@container (max-width: 700px) {
+  .settings-sidebar {
+    width: 150px;
+  }
+  .settings-content {
+    padding: 16px;
+  }
+  .setting-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .setting-control {
+    min-width: 0;
+  }
+  .storage-item-header {
+    flex-direction: column;
+  }
+  .storage-item-header-actions {
+    flex-wrap: wrap;
+  }
+  .contact-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 460px) {
+  .settings-sidebar {
+    width: 110px;
+  }
+  .section-card {
+    padding: 12px;
+  }
+  .display-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settings-sidebar :deep(.el-menu-item) {
+    padding: 0 8px;
+    margin: 2px 4px;
+  }
 }
 
 .zoom-control {

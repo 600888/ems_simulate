@@ -714,10 +714,11 @@ function openDatasetSettings() {
   publisherSettingsTab.value = "datasets";
   publisherSettings.value = true;
 }
+const pendingAdds = ref(0);
 const kind = ref<DataKind>("realtime"),
   loading = ref(false),
   saving = ref(false),
-  adding = ref(false),
+  adding = computed(() => pendingAdds.value > 0),
   ready = ref(false),
   dragging = ref(false);
 const dirty = ref(false),
@@ -1013,7 +1014,7 @@ async function load() {
   }
 }
 async function addNodes(incoming: UaSelection[]) {
-  if (adding.value || !ready.value || saving.value) return;
+  if (!ready.value || saving.value) return;
   const current = epoch,
     channel = props.channelId,
     target = kind.value;
@@ -1030,7 +1031,7 @@ async function addNodes(incoming: UaSelection[]) {
     openDatasetSettings();
     return;
   }
-  adding.value = true;
+  pendingAdds.value++;
   const accepted: UaSelection[] = [],
     messages: string[] = [];
   try {
@@ -1137,7 +1138,7 @@ async function addNodes(incoming: UaSelection[]) {
     if (additions.length)
       ElMessage.success(t("opcua.nodesAdded", { count: additions.length }));
   } finally {
-    if (current === epoch) adding.value = false;
+    pendingAdds.value--;
   }
 }
 function dragOver(event: DragEvent) {

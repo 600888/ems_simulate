@@ -246,7 +246,8 @@ function delay(ms: number) {
 <style scoped>
 .scl-import-wizard {
   height: calc(
-    100vh - var(--header-height) - var(--tags-height) - var(--footer-height)
+    var(--app-viewport-height, 100vh) - var(--header-height) -
+      var(--tags-height) - var(--footer-height)
   );
   box-sizing: border-box;
   display: flex;

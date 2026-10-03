@@ -1,9 +1,10 @@
 <template>
-  <div 
-    class="data-card" 
+  <div
+    class="data-card"
+    :title="`${label}: ${name}`"
     :class="[
       `status-${status === null ? 'info' : status ? 'success' : 'danger'}`,
-      { 'has-status': status !== null }
+      { 'has-status': status !== null },
     ]"
   >
     <div class="card-inner">
@@ -13,7 +14,7 @@
         </el-icon>
         <span v-if="status === true" class="status-indicator"></span>
       </div>
-      
+
       <div class="content-section">
         <div class="label-row">
           <span class="card-label">{{ label }}</span>
@@ -27,10 +28,16 @@
 </template>
 
 <script lang="ts" setup>
-import { 
-  Monitor, Connection, Cpu, Link, 
-  Setting, Operation, Connection as PortIcon,
-  VideoPlay, Collection
+import {
+  Monitor,
+  Connection,
+  Cpu,
+  Link,
+  Setting,
+  Operation,
+  Connection as PortIcon,
+  VideoPlay,
+  Collection,
 } from "@element-plus/icons-vue";
 
 const props = defineProps({
@@ -40,21 +47,21 @@ const props = defineProps({
   /**
    * Icon type: 'address' | 'port' | 'serial' | 'baud' | 'comm' | 'device-status' | 'sim-status'
    */
-  iconType: { type: String, default: '' },
+  iconType: { type: String, default: "" },
 });
 
 const getIconByLabel = (label: string) => {
   // If explicit iconType is provided, use it
   if (props.iconType) {
     const iconMap: Record<string, any> = {
-      'address': Connection,
-      'port': PortIcon,
-      'serial': Link,
-      'baud': Operation,
-      'comm': Cpu,
-      'device-status': Monitor,
-      'sim-status': VideoPlay,
-      'model': Collection,
+      address: Connection,
+      port: PortIcon,
+      serial: Link,
+      baud: Operation,
+      comm: Cpu,
+      "device-status": Monitor,
+      "sim-status": VideoPlay,
+      model: Collection,
     };
     return iconMap[props.iconType] || Setting;
   }
@@ -79,8 +86,10 @@ const getIconByLabel = (label: string) => {
     transform: translateY(-2px);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
     border-color: var(--color-primary);
-    
-    .feature-icon { color: var(--color-primary); }
+
+    .feature-icon {
+      color: var(--color-primary);
+    }
   }
 }
 
@@ -160,12 +169,16 @@ const getIconByLabel = (label: string) => {
 
 .status-success {
   border-left: 4px solid #10b981;
-  .card-value { color: #10b981; }
+  .card-value {
+    color: #10b981;
+  }
 }
 
 .status-danger {
   border-left: 4px solid #ef4444;
-  .card-value { color: #ef4444; }
+  .card-value {
+    color: #ef4444;
+  }
 }
 
 .status-info {
@@ -174,8 +187,12 @@ const getIconByLabel = (label: string) => {
 
 /* 深色模式修正 */
 body.theme-dark {
-  .icon-section { background: rgba(255, 255, 255, 0.05); }
-  .status-indicator { border-color: #1e293b; }
+  .icon-section {
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .status-indicator {
+    border-color: #1e293b;
+  }
 }
 
 @keyframes breathing {

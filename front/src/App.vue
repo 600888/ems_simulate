@@ -16,7 +16,7 @@ import { useRoute, useRouter } from "vue-router";
 import {
   currentLocale,
   setLocale,
-  refreshZoomLayout,
+  initializeDisplaySettings,
 } from "@/composables/useAppSettings";
 import { visitedViews } from "@/store/tagsView";
 import { getLogErrorCount, resetLogErrorCount } from "@/api/logApi";
@@ -28,6 +28,7 @@ const settingsVisible = ref(false);
 const logVisible = ref(false);
 const logErrorCount = ref(0);
 let errorCountTimer: number | null = null;
+let stopDisplaySettings: (() => void) | undefined;
 
 // 应用持久化的语言设置
 const { locale: i18nLocale, t } = useI18n();
@@ -56,7 +57,7 @@ const openLogs = () => {
 };
 
 onMounted(async () => {
-  refreshZoomLayout();
+  stopDisplaySettings = initializeDisplaySettings();
   if (isStandaloneView.value) return;
 
   if (isTauri()) {
@@ -85,6 +86,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  stopDisplaySettings?.();
   if (errorCountTimer) {
     clearInterval(errorCountTimer);
     errorCountTimer = null;
@@ -169,8 +171,8 @@ async function fetchLogErrorCount() {
 <style lang="scss">
 .theme-wrapper {
   container-type: inline-size;
-  height: 100vh;
-  width: 100vw;
+  height: var(--app-viewport-height, 100vh);
+  width: var(--app-viewport-width, 100vw);
   overflow: hidden;
   background-color: var(--bg-main);
   transition: background-color 0.3s ease;
@@ -303,7 +305,7 @@ async function fetchLogErrorCount() {
 <!-- 设置弹框：去除默认内边距 -->
 <style lang="scss">
 .settings-dialog {
-  max-width: calc(100vw - 32px);
+  max-width: calc(var(--app-viewport-width, 100vw) - 32px);
 
   .el-dialog__body {
     padding: 0;

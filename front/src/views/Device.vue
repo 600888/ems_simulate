@@ -1129,10 +1129,32 @@ watch(
   transition: all 0.3s ease;
 }
 
-/* 第一行：保持默认 inline 流式布局 */
+/* 信息卡片优先收缩，操作按钮保持在同一行；极窄窗口可横向滚动。 */
 .row-device-info {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+
+  .data-card {
+    flex: 1 1 190px;
+    min-width: 140px;
+  }
+
+  > .button,
+  .tooltip-wrapper {
+    flex-shrink: 0;
+  }
+
+  :deep(.card-value) {
+    display: block;
+  }
+
+  :deep(.card-inner) {
+    padding: 0 12px;
+  }
+  :deep(.icon-section) {
+    margin-right: 8px;
+  }
 }
 
 /* 第二行：模型 + 模拟双栏布局 */
@@ -1149,26 +1171,45 @@ watch(
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 14px 20px;
+    padding: 14px 16px;
     flex: 1;
   }
 
   .model-section {
     min-width: 0;
-    flex: 3 1 0;
+    flex: 3 1 auto;
   }
 
   .sim-section {
     min-width: 0;
-    flex: 2 1 0;
+    flex: 2 1 auto;
   }
 
   .model-controls,
   .sim-controls {
     display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 2px 0;
+    gap: 8px;
     align-items: center;
+
+    .data-card {
+      min-width: 170px;
+      flex-shrink: 0;
+    }
+
+    .button,
+    .tooltip-wrapper {
+      flex-shrink: 0;
+    }
+
+    :deep(.card-inner) {
+      padding: 0 12px;
+    }
+    :deep(.icon-section) {
+      margin-right: 8px;
+    }
   }
 
   .model-controls {
@@ -1361,6 +1402,10 @@ watch(
   .row-device-info {
     flex-direction: column;
     align-items: stretch;
+
+    .data-card {
+      flex: 0 0 auto;
+    }
   }
   .row-model-sim {
     flex-direction: column;

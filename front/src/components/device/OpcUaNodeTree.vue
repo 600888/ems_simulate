@@ -78,6 +78,7 @@ import {
 } from "@/api/opcuaApi";
 import { DRAG_MIME, encodeUaDrag, type UaSelection } from "@/utils/opcuaPubSub";
 import type Node from "element-plus/es/components/tree/src/model/node";
+import type { CheckedInfo } from "element-plus/es/components/tree/src/tree.type";
 const props = defineProps<{
   channelId: number;
   role: "client" | "server";
@@ -95,7 +96,7 @@ type TreeNode = UaSelection & {
 };
 const tree = ref<InstanceType<typeof ElTree>>(),
   search = ref(""),
-  checked = ref<UaSelection[]>([]);
+  checked = ref<TreeNode[]>([]);
 const generation = ref(0),
   loading = ref(false),
   error = ref("");
@@ -112,10 +113,10 @@ function filter(value: string, data: Record<string, any>) {
       .includes(value.toLowerCase())
   );
 }
-function onCheck() {
-  checked.value = ((tree.value?.getCheckedNodes() as TreeNode[]) || []).filter(
-    (n) => !n.more,
-  );
+function onCheck(node: TreeNode, selection: CheckedInfo) {
+  checked.value = (selection.checkedNodes as TreeNode[]).filter((n) => !n.more);
+  if (!node.more && checked.value.some((n) => n.key === node.key))
+    emit("add", [node]);
 }
 function drag(event: DragEvent, node: TreeNode) {
   if (!event.dataTransfer || node.more) return;

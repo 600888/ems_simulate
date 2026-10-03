@@ -328,8 +328,8 @@ onUnmounted(() => {
 .log-layout {
   display: flex;
   gap: 16px;
-  height: 68vh;
-  max-height: calc(90vh - 72px);
+  height: calc(var(--app-viewport-height, 100vh) * 0.68);
+  max-height: calc(var(--app-viewport-height, 100vh) * 0.9 - 72px);
   min-height: 0;
   overflow: hidden;
 }

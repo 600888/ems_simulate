@@ -1518,12 +1518,26 @@ defineExpose({
   align-items: center;
   margin-bottom: 16px;
   gap: 12px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 4px 0;
 }
 
 .search-left {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1 0 max-content;
+
+  > * {
+    flex-shrink: 0;
+  }
+  .modern-input {
+    width: 220px;
+  }
+  :deep(.el-button + .el-button) {
+    margin-left: 0;
+  }
 }
 
 .modern-btn {

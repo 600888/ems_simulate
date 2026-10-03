@@ -15,6 +15,11 @@ body,
   color: var(--text-primary);
 }
 
+/* 为浮层提供有尺寸的定位父级，定位库可据此换算根节点缩放后的坐标。 */
+body {
+  position: relative;
+}
+
 /* 全局圆角工程与细节优化 */
 :root {
   --el-border-radius-base: 8px;
@@ -113,14 +118,14 @@ body.theme-dark {
 
 /*
  * 全局弹框布局
- * Element Plus 默认将弹框 teleport 到 body。应用主体可能被整体缩放且多处使用
- * overflow:hidden，因此遮罩和弹框必须独立固定到视口，内容区自行滚动。
+ * Element Plus 默认将弹框 teleport 到 body。根节点统一缩放后，遮罩和弹框
+ * 使用补偿后的逻辑视口尺寸，内容区自行滚动。
  */
 body > .el-overlay {
   position: fixed !important;
   inset: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
+  width: var(--app-viewport-width, 100vw) !important;
+  height: var(--app-viewport-height, 100vh) !important;
   overflow: auto !important;
 }
 
@@ -129,15 +134,15 @@ body > .el-overlay {
   align-items: flex-start;
   justify-content: center;
   min-height: 100%;
-  padding: 4vh 16px;
+  padding: calc(var(--app-viewport-height, 100vh) * 0.04) 16px;
   overflow: auto;
 }
 
 .el-overlay-dialog .el-dialog {
   display: flex;
   flex-direction: column;
-  max-width: calc(100vw - 32px);
-  max-height: 92vh;
+  max-width: calc(var(--app-viewport-width, 100vw) - 32px);
+  max-height: calc(var(--app-viewport-height, 100vh) * 0.92);
   margin: 0 auto !important;
   border-radius: 16px !important;
   overflow: hidden;
@@ -157,7 +162,7 @@ body > .el-overlay {
 /* MessageBox 同样限制在当前视口内。 */
 .el-message-box {
   width: var(--el-messagebox-width, 420px);
-  max-width: calc(100vw - 32px);
+  max-width: calc(var(--app-viewport-width, 100vw) - 32px);
 }
 
 /* 滚动条美化 */
@@ -182,7 +187,7 @@ body > .el-overlay {
 /* 对话框在窄屏下自动缩小 */
 body.layout-small {
   .el-overlay-dialog .el-dialog {
-    max-height: 92vh;
+    max-height: calc(var(--app-viewport-height, 100vh) * 0.92);
 
     .el-dialog__body {
       min-height: 0;
