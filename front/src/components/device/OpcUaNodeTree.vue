@@ -76,7 +76,12 @@ import {
   browseOpcUaServer,
   listOpcUaVariables,
 } from "@/api/opcuaApi";
-import { DRAG_MIME, encodeUaDrag, type UaSelection } from "@/utils/opcuaPubSub";
+import {
+  DRAG_MIME,
+  encodeUaDrag,
+  nodeKey,
+  type UaSelection,
+} from "@/utils/opcuaPubSub";
 import type Node from "element-plus/es/components/tree/src/model/node";
 import type { CheckedInfo } from "element-plus/es/components/tree/src/tree.type";
 const props = defineProps<{
@@ -84,8 +89,13 @@ const props = defineProps<{
   role: "client" | "server";
   running: boolean;
   revision?: number;
+  selectedNodes: UaSelection[];
+  selectionRevision?: number;
 }>();
-const emit = defineEmits<{ add: [nodes: UaSelection[]] }>();
+const emit = defineEmits<{
+  add: [nodes: UaSelection[]];
+  "selection-change": [node: UaSelection, checked: boolean];
+}>();
 const { t } = useI18n();
 type TreeNode = UaSelection & {
   key: string;
@@ -100,8 +110,17 @@ const tree = ref<InstanceType<typeof ElTree>>(),
 const generation = ref(0),
   loading = ref(false),
   error = ref("");
+const loadedNodes = new Map<string, TreeNode>();
+function syncChecked() {
+  const selected = new Set(props.selectedNodes.map((n) => nodeKey(n.node_id)));
+  checked.value = [...loadedNodes.values()].filter(
+    (n) => !n.more && selected.has(nodeKey(n.node_id)),
+  );
+  tree.value?.setCheckedKeys(checked.value.map((n) => n.key));
+}
 function refresh() {
   generation.value++;
+  loadedNodes.clear();
   checked.value = [];
   error.value = "";
 }
@@ -115,8 +134,15 @@ function filter(value: string, data: Record<string, any>) {
 }
 function onCheck(node: TreeNode, selection: CheckedInfo) {
   checked.value = (selection.checkedNodes as TreeNode[]).filter((n) => !n.more);
-  if (!node.more && checked.value.some((n) => n.key === node.key))
-    emit("add", [node]);
+  if (node.more) {
+    syncChecked();
+    return;
+  }
+  emit(
+    "selection-change",
+    node,
+    checked.value.some((n) => n.key === node.key),
+  );
 }
 function drag(event: DragEvent, node: TreeNode) {
   if (!event.dataTransfer || node.more) return;
@@ -186,9 +212,16 @@ async function loadChildren(node: Node, resolve: (nodes: TreeNode[]) => void) {
             ]
           : [];
     } else children = await page(node.data.node_id, node.data.key);
-    resolve(epoch === generation.value ? children : []);
+    if (epoch !== generation.value) {
+      resolve([]);
+      return;
+    }
+    children.forEach((n) => loadedNodes.set(n.key, n));
+    resolve(children);
     await nextTick();
+    if (epoch !== generation.value) return;
     tree.value?.filter(search.value);
+    syncChecked();
   } catch (e) {
     if (epoch === generation.value)
       error.value = e instanceof Error ? e.message : String(e);
@@ -204,9 +237,15 @@ async function loadMore(data: TreeNode) {
     const nodes = await page(data.node_id, data.parentKey!, data.offset);
     if (epoch !== generation.value) return;
     tree.value?.remove(data);
-    nodes.forEach((n) => tree.value?.append(n, data.parentKey!));
+    loadedNodes.delete(data.key);
+    nodes.forEach((n) => {
+      loadedNodes.set(n.key, n);
+      tree.value?.append(n, data.parentKey!);
+    });
     await nextTick();
+    if (epoch !== generation.value) return;
     tree.value?.filter(search.value);
+    syncChecked();
   } catch (e) {
     if (epoch === generation.value)
       error.value = e instanceof Error ? e.message : String(e);
@@ -216,6 +255,11 @@ async function loadMore(data: TreeNode) {
 }
 watch(search, (value) => tree.value?.filter(value));
 watch(() => [props.channelId, props.running, props.revision], refresh);
+watch(() => [props.selectedNodes, props.selectionRevision], syncChecked, {
+  deep: true,
+  flush: "post",
+});
+watch(tree, syncChecked, { flush: "post" });
 </script>
 <style scoped>
 .ua-node-tree {

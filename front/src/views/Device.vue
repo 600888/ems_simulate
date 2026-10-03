@@ -1129,32 +1129,10 @@ watch(
   transition: all 0.3s ease;
 }
 
-/* 信息卡片优先收缩，操作按钮保持在同一行；极窄窗口可横向滚动。 */
+/* 第一行：保持原有卡片宽度和间距，空间不足时换行。 */
 .row-device-info {
   display: flex;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-
-  .data-card {
-    flex: 1 1 190px;
-    min-width: 140px;
-  }
-
-  > .button,
-  .tooltip-wrapper {
-    flex-shrink: 0;
-  }
-
-  :deep(.card-value) {
-    display: block;
-  }
-
-  :deep(.card-inner) {
-    padding: 0 12px;
-  }
-  :deep(.icon-section) {
-    margin-right: 8px;
-  }
+  flex-wrap: wrap;
 }
 
 /* 第二行：模型 + 模拟双栏布局 */
@@ -1402,10 +1380,6 @@ watch(
   .row-device-info {
     flex-direction: column;
     align-items: stretch;
-
-    .data-card {
-      flex: 0 0 auto;
-    }
   }
   .row-model-sim {
     flex-direction: column;

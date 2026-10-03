@@ -42,7 +42,10 @@
         :role="role"
         :running="running"
         :revision="revision"
+        :selected-nodes="selectedNodes"
+        :selection-revision="selectionRevision"
         @add="addNodes"
+        @selection-change="onTreeSelectionChange"
       />
       <main class="pubsub-content">
         <div
@@ -324,11 +327,7 @@
               v-for="node in historyNodes"
               :key="node.node_id"
               closable
-              @close="
-                historyNodes = historyNodes.filter(
-                  (n) => n.node_id !== node.node_id,
-                )
-              "
+              @close="removeHistoryNode(node.node_id)"
               >{{ node.browse_name }}</el-tag
             ><span v-if="!historyNodes.length" class="ua-muted">{{
               t("opcua.dragEmpty")
@@ -661,7 +660,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import { showError } from "@/api/http";
@@ -787,6 +786,65 @@ const eventNodes = computed(() =>
     : eventsConfig.value.source_nodes
   ).map((id) => lookup(id, "Object")),
 );
+const pendingSelections = shallowRef<
+  { context: object; nodes: UaSelection[] }[]
+>([]);
+const selectedNodes = computed(() => {
+  const configured =
+    kind.value === "history"
+      ? historyNodes.value
+      : kind.value === "events"
+        ? eventNodes.value
+        : realtimeNodes.value;
+  const context = selectionContext(kind.value);
+  // Keep pending checks visible while other nodes finish capability validation.
+  const pending = pendingSelections.value
+    .filter((request) => request.context === context)
+    .flatMap((request) => request.nodes);
+  return uniqueSelections(configured, pending);
+});
+const selectionRevision = ref(0);
+const historySelectionContext = {};
+const removalVersions = new WeakMap<object, Map<string, number>>();
+function selectionContext(target: DataKind): object | undefined {
+  if (target === "history") return historySelectionContext;
+  if (props.role === "server")
+    return target === "events" ? eventWriter.value : variableWriter.value;
+  return target === "events" ? eventsConfig.value : currentSubscription.value;
+}
+function versionsFor(context: object) {
+  let versions = removalVersions.get(context);
+  if (!versions) {
+    versions = new Map<string, number>();
+    removalVersions.set(context, versions);
+  }
+  return versions;
+}
+function cancelPendingSelection(id: string, target: DataKind) {
+  const context = selectionContext(target);
+  if (!context) return;
+  const versions = versionsFor(context),
+    key = nodeKey(id);
+  versions.set(key, (versions.get(key) || 0) + 1);
+  pendingSelections.value.forEach((request) => {
+    if (request.context === context)
+      request.nodes = request.nodes.filter(
+        (node) => nodeKey(node.node_id) !== key,
+      );
+  });
+  pendingSelections.value = [...pendingSelections.value];
+}
+async function onTreeSelectionChange(node: UaSelection, checked: boolean) {
+  try {
+    if (checked) await addNodes([node]);
+    else if (kind.value === "history") removeHistoryNode(node.node_id);
+    else if (kind.value === "events") removeEventSource(node.node_id);
+    else removeRealtime(node.node_id);
+  } finally {
+    // Restore the authoritative draft selection even if validation rejects a node.
+    selectionRevision.value++;
+  }
+}
 const publisherSettings = ref(false),
   subscriptionSettings = ref(false),
   monitorSettings = ref(false),
@@ -1031,6 +1089,16 @@ async function addNodes(incoming: UaSelection[]) {
     openDatasetSettings();
     return;
   }
+  const context = selectionContext(target)!;
+  const versions = versionsFor(context);
+  const requestedVersions = new Map(
+    incoming.map((node) => {
+      const key = nodeKey(node.node_id);
+      return [key, versions.get(key) || 0];
+    }),
+  );
+  const request = { context, nodes: incoming };
+  pendingSelections.value = [...pendingSelections.value, request];
   pendingAdds.value++;
   const accepted: UaSelection[] = [],
     messages: string[] = [];
@@ -1098,7 +1166,13 @@ async function addNodes(incoming: UaSelection[]) {
               ? writer!.fields.map((f) => f.node_id)
               : subscription!.items.map((i) => i.node_id)
             ).map((id) => lookup(id));
-    const combined = uniqueSelections(existing, accepted),
+    // An uncheck or right-side removal must win over an earlier capability read.
+    const active = accepted.filter(
+      (node) =>
+        (versions.get(node.node_id) || 0) ===
+        requestedVersions.get(node.node_id),
+    );
+    const combined = uniqueSelections(existing, active),
       limit = target === "history" ? 50 : target === "events" ? 100 : 1000;
     if (combined.length > limit)
       messages.push(t("opcua.nodeLimit", { count: limit }));
@@ -1132,12 +1206,15 @@ async function addNodes(incoming: UaSelection[]) {
       );
       dirty.value = !!additions.length || dirty.value;
     }
-    if (accepted.length && !additions.length)
+    if (active.length && !additions.length)
       messages.push(t("opcua.nodesAlreadyAdded"));
     feedback.value = messages.slice(0, 20);
     if (additions.length)
       ElMessage.success(t("opcua.nodesAdded", { count: additions.length }));
   } finally {
+    pendingSelections.value = pendingSelections.value.filter(
+      (entry) => entry !== request,
+    );
     pendingAdds.value--;
   }
 }
@@ -1180,24 +1257,32 @@ function deleteSubscription() {
   dirty.value = true;
 }
 function removeRealtime(id: string) {
+  cancelPendingSelection(id, "realtime");
   if (props.role === "server" && variableWriter.value)
     variableWriter.value.fields = variableWriter.value.fields.filter(
-      (f) => f.node_id !== id,
+      (f) => nodeKey(f.node_id) !== nodeKey(id),
     );
   else if (currentSubscription.value)
     currentSubscription.value.items = currentSubscription.value.items.filter(
-      (i) => i.node_id !== id,
+      (i) => nodeKey(i.node_id) !== nodeKey(id),
     );
   dirty.value = true;
 }
+function removeHistoryNode(id: string) {
+  cancelPendingSelection(id, "history");
+  historyNodes.value = historyNodes.value.filter(
+    (node) => nodeKey(node.node_id) !== nodeKey(id),
+  );
+}
 function removeEventSource(id: string) {
+  cancelPendingSelection(id, "events");
   if (props.role === "server" && eventWriter.value)
     eventWriter.value.source_nodes = eventWriter.value.source_nodes.filter(
-      (n) => n !== id,
+      (n) => nodeKey(n) !== nodeKey(id),
     );
   else
     eventsConfig.value.source_nodes = eventsConfig.value.source_nodes.filter(
-      (n) => n !== id,
+      (n) => nodeKey(n) !== nodeKey(id),
     );
   eventsDirty.value = true;
 }
