@@ -56,6 +56,40 @@ export interface OpcUaObjectNode {
   node_class: string;
 }
 
+export interface OpcUaDiscoveredVariable extends OpcUaObjectNode {
+  namespace_uri: string;
+  namespace_index: number;
+  data_type: string;
+  readable: boolean;
+  writable: boolean;
+  value_rank: number;
+}
+
+export interface OpcUaDiscoveryResult {
+  nodes: OpcUaDiscoveredVariable[];
+  visited: number;
+  errors: { node_id: string; message: string }[];
+  truncated: boolean;
+  reason: "max_nodes" | "max_depth" | "max_visited" | "timeout" | null;
+}
+
+export const discoverOpcUaNodes = (
+  channel_id: number,
+  options: {
+    node_id: string;
+    max_depth: number;
+    max_nodes: number;
+    timeout_s: number;
+    include_standard: boolean;
+  },
+): Promise<OpcUaDiscoveryResult> =>
+  requestApi(
+    "/api/opcua/nodes/discover",
+    "post",
+    { channel_id, ...options },
+    (options.timeout_s + 10) * 1000,
+  );
+
 export interface OpcUaNodeDetails extends OpcUaObjectNode {
   description: string | null;
   namespace_uri: string;

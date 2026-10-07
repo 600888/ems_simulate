@@ -114,6 +114,7 @@ declare module 'vue' {
     OpcUaAddressSpace: typeof import('./src/components/device/OpcUaAddressSpace.vue')['default']
     OpcUaDeviceSecurityConfig: typeof import('./src/components/device/OpcUaDeviceSecurityConfig.vue')['default']
     OpcUaDiagnostics: typeof import('./src/components/device/OpcUaDiagnostics.vue')['default']
+    OpcUaDiscoveryDialog: typeof import('./src/components/device/OpcUaDiscoveryDialog.vue')['default']
     OpcUaEndpointParams: typeof import('./src/components/device/OpcUaEndpointParams.vue')['default']
     OpcUaEvents: typeof import('./src/components/device/OpcUaEvents.vue')['default']
     OpcUaHistory: typeof import('./src/components/device/OpcUaHistory.vue')['default']

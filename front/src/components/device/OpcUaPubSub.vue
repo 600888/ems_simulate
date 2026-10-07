@@ -24,6 +24,12 @@
       <el-button v-else @click="subscriptionSettings = true">{{
         t("opcua.subscriptionSettings")
       }}</el-button>
+      <el-button
+        v-if="role === 'client' && kind === 'realtime'"
+        :disabled="!running || !ready || saving || adding"
+        @click="discoveryDialog = true"
+        >{{ t("opcua.autoDiscover") }}</el-button
+      >
     </OpcUaPageHeading>
     <el-tabs v-model="kind" class="data-tabs">
       <el-tab-pane :label="t('opcua.realtimeData')" name="realtime" />
@@ -648,6 +654,13 @@
         }}</el-button></template
       >
     </el-dialog>
+    <OpcUaDiscoveryDialog
+      v-if="role === 'client'"
+      v-model="discoveryDialog"
+      :channel-id="channelId"
+      :running="running"
+      @add="addDiscoveredNodes"
+    />
     <OpcUaPublisherSettings
       :visible="publisherSettings"
       :config="publisher"
@@ -674,6 +687,7 @@ import {
   emitOpcUaEvent,
   type OpcUaCapability,
   type OpcUaStreamEvent,
+  type OpcUaDiscoveredVariable,
 } from "@/api/opcuaApi";
 import {
   DRAG_MIME,
@@ -688,6 +702,7 @@ import {
   nodeKey,
   rejectionReason,
   uniqueSelections,
+  mergeDiscoveredMonitors,
   type DataKind,
   type MonitorItem,
   type UaPublisher,
@@ -699,6 +714,7 @@ import OpcUaNodeTree from "./OpcUaNodeTree.vue";
 import OpcUaHistoryWorkspace from "./OpcUaHistoryWorkspace.vue";
 import OpcUaPublisherSettings from "./OpcUaPublisherSettings.vue";
 import OpcUaTrendPlot from "./OpcUaTrendPlot.vue";
+import OpcUaDiscoveryDialog from "./OpcUaDiscoveryDialog.vue";
 const props = defineProps<{
   channelId: number;
   role: "client" | "server";
@@ -708,6 +724,7 @@ const props = defineProps<{
 }>();
 const { t } = useI18n();
 const realtimeView = ref("table");
+const discoveryDialog = ref(false);
 const publisherSettingsTab = ref<"publisher" | "datasets">("publisher");
 function openDatasetSettings() {
   publisherSettingsTab.value = "datasets";
@@ -1070,6 +1087,24 @@ async function load() {
   } finally {
     if (current === epoch) loading.value = false;
   }
+}
+function addDiscoveredNodes(incoming: OpcUaDiscoveredVariable[]) {
+  if (!ready.value || saving.value || props.role !== "client" || !props.running)
+    return;
+  if (!currentSubscription.value) newSubscription();
+  const subscription = currentSubscription.value!;
+  const merged = mergeDiscoveredMonitors(subscription.items, incoming);
+  subscription.items = merged.items;
+  merged.added.forEach((node) => {
+    nodeCache.value[nodeKey(node.node_id)] = node;
+  });
+  dirty.value = !!merged.added.length || dirty.value;
+  selectionRevision.value++;
+  kind.value = "realtime";
+  if (merged.overflow) ElMessage.warning(t("opcua.nodeLimit", { count: 1000 }));
+  if (merged.added.length)
+    ElMessage.success(t("opcua.nodesAdded", { count: merged.added.length }));
+  else ElMessage.warning(t("opcua.nodesAlreadyAdded"));
 }
 async function addNodes(incoming: UaSelection[]) {
   if (!ready.value || saving.value) return;
@@ -1497,6 +1532,7 @@ watch(
 watch(
   () => props.channelId,
   () => {
+    discoveryDialog.value = false;
     cursor = 0;
     records.value = [];
     nodeCache.value = {};

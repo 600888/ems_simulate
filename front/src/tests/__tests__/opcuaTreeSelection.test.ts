@@ -177,6 +177,31 @@ describe("OPC UA tree checkbox transfers", () => {
   });
   afterEach(() => cleanup.splice(0).forEach((dispose) => dispose()));
 
+  it("adds discovered variables to the current client draft without saving or enabling the subscription", async () => {
+    const { panel, panelProps } = await workspace("client", true);
+    const node = {
+      ...variable,
+      namespace_uri: "urn:plant",
+      namespace_index: 2,
+      readable: true,
+      value_rank: -1,
+    };
+    panel.addDiscoveredNodes([node, node]);
+    const subscription = panel.currentSubscription.value;
+    expect(subscription.items).toHaveLength(1);
+    expect(subscription.items[0].namespace_uri).toBe("urn:plant");
+    expect(subscription.enabled).toBe(false);
+    expect(panel.dirty.value).toBe(true);
+    expect(saveOpcUaFeature).not.toHaveBeenCalled();
+    subscription.items[0].sampling_interval_ms = 1200;
+    panel.addDiscoveredNodes([node]);
+    expect(subscription.items).toHaveLength(1);
+    expect(subscription.items[0].sampling_interval_ms).toBe(1200);
+    panelProps.running = false;
+    panel.addDiscoveredNodes([{ ...node, node_id: "ns=2;s=after-disconnect" }]);
+    expect(subscription.items).toHaveLength(1);
+  });
+
   it.each(["server", "client"] as const)(
     "adds a checked point to the %s draft without the add button",
     async (role) => {

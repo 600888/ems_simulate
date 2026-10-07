@@ -53,6 +53,9 @@ class OpcUaClient(UaFacade):
     async def read(self, node_id: str) -> dict[str, Any]:
         return await self._core.read(node_id)
 
+    async def discover_nodes(self, node_id: str = "i=85", **options) -> dict:
+        return await self._core.discover_nodes(node_id, **options)
+
     async def node_capabilities(self, node_id: str) -> dict:
         return await self._core.node_capabilities(node_id)
 

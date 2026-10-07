@@ -5,6 +5,8 @@ import {
   nodeKey,
   rejectionReason,
   uniqueSelections,
+  mergeDiscoveredMonitors,
+  defaultMonitor,
   type UaSelection,
 } from "@/utils/opcuaPubSub";
 const variable: UaSelection = {
@@ -14,6 +16,40 @@ const variable: UaSelection = {
   history_read: true,
 };
 describe("OPC UA workspace node transfers", () => {
+  it("merges discovery without changing existing sampling settings or duplicating namespace identities", () => {
+    const existing = {
+      ...defaultMonitor("ns=2;s=power"),
+      namespace_uri: "urn:plant",
+      sampling_interval_ms: 1200,
+    };
+    const discovered = {
+      ...variable,
+      namespace_uri: "urn:plant",
+      namespace_index: 4,
+      readable: true,
+      writable: false,
+      value_rank: -1,
+      data_type: "Double",
+    };
+    const next = { ...discovered, node_id: "ns=4;s=next" };
+    const merged = mergeDiscoveredMonitors(
+      [existing],
+      [{ ...discovered, node_id: "ns=4;s=power" }, next, next],
+    );
+    expect(merged.items).toHaveLength(2);
+    expect(merged.items[0]).toBe(existing);
+    expect(merged.items[0].sampling_interval_ms).toBe(1200);
+    expect(merged.items[1].namespace_uri).toBe("urn:plant");
+    expect(merged.added).toEqual([next]);
+    expect(
+      mergeDiscoveredMonitors([defaultMonitor(variable.node_id)], [discovered])
+        .added,
+    ).toEqual([]);
+    expect(mergeDiscoveredMonitors([existing], [next], 1).overflow).toBe(true);
+    expect(
+      mergeDiscoveredMonitors([], [{ ...next, readable: false }]).items,
+    ).toEqual([]);
+  });
   it("isolates devices and validates untrusted drag data", () => {
     expect(decodeUaDrag(encodeUaDrag(3, [variable]), 3)[0].node_id).toBe(
       variable.node_id,

@@ -1,4 +1,21 @@
 export const opcuaZhCN = {
+  autoDiscover: "自动发现变量",
+  discoveryHint:
+    "递归发现远端可读变量，勾选后加入当前订阅草稿；保存或开始订阅后生效。",
+  discoveryDepth: "最大递归深度",
+  discoveryLimit: "最多发现变量数",
+  discoveryTimeout: "发现超时（秒）",
+  discoveryStandard: "包含标准命名空间及 Server 诊断节点",
+  discoverySummary: "已访问 {visited} 个节点，发现 {count} 个可读变量",
+  discoveryPartial:
+    "发现结果不完整：{reason}。可缩小起始范围或调整限制后重试。",
+  discoveryReason_max_nodes: "达到变量数量上限",
+  discoveryReason_max_depth: "达到递归深度上限",
+  discoveryReason_max_visited: "达到 10000 个访问节点上限",
+  discoveryReason_timeout: "发现超时",
+  discoveryErrors: "部分节点读取失败（最多展示 100 条，当前 {count} 条）",
+  discoveryErrorDetails: "节点失败详情",
+  discoveryAdd: "加入订阅草稿（{count}）",
   plotZoomIn: "放大",
   plotPan: "平移",
   plotSelect: "框选放大",
@@ -442,6 +459,23 @@ export const opcuaZhCN = {
 };
 
 export const opcuaEnUS: Record<keyof typeof opcuaZhCN, string> = {
+  autoDiscover: "Discover variables",
+  discoveryHint:
+    "Recursively discover readable remote variables and add selected nodes to the current subscription draft. Save or start the subscription to apply.",
+  discoveryDepth: "Maximum depth",
+  discoveryLimit: "Maximum variables",
+  discoveryTimeout: "Discovery timeout (seconds)",
+  discoveryStandard: "Include standard namespace and Server diagnostics",
+  discoverySummary: "Visited {visited} nodes, found {count} readable variables",
+  discoveryPartial:
+    "Incomplete results: {reason}. Narrow the root or adjust limits and retry.",
+  discoveryReason_max_nodes: "variable limit reached",
+  discoveryReason_max_depth: "depth limit reached",
+  discoveryReason_max_visited: "10000 visited node limit reached",
+  discoveryReason_timeout: "discovery timed out",
+  discoveryErrors: "Some nodes could not be read (showing {count}, up to 100)",
+  discoveryErrorDetails: "Node error details",
+  discoveryAdd: "Add to subscription draft ({count})",
   plotZoomIn: "Zoom in",
   plotPan: "Pan",
   plotSelect: "Box zoom",

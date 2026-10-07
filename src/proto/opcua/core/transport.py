@@ -53,6 +53,26 @@ async def _node_capabilities(node) -> dict:
 async def _browse_page(node, limit: int, offset: int) -> dict[str, Any]:
     if not 1 <= limit <= 500 or not 0 <= offset <= 100000:
         raise ValueError("浏览分页参数超出范围")
+    references = await _browse_references(node)
+    result = [
+        {
+            "node_id": reference.NodeId.to_string(),
+            "browse_name": reference.BrowseName.Name,
+            "display_name": reference.DisplayName.Text,
+            "node_class": reference.NodeClass.name,
+        }
+        for reference in references[offset : offset + limit]
+    ]
+    return {
+        "nodes": result,
+        "total": len(references),
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(result) < len(references),
+    }
+
+
+async def _browse_references(node) -> list:
     session = node.session
     description = ua.BrowseDescription(
         NodeId=node.nodeid,
@@ -97,23 +117,7 @@ async def _browse_page(node, limit: int, offset: int) -> dict[str, Any]:
                             ReleaseContinuationPoints=True,
                         )
                     )
-    result = []
-    for reference in references[offset : offset + limit]:
-        result.append(
-            {
-                "node_id": reference.NodeId.to_string(),
-                "browse_name": reference.BrowseName.Name,
-                "display_name": reference.DisplayName.Text,
-                "node_class": reference.NodeClass.name,
-            }
-        )
-    return {
-        "nodes": result,
-        "total": len(references),
-        "offset": offset,
-        "limit": limit,
-        "has_more": offset + len(result) < len(references),
-    }
+    return references
 
 
 async def discover_endpoints(endpoint_url: str) -> list[dict]:
@@ -388,6 +392,74 @@ class UaClientCore:
     @observed("Browse")
     async def browse_page(self, node_id: str = "i=85", limit: int = 100, offset: int = 0) -> dict[str, Any]:
         return await _browse_page(self._node(node_id), limit, offset)
+
+    @observed("DiscoverNodes")
+    async def discover_nodes(self, node_id: str = "i=85", **options) -> dict:
+        from src.proto.opcua.core.discovery import discover_variables
+
+        self._node(node_id)  # Validate the connection and root before starting.
+        client, generation = self._client, self.generation
+        namespaces = None
+
+        def check_connection():
+            if not self.running or self._client is not client or self.generation != generation:
+                raise RuntimeError("OPC UA 发现期间连接已变化，请重新发现")
+
+        async def children(parent_id):
+            check_connection()
+            references = await _browse_references(self._node(parent_id))
+            return [
+                ref.NodeId.to_string()
+                for ref in references
+                if ref.NodeClass in {ua.NodeClass.Object, ua.NodeClass.Variable, ua.NodeClass.View}
+                and not getattr(ref.NodeId, "ServerIndex", 0)
+                and not getattr(ref.NodeId, "NamespaceUri", None)
+            ]
+
+        async def inspect(current_id):
+            nonlocal namespaces
+            check_connection()
+            if namespaces is None:
+                namespaces = await client.get_namespace_array()
+            node = self._node(current_id)
+            values = await node.read_attributes(
+                [ua.AttributeIds.NodeClass, ua.AttributeIds.BrowseName, ua.AttributeIds.DisplayName]
+            )
+            for value in values:
+                value.StatusCode.check()
+            result = {
+                "node_id": node.nodeid.to_string(),
+                "browse_name": values[1].Value.Value.Name,
+                "display_name": values[2].Value.Value.Text,
+                "node_class": ua.NodeClass(values[0].Value.Value).name,
+                "namespace_uri": namespaces[node.nodeid.NamespaceIndex],
+                "namespace_index": node.nodeid.NamespaceIndex,
+            }
+            if result["node_class"] == "Variable":
+                attributes = await node.read_attributes(
+                    [
+                        ua.AttributeIds.DataType,
+                        ua.AttributeIds.AccessLevel,
+                        ua.AttributeIds.UserAccessLevel,
+                        ua.AttributeIds.ValueRank,
+                    ]
+                )
+                for value in attributes:
+                    value.StatusCode.check()
+                data_type, access, user_access, value_rank = [value.Value.Value for value in attributes]
+                result.update(
+                    data_type=ua.ObjectIdNames.get(data_type.Identifier, data_type.to_string())
+                    if data_type.NamespaceIndex == 0
+                    else data_type.to_string(),
+                    readable=bool(access & user_access & ua.AccessLevel.CurrentRead.mask),
+                    writable=bool(access & user_access & ua.AccessLevel.CurrentWrite.mask),
+                    value_rank=value_rank,
+                )
+            return result
+
+        result = await discover_variables(node_id, children, inspect, **options)
+        check_connection()
+        return result
 
     async def resolve_node_id(self, namespace_uri: str, node_id: str) -> str:
         if not self.running or self._client is None:

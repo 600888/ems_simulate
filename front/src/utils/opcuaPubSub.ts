@@ -1,4 +1,4 @@
-import type { OpcUaObjectNode } from "@/api/opcuaApi";
+import type { OpcUaDiscoveredVariable, OpcUaObjectNode } from "@/api/opcuaApi";
 
 export type DataKind = "realtime" | "history" | "events";
 export interface UaSelection extends OpcUaObjectNode {
@@ -133,6 +133,52 @@ export function defaultMonitor(nodeId: string): MonitorItem {
     deadband: 0,
     mode: "Reporting",
   };
+}
+
+export function mergeDiscoveredMonitors(
+  existing: MonitorItem[],
+  incoming: OpcUaDiscoveredVariable[],
+  limit = 1000,
+): {
+  items: MonitorItem[];
+  added: OpcUaDiscoveredVariable[];
+  overflow: boolean;
+} {
+  const items = [...existing],
+    added: OpcUaDiscoveredVariable[] = [];
+  const logicalKey = (item: {
+    node_id: string;
+    namespace_uri?: string | null;
+  }) =>
+    item.namespace_uri
+      ? JSON.stringify([
+          item.namespace_uri,
+          nodeKey(item.node_id).replace(/^ns=\d+;/, ""),
+        ])
+      : nodeKey(item.node_id);
+  const keys = new Set(existing.map(logicalKey));
+  const rawKeys = new Set(
+    existing
+      .filter((item) => !item.namespace_uri)
+      .map((item) => nodeKey(item.node_id)),
+  );
+  let overflow = false;
+  for (const node of incoming) {
+    if (!node.readable || node.node_class !== "Variable") continue;
+    const key = logicalKey(node);
+    if (keys.has(key) || rawKeys.has(nodeKey(node.node_id))) continue;
+    if (items.length >= limit) {
+      overflow = true;
+      continue;
+    }
+    keys.add(key);
+    items.push({
+      ...defaultMonitor(node.node_id),
+      namespace_uri: node.namespace_uri,
+    });
+    added.push(node);
+  }
+  return { items, added, overflow };
 }
 export function defaultSubscription(id = "Subscription1"): UaSubscription {
   return {

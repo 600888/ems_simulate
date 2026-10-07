@@ -54,6 +54,25 @@ class WriteRequest(NodeRequest):
     value: Any
 
 
+class DiscoveryRequest(NodeRequest):
+    node_id: str = Field(default="i=85", min_length=1, max_length=512)
+    max_depth: int = Field(default=16, ge=1, le=64)
+    max_nodes: int = Field(default=1000, ge=1, le=1000)
+    timeout_s: int = Field(default=30, ge=1, le=60)
+    include_standard: bool = False
+
+
+@router.post("/nodes/discover", response_model=BaseResponse)
+async def discover_nodes(body: DiscoveryRequest, request: Request):
+    client = _client(request, body.channel_id).client
+    try:
+        return BaseResponse(data=await client.discover_nodes(**body.model_dump(exclude={"channel_id"})))
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    except Exception as exc:
+        raise OperationError(f"OPC UA 节点自动发现失败: {exc}") from exc
+
+
 class ValuesRequest(ChannelRequest):
     node_ids: list[str] = Field(min_length=1, max_length=50)
 
