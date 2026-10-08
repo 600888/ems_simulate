@@ -74,6 +74,7 @@
             ><el-date-picker
               v-model="range"
               type="datetimerange"
+              value-format="YYYY-MM-DD HH:mm:ss"
               popper-class="opcua-history-range-popper"
               :start-placeholder="t('opcua.startTime')"
               :end-placeholder="t('opcua.endTime')"
@@ -112,7 +113,11 @@
           prop="source_timestamp"
           :label="t('opcua.sourceTimestamp')"
           min-width="240"
-        />
+        >
+          <template #default="{ row }">{{
+            formatBeijingDateTime(row.source_timestamp)
+          }}</template>
+        </el-table-column>
         <el-table-column
           :label="t('opcua.value')"
           min-width="160"
@@ -144,6 +149,11 @@
   </div>
 </template>
 <script setup lang="ts">
+import {
+  formatBeijingDateTime,
+  defaultBeijingTimeRange,
+  beijingDateTimeToISOString,
+} from "@/utils/opcuaTime";
 import OpcUaPageHeading from "./OpcUaPageHeading.vue";
 import OpcUaTrendPlot from "./OpcUaTrendPlot.vue";
 import { computed, onMounted, ref, watch } from "vue";
@@ -173,7 +183,7 @@ const config = ref({
 const nodes = ref<OpcUaVariable[]>([]),
   values = ref<OpcUaValueSnapshot[]>([]),
   nodeId = ref("ns=2;s=");
-const range = ref<[Date, Date]>([new Date(Date.now() - 3600000), new Date()]),
+const range = ref<[string, string]>(defaultBeijingTimeRange()),
   busy = ref(false),
   continuation = ref<string | null>(null);
 const chartPoints = computed(() =>
@@ -227,8 +237,8 @@ async function query(next: boolean) {
       if (!range.value) throw new Error(t("opcua.chooseRange"));
       original = {
         node: nodeId.value,
-        start: range.value[0].toISOString(),
-        end: range.value[1].toISOString(),
+        start: beijingDateTimeToISOString(range.value[0]),
+        end: beijingDateTimeToISOString(range.value[1]),
       };
       continuation.value = null;
       values.value = [];

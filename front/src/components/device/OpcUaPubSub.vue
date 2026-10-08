@@ -267,7 +267,7 @@
                 :label="t('opcua.sourceTimestamp')"
                 min-width="195"
                 ><template #default="{ row }">{{
-                  row.snapshot?.source_timestamp || "—"
+                  formatBeijingDateTime(row.snapshot?.source_timestamp)
                 }}</template></el-table-column
               >
               <el-table-column
@@ -534,7 +534,7 @@
                 min-width="155"
                 show-overflow-tooltip
                 ><template #default="{ row }">{{
-                  displayUaValue(row[field])
+                  displayEventField(field, row[field])
                 }}</template></el-table-column
               >
             </el-table>
@@ -546,7 +546,9 @@
                   v-for="(value, field) in eventDetail"
                   :key="field"
                   :label="String(field)"
-                  >{{ displayUaValue(value) }}</el-descriptions-item
+                  >{{
+                    displayEventField(String(field), value)
+                  }}</el-descriptions-item
                 ></el-descriptions
               ></template
             >
@@ -673,6 +675,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatBeijingDateTime } from "@/utils/opcuaTime";
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
@@ -1478,6 +1481,17 @@ async function triggerEvent() {
 function clearEvents() {
   records.value = records.value.filter((e) => e.kind !== "event");
   eventDetail.value = undefined;
+}
+function displayEventField(field: string, value: unknown) {
+  return [
+    "Time",
+    "ReceiveTime",
+    "timestamp",
+    "source_timestamp",
+    "server_timestamp",
+  ].includes(field)
+    ? formatBeijingDateTime(value)
+    : displayUaValue(value);
 }
 function exportEvents() {
   const fields = eventsConfig.value.returned_fields;

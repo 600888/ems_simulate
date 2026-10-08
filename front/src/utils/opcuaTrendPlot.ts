@@ -1,3 +1,5 @@
+import { opcUaTimestampMillis } from "./opcuaTime";
+
 export interface TrendPoint {
   timestamp: string | null | undefined;
   value: unknown;
@@ -24,7 +26,7 @@ export function normalizeTrendSamples(points: TrendPoint[]): TrendSample[] {
   const dated: (TrendPoint & { time: number })[] = [];
   let unknownTimeGap = false;
   for (const point of points) {
-    const time = Date.parse(point.timestamp || "");
+    const time = opcUaTimestampMillis(point.timestamp);
     if (!Number.isFinite(time)) {
       unknownTimeGap = true;
       continue;

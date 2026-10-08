@@ -208,10 +208,15 @@
           />
           <el-button
             type="primary"
-            :disabled="!running"
+            :disabled="!running || browsing"
             :loading="browsing"
             @click="browse"
             >{{ t("opcua.browseChildren") }}</el-button
+          >
+          <el-button
+            :disabled="!running || browsing || !browseParents.length"
+            @click="browseParent"
+            >{{ t("opcua.browseParent") }}</el-button
           >
         </div>
         <el-alert
@@ -248,7 +253,7 @@
             <template #default="{ row }">
               <el-button
                 link
-                :disabled="!running"
+                :disabled="!running || browsing"
                 @click="openNode(row.node_id)"
                 >{{ t("opcua.expand") }}</el-button
               >
@@ -306,10 +311,10 @@
             nodeResult.status_code
           }}</el-descriptions-item>
           <el-descriptions-item :label="t('opcua.sourceTimestamp')">{{
-            nodeResult.source_timestamp || "-"
+            formatBeijingDateTime(nodeResult.source_timestamp)
           }}</el-descriptions-item>
           <el-descriptions-item :label="t('opcua.serverTimestamp')">{{
-            nodeResult.server_timestamp || "-"
+            formatBeijingDateTime(nodeResult.server_timestamp)
           }}</el-descriptions-item>
         </el-descriptions>
       </el-tab-pane>
@@ -410,6 +415,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { showError } from "@/api/http";
+import { formatBeijingDateTime } from "@/utils/opcuaTime";
 import "@/styles/opcua.scss";
 import OpcUaPageHeading from "./OpcUaPageHeading.vue";
 import OpcUaAddressSpace from "./OpcUaAddressSpace.vue";
@@ -482,6 +488,10 @@ const pointImportRef = ref<InstanceType<typeof OpcUaPointImportDialog> | null>(
   null,
 );
 const browseRoot = ref("i=85");
+type BrowseLocation = { nodeId: string; page: number };
+const browseParents = ref<BrowseLocation[]>([]);
+const browsedRoot = ref("");
+let browseEpoch = 0;
 const remoteNodes = ref<
   { node_id: string; browse_name: string; node_class: string }[]
 >([]);
@@ -617,31 +627,61 @@ async function clearPoints() {
   }
 }
 
-async function browse() {
+async function loadRemoteNodes(
+  nodeId: string,
+  page: number,
+  parents: BrowseLocation[],
+) {
+  if (!props.running || browsing.value) return;
+  const generation = ++browseEpoch;
+  const channelId = props.channelId;
   browsing.value = true;
   try {
-    const result = await browseOpcUaNodes(
-      props.channelId,
-      browseRoot.value,
-      (remotePage.value - 1) * 100,
-    );
+    const result = await browseOpcUaNodes(channelId, nodeId, (page - 1) * 100);
+    if (generation !== browseEpoch || channelId !== props.channelId) return;
     remoteNodes.value = result.nodes;
     remoteTotal.value = result.total;
+    browseRoot.value = nodeId;
+    browsedRoot.value = nodeId;
+    remotePage.value = page;
+    browseParents.value = parents;
   } catch (error) {
-    showError(error);
+    if (generation === browseEpoch) showError(error);
   } finally {
-    browsing.value = false;
+    if (generation === browseEpoch) browsing.value = false;
   }
 }
 
+function browse() {
+  const nodeId = browseRoot.value.trim() || "i=85";
+  return loadRemoteNodes(
+    nodeId,
+    1,
+    nodeId === browsedRoot.value ? browseParents.value : [],
+  );
+}
 function changeRemotePage(value: number) {
-  remotePage.value = value;
-  void browse();
+  void loadRemoteNodes(
+    browsedRoot.value || browseRoot.value,
+    value,
+    browseParents.value,
+  );
 }
 function openNode(nodeId: string) {
-  browseRoot.value = nodeId;
-  remotePage.value = 1;
-  void browse();
+  if (!browsedRoot.value) return;
+  void loadRemoteNodes(nodeId, 1, [
+    ...browseParents.value,
+    { nodeId: browsedRoot.value, page: remotePage.value },
+  ]);
+}
+function browseParent() {
+  const parent = browseParents.value[browseParents.value.length - 1];
+  if (parent)
+    void loadRemoteNodes(
+      parent.nodeId,
+      parent.page,
+      browseParents.value.slice(0, -1),
+    );
 }
 
 async function readNode(nodeId: string) {
@@ -710,6 +750,16 @@ watch(
   () => {
     page.value = 1;
     pointValues.value = {};
+    browseEpoch++;
+    browsing.value = false;
+    browseRoot.value = "i=85";
+    browsedRoot.value = "";
+    browseParents.value = [];
+    remoteNodes.value = [];
+    remoteTotal.value = 0;
+    remotePage.value = 1;
+    targetNode.value = "";
+    nodeResult.value = null;
     void loadPoints();
     void loadConfig();
   },

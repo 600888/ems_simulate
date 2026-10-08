@@ -106,7 +106,7 @@
     >
       <el-table-column :label="t('opcua.sourceTimestamp')" min-width="225"
         ><template #default="{ row }">{{
-          row.source_timestamp || row.timestamp
+          formatBeijingDateTime(row.source_timestamp || row.timestamp)
         }}</template></el-table-column
       >
       <template v-if="mode === 'events'">
@@ -164,7 +164,9 @@
     >
       <div class="ua-section-heading">
         <h3>{{ t("opcua.eventDetails") }}</h3>
-        <span>{{ selectedEvent.timestamp }}</span>
+        <span>{{
+          formatBeijingDateTime(selectedEvent.Time || selectedEvent.timestamp)
+        }}</span>
       </div>
       <p class="ua-muted">
         {{ selectedEvent.SourceName }} · {{ t("opcua.severity") }}
@@ -178,6 +180,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import { formatBeijingDateTime } from "@/utils/opcuaTime";
 import OpcUaTrendPlot from "./OpcUaTrendPlot.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";

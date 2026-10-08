@@ -49,6 +49,7 @@
             ><el-date-picker
               v-model="range"
               type="datetimerange"
+              value-format="YYYY-MM-DD HH:mm:ss"
               :start-placeholder="t('opcua.startTime')"
               :end-placeholder="t('opcua.endTime')"
           /></el-form-item>
@@ -186,18 +187,31 @@
             prop="source_timestamp"
             :label="t('opcua.sourceTimestamp')"
             min-width="210"
-          />
+          >
+            <template #default="{ row }">{{
+              formatBeijingDateTime(row.source_timestamp)
+            }}</template>
+          </el-table-column>
           <el-table-column
             prop="server_timestamp"
             :label="t('opcua.serverTimestamp')"
             min-width="210"
-          />
+          >
+            <template #default="{ row }">{{
+              formatBeijingDateTime(row.server_timestamp)
+            }}</template>
+          </el-table-column>
         </el-table>
       </section>
     </template>
   </div>
 </template>
 <script setup lang="ts">
+import {
+  formatBeijingDateTime,
+  defaultBeijingTimeRange,
+  beijingDateTimeToISOString,
+} from "@/utils/opcuaTime";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
@@ -230,7 +244,7 @@ const storage = ref({
   retention_days: 7,
   max_values: 100000,
 });
-const range = ref<[Date, Date]>([new Date(Date.now() - 3600000), new Date()]);
+const range = ref<[string, string]>(defaultBeijingTimeRange());
 const options = ref<OpcUaHistoryOptions>({
   limit: 100,
   mode: "raw",
@@ -365,8 +379,8 @@ async function query(next: boolean) {
     reset();
     original = {
       channel: props.channelId,
-      start: range.value[0].toISOString(),
-      end: range.value[1].toISOString(),
+      start: beijingDateTimeToISOString(range.value[0]),
+      end: beijingDateTimeToISOString(range.value[1]),
       options: { ...options.value },
       tokens: Object.fromEntries(props.nodes.map((n) => [n.node_id, null])),
     };
@@ -443,7 +457,7 @@ watch(
       retention_days: 7,
       max_values: 100000,
     };
-    range.value = [new Date(Date.now() - 3600000), new Date()];
+    range.value = defaultBeijingTimeRange();
     options.value = {
       limit: 100,
       mode: "raw",

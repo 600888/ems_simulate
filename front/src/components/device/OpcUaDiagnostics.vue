@@ -41,7 +41,11 @@
           prop="timestamp"
           :label="t('opcua.sourceTimestamp')"
           min-width="220"
-        />
+        >
+          <template #default="{ row }">{{
+            formatBeijingDateTime(row.timestamp)
+          }}</template>
+        </el-table-column>
         <el-table-column
           prop="reason"
           :label="t('opcua.reason')"
@@ -60,7 +64,11 @@
           prop="timestamp"
           :label="t('opcua.sourceTimestamp')"
           min-width="240"
-        />
+        >
+          <template #default="{ row }">{{
+            formatBeijingDateTime(row.timestamp)
+          }}</template>
+        </el-table-column>
         <el-table-column
           prop="service"
           :label="t('opcua.service')"
@@ -88,6 +96,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import { formatBeijingDateTime } from "@/utils/opcuaTime";
 import OpcUaPageHeading from "./OpcUaPageHeading.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";

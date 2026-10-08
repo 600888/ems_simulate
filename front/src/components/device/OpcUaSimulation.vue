@@ -493,6 +493,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatBeijingTime } from "@/utils/opcuaTime";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -860,7 +861,7 @@ async function readData() {
     valueErrors.value = Object.fromEntries(
       result.errors.map((error) => [error.node_id, error.message]),
     );
-    sampledAt.value = new Date().toLocaleTimeString();
+    sampledAt.value = formatBeijingTime(Date.now());
     dataError.value = "";
   } catch (error) {
     if (epoch === generation && !disposed && props.running && props.active) {

@@ -258,11 +258,15 @@
             <dl class="value-timestamps ua-note">
               <div>
                 <dt>{{ t("opcua.sourceTimestamp") }}</dt>
-                <dd>{{ currentValue?.source_timestamp || "—" }}</dd>
+                <dd>
+                  {{ formatBeijingDateTime(currentValue?.source_timestamp) }}
+                </dd>
               </div>
               <div>
                 <dt>{{ t("opcua.serverTimestamp") }}</dt>
-                <dd>{{ currentValue?.server_timestamp || "—" }}</dd>
+                <dd>
+                  {{ formatBeijingDateTime(currentValue?.server_timestamp) }}
+                </dd>
               </div>
             </dl>
           </div>
@@ -361,6 +365,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatBeijingDateTime, formatBeijingTime } from "@/utils/opcuaTime";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElTree } from "element-plus";
@@ -636,7 +641,7 @@ async function refreshValues() {
     );
     valueError.value = "";
     const now = new Date().toISOString();
-    sampledAt.value = new Date(now).toLocaleTimeString();
+    sampledAt.value = formatBeijingTime(now);
     const value = currentValue.value;
     if (value && selection === selectionGeneration) {
       samples.value = [

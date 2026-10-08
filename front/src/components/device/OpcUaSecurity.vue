@@ -166,7 +166,11 @@
           prop="valid_until"
           :label="t('opcua.validUntil')"
           min-width="200"
-        />
+        >
+          <template #default="{ row }">{{
+            formatBeijingDateTime(row.valid_until)
+          }}</template>
+        </el-table-column>
         <el-table-column :label="t('opcua.actions')" width="130"
           ><template #default="{ row }"
             ><el-button
@@ -237,6 +241,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import { formatBeijingDateTime } from "@/utils/opcuaTime";
 import OpcUaPageHeading from "./OpcUaPageHeading.vue";
 import { onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";

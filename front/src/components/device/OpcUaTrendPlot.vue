@@ -229,6 +229,7 @@
 </template>
 
 <script setup lang="ts">
+import { OPCUA_TIME_ZONE } from "@/utils/opcuaTime";
 import { computed, ref, useId, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
@@ -348,10 +349,11 @@ function numberLabel(value: number, precision = 5) {
 }
 function timeLabel(time: number, precise = false) {
   const label = new Intl.DateTimeFormat(locale.value, {
+    timeZone: OPCUA_TIME_ZONE,
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
     ...(!precise &&
     viewport.value.time.max - viewport.value.time.min >= 86400000
       ? { month: "2-digit", day: "2-digit" }
@@ -363,13 +365,14 @@ function timeLabel(time: number, precise = false) {
 }
 function timestampLabel(time: number) {
   const label = new Intl.DateTimeFormat(locale.value, {
+    timeZone: OPCUA_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   }).format(time);
   return `${label}.${String(new Date(time).getMilliseconds()).padStart(3, "0")}`;
 }
