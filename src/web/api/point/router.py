@@ -73,6 +73,8 @@ async def edit_point_data(req: PointEditDataRequest, request: Request):
     token = change_client_info_ctx.set(client_info)
     try:
         success = await device.edit_point_data_async(req.point_code, req.point_value, slave_id=req.slave_id)
+    except ValueError as exc:
+        raise OperationError(str(exc), data=False) from exc
     finally:
         change_client_info_ctx.reset(token)
     if not success:

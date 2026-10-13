@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from src.data.service.channel_service import ChannelService
 from src.enums.points.base_point import BasePoint
 from src.proto.iec61850.defs.mms_types import MmsType, infer_mms_type_from_path
-from src.web.api.exceptions import ConflictError, NotFoundError, ValidationError
+from src.web.api.exceptions import ConflictError, NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
 
@@ -1809,7 +1809,10 @@ async def iec61850_write_single_point(
             "未发现可写属性（控制对象应包含 Oper.ctlVal、SBOw.ctlVal 或 ctlVal）",
             data={"point_code": body.point_code},
         )
-    success = await device.edit_point_data_async(write_point_code, body.point_value)
+    try:
+        success = await device.edit_point_data_async(write_point_code, body.point_value)
+    except ValueError as exc:
+        raise OperationError(str(exc), data={"point_code": write_point_code}) from exc
     if not success:
         raise ValidationError("写入失败", data={"point_code": write_point_code})
     return BaseResponse(message="写入成功", data={"point_code": write_point_code, "value": body.point_value})

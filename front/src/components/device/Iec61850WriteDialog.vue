@@ -100,7 +100,7 @@ const handleSubmit = async () => {
     if (result) {
       ElMessage.success(t("writeDialog.writeSent"));
       visible.value = false;
-      emit("success");
+      emit("success", result);
     }
   } catch (e: any) {
     showError(

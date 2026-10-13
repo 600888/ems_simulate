@@ -620,7 +620,7 @@
     :pointCode="iec61850WritePointData.code"
     :attributeName="iec61850WritePointData.attributeName"
     :currentValue="iec61850WritePointData.value"
-    @success="handleWriteSuccess"
+    @success="handleIec61850WriteSuccess"
   />
   <!-- IEC61850 品质/时标元数据弹窗 -->
   <el-dialog
@@ -784,6 +784,14 @@ import {
 } from "@/constants/table";
 import { isDlt645Protocol, isDnp3Protocol } from "@/constants/protocol";
 import { formatTableRealValue } from "@/utils/tableValue";
+import {
+  resolveIec61850ReadbackTarget,
+  syncIec61850WriteResult,
+} from "@/utils/iec61850WriteSync";
+import type {
+  Iec61850ReadbackTarget,
+  Iec61850WriteResult,
+} from "@/utils/iec61850WriteSync";
 
 import SingleRegister from "../register/SingleRegister.vue";
 import LongRegister from "../register/LongRegister.vue";
@@ -1206,6 +1214,9 @@ const iec61850FlatRows = computed(() => {
       _doRef: doRef,
       _fc: doNode.fc,
       _isControlObject: controlObject,
+      _displayPointCode: controlObject
+        ? resolveIec61850ReadbackTarget(doNode)?.pointCode
+        : actionPointCode,
       _isControlAction:
         controlObject && isControlValuePointCode(actionPointCode),
       _daCount: doNode.children?.length || 0,
@@ -1436,7 +1447,7 @@ const iec61850DisplayRows = computed(() => {
     directValues.size === 0
       ? iec61850FlatRows.value
       : iec61850FlatRows.value.map((row) => {
-          const pointCode = row["测点编码"];
+          const pointCode = row._displayPointCode || row["测点编码"];
           if (!pointCode || !directValues.has(pointCode)) return row;
           return { ...row, 真实值: directValues.get(pointCode), 状态: "成功" };
         });
@@ -1571,6 +1582,7 @@ const iec61850WritePointData = reactive({
   code: "",
   attributeName: "",
   value: "" as string | number,
+  readbackTarget: null as Iec61850ReadbackTarget | null,
 });
 
 const handleIec61850WritePoint = (row: any) => {
@@ -1582,7 +1594,50 @@ const handleIec61850WritePoint = (row: any) => {
       ? codeParts.slice(2).join(".")
       : String(row["测点编码"] || ""));
   iec61850WritePointData.value = row["真实值"];
+  const doNode = props.iec61850TreeData?.items.find(
+    (node) => node.do_ref === row._doRef,
+  );
+  iec61850WritePointData.readbackTarget = row._isControlObject
+    ? doNode
+      ? resolveIec61850ReadbackTarget(doNode)
+      : null
+    : {
+        pointCode: row["测点编码"],
+        fc: row.FC || "",
+        mmsType: row["测点类型"] || "",
+      };
   iec61850WriteDialogVisible.value = true;
+};
+
+const handleIec61850WriteSuccess = async (result: Iec61850WriteResult) => {
+  const channelId = props.channelId;
+  const target = iec61850WritePointData.readbackTarget;
+  if (target) readingPoints[target.pointCode] = true;
+  try {
+    await syncIec61850WriteResult(
+      result,
+      target,
+      (point) =>
+        channelId
+          ? iec61850ReadPoint(
+              channelId,
+              point.pointCode,
+              point.fc,
+              point.mmsType,
+            )
+          : Promise.resolve(null),
+      (pointCode, value) => {
+        const nextCache = new Map(directReadCache.value);
+        nextCache.set(pointCode, value);
+        directReadCache.value = nextCache;
+      },
+    );
+  } catch (error) {
+    showError(error, t("table.readFailed"));
+  } finally {
+    if (target) readingPoints[target.pointCode] = false;
+    emit("refresh");
+  }
 };
 
 const handleDeletePoint = async (pointCode: string) => {
