@@ -134,7 +134,9 @@ class PointOperator:
                 except Exception as e:
                     raise ValueError(f"测点 {point_code} 写入失败: {e}") from e
                 if not result:
-                    raise ValueError(f"测点 {point_code} 协议写入失败，请检查配置或物理连接")
+                    protocol_detail = getattr(self._handler, "last_error", None)
+                    detail = f": {protocol_detail}" if protocol_detail else "，请检查配置或物理连接"
+                    raise ValueError(f"测点 {point_code} 协议写入失败{detail}")
                 # self._log.debug(f"测点 {point_code} 写入成功: {real_value}")
                 return result
             else:

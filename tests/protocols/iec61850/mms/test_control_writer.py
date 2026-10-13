@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from src.proto.iec61850.core import writer as writer_module
 from src.proto.iec61850.core.writer import Iec61850Writer
 
@@ -124,3 +126,148 @@ def test_boolean_string_false_is_not_coerced_to_true(monkeypatch):
 
     assert Iec61850Writer(_SetMagConnection(), registry).write("SubEna", "false", "SV") is True
     assert calls == [("write_boolean", "LD0/CTRL1.CtrlBlockPower.setMag.i", "FC_SV", False)]
+
+
+def _stateful_control_api(control_model):
+    api, calls = _fake_control_api(control_model)
+    last_numbers = {}
+
+    def create(ref, conn):
+        calls.append(("create", ref))
+        return SimpleNamespace(ref=ref, conn=conn, ctl_num=0, last_error=0)
+
+    def select(control, *_args):
+        control.ctl_num = (control.ctl_num + 1) % 256
+        calls.append(("select", control.ctl_num))
+        return True
+
+    def operate(control, _value, _when):
+        if control_model in (1, 3):
+            control.ctl_num = (control.ctl_num + 1) % 256
+        calls.append(("operate", control.ctl_num))
+        key = (control.conn, control.ref)
+        if last_numbers.get(key) == control.ctl_num:
+            control.last_error = 32
+            return False
+        last_numbers[key] = control.ctl_num
+        control.last_error = 0
+        return True
+
+    api.ControlObjectClient_create = create
+    api.ControlObjectClient_select = select
+    api.ControlObjectClient_selectWithValue = select
+    api.ControlObjectClient_operate = operate
+    api.ControlObjectClient_getLastError = lambda control: control.last_error
+    return api, calls
+
+
+@pytest.mark.parametrize("control_model", [1, 2, 3, 4])
+def test_repeated_control_preserves_command_numbers(monkeypatch, control_model):
+    api, calls = _stateful_control_api(control_model)
+    monkeypatch.setattr(writer_module, "iec61850", api, raising=False)
+    writer = Iec61850Writer(_Connection(), _Registry())
+
+    assert writer.write("Pos", 1, "CO") is True
+    assert writer.write("Pos", 1, "CO") is True
+    assert writer.write("Pos", 0, "CO") is True
+    assert [call[1] for call in calls if call[0] == "operate"] == [1, 2, 3]
+    assert len([call for call in calls if call[0] == "create"]) == 1
+    assert len([call for call in calls if call[0] == "delete_value"]) == 3
+
+
+def test_control_reports_access_error_even_when_operate_returns_true(monkeypatch):
+    api, calls = _fake_control_api(control_model=1)
+    api.ControlObjectClient_getLastError = lambda _control: 21
+    api.ControlObjectClient_getLastApplError = lambda _control: SimpleNamespace(error=0, addCause=19, ctlNum=1)
+    api.ADD_CAUSE_BLOCKED_BY_INTERLOCKING = 19
+    monkeypatch.setattr(writer_module, "iec61850", api, raising=False)
+    writer = Iec61850Writer(_Connection(), _Registry())
+
+    assert writer.write("Pos", 1, "CO") is False
+    assert "IED_ERROR_ACCESS_DENIED" in writer.last_error
+    assert "ADD_CAUSE_BLOCKED_BY_INTERLOCKING" in writer.last_error
+    assert "IEDLD0/GGIO1.Pos" in writer.last_error
+
+
+def test_control_cache_is_released_before_connection_destroy_and_recreated(monkeypatch):
+    from pyiec61850 import pyiec61850 as native
+
+    from src.proto.iec61850.core.connection import Iec61850Connection
+
+    api, calls = _stateful_control_api(control_model=1)
+    monkeypatch.setattr(writer_module, "iec61850", api, raising=False)
+    monkeypatch.setattr(native, "IedConnection_close", lambda _conn: calls.append(("close_connection",)))
+    monkeypatch.setattr(native, "IedConnection_destroy", lambda _conn: calls.append(("destroy_connection",)))
+    connection = Iec61850Connection("127.0.0.1", 102)
+    connection._connection = object()
+    connection._is_connected = True
+    monkeypatch.setattr(connection, "ensure_connected", lambda: connection.is_connected)
+    writer = Iec61850Writer(connection, _Registry())
+
+    assert writer.write("Pos", 1, "CO") is True
+    assert ("destroy",) not in calls
+    connection.disconnect()
+
+    assert calls.index(("destroy",)) < calls.index(("close_connection",))
+    assert calls.index(("destroy",)) < calls.index(("destroy_connection",))
+    connection._connection = object()
+    connection._is_connected = True
+    assert writer.write("Pos", 1, "CO") is True
+    assert len([call for call in calls if call[0] == "create"]) == 2
+    connection.disconnect()
+    assert calls.count(("destroy",)) == 2
+
+
+def test_failed_operate_keeps_sequence_for_next_attempt(monkeypatch):
+    api, calls = _stateful_control_api(control_model=1)
+    operate = api.ControlObjectClient_operate
+
+    def fail_first(control, value, when):
+        result = operate(control, value, when)
+        if control.ctl_num == 1:
+            control.last_error = 26
+            return False
+        return result
+
+    api.ControlObjectClient_operate = fail_first
+    monkeypatch.setattr(writer_module, "iec61850", api, raising=False)
+    writer = Iec61850Writer(_Connection(), _Registry())
+
+    assert writer.write("Pos", 1, "CO") is False
+    assert "IED_ERROR_TEMPORARILY_UNAVAILABLE" in writer.last_error
+    assert writer.write("Pos", 1, "CO") is True
+    assert writer.last_error is None
+    assert [call[1] for call in calls if call[0] == "operate"] == [1, 2]
+
+
+def test_control_numbers_are_independent_for_each_object(monkeypatch):
+    api, calls = _stateful_control_api(control_model=1)
+    monkeypatch.setattr(writer_module, "iec61850", api, raising=False)
+    registry = _Registry()
+    registry.get_ref = lambda address: f"IEDLD0/GGIO1.{address}.Oper.ctlVal"
+    writer = Iec61850Writer(_Connection(), registry)
+
+    for address in ("Pos1", "Pos2", "Pos1"):
+        assert writer.write(address, 1, "CO") is True
+
+    assert [call[1] for call in calls if call[0] == "operate"] == [1, 1, 2]
+
+
+def test_failed_connection_cleanup_releases_cached_controls(monkeypatch):
+    from pyiec61850 import pyiec61850 as native
+
+    from src.proto.iec61850.core.connection import Iec61850Connection
+
+    api, calls = _stateful_control_api(control_model=1)
+    monkeypatch.setattr(writer_module, "iec61850", api, raising=False)
+    monkeypatch.setattr(native, "IedConnection_destroy", lambda _conn: calls.append(("destroy_connection",)))
+    connection = Iec61850Connection("127.0.0.1", 102)
+    connection._connection = object()
+    connection._is_connected = True
+    monkeypatch.setattr(connection, "ensure_connected", lambda: True)
+    writer = Iec61850Writer(connection, _Registry())
+    assert writer.write("Pos", 1, "CO") is True
+
+    connection._cleanup_connection()
+
+    assert calls.index(("destroy",)) < calls.index(("destroy_connection",))

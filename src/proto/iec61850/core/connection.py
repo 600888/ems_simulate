@@ -4,6 +4,7 @@
 提供连接状态监控和 LD 列表缓存能力。
 """
 
+from collections.abc import Callable
 import contextlib
 import ctypes
 from dataclasses import dataclass
@@ -114,6 +115,16 @@ class Iec61850Connection:
         self._last_alive_check = 0.0
         self._alive_check_interval = 5.0
         self._authentication_parameter = None
+        self._native_cleanup_callbacks: list[Callable[[], None]] = []
+
+    def register_native_cleanup(self, callback: Callable[[], None]) -> None:
+        """Release association-owned resources before the native connection is destroyed."""
+        with self._lock:
+            self._native_cleanup_callbacks.append(callback)
+
+    def _cleanup_native_dependents(self) -> None:
+        for callback in self._native_cleanup_callbacks:
+            callback()
 
     @property
     def connection(self):
@@ -146,6 +157,9 @@ class Iec61850Connection:
         with self._lock:
             if discover_callback is not None:
                 self._discover_callback = discover_callback
+
+            if self._connection:
+                self.disconnect()
 
             try:
                 if self.tls_configuration is None:
@@ -260,6 +274,7 @@ class Iec61850Connection:
             if self._connection:
                 from pyiec61850 import pyiec61850 as iec61850
 
+                self._cleanup_native_dependents()
                 with contextlib.suppress(Exception):
                     iec61850.IedConnection_close(self._connection)
                 with contextlib.suppress(Exception):
@@ -348,6 +363,7 @@ class Iec61850Connection:
     def _cleanup_connection(self):
         """清理连接资源"""
         if self._connection:
+            self._cleanup_native_dependents()
             try:
                 from pyiec61850 import pyiec61850 as iec61850
 

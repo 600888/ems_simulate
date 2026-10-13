@@ -7,8 +7,9 @@ import pytest
 
 from src.device.core.point.point_operator import PointOperator
 from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
-from src.enums.point_data import Yc, Yx
+from src.enums.point_data import Yc, Yk, Yx
 from src.enums.points.base_point import BasePoint
+from src.proto.iec61850.iec61850_client import IEC61850Client
 from src.web.api.channel import iec61850 as api
 from src.web.api.exceptions import ValidationError
 
@@ -72,6 +73,38 @@ async def test_client_rejects_status_without_control_attribute(monkeypatch):
         )
 
     device.edit_point_data_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_client_control_write_exposes_native_refusal(monkeypatch):
+    point = Yk(address="IED001PROT/LLN0.FuncEna4.Oper.ctlVal", code="FuncEna4", fc="CO")
+    error = "IEC61850 控制操作失败: IED_ERROR_ACCESS_DENIED, addCause=ADD_CAUSE_BLOCKED_BY_INTERLOCKING"
+    client = object.__new__(IEC61850Client)
+    client._writer = SimpleNamespace(write=lambda *_args: False, last_error=error)
+    handler = IEC61850ClientHandler()
+    handler._client = client
+    device = make_device(monkeypatch, handler, [point])
+    device.edit_point_data_async = PointOperator(device).edit_value_async
+
+    with pytest.raises(ValueError, match="IED_ERROR_ACCESS_DENIED") as failure:
+        await api.iec61850_write_single_point(
+            api.Iec61850WritePointRequest(channel_id=1, point_code=point.code, point_value=1), Mock()
+        )
+
+    assert "ADD_CAUSE_BLOCKED_BY_INTERLOCKING" in str(failure.value)
+    assert "请检查配置或物理连接" not in str(failure.value)
+
+
+def test_client_sync_control_write_exposes_native_refusal(monkeypatch):
+    point = Yk(address="IED001PROT/LLN0.FuncEna4.Oper.ctlVal", code="FuncEna4", fc="CO")
+    client = object.__new__(IEC61850Client)
+    client._writer = SimpleNamespace(write=lambda *_args: False, last_error="IED_ERROR_TEMPORARILY_UNAVAILABLE")
+    handler = IEC61850ClientHandler()
+    handler._client = client
+    device = make_device(monkeypatch, handler, [point])
+
+    with pytest.raises(ValueError, match="IED_ERROR_TEMPORARILY_UNAVAILABLE"):
+        PointOperator(device).edit_value(point.code, 1)
 
 
 @pytest.mark.asyncio

@@ -4,6 +4,8 @@
 从 iec61850_client.py 的写入逻辑提取。
 """
 
+from contextlib import nullcontext
+import threading
 from typing import Any
 
 from ..defs.address import infer_fc_from_address, infer_iec_type_from_address
@@ -36,6 +38,19 @@ class Iec61850Writer:
         """
         self._connection = connection
         self._registry = registry
+        self._control_clients: dict[str, Any] = {}
+        self._control_lock = threading.RLock()
+        self.last_error: str | None = None
+        register_cleanup = getattr(connection, "register_native_cleanup", None)
+        if callable(register_cleanup):
+            register_cleanup(self.clear_control_objects)
+
+    def clear_control_objects(self) -> None:
+        """Release cached controls while their owning native association is still alive."""
+        with self._control_lock:
+            for control in self._control_clients.values():
+                iec61850.ControlObjectClient_destroy(control)
+            self._control_clients.clear()
 
     def write(self, address: str, value: Any, fc: str = "") -> bool:
         """写入测点值
@@ -48,7 +63,9 @@ class Iec61850Writer:
         Returns:
             是否写入成功
         """
+        self.last_error = None
         if not self._connection.ensure_connected():
+            self.last_error = "IEC61850 MMS 客户端未连接"
             return False
 
         addr_str = str(address)
@@ -104,51 +121,91 @@ class Iec61850Writer:
         return None
 
     def _write_control(self, ref: str, value: Any, iec_type: str) -> bool:
-        """通过 ControlObjectClient 执行控制命令，并确保控制对象和临时值得到释放。"""
-        conn = self._connection.connection
-        if not conn or not self._connection.is_connected:
-            return False
+        """Reuse each control on its association so libIEC61850 preserves ctlNum across commands."""
+        native_operation = getattr(self._connection, "native_operation", None)
+        guard = native_operation() if callable(native_operation) else nullcontext(self._connection.connection)
+        with guard as conn, self._control_lock:
+            if not conn or not self._connection.is_connected:
+                self.last_error = "IEC61850 MMS 客户端未连接"
+                return False
+            return self._operate_control(conn, ref, value, iec_type)
 
+    def _operate_control(self, conn, ref: str, value: Any, iec_type: str) -> bool:
         object_ref = self._control_object_ref(ref)
         control = None
         ctl_value = None
         try:
-            control = iec61850.ControlObjectClient_create(object_ref, conn)
+            control = self._control_clients.get(object_ref)
+            if control is None:
+                control = iec61850.ControlObjectClient_create(object_ref, conn)
+                if control:
+                    self._control_clients[object_ref] = control
             if not control:
-                log.error(f"创建 IEC61850 控制对象失败: ref={object_ref}")
+                self.last_error = f"创建 IEC61850 控制对象失败: ref={object_ref}"
+                log.error(self.last_error)
                 return False
 
             ctl_value = self._new_control_value(control, value, iec_type)
             if ctl_value is None:
-                log.error(f"不支持的 IEC61850 控制值类型: ref={object_ref}, value={value!r}")
+                self.last_error = f"不支持的 IEC61850 控制值类型: ref={object_ref}, value={value!r}"
+                log.error(self.last_error)
                 return False
 
             control_model = iec61850.ControlObjectClient_getControlModel(control)
             if control_model == iec61850.CONTROL_MODEL_STATUS_ONLY:
-                log.error(f"IEC61850 控制对象为只读状态模型: ref={object_ref}")
+                self.last_error = f"IEC61850 控制对象为只读状态模型: ref={object_ref}"
+                log.error(self.last_error)
                 return False
             if control_model == iec61850.CONTROL_MODEL_SBO_NORMAL:
                 if not iec61850.ControlObjectClient_select(control):
-                    log.error(f"IEC61850 控制对象选择失败: ref={object_ref}")
+                    self._record_control_error(control, object_ref, "选择")
                     return False
             elif control_model == iec61850.CONTROL_MODEL_SBO_ENHANCED:
                 if not iec61850.ControlObjectClient_selectWithValue(control, ctl_value):
-                    log.error(f"IEC61850 控制对象带值选择失败: ref={object_ref}")
+                    self._record_control_error(control, object_ref, "带值选择")
                     return False
 
-            if not iec61850.ControlObjectClient_operate(control, ctl_value, 0):
-                error = iec61850.ControlObjectClient_getLastError(control)
-                log.error(f"IEC61850 控制操作失败: ref={object_ref}, error={format_ied_error(error)}")
+            operated = iec61850.ControlObjectClient_operate(control, ctl_value, 0)
+            # Some library versions return true for an MMS response even when
+            # its data-access result rejects Oper. Always check that result.
+            error = iec61850.ControlObjectClient_getLastError(control)
+            if not operated or error != 0:
+                self._record_control_error(control, object_ref, "操作")
                 return False
+            self.last_error = None
             return True
         except Exception as e:
-            log.error(f"IEC61850 控制操作异常: ref={object_ref}, error={e}")
+            self.last_error = f"IEC61850 控制操作异常: ref={object_ref}, error={e}"
+            log.error(self.last_error)
             return False
         finally:
             if ctl_value is not None:
                 iec61850.MmsValue_delete(ctl_value)
-            if control is not None:
-                iec61850.ControlObjectClient_destroy(control)
+
+    def _record_control_error(self, control, object_ref: str, action: str) -> None:
+        error = iec61850.ControlObjectClient_getLastError(control)
+        message = f"IEC61850 控制{action}失败: ref={object_ref}, error={format_ied_error(error)}"
+        get_appl_error = getattr(iec61850, "ControlObjectClient_getLastApplError", None)
+        if callable(get_appl_error):
+            try:
+                appl_error = get_appl_error(control)
+                cause = appl_error.addCause
+                if appl_error.error or cause:
+                    cause_name = next(
+                        (
+                            name
+                            for name in dir(iec61850)
+                            if name.startswith("ADD_CAUSE_") and getattr(iec61850, name) == cause
+                        ),
+                        str(cause),
+                    )
+                    message += (
+                        f", ctlNum={appl_error.ctlNum}, application_error={appl_error.error}, addCause={cause_name}"
+                    )
+            except Exception as exc:
+                log.debug(f"读取 IEC61850 控制附加错误失败: {exc}")
+        self.last_error = message
+        log.error(message)
 
     def _write_once(
         self,

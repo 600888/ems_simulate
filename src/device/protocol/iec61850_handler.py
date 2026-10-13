@@ -971,6 +971,11 @@ class IEC61850ClientHandler(ClientHandler):
         meta = self._client.read_metadata(address=str(point.address), fc=fc)
         return meta.to_dict()
 
+    @property
+    def last_error(self) -> str | None:
+        """Expose the MMS write diagnostic for point-write error responses."""
+        return getattr(self._client, "last_error", None) if self._client else None
+
     def write_value(self, point: BasePoint, value: Any) -> bool:
         """写入测点值（发送命令）
 

@@ -266,6 +266,11 @@ class IEC61850Client:
         """写入测点值 (委托给 Iec61850Writer)"""
         return self._writer.write(address, value, fc)
 
+    @property
+    def last_error(self) -> str | None:
+        """Expose the latest write diagnostic to the protocol handler and API."""
+        return self._writer.last_error
+
     # ===== 内部方法 (向后兼容, 委托给核心组件) =====
 
     def _build_ref(self, address) -> str:
