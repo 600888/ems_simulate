@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 import re
 from typing import Any
 
-from ..model.enums import FC_TO_IEC_TYPE
 from ..model.scl_document import (
     SclDataSet,
     SclDocument,
@@ -21,6 +20,7 @@ from ..model.scl_document import (
     SclLDevice,
     SclLN,
 )
+from ..parser.dataset_types import DataSetTypeResolver, infer_fcda_iec_type
 
 
 @dataclass
@@ -161,6 +161,7 @@ class SclGooseTransformer:
     def __init__(self, doc: SclDocument):
         """保存 SCL 文档与设备作用域，用于生成 GOOSE 发布和订阅配置。"""
         self._doc = doc
+        self._dataset_type_resolver = DataSetTypeResolver(doc)
 
     def transform(self) -> GooseTransformResult:
         """执行转换"""
@@ -271,7 +272,7 @@ class SclGooseTransformer:
         # 纯 DataSet (未被任何控制块引用)
         for ds_name, ds in ds_map.items():
             if ds_name not in referenced_datasets:
-                members = [self._fcda_to_dict(m) for m in ds.members]
+                members = [self._fcda_to_dict(m, ied.name) for m in ds.members]
                 ds_ref = f"{ld.inst}/{ln0.ln_name}${ds_name}"
                 entries = []
                 for m in members:
@@ -332,7 +333,7 @@ class SclGooseTransformer:
 
         # 数据集成员
         if gse_ctrl.dat_set and gse_ctrl.dat_set in ds_map:
-            info.dataset_members = [self._fcda_to_dict(m) for m in ds_map[gse_ctrl.dat_set].members]
+            info.dataset_members = [self._fcda_to_dict(m, ied.name) for m in ds_map[gse_ctrl.dat_set].members]
 
         return info
 
@@ -357,8 +358,7 @@ class SclGooseTransformer:
         info.min_time = gse.min_time
         info.max_time = gse.max_time
 
-    @staticmethod
-    def _fcda_to_dict(fcda: Any) -> dict[str, str]:
+    def _fcda_to_dict(self, fcda: Any, ied_name: str) -> dict[str, str]:
         """将 SclFCDA 转为兼容 dict"""
         return {
             "ld_inst": fcda.ld_inst,
@@ -369,12 +369,13 @@ class SclGooseTransformer:
             "da_name": fcda.da_name,
             "fc": fcda.fc,
             "fcda_ref": fcda.fcda_ref,
+            "b_type": self._dataset_type_resolver.resolve_btype(fcda, ied_name),
         }
 
 
 def _fcda_to_iec_type(fcda: dict[str, str]) -> str:
-    """根据 FCDA 的 fc 推断 IEC 数据类型"""
-    return FC_TO_IEC_TYPE.get(fcda.get("fc", ""), "boolean")
+    """根据 FCDA 的属性类型解析 IEC 数据类型。"""
+    return infer_fcda_iec_type(fcda)
 
 
 def _default_value_for_type(iec_type: str) -> Any:

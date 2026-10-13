@@ -43,6 +43,7 @@ import re
 from typing import Any
 
 from src.data.log import log
+from src.proto.iec61850.plugins.scl.parser.dataset_types import infer_fcda_iec_type
 
 # 已知结构体 DA 到完整叶子 DA 路径的映射
 _KNOWN_STRUCT_DA_TO_FULL_PATH = {
@@ -160,17 +161,7 @@ class GooseGseControlInfo:
 
     @staticmethod
     def _fcda_to_iec_type(fcda: dict[str, str]) -> str:
-        fc = fcda.get("fc", "")
-        fc_map = {
-            "ST": "boolean",
-            "MX": "float",
-            "CO": "boolean",
-            "SP": "string",
-            "SV": "boolean",
-            "CF": "float",
-            "DC": "string",
-        }
-        return fc_map.get(fc, "boolean")
+        return infer_fcda_iec_type(fcda)
 
     @staticmethod
     def _default_value_for_type(iec_type: str) -> Any:

@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..model.enums import FC_TO_IEC_TYPE
 from ..model.scl_document import (
     SclDataSet,
     SclDocument,
@@ -17,6 +16,7 @@ from ..model.scl_document import (
     SclLN,
     SclReportControl,
 )
+from ..parser.dataset_types import DataSetTypeResolver
 
 
 @dataclass
@@ -51,6 +51,7 @@ class SclReportTransformer:
     def __init__(self, doc: SclDocument):
         """保存 SCL 文档与设备标识，用于把 ReportControl 转换为报告配置。"""
         self._doc = doc
+        self._dataset_type_resolver = DataSetTypeResolver(doc)
 
     def transform(self) -> ReportTransformResult:
         """执行转换"""
@@ -63,7 +64,7 @@ class SclReportTransformer:
                 for ld in ap.server.ldevices:
                     all_lns = ([ld.ln0] + ld.lns) if ld.ln0 else ld.lns
                     for ln in all_lns:
-                        self._transform_ln(ln, ld, result)
+                        self._transform_ln(ln, ld, result, ied.name)
 
         return result
 
@@ -72,6 +73,7 @@ class SclReportTransformer:
         ln: SclLN,
         ld: SclLDevice,
         result: ReportTransformResult,
+        ied_name: str,
     ) -> None:
         """转换单个 LN 的 ReportControl，含 RptEnabled max 多实例展开"""
         ds_map: dict[str, SclDataSet] = {ds.name: ds for ds in ln.datasets}
@@ -80,7 +82,7 @@ class SclReportTransformer:
             # RptEnabled max: 多实例 URCB 展开为 baseName01, baseName02, ...
             instance_count = max(rc.rpt_enabled_max, 1)
             for idx in range(1, instance_count + 1):
-                info = self._build_report_info(rc, ln, ld, ds_map, idx, instance_count)
+                info = self._build_report_info(rc, ln, ld, ds_map, idx, instance_count, ied_name)
                 result.report_controls.append(info)
 
     def _build_report_info(
@@ -91,6 +93,7 @@ class SclReportTransformer:
         ds_map: dict[str, SclDataSet],
         instance_idx: int = 1,
         instance_count: int = 1,
+        ied_name: str = "",
     ) -> ReportControlInfo:
         """构建 ReportControlInfo
 
@@ -126,7 +129,7 @@ class SclReportTransformer:
         if rc.dat_set and rc.dat_set in ds_map:
             ds = ds_map[rc.dat_set]
             for fcda in ds.members:
-                iec_type = FC_TO_IEC_TYPE.get(fcda.fc, "boolean")
+                iec_type = self._dataset_type_resolver.resolve_iec_type(fcda, ied_name)
                 default_val = _default_value_for_type(iec_type)
                 entries.append(
                     {
