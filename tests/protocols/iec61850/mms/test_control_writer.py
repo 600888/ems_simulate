@@ -97,6 +97,36 @@ def test_sbo_control_selects_before_operate(monkeypatch):
     assert calls.index(("select",)) < calls.index(("operate", 0))
 
 
+def test_status_only_reports_server_configuration_without_sending_control(monkeypatch):
+    api, calls = _fake_control_api(control_model=0)
+    monkeypatch.setattr(writer_module, "iec61850", api, raising=False)
+    writer = Iec61850Writer(_Connection(), _Registry())
+
+    assert writer.write("Pos", 1, "CO") is False
+    assert ".ctlModel (FC=CF) 返回 0(status-only)" in writer.last_error
+    assert not any(call[0] in {"value", "select", "select_with_value", "operate"} for call in calls)
+    assert calls.count(("destroy",)) == 1
+    assert writer._control_clients == {}
+
+
+def test_status_only_is_recreated_after_server_configuration_is_corrected(monkeypatch):
+    api, calls = _fake_control_api(control_model=0)
+    server_model = 0
+    api.ControlObjectClient_create = lambda ref, _conn: (
+        calls.append(("create", ref)) or SimpleNamespace(control_model=server_model)
+    )
+    api.ControlObjectClient_getControlModel = lambda control: control.control_model
+    monkeypatch.setattr(writer_module, "iec61850", api, raising=False)
+    writer = Iec61850Writer(_Connection(), _Registry())
+
+    assert writer.write("Pos", 1, "CO") is False
+    server_model = 2
+    assert writer.write("Pos", 1, "CO") is True
+    assert writer.last_error is None
+    assert len([call for call in calls if call[0] == "create"]) == 2
+    assert calls.index(("select",)) < calls.index(("operate", 0))
+
+
 def test_control_without_explicit_fc_uses_control_service(monkeypatch):
     api, calls = _fake_control_api(control_model=2)
     monkeypatch.setattr(writer_module, "iec61850", api, raising=False)

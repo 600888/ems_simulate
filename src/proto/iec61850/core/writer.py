@@ -145,15 +145,24 @@ class Iec61850Writer:
                 log.error(self.last_error)
                 return False
 
-            ctl_value = self._new_control_value(control, value, iec_type)
-            if ctl_value is None:
-                self.last_error = f"不支持的 IEC61850 控制值类型: ref={object_ref}, value={value!r}"
+            control_model = iec61850.ControlObjectClient_getControlModel(control)
+            if control_model == iec61850.CONTROL_MODEL_STATUS_ONLY:
+                # No command was sent, so there is no ctlNum sequence to retain.
+                # Recreate on the next attempt in case the simulator's model is
+                # corrected without restarting the MMS association.
+                self._control_clients.pop(object_ref, None)
+                iec61850.ControlObjectClient_destroy(control)
+                self.last_error = (
+                    f"IEC61850 控制对象为只读状态模型: ref={object_ref}, "
+                    f"服务端 {object_ref}.ctlModel (FC=CF) 返回 0(status-only)，"
+                    "请检查服务端控制模型初始化或仿真配置；客户端不会按 ICD 的配置值强制执行"
+                )
                 log.error(self.last_error)
                 return False
 
-            control_model = iec61850.ControlObjectClient_getControlModel(control)
-            if control_model == iec61850.CONTROL_MODEL_STATUS_ONLY:
-                self.last_error = f"IEC61850 控制对象为只读状态模型: ref={object_ref}"
+            ctl_value = self._new_control_value(control, value, iec_type)
+            if ctl_value is None:
+                self.last_error = f"不支持的 IEC61850 控制值类型: ref={object_ref}, value={value!r}"
                 log.error(self.last_error)
                 return False
             if control_model == iec61850.CONTROL_MODEL_SBO_NORMAL:
