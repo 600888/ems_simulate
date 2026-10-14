@@ -360,7 +360,7 @@ class SclGooseTransformer:
 
     def _fcda_to_dict(self, fcda: Any, ied_name: str) -> dict[str, str]:
         """将 SclFCDA 转为兼容 dict"""
-        return {
+        member = {
             "ld_inst": fcda.ld_inst,
             "ln_class": fcda.ln_class,
             "ln_inst": fcda.ln_inst,
@@ -371,6 +371,10 @@ class SclGooseTransformer:
             "fcda_ref": fcda.fcda_ref,
             "b_type": self._dataset_type_resolver.resolve_btype(fcda, ied_name),
         }
+        # Both import previews and the discovered-GOOSE/DataSet caches consume
+        # these members. Carry the resolved scalar type across every boundary.
+        member["iec_type"] = infer_fcda_iec_type(member)
+        return member
 
 
 def _fcda_to_iec_type(fcda: dict[str, str]) -> str:

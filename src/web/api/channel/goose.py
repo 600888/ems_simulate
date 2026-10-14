@@ -15,6 +15,7 @@ from fastapi import APIRouter, Request
 from src.common.mac_address import format_mac_address
 from src.data.service.channel_service import ChannelService
 from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
+from src.proto.iec61850.plugins.scl.parser.dataset_types import infer_fcda_iec_type
 from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.api.schemas.goose import (
@@ -112,7 +113,11 @@ def _get_discovered_goose(channel_id: int, request: Request) -> list[dict[str, A
                     {
                         "name": member.get("fcda_ref") or member.get("ref") or member.get("name", ""),
                         "fc": member.get("fc", ""),
-                        "type": member.get("iec_type") or member.get("type", "unknown"),
+                        "type": (
+                            infer_fcda_iec_type(member)
+                            if member.get("b_type")
+                            else member.get("iec_type") or member.get("type", "unknown")
+                        ),
                         "description": member.get("description") or member.get("desc", ""),
                     }
                     for member in members

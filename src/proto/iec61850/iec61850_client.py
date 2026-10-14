@@ -668,6 +668,7 @@ class IEC61850Client:
             是否加载成功
         """
         from .log import log
+        from .plugins.scl.parser.dataset_types import infer_fcda_iec_type
         from .plugins.scl.service.import_service import SclImportService
 
         log.info(f"正在从 ICD 文件加载模型: {icd_path}")
@@ -803,7 +804,7 @@ class IEC61850Client:
                         {
                             "ref": m.get("fcda_ref", ""),
                             "fc": m.get("fc", ""),
-                            "iec_type": "",
+                            "iec_type": infer_fcda_iec_type(m),
                         }
                     )
                 datasets.append(
