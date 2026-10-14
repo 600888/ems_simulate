@@ -22,11 +22,8 @@
             v-if="!scope.row._isDoRow && !scope.row._isVirtualDa"
             class="expand-wrapper"
           >
-            <el-tabs v-model="activeName" class="inner-tabs" lazy>
-              <el-tab-pane
-                :label="$t('table.configControl')"
-                name="configControl"
-              >
+            <PointDetailTabs v-model="activeName" :client="isClientDevice">
+              <template #configControl>
                 <div class="control-grid">
                   <SingleRegister
                     v-if="intRegisterDecodeList.includes(scope.row['解析码'])"
@@ -61,11 +58,8 @@
                     :active="activeName === 'configControl'"
                   />
                 </div>
-              </el-tab-pane>
-              <el-tab-pane
-                :label="$t('table.propertyEdit')"
-                name="propertyEdit"
-              >
+              </template>
+              <template #propertyEdit>
                 <div class="metadata-grid">
                   <EditPointMetadata
                     :deviceName="deviceName"
@@ -93,49 +87,43 @@
                     @update-success="emit('refresh')"
                   />
                 </div>
-              </el-tab-pane>
+              </template>
 
-              <el-tab-pane
-                :label="$t('table.pointMapping')"
-                name="pointMapping"
-              >
+              <template #pointMapping>
                 <PointMappingConfig
                   :deviceName="deviceName"
                   :targetPointCode="scope.row['测点编码']"
                   :active="activeName === 'pointMapping'"
                 />
-              </el-tab-pane>
+              </template>
 
-              <el-tab-pane name="simulation" :disabled="isClientDevice">
-                <template #label>
-                  <el-tooltip
-                    :content="isClientDevice ? $t('device.clientNoSim') : ''"
-                    :disabled="!isClientDevice"
-                    placement="top"
-                  >
-                    <span>{{ $t("table.simulation") }}</span>
-                  </el-tooltip>
-                </template>
+              <template #simulation-label>
+                <el-tooltip
+                  :content="isClientDevice ? $t('device.clientNoSim') : ''"
+                  :disabled="!isClientDevice"
+                  placement="top"
+                >
+                  <span>{{ $t("table.simulation") }}</span>
+                </el-tooltip>
+              </template>
+              <template #simulation>
                 <PointSimulator
                   :deviceName="deviceName"
                   :pointCode="scope.row['测点编码']"
                   :active="activeName === 'simulation'"
                   @update-success="handlePointSimulatorUpdate"
                 />
-              </el-tab-pane>
+              </template>
 
-              <el-tab-pane
-                :label="$t('table.changeHistory')"
-                name="changeHistory"
-              >
+              <template #changeHistory>
                 <PointChangeHistory
                   :deviceName="deviceName"
                   :pointCode="scope.row['测点编码']"
                   :active="activeName === 'changeHistory'"
                   :slaveId="slaveId"
                 />
-              </el-tab-pane>
-            </el-tabs>
+              </template>
+            </PointDetailTabs>
           </div>
         </template>
       </el-table-column>
@@ -803,6 +791,7 @@ import EditPointIec104 from "../point/EditPointIec104.vue";
 import EditPointDnp3 from "../point/EditPointDnp3.vue";
 import PointMappingConfig from "../point/PointMappingConfig.vue";
 import PointChangeHistory from "../point/PointChangeHistory.vue";
+import PointDetailTabs from "../point/PointDetailTabs.vue";
 import WritePointDialog from "./WritePointDialog.vue";
 import Iec61850WriteDialog from "./Iec61850WriteDialog.vue";
 import Dlt645WriteDialog from "./Dlt645WriteDialog.vue";

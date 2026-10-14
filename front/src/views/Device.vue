@@ -174,7 +174,9 @@
                 class="button btn-config"
                 @click="showSimConfigDialog = true"
                 :disabled="
-                  isClientDevice || (isIec61850Protocol && !modelLoaded)
+                  isClientDevice ||
+                  dlt698SimulationUnavailable ||
+                  (isIec61850Protocol && !modelLoaded)
                 "
               >
                 <template #icon>
@@ -198,6 +200,7 @@
                   isSimProcessing ||
                   !deviceStatus ||
                   isClientDevice ||
+                  dlt698SimulationUnavailable ||
                   (isIec61850Protocol && !modelLoaded)
                 "
                 :loading="isSimProcessing"
@@ -239,7 +242,16 @@
       :running="deviceStatus"
       @config-changed="handleOpcUaConfigChanged"
     />
-    <Slave v-else-if="!isOpcUaProtocol" ref="slaveRef" />
+    <Dlt698Panel
+      v-else-if="isDlt698Protocol && channelId"
+      :channel-id="channelId"
+      :device-name="routeName"
+      :role="dlt698Role"
+      :running="deviceStatus"
+      @capabilities="handleDlt698Capabilities"
+      @config-changed="handleOpcUaConfigChanged"
+    />
+    <Slave v-else-if="!isOpcUaProtocol && !isDlt698Protocol" ref="slaveRef" />
 
     <!-- 报文查看对话框 -->
     <MessageViewDialog v-model="showMessageDialog" :device-name="routeName" />
@@ -281,6 +293,10 @@ import { useRoute } from "vue-router";
 import TextNode from "@/components/common/TextNode.vue";
 import Slave from "@/components/device/Slave.vue";
 import OpcUaPanel from "@/components/device/OpcUaPanel.vue";
+import Dlt698Panel from "@/components/device/dlt698/Dlt698Panel.vue";
+import type { Dlt698Config, Dlt698Role, Dlt698Status } from "@/types/dlt698";
+import { getChannel } from "@/api/channelApi";
+import { useDlt698Text } from "@/composables/useDlt698Text";
 import MessageViewDialog from "@/components/device/MessageViewDialog.vue";
 import ConnectionMonitorDialog from "@/components/device/ConnectionMonitorDialog.vue";
 import SimulationConfigDialog from "@/components/point/SimulationConfigDialog.vue";
@@ -318,11 +334,15 @@ import {
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { HTTP_TIMEOUT_MODEL_DISCOVERY } from "@/constants";
-import { isSerialConnectionType } from "@/constants/protocol";
+import {
+  isSerialConnectionType,
+  isDlt698Protocol as matchesDlt698Protocol,
+} from "@/constants/protocol";
 import { showError, showErrorOnce } from "@/api/http";
 
 const route = useRoute();
 const { t } = useI18n();
+const l = useDlt698Text();
 
 const getDeviceNameFromRoute = () => {
   return (route.params.deviceName as string) || "";
@@ -344,6 +364,8 @@ const showMessageDialog = ref<boolean>(false);
 const showConnectionMonitor = ref<boolean>(false);
 const connectionMonitoringSupported = ref(false);
 const currentConnectionCount = ref(0);
+const dlt698Config = ref<Dlt698Config | null>(null);
+const dlt698Status = ref<Dlt698Status | null>(null);
 
 const connectionEndpoint = computed(() => {
   if (!ip.value) return "-";
@@ -398,11 +420,36 @@ const isSerialMode = computed(() => {
 });
 
 const isClientDevice = computed(() => {
+  if (isDlt698Protocol.value) return dlt698Role.value === "client";
   const type = communicationType.value;
   // 检查是否为客户端类型 (包含 Client 且不包含 Server)
   // ModbusTcpClient, Iec104Client, Dlt645Client
   return String(type).includes("Client");
 });
+
+const isDlt698Protocol = computed(() =>
+  matchesDlt698Protocol(communicationType.value),
+);
+const dlt698Role = computed<Dlt698Role>(() => {
+  if (
+    dlt698Config.value?.role === "client" ||
+    dlt698Config.value?.role === "server"
+  )
+    return dlt698Config.value.role;
+  return String(communicationType.value) === "Dlt698Server"
+    ? "server"
+    : "client";
+});
+const dlt698SimulationUnavailable = computed(
+  () =>
+    isDlt698Protocol.value &&
+    (dlt698Status.value?.available !== true ||
+      dlt698Status.value?.features.simulation?.supported !== true),
+);
+const handleDlt698Capabilities = (status: Dlt698Status) => {
+  dlt698Status.value = status;
+  if (dlt698SimulationUnavailable.value) showSimConfigDialog.value = false;
+};
 
 const isOpcUaProtocol = computed(() =>
   ["OpcUaClient", "OpcUaServer"].includes(String(communicationType.value)),
@@ -425,6 +472,14 @@ const isDeviceStartDisabled = computed(() => {
 // 模拟按钮禁用的工具提示
 const simTooltipText = computed(() => {
   if (isClientDevice.value) return t("device.clientNoSim");
+  if (dlt698SimulationUnavailable.value)
+    return (
+      dlt698Status.value?.features.simulation?.reason ||
+      l(
+        "后端尚未提供 DL/T 698 模拟能力",
+        "DL/T 698 simulation is unavailable in the backend",
+      )
+    );
   if (isIec61850Protocol.value && !modelLoaded.value)
     return t("device.modelNotLoaded");
   if (!deviceStatus.value) return t("device.deviceNotStarted");
@@ -434,6 +489,7 @@ const simTooltipDisabled = computed(() => {
   // 当按钮因任何原因禁用时，显示提示
   return (
     isClientDevice.value ||
+    dlt698SimulationUnavailable.value ||
     !deviceStatus.value ||
     (isIec61850Protocol.value && !modelLoaded.value)
   );
@@ -681,12 +737,33 @@ const fetchDeviceInfo = async () => {
     const info = await getDeviceInfo(routeName.value);
     deviceInfo.value = info;
     ip.value = info.get("ip") || null;
-    port.value = info.get("port") || null;
+    port.value = info.get("actual_port") ?? info.get("port") ?? null;
     serialPort.value = info.get("serial_port") || null;
     baudrate.value = info.get("baudrate") || 9600;
     connectionType.value = info.get("conn_type") ?? null;
     communicationType.value = info.get("type") || null;
-    channelId.value = info.get("channel_id") ?? null;
+    const nextChannelId = info.get("channel_id") ?? null;
+    if (channelId.value !== nextChannelId) {
+      dlt698Status.value = null;
+      dlt698Config.value = null;
+    }
+    channelId.value = nextChannelId;
+    if (isDlt698Protocol.value && channelId.value) {
+      // The configured protocol role takes precedence over TCP direction and
+      // legacy device type strings, including master listeners/meter dialers.
+      const persistedConfig = info.get("dlt698_config") as
+        Dlt698Config | undefined;
+      if (persistedConfig) {
+        dlt698Config.value = persistedConfig;
+      } else {
+        try {
+          const channel = await getChannel(channelId.value);
+          dlt698Config.value = channel?.dlt698_config || null;
+        } catch (error) {
+          console.error("加载 DL/T 698 协议角色失败", error);
+        }
+      }
+    }
     const serverStatus = info.get("server_status");
     deviceStatus.value = serverStatus;
     connectionMonitoringSupported.value =
@@ -728,6 +805,11 @@ const handleOpcUaConfigChanged = async () => {
 };
 
 const startFunction = async () => {
+  if (
+    isDlt698Protocol.value &&
+    (isClientDevice.value || dlt698SimulationUnavailable.value)
+  )
+    return;
   isSimProcessing.value = true;
   try {
     if (simulationStatus.value) {
@@ -973,6 +1055,9 @@ const fetchDeviceStatus = async () => {
 
     // 同步显示参数（波特率可能在运行中被"更改通信速率"命令更新）
     baudrate.value = info.get("baudrate") || 9600;
+    if (isDlt698Protocol.value) {
+      port.value = info.get("actual_port") ?? info.get("port") ?? null;
+    }
     connectionMonitoringSupported.value =
       info.get("connection_monitoring_supported") === true;
     currentConnectionCount.value = Number(

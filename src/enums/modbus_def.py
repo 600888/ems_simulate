@@ -21,6 +21,8 @@ class ProtocolType(Enum):
     Dnp3Client = "Dnp3Client"
     OpcUaServer = "OpcUaServer"
     OpcUaClient = "OpcUaClient"
+    Dlt698Client = "Dlt698Client"
+    Dlt698Server = "Dlt698Server"
 
 
 class RegisterType(Enum):

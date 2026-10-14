@@ -1,6 +1,6 @@
 [project]
 name = "ems_simulate"
-version = "5.5.0"
+version = "6.1.0"
 description = "电力模拟仿真系统，支持 IEC61850 / IEC101 / IEC104 / Modbus / DLT645 / DNP3 / OPC UA 协议"
 requires-python = ">=3.11"
 dependencies = [
@@ -18,6 +18,7 @@ dependencies = [
     "uvicorn[standard]==0.40.0",
     "python-multipart==0.0.21",
     "dlt645[async]==3.2.0",
+    "dlt698==1.0.0",
     "pyiec61850-ng==1.6.1.10",
     "pydnp3-pure @ git+https://github.com/600888/pydnp3-pure.git@83c0365b9ce645f4789ab53a281aeb7c00dda309",
     "scapy==2.7.0",

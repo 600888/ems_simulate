@@ -136,6 +136,14 @@ class GeneralDeviceBuilder:
         self.protocol_type = protocol_type
 
         channel = ChannelService.get_channel_by_id(self.channel_id)
+        self.general_device.transport_conn_type = channel.get("conn_type", 1) if channel else 1
+        if protocol_type in (ProtocolType.Dlt698Client, ProtocolType.Dlt698Server):
+            self.setDeviceId(self.device_id)
+            self.setDeviceName(self.device_name)
+            self.general_device.protocol_type = protocol_type
+            self.general_device.initLog()
+            self.general_device.initProtocol()
+            return self.general_device
         if protocol_type in (ProtocolType.OpcUaServer, ProtocolType.OpcUaClient) and channel:
             self.setDeviceOpcUaConfig(OpcUaConfigService.get(self.channel_id))
         self.general_device.point_manager.set_change_tracking_enabled(

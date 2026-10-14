@@ -260,6 +260,10 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
             )
             if is_opcua:
                 opcua_copy = await asyncio.to_thread(OpcUaCopyService.clone_for_channel, req.channel_id, new_channel_id)
+            if source_channel.get("protocol_type") == 8:
+                from src.data.service.dlt698_service import Dlt698Service
+
+                await asyncio.to_thread(Dlt698Service.clone, req.channel_id, new_channel_id)
         except Exception as e:
             log.error(f"复制通道配置失败: {new_code}: {e}")
             ChannelConfigurationService.delete_for_channel(new_channel_id)

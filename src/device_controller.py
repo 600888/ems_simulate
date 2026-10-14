@@ -173,6 +173,7 @@ class DeviceController:
                     or channel_protocol_type == ProtocolType.Dlt645Client
                     or channel_protocol_type == ProtocolType.Iec61850Client
                     or channel_protocol_type == ProtocolType.OpcUaClient
+                    or channel_protocol_type in (ProtocolType.Dlt698Client, ProtocolType.Dlt698Server)
                 ):  # TCP 客户端
                     general_device_builder.setDeviceNetConfig(port=port, ip=ip)
                 else:  # TCP 服务端

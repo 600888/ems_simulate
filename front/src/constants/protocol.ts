@@ -12,6 +12,8 @@ export const PROTOCOL_TYPE = {
   DNP3: 5,
   IEC101: 6,
   OPCUA: 7,
+  // Reserved until the backend advertises the DL/T 698 runtime.
+  DLT698: 8,
 } as const;
 
 // 连接类型枚举值
@@ -54,6 +56,7 @@ export const PROTOCOL_DEFAULT_PORTS: Record<number, number> = {
   [PROTOCOL_TYPE.IEC61850]: 102,
   [PROTOCOL_TYPE.DNP3]: 20000,
   [PROTOCOL_TYPE.OPCUA]: 4840,
+  [PROTOCOL_TYPE.DLT698]: 6980,
 } as const;
 
 // 协议客户端默认 IP 映射（仅 TCP 客户端模式使用）
@@ -63,6 +66,7 @@ export const PROTOCOL_DEFAULT_CLIENT_IP: Record<number, string> = {
   [PROTOCOL_TYPE.IEC61850]: "127.0.0.1",
   [PROTOCOL_TYPE.DNP3]: "127.0.0.1",
   [PROTOCOL_TYPE.OPCUA]: "127.0.0.1",
+  [PROTOCOL_TYPE.DLT698]: "127.0.0.1",
 } as const;
 
 // 标准波特率列表
@@ -137,6 +141,14 @@ export const IEC60870_PROTOCOL_NAMES = [
 ] as const;
 
 export const DLT645_PROTOCOL_NAMES = ["Dlt645Client", "Dlt645Server"] as const;
+export const DLT698_PROTOCOL_NAMES = ["Dlt698Client", "Dlt698Server"] as const;
+
+export function isDlt698Protocol(protocolStr: string | number): boolean {
+  return (
+    protocolStr === PROTOCOL_TYPE.DLT698 ||
+    DLT698_PROTOCOL_NAMES.includes(protocolStr as any)
+  );
+}
 
 // 判断是否为 IEC61850 协议
 export function isIec61850Protocol(protocolStr: string | number): boolean {

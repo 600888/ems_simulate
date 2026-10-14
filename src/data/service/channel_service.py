@@ -63,6 +63,18 @@ class ChannelService:
         protocol = channel.get("protocol_type", 1)
         conn_type = channel.get("conn_type", 1)
 
+        if protocol == 8:
+            role = channel.get("dlt698_config", {}).get("role")
+            if role is None and channel.get("id"):
+                from src.data.service.channel_configuration_service import ChannelConfigurationService
+
+                role = ChannelConfigurationService.get_protocol_params(channel["id"], 8, conn_type)["values"]["role"]
+            return (
+                ProtocolType.Dlt698Client
+                if (role or ("client" if conn_type in (0, 1) else "server")) == "client"
+                else ProtocolType.Dlt698Server
+            )
+
         # 串口主站（客户端模式 - 主动采集）
         # 连接类型与协议映射
         mapping = {

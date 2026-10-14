@@ -45,6 +45,8 @@ datas += pyiec_datas
 # asyncua loads its standard address space from binary_address_space.pickle.
 asyncua_datas, asyncua_binaries, asyncua_hiddenimports = collect_all("asyncua")
 datas += asyncua_datas
+dlt698_datas, dlt698_binaries, dlt698_hiddenimports = collect_all("dlt698")
+datas += dlt698_datas
 
 hiddenimports = [
     "scapy.all",
@@ -82,12 +84,13 @@ hiddenimports = [
     "dlt645.transport.client.async_rtu_client",
     *pyiec_hiddenimports,
     *asyncua_hiddenimports,
+    *dlt698_hiddenimports,
 ]
 
 a = Analysis(
     [str(PROJECT_ROOT / "start_back_end.py")],
     pathex=[str(PROJECT_ROOT)],
-    binaries=pyiec_binaries + asyncua_binaries,
+    binaries=pyiec_binaries + asyncua_binaries + dlt698_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

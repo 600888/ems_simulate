@@ -208,6 +208,13 @@ plan/DNP3/*
 !plan/DNP3/dnp3-implementation-design.md
 !plan/DNP3/dnp3-gap-priority-implementation-plan.md
 
+!plan/DLT698/
+plan/DLT698/*
+!plan/DLT698/implementation/
+plan/DLT698/implementation/*
+!plan/DLT698/implementation/backend-integration-plan.md
+!plan/DLT698/implementation/frontend-delivery.md
+
 !plan/OPCUA/
 plan/OPCUA/*
 !plan/OPCUA/implementation/

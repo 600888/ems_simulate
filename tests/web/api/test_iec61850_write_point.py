@@ -1,17 +1,22 @@
 """IEC61850 本地设值与客户端控制写入的角色隔离回归测试。"""
 
+from importlib import import_module
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+from fastapi import FastAPI
 import pytest
 
 from src.device.core.point.point_operator import PointOperator
 from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
+from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import Yc, Yk, Yx
 from src.enums.points.base_point import BasePoint
 from src.proto.iec61850.iec61850_client import IEC61850Client
 from src.web.api.channel import iec61850 as api
-from src.web.api.exceptions import ValidationError
+from src.web.api.exceptions import OperationError, ValidationError
+from src.web.api.point import router as point_api
 
 
 def make_device(monkeypatch, handler, points):
@@ -86,13 +91,66 @@ async def test_client_control_write_exposes_native_refusal(monkeypatch):
     device = make_device(monkeypatch, handler, [point])
     device.edit_point_data_async = PointOperator(device).edit_value_async
 
-    with pytest.raises(ValueError, match="IED_ERROR_ACCESS_DENIED") as failure:
+    with pytest.raises(OperationError, match="IED_ERROR_ACCESS_DENIED") as failure:
         await api.iec61850_write_single_point(
             api.Iec61850WritePointRequest(channel_id=1, point_code=point.code, point_value=1), Mock()
         )
 
     assert "ADD_CAUSE_BLOCKED_BY_INTERLOCKING" in str(failure.value)
     assert "请检查配置或物理连接" not in str(failure.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("write_api", ["iec61850", "point"])
+async def test_write_failure_http_message_preserves_device_reason(monkeypatch, write_api):
+    app_module = import_module("src.web.app")
+    application = FastAPI(exception_handlers=app_module.app.exception_handlers)
+    application.include_router(api.router, prefix="/api/channels")
+    application.include_router(point_api.point_router)
+    point_code = "IED001PROT_LLN0_FuncEna4_Oper_ctlVal"
+    reason = (
+        f"测点 {point_code} 协议写入失败: IEC61850 控制带值选择失败: "
+        "ref=IED001PROT/LLN0.FuncEna4, error=21(IED_ERROR_ACCESS_DENIED（访问被拒绝）), "
+        "ctlNum=7, application_error=0, addCause=ADD_CAUSE_POSITION_REACHED"
+    )
+    point = Yk(address="IED001PROT/LLN0.FuncEna4.Oper.ctlVal", code=point_code, fc="CO")
+    device = make_device(monkeypatch, IEC61850ClientHandler(), [point])
+    device.protocol_type = ProtocolType.Iec61850Client
+    device.ip, device.port = "127.0.0.1", 102
+    device.edit_point_data_async = AsyncMock(side_effect=ValueError(reason))
+    monkeypatch.setattr(point_api, "_get_device", lambda *_: device)
+    if write_api == "iec61850":
+        path = "/api/channels/iec61850-write-point"
+        payload = {"channel_id": 1, "point_code": point_code, "point_value": 1}
+    else:
+        path = "/api/points/edit-data"
+        payload = {"device_name": "IED001", "point_code": point_code, "point_value": 1}
+
+    sent = []
+
+    async def receive():
+        return {"type": "http.request", "body": json.dumps(payload).encode(), "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    await application(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": path,
+            "query_string": b"",
+            "headers": [(b"content-type", b"application/json")],
+        },
+        receive,
+        send,
+    )
+    response = json.loads(b"".join(item["body"] for item in sent if item["type"] == "http.response.body"))
+
+    assert sent[0]["status"] == 500
+    assert response["code"] == 500
+    assert response["message"] == reason
+    assert "服务器内部错误" not in response["message"]
 
 
 def test_client_sync_control_write_exposes_native_refusal(monkeypatch):

@@ -99,6 +99,10 @@ async def get_device_info(req: DeviceInfoRequest, request: Request):
         info_dict["conn_type"] = 2
 
     info_dict["server_status"] = device.is_protocol_running()
+    if device.protocol_type.value in ("Dlt698Client", "Dlt698Server"):
+        info_dict["dlt698_config"] = dict(device.runtime_config)
+        runtime = getattr(device.protocol_handler, "runtime", None)
+        info_dict["actual_port"] = runtime.actual_port if runtime else None
     connection_handler = _get_connection_handler(device)
     if connection_handler:
         connection_summary = connection_handler.get_connection_summary()

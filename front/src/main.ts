@@ -12,4 +12,5 @@ app.use(DecimalDirective);
 app.use(router);
 app.use(i18n);
 
-app.mount("#app");
+// Resolve standalone routes before mounting the sidebar and its API watchers.
+router.isReady().then(() => app.mount("#app"));

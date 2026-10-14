@@ -2,6 +2,8 @@
  * 通道/设备相关类型定义
  */
 
+import type { Dlt698Config } from "./dlt698";
+
 // 连接类型
 export enum ConnType {
   SerialMaster = 0, // 串口主站（主动轮询）
@@ -20,6 +22,7 @@ export enum ProtocolType {
   Dnp3 = 5,
   Iec101 = 6,
   OpcUa = 7,
+  Dlt698 = 8,
 }
 
 // 协议选项
@@ -62,6 +65,7 @@ export interface ChannelCreateRequest {
   group_id?: number | null;
   protocol_params?: ProtocolParamsConfig;
   opcua_config?: OpcUaDeviceConfig;
+  dlt698_config?: Dlt698Config;
   dlt645_point_mode?: "standard" | "import";
   change_tracking_enabled?: boolean;
 }
@@ -130,6 +134,7 @@ export interface ChannelInfo {
   protocol_params?: ProtocolParamsConfig;
   security_config?: SecurityConfig;
   opcua_config?: OpcUaDeviceConfig;
+  dlt698_config?: Dlt698Config;
   dlt645_point_mode?: "standard" | "import";
   change_tracking_enabled?: boolean;
 }

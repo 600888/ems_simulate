@@ -80,6 +80,7 @@ PROTOCOL_OPTIONS = [
     {"value": 5, "label": "DNP3", "conn_types": [1, 2]},
     {"value": 6, "label": "IEC 101", "conn_types": [0, 3]},
     {"value": 7, "label": "OPC UA", "conn_types": [1, 2]},
+    {"value": 8, "label": "DL/T 698.45", "conn_types": [0, 1, 2, 3]},
 ]
 
 # 连接类型映射
@@ -123,7 +124,7 @@ def _validate_server_endpoint_unique(
     其中 0.0.0.0 表示监听所有 IP，与任何具体 IP 的同端口均冲突。
     exclude_channel_id 用于编辑场景排除自身。
     """
-    if port is None:
+    if port is None or port == 0:
         return
     for ch in ChannelService.get_all_channels():
         if ch.get("conn_type") != 2:
@@ -191,6 +192,12 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
             raise ValidationError(str(exc)) from exc
 
     params = req.protocol_params
+    if req.dlt698_config is not None:
+        if req.protocol_type != 8:
+            raise ValidationError("dlt698_config 仅用于 DL/T 698")
+        from src.web.api.schemas.channel import ProtocolParamsRequest
+
+        params = ProtocolParamsRequest(values=req.dlt698_config.model_dump())
     try:
         normalize_protocol_params(
             req.protocol_type,
@@ -227,7 +234,7 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
         device_controller = request.app.state.device_controller
         builder = get_device_builder(channel_id, req.code)
 
-        channel_data_mock = {"protocol_type": req.protocol_type, "conn_type": req.conn_type}
+        channel_data_mock = {"id": channel_id, "protocol_type": req.protocol_type, "conn_type": req.conn_type}
         protocol_enum = ChannelService.get_protocol_type(channel_data_mock)
 
         if req.conn_type in [0, 3]:
@@ -246,6 +253,8 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
                 ProtocolType.Iec61850Client,
                 ProtocolType.Dnp3Client,
                 ProtocolType.OpcUaClient,
+                ProtocolType.Dlt698Client,
+                ProtocolType.Dlt698Server,
             ]:
                 builder.setDeviceNetConfig(port=req.port, ip=req.ip)
             else:
@@ -287,8 +296,8 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
         log.info(f"设备 {req.name} (ID: {channel_id}) 已在内存中动态创建")
     except Exception as e:
         log.error(f"内存同步创建设备失败: {e}")
-        if req.protocol_type == 7:
-            raise OperationError("OPC UA 配置已保存，但设备实例创建失败，请检查配置后重试") from e
+        if req.protocol_type in (7, 8):
+            raise OperationError("协议配置已保存，但设备实例创建失败，请检查配置后重试") from e
 
     return BaseResponse(
         message="创建通道成功",
@@ -335,6 +344,8 @@ async def get_channel_by_id(req: ChannelDetailRequest):
                 OpcUaDeviceConfigurationService.public,
                 req.channel_id,
             )
+        if channel.get("protocol_type") == 8:
+            channel["dlt698_config"] = channel["protocol_params"]["values"]
     if not channel:
         raise NotFoundError("通道不存在")
     return BaseResponse(message="获取通道详情成功", data=channel)
@@ -356,6 +367,11 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
     _validate_protocol_connection(protocol_to_use, conn_type_to_use)
 
     old_protocol = existing.get("protocol_type", 1)
+    if old_protocol == 8 and protocol_to_use != 8:
+        from src.data.service.dlt698_service import Dlt698Service
+
+        if await asyncio.to_thread(Dlt698Service.points, channel_id):
+            raise ConflictError("请先清理 DL/T 698 测点，再切换协议")
     if old_protocol == 7 and conn_type_to_use != existing.get("conn_type"):
         has_nodes = await asyncio.to_thread(OpcUaNodeService.has_nodes, channel_id)
         has_points = await asyncio.to_thread(OpcUaPointImportService.has_points, channel_id)
@@ -379,6 +395,12 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
 
     params = req.protocol_params
     normalized_params = None
+    if req.dlt698_config is not None:
+        if protocol_to_use != 8:
+            raise ValidationError("dlt698_config 仅用于 DL/T 698")
+        from src.web.api.schemas.channel import ProtocolParamsRequest
+
+        params = ProtocolParamsRequest(values=req.dlt698_config.model_dump())
     existing_params = None
     protocol_combination_changed = protocol_to_use != existing.get(
         "protocol_type", 1
@@ -568,8 +590,8 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
                 device.point_manager.set_change_tracking_enabled(req.change_tracking_enabled)
     except Exception as e:
         log.error(f"更新配置后同步运行时设备失败: {e}")
-        if protocol_to_use == 7:
-            raise OperationError("OPC UA 配置已保存，但运行时重载失败，请检查配置后重试") from e
+        if protocol_to_use in (7, 8):
+            raise OperationError("协议配置已保存，但运行时重载失败，请检查配置后重试") from e
     return BaseResponse(message="更新通道成功", data=True)
 
 

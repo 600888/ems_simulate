@@ -4,6 +4,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from src.config.config import Config
+from src.proto.dlt698.schema import Dlt698Config
 
 
 class ProtocolParamsRequest(BaseModel):
@@ -45,6 +46,7 @@ class ChannelCreateRequest(BaseModel):
     group_id: int | None = None
     protocol_params: ProtocolParamsRequest | None = None
     opcua_config: OpcUaDeviceConfigRequest | None = None
+    dlt698_config: Dlt698Config | None = None
     model_name: str | None = None  # IEC61850 IED 模型名称
     dlt645_point_mode: Literal["standard", "import"] = "import"
     change_tracking_enabled: bool = False
@@ -66,6 +68,7 @@ class ChannelUpdateRequest(BaseModel):
     group_id: int | None = Field(None, description="设备组ID，NULL表示未分组")
     protocol_params: ProtocolParamsRequest | None = None
     opcua_config: OpcUaDeviceConfigRequest | None = None
+    dlt698_config: Dlt698Config | None = None
     model_name: str | None = None  # IEC61850 IED 模型名称
     dlt645_point_mode: Literal["standard", "import"] | None = None
     change_tracking_enabled: bool | None = None

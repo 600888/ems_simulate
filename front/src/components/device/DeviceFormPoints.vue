@@ -87,6 +87,21 @@
       </el-form-item>
     </template>
 
+    <template v-else-if="protocolType === 8">
+      <el-alert
+        :title="
+          l(
+            'DL/T 698 测点从设备工作区的标准库或专用点表导入；保存连接后进入设备工作区继续配置。',
+            'Import DL/T 698 points from the standard library or dedicated point table in the device workspace after saving the connection.',
+          )
+        "
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-top: 16px"
+      />
+    </template>
+
     <!-- OPC UA 与其他协议按各自格式导入 Excel 点表 -->
     <template v-else>
       <el-divider content-position="left">{{
@@ -128,6 +143,9 @@
 <script lang="ts" setup>
 import { ref, watch } from "vue";
 import { Upload } from "@element-plus/icons-vue";
+import { useDlt698Text } from "@/composables/useDlt698Text";
+
+const l = useDlt698Text();
 
 const props = defineProps<{
   protocolType?: number;

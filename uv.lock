@@ -297,8 +297,36 @@ async = [
 ]
 
 [[package]]
+name = "dlt698"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/9c/35541e4745add7cb99cea8ee9394a74a6cc25f9732eb9c1f3a1db5e59596/dlt698-1.0.0.tar.gz", hash = "sha256:c5e5df1bcf6d1fe7d59e99095ef09ed8ff222189a3f207b5648f8544b427f20e", size = 1617348, upload-time = "2026-10-09T00:31:41.993Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/39/4f0e22ab992eda0b7a8fc11770376dbe4fc3e2a55334595e339d56c116ae/dlt698-1.0.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:a9b408aa4d0b4ec34d6907745eb1647d1d4ad6e8094cc749a632b86b65ed70b2", size = 1810669, upload-time = "2026-10-09T00:31:09.535Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/06/59fd7608cbafe064c1043d3b02e3f416022da4d8e8f08df1959997e5198c/dlt698-1.0.0-cp311-cp311-macosx_11_0_x86_64.whl", hash = "sha256:3064d6a540df198ead65f14a9e8210ed762935299bec5a36fd656ce938edcc39", size = 1873507, upload-time = "2026-10-09T00:31:11.388Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/c8/2d4cf2982a2163271692318d2b30e6133fed38445b99b437ce5eda087735/dlt698-1.0.0-cp311-cp311-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:c55517b3ffa813347e1cf5805b55bc87cd3edd10419f8ef9a2be599891cb35c9", size = 2281549, upload-time = "2026-10-09T00:31:13.128Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/61/08966c9d5eb548fa089bbadeb2f2b65fa7c0af4c49410ceec084481f3a59/dlt698-1.0.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b6718b4dc9d4f3b00bd10dc26ec6baa85dee779eba74e92911dc93fa8eafe44b", size = 2456804, upload-time = "2026-10-09T00:31:14.654Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/30/4dabda2623862d2e0008f586a3850d231ce91e237aa1913815efc6e4cabc/dlt698-1.0.0-cp311-cp311-win_amd64.whl", hash = "sha256:67f06ebe5ea4806769d0444b06fe273f0a981df9b3c613a6a0f3e5ef504d0bcb", size = 1378739, upload-time = "2026-10-09T00:31:16.393Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/f2/43d7ee442e43d8bb61fba9ae24091f286f7083d4e448cbf94cb4b2350abd/dlt698-1.0.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:f5b2dc5e932e294d6e4a52c0eaa11b21d0d1f0ef45fcc816e563905de2faec57", size = 1813143, upload-time = "2026-10-09T00:31:17.76Z" },
+    { url = "https://files.pythonhosted.org/packages/51/f9/d846f7df70784e89ef4eb72439efebb10b0840629c52dbb8b63998761e54/dlt698-1.0.0-cp312-cp312-macosx_11_0_x86_64.whl", hash = "sha256:c5837afb58859a4907e9c28ff28334e9da2fc23efc34a74f3c19ede9426c4f69", size = 1892677, upload-time = "2026-10-09T00:31:19.363Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/41/23307058c391d9235da234073010e61c10e45c0c4f95885a2c5597e760e4/dlt698-1.0.0-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:2b0f77133be8bc35220770b1f7eb90aa476f62bb25856d4d924a6a9fcb16c1cc", size = 2294781, upload-time = "2026-10-09T00:31:21.088Z" },
+    { url = "https://files.pythonhosted.org/packages/fb/cb/60a0f4e73d9564f7009506cc42b3dac07e91d4750efd1e2c5df9b368cec5/dlt698-1.0.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:50561327d54c35cfe74913692fd8ad85fd0cad3123e9fdbdb21672933d1d2ddb", size = 2469960, upload-time = "2026-10-09T00:31:22.805Z" },
+    { url = "https://files.pythonhosted.org/packages/45/b7/1d6ee1315805711fca7ed71042b7a317dfc5e00f4f02b11dc999e5b2adb5/dlt698-1.0.0-cp312-cp312-win_amd64.whl", hash = "sha256:bd3764690109ef5da37bd057279f302186dc9d7d2be99bd593f8c620966f4d99", size = 1381584, upload-time = "2026-10-09T00:31:24.688Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/ed/806fe3ee2b8e4cbe4addedf7596944f6a0ac1a42db78f3327b70260a7ba8/dlt698-1.0.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:d5aa14edc1090c66244dba4083a25601741c6d6a621bdfb366a7d5d34669f3d0", size = 1813398, upload-time = "2026-10-09T00:31:26.338Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/a0/f6dfe09e26b7f2d3d95d9c6bb3b7db116006ea1a8d5b6edb475853b2dd4d/dlt698-1.0.0-cp313-cp313-macosx_11_0_x86_64.whl", hash = "sha256:d96bc53afaa122ba3a0eddb0641f7f91850f291b49c50df9aeb759f08122b415", size = 1892742, upload-time = "2026-10-09T00:31:27.984Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/bc/4d0f48db8c6e27e7416a58791b41136175796e08ff1a6d704525fc3c2816/dlt698-1.0.0-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:c8004dd79686dde0562008ce7b29fd49ce677fce3c38e52e041bdc0fc1b440c1", size = 2294741, upload-time = "2026-10-09T00:31:29.571Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/ac/6e68e933b4864f4301bbad6217d2b698c13d5945727c918fced6ae94e602/dlt698-1.0.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5200fa5d92ec3ec2fbe600feeb8aae3ca01c4a194227b3ba118cc821db5dde29", size = 2469720, upload-time = "2026-10-09T00:31:31.134Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/2a/6f0304e00afadf7d4e3bb30235984d8f78a3bc51d2d364769fecf6ecb3c8/dlt698-1.0.0-cp313-cp313-win_amd64.whl", hash = "sha256:842d21c968328950cf7f9679dae5038d5a4fc7d477fca309bfcd4170bcf9cfa5", size = 1381748, upload-time = "2026-10-09T00:31:33.033Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/b8/90970ed85ff106e945f4e3c2068e5860a57f16f670f769a4e6abd3f05ffe/dlt698-1.0.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:54744d074340e6ea6083687241617186f08ed0240802cffed31e43c363c14668", size = 1814703, upload-time = "2026-10-09T00:31:34.433Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/09/0fdf6cf24d11ec23c685a48be07ea51bed3976d0a5784b70dabb0c01ed6d/dlt698-1.0.0-cp314-cp314-macosx_11_0_x86_64.whl", hash = "sha256:3866599d625c9c59e48196ed12ec755b768048770a656bc118eb4214c6543479", size = 1894192, upload-time = "2026-10-09T00:31:35.788Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/5f/c44da58075b4a5cc018420b8a5fc3444f4dce464a607e8a86e6d552f30b2/dlt698-1.0.0-cp314-cp314-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:fb1f6c0001609e8b4499121288876b9fe682bdbf7f223268d817ad84b20f321d", size = 2298715, upload-time = "2026-10-09T00:31:37.377Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/63/5352180f061c43d9aba7e72af6a4774996bc73ed50d7d26aa9739ed459c1/dlt698-1.0.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:87e9101a7b5356cfd5fb24747b19b897713522b5d3c583febeb9f4b8493cf02c", size = 2473556, upload-time = "2026-10-09T00:31:38.879Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/5a/5106b1b307e9c00ab9b587f21d6553e1ce00259b771e11b8741aaddb6a1b/dlt698-1.0.0-cp314-cp314-win_amd64.whl", hash = "sha256:d23c4081dedf21d613cd8978fa4b67bdb80b557ad8c113b38d2f9b457e2f4afd", size = 1433154, upload-time = "2026-10-09T00:31:40.529Z" },
+]
+
+[[package]]
 name = "ems-simulate"
-version = "5.5.0"
+version = "6.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiomqtt" },
@@ -307,6 +335,7 @@ dependencies = [
     { name = "c104" },
     { name = "cryptography" },
     { name = "dlt645", extra = ["async"] },
+    { name = "dlt698" },
     { name = "fastapi" },
     { name = "loguru" },
     { name = "openpyxl" },
@@ -345,6 +374,7 @@ requires-dist = [
     { name = "c104", git = "https://github.com/600888/iec104-python.git?rev=214b88d6d5d2239e1772db4023d552d68fb0784e" },
     { name = "cryptography", specifier = "==46.0.3" },
     { name = "dlt645", extras = ["async"], specifier = "==3.2.0" },
+    { name = "dlt698", specifier = "==1.0.0" },
     { name = "fastapi", specifier = "==0.128.0" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "openpyxl", specifier = "==3.1.5" },

@@ -14,6 +14,7 @@ from src.proto.iec61850.core.exceptions import Iec61850Error
 from src.web.api.channel import channel_router
 from src.web.api.device import device_router
 from src.web.api.device_group import device_group_router
+from src.web.api.dlt698 import router as dlt698_router
 from src.web.api.exceptions import BizError
 from src.web.api.log_router import log_router
 from src.web.api.modeling import router as modeling_router
@@ -136,6 +137,7 @@ def create_app():
     app.include_router(log_router)
     app.include_router(network_interfaces_router)
     app.include_router(opcua_router)
+    app.include_router(dlt698_router)
 
     # 初始化应用状态
     app.state.initialized = False

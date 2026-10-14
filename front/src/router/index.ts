@@ -7,6 +7,12 @@ const menuRouter = createRouter({
   history: createWebHashHistory(),
   routes: [
     {
+      path: "/dlt698-preview",
+      name: "dlt698-preview",
+      component: () => import("../views/Dlt698Preview.vue"),
+      meta: { standalone: true },
+    },
+    {
       path: "/device/:deviceName",
       name: "device-detail", // Use a fixed name for the route config
       component: () => import("../views/Device.vue"),

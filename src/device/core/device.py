@@ -163,6 +163,7 @@ class Device:
 
     def _create_protocol_handler(self) -> ProtocolHandler:
         """根据协议类型创建处理器（延迟导入协议模块）"""
+        from src.device.protocol.dlt698_handler import Dlt698Handler
         from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850ServerHandler
         from src.device.protocol.opcua_handler import OpcUaClientHandler, OpcUaServerHandler
 
@@ -185,6 +186,8 @@ class Device:
             ProtocolType.Dnp3Client: lambda: DNP3ClientHandler(self.log),
             ProtocolType.OpcUaServer: lambda: OpcUaServerHandler(self.log),
             ProtocolType.OpcUaClient: lambda: OpcUaClientHandler(self.log),
+            ProtocolType.Dlt698Client: Dlt698Handler,
+            ProtocolType.Dlt698Server: Dlt698Handler,
         }
         creator = handler_map.get(self.protocol_type)
         if creator:
@@ -195,6 +198,7 @@ class Device:
         """构建协议配置字典"""
         return {
             "channel_id": self.device_id,
+            "conn_type": getattr(self, "transport_conn_type", 1),
             "ip": self.ip,
             "port": self.port,
             "serial_port": self.serial_port,
@@ -230,6 +234,8 @@ class Device:
             ProtocolType.Iec61850Client,
             ProtocolType.OpcUaServer,
             ProtocolType.OpcUaClient,
+            ProtocolType.Dlt698Client,
+            ProtocolType.Dlt698Server,
         ):
             return
 
@@ -632,7 +638,12 @@ class Device:
     async def start(self) -> bool:
         """启动设备"""
         try:
-            if self.protocol_type not in (ProtocolType.OpcUaClient, ProtocolType.OpcUaServer):
+            if self.protocol_type not in (
+                ProtocolType.OpcUaClient,
+                ProtocolType.OpcUaServer,
+                ProtocolType.Dlt698Client,
+                ProtocolType.Dlt698Server,
+            ):
                 self.point_calculator.start()
             if self.protocol_handler:
                 started = await self.protocol_handler.start()

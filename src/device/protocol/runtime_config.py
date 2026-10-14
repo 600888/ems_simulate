@@ -240,11 +240,22 @@ _IEC104_LEGACY_TIME_PARAMS = {
 
 
 def get_protocol_param_defaults(protocol_type: int, conn_type: int) -> dict[str, int | bool | str]:
+    if protocol_type == 8:
+        from src.proto.dlt698.schema import Dlt698Config
+
+        return Dlt698Config(role="client" if conn_type in (0, 1) else "server").model_dump()
     return dict(_DEFAULTS.get((protocol_type, conn_type), {}))
 
 
 def normalize_protocol_params(protocol_type: int, conn_type: int, values: dict[str, Any] | None) -> dict[str, Any]:
     defaults = get_protocol_param_defaults(protocol_type, conn_type)
+    if protocol_type == 8:
+        from src.proto.dlt698.schema import Dlt698Config
+
+        config = Dlt698Config.model_validate({**defaults, **(values or {})})
+        if config.role != ("client" if conn_type in (0, 1) else "server"):
+            raise ValueError("当前托管 API 的协议角色必须与连接方向一致，反向拨号需要专家接口")
+        return config.model_dump()
     incoming = dict(values or {})
     if (protocol_type, conn_type) == (7, 1) and "connect_timeout_ms" in incoming:
         # Legacy OPC UA clients used the connection timeout for every SDK request.

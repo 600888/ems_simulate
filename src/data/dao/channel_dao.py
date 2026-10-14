@@ -196,6 +196,7 @@ class ChannelDao:
         from src.data.model.channel_configuration import ChannelProtocolParams, ChannelSecurityConfig
         from src.data.model.connection_session import ConnectionSession
         from src.data.model.device import Device
+        from src.data.model.dlt698 import Dlt698Point
         from src.data.model.goose_publisher import GooseEntry, GoosePublisher
         from src.data.model.goose_receiver import GooseReceiverConfig, GooseSubscriptionConfig
         from src.data.model.opcua_config import OpcUaConfig
@@ -228,6 +229,7 @@ class ChannelDao:
 
                 # 显式清理所有不带数据库级联的通道配置，兼容旧版 SQLite 数据库。
                 session.query(ChannelProtocolParams).where(ChannelProtocolParams.channel_id == channel_id).delete()
+                session.query(Dlt698Point).where(Dlt698Point.channel_id == channel_id).delete()
                 session.query(ChannelSecurityConfig).where(ChannelSecurityConfig.channel_id == channel_id).delete()
                 session.query(OpcUaNode).where(OpcUaNode.channel_id == channel_id).delete()
                 session.query(OpcUaPoint).where(OpcUaPoint.channel_id == channel_id).delete()

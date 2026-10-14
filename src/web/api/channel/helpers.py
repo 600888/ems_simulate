@@ -46,6 +46,8 @@ def configure_builder_network(builder, conn_type, protocol_type, ip, port, chann
         ProtocolType.Iec61850Client,
         ProtocolType.Dnp3Client,
         ProtocolType.OpcUaClient,
+        ProtocolType.Dlt698Client,
+        ProtocolType.Dlt698Server,
     ]:
         builder.setDeviceNetConfig(port=port, ip=ip)
     else:
@@ -86,6 +88,7 @@ def is_client_protocol(protocol_type) -> bool:
         ProtocolType.Iec61850Client,
         ProtocolType.Dnp3Client,
         ProtocolType.OpcUaClient,
+        ProtocolType.Dlt698Client,
     ]
 
 
@@ -175,6 +178,7 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         or channel_protocol_type == ProtocolType.Dnp3Server
         or channel_protocol_type == ProtocolType.Iec101Server
         or channel_protocol_type == ProtocolType.OpcUaServer
+        or channel_protocol_type == ProtocolType.Dlt698Server
     )
     if needs_stop_before_start:
         await device_controller.remove_device_by_id(channel_id)
@@ -183,13 +187,13 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
         if channel_protocol_type == ProtocolType.Iec61850Client:
             # IEC61850 客户端: 使用 start() 后台线程连接，而非仅启动数据更新线程
             started = await new_device.start()
-            if channel_protocol_type == ProtocolType.OpcUaClient and not started:
-                raise RuntimeError(f"OPC UA 客户端启动失败: {new_device.protocol_handler.last_error}")
+            if channel_protocol_type in (ProtocolType.OpcUaClient, ProtocolType.Dlt698Client) and not started:
+                raise RuntimeError(f"客户端启动失败: {new_device.protocol_handler.last_error}")
         else:
             # Modbus/其他客户端：先连接服务器，再启动数据更新线程
             started = await new_device.start()
-            if channel_protocol_type == ProtocolType.OpcUaClient and not started:
-                raise RuntimeError(f"OPC UA 客户端启动失败: {new_device.protocol_handler.last_error}")
+            if channel_protocol_type in (ProtocolType.OpcUaClient, ProtocolType.Dlt698Client) and not started:
+                raise RuntimeError(f"客户端启动失败: {new_device.protocol_handler.last_error}")
     elif is_start and channel_protocol_type == ProtocolType.Iec61850Server:
         # IEC61850 服务端: 需要显式启动 MMS 服务器
         # 注意: IEC61850 服务器不在 is_client_protocol 中，
@@ -203,9 +207,9 @@ async def reload_device_instance(device_controller, channel_id: int, is_start: b
     elif is_start and channel_protocol_type == ProtocolType.Iec101Server:
         await new_device.start()
         log.info(f"IEC101 从站已启动: {device_name}")
-    elif is_start and channel_protocol_type == ProtocolType.OpcUaServer:
+    elif is_start and channel_protocol_type in (ProtocolType.OpcUaServer, ProtocolType.Dlt698Server):
         if not await new_device.start():
-            raise RuntimeError(f"OPC UA 服务端启动失败: {new_device.protocol_handler.last_error}")
+            raise RuntimeError(f"服务端启动失败: {new_device.protocol_handler.last_error}")
 
     if not needs_stop_before_start:
         # 非启动场景（或无需先停的启动场景）：新实例已构建完成，

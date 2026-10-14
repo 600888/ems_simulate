@@ -7,6 +7,7 @@ from src.data.model.channel_configuration import ChannelProtocolParams, ChannelS
 from src.data.model.connection_session import ConnectionSession
 from src.data.model.device import Device, DeviceDict
 from src.data.model.device_group import DeviceGroup, DeviceGroupDict
+from src.data.model.dlt698 import Dlt698Point
 from src.data.model.goose_publisher import GooseEntry, GooseEntryDict, GoosePublisher, GoosePublisherDict
 from src.data.model.goose_receiver import GooseReceiverConfig, GooseSubscriptionConfig
 from src.data.model.iec61850_modeling import Iec61850ModelProject, Iec61850ModelVersion
@@ -25,6 +26,7 @@ from src.data.model.slave import Slave, SlaveDict
 __all__ = [
     "Base",
     "DeviceGroup",
+    "Dlt698Point",
     "DeviceGroupDict",
     "Device",
     "DeviceDict",

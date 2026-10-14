@@ -68,6 +68,13 @@ export function applyProtocolTypeDefaults(
 ): void {
   if (hydrating) return;
 
+  if (newType === PROTOCOL_TYPE.DLT698) {
+    form.baud_rate = 9600;
+    form.data_bits = 8;
+    form.stop_bits = 1;
+    form.parity = "E";
+  }
+
   const defaultPort = PROTOCOL_DEFAULT_PORTS[newType];
   if (defaultPort !== undefined) {
     form.port = defaultPort;
@@ -112,6 +119,18 @@ export function selectFirstProtocolForConnectionType(
   connType: number,
 ): void {
   form.conn_type = connType;
+  // DL/T 698 protocol role is independent of transport direction. Preserve
+  // the selected protocol when its advertised runtime supports the new mode.
+  if (
+    form.protocol_type === PROTOCOL_TYPE.DLT698 &&
+    protocols.some(
+      (protocol) =>
+        protocol.value === PROTOCOL_TYPE.DLT698 &&
+        protocol.conn_types.includes(connType),
+    )
+  ) {
+    return;
+  }
   const firstProtocol = protocols.find((protocol) =>
     protocol.conn_types.includes(connType),
   );

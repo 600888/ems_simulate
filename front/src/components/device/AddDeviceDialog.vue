@@ -63,10 +63,16 @@
 
         <el-tab-pane :label="$t('addDevice.tabProtocol')" name="protocol">
           <DeviceProtocolParams
+            v-if="form.protocol_type !== 8"
             ref="protocolParamsCompRef"
             :model-value="protocolParams"
             :protocol-type="form.protocol_type"
             :conn-type="form.conn_type"
+          />
+          <Dlt698ProtocolConfig
+            v-if="form.protocol_type === 8"
+            :model-value="dlt698Config"
+            :disabled="saving || loadingChannel"
           />
           <OpcUaEndpointParams
             v-if="form.protocol_type === 7"
@@ -253,6 +259,9 @@ import DeviceFormPoints from "./DeviceFormPoints.vue";
 import OpcUaPointImportDialog from "./OpcUaPointImportDialog.vue";
 import { importDevicePointFile } from "@/utils/devicePointImport";
 import DeviceProtocolParams from "./DeviceProtocolParams.vue";
+import Dlt698ProtocolConfig from "./dlt698/Dlt698ProtocolConfig.vue";
+import { configError, defaultDlt698Config } from "@/utils/dlt698";
+import { useDlt698Text } from "@/composables/useDlt698Text";
 import DeviceSecurityConfig from "./DeviceSecurityConfig.vue";
 import OpcUaEndpointParams from "./OpcUaEndpointParams.vue";
 import OpcUaDeviceSecurityConfig from "./OpcUaDeviceSecurityConfig.vue";
@@ -301,6 +310,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const l = useDlt698Text();
 
 const emit = defineEmits<{
   (e: "update:visible", value: boolean): void;
@@ -322,6 +332,7 @@ const securityCompRef = ref();
 const opcuaSecurityCompRef =
   ref<InstanceType<typeof OpcUaDeviceSecurityConfig>>();
 const opcuaConfig = reactive(defaultOpcUaDeviceConfig());
+const dlt698Config = reactive(defaultDlt698Config());
 const activeTab = ref<"basic" | "protocol" | "security">("basic");
 const originalName = ref("");
 const mediaType = ref<"serial" | "network">("network");
@@ -442,6 +453,7 @@ const form = reactive<ChannelCreateRequest>({
   group_id: null,
   protocol_params: protocolParams,
   dlt645_point_mode: "standard",
+  dlt698_config: dlt698Config,
   change_tracking_enabled: false,
 });
 
@@ -469,6 +481,28 @@ const rules = computed<FormRules>(() => {
         pattern: /^\d{12}$/,
         message: t("addDevice.meterAddressInvalid"),
         trigger: "blur",
+      },
+    ];
+  }
+  if (form.protocol_type === 8) {
+    base.port = [
+      {
+        validator: (_rule, value, callback) => {
+          if (isSerialConnectionType(form.conn_type)) return callback();
+          const min = form.conn_type === 2 ? 0 : 1;
+          if (!Number.isInteger(value) || value < min || value > 65535) {
+            return callback(
+              new Error(
+                l(
+                  `端口范围为 ${min}–65535；仅监听允许 0`,
+                  `Port must be ${min}–65535; zero is allowed only when listening`,
+                ),
+              ),
+            );
+          }
+          callback();
+        },
+        trigger: "change",
       },
     ];
   }
@@ -514,7 +548,7 @@ watch(
 
 watch(
   () => [form.protocol_type, form.conn_type],
-  async ([protocolType, connType]) => {
+  async ([protocolType, connType], previous) => {
     if (!TLS_SUPPORTED_PROTOCOLS.has(protocolType)) {
       securityConfig.tls_enabled = false;
       if (protocolType !== 7 && activeTab.value === "security")
@@ -531,6 +565,10 @@ watch(
     }
     uploadCompRef.value?.clearFiles();
     if (!loadingChannel.value) {
+      if (protocolType !== previous?.[0]) {
+        Object.assign(dlt698Config, defaultDlt698Config());
+        form.dlt698_config = dlt698Config;
+      }
       Object.assign(opcuaConfig, defaultOpcUaDeviceConfig(), {
         certificate_configured: false,
         private_key_configured: false,
@@ -563,6 +601,12 @@ const loadChannelData = async (id: number) => {
     const data = await getChannel(id);
     if (!data || requestId !== channelLoadRequest) return;
     Object.assign(form, data);
+    Object.assign(
+      dlt698Config,
+      defaultDlt698Config(),
+      data.dlt698_config || {},
+    );
+    form.dlt698_config = dlt698Config;
     form.change_tracking_enabled = data.change_tracking_enabled ?? false;
     originalDlt645PointMode.value = normalizeDlt645PointMode(
       data.dlt645_point_mode,
@@ -623,9 +667,11 @@ const resetForm = () => {
     group_id: null,
     protocol_params: protocolParams,
     dlt645_point_mode: "standard",
+    dlt698_config: dlt698Config,
     change_tracking_enabled: false,
   });
   applyPersistedProtocolParams();
+  Object.assign(dlt698Config, defaultDlt698Config());
   Object.assign(opcuaConfig, defaultOpcUaDeviceConfig(), {
     certificate_configured: false,
     private_key_configured: false,
@@ -694,6 +740,27 @@ const handlePreviewIcd = async () => {
 // 提交保存：全程使用进度条，按钮不转圈
 const handleSubmit = async () => {
   if (!formRef.value || saving.value || loadingChannel.value) return;
+  if (form.protocol_type === 8) {
+    const error = configError(dlt698Config);
+    if (error) {
+      activeTab.value = "protocol";
+      ElMessage.error(error);
+      return;
+    }
+    if (
+      isSerialConnectionType(form.conn_type) &&
+      (!form.com_port?.trim() || ![1, 2].includes(form.stop_bits ?? 0))
+    ) {
+      activeTab.value = "basic";
+      ElMessage.error(
+        l(
+          "请填写串口；DL/T 698 仅支持 1 或 2 停止位",
+          "Enter a serial port; DL/T 698 supports one or two stop bits",
+        ),
+      );
+      return;
+    }
+  }
   if (protocolParamsCompRef.value?.validate() === false) {
     activeTab.value = "protocol";
     return;
@@ -779,6 +846,11 @@ const handleSubmit = async () => {
       // 1. 保存通道
       const requestForm: ChannelCreateRequest = { ...form };
       delete requestForm.opcua_config;
+      delete requestForm.dlt698_config;
+      if (form.protocol_type === 8) {
+        requestForm.dlt698_config = { ...dlt698Config };
+        delete requestForm.protocol_params;
+      }
       if (form.protocol_type === 7) {
         try {
           requestForm.opcua_config = {
@@ -845,7 +917,11 @@ const handleSubmit = async () => {
       ) {
         progressText.value = t("addDevice.importingDlt645");
         await importDlt645StandardPoints(resultId);
-      } else if (!isIec61850Server.value && selectedFile.value) {
+      } else if (
+        form.protocol_type !== 8 &&
+        !isIec61850Server.value &&
+        selectedFile.value
+      ) {
         progressText.value = t(
           form.protocol_type === 7
             ? "opcua.reviewPoints"

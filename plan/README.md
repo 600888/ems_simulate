@@ -9,6 +9,7 @@
 | [`architecture/`](architecture/) | 跨模块架构、数据模型和技术评估 |
 | [`features/`](features/) | 按产品功能归档的设计与实施计划 |
 | [`DNP3/`](DNP3/) | DNP3 协议设计 |
+| [`DLT698/`](DLT698/) | DL/T 698.45 前端契约与后端接入计划 |
 | [`IEC104/`](IEC104/) | IEC104 专题文章、图片和实现方案 |
 | [`IEC61850/`](IEC61850/) | IEC61850 专题文章、建模、GOOSE、报告与实现方案 |
 | [`submissions/`](submissions/) | 项目申报等对外材料及其配图 |
@@ -30,8 +31,10 @@
 
 ### 协议
 
+- [DL/T 698 前端交付与验收](DLT698/implementation/frontend-delivery.md)
 - [DNP3 实现设计](DNP3/dnp3-implementation-design.md)
 - [DNP3 未实现功能盘点与优先级实施计划](DNP3/dnp3-gap-priority-implementation-plan.md)
+- [DL/T 698.45 后端接入实施计划](DLT698/implementation/backend-integration-plan.md)
 - [OPC UA 客户端与服务端开发计划（opcua-asyncio）](OPCUA/implementation/opcua-asyncio-development-plan.md)
 - [OPC UA 实施记录与验收步骤](OPCUA/implementation/progress-2026-10-01.md)
 - [IEC104 TLS 实施计划](IEC104/implementation/iec104-tls-implementation-plan.md)

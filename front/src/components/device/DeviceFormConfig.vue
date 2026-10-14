@@ -46,7 +46,9 @@
       <el-form-item :label="$t('device.port')" prop="port">
         <el-input-number
           v-model="modelValue.port"
-          :min="1"
+          :min="
+            modelValue.protocol_type === 8 && modelValue.conn_type === 2 ? 0 : 1
+          "
           :max="65535"
           style="width: 100%"
         />
