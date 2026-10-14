@@ -138,6 +138,9 @@ class GeneralDeviceBuilder:
         channel = ChannelService.get_channel_by_id(self.channel_id)
         self.general_device.transport_conn_type = channel.get("conn_type", 1) if channel else 1
         if protocol_type in (ProtocolType.Dlt698Client, ProtocolType.Dlt698Server):
+            self.general_device.point_manager.set_change_tracking_enabled(
+                bool(channel and channel.get("change_tracking_enabled", False))
+            )
             self.setDeviceId(self.device_id)
             self.setDeviceName(self.device_name)
             self.general_device.protocol_type = protocol_type

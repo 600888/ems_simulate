@@ -230,6 +230,7 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
             rtu_addr=source_channel.get("rtu_addr", "1"),
             timeout=source_channel.get("timeout", 5),
             dlt645_point_mode=source_channel.get("dlt645_point_mode", "import"),
+            dlt698_point_mode=source_channel.get("dlt698_point_mode", "import"),
             change_tracking_enabled=source_channel.get("change_tracking_enabled", False),
             model_name=source_channel.get("model_name"),
             # IEC 61850 models are deep-copied after both ownership IDs exist.

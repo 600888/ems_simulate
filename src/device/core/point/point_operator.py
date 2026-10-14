@@ -489,6 +489,15 @@ class PointOperator:
         if not point or not isinstance(point, (Yc, Yt)):
             return False
 
+        if self._device.protocol_type in (ProtocolType.Dlt698Server, ProtocolType.Dlt698Client):
+            from src.data.service.dlt698_service import Dlt698Service
+
+            if not point.scalar:
+                raise ValueError("此 Data 类型不支持标量限值")
+            Dlt698Service.update_limits(self._device.device_id, point_code, min_value_limit, max_value_limit)
+            point.min_value_limit, point.max_value_limit = min_value_limit, max_value_limit
+            return True
+
         point.max_value_limit = max_value_limit
         point.min_value_limit = min_value_limit
         try:

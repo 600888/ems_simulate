@@ -132,6 +132,8 @@ class Point(Model):
     standard: bool = False
     writable: bool = False
     initial_value: Data
+    min_value_limit: float = Field(0, allow_inf_nan=False)
+    max_value_limit: float = Field(100, allow_inf_nan=False)
 
     _oad = field_validator("oad")(address)
 
@@ -140,6 +142,8 @@ class Point(Model):
         self.code, self.name = self.code.strip(), self.name.strip()
         if not self.code or not self.name or self.data_type != self.initial_value.type:
             raise ValueError("测点编码/名称不能为空，Data 类型必须与初值一致")
+        if self.min_value_limit > self.max_value_limit:
+            raise ValueError("下限不能大于上限")
         return self
 
 

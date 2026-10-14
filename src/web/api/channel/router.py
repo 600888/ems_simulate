@@ -226,6 +226,7 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
         parity=req.parity,
         rtu_addr=req.rtu_addr if req.protocol_type == 3 else "1",
         dlt645_point_mode=req.dlt645_point_mode if req.protocol_type == 3 else "import",
+        dlt698_point_mode=req.dlt698_point_mode if req.protocol_type == 8 else "import",
         change_tracking_enabled=req.change_tracking_enabled,
         model_name=req.model_name if req.protocol_type == 4 else None,
     )
@@ -450,6 +451,10 @@ async def update_channel(req: ChannelUpdateRequest, request: Request):
         if protocol_combination_changed:
             requested_updates["rtu_addr"] = "1"
         requested_updates["dlt645_point_mode"] = "import"
+    if protocol_to_use == 8:
+        requested_updates["dlt698_point_mode"] = req.dlt698_point_mode or existing.get("dlt698_point_mode", "import")
+    elif protocol_combination_changed:
+        requested_updates["dlt698_point_mode"] = "import"
     if protocol_to_use == 4:
         if req.model_name is not None:
             requested_updates["model_name"] = req.model_name

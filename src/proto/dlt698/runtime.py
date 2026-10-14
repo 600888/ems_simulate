@@ -4,6 +4,7 @@ import asyncio
 from collections import deque
 from copy import deepcopy
 from datetime import UTC, datetime
+from threading import RLock
 from uuid import uuid4
 
 from dlt698 import (
@@ -23,6 +24,7 @@ from dlt698.errors import Dlt698Error
 from dlt698.protocol.link import ServerAddress
 from dlt698.session import Role
 from src.device.auto_read import AutoReadConfig, AutoReadTaskManager, CycleResult
+from src.enums.points.change_tracker import ChangeSource, track_change
 from src.proto.dlt698.catalog import default_data, layout
 from src.proto.dlt698.codec import address_text, from_native, oad, omd, to_native
 from src.proto.dlt698.schema import TYPE_NAMES, Data, Dlt698Config, Operation, RecordQuery
@@ -76,6 +78,41 @@ class Dlt698Runtime:
         self.state, self.error = "stopped", ""
         self.auto_read = AutoReadTaskManager(self._read_cycle)
         self.auto_codes = []
+        self.point_states = {}
+        self.value_lock = RLock()
+
+    def publish(self, address, data, index=0):
+        """Shared manual, mapping and simulation writes keep typed validation."""
+        if self.config.role != "server":
+            raise ValueError("只有服务端可以发布本地值")
+        with self.value_lock:
+            matches = [point for point in self.definitions.values() if point["oad"] == address]
+            if not matches:
+                raise ValueError("本地发布 OAD 未配置")
+            data = Data.model_validate(data)
+            if any(point["data_type"] != data.type for point in matches):
+                raise ValueError("发布 Data 类型必须与测点定义一致")
+            if self.device is None:
+                self.device = self._make_device()
+            attr, value = oad(address), to_native(data)
+            (self.device.set_element if attr.index else self.device.set)(attr, value)
+            result = self.result(index, address, value)
+            # Updating a whole array also updates its independently configured elements.
+            for point in self.definitions.values():
+                if point["oad"][:6] == address[:6]:
+                    current = self.device.get(oad(point["oad"]))
+                    if isinstance(current, int):
+                        continue
+                    typed = from_native(current)
+                    point["initial_value"] = typed
+                    self.snapshots[point["code"]] = {
+                        "last_good": typed,
+                        "last_good_at": now(),
+                        "result": self.result(index, point["oad"], current),
+                    }
+                    if point["code"] in self.point_states:
+                        self.point_states[point["code"]].accept(typed)
+            return result
 
     @property
     def running(self):
@@ -299,9 +336,10 @@ class Dlt698Runtime:
             for index, text in enumerate(addresses):
                 try:
                     if self.config.role == "server":
-                        if self.device is None:
-                            self.device = self._make_device()
-                        value = self.device.get(oad(text))
+                        with self.value_lock:
+                            if self.device is None:
+                                self.device = self._make_device()
+                            value = self.device.get(oad(text))
                     else:
                         response = await self._request(self.require_client().get(oad(text)))
                         value = response.data if response.data is not None else response.dar
@@ -314,6 +352,10 @@ class Dlt698Runtime:
                     snapshot["result"] = result
                     if result["kind"] == "data":
                         snapshot.update(last_good=result["data"], last_good_at=result["updated_at"])
+                        state = self.point_states.get(codes[index])
+                        if state is not None:
+                            with track_change(ChangeSource.CLIENT_READ, "DL/T 698 GET", self.network.get("ip", "")):
+                                state.accept(result["data"])
         return results
 
     async def probe(self, addresses):
@@ -385,16 +427,8 @@ class Dlt698Runtime:
                     raise ValueError("本地发布需要 OAD 和 Data")
                 if not any(point["oad"] == item.oad for point in self.definitions.values()):
                     raise ValueError("本地发布 OAD 未配置")
-                value = to_native(item.data)
-                (self.device.set_element if oad(item.oad).index else self.device.set)(oad(item.oad), value)
-                results.append(self.result(index, item.oad, value))
-                for point in self.definitions.values():
-                    if point["oad"] == item.oad:
-                        self.snapshots[point["code"]] = {
-                            "last_good": from_native(value),
-                            "last_good_at": now(),
-                            "result": results[-1],
-                        }
+                with track_change(ChangeSource.MANUAL, "DL/T 698 本地赋值"):
+                    results.append(self.publish(item.oad, item.data, index))
             return results
         async with self.auto_read.read_lock:
             client = self.require_client()

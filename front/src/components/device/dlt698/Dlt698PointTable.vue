@@ -16,66 +16,52 @@
             >
               <template #configControl>
                 <div class="control">
-                  <Dlt698DataTree
-                    :data="displayData(row) || row.initial_value"
+                  <Dlt698ValueControl
+                    :point="row"
+                    :role="role"
+                    :busy="busy"
+                    :disabled="
+                      preview ||
+                      (role === 'server'
+                        ? !can('local_values')
+                        : !can('set') || !row.writable)
+                    "
+                    @save="emit('set-value', row, $event)"
                   />
-                  <el-button
-                    :disabled="
-                      (!preview && !can('local_values')) || role !== 'server'
-                    "
-                    @click="emit('local-edit', row)"
-                    >{{
-                      l("本地修改发布值", "Edit local published value")
-                    }}</el-button
-                  >
-                  <el-button
-                    :disabled="
-                      (!preview && !can('set')) ||
-                      !row.writable ||
-                      role !== 'client'
-                    "
-                    @click="emit('write', row)"
-                    >SET</el-button
-                  >
-                  <small>{{
-                    l(
-                      "本地赋值不授予远端写权限。",
-                      "Local assignment does not grant remote write permission.",
-                    )
-                  }}</small>
+                  <EditPointLimit
+                    v-if="!preview && role === 'server' && scalar(row)"
+                    :device-name="deviceName"
+                    :point-code="row.code"
+                    :active="active[row.code] === 'configControl'"
+                  />
                 </div>
               </template>
-              <template #propertyEdit
-                ><el-descriptions :column="2" border
-                  ><el-descriptions-item label="OAD">{{
-                    row.oad
-                  }}</el-descriptions-item
-                  ><el-descriptions-item label="Data">{{
-                    row.data_type
-                  }}</el-descriptions-item
-                  ><el-descriptions-item :label="l('标准倍率', 'Scaler')"
-                    >10 ^ {{ row.scaler }}</el-descriptions-item
-                  ><el-descriptions-item :label="l('单位', 'Unit')">{{
-                    row.unit || "—"
-                  }}</el-descriptions-item></el-descriptions
-                ><el-button
-                  class="edit-button"
-                  :disabled="!can('points') && !preview"
-                  @click="emit('edit', row)"
-                  >{{ l("编辑测点属性", "Edit point metadata") }}</el-button
-                ></template
-              >
+              <template #propertyEdit>
+                <Dlt698PointDialog
+                  inline
+                  :model-value="true"
+                  :point="row"
+                  :role="role"
+                  :busy="busy"
+                  :save-error="saveError"
+                  @save="emit('save', $event, row)"
+                />
+              </template>
               <template #pointMapping
                 ><PointMappingConfig
-                  v-if="!preview && can('mapping')"
+                  v-if="!preview && can('mapping') && scalar(row)"
                   :device-name="deviceName"
                   :target-point-code="row.code"
                   :active="active[row.code] === 'pointMapping'" /><el-empty
                   v-else
                   :description="
                     l(
-                      '测点映射等待类型安全后端接入',
-                      'Point mapping awaits a type-safe backend',
+                      role === 'client'
+                        ? '客户端测点可作为映射来源；目标映射请在服务端配置。'
+                        : '此 Data 类型请使用精确值编辑，标量类型可配置测点映射。',
+                      role === 'client'
+                        ? 'Client points can be mapping sources. Configure target mappings on the server.'
+                        : 'Use typed editing for this Data type. Scalar points support mapping.',
                     )
                   "
                   :image-size="60"
@@ -89,8 +75,8 @@
                   v-else
                   :description="
                     l(
-                      '此 Data 类型或运行时尚不支持模拟',
-                      'Simulation unavailable for this Data type or runtime',
+                      '此 Data 类型请使用精确值编辑，标量类型可配置仿真模拟',
+                      'Use typed editing for this Data type. Scalar points support simulation',
                     )
                   "
                   :image-size="60"
@@ -104,8 +90,8 @@
                   v-else
                   :description="
                     l(
-                      '变化回溯等待后端接入',
-                      'Change history awaits backend integration',
+                      '界面预览不记录设备值变化',
+                      'UI previews do not record device changes',
                     )
                   "
                   :image-size="60"
@@ -222,24 +208,34 @@
 </template>
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
-import type { Dlt698Feature, Dlt698Point, Dlt698Role } from "@/types/dlt698";
+import type {
+  Dlt698Data,
+  Dlt698Feature,
+  Dlt698Point,
+  Dlt698Role,
+} from "@/types/dlt698";
 import { dataText, engineeringText } from "@/utils/dlt698";
 import { useDlt698Text } from "@/composables/useDlt698Text";
 import PointDetailTabs from "@/components/point/PointDetailTabs.vue";
 import PointMappingConfig from "@/components/point/PointMappingConfig.vue";
 import PointSimulator from "@/components/point/PointSimulator.vue";
 import PointChangeHistory from "@/components/point/PointChangeHistory.vue";
-import Dlt698DataTree from "./Dlt698DataTree.vue";
+import Dlt698ValueControl from "./Dlt698ValueControl.vue";
+import Dlt698PointDialog from "./Dlt698PointDialog.vue";
+import EditPointLimit from "@/components/point/EditPointLimit.vue";
 const props = defineProps<{
   points: Dlt698Point[];
   role: Dlt698Role;
   deviceName: string;
   preview?: boolean;
   busy?: boolean;
+  saveError?: string;
   can: (feature: Dlt698Feature) => boolean;
 }>();
 const emit = defineEmits<{
   (e: "selection", points: Dlt698Point[]): void;
+  (e: "save", point: Dlt698Point, original: Dlt698Point): void;
+  (e: "set-value", point: Dlt698Point, value: Dlt698Data): void;
   (
     e: "read" | "edit" | "delete" | "write" | "local-edit",
     point: Dlt698Point,
@@ -301,8 +297,14 @@ function resultText(point: Dlt698Point) {
 }
 </script>
 <style scoped>
+.point-table {
+  container-type: inline-size;
+  min-width: 0;
+}
 .detail {
-  padding: 18px 24px;
+  box-sizing: border-box;
+  max-width: 100cqw;
+  padding: 16px 24px;
   background: var(--bg-subtle);
 }
 .control {
@@ -326,6 +328,18 @@ function resultText(point: Dlt698Point) {
 }
 :deep(.el-table th.el-table__cell) {
   background: var(--table-header-bg);
+}
+:deep(.el-table__expanded-cell) {
+  padding: 0;
+}
+:deep(.inner-tabs .el-tabs__header) {
+  margin-bottom: 12px;
+}
+:deep(.inner-tabs .el-tabs__item) {
+  height: 32px;
+  line-height: 32px;
+  font-size: 13px;
+  padding: 0 16px;
 }
 small {
   color: var(--text-secondary);

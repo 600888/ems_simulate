@@ -108,8 +108,27 @@ async def points(channel_id: int, request: Request):
 
 async def persist_points(channel_id, body, request, original=None):
     async with _locks[channel_id]:
-        await get_handler(channel_id, request)
+        handler = await get_handler(channel_id, request)
+        persisted = await asyncio.to_thread(Dlt698Service.points, channel_id) if original else []
+        previous = next((point for point in persisted if point["code"] == original), None)
         data = await asyncio.to_thread(Dlt698Service.save_points, channel_id, body, original)
+        if (
+            previous
+            and len(data) == 1
+            and all(previous[key] == data[0][key] for key in ("code", "oad", "data_type", "initial_value", "scaler"))
+        ):
+            # Metadata-only edits retain publication, history, mappings and simulation state.
+            runtime = handler.get_runtime()
+            point = runtime.point_states.get(original)
+            if point is not None:
+                definition = runtime.definitions[original]
+                current_value = definition["initial_value"]
+                definition.update(data[0])
+                definition["initial_value"] = current_value
+                point.name = data[0]["name"]
+                point.min_value_limit = data[0]["min_value_limit"]
+                point.max_value_limit = data[0]["max_value_limit"]
+                return data
         await refresh(channel_id, request)
         return data
 
@@ -155,12 +174,23 @@ async def import_points(channel_id: int, request: Request, file: UploadFile):
 
     definitions = await asyncio.to_thread(parse)
     await persist_points(channel_id, definitions, request)
+    await asyncio.to_thread(ChannelService.update_channel, channel_id, dlt698_point_mode="import")
     return BaseResponse(data={"count": len(definitions)})
 
 
 @router.post("/points")
 async def add_point(channel_id: int, body: Point, request: Request):
     return BaseResponse(data=(await persist_points(channel_id, [body], request))[0])
+
+
+@router.post("/points/standard")
+async def import_standard_points(channel_id: int, request: Request):
+    async with _locks[channel_id]:
+        await get_handler(channel_id, request)
+        count = await asyncio.to_thread(Dlt698Service.import_standard_points, channel_id)
+        await asyncio.to_thread(ChannelService.update_channel, channel_id, dlt698_point_mode="standard")
+        await refresh(channel_id, request)
+        return BaseResponse(data={"count": count})
 
 
 @router.put("/points/{code}")

@@ -45,6 +45,8 @@ class PointTreeService:
                     if not points:
                         return
                     for p in points:
+                        if getattr(p, "scalar", True) is False:
+                            continue
                         leaf = PointTreeService._create_leaf(p, type_key)
                         type_nodes_map[type_key].children.append(leaf)  # noqa: B023
 

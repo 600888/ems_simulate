@@ -49,6 +49,7 @@ class ChannelCreateRequest(BaseModel):
     dlt698_config: Dlt698Config | None = None
     model_name: str | None = None  # IEC61850 IED 模型名称
     dlt645_point_mode: Literal["standard", "import"] = "import"
+    dlt698_point_mode: Literal["standard", "import"] = "import"
     change_tracking_enabled: bool = False
 
 
@@ -71,6 +72,7 @@ class ChannelUpdateRequest(BaseModel):
     dlt698_config: Dlt698Config | None = None
     model_name: str | None = None  # IEC61850 IED 模型名称
     dlt645_point_mode: Literal["standard", "import"] | None = None
+    dlt698_point_mode: Literal["standard", "import"] | None = None
     change_tracking_enabled: bool | None = None
     defer_runtime_reload: bool = False
 

@@ -228,7 +228,7 @@ class DbController:
                 conn.execute(text("ALTER TABLE channel ADD COLUMN change_tracking_enabled BOOLEAN NOT NULL DEFAULT 0"))
 
     def _migrate_channel_point_table_mode_schema(self) -> None:
-        """Add the persisted DLT645 point-table source to existing databases.
+        """Add persisted DL/T point-table sources to existing databases.
 
         Legacy rows default to ``import`` because their original source cannot
         be known safely. This prevents an ordinary edit from replacing an
@@ -250,6 +250,11 @@ class DbController:
                     text("ALTER TABLE channel ADD COLUMN dlt645_point_mode VARCHAR(16) NOT NULL DEFAULT 'import'")
                 )
             self._backfill_legacy_dlt645_standard_tables()
+        if "dlt698_point_mode" not in columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE channel ADD COLUMN dlt698_point_mode VARCHAR(16) NOT NULL DEFAULT 'import'")
+                )
 
     def _migrate_dnp3_point_config_schema(self) -> None:
         """Add one extensible JSON field to every legacy point table."""

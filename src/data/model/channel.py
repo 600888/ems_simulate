@@ -34,6 +34,7 @@ class ChannelDict(TypedDict):
     timeout: int
     enable: bool
     dlt645_point_mode: str
+    dlt698_point_mode: str
     change_tracking_enabled: bool
     # IEC 61850 专用
     model_name: str | None
@@ -88,6 +89,10 @@ class Channel(Base):
     )
 
     # IEC 61850 专用字段
+    dlt698_point_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="import", server_default="import", comment="DLT698点表来源: standard/import"
+    )
+
     model_name: Mapped[str | None] = mapped_column(String(128), nullable=True, comment="IED 模型名称 (IEC61850)")
     icd_path: Mapped[str | None] = mapped_column(String(512), nullable=True, comment="ICD文件存储路径 (IEC61850)")
     icd_file_hash: Mapped[str | None] = mapped_column(

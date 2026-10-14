@@ -30,331 +30,319 @@
         }}</el-button></template
       ></el-alert
     >
-    <div class="association-bar">
-      <span
-        >SA <code>{{ config.server_address }}</code> · CA
-        {{ config.client_address }}</span
-      ><el-tag :type="status.state === 'associated' ? 'success' : 'info'">{{
-        stateLabel
-      }}</el-tag
-      ><span v-if="!preview"
-        >{{ l("已关联会话", "Associated sessions") }}:
-        {{ status.sessions.filter((s) => s.associated).length }}</span
-      ><span v-if="status.state === 'listening'">{{
-        l("监听中，等待客户端关联", "Listening; awaiting association")
-      }}</span>
-    </div>
     <el-tabs v-model="tab" class="business-tabs">
       <el-tab-pane
-        :label="
-          roleValue === 'client'
-            ? l('测点读取', 'Point reads')
-            : l('测点管理', 'Point management')
-        "
-        name="points"
-      />
-      <el-tab-pane
-        :label="
-          roleValue === 'client'
-            ? l('记录查询', 'Record queries')
-            : l('记录管理', 'Record management')
-        "
-        name="records"
-      />
-      <el-tab-pane
-        :label="
-          roleValue === 'client'
-            ? l('上报接收', 'Received reports')
-            : l('主动上报', 'Send reports')
-        "
-        name="reports"
-      />
-      <el-tab-pane
-        :label="
-          roleValue === 'client'
-            ? l('代理服务', 'Proxy services')
-            : l('代理路由', 'Proxy routes')
-        "
-        name="proxy"
-      />
-      <el-tab-pane
-        :label="l('连接配置', 'Connection settings')"
-        name="config"
-      />
-    </el-tabs>
-    <section class="workspace">
-      <el-alert
-        v-if="tab !== 'points' && tab !== 'config' && !can(tabFeature)"
-        class="unavailable-hint"
-        :title="
-          status.features[tabFeature]?.reason ||
-          l(
-            '此业务能力等待后端接入；可查看和配置界面，执行操作暂不可用。',
-            'This capability awaits backend integration. Forms are available; execution is disabled.',
-          )
-        "
-        type="info"
-        :closable="false"
-        show-icon
-      />
-      <template v-if="tab === 'points'">
-        <div class="heading">
-          <div>
-            <h3>
-              {{
-                roleValue === "client"
-                  ? l("测点读取", "Point reads")
-                  : l("测点管理", "Point management")
-              }}
-            </h3>
-            <p>
-              {{
-                l(
-                  "按 OAD 展示精确 Data、标准单位与工程值",
-                  "Typed Data, standard units and engineering values by OAD",
-                )
-              }}
-            </p>
-          </div>
-          <el-tag effect="plain">DL/T 698.45</el-tag>
-        </div>
-        <div class="categories">
-          <el-button
-            v-for="item in categories"
-            :key="item.key"
-            :type="category === item.key ? 'primary' : 'default'"
-            @click="category = item.key"
-            >{{ l(item.zh, item.en) }}</el-button
-          >
-        </div>
-        <div class="toolbar">
-          <el-input
-            v-model="search"
-            clearable
-            :placeholder="
-              l('搜索 OAD / 测点名称 / 编码', 'Search OAD / name / code')
-            "
-            :prefix-icon="Search"
-            class="search"
-          />
-          <el-button
-            :icon="List"
-            :disabled="(!can('points') && !preview) || busy"
-            @click="openCatalog"
-            >{{ l("标准点表", "Standard catalog") }}</el-button
-          >
-          <el-button
-            :icon="Plus"
-            type="primary"
-            plain
-            :disabled="(!can('points') && !preview) || busy"
-            @click="openPoint()"
-            >{{ l("添加测点", "Add point") }}</el-button
-          >
-          <el-button
-            :icon="Upload"
-            :disabled="!can('import') || busy"
-            @click="fileInput?.click()"
-            >{{ l("导入点表", "Import points") }}</el-button
-          >
-          <input
-            ref="fileInput"
-            type="file"
-            accept=".xlsx"
-            hidden
-            @change="importFile"
-          />
-          <template v-if="roleValue === 'client'"
-            ><el-button
-              :icon="Download"
-              type="primary"
-              :disabled="!can('get') || !readTargets.length || busy"
-              :loading="busy && busyKind === 'read'"
-              @click="readPoints(readTargets)"
-              >{{ l("批量读取", "Read batch") }}</el-button
-            ><el-button
-              :disabled="
-                !can('auto_read') ||
-                busy ||
-                (!autoRunning && !readTargets.length)
-              "
-              @click="setAutoRead"
-              >{{
-                autoRunning
-                  ? l("停止自动读取", "Stop auto read")
-                  : l("自动读取", "Auto read")
-              }}</el-button
-            ><el-input-number
-              v-model="interval"
-              :min="100"
-              :max="60000"
-              :step="100"
-              :disabled="autoRunning"
-              style="width: 145px"
-            /><span class="muted">ms</span
-            ><el-button
-              :disabled="(!preview && !can('action')) || busy"
-              @click="openOperation('action')"
-              >ACTION</el-button
-            ></template
-          >
-          <el-button v-if="busyKind === 'read'" @click="cancelRead">{{
-            l("取消读取", "Cancel read")
-          }}</el-button>
-          <el-button v-if="preview" @click="exportDraft">{{
-            l("导出草稿", "Export draft")
-          }}</el-button>
-          <el-popconfirm
-            v-if="preview"
+        v-for="item in businessTabs"
+        :key="item.name"
+        :name="item.name"
+        :label="item.label"
+      >
+        <section v-if="tab === item.name" class="workspace">
+          <el-alert
+            v-if="tab !== 'points' && tab !== 'config' && !can(tabFeature)"
+            class="unavailable-hint"
             :title="
-              l('重置此角色的预览草稿？', 'Reset preview drafts for this role?')
+              status.features[tabFeature]?.reason ||
+              l(
+                '此业务能力等待后端接入；可查看和配置界面，执行操作暂不可用。',
+                'This capability awaits backend integration. Forms are available; execution is disabled.',
+              )
             "
-            @confirm="resetDraft"
-            ><template #reference
-              ><el-button>{{
-                l("恢复示例", "Reset examples")
-              }}</el-button></template
-            ></el-popconfirm
-          >
-        </div>
-        <el-alert
-          v-if="workspaceError"
-          :title="workspaceError"
-          type="error"
-          :closable="false"
-        />
-        <el-alert
-          v-if="notice"
-          :title="notice"
-          type="success"
-          :closable="false"
-        />
-        <Dlt698PointTable
-          :points="filteredPoints"
-          :role="roleValue"
-          :device-name="deviceName"
-          :preview="preview"
-          :busy="busy"
-          :can="can"
-          @selection="selected = $event"
-          @edit="openPoint"
-          @delete="deletePoint"
-          @read="readPoints([$event])"
-          @write="openOperation('set', $event)"
-          @local-edit="openOperation('local_values', $event)"
-        />
-        <el-alert
-          class="point-hint"
-          :title="
-            l(
-              '标准定义不代表设备支持。失败保留上次有效值；标准校验失败时保留收到的原始 Data。',
-              'Standard definitions do not prove device support. Failures retain the last good value; validation errors retain received raw Data.',
-            )
-          "
-          type="info"
-          :closable="false"
-          show-icon
-        />
-        <el-table
-          v-if="readResults.length"
-          :data="readResults"
-          border
-          stripe
-          class="result-table"
-          ><el-table-column
-            prop="index"
-            :label="l('请求序号', 'Request index')"
-            width="100" /><el-table-column
-            prop="oad"
-            label="OAD"
-            width="120" /><el-table-column
-            prop="kind"
-            :label="l('逐项结果', 'Per-item result')" /><el-table-column
-            prop="dar"
-            label="DAR"
-            width="80" /><el-table-column
-            prop="message"
-            :label="l('详情', 'Detail')"
-        /></el-table>
-      </template>
-      <Dlt698Records
-        v-else-if="tab === 'records'"
-        :role="roleValue"
-        :enabled="can('records')"
-        :preview="preview"
-        :busy="busyKind === 'records' || busyKind === 'append'"
-        :result="recordResult"
-        :error="recordError"
-        :append-error="recordError"
-        :append-complete="appendComplete"
-        @query="queryRecords"
-        @cancel="cancelRead"
-        @append="appendRecord"
-      />
-      <Dlt698Services
-        v-else-if="tab === 'reports' || tab === 'proxy'"
-        :key="`${roleValue}-${tab}`"
-        :tab="tab"
-        :role="roleValue"
-        :can="can"
-        :preview="preview"
-        :sessions="status.sessions"
-        :reports="reports"
-        :routes="routes"
-        :results="serviceResults"
-        :error="serviceError"
-        :busy="busy"
-        @refresh-reports="refreshReports"
-        @operation="performOperation"
-        @route="saveRoute"
-      />
-      <template v-else-if="tab === 'config'">
-        <div class="heading">
-          <h3>{{ l("连接配置", "Connection settings") }}</h3>
-          <el-button
-            v-if="!preview"
-            :disabled="!status.available || busy"
-            @click="showDeviceEdit = true"
-            >{{ l("编辑设备通信配置", "Edit device connection") }}</el-button
-          >
-        </div>
-        <el-form v-if="preview" label-width="140px"
-          ><DeviceFormConfig
-            :model-value="previewChannel"
-            v-model:media-type="previewMedia"
-            :protocols="[
-              { value: 8, label: 'DL/T 698.45', conn_types: [0, 1, 2, 3] },
-            ]"
-            :serial-ports="[]"
-        /></el-form>
-        <Dlt698ProtocolConfig
-          :model-value="config"
-          :negotiated="status.negotiated"
-          :security-backend="status.security_backend"
-          :disabled="!preview && (!can('config') || busy)"
-        />
-        <el-alert
-          v-if="configSaveError"
-          :title="configSaveError"
-          type="error"
-          :closable="false"
-        />
-        <div class="toolbar">
-          <el-button
-            type="primary"
-            :disabled="
-              !!configError(config) || busy || (!can('config') && !preview)
-            "
-            @click="saveConfig"
-            >{{
-              preview
-                ? l("保存预览草稿", "Save preview draft")
-                : l("保存配置", "Save configuration")
-            }}</el-button
-          ><el-tag v-if="configSaved" type="success">{{ configSaved }}</el-tag>
-        </div>
-      </template>
-    </section>
+            type="info"
+            :closable="false"
+            show-icon
+          />
+          <template v-if="tab === 'points'">
+            <div class="heading">
+              <div>
+                <h3>
+                  {{
+                    roleValue === "client"
+                      ? l("测点读取", "Point reads")
+                      : l("测点管理", "Point management")
+                  }}
+                </h3>
+                <p>
+                  {{
+                    l(
+                      "按 OAD 展示精确 Data、标准单位与工程值",
+                      "Typed Data, standard units and engineering values by OAD",
+                    )
+                  }}
+                </p>
+              </div>
+              <div class="heading-status">
+                <el-tag
+                  :type="status.state === 'associated' ? 'success' : 'info'"
+                  >{{ stateLabel }}</el-tag
+                >
+                <el-tooltip
+                  :content="`SA ${config.server_address} · CA ${config.client_address}`"
+                >
+                  <span class="muted"
+                    >{{ l("已关联会话", "Associated sessions") }}:
+                    {{
+                      status.sessions.filter((s) => s.associated).length
+                    }}</span
+                  >
+                </el-tooltip>
+              </div>
+            </div>
+            <div class="categories">
+              <el-button
+                v-for="item in categories"
+                :key="item.key"
+                :type="category === item.key ? 'primary' : 'default'"
+                @click="category = item.key"
+                >{{ l(item.zh, item.en) }}</el-button
+              >
+            </div>
+            <div class="toolbar">
+              <el-input
+                v-model="search"
+                clearable
+                :placeholder="
+                  l('搜索 OAD / 测点名称 / 编码', 'Search OAD / name / code')
+                "
+                :prefix-icon="Search"
+                class="search"
+              />
+              <el-button
+                :icon="List"
+                :disabled="(!can('points') && !preview) || busy"
+                @click="openCatalog"
+                >{{ l("标准点表", "Standard catalog") }}</el-button
+              >
+              <el-button
+                :icon="Plus"
+                type="primary"
+                plain
+                :disabled="(!can('points') && !preview) || busy"
+                @click="openPoint()"
+                >{{ l("添加测点", "Add point") }}</el-button
+              >
+              <el-button
+                :icon="Upload"
+                :disabled="!can('import') || busy"
+                @click="fileInput?.click()"
+                >{{ l("导入点表", "Import points") }}</el-button
+              >
+              <input
+                ref="fileInput"
+                type="file"
+                accept=".xlsx"
+                hidden
+                @change="importFile"
+              />
+              <template v-if="roleValue === 'client'"
+                ><el-button
+                  :icon="Download"
+                  type="primary"
+                  :disabled="!can('get') || !readTargets.length || busy"
+                  :loading="busy && busyKind === 'read'"
+                  @click="readPoints(readTargets)"
+                  >{{ l("批量读取", "Read batch") }}</el-button
+                ><el-button
+                  :disabled="
+                    !can('auto_read') ||
+                    busy ||
+                    (!autoRunning && !readTargets.length)
+                  "
+                  @click="setAutoRead"
+                  >{{
+                    autoRunning
+                      ? l("停止自动读取", "Stop auto read")
+                      : l("自动读取", "Auto read")
+                  }}</el-button
+                ><el-input-number
+                  v-model="interval"
+                  :min="100"
+                  :max="60000"
+                  :step="100"
+                  :disabled="autoRunning"
+                  style="width: 145px"
+                /><span class="muted">ms</span
+                ><el-button
+                  :disabled="(!preview && !can('action')) || busy"
+                  @click="openOperation('action')"
+                  >ACTION</el-button
+                ></template
+              >
+              <el-button v-if="busyKind === 'read'" @click="cancelRead">{{
+                l("取消读取", "Cancel read")
+              }}</el-button>
+              <el-button v-if="preview" @click="exportDraft">{{
+                l("导出草稿", "Export draft")
+              }}</el-button>
+              <el-popconfirm
+                v-if="preview"
+                :title="
+                  l(
+                    '重置此角色的预览草稿？',
+                    'Reset preview drafts for this role?',
+                  )
+                "
+                @confirm="resetDraft"
+                ><template #reference
+                  ><el-button>{{
+                    l("恢复示例", "Reset examples")
+                  }}</el-button></template
+                ></el-popconfirm
+              >
+            </div>
+            <el-alert
+              v-if="workspaceError"
+              :title="workspaceError"
+              type="error"
+              :closable="false"
+            />
+            <el-alert
+              v-if="notice"
+              :title="notice"
+              type="success"
+              :closable="false"
+            />
+            <Dlt698PointTable
+              :points="filteredPoints"
+              :role="roleValue"
+              :device-name="deviceName"
+              :preview="preview"
+              :busy="busy"
+              :can="can"
+              :save-error="pointError"
+              @save="saveInlinePoint"
+              @set-value="setInlineValue"
+              @selection="selected = $event"
+              @edit="openPoint"
+              @delete="deletePoint"
+              @read="readPoints([$event])"
+              @write="openOperation('set', $event)"
+              @local-edit="openOperation('local_values', $event)"
+            />
+            <el-alert
+              class="point-hint"
+              :title="
+                l(
+                  '标准定义不代表设备支持。失败保留上次有效值；标准校验失败时保留收到的原始 Data。',
+                  'Standard definitions do not prove device support. Failures retain the last good value; validation errors retain received raw Data.',
+                )
+              "
+              type="info"
+              :closable="false"
+              show-icon
+            />
+            <el-table
+              v-if="readResults.length"
+              :data="readResults"
+              border
+              stripe
+              class="result-table"
+              ><el-table-column
+                prop="index"
+                :label="l('请求序号', 'Request index')"
+                width="100" /><el-table-column
+                prop="oad"
+                label="OAD"
+                width="120" /><el-table-column
+                prop="kind"
+                :label="l('逐项结果', 'Per-item result')" /><el-table-column
+                prop="dar"
+                label="DAR"
+                width="80" /><el-table-column
+                prop="message"
+                :label="l('详情', 'Detail')"
+            /></el-table>
+          </template>
+          <Dlt698Records
+            v-else-if="tab === 'records'"
+            :role="roleValue"
+            :enabled="can('records')"
+            :preview="preview"
+            :busy="busyKind === 'records' || busyKind === 'append'"
+            :result="recordResult"
+            :error="recordError"
+            :append-error="recordError"
+            :append-complete="appendComplete"
+            @query="queryRecords"
+            @cancel="cancelRead"
+            @append="appendRecord"
+          />
+          <Dlt698Services
+            v-else-if="tab === 'reports' || tab === 'proxy'"
+            :key="`${roleValue}-${tab}`"
+            :tab="tab"
+            :role="roleValue"
+            :can="can"
+            :preview="preview"
+            :sessions="status.sessions"
+            :reports="reports"
+            :routes="routes"
+            :results="serviceResults"
+            :error="serviceError"
+            :busy="busy"
+            @refresh-reports="refreshReports"
+            @operation="performOperation"
+            @route="saveRoute"
+          />
+          <template v-else-if="tab === 'config'">
+            <div class="heading">
+              <div>
+                <h3>{{ l("连接配置", "Connection settings") }}</h3>
+                <p>
+                  SA <code>{{ config.server_address }}</code> · CA
+                  {{ config.client_address }} · {{ stateLabel }}
+                </p>
+              </div>
+              <el-button
+                v-if="!preview"
+                :disabled="!status.available || busy"
+                @click="showDeviceEdit = true"
+                >{{
+                  l("编辑设备通信配置", "Edit device connection")
+                }}</el-button
+              >
+            </div>
+            <el-form v-if="preview" label-width="140px"
+              ><DeviceFormConfig
+                :model-value="previewChannel"
+                v-model:media-type="previewMedia"
+                :protocols="[
+                  { value: 8, label: 'DL/T 698.45', conn_types: [0, 1, 2, 3] },
+                ]"
+                :serial-ports="[]"
+            /></el-form>
+            <Dlt698ProtocolConfig
+              :model-value="config"
+              :negotiated="status.negotiated"
+              :security-backend="status.security_backend"
+              :disabled="!preview && (!can('config') || busy)"
+            />
+            <el-alert
+              v-if="configSaveError"
+              :title="configSaveError"
+              type="error"
+              :closable="false"
+            />
+            <div class="toolbar">
+              <el-button
+                type="primary"
+                :disabled="
+                  !!configError(config) || busy || (!can('config') && !preview)
+                "
+                @click="saveConfig"
+                >{{
+                  preview
+                    ? l("保存预览草稿", "Save preview draft")
+                    : l("保存配置", "Save configuration")
+                }}</el-button
+              ><el-tag v-if="configSaved" type="success">{{
+                configSaved
+              }}</el-tag>
+            </div>
+          </template>
+        </section>
+      </el-tab-pane>
+    </el-tabs>
 
     <Dlt698PointDialog
       v-model="showPoint"
@@ -776,7 +764,10 @@ function schedulePoll() {
       if (token !== epoch || !active) return;
       status.value = next;
       emit("capabilities", next);
-      if (next.auto_read?.running && !busy.value) {
+      if (
+        (next.auto_read?.running || roleValue.value === "server") &&
+        !busy.value
+      ) {
         const rows = await dlt698Api.points(id);
         if (token === epoch && active) points.value = rows;
       }
@@ -918,6 +909,39 @@ function openPoint(point?: Dlt698Point) {
   pointError.value = "";
   showPoint.value = true;
 }
+async function setInlineValue(point: Dlt698Point, data: Dlt698Data) {
+  const service = roleValue.value === "server" ? "local_values" : "set";
+  if (props.preview || busy.value || !can(service)) return;
+  await run("point-value", workspaceError, async (token, id) => {
+    const results = await dlt698Api.operation(id, {
+      service,
+      items: [{ oad: point.oad, data }],
+    });
+    if (token !== epoch) return;
+    const result = results[0];
+    if (
+      !result ||
+      (result.kind !== "data" && !(result.kind === "dar" && result.dar === 0))
+    ) {
+      throw new Error(
+        result?.message ||
+          (result?.kind === "dar"
+            ? `DAR = ${result.dar}`
+            : l(
+                "写入结果未知，请重新读取确认",
+                "Write outcome unknown; read again to confirm",
+              )),
+      );
+    }
+    const rows = await dlt698Api.points(id);
+    if (token === epoch) points.value = rows;
+  });
+}
+async function saveInlinePoint(point: Dlt698Point, original: Dlt698Point) {
+  if (busy.value) return;
+  editingPoint.value = original;
+  await savePoint(point);
+}
 async function savePoint(point: Dlt698Point) {
   await run("point", pointError, async (token, id) => {
     if (
@@ -930,6 +954,13 @@ async function savePoint(point: Dlt698Point) {
       ? point
       : await dlt698Api.savePoint(id, point, editingPoint.value?.code);
     if (token !== epoch) return;
+    if (
+      !props.preview &&
+      editingPoint.value &&
+      editingPoint.value.oad === saved.oad &&
+      editingPoint.value.data_type === saved.data_type
+    )
+      saved = { ...editingPoint.value, ...saved };
     if (
       props.preview &&
       editingPoint.value &&
@@ -1244,6 +1275,37 @@ function exportDraft() {
   link.click();
   URL.revokeObjectURL(url);
 }
+const businessTabs = computed(() => [
+  {
+    name: "points",
+    label:
+      roleValue.value === "client"
+        ? l("测点读取", "Point reads")
+        : l("测点管理", "Point management"),
+  },
+  {
+    name: "records",
+    label:
+      roleValue.value === "client"
+        ? l("记录查询", "Record queries")
+        : l("记录管理", "Record management"),
+  },
+  {
+    name: "reports",
+    label:
+      roleValue.value === "client"
+        ? l("上报接收", "Received reports")
+        : l("主动上报", "Send reports"),
+  },
+  {
+    name: "proxy",
+    label:
+      roleValue.value === "client"
+        ? l("代理服务", "Proxy services")
+        : l("代理路由", "Proxy routes"),
+  },
+  { name: "config", label: l("连接配置", "Connection settings") },
+]);
 watch(() => [props.channelId, props.role, props.preview], load, {
   immediate: true,
 });
@@ -1287,31 +1349,25 @@ onUnmounted(() => {
   width: 100%;
   min-width: 0;
 }
-.association-bar {
+.heading-status {
   display: flex;
-  gap: 18px;
-  flex-wrap: wrap;
   align-items: center;
-  color: var(--text-secondary);
-  font-size: 13px;
-  padding: 4px 12px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 .business-tabs {
-  background: var(--panel-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 0 16px;
+  min-width: 0;
   :deep(.el-tabs__header) {
-    margin: 0;
+    margin: 0 0 15px;
   }
-  :deep(.el-tabs__nav-wrap::after) {
-    display: none;
+  :deep(.el-tabs__content) {
+    overflow: visible;
   }
 }
 .workspace {
   background: var(--panel-bg);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 20px;
   min-width: 0;
 }

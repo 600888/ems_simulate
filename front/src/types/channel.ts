@@ -67,6 +67,7 @@ export interface ChannelCreateRequest {
   opcua_config?: OpcUaDeviceConfig;
   dlt698_config?: Dlt698Config;
   dlt645_point_mode?: "standard" | "import";
+  dlt698_point_mode?: "standard" | "import";
   change_tracking_enabled?: boolean;
 }
 
@@ -136,6 +137,7 @@ export interface ChannelInfo {
   opcua_config?: OpcUaDeviceConfig;
   dlt698_config?: Dlt698Config;
   dlt645_point_mode?: "standard" | "import";
+  dlt698_point_mode?: "standard" | "import";
   change_tracking_enabled?: boolean;
 }
 

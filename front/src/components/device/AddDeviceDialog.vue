@@ -38,10 +38,17 @@
             :conn-type="form.conn_type"
             :disabled="saving"
             :is-edit-mode="isEditMode"
-            :point-mode="dlt645PointMode"
+            :point-mode="
+              form.protocol_type === 8 ? dlt698PointMode : dlt645PointMode
+            "
             @file-change="(f) => (selectedFile = f)"
             @icd-file-change="handleIcdFileChange"
-            @point-mode-change="(mode) => (dlt645PointMode = mode)"
+            @point-mode-change="
+              (mode) =>
+                form.protocol_type === 8
+                  ? (dlt698PointMode = mode)
+                  : (dlt645PointMode = mode)
+            "
           />
 
           <el-divider content-position="left">{{
@@ -272,6 +279,7 @@ import {
 } from "@/utils/opcuaDeviceConfig";
 
 // API
+import { dlt698Api } from "@/api/dlt698Api";
 import {
   createChannel,
   importDlt645StandardPoints,
@@ -339,6 +347,8 @@ const mediaType = ref<"serial" | "network">("network");
 const selectedFile = ref<File | null>(null);
 const dlt645PointMode = ref<Dlt645PointMode>("standard");
 const originalDlt645PointMode = ref<Dlt645PointMode>("standard");
+const dlt698PointMode = ref<Dlt645PointMode>("standard");
+const originalDlt698PointMode = ref<Dlt645PointMode>("standard");
 const icdFile = ref<File | null>(null);
 const certificateFile = ref<File | null>(null);
 const privateKeyFile = ref<File | null>(null);
@@ -453,6 +463,7 @@ const form = reactive<ChannelCreateRequest>({
   group_id: null,
   protocol_params: protocolParams,
   dlt645_point_mode: "standard",
+  dlt698_point_mode: "standard",
   dlt698_config: dlt698Config,
   change_tracking_enabled: false,
 });
@@ -611,6 +622,11 @@ const loadChannelData = async (id: number) => {
     originalDlt645PointMode.value = normalizeDlt645PointMode(
       data.dlt645_point_mode,
     );
+    originalDlt698PointMode.value = normalizeDlt645PointMode(
+      data.dlt698_point_mode,
+    );
+    dlt698PointMode.value =
+      form.protocol_type === 8 ? originalDlt698PointMode.value : "standard";
     // DLT645 电表地址回显统一为 12 位数字（兼容历史短地址数据）
     if (form.protocol_type === 3) {
       form.rtu_addr = String(form.rtu_addr || "").padStart(12, "0");
@@ -649,6 +665,8 @@ const loadChannelData = async (id: number) => {
 };
 
 const resetForm = () => {
+  dlt698PointMode.value = "standard";
+  originalDlt698PointMode.value = "standard";
   dlt645PointMode.value = "standard";
   originalDlt645PointMode.value = "standard";
   Object.assign(form, {
@@ -667,6 +685,7 @@ const resetForm = () => {
     group_id: null,
     protocol_params: protocolParams,
     dlt645_point_mode: "standard",
+    dlt698_point_mode: "standard",
     dlt698_config: dlt698Config,
     change_tracking_enabled: false,
   });
@@ -849,6 +868,7 @@ const handleSubmit = async () => {
       delete requestForm.dlt698_config;
       if (form.protocol_type === 8) {
         requestForm.dlt698_config = { ...dlt698Config };
+        requestForm.dlt698_point_mode = dlt698PointMode.value;
         delete requestForm.protocol_params;
       }
       if (form.protocol_type === 7) {
@@ -904,6 +924,26 @@ const handleSubmit = async () => {
           tls_mode: securityConfig.tls_mode,
           tls_version: securityConfig.tls_version ?? "1.2",
         };
+      }
+
+      if (form.protocol_type === 8) {
+        if (
+          shouldImportDlt645Standard(
+            dlt698PointMode.value,
+            isEditMode.value,
+            originalDlt698PointMode.value,
+          )
+        ) {
+          progressText.value = l(
+            "正在导入 DL/T 698 标准点表",
+            "Importing DL/T 698 standard points",
+          );
+          await dlt698Api.importStandardPoints(resultId);
+          originalDlt698PointMode.value = "standard";
+        } else if (dlt698PointMode.value === "import" && selectedFile.value) {
+          progressText.value = t("addDevice.importingPoints");
+          await dlt698Api.importPoints(resultId, selectedFile.value);
+        }
       }
 
       // Only import a point table when one was newly selected.

@@ -33,6 +33,7 @@ declare module 'vue' {
     Dlt698ProtocolConfig: typeof import('./src/components/device/dlt698/Dlt698ProtocolConfig.vue')['default']
     Dlt698Records: typeof import('./src/components/device/dlt698/Dlt698Records.vue')['default']
     Dlt698Services: typeof import('./src/components/device/dlt698/Dlt698Services.vue')['default']
+    Dlt698ValueControl: typeof import('./src/components/device/dlt698/Dlt698ValueControl.vue')['default']
     EditPoint: typeof import('./src/components/point/EditPoint.vue')['default']
     EditPointDnp3: typeof import('./src/components/point/EditPointDnp3.vue')['default']
     EditPointIec104: typeof import('./src/components/point/EditPointIec104.vue')['default']

@@ -82,6 +82,8 @@ export const dlt698Api = {
     interval_ms: number,
     codes: string[],
   ) => request<void>(id, "auto-read", "PUT", { running, interval_ms, codes }),
+  importStandardPoints: (id: number) =>
+    request<{ count: number }>(id, "points/standard", "POST"),
   importPoints: async (id: number, file: File) => {
     const data = new FormData();
     data.append("file", file);

@@ -48,10 +48,25 @@ class Dlt698Handler(ProtocolHandler):
             self._is_running = False
 
     def read_value(self, point):
-        raise TypeError("DL/T 698 使用有类型的异步测点接口")
+        return point.value
 
     def write_value(self, point, value):
-        raise TypeError("DL/T 698 写入需要明确的 OAD 和 Data 类型")
+        # Dlt698PointState.set_real_value publishes before accepting a new value.
+        if self.get_runtime().config.role != "server":
+            raise ValueError("DL/T 698 客户端写入请使用有类型的 SET 接口")
+        return True
+
+    def bind_points(self, device):
+        from src.enums.point_data import SimulateMethod
+        from src.proto.dlt698.point_state import Dlt698PointState
+
+        runtime = self.get_runtime()
+        for definition in runtime.definitions.values():
+            point = Dlt698PointState(definition, runtime.publish)
+            runtime.point_states[point.code] = point
+            device.point_manager.add_point(1, point)
+            if point.scalar and runtime.config.role == "server":
+                device.simulation_controller.add_point(point, SimulateMethod.NoSimulation, 1, is_running=True)
 
     def add_points(self, points):
         if points:
@@ -67,7 +82,9 @@ class Dlt698Handler(ProtocolHandler):
     def status(self):
         runtime = self.get_runtime()
         client = runtime.config.role == "client"
-        supported = {"points", "config", "import"}
+        supported = {"points", "config", "import", "history"}
+        if not client:
+            supported.update({"mapping", "simulation"})
         supported.update(
             {"get", "set", "action", "auto_read", "records", "reports", "md5", "then_get"}
             if client

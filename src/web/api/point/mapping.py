@@ -34,6 +34,24 @@ class PointMappingDeleteRequest(BaseModel):
     mapping_id: int
 
 
+def _validate_dlt698_mapping(controller, data):
+    from src.device.protocol.dlt698_handler import Dlt698Handler
+
+    device = controller.device_map.get(data.get("device_name"))
+    if device and isinstance(getattr(device, "protocol_handler", None), Dlt698Handler):
+        point = device.point_manager.get_point_by_code(data.get("target_point_code"))
+        if device.protocol_handler.get_runtime().config.role != "server" or not point or not point.scalar:
+            raise ValidationError("DL/T 698 映射目标必须是服务端标量测点")
+    for source in data.get("source_point_codes") or []:
+        if not isinstance(source, dict):
+            continue
+        source_device = controller.device_map.get(source.get("device_name"))
+        if source_device and isinstance(getattr(source_device, "protocol_handler", None), Dlt698Handler):
+            point = source_device.point_manager.get_point_by_code(source.get("point_code"))
+            if not point or not point.scalar:
+                raise ValidationError("DL/T 698 映射来源必须是标量测点，复合值及 64 位整数请使用精确 Data")
+
+
 async def _reload_device_mappings(device_controller, device_name: str | None) -> None:
     """重新加载设备的映射配置（失败仅记录日志，不影响主流程）"""
     if not device_name:
@@ -49,6 +67,7 @@ async def _reload_device_mappings(device_controller, device_name: str | None) ->
 @point_mapping_router.post("/create", response_model=BaseResponse)
 async def create_mapping(request: PointMappingCreateRequest, http_request: Request):
     """创建映射"""
+    _validate_dlt698_mapping(http_request.app.state.device_controller, request.model_dump())
     result = await asyncio.to_thread(
         PointMappingService.create_mapping,
         device_name=request.device_name,
@@ -82,6 +101,14 @@ async def update_mapping(request: PointMappingUpdateRequest, http_request: Reque
 
     data = request.model_dump(exclude_unset=True)
     mapping_id = data.pop("id")
+    existing = await asyncio.to_thread(PointMappingService.get_mapping_by_id, mapping_id)
+    if existing:
+        import json
+
+        merged = {**existing, **data}
+        if isinstance(merged.get("source_point_codes"), str):
+            merged["source_point_codes"] = json.loads(merged["source_point_codes"])
+        _validate_dlt698_mapping(http_request.app.state.device_controller, merged)
     success = await asyncio.to_thread(PointMappingService.update_mapping, mapping_id, data)
 
     if not success:

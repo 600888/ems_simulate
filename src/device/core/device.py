@@ -221,6 +221,10 @@ class Device:
         """初始化协议处理器"""
         self.protocol_handler = self._create_protocol_handler()
         self.protocol_handler.initialize(self._build_protocol_config())
+        from src.device.protocol.dlt698_handler import Dlt698Handler
+
+        if isinstance(self.protocol_handler, Dlt698Handler):
+            self.protocol_handler.bind_points(self)
 
         # IEC61850 客户端: 注册测点发现回调
         if self.protocol_type == ProtocolType.Iec61850Client and isinstance(
@@ -642,7 +646,6 @@ class Device:
                 ProtocolType.OpcUaClient,
                 ProtocolType.OpcUaServer,
                 ProtocolType.Dlt698Client,
-                ProtocolType.Dlt698Server,
             ):
                 self.point_calculator.start()
             if self.protocol_handler:

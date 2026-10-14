@@ -8,11 +8,26 @@ from src.data.controller.db import local_session
 from src.data.model.channel import Channel
 from src.data.model.channel_configuration import ChannelProtocolParams
 from src.data.model.dlt698 import Dlt698Point
-from src.proto.dlt698.catalog import standard_definition
+from src.proto.dlt698.catalog import catalog, standard_definition
 from src.proto.dlt698.schema import Dlt698Config, Point
 
 
 class Dlt698Service:
+    @classmethod
+    def import_standard_points(cls, channel_id: int) -> int:
+        """Add missing catalog points without overwriting user values or aliases."""
+        existing = cls.points(channel_id)
+        codes = {point["code"] for point in existing}
+        addresses = {point["oad"] for point in existing}
+        points = [
+            Point.model_validate(point)
+            for point in catalog(cls.config(channel_id))
+            if point["code"] not in codes and point["oad"] not in addresses
+        ]
+        if points:
+            cls.save_points(channel_id, points)
+        return len(points)
+
     @staticmethod
     def config(channel_id: int) -> Dlt698Config:
         with local_session() as session:
@@ -79,6 +94,18 @@ class Dlt698Service:
                     session.add(row)
                 row.code, row.definition = point.code, point.model_dump(exclude_none=True)
         return [point.model_dump(exclude_none=True) for point in normalized]
+
+    @staticmethod
+    def update_limits(channel_id: int, code: str, minimum: float, maximum: float):
+        with local_session() as session, session.begin():
+            row = session.scalar(
+                select(Dlt698Point).where(Dlt698Point.channel_id == channel_id, Dlt698Point.code == code)
+            )
+            if row is None:
+                raise ValueError("测点不存在")
+            updated = {**row.definition, "min_value_limit": minimum, "max_value_limit": maximum}
+            row.definition = Point.model_validate(updated).model_dump(exclude_none=True)
+        return True
 
     @staticmethod
     def delete_point(channel_id: int, code: str):

@@ -88,18 +88,62 @@
     </template>
 
     <template v-else-if="protocolType === 8">
+      <el-divider content-position="left">{{
+        l("DL/T 698 点表", "DL/T 698 point table")
+      }}</el-divider>
+      <el-form-item :label="$t('device.dlt645PointMode')">
+        <el-radio-group v-model="pointMode" :disabled="disabled">
+          <el-radio-button value="standard">{{
+            l("标准点表", "Standard catalog")
+          }}</el-radio-button>
+          <el-radio-button value="import">{{
+            l("默认点表", "Default point table")
+          }}</el-radio-button>
+        </el-radio-group>
+      </el-form-item>
       <el-alert
+        v-if="pointMode === 'standard'"
         :title="
           l(
-            'DL/T 698 测点从设备工作区的标准库或专用点表导入；保存连接后进入设备工作区继续配置。',
-            'Import DL/T 698 points from the standard library or dedicated point table in the device workspace after saving the connection.',
+            '按当前接线方式、费率与谐波配置导入内置标准点表；普通编辑保留已有测点和值。',
+            'Import the built-in catalog for the current wiring, tariffs and harmonics. Ordinary edits retain existing points and values.',
           )
         "
         type="info"
         :closable="false"
         show-icon
-        style="margin-top: 16px"
       />
+      <el-form-item
+        v-else
+        :label="$t('device.pointFile')"
+        class="point-file-row"
+      >
+        <el-upload
+          ref="uploadRef"
+          action="#"
+          :auto-upload="true"
+          :limit="1"
+          :http-request="handleFileRequest"
+          :disabled="disabled"
+          accept=".xlsx"
+        >
+          <template #trigger
+            ><el-button type="success" plain :icon="Upload">{{
+              $t("device.selectExcel")
+            }}</el-button></template
+          >
+          <template #tip
+            ><div class="el-upload__tip">
+              {{
+                l(
+                  "可导入 DL/T 698 专用 .xlsx 点表；不选择文件则保留现有点表，新设备保持空点表。initial_value 列使用有类型的 Data JSON。",
+                  "Optionally import a DL/T 698 .xlsx table. Without a file, retain existing points or leave a new device empty. Use typed Data JSON in initial_value.",
+                )
+              }}
+            </div></template
+          >
+        </el-upload>
+      </el-form-item>
     </template>
 
     <!-- OPC UA 与其他协议按各自格式导入 Excel 点表 -->
