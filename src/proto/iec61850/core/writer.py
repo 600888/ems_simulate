@@ -70,7 +70,7 @@ class Iec61850Writer:
 
         addr_str = str(address)
         ref = self._build_ref(addr_str)
-        fc_name = fc or (self._registry.get_fc(addr_str) if self._registry else "")
+        fc_name = fc or (self._registry.get_fc(addr_str) if self._registry else "") or infer_fc_from_address(addr_str)
         if fc_name == "CO":
             if self._write_control(ref, value, self._resolve_iec_type(addr_str)):
                 return True

@@ -97,6 +97,18 @@ def test_sbo_control_selects_before_operate(monkeypatch):
     assert calls.index(("select",)) < calls.index(("operate", 0))
 
 
+def test_control_without_explicit_fc_uses_control_service(monkeypatch):
+    api, calls = _fake_control_api(control_model=2)
+    monkeypatch.setattr(writer_module, "iec61850", api, raising=False)
+    connection = _Connection()
+    connection.model_name = ""
+    writer = Iec61850Writer(connection)
+
+    assert writer.write("MMS_TEST/GGIO1.CS01.Oper.ctlVal", 1) is True
+    assert ("create", "MMS_TEST/GGIO1.CS01") in calls
+    assert calls.index(("select",)) < calls.index(("operate", 0))
+
+
 def test_set_mag_integer_uses_sp_and_native_integer_writer(monkeypatch):
     calls = []
     api = SimpleNamespace(

@@ -1206,8 +1206,7 @@ const iec61850FlatRows = computed(() => {
       _displayPointCode: controlObject
         ? resolveIec61850ReadbackTarget(doNode)?.pointCode
         : actionPointCode,
-      _isControlAction:
-        controlObject && isControlValuePointCode(actionPointCode),
+      _isControlAction: controlObject && Boolean(actionPointCode),
       _daCount: doNode.children?.length || 0,
       _duName: doNode.du_name,
       地址: doRef,
@@ -1236,7 +1235,10 @@ const iec61850FlatRows = computed(() => {
         _daDisplayName: daNode.da_name,
         _fc: daNode.fc,
         _isControlObject: daNode.fc === "CO",
-        _isControlAction: isControlValuePointCode(daNode.point_code || ""),
+        _isControlAction: isControlValuePointCode(
+          daNode.point_code || "",
+          daNode.da_path,
+        ),
         _doRef: doRef,
         _isStructDa: daNode.is_struct,
         _bdaCount: daNode.children?.length || 0,
@@ -1269,7 +1271,10 @@ const iec61850FlatRows = computed(() => {
             _daPath: bdaNode.bda_path,
             _fc: bdaNode.fc,
             _isControlObject: bdaNode.fc === "CO",
-            _isControlAction: isControlValuePointCode(bdaNode.point_code || ""),
+            _isControlAction: isControlValuePointCode(
+              bdaNode.point_code || "",
+              bdaNode.bda_path,
+            ),
             _doRef: doRef,
             地址: `${doRef}.${bdaNode.bda_path}`,
             测点名称: bdaNode.bda_name,

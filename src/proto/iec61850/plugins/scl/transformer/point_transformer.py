@@ -143,6 +143,10 @@ class SclPointTransformer:
                 # 摘要误选 q 的 MMS_BIT_STRING 作为主类型。
                 if da_info.get("name") in SKIP_DA_NAMES:
                     continue
+                # Select/Cancel and the fields of a control request are service
+                # parameters. Only the control value is a business point.
+                if da_fc == "CO" and da_path not in ("Oper.ctlVal", "SBOw.ctlVal", "ctlVal"):
+                    continue
                 # 只收集相关 FC 的 DA
                 if category == PointCategory.YC and da_fc in ("MX", "ST", "DC"):
                     pass

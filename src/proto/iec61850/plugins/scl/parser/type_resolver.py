@@ -53,6 +53,12 @@ class TypeResolver:
             return CDC_VALUE_DA_PATH.get(cdc)
 
         if cdc in CDC_CONTROL_DA_PATH:
+            # SCL control structures are normally DA(bType=Struct), not SDO.
+            # Use their actual ctlVal leaf instead of inventing a top-level ctlVal.
+            leaves = self.collect_all_das(do_type_id, cdc)
+            for path in ("Oper.ctlVal", "SBOw.ctlVal", "ctlVal"):
+                if any(da["path"] == path and da["fc"] == "CO" for da in leaves):
+                    return path
             for sdo in do_type.sdos:
                 if sdo.name in ("Oper", "SBOw"):
                     return f"{sdo.name}.ctlVal"
@@ -62,6 +68,8 @@ class TypeResolver:
             for da in do_type.das:
                 if da.name == "setVal":
                     return "setVal"
+            if any(da.name == "stVal" for da in do_type.das):
+                return "stVal"
 
         if cdc in ("MV", "CMV", "SAV"):
             path = self._find_measurement_path(do_type, cdc)

@@ -219,7 +219,7 @@ class SclServerModelBuilder:
                     bda_fc = bda_def.fc or da_def.fc
                     sub_das_list.append(
                         DARef(
-                            name=f"{da_def.name}.{bda_def.name}",
+                            name=bda_def.name,
                             path=f"{da_def.name}.{bda_def.name}",
                             fc=bda_fc,
                             iec_type=bda_type_name,
