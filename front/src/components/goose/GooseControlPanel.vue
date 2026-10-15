@@ -53,12 +53,15 @@
     <section class="config-section">
       <div class="section-title">{{ $t("goose.subConfig") }}</div>
       <el-form label-width="200px" class="config-form">
-        <el-form-item :label="$t('goose.goEna')">
+        <el-form-item :label="$t('goose.subscriptionEnable')">
           <el-switch
             v-model="form.enabled"
             :active-text="$t('goose.enabled')"
             :inactive-text="$t('goose.disabled')"
           />
+          <span class="enable-hint">{{
+            $t("goose.subscriptionEnableHint")
+          }}</span>
         </el-form-item>
         <el-form-item :label="$t('goose.interface')">
           <el-select
@@ -263,6 +266,12 @@ function apply() {
   margin-bottom: 14px;
   color: var(--text-primary);
   font-weight: 700;
+}
+.enable-hint {
+  width: 100%;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .config-form {
   display: grid;

@@ -1122,6 +1122,9 @@ export default {
     publishConfig: "Publish Config",
     publishEnable: "Publish Enable (GoEna)",
     subConfig: "Subscribe Config",
+    subscriptionEnable: "Local Subscription Enable",
+    subscriptionEnableHint:
+      "Controls local reception with MMS on or off; leaves remote GoEna unchanged.",
     enabled: "Enabled",
     disabled: "Disabled",
     interfaceSelect: "Please select a network interface",

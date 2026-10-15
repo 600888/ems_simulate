@@ -129,62 +129,49 @@ def _get_discovered_goose(channel_id: int, request: Request) -> list[dict[str, A
     return results
 
 
-def _set_remote_go_ena(request: Request, channel_id: int, go_cb_ref: str, enabled: bool) -> None:
-    """Apply the subscriber commissioning state to the remote publisher over MMS."""
-    device_controller = getattr(request.app.state, "device_controller", None)
-    device = device_controller.get_device_by_channel_id(channel_id) if device_controller else None
-    handler = getattr(device, "protocol_handler", None) if device else None
-    client = getattr(handler, "_client", None) if handler else None
-    connection = getattr(client, "_conn", None) if client else None
-    if connection is None:
-        raise OperationError("无法设置远端 GoEna：IEC 61850 MMS 客户端未连接")
-
-    from src.proto.iec61850.plugins.goose.client_control import GooseClientControl
-
-    if not GooseClientControl.set_go_ena(connection, go_cb_ref, enabled):
-        raise OperationError(f"远端 GOOSE 控制块 GoEna {'使能' if enabled else '禁用'}失败: {go_cb_ref}")
-
-
 def _resolve_dataset_entries(
     request: Request,
     channel_id: int,
     data_set_ref: str,
     configured: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Reuse the report-side MMS DataSet directory lookup for GOOSE values."""
+    """Resolve GOOSE metadata from the loaded model without requiring MMS."""
     if configured or not data_set_ref:
         return configured
     device_controller = getattr(request.app.state, "device_controller", None)
     device = device_controller.get_device_by_channel_id(channel_id) if device_controller else None
     handler = getattr(device, "protocol_handler", None) if device else None
     client = getattr(handler, "_client", None) if handler else None
-    browse = getattr(client, "browse_dataset_directory", None)
-    if not callable(browse):
-        return configured
-    try:
-        members = browse(data_set_ref) or []
-    except Exception as exc:
-        log.warning(f"在线读取 GOOSE DataSet 成员失败: ref={data_set_ref}, error={exc}")
-        members = []
+    get_datasets = getattr(handler, "get_discovered_datasets", None)
+    datasets = get_datasets() if callable(get_datasets) else getattr(handler, "_discovered_datasets", [])
+    normalized = data_set_ref.replace("$", ".")
+    members = next(
+        (item.get("members", []) for item in datasets or [] if item.get("ref", "").replace("$", ".") == normalized),
+        [],
+    )
     if not members:
         members = _cached_dataset_members(client, data_set_ref)
     entries = [
         {
             "name": member.get("ref") or member.get("fcda_ref") or member.get("name", ""),
             "fc": member.get("fc", ""),
-            "type": member.get("iec_type") or member.get("type", "unknown"),
+            "type": (
+                infer_fcda_iec_type(member)
+                if member.get("b_type")
+                else member.get("iec_type") or member.get("type", "unknown")
+            ),
             "description": member.get("description") or member.get("desc", ""),
         }
         for member in members
         if member.get("ref") or member.get("fcda_ref") or member.get("name")
     ]
     if entries:
-        log.info(f"在线读取 GOOSE DataSet 成员成功: ref={data_set_ref}, count={len(entries)}")
+        log.debug(f"从已加载模型关联 GOOSE DataSet 成员: ref={data_set_ref}, count={len(entries)}")
     return entries or configured
 
 
 def _cached_dataset_members(client: Any, data_set_ref: str) -> list[dict[str, Any]]:
-    """Find DataSet members in the online model cache when MMS browsing fails."""
+    """Find DataSet members in the retained model cache, including after disconnect."""
     if client is None:
         return []
     try:
@@ -237,7 +224,7 @@ async def create_goose_publisher(
         try:
             device_controller = getattr(request.app.state, "device_controller", None)
             if device_controller:
-                _device = device_controller.get_device_by_id(body.channel_id)
+                _device = device_controller.get_device_by_channel_id(body.channel_id)
                 if _device and _device.protocol_handler:
                     _handler = _device.protocol_handler
                     from src.device.protocol.iec61850_handler import IEC61850ServerHandler
@@ -684,20 +671,19 @@ async def add_receiver_subscription(
 
 @router.post("/goose/receivers/subscriptions/update", response_model=BaseResponse)
 async def update_receiver_subscription(request: Request, body: GooseSubscriptionUpdate):
+    """Apply local reception settings; remote publisher GoEna is independent."""
     manager = _get_goose_manager(request)
     _validate_iec61850_channel(body.channel_id)
     current = manager.get_receiver_status(body.receiver_id)
     if not current:
         raise NotFoundError("GOOSE Receiver 未找到")
     _require_resource_channel(current.get("channel_id"), body.channel_id)
-    remote_ref = body.new_go_cb_ref or body.go_cb_ref
     dataset_entries = _resolve_dataset_entries(
         request,
         body.channel_id,
         body.data_set_ref,
         body.dataset_entries,
     )
-    _set_remote_go_ena(request, body.channel_id, remote_ref, body.enabled)
     result = manager.update_subscription(
         body.receiver_id,
         body.go_cb_ref,
@@ -715,10 +701,6 @@ async def update_receiver_subscription(request: Request, body: GooseSubscription
         go_id=body.go_id,
     )
     if not result:
-        try:
-            _set_remote_go_ena(request, body.channel_id, remote_ref, not body.enabled)
-        except Exception:
-            log.warning(f"GOOSE 本地订阅更新失败后回滚远端 GoEna 失败: {remote_ref}")
         raise OperationError("GOOSE 订阅配置应用失败")
     return BaseResponse(message="GOOSE 订阅配置已应用", data=result)
 

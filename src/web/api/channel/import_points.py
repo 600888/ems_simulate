@@ -432,11 +432,11 @@ async def import_icd(
         device_controller = request.app.state.device_controller
         was_running = False
         try:
-            device = device_controller.get_device_by_id(channel_id)
+            device = device_controller.get_device_by_channel_id(channel_id)
             if device:
                 was_running = device.is_protocol_running()
                 await reload_device_instance(device_controller, channel_id, is_start=False, scl_result=scl_result)
-                log.info("IEC 61850 设备已重建 (暂未启动，待 DataSet/GoCB 注册后再启动)")
+                log.info("IEC 61850 设备已重建 (MMS 保持停止，模型注册后按导入前状态恢复)")
             else:
                 log.warning(f"导入ICD后未找到内存设备 (ID: {channel_id})，需要手动加载或重启")
         except Exception as e:
@@ -472,7 +472,7 @@ async def import_icd(
         iec61850_server = None
         do_descriptions: dict[str, str] = {}
         try:
-            _device = device_controller.get_device_by_id(channel_id)
+            _device = device_controller.get_device_by_channel_id(channel_id)
             if _device and _device.protocol_handler:
                 _handler = _device.protocol_handler
                 from src.device.protocol.iec61850_handler import IEC61850ServerHandler
@@ -493,7 +493,7 @@ async def import_icd(
             # 导入模型只负责发现候选项，不再替用户决定发布或订阅方向。
             # 将解析出的控制块挂到当前 handler，供 GOOSE“已发现”页选择使用。
             try:
-                current_device = device_controller.get_device_by_id(channel_id)
+                current_device = device_controller.get_device_by_channel_id(channel_id)
                 current_handler = getattr(current_device, "protocol_handler", None)
                 cached_candidates = getattr(current_handler, "_discovered_goose_items", None)
                 candidates = list(cached_candidates or goose_data.get("publishers", []))
@@ -605,15 +605,14 @@ async def import_icd(
                 else:
                     goose_errors.append("GOOSE 管理器未初始化，无法创建 Subscription")
 
-            # ===== 2d. 统一启动 MMS 服务器 =====
-            # 所有 DataSet 和 GoCB 已注册到 IedModel，现在启动 IedServer
-            # IedServer_create 一次性构建包含所有节点的 MMS 命名空间
+            # ===== 2d. 恢复导入前的 MMS 运行状态 =====
+            # 模型注册与 MMS 启动分离。导入前未启动 MMS 时，GOOSE 可由
+            # 设备 GOOSE 页面单独启停，不因 DataSet/GoCB/RCB 的存在启动 MMS。
             # register_default_rcbs=False: ICD 已提供 RCB 配置，不应再创建默认 brcb01/brcb02
-            # 先存储 dU 描述（无论 need_start 如何），start() 内部 _apply_du_descriptions 会自动应用
+            # 先存储 dU 描述；后续显式启动时 _apply_du_descriptions 会自动应用。
             if do_descriptions and iec61850_server:
                 iec61850_server.set_du_descriptions(do_descriptions)
-            need_start = created_goose_count > 0 or registered_dataset_count > 0 or rc_registered > 0 or was_running
-            if need_start and iec61850_server:
+            if was_running and iec61850_server:
                 # 启动前诊断：确认 GoCB/DataSet 已注册到 IedModel
                 log.info(
                     f"启动 MMS 服务器前诊断: "

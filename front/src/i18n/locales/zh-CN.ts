@@ -1103,6 +1103,9 @@ export default {
     publishConfig: "发布配置",
     publishEnable: "发布使能 (GoEna)",
     subConfig: "订阅配置",
+    subscriptionEnable: "本地订阅使能",
+    subscriptionEnableHint:
+      "仅控制本地接收，可在 MMS 关闭时运行，不修改远端 GoEna。",
     enabled: "已启用",
     disabled: "已禁用",
     interfaceSelect: "请选择网卡",
