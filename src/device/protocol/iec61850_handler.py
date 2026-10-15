@@ -15,6 +15,19 @@ from src.enums.point_data import Yc, Yk, Yt, Yx
 from src.enums.points.base_point import BasePoint
 
 
+def get_iec61850_value_model(handler):
+    """Get Python SCL/value metadata without exposing a native server model pointer."""
+    from src.proto.iec61850.model.ied_model import IedModel
+
+    if isinstance(handler, IEC61850ClientHandler):
+        model = getattr(getattr(handler, "_client", None), "model", None)
+    elif isinstance(handler, IEC61850ServerHandler):
+        model = getattr(getattr(handler, "_server", None), "scl_model", None)
+    else:
+        return None
+    return model if isinstance(model, IedModel) else None
+
+
 def _discovery_timeout_seconds() -> int:
     """返回模型发现允许使用的总超时时间，并保证结果不低于连接请求超时。"""
     raw_value = os.getenv("EMS_IEC61850_DISCOVERY_TIMEOUT_SECONDS", "600")
@@ -992,6 +1005,11 @@ class IEC61850ClientHandler(ClientHandler):
 
         try:
             fc = getattr(point, "fc", "") or ""
+            model = get_iec61850_value_model(self)
+            attribute = model.find_attribute(str(point.address), fc) if model is not None else None
+            if attribute is not None and attribute.b_type.upper() == "ENUM":
+                model.validate_enum_value(str(point.address), value, fc)
+                return self._client.write_point(address=point.address, value=value, fc=fc)
             if isinstance(point, (Yc, Yt)):
                 real_to_send = value * point.mul_coe + point.add_coe
                 return self._client.write_point(

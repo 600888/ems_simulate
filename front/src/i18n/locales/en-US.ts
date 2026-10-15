@@ -610,6 +610,13 @@ export default {
     copySuccess: "Successfully copied {count} devices",
   },
   writeDialog: {
+    selectEnum: "Select an enumeration value",
+    unknownEnum: "Unknown enumeration value",
+    enumUnavailable:
+      "The SCL has no enumeration type reference. Enter the raw ordinal.",
+    prepareFailed:
+      "Unable to prepare the write target. Reopen this dialog to retry.",
+    targetAttribute: "Write target",
     title: "Write Value",
     attributeName: "Attribute",
     currentValue: "Current Value",

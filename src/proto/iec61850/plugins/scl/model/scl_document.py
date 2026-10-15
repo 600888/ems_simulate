@@ -26,6 +26,7 @@ class SclEnumType:
 
     id: str = ""
     values: list[SclEnumVal] = field(default_factory=list)
+    desc: str = ""
 
 
 @dataclass(slots=True)

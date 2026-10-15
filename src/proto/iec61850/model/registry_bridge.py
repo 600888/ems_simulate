@@ -34,6 +34,10 @@ def build_registry_from_model(model: IedModel, registry: Any) -> list[dict[str, 
     else:
         registry.discovered_goose_items.clear()
 
+    set_value_model = getattr(registry, "set_value_model", None)
+    if callable(set_value_model):
+        set_value_model(model)
+
     # 填充测点映射
     for address, info in model.point_refs.items():
         registry.set_ref(address, info["ref"])

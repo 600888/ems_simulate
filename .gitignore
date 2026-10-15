@@ -233,6 +233,7 @@ plan/IEC61850/*
 !plan/IEC61850/implementation/
 plan/IEC61850/implementation/*
 !plan/IEC61850/implementation/goose-device-scoped-fullstack-refactor.md
+!plan/IEC61850/implementation/iec61850-enum-generic-support-plan.md
 !plan/IEC61850/modeling/
 plan/IEC61850/modeling/*
 !plan/IEC61850/modeling/iec61850-general-modeling-tool-design.md

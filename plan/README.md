@@ -40,6 +40,7 @@
 - [IEC104 TLS 实施计划](IEC104/implementation/iec104-tls-implementation-plan.md)
 - [IEC61850 GOOSE 设备级全栈重构](IEC61850/implementation/goose-device-scoped-fullstack-refactor.md)
 - [IEC61850 通用建模工具设计](IEC61850/modeling/iec61850-general-modeling-tool-design.md)
+- [IEC61850 通用枚举支持整改计划](IEC61850/implementation/iec61850-enum-generic-support-plan.md)
 
 ## 维护约定
 

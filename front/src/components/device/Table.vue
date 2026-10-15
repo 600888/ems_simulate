@@ -377,6 +377,17 @@
             </template>
           </div>
           <span
+            v-else-if="isIec61850 && header === '真实值'"
+            class="cell-text"
+            >{{
+              formatEnumValue(
+                scope.row[header],
+                props.iec61850TreeData?.enum_definitions?.[scope.row._enumRef],
+                t("writeDialog.unknownEnum"),
+              )
+            }}</span
+          >
+          <span
             v-else
             class="cell-text"
             :class="{
@@ -498,9 +509,10 @@
             <el-button
               v-if="
                 isIec61850Client &&
-                [PointType.YK, PointType.YT].includes(
+                ([PointType.YK, PointType.YT].includes(
                   getPointType(scope.row['帧类型']),
-                ) &&
+                ) ||
+                  ['CF', 'SP', 'SV', 'SE'].includes(scope.row.FC)) &&
                 (!scope.row._isControlObject || scope.row._isControlAction)
               "
               type="success"
@@ -772,6 +784,7 @@ import {
 } from "@/constants/table";
 import { isDlt645Protocol, isDnp3Protocol } from "@/constants/protocol";
 import { formatTableRealValue } from "@/utils/tableValue";
+import { formatEnumValue } from "@/utils/iec61850Enum";
 import {
   resolveIec61850ReadbackTarget,
   syncIec61850WriteResult,
@@ -1153,6 +1166,7 @@ const iec61850FlatRows = computed(() => {
           _isDaRow: false,
           _isFlatDa: true,
           _daPath: daNode.da_path,
+          _enumRef: daNode.enum_ref,
           _fc: daNode.fc,
           地址: `${doRef}.${daNode.da_path}`,
           测点名称: `${doNode.do_name}.${daNode.da_path}`,
@@ -1187,8 +1201,10 @@ const iec61850FlatRows = computed(() => {
       }
       return "";
     };
-    const doValue =
-      getDoDisplayValue(doNode.children || []) || doNode.value || "";
+    const primaryValue = getDoDisplayValue(doNode.children || []);
+    const doValue = hasValue(primaryValue)
+      ? primaryValue
+      : (doNode.value ?? "");
     const controlObject = isControlObject(doNode);
     const controlFrameType =
       doNode.frame_type === PointType.YT ? PointType.YT : PointType.YK;
@@ -1196,8 +1212,15 @@ const iec61850FlatRows = computed(() => {
     const actionPointCode = controlObject
       ? resolveDoControlPointCode(doNode)
       : resolveDoReadPointCode(doNode);
+    const displayPointCode = controlObject
+      ? resolveIec61850ReadbackTarget(doNode)?.pointCode
+      : actionPointCode;
+    const displayAttribute = (doNode.children || [])
+      .flatMap((da) => [da, ...(da.children || [])])
+      .find((attribute) => attribute.point_code === displayPointCode);
     result.push({
       _isDoRow: true,
+      _enumRef: displayAttribute?.enum_ref,
       _rowKey: `do-${doRef}`,
       _doName: doNode.do_name,
       _doRef: doRef,
@@ -1231,6 +1254,7 @@ const iec61850FlatRows = computed(() => {
         daNode.fc === "CO" ? controlFrameType : doNode.frame_type;
       const daRow: any = {
         _isDaRow: true,
+        _enumRef: daNode.enum_ref,
         _daPath: daNode.da_path,
         _daDisplayName: daNode.da_name,
         _fc: daNode.fc,
@@ -1265,6 +1289,7 @@ const iec61850FlatRows = computed(() => {
             bdaNode.fc === "CO" ? controlFrameType : doNode.frame_type;
           result.push({
             _isBdaRow: true,
+            _enumRef: bdaNode.enum_ref,
             _isDaRow: false,
             _parentDa: daNode.da_name,
             _bdaName: bdaNode.bda_name,

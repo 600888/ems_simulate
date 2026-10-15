@@ -305,6 +305,8 @@ class SclParser:
         # EnumType
         for et_elem in self._ns.findall(elem, "EnumType"):
             enum_type = self._parse_enum_type(et_elem)
+            if enum_type.id in dtt.enum_types:
+                raise ValueError(f"重复的 EnumType id: {enum_type.id}")
             dtt.enum_types[enum_type.id] = enum_type
 
         return dtt
@@ -396,11 +398,15 @@ class SclParser:
     def _parse_enum_type(self, elem: ET.Element) -> SclEnumType:
         """解析 SCL 中的 EnumType 元素并构建对应模型对象。"""
         values = []
+        seen_ords = set()
         for ev_elem in self._ns.findall(elem, "EnumVal"):
             try:
-                ord_val = int(ev_elem.get("ord", "0"))
-            except ValueError:
-                ord_val = 0
+                ord_val = int(ev_elem.attrib["ord"])
+            except (ValueError, KeyError) as exc:
+                raise ValueError(f"EnumType '{elem.get('id', '')}' 的 EnumVal ord 必须是整数") from exc
+            if ord_val in seen_ords:
+                raise ValueError(f"EnumType '{elem.get('id', '')}' 存在重复 ord: {ord_val}")
+            seen_ords.add(ord_val)
             values.append(
                 SclEnumVal(
                     ord=ord_val,
@@ -411,6 +417,7 @@ class SclParser:
         return SclEnumType(
             id=elem.get("id", ""),
             values=values,
+            desc=elem.get("desc", ""),
         )
 
     # ===== IED =====

@@ -131,8 +131,10 @@ class TypeResolver:
         self._all_das_cache[key] = result
         return list(result)
 
-    def _collect_all_das_impl(self, do_type: SclDOType) -> list[dict[str, Any]]:
+    def _collect_all_das_impl(self, do_type: SclDOType, ancestors: tuple[str, ...] = ()) -> list[dict[str, Any]]:
         """收集全部资源DAS并返回汇总结果。"""
+        if do_type.id in ancestors or len(ancestors) >= 64:
+            raise ValueError(f"DOType 循环引用或嵌套过深: {' -> '.join((*ancestors, do_type.id))}")
         result: list[dict[str, Any]] = []
         for da in do_type.das:
             self._collect_da(da, result, da.name)
@@ -140,12 +142,13 @@ class TypeResolver:
         for sdo in do_type.sdos:
             sub_type = self._dtt.do_types.get(sdo.type_id)
             if sub_type:
-                for da in sub_type.das:
-                    self._collect_da(
-                        da,
-                        result,
-                        f"{sdo.name}.{da.name}",
-                        fc_override="CO" if sdo.name in ("Oper", "SBOw", "Cancel") else None,
+                for leaf in self._collect_all_das_impl(sub_type, (*ancestors, do_type.id)):
+                    result.append(
+                        {
+                            **leaf,
+                            "path": f"{sdo.name}.{leaf['path']}",
+                            **({"fc": "CO"} if sdo.name in ("Oper", "SBOw", "Cancel") else {}),
+                        }
                     )
 
         return result
@@ -177,6 +180,7 @@ class TypeResolver:
                     "path": da_path,
                     "fc": fc,
                     "bType": da.b_type,
+                    "typeId": da.type_id,
                     "iecType": iec_type_from_btype(da.b_type),
                     "mmsType": mms_type_from_btype(da.b_type).value,
                     "dchg": da.dchg,
@@ -186,24 +190,41 @@ class TypeResolver:
             )
 
         if is_struct and da.type_id:
-            da_type = self._dtt.da_types.get(da.type_id)
-            if da_type:
-                for bda in da_type.bdas:
-                    if str(bda.b_type or "").upper() == "STRUCT":
-                        continue
-                    result.append(
-                        {
-                            "name": bda.name,
-                            "path": f"{path_prefix}.{bda.name}",
-                            "fc": fc,
-                            "bType": bda.b_type,
-                            "iecType": iec_type_from_btype(bda.b_type),
-                            "mmsType": mms_type_from_btype(bda.b_type).value,
-                            "dchg": da.dchg,
-                            "qchg": da.qchg,
-                            "dupd": da.dupd,
-                        }
-                    )
+            self._collect_bdas(da.type_id, path_prefix, fc, da, result, ())
+
+    def _collect_bdas(
+        self,
+        type_id: str,
+        prefix: str,
+        fc: str,
+        parent: SclDA,
+        result: list[dict[str, Any]],
+        ancestors: tuple[str, ...],
+    ) -> None:
+        if type_id in ancestors or len(ancestors) >= 64:
+            raise ValueError(f"DAType 循环引用或嵌套过深: {' -> '.join((*ancestors, type_id))}")
+        da_type = self._dtt.da_types.get(type_id)
+        if da_type is None:
+            return
+        for bda in da_type.bdas:
+            path = f"{prefix}.{bda.name}"
+            if bda.b_type.upper() == "STRUCT":
+                self._collect_bdas(bda.type_id, path, fc, parent, result, (*ancestors, type_id))
+            else:
+                result.append(
+                    {
+                        "name": bda.name,
+                        "path": path,
+                        "fc": fc,
+                        "bType": bda.b_type,
+                        "typeId": bda.type_id,
+                        "iecType": iec_type_from_btype(bda.b_type),
+                        "mmsType": mms_type_from_btype(bda.b_type).value,
+                        "dchg": parent.dchg,
+                        "qchg": parent.qchg,
+                        "dupd": parent.dupd,
+                    }
+                )
 
     def get_do_desc(
         self,

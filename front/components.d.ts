@@ -113,6 +113,7 @@ declare module 'vue' {
     GooseSubscriberManager: typeof import('./src/components/goose/GooseSubscriberManager.vue')['default']
     IcdImportUpload: typeof import('./src/components/common/IcdImportUpload.vue')['default']
     Iec61850LogsManager: typeof import('./src/components/iec61850-logs/Iec61850LogsManager.vue')['default']
+    Iec61850ValueEditor: typeof import('./src/components/device/Iec61850ValueEditor.vue')['default']
     Iec61850WriteDialog: typeof import('./src/components/device/Iec61850WriteDialog.vue')['default']
     LogViewerDialog: typeof import('./src/components/logs/LogViewerDialog.vue')['default']
     LongRegister: typeof import('./src/components/register/LongRegister.vue')['default']

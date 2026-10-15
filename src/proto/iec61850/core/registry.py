@@ -38,6 +38,7 @@ class PointRegistry:
         self._point_iec_type: dict[str, str] = {}
         # 地址 -> 原生 MMS 类型的映射
         self._point_mms_type: dict[str, str] = {}
+        self._value_model = None
         # 地址 -> 描述 (dU) 的映射
         self._point_name: dict[str, str] = {}
         # 发现的 GOOSE 控制块列表
@@ -83,19 +84,39 @@ class PointRegistry:
 
     def get_ref(self, address) -> str | None:
         """获取测点的 MMS 引用路径"""
-        return self._point_refs.get(str(address))
+        cached = self._point_refs.get(str(address))
+        if cached:
+            return cached
+        return str(address) if self._model_attribute(address) is not None else None
 
     def get_fc(self, address) -> str:
         """获取测点的 FC"""
-        return self._point_fc.get(str(address), "")
+        cached = self._point_fc.get(str(address), "")
+        attribute = self._model_attribute(address) if not cached else None
+        return cached or (attribute.fc if attribute is not None else "")
 
     def get_iec_type(self, address) -> str:
         """获取测点的 iec_type"""
-        return self._point_iec_type.get(str(address), "")
+        cached = self._point_iec_type.get(str(address), "")
+        attribute = self._model_attribute(address) if not cached else None
+        return cached or (attribute.iec_type if attribute is not None else "")
 
     def get_mms_type(self, address) -> str:
         """获取测点的原生 MMS 类型。"""
-        return self._point_mms_type.get(str(address), "")
+        cached = self._point_mms_type.get(str(address), "")
+        attribute = self._model_attribute(address) if not cached else None
+        return cached or (attribute.mms_type if attribute is not None else "")
+
+    def _model_attribute(self, address):
+        return self._value_model.find_attribute(str(address)) if self._value_model is not None else None
+
+    def set_value_model(self, model) -> None:
+        """Keep model-scoped value domains shared rather than copying each enum per point."""
+        self._value_model = model
+
+    def validate_enum_value(self, address, value, fc: str = "") -> None:
+        if self._value_model is not None:
+            self._value_model.validate_enum_value(str(address), value, fc)
 
     def get_name(self, address) -> str:
         """获取测点的描述 (dU)"""
@@ -155,6 +176,7 @@ class PointRegistry:
         self._point_fc.clear()
         self._point_iec_type.clear()
         self._point_mms_type.clear()
+        self._value_model = None
         self._point_name.clear()
         self._discovered_goose_items.clear()
         self._discovered_datasets.clear()

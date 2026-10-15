@@ -756,8 +756,11 @@ class IEC61850Client:
             try:
                 from .plugins.scl.transformer.server_model_builder import SclServerModelBuilder
 
-                offline_model = SclServerModelBuilder(result.doc).build(host=self.ip, port=self.port)
+                offline_model = SclServerModelBuilder(result.doc).build(
+                    host=self.ip, port=self.port, ied_name=result.ied_name
+                )
                 self._discovery.install_model(offline_model)
+                self._registry.set_value_model(offline_model)
             except Exception as exc:
                 log.warning(f"ICD IedModel 构建失败，将使用兼容 DataSet 映射: {exc}")
 

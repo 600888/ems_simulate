@@ -71,6 +71,13 @@ class Iec61850Writer:
         addr_str = str(address)
         ref = self._build_ref(addr_str)
         fc_name = fc or (self._registry.get_fc(addr_str) if self._registry else "") or infer_fc_from_address(addr_str)
+        validator = getattr(self._registry, "validate_enum_value", None)
+        if callable(validator):
+            try:
+                validator(ref, value, fc_name)
+            except ValueError as exc:
+                self.last_error = str(exc)
+                return False
         if fc_name == "CO":
             if self._write_control(ref, value, self._resolve_iec_type(addr_str)):
                 return True
@@ -82,12 +89,12 @@ class Iec61850Writer:
         iec_type = self._resolve_iec_type(addr_str)
         mms_type = self._resolve_mms_type(addr_str, iec_type)
 
-        if self._write_once(addr_str, ref, value, fc_val, mms_type):
-            return True
-
-        if self._connection.reconnect_if_unhealthy(f"write {ref}"):
-            return self._write_once(addr_str, ref, value, fc_val, mms_type)
-        return False
+        success = self._write_once(addr_str, ref, value, fc_val, mms_type)
+        if not success and self._connection.reconnect_if_unhealthy(f"write {ref}"):
+            success = self._write_once(addr_str, ref, value, fc_val, mms_type)
+        if success and fc_name == "CF" and ref.endswith(".ctlModel"):
+            self.clear_control_objects()
+        return success
 
     @staticmethod
     def _control_object_ref(ref: str) -> str:

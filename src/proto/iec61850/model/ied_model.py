@@ -15,6 +15,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from .enum_types import EnumDefinition
+
 
 @dataclass(slots=True, frozen=True)
 class DARef:
@@ -26,6 +28,8 @@ class DARef:
     iec_type: str = ""
     mms_type: str = "MMS_UNKNOWN"
     sub_das: tuple[DARef, ...] = ()
+    b_type: str = ""
+    type_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """把DARef转换为可序列化字典。"""
@@ -38,6 +42,10 @@ class DARef:
         }
         if self.sub_das:
             result["subDataAttributes"] = [bda.to_dict() for bda in self.sub_das]
+        if self.b_type:
+            result["bType"] = self.b_type
+        if self.type_id:
+            result["typeId"] = self.type_id
         return result
 
     @classmethod
@@ -51,17 +59,24 @@ class DARef:
             iec_type=data.get("iecType", ""),
             mms_type=data.get("mmsType", "MMS_UNKNOWN"),
             sub_das=sub_das,
+            b_type=data.get("bType", ""),
+            type_id=data.get("typeId", ""),
         )
 
     def to_flat_dict(self) -> dict[str, Any]:
         """把DARef转换为扁平字典。"""
-        return {
+        result = {
             "name": self.name,
             "path": self.path,
             "fc": self.fc,
             "iecType": self.iec_type,
             "mmsType": self.mms_type,
         }
+        if self.b_type:
+            result["bType"] = self.b_type
+        if self.type_id:
+            result["typeId"] = self.type_id
+        return result
 
     @property
     def is_leaf(self) -> bool:
@@ -374,6 +389,12 @@ class IedModel:
     port: int = 102
     discover_time: str = ""
     lds: tuple[LDModel, ...] = ()
+    enum_types: tuple[EnumDefinition, ...] = ()
+    _value_index: dict[tuple[str, str], DARef | None] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    _enum_index: dict[str, EnumDefinition] = field(default_factory=dict, init=False, repr=False, compare=False)
+    _revision: str = field(default="", init=False, repr=False, compare=False)
 
     # 预计算的扁平测点映射 — 由 Builder 或 compute_point_refs() 填充
     _point_refs: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False, compare=False)
@@ -388,6 +409,8 @@ class IedModel:
             "discover_time": self.discover_time,
             "logicalDevices": [ld.to_dict() for ld in self.lds],
             "summary": self.summary,
+            "schemaVersion": 2,
+            "enumTypes": [definition.to_dict() for definition in self.enum_types],
         }
         # 序列化预计算的扁平测点映射，避免从文件恢复时懒加载重新计算
         if self._point_refs:
@@ -399,14 +422,75 @@ class IedModel:
         """从字典恢复IedModel，缺失字段使用模型默认值。"""
         lds = tuple(LDModel.from_dict(ld) for ld in data.get("logicalDevices", []))
         # 使用文件中的预计算测点映射，避免从 LD 重新计算
-        point_refs = data["_point_refs"]
+        point_refs = data.get("_point_refs", {})
         return cls(
             host=data.get("host", ""),
             port=data.get("port", 102),
             discover_time=data.get("discover_time", ""),
             lds=lds,
             _point_refs=point_refs,
+            enum_types=tuple(EnumDefinition.from_dict(item) for item in data.get("enumTypes", [])),
         )
+
+    def find_attribute(self, address: str, fc: str = "") -> DARef | None:
+        """Find an exact leaf; never infer an enum from an attribute/type name."""
+        if not self._value_index:
+            index = {(f"{do.ref}.{leaf.path}", leaf.fc): leaf for _, _, do, leaf in self.iter_da_leaves()}
+            unambiguous = {}
+            for (address_key, _), leaf in index.items():
+                key = (address_key, "")
+                unambiguous[key] = None if key in unambiguous else leaf
+            index.update(unambiguous)
+            object.__setattr__(self, "_value_index", index)
+        return self._value_index.get((address, fc))
+
+    def get_enum(self, type_id: str) -> EnumDefinition | None:
+        if not self._enum_index:
+            object.__setattr__(self, "_enum_index", {item.type_id: item for item in self.enum_types})
+        return self._enum_index.get(type_id)
+
+    def value_metadata(self, attribute: DARef) -> dict[str, Any]:
+        result = {"b_type": attribute.b_type, "type_id": attribute.type_id}
+        if attribute.b_type.upper() == "ENUM":
+            result["enum_ref"] = attribute.type_id
+            definition = self.get_enum(attribute.type_id)
+            error = definition.error if definition else f"枚举定义未提供: {attribute.type_id or '(无 type 引用)'}"
+            if error:
+                result["enum_error"] = error
+        return result
+
+    def validate_enum_value(self, address: str, value: Any, fc: str = "") -> None:
+        attribute = self.find_attribute(address, fc)
+        if attribute is None or attribute.b_type.upper() != "ENUM":
+            return
+        if type(value) is not int or not -(2**31) <= value < 2**31:
+            raise ValueError("枚举值必须是 INT32 范围内的整数编码")
+        # Legacy SCL files sometimes declare Enum without a type reference.
+        # Preserve numeric input for those, but never hide a broken explicit reference.
+        if not attribute.type_id:
+            return
+        definition = self.get_enum(attribute.type_id)
+        if definition is None:
+            raise ValueError(f"枚举定义未提供: {attribute.type_id}")
+        definition.validate_value(value)
+
+    @property
+    def revision(self) -> str:
+        """Stable revision for value domains, independent of live values/discovery time."""
+        if not self._revision:
+            import hashlib
+            import json
+
+            payload = {
+                "enums": [item.to_dict() for item in self.enum_types],
+                "attributes": [
+                    (do.ref, leaf.path, leaf.fc, leaf.b_type, leaf.type_id, leaf.mms_type)
+                    for _, _, do, leaf in self.iter_da_leaves()
+                ],
+            }
+            digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+            object.__setattr__(self, "_revision", digest)
+        return self._revision
 
     # ===== 统计摘要 =====
 

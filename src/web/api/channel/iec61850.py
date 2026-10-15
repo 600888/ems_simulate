@@ -4,7 +4,7 @@ import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, StrictStr
 
 from src.data.service.channel_service import ChannelService
 from src.enums.points.base_point import BasePoint
@@ -105,7 +105,8 @@ class Iec61850ReadMetadataRequest(BaseModel):
 class Iec61850WritePointRequest(BaseModel):
     channel_id: int = Field(..., description="通道ID")
     point_code: str = Field(..., description="测点编码")
-    point_value: float | str = Field(0, description="写入值")
+    point_value: StrictInt | StrictFloat | StrictStr | StrictBool = Field(0, description="写入值")
+    model_revision: str = Field("", description="准备写入时的模型修订，用于检测选项变化")
 
 
 class Iec61850StructureRequest(BaseModel):
@@ -272,10 +273,53 @@ def _resolve_control_write_code(device, point_code: str) -> str:
 
 
 def _get_cached_iec61850_model(device):
-    """从 IEC61850 客户端处理器获取最近一次发现的完整 IedModel。"""
-    protocol_handler = getattr(device, "protocol_handler", None)
-    client = getattr(protocol_handler, "_client", None) if protocol_handler else None
-    return getattr(client, "model", None) if client else None
+    """Return the Python value model, never the server's native C model pointer."""
+    from src.device.protocol.iec61850_handler import get_iec61850_value_model
+
+    return get_iec61850_value_model(getattr(device, "protocol_handler", None))
+
+
+def _prepare_iec61850_write(device, point_code: str) -> dict[str, Any]:
+    """Resolve the real write target before choosing/validating its value domain."""
+    from src.device.protocol.iec61850_handler import IEC61850ServerHandler
+
+    if not point_code:
+        raise ValidationError("测点编码不能为空")
+    local = isinstance(getattr(device, "protocol_handler", None), IEC61850ServerHandler)
+    target_code = point_code if local else _resolve_control_write_code(device, point_code)
+    if not target_code:
+        raise ValidationError(
+            "未发现可写属性（控制对象应包含 Oper.ctlVal、SBOw.ctlVal 或 ctlVal）", data={"point_code": point_code}
+        )
+    point = device.point_manager.get_point_by_code(target_code)
+    address = str(point.address) if point is not None else target_code
+    fc = str(getattr(point, "fc", "") or "") if point is not None else ""
+    model = _get_cached_iec61850_model(device)
+    attribute = model.find_attribute(address, fc) if model else None
+    if attribute is not None:
+        fc = attribute.fc
+    if point is None and model is not None:
+        if attribute is None:
+            raise ValidationError("模型中不存在可写的数据属性", data={"point_code": target_code})
+        if attribute.b_type.upper() != "ENUM":
+            raise ValidationError("未注册属性当前仅支持枚举设值", data={"point_code": target_code})
+        if not local and fc not in _DIRECT_MMS_WRITE_FCS:
+            raise ValidationError("该模型属性不支持独立写入，请使用对应控制命令", data={"point_code": target_code})
+    result = {
+        "point_code": target_code,
+        "address": address,
+        "fc": fc,
+        "model_revision": model.revision if model else "",
+        "is_model_attribute": point is None and attribute is not None,
+    }
+    if attribute is not None:
+        result.update(model.value_metadata(attribute))
+        result["mms_type"] = attribute.mms_type
+        if attribute.b_type.upper() == "ENUM":
+            definition = model.get_enum(attribute.type_id)
+            if definition is not None:
+                result["enum_definition"] = definition.to_dict()
+    return result
 
 
 def _point_value_and_status(point: BasePoint) -> tuple[str, str]:
@@ -450,7 +494,7 @@ def _build_iec61850_tree_from_model(
                             da_name = do_desc
 
                     children = []
-                    for bda in da.sub_das:
+                    for bda in (leaf for child in da.sub_das for leaf in child.iter_leaves()):
                         bda_addr = f"{do_ref}.{bda.path}"
                         bda_point = point_index.get(bda_addr, {})
                         bda_fc = bda_point.get("fc") or bda.fc or da.fc
@@ -464,6 +508,7 @@ def _build_iec61850_tree_from_model(
                                 "fc": bda_fc,
                                 "point_code": bda_point_code,
                                 "mms_type": resolved_mms_type(bda_addr, bda.mms_type),
+                                **model.value_metadata(bda),
                                 "value": bda_point.get("value", ""),
                                 "status": bda_point.get("status", ""),
                             }
@@ -488,6 +533,7 @@ def _build_iec61850_tree_from_model(
                                 else resolved_mms_type(da_addr, da.mms_type)
                             ),
                             "point_name": da_name,
+                            **model.value_metadata(da),
                             "value": da_value,
                             "status": da_point.get("status", ""),
                             "children": children,
@@ -536,7 +582,23 @@ def _build_iec61850_tree_from_model(
                     }
                 )
 
-    return {"items": items, "total": total}
+    enum_refs = {
+        attribute.get("enum_ref")
+        for item in items
+        for da in item["children"]
+        for attribute in (da, *da.get("children", []))
+        if attribute.get("enum_ref")
+    }
+    return {
+        "items": items,
+        "total": total,
+        "model_revision": model.revision,
+        "enum_definitions": {
+            definition.type_id: definition.to_dict()
+            for definition in model.enum_types
+            if definition.type_id in enum_refs
+        },
+    }
 
 
 def _build_iec61850_tree(
@@ -1681,38 +1743,19 @@ async def iec61850_read_single_point(
 
     protocol_handler = getattr(device, "protocol_handler", None)
     client = getattr(protocol_handler, "_client", None) if protocol_handler else None
-    model_attribute = None
-    if point is None and client is not None:
-        model = getattr(client, "model", None)
-        if model is not None:
-            for ld in model.lds:
-                for ln in ld.lns:
-                    for do in ln.dos:
-                        for da in do.das:
-                            if not da.sub_das and f"{do.ref}.{da.path}" == body.point_code:
-                                model_attribute = da
-                                break
-                            model_attribute = next(
-                                (bda for bda in da.sub_das if f"{do.ref}.{bda.path}" == body.point_code),
-                                None,
-                            )
-                            if model_attribute is not None:
-                                break
-                        if model_attribute is not None:
-                            break
-                    if model_attribute is not None:
-                        break
-                if model_attribute is not None:
-                    break
+    model = _get_cached_iec61850_model(device)
+    model_attribute = model.find_attribute(body.point_code, body.fc) if point is None and model is not None else None
 
     if point is not None:
         value = await device.read_single_point_async(body.point_code)
-    elif model_attribute is not None and client is not None:
-        direct_fc = body.fc or model_attribute.fc
+    elif model_attribute is not None:
+        direct_fc = model_attribute.fc
         if direct_fc == "CO":
             raise ValidationError("控制属性不支持直接读取", data={"point_code": body.point_code})
-        direct_mms_type = body.mms_type or model_attribute.mms_type
-        value = await asyncio.to_thread(client.read_point, body.point_code, direct_fc, direct_mms_type)
+        if client is not None:
+            value = await asyncio.to_thread(client.read_point, body.point_code, direct_fc, model_attribute.mms_type)
+        else:
+            value = protocol_handler._server.get_point_value(body.point_code, direct_fc)
     else:
         raise ValidationError("模型中不存在可读取的数据属性", data={"point_code": body.point_code})
 
@@ -1785,32 +1828,44 @@ async def iec61850_read_metadata(
     )
 
 
+@router.post("/iec61850-prepare-write", response_model=BaseResponse)
+async def iec61850_prepare_write(body: Iec61850ReadMetadataRequest, request: Request):
+    device = _get_iec61850_device(request, body.channel_id)
+    return BaseResponse(data=_prepare_iec61850_write(device, body.point_code))
+
+
 @router.post("/iec61850-write-point", response_model=BaseResponse)
 async def iec61850_write_single_point(
     body: Iec61850WritePointRequest,
     request: Request,
 ):
     """IEC61850 单点写入：服务端本地设值，客户端解析控制写入目标。"""
-    from src.device.protocol.iec61850_handler import IEC61850ServerHandler
-
     device = _get_iec61850_device(request, body.channel_id)
-
-    if not body.point_code:
-        raise ValidationError("测点编码不能为空")
-
-    # 服务端直接更新所选属性，不受远端 MMS 写入/控制服务的 FC 和 ctlVal 限制。
-    # 尤其不能把本地 stVal 更新重定向到同一 DO 的 Oper.ctlVal。
-    if isinstance(getattr(device, "protocol_handler", None), IEC61850ServerHandler):
-        write_point_code = body.point_code
-    else:
-        write_point_code = _resolve_control_write_code(device, body.point_code)
-    if not write_point_code:
-        raise ValidationError(
-            "未发现可写属性（控制对象应包含 Oper.ctlVal、SBOw.ctlVal 或 ctlVal）",
-            data={"point_code": body.point_code},
-        )
+    target = _prepare_iec61850_write(device, body.point_code)
+    write_point_code = target["point_code"]
+    if body.model_revision and body.model_revision != target["model_revision"]:
+        raise ConflictError("模型已变化，请重新打开写值窗口以刷新选项")
+    model = _get_cached_iec61850_model(device)
+    if model is not None:
+        try:
+            model.validate_enum_value(target["address"], body.point_value, target["fc"])
+        except ValueError as exc:
+            raise ValidationError(str(exc), data={"point_code": write_point_code}) from exc
     try:
-        success = await device.edit_point_data_async(write_point_code, body.point_value)
+        if target["is_model_attribute"]:
+            from src.device.protocol.iec61850_handler import IEC61850ServerHandler
+
+            handler = device.protocol_handler
+            if isinstance(handler, IEC61850ServerHandler):
+                success = handler._server.set_enum_attribute(target["address"], body.point_value, target["fc"])
+            else:
+                success = await asyncio.to_thread(
+                    handler._client.write_point, target["address"], body.point_value, target["fc"]
+                )
+                if not success:
+                    raise ValueError(handler.last_error or "远端设备拒绝枚举写入")
+        else:
+            success = await device.edit_point_data_async(write_point_code, body.point_value)
     except ValueError as exc:
         raise OperationError(str(exc), data={"point_code": write_point_code}) from exc
     if not success:

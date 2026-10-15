@@ -79,6 +79,7 @@ class IEC61850Server:
         self._model_loaded = False
         self._loaded_icd_path: str = ""
         self._last_import_result = None
+        self.scl_model = None
         self._loaded_ied_ld_insts: set[str] = set()
         self._password_authenticator = None
         self._connection_callback = None
@@ -547,6 +548,7 @@ class IEC61850Server:
         self._model_loaded = False
         self._loaded_icd_path = ""
         self._last_import_result = None
+        self.scl_model = None
         self._loaded_ied_ld_insts.clear()
         # dU values belong to the old model instance. Keeping this mapping
         # across imports can apply stale descriptions to same-named DOs in the
@@ -669,6 +671,7 @@ class IEC61850Server:
         # but the native MMS model must still contain every SCL-declared leaf.
         from .plugins.scl.transformer.server_model_builder import SclServerModelBuilder
 
+        self.scl_model = SclServerModelBuilder(result.doc).build(host=self.ip, port=self.port, ied_name=ied_name)
         native_attribute_count = 0
         for attribute in SclServerModelBuilder(result.doc).iter_leaf_attributes(ied_name):
             if self._builder._add_point_from_ref(
@@ -1226,6 +1229,32 @@ class IEC61850Server:
             log.error(f"IEC61850 调用底层获取值函数失败: address={address}, error={e}")
             return 0
 
+    def set_enum_attribute(self, address: str, value: Any, fc: str = "") -> bool:
+        """Set an SCL enum without creating a polling/business point."""
+        model = getattr(self, "scl_model", None)
+        attribute = model.find_attribute(address, fc) if model is not None else None
+        if attribute is None or attribute.b_type.upper() != "ENUM":
+            raise ValueError("模型中不存在该枚举属性")
+        model.validate_enum_value(address, value, attribute.fc)
+        if not self._server or not self._is_running:
+            raise ValueError("服务端未运行，无法设置模型属性")
+        da, _ = self._builder.resolve_da(address)
+        if da is None:
+            raise ValueError(f"未找到原生枚举属性: {address}")
+        if attribute.name == "ctlModel" and attribute.fc == "CF":
+            # Updating the DA alone leaves libIEC61850's internal control state stale.
+            do_ref = address.rsplit(".", 1)[0]
+            do = self._builder._do_map.get(do_ref)
+            if do is None or not 0 <= value <= 4:
+                raise ValueError("控制模型必须属于 0..4 且引用有效的控制对象")
+            iec61850.IedServer_updateCtlModel(self._server, do, value)
+        else:
+            iec61850.IedServer_updateInt32AttributeValue(self._server, da, value)
+        if iec61850.IedServer_getInt32AttributeValue(self._server, da) != value:
+            raise ValueError("模型属性设值后读回不一致")
+        self._log_manager.record(address, value)
+        return True
+
     def set_point_value(self, address, value: Any, fc: str = "") -> None:
         """设置测点值"""
         if not self._server or not self._is_running:
@@ -1237,6 +1266,16 @@ class IEC61850Server:
             return
         if not hasattr(da, "this"):
             log.error(f"IEC61850 数据属性对象类型错误(设置值): address={address}")
+            return
+        model = getattr(self, "scl_model", None)
+        attribute = model.find_attribute(resolved_addr, fc) if model is not None else None
+        if (
+            attribute is not None
+            and attribute.b_type.upper() == "ENUM"
+            and attribute.name == "ctlModel"
+            and attribute.fc == "CF"
+        ):
+            self.set_enum_attribute(resolved_addr, value, attribute.fc)
             return
         iec_type = self._point_iec_type.get(resolved_addr, self._point_iec_type.get(addr_str, "unknown"))
         try:

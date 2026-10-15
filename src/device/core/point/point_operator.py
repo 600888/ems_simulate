@@ -90,6 +90,32 @@ class PointOperator:
 
     # ===== 测点值读写 =====
 
+    def _set_real_value(self, point: BasePoint, real_value) -> bool:
+        """An IEC enum ordinal must bypass binary Yx/Yk and analogue scaling rules."""
+        from src.device.protocol.iec61850_handler import get_iec61850_value_model
+
+        model = get_iec61850_value_model(self._handler)
+        attribute = model.find_attribute(str(point.address), point.fc) if model is not None else None
+        if attribute is not None and attribute.b_type.upper() == "ENUM":
+            model.validate_enum_value(str(point.address), real_value, point.fc)
+            point.value = real_value
+            return True
+        return point.set_real_value(real_value)
+
+    def _allows_iec61850_direct_write(self, point: BasePoint) -> bool:
+        from src.device.protocol.iec61850_handler import IEC61850ClientHandler
+
+        return isinstance(self._handler, IEC61850ClientHandler) and point.fc in {
+            "SP",
+            "SE",
+            "SV",
+            "CF",
+            "DC",
+            "SG",
+            "BL",
+            "EX",
+        }
+
     def edit_value(
         self,
         point_code: str,
@@ -115,6 +141,7 @@ class PointOperator:
             isinstance(self._handler, ClientHandler)
             and isinstance(point, (Yc, Yx))
             and getattr(point, "fc", "") != "CO"
+            and not self._allows_iec61850_direct_write(point)
         ):
             # Modbus 协议: func_code=01(读线圈)/03(读保持寄存器) 的 Yc/Yx 允许客户端写入
             if not (self._device.protocol_type in _MODBUS_PROTOCOLS and getattr(point, "func_code", None) in (1, 3)):
@@ -125,7 +152,7 @@ class PointOperator:
         effective_detail = detail or f"手动设置 {point_code}={real_value}"
 
         with track_change(effective_source, effective_detail):
-            if not point.set_real_value(real_value):
+            if not self._set_real_value(point, real_value):
                 raise ValueError(f"测点 {point_code} 值 {real_value} 超出允许范围")
 
             if self._handler:
@@ -167,6 +194,7 @@ class PointOperator:
             isinstance(self._handler, ClientHandler)
             and isinstance(point, (Yc, Yx))
             and getattr(point, "fc", "") != "CO"
+            and not self._allows_iec61850_direct_write(point)
         ):
             # Modbus 协议: func_code=01(读线圈)/03(读保持寄存器) 的 Yc/Yx 允许客户端写入
             if not (self._device.protocol_type in _MODBUS_PROTOCOLS and getattr(point, "func_code", None) in (1, 3)):
@@ -177,7 +205,7 @@ class PointOperator:
         effective_detail = detail or f"手动设置 {point_code}={real_value}"
 
         with track_change(effective_source, effective_detail):
-            if not point.set_real_value(real_value):
+            if not self._set_real_value(point, real_value):
                 self._log.error(f"测点 {point_code} 值 {real_value} 超出允许范围")
                 raise ValueError(f"测点 {point_code} 值 {real_value} 超出允许范围")
 

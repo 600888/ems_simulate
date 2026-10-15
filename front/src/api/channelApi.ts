@@ -136,7 +136,35 @@ export interface IEC61850DaItem {
 
 // ===== IEC 61850 树形数据类型 =====
 
-export interface IEC61850BdaItem {
+export interface IEC61850EnumItem {
+  ord: number;
+  literal: string;
+  desc: string;
+}
+
+export interface IEC61850EnumDefinition {
+  type_id: string;
+  desc: string;
+  items: IEC61850EnumItem[];
+}
+
+export interface IEC61850ValueMetadata {
+  b_type?: string;
+  type_id?: string;
+  enum_ref?: string;
+  enum_error?: string;
+}
+
+export interface IEC61850WriteTarget extends IEC61850ValueMetadata {
+  point_code: string;
+  address: string;
+  fc: string;
+  mms_type?: string;
+  model_revision: string;
+  enum_definition?: IEC61850EnumDefinition;
+}
+
+export interface IEC61850BdaItem extends IEC61850ValueMetadata {
   bda_name: string;
   bda_path: string;
   fc: string;
@@ -147,7 +175,7 @@ export interface IEC61850BdaItem {
   read_time?: string;
 }
 
-export interface IEC61850DaNode {
+export interface IEC61850DaNode extends IEC61850ValueMetadata {
   da_name: string;
   da_path: string;
   fc: string;
@@ -178,6 +206,8 @@ export interface IEC61850DoNode {
 export interface IEC61850TreeDataResponse {
   items: IEC61850DoNode[];
   total: number;
+  model_revision?: string;
+  enum_definitions?: Record<string, IEC61850EnumDefinition>;
 }
 
 // ===== API 函数 =====
@@ -622,16 +652,28 @@ export async function iec61850ReadPointMetadata(
   }
 }
 
+export async function iec61850PrepareWrite(
+  channelId: number,
+  pointCode: string,
+): Promise<IEC61850WriteTarget | null> {
+  return requestApi(CHANNEL_API.IEC61850_PREPARE_WRITE, "post", {
+    channel_id: channelId,
+    point_code: pointCode,
+  });
+}
+
 export async function iec61850WritePoint(
   channelId: number,
   pointCode: string,
   pointValue: number | string,
+  modelRevision = "",
 ): Promise<{ point_code: string; value: number | string } | null> {
   try {
     return await requestApi(CHANNEL_API.IEC61850_WRITE_POINT, "post", {
       channel_id: channelId,
       point_code: pointCode,
       point_value: pointValue,
+      model_revision: modelRevision,
     });
   } catch (error) {
     console.error("Error writing IEC61850 point:", error);

@@ -595,6 +595,11 @@ export default {
     copySuccess: "成功复制 {count} 个设备",
   },
   writeDialog: {
+    selectEnum: "请选择枚举值",
+    unknownEnum: "未知枚举值",
+    enumUnavailable: "SCL 未提供枚举类型引用，请输入原始编码",
+    prepareFailed: "获取写入属性失败，请重新打开窗口重试",
+    targetAttribute: "写入目标",
     title: "写入值",
     attributeName: "属性名",
     currentValue: "当前值",

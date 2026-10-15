@@ -19,6 +19,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from ....defs.mms_types import mms_type_from_btype
+from ....model.enum_types import EnumDefinition, EnumItem
 from ....model.ied_model import (
     DARef,
     DataSetRef,
@@ -34,6 +35,7 @@ from ..model.enums import (
     iec_type_from_btype,
 )
 from ..model.scl_document import (
+    SclBDA,
     SclDA,
     SclDocument,
     SclDOType,
@@ -46,8 +48,7 @@ from ..parser.type_resolver import TypeResolver
 class SclServerModelBuilder:
     """SCL 文件 → IedModel 构建器
 
-    从离线 SCL 文档构建在线 IedModel，简化: 不做深度 BDA 展开，
-    仅映射主 DA 路径和 DataSet/控制块引用。
+    从离线 SCL 文档构建在线 IedModel，保留嵌套属性与枚举类型引用。
 
     Args:
         doc: 已解析的 SclDocument
@@ -56,8 +57,9 @@ class SclServerModelBuilder:
     def __init__(self, doc: SclDocument):
         """保存 SCL 文档与目标 IED，用于生成服务端运行模型。"""
         self._doc = doc
+        self._resolver = TypeResolver(doc)
 
-    def build(self, host: str = "", port: int = 102) -> IedModel:
+    def build(self, host: str = "", port: int = 102, ied_name: str = "") -> IedModel:
         """构建 IedModel
 
         Args:
@@ -70,7 +72,17 @@ class SclServerModelBuilder:
         import time
 
         lds = []
-        for ld in self._doc.get_all_ldevices():
+        selected_lds = self._doc.get_all_ldevices()
+        if ied_name:
+            selected_lds = [
+                ld
+                for ied in self._doc.ieds
+                if ied.name == ied_name
+                for ap in ied.access_points
+                if ap.server
+                for ld in ap.server.ldevices
+            ]
+        for ld in selected_lds:
             ln_model = self._build_ld(ld)
             if ln_model is not None:
                 lds.append(ln_model)
@@ -80,6 +92,10 @@ class SclServerModelBuilder:
             port=port,
             discover_time=time.strftime("%Y-%m-%d %H:%M:%S"),
             lds=tuple(lds),
+            enum_types=tuple(
+                EnumDefinition(item.id, tuple(EnumItem(v.ord, v.value, v.desc) for v in item.values), item.desc)
+                for item in self._doc.data_type_templates.enum_types.values()
+            ),
         )
 
     def iter_leaf_attributes(self, ied_name: str = "") -> Iterator[dict[str, Any]]:
@@ -188,6 +204,22 @@ class SclServerModelBuilder:
             da_model = self._build_da(da_def)
             if da_model is not None:
                 das.append(da_model)
+        # Keep SDO leaves addressable without inventing a separate runtime DO.
+        known_paths = {candidate.path for da in das for candidate in da.iter_leaves()}
+        for leaf in self._resolver.collect_all_das(do_type.id, cdc):
+            if leaf["path"] in known_paths:
+                continue
+            das.append(
+                DARef(
+                    name=leaf["path"],
+                    path=leaf["path"],
+                    fc=leaf["fc"],
+                    iec_type=leaf["iecType"],
+                    mms_type=leaf["mmsType"],
+                    b_type=leaf["bType"],
+                    type_id=leaf.get("typeId", ""),
+                )
+            )
 
         return DORef(
             name=do_name,
@@ -197,7 +229,9 @@ class SclServerModelBuilder:
             das=tuple(das),
         )
 
-    def _build_da(self, da_def: SclDA) -> DARef | None:
+    def _build_da(
+        self, da_def: SclDA | SclBDA, path: str = "", fc: str = "", ancestors: tuple[str, ...] = ()
+    ) -> DARef | None:
         """构建 DARef"""
         if not da_def.name:
             return None
@@ -206,36 +240,31 @@ class SclServerModelBuilder:
         btype = da_def.b_type
         iec_type = iec_type_from_btype(btype)
 
-        # 结构体 DA: 展开 BDA 为 sub_das
+        path = path or da_def.name
+        fc = da_def.fc or fc
+        # Recursively preserve every BDA's actual path and enum reference.
         sub_das = ()
         if str(btype or "").upper() == "STRUCT" and da_def.type_id:
+            if da_def.type_id in ancestors or len(ancestors) >= 64:
+                raise ValueError(f"DAType 循环引用或嵌套过深: {path} ({da_def.type_id})")
             da_type = self._doc.get_da_type(da_def.type_id)
             if da_type:
                 sub_das_list = []
                 for bda_def in da_type.bdas:
-                    bda_type_name = iec_type_from_btype(bda_def.b_type)
-                    sub_bda = ()
-                    # 嵌套 Struct BDA 不展开 (保持叶子路径)
-                    bda_fc = bda_def.fc or da_def.fc
-                    sub_das_list.append(
-                        DARef(
-                            name=bda_def.name,
-                            path=f"{da_def.name}.{bda_def.name}",
-                            fc=bda_fc,
-                            iec_type=bda_type_name,
-                            mms_type=mms_type_from_btype(bda_def.b_type).value,
-                            sub_das=sub_bda,
-                        )
-                    )
+                    child = self._build_da(bda_def, f"{path}.{bda_def.name}", fc, (*ancestors, da_def.type_id))
+                    if child is not None:
+                        sub_das_list.append(child)
                 sub_das = tuple(sub_das_list)
 
         return DARef(
             name=da_def.name,
-            path=da_def.name,
-            fc=da_def.fc,
+            path=path,
+            fc=fc,
             iec_type=iec_type,
             mms_type=mms_type_from_btype(btype).value,
             sub_das=sub_das,
+            b_type=btype,
+            type_id=da_def.type_id,
         )
 
     @staticmethod
