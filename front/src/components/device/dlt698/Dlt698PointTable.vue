@@ -20,6 +20,7 @@
                     :point="row"
                     :role="role"
                     :busy="busy"
+                    :loading="savingValueCode === row.code"
                     :disabled="
                       preview ||
                       (role === 'server'
@@ -43,6 +44,7 @@
                   :point="row"
                   :role="role"
                   :busy="busy"
+                  :loading="savingPointCode === row.code"
                   :save-error="saveError"
                   @save="emit('save', $event, row)"
                 />
@@ -147,9 +149,9 @@
       >
       <el-table-column
         :label="l('上次有效时间', 'Last good time')"
-        min-width="190"
+        min-width="210"
         ><template #default="{ row }">{{
-          row.last_good_at || "—"
+          formatBeijingDateTime(row.last_good_at)
         }}</template></el-table-column
       >
       <el-table-column :label="l('操作', 'Actions')" width="170" fixed="right"
@@ -159,6 +161,7 @@
             link
             type="primary"
             :disabled="!can('get') || busy"
+            :loading="readingCode === row.code"
             @click="emit('read', row)"
             >{{ l("读取", "Read") }}</el-button
           ><el-button
@@ -215,6 +218,7 @@ import type {
   Dlt698Role,
 } from "@/types/dlt698";
 import { dataText, engineeringText } from "@/utils/dlt698";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import { useDlt698Text } from "@/composables/useDlt698Text";
 import PointDetailTabs from "@/components/point/PointDetailTabs.vue";
 import PointMappingConfig from "@/components/point/PointMappingConfig.vue";
@@ -229,6 +233,9 @@ const props = defineProps<{
   deviceName: string;
   preview?: boolean;
   busy?: boolean;
+  readingCode?: string;
+  savingValueCode?: string;
+  savingPointCode?: string;
   saveError?: string;
   can: (feature: Dlt698Feature) => boolean;
 }>();

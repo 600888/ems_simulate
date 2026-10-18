@@ -11,7 +11,7 @@
       <el-button
         type="primary"
         :disabled="disabled || busy || !valid"
-        :loading="busy"
+        :loading="loading"
         @click="save"
       >
         {{ role === "server" ? l("设置", "Set") : "SET" }}
@@ -33,6 +33,7 @@ const props = defineProps<{
   role: Dlt698Role;
   disabled?: boolean;
   busy?: boolean;
+  loading?: boolean;
 }>();
 const emit = defineEmits<{ (e: "save", value: Dlt698Data): void }>();
 const l = useDlt698Text();

@@ -212,7 +212,7 @@
       <el-button
         type="primary"
         :disabled="!dataValid || !oad || busy"
-        :loading="busy"
+        :loading="loading"
         @click="save"
         >{{ l("保存修改", "Save changes") }}</el-button
       >
@@ -223,7 +223,7 @@
         ><el-button
           type="primary"
           :disabled="!dataValid || !oad || busy"
-          :loading="busy"
+          :loading="loading"
           @click="save"
           >{{ l("保存", "Save") }}</el-button
         >
@@ -243,6 +243,7 @@ const props = defineProps<{
   inline?: boolean;
   point?: Dlt698Point;
   busy?: boolean;
+  loading?: boolean;
   saveError?: string;
   role?: "client" | "server";
 }>();

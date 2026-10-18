@@ -124,16 +124,12 @@ def test_client_reads_feed_shared_history_but_do_not_enable_local_simulation():
     point.enable_change_tracking()
 
     class Client:
-        def get(self, _address):
+        async def get(self, _address):
             return SimpleNamespace(data=to_native(Data(type="UInt16", value="4999")), dar=0)
-
-    async def respond(result):
-        return result
 
     runtime.client = Client()
     runtime.state = "associated"
     runtime.sessions["1"] = {"id": "1", "associated": True}
-    runtime._request = respond
     asyncio.run(runtime.read(["200F0200"], ["frequency"]))
     assert point.real_value == 49.99
     assert point.change_history[-1].source == ChangeSource.CLIENT_READ

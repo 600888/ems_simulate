@@ -102,7 +102,11 @@
             size="small"
             :empty-text="t('log.empty')"
           >
-            <el-table-column prop="time" :label="t('log.time')" width="200" />
+            <el-table-column prop="time" :label="t('log.time')" width="210">
+              <template #default="{ row }">{{
+                formatBeijingDateTime(row.time)
+              }}</template>
+            </el-table-column>
             <el-table-column :label="t('log.levelCol')" width="90">
               <template #default="{ row }">
                 <el-tag
@@ -144,6 +148,7 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import { Search, Refresh, Monitor, Connection } from "@element-plus/icons-vue";
 import { getLogModules, getLogDevices, queryLogs } from "@/api/logApi";
 import type { LogEntry } from "@/api/logApi";

@@ -258,6 +258,7 @@ import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, type UploadFile } from "element-plus";
 import { useI18n } from "vue-i18n";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import {
   Connection,
   FolderOpened,
@@ -269,7 +270,6 @@ import {
 } from "@element-plus/icons-vue";
 import { modelingApi, type ImportPreview } from "@/api/modelingApi";
 import type { ModelProject } from "@/types/modeling";
-import { currentLocale } from "@/composables/useAppSettings";
 
 const { t } = useI18n();
 const router = useRouter();
@@ -321,13 +321,8 @@ function statusMeta(status: ModelProject["status"]) {
 }
 
 function formatDate(value: string) {
-  if (!value) return "--";
-  return new Intl.DateTimeFormat(currentLocale.value, {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  const label = formatBeijingDateTime(value, false);
+  return label === "—" ? label : label.slice(5, 16);
 }
 
 async function loadProjects() {

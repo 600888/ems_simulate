@@ -174,6 +174,7 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { useI18n } from "vue-i18n";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import { editPointMetadata, getPointInfo } from "@/api/pointApi";
 import { iec61850ReadPointMetadata } from "@/api/channelApi";
 
@@ -275,7 +276,7 @@ const receivedTimestampText = computed(() => {
     return t("point.dnp3NoTimestamp");
   }
   const date = new Date(receivedTimestampMs.value);
-  return `${date.toLocaleString()} (${receivedTimestampMs.value} ms)`;
+  return `${formatBeijingDateTime(date)} (${receivedTimestampMs.value} ms)`;
 });
 const qualityFlags = reactive<Record<QualityFlagKey, boolean>>({
   online: true,

@@ -1808,6 +1808,7 @@ import {
 import type { Component } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import { ElMessage, ElMessageBox, type TreeV2Instance } from "element-plus";
 import {
   ArrowDown,
@@ -3283,14 +3284,7 @@ function projectStatusLabel(status: ModelProject["status"]) {
 }
 
 function formatDateTime(value: string) {
-  if (!value) return "--";
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  return formatBeijingDateTime(value, false);
 }
 
 function formatBytes(size: number) {

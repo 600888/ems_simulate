@@ -45,7 +45,7 @@
             {{ detail.msg_type }}</el-descriptions-item
           >
           <el-descriptions-item :label="$t('device.messageTime')">{{
-            detail.formatted_time
+            formatBeijingDateTime(detail.formatted_time)
           }}</el-descriptions-item>
           <el-descriptions-item :label="$t('device.messageLength')"
             >{{ detail.raw_length }}
@@ -261,8 +261,11 @@
             <el-table-column
               prop="timestamp"
               :label="$t('device.messageTimestampCol')"
-              min-width="150"
-            />
+              min-width="210"
+              ><template #default="{ row }">{{
+                formatBeijingDateTime(row.timestamp)
+              }}</template></el-table-column
+            >
           </el-table>
         </section>
 
@@ -356,6 +359,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import { showError } from "@/api/http";
 import { Rank } from "@element-plus/icons-vue";
 import {

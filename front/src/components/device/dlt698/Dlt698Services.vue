@@ -38,10 +38,11 @@
         >
       </div>
       <el-table :data="reports" border stripe
+        ><el-table-column prop="time" :label="l('时间', 'Time')" min-width="210"
+          ><template #default="{ row }">{{
+            formatBeijingDateTime(row.time)
+          }}</template></el-table-column
         ><el-table-column
-          prop="time"
-          :label="l('时间', 'Time')"
-          min-width="190" /><el-table-column
           prop="session_id"
           :label="l('来源会话', 'Session')"
           min-width="140" /><el-table-column
@@ -390,12 +391,22 @@
         v-if="inspectedReport?.data"
         :data="inspectedReport.data"
       />
-      <pre>{{ JSON.stringify(inspectedReport, null, 2) }}</pre>
+      <pre>{{
+        JSON.stringify(
+          inspectedReport && {
+            ...inspectedReport,
+            time: formatBeijingDateTime(inspectedReport.time),
+          },
+          null,
+          2,
+        )
+      }}</pre>
     </el-dialog>
   </div>
 </template>
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import type {
   Dlt698Data,
   Dlt698Feature,

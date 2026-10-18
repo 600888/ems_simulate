@@ -528,6 +528,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { formatBeijingDateTime, formatBeijingTime } from "@/utils/beijingTime";
 import { ElMessage } from "element-plus";
 import {
   Close,
@@ -564,7 +565,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: "update:modelValue", value: boolean): void;
 }>();
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 const emptySummary = (): ConnectionSummary => ({
   supported: true,
@@ -619,16 +620,7 @@ const disconnectReasonOptions: DisconnectReason[] = [
   "unknown",
 ];
 
-const lastUpdatedTime = computed(() =>
-  lastUpdatedAt.value
-    ? new Intl.DateTimeFormat(locale.value, {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }).format(lastUpdatedAt.value)
-    : "-",
-);
+const lastUpdatedTime = computed(() => formatBeijingTime(lastUpdatedAt.value));
 
 const assignSummary = (value: ConnectionSummary) =>
   Object.assign(summary, emptySummary(), value);
@@ -720,18 +712,8 @@ const endpointText = (ip: string | null, port: number | null) => {
   return port === null || port === undefined ? host : `${host}:${port}`;
 };
 const formatDateTime = (value: string | null, compact = false) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat(locale.value, {
-    year: compact ? undefined : "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(date);
+  const label = formatBeijingDateTime(value, false);
+  return compact && label !== "—" ? label.slice(5) : label;
 };
 const formatDuration = (milliseconds: number) => {
   const totalSeconds = Math.max(0, Math.floor((milliseconds || 0) / 1000));

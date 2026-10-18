@@ -41,6 +41,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import type { ReportEntrySummary } from "@/api/reportApi";
 
 export interface ReportHistoryRow {
@@ -68,7 +69,7 @@ const rows = computed<ReportHistoryRow[]>(() =>
     entry_key: entry.entry_key,
     index: entry.index ?? index,
     seq_num: entry.seq_num ?? "-",
-    display_time: entry.received_at || entry.time_stamp || "-",
+    display_time: formatBeijingDateTime(entry.received_at || entry.time_stamp),
     value_count: entry.value_count,
   })),
 );

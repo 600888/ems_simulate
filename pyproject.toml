@@ -18,7 +18,7 @@ dependencies = [
     "uvicorn[standard]==0.40.0",
     "python-multipart==0.0.21",
     "dlt645[async]==3.2.0",
-    "dlt698==1.0.0",
+    "dlt698==1.0.1",
     "pyiec61850-ng==1.6.1.10",
     "pydnp3-pure @ git+https://github.com/600888/pydnp3-pure.git@83c0365b9ce645f4789ab53a281aeb7c00dda309",
     "scapy==2.7.0",

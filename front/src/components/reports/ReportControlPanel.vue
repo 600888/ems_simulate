@@ -50,7 +50,7 @@
           v-if="rcb.rcb_type === 'BRCB'"
           :label="`${t('report.timeOfEntry')} (TimeOfEntry)`"
         >
-          {{ rcb.time_of_entry || "-" }}
+          {{ formatBeijingDateTime(rcb.time_of_entry) }}
         </el-descriptions-item>
         <el-descriptions-item :label="`${t('report.owner')} (Owner)`">
           {{ formatOwner(rcb.owner) }}
@@ -146,6 +146,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import type { OptFields, RcbInfo, TrgOps } from "@/api/reportApi";
 
 const props = defineProps<{

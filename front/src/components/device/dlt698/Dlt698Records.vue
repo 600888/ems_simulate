@@ -85,10 +85,10 @@
       <el-button
         type="primary"
         :disabled="!enabled || busy"
-        :loading="busy"
+        :loading="querying"
         @click="submit"
         >{{ l("查询", "Query") }}</el-button
-      ><el-button :disabled="!busy" @click="emit('cancel')">{{
+      ><el-button :disabled="!querying" @click="emit('cancel')">{{
         l("取消查询", "Cancel query")
       }}</el-button
       ><el-button
@@ -181,11 +181,17 @@
         ><el-button @click="showAppend = false">{{
           l("取消", "Cancel")
         }}</el-button
-        ><el-button type="primary" :disabled="busy" @click="append">{{
-          preview
-            ? l("添加到预览草稿", "Add to preview draft")
-            : l("保存记录", "Save record")
-        }}</el-button></template
+        ><el-button
+          type="primary"
+          :disabled="busy"
+          :loading="appending"
+          @click="append"
+          >{{
+            preview
+              ? l("添加到预览草稿", "Add to preview draft")
+              : l("保存记录", "Save record")
+          }}</el-button
+        ></template
       >
     </el-dialog>
   </div>
@@ -211,6 +217,8 @@ const props = defineProps<{
   enabled: boolean;
   preview?: boolean;
   busy: boolean;
+  querying?: boolean;
+  appending?: boolean;
   result?: Dlt698RecordResult;
   error?: string;
   appendError?: string;

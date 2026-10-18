@@ -116,6 +116,7 @@
 <script lang="ts" setup>
 import { computed, reactive, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import { Refresh } from "@element-plus/icons-vue";
 
 export interface Dlt645FieldConfig {
@@ -264,11 +265,10 @@ const initForm = () => {
   for (const key of Object.keys(form)) delete form[key];
   for (const field of fields.value) {
     if (field.type === "datetime") {
-      const now = new Date();
-      const pad = (n: number) => String(n).padStart(2, "0");
-      form[field.key] =
-        `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
-        `T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      form[field.key] = formatBeijingDateTime(Date.now(), false).replace(
+        " ",
+        "T",
+      );
     } else {
       form[field.key] = field.default ?? "";
     }

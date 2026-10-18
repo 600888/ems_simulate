@@ -281,6 +281,7 @@ import {
   watch,
 } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import {
   ArrowLeft,
   ArrowRight,
@@ -385,10 +386,7 @@ function formatValue(value: unknown) {
 
 function formatTime(value: unknown) {
   if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "number") {
-    return new Date(value).toLocaleTimeString([], { hour12: false });
-  }
-  return String(value);
+  return formatBeijingDateTime(value);
 }
 
 function displayRef(value: string) {

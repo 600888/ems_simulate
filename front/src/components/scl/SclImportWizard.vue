@@ -87,6 +87,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
+import { formatBeijingTime } from "@/utils/beijingTime";
 import { useRouter } from "vue-router";
 import { getSclFileList, previewSclFile, importSclFile } from "@/api/sclApi";
 import type {
@@ -235,7 +236,7 @@ function handleUploadSuccess() {
 
 function time() {
   const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+  return formatBeijingTime(d);
 }
 
 function delay(ms: number) {

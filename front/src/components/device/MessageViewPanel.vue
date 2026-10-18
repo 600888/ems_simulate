@@ -107,7 +107,9 @@
         :sort-orders="['descending', 'ascending', null]"
       >
         <template #default="{ row }">
-          <span class="time-data">{{ row.formatted_time }}</span>
+          <span class="time-data">{{
+            formatBeijingTime(row.timestamp * 1000, true)
+          }}</span>
         </template>
       </el-table-column>
       <el-table-column
@@ -198,6 +200,7 @@
 <script lang="ts" setup>
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { formatBeijingTime } from "@/utils/beijingTime";
 import {
   CaretRight,
   VideoPause,

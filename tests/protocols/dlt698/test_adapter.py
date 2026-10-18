@@ -2,8 +2,12 @@
 
 import asyncio
 from copy import deepcopy
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from dlt698 import encode_data
+from dlt698.common import ErrorCode
+from dlt698.errors import RequestTimeoutError, ResourceLimitError
 import pytest
 
 from src.device.core.message.message_capture import MessageCapture
@@ -120,6 +124,127 @@ async def test_managed_tcp_read_local_publish_partial_dar_restart_and_capture(as
         await client.stop()
         await server.stop()
     assert not client.running and not server.running
+
+
+@pytest.mark.parametrize("association", ["public", "preestablished"])
+@pytest.mark.asyncio
+async def test_large_batch_reads_preserve_order_dar_snapshots_and_auto_read(association):
+    published = [point(), point("counter", "FFFF0200", "UInt64", "9007199254740993", False)]
+    templates = [published[0], point("missing", "FFFF0300", standard=False), published[1], published[0]]
+    points = [{**templates[i % 4], "code": f"p{i}"} for i in range(1000)]
+    capture = MessageCapture(max_size=2000)
+    server = Dlt698Runtime(
+        Dlt698Config(role="server", association=association), {"conn_type": 2, "ip": "127.0.0.1", "port": 0}, published
+    )
+    client = Dlt698Runtime(
+        Dlt698Config(association=association), {"conn_type": 1, "ip": "127.0.0.1", "port": 0}, points, capture
+    )
+    codes = [p["code"] for p in points]
+    try:
+        await server.start()
+        client.network["port"] = server.actual_port
+        await client.start()
+        native_client = client.client
+        client.snapshots["p1"] = {"last_good": {"type": "UInt16", "value": "42"}}
+        for round_number in range(4):
+            value = str(5000 + round_number)
+            server.publish("200F0200", Data(type="UInt16", value=value))
+            results = await asyncio.wait_for(client.read([p["oad"] for p in points], codes), timeout=5)
+            assert client.client is native_client
+            assert [r["index"] for r in results] == list(range(1000))
+            assert [r["oad"] for r in results] == [p["oad"] for p in points]
+            assert [r["kind"] for r in results] == ["data", "dar", "data", "data"] * 250
+            assert results[0]["data"]["value"] == value
+            assert results[2]["data"]["value"] == "9007199254740993"
+            assert client.snapshots["p1"]["last_good"]["value"] == "42"
+            assert client.snapshots["p999"]["last_good"]["value"] == value
+        client.auto_codes = codes
+        cycle = await asyncio.wait_for(client._read_cycle(None, asyncio.Event(), lambda *args: None), timeout=5)
+        assert (cycle.success, cycle.fail, cycle.total) == (750, 250, 1000)
+        assert client.client is native_client
+        # All five passes use list GETs and preserve the original association.
+        assert sum(m["direction"] == "TX" for m in capture.get_messages(2000)) < 330
+    finally:
+        await client.stop()
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_single_reads_reuse_piid_on_same_connection():
+    server = Dlt698Runtime(Dlt698Config(role="server"), {"conn_type": 2, "ip": "127.0.0.1", "port": 0}, [point()])
+    client = Dlt698Runtime(Dlt698Config(), {"conn_type": 1, "ip": "127.0.0.1", "port": 0}, [point()])
+    try:
+        await server.start()
+        client.network["port"] = server.actual_port
+        await client.start()
+        native_client = client.client
+        async with asyncio.timeout(10):
+            for _ in range(1000):
+                assert (await client.read(["200F0200"]))[0]["data"]["value"] == "5000"
+                assert client.client is native_client
+    finally:
+        await client.stop()
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_after_piid_wraparound():
+    server = Dlt698Runtime(Dlt698Config(role="server"), {"conn_type": 2, "ip": "127.0.0.1", "port": 0}, [point()])
+    client = Dlt698Runtime(Dlt698Config(), {"conn_type": 1, "ip": "127.0.0.1", "port": 0}, [point()])
+    try:
+        await server.start()
+        client.network["port"] = server.actual_port
+        await client.start()
+        for _ in range(65):
+            await client.client.get(oad("200F0200"))
+        native_client = client.client
+        await client.stop()
+        assert native_client._closed
+        assert not client.running
+        assert client.state == "stopped"
+    finally:
+        await client.stop()
+        await server.stop()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RequestTimeoutError(ErrorCode.timeout, 0, "request timeout"),
+        ResourceLimitError(ErrorCode.resource_limit, 0, "APDU limit"),
+        ResourceLimitError(ErrorCode.resource_limit, 0, "PIID quarantine"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_failed_reads_do_not_retry_wait_or_replace_connection(error):
+    runtime = Dlt698Runtime(Dlt698Config(), {})
+    client = SimpleNamespace(get=AsyncMock(side_effect=error))
+    runtime.client = client
+    runtime.sessions["1"] = {"associated": True}
+    result = await asyncio.wait_for(runtime.read(["200F0200"]), timeout=0.5)
+    assert result[0]["kind"] == "transport_error"
+    assert error.context in result[0]["message"]
+    client.get.assert_awaited_once()
+    assert runtime.client is client
+
+
+@pytest.mark.asyncio
+async def test_inflight_read_can_be_cancelled():
+    runtime = Dlt698Runtime(Dlt698Config(), {})
+    started = asyncio.Event()
+
+    async def operation(_address):
+        started.set()
+        await asyncio.Future()
+
+    runtime.client = SimpleNamespace(get=operation)
+    runtime.sessions["1"] = {"associated": True}
+    task = asyncio.create_task(runtime.read(["200F0200"]))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert runtime.state == "cancelled"
 
 
 @pytest.mark.asyncio

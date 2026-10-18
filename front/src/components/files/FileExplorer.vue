@@ -9,6 +9,7 @@
 
 import { ref, computed, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { showError, showErrorOnce } from "@/api/http";
 import type { UploadFile } from "element-plus";
@@ -138,8 +139,7 @@ function handleRowDblClick(entry: FileEntry) {
 }
 
 function formatTime(ts: string | null): string {
-  if (!ts) return "-";
-  return new Date(ts).toLocaleString();
+  return formatBeijingDateTime(ts, false);
 }
 
 // ===== File download =====

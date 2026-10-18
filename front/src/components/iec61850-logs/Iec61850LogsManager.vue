@@ -290,6 +290,7 @@ import {
   watch,
 } from "vue";
 import { ElMessage } from "element-plus";
+import { formatBeijingDateTime, formatBeijingTime } from "@/utils/beijingTime";
 import { Download, Refresh, Search, Tickets } from "@element-plus/icons-vue";
 import {
   listLogControls,
@@ -431,15 +432,11 @@ function tagType(level: string) {
 }
 
 function formatLogTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value || "—";
-  return `${date.toLocaleTimeString([], { hour12: false })}.${String(date.getMilliseconds()).padStart(3, "0")}`;
+  return formatBeijingTime(value, true);
 }
 
 function formatFullTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value || "—";
-  return `${date.toLocaleString([], { hour12: false })}.${String(date.getMilliseconds()).padStart(3, "0")}`;
+  return formatBeijingDateTime(value);
 }
 
 function formatField(value: unknown) {

@@ -20,8 +20,10 @@ from dlt698 import (
     standard,
     transport,
 )
+from dlt698.common import ErrorCode
 from dlt698.errors import Dlt698Error
 from dlt698.protocol.link import ServerAddress
+from dlt698.service import ProbeOptions
 from dlt698.session import Role
 from src.device.auto_read import AutoReadConfig, AutoReadTaskManager, CycleResult
 from src.enums.points.change_tracker import ChangeSource, track_change
@@ -256,7 +258,13 @@ class Dlt698Runtime:
         self.client = self.server = None
         try:
             if client:
-                await client.aclose()
+                try:
+                    await client.aclose()
+                except Dlt698Error as error:
+                    # aclose still force-closes in its finally block when RELEASE
+                    # cannot allocate a PIID; local shutdown has completed.
+                    if not self._piid_quarantined(error):
+                        raise
             if server:
                 await server.aclose()
         finally:
@@ -330,23 +338,38 @@ class Dlt698Runtime:
                 return {**result, "kind": "validation_error", "data": data, "message": str(error)}
         return {**result, "kind": "data", "data": data}
 
+    @staticmethod
+    def _piid_quarantined(error):
+        return (
+            getattr(error, "code", None) == ErrorCode.resource_limit
+            and getattr(error, "context", None) == "PIID quarantine"
+        )
+
+    async def _read_one(self, text):
+        response = await self._request(self.require_client().get(oad(text)))
+        return response.data if response.data is not None else response.dar
+
     async def read(self, addresses, codes=None):
         results = []
         async with self.auto_read.read_lock:
+            if self.config.role == "client" and len(addresses) > 1:
+                results = await self._probe(addresses)
             for index, text in enumerate(addresses):
-                try:
-                    if self.config.role == "server":
-                        with self.value_lock:
-                            if self.device is None:
-                                self.device = self._make_device()
-                            value = self.device.get(oad(text))
-                    else:
-                        response = await self._request(self.require_client().get(oad(text)))
-                        value = response.data if response.data is not None else response.dar
-                    result = self.result(index, text, value)
-                except (Dlt698Error, ConnectionError, ValueError, TypeError) as error:
-                    result = {"index": index, "oad": text, "kind": "transport_error", "message": str(error)}
-                results.append(result)
+                if len(results) > index:
+                    result = results[index]
+                else:
+                    try:
+                        if self.config.role == "server":
+                            with self.value_lock:
+                                if self.device is None:
+                                    self.device = self._make_device()
+                                value = self.device.get(oad(text))
+                        else:
+                            value = await self._read_one(text)
+                        result = self.result(index, text, value)
+                    except (Dlt698Error, ConnectionError, ValueError, TypeError) as error:
+                        result = {"index": index, "oad": text, "kind": "transport_error", "message": str(error)}
+                    results.append(result)
                 if codes:
                     snapshot = self.snapshots.setdefault(codes[index], {})
                     snapshot["result"] = result
@@ -360,25 +383,47 @@ class Dlt698Runtime:
 
     async def probe(self, addresses):
         async with self.auto_read.read_lock:
-            points = await self._request(self.require_client().probe_points([oad(text) for text in addresses]))
-            results = []
-            for index, point in enumerate(points):
-                value = point.outcome
-                if isinstance(value, (int, model.Data)):
-                    result = self.result(index, addresses[index], value)
-                    if point.validation_error:
-                        result.update(kind="validation_error", message=str(point.validation_error))
-                else:
-                    result = {"index": index, "oad": addresses[index], "kind": "transport_error", "message": str(value)}
+            return await self._probe(addresses)
+
+    async def _probe(self, addresses):
+        results = []
+        # Keep each managed plan small. The library chooses list/normal GET from
+        # negotiated capabilities, and preserves duplicate OADs and response order.
+        for start in range(0, len(addresses), 16):
+            batch = addresses[start : start + 16]
+            try:
+                points = await self._request(
+                    self.require_client().probe_points(
+                        [oad(text) for text in batch], ProbeOptions(batch_size=16, layout=layout(self.config))
+                    )
+                )
+            except (Dlt698Error, ConnectionError, ValueError, TypeError) as error:
+                results.extend(
+                    {"index": start + i, "oad": text, "kind": "transport_error", "message": str(error)}
+                    for i, text in enumerate(batch)
+                )
+                continue
+            for offset, point in enumerate(points):
+                index, text, value = start + offset, batch[offset], point.outcome
+                try:
+                    if isinstance(value, (int, model.Data)):
+                        result = self.result(index, text, value)
+                        if point.validation_error:
+                            result.update(kind="validation_error", message=str(point.validation_error))
+                    else:
+                        result = {"index": index, "oad": text, "kind": "transport_error", "message": str(value)}
+                except (Dlt698Error, ConnectionError, ValueError, TypeError) as error:
+                    result = {"index": index, "oad": text, "kind": "transport_error", "message": str(error)}
                 results.append(result)
-            return results
+        return results
 
     async def _read_cycle(self, config, stop, progress):
         results = []
-        for code in self.auto_codes:
+        for start in range(0, len(self.auto_codes), 16):
             if stop.is_set():
                 break
-            results.extend(await self.read([self.definitions[code]["oad"]], [code]))
+            codes = self.auto_codes[start : start + 16]
+            results.extend(await self.read([self.definitions[code]["oad"] for code in codes], codes))
             success = sum(item["kind"] == "data" for item in results)
             progress(len(results), len(self.auto_codes), success, len(results) - success)
         success = sum(item["kind"] == "data" for item in results)

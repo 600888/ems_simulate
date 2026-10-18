@@ -740,6 +740,7 @@
 import { ref, computed, reactive, watch, type PropType } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import {
   QuestionFilled,
   Download,
@@ -1429,10 +1430,7 @@ const SYSTEM_DOS = new Set([
 const isSystemDo = (name: string) => SYSTEM_DOS.has(name);
 
 const formatTimestamp = (ms: number | null): string => {
-  if (ms === null || ms === undefined) return "-";
-  const d = new Date(ms);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return formatBeijingDateTime(ms, false);
 };
 
 const handleIec61850ReadMetadata = async (pointCode: string) => {

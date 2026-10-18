@@ -139,8 +139,8 @@
                   :icon="Download"
                   type="primary"
                   :disabled="!can('get') || !readTargets.length || busy"
-                  :loading="busy && busyKind === 'read'"
-                  @click="readPoints(readTargets)"
+                  :loading="busyKind === 'read-batch'"
+                  @click="readPoints(readTargets, 'batch')"
                   >{{ l("批量读取", "Read batch") }}</el-button
                 ><el-button
                   :disabled="
@@ -168,9 +168,11 @@
                   >ACTION</el-button
                 ></template
               >
-              <el-button v-if="busyKind === 'read'" @click="cancelRead">{{
-                l("取消读取", "Cancel read")
-              }}</el-button>
+              <el-button
+                v-if="busyKind.startsWith('read-')"
+                @click="cancelRead"
+                >{{ l("取消读取", "Cancel read") }}</el-button
+              >
               <el-button v-if="preview" @click="exportDraft">{{
                 l("导出草稿", "Export draft")
               }}</el-button>
@@ -208,6 +210,13 @@
               :device-name="deviceName"
               :preview="preview"
               :busy="busy"
+              :reading-code="busyKind === 'read-point' ? busyPointCode : ''"
+              :saving-value-code="
+                busyKind === 'point-value' ? busyPointCode : ''
+              "
+              :saving-point-code="
+                busyKind === 'point-save' ? busyPointCode : ''
+              "
               :can="can"
               :save-error="pointError"
               @save="saveInlinePoint"
@@ -215,7 +224,7 @@
               @selection="selected = $event"
               @edit="openPoint"
               @delete="deletePoint"
-              @read="readPoints([$event])"
+              @read="readPoints([$event], 'point')"
               @write="openOperation('set', $event)"
               @local-edit="openOperation('local_values', $event)"
             />
@@ -258,7 +267,9 @@
             :role="roleValue"
             :enabled="can('records')"
             :preview="preview"
-            :busy="busyKind === 'records' || busyKind === 'append'"
+            :busy="busy"
+            :querying="busyKind === 'records'"
+            :appending="busyKind === 'append'"
             :result="recordResult"
             :error="recordError"
             :append-error="recordError"
@@ -349,6 +360,7 @@
       :point="editingPoint"
       :role="role"
       :busy="busy"
+      :loading="busyKind === 'point-save'"
       :save-error="pointError"
       @save="savePoint"
     />
@@ -516,12 +528,13 @@
         ><el-button
           v-if="operationPoint && operationService !== 'local_values'"
           :disabled="!can('get') || busy"
-          @click="readPoints([operationPoint])"
+          :loading="busyKind === 'read-operation'"
+          @click="readPoints([operationPoint], 'operation')"
           >{{ l("重新读取核对", "Read back") }}</el-button
         ><el-button
           type="primary"
           :disabled="busy || !operationValid || !can(operationService)"
-          :loading="busy"
+          :loading="busyKind === 'operation'"
           @click="submitOperation"
           >{{ l("执行一次", "Execute once") }}</el-button
         ></template
@@ -617,6 +630,7 @@ const points = ref<Dlt698Point[]>([]),
   tab = ref("points");
 const busy = ref(false),
   busyKind = ref(""),
+  busyPointCode = ref(""),
   workspaceError = ref(""),
   notice = ref(""),
   readResults = ref<Dlt698Result[]>([]);
@@ -788,6 +802,7 @@ async function load() {
   controller?.abort();
   busy.value = false;
   busyKind.value = "";
+  busyPointCode.value = "";
   loading.value = false;
   loadError.value = "";
   status.value = emptyStatus();
@@ -885,12 +900,14 @@ async function run(
   kind: string,
   targetError: { value: string },
   task: (token: number, id: number) => Promise<void>,
+  pointCode = "",
 ) {
   if (busy.value) return;
   const token = epoch,
     id = props.channelId;
   busy.value = true;
   busyKind.value = kind;
+  busyPointCode.value = pointCode;
   targetError.value = "";
   notice.value = "";
   try {
@@ -901,6 +918,7 @@ async function run(
     if (token === epoch) {
       busy.value = false;
       busyKind.value = "";
+      busyPointCode.value = "";
     }
   }
 }
@@ -912,30 +930,35 @@ function openPoint(point?: Dlt698Point) {
 async function setInlineValue(point: Dlt698Point, data: Dlt698Data) {
   const service = roleValue.value === "server" ? "local_values" : "set";
   if (props.preview || busy.value || !can(service)) return;
-  await run("point-value", workspaceError, async (token, id) => {
-    const results = await dlt698Api.operation(id, {
-      service,
-      items: [{ oad: point.oad, data }],
-    });
-    if (token !== epoch) return;
-    const result = results[0];
-    if (
-      !result ||
-      (result.kind !== "data" && !(result.kind === "dar" && result.dar === 0))
-    ) {
-      throw new Error(
-        result?.message ||
-          (result?.kind === "dar"
-            ? `DAR = ${result.dar}`
-            : l(
-                "写入结果未知，请重新读取确认",
-                "Write outcome unknown; read again to confirm",
-              )),
-      );
-    }
-    const rows = await dlt698Api.points(id);
-    if (token === epoch) points.value = rows;
-  });
+  await run(
+    "point-value",
+    workspaceError,
+    async (token, id) => {
+      const results = await dlt698Api.operation(id, {
+        service,
+        items: [{ oad: point.oad, data }],
+      });
+      if (token !== epoch) return;
+      const result = results[0];
+      if (
+        !result ||
+        (result.kind !== "data" && !(result.kind === "dar" && result.dar === 0))
+      ) {
+        throw new Error(
+          result?.message ||
+            (result?.kind === "dar"
+              ? `DAR = ${result.dar}`
+              : l(
+                  "写入结果未知，请重新读取确认",
+                  "Write outcome unknown; read again to confirm",
+                )),
+        );
+      }
+      const rows = await dlt698Api.points(id);
+      if (token === epoch) points.value = rows;
+    },
+    point.code,
+  );
 }
 async function saveInlinePoint(point: Dlt698Point, original: Dlt698Point) {
   if (busy.value) return;
@@ -943,47 +966,52 @@ async function saveInlinePoint(point: Dlt698Point, original: Dlt698Point) {
   await savePoint(point);
 }
 async function savePoint(point: Dlt698Point) {
-  await run("point", pointError, async (token, id) => {
-    if (
-      points.value.some(
-        (p) => p.code === point.code && p.code !== editingPoint.value?.code,
+  await run(
+    "point-save",
+    pointError,
+    async (token, id) => {
+      if (
+        points.value.some(
+          (p) => p.code === point.code && p.code !== editingPoint.value?.code,
+        )
       )
-    )
-      throw new Error(l("测点编码已存在", "Point code already exists"));
-    let saved = props.preview
-      ? point
-      : await dlt698Api.savePoint(id, point, editingPoint.value?.code);
-    if (token !== epoch) return;
-    if (
-      !props.preview &&
-      editingPoint.value &&
-      editingPoint.value.oad === saved.oad &&
-      editingPoint.value.data_type === saved.data_type
-    )
-      saved = { ...editingPoint.value, ...saved };
-    if (
-      props.preview &&
-      editingPoint.value &&
-      (editingPoint.value.oad !== point.oad ||
-        editingPoint.value.data_type !== point.data_type)
-    )
-      saved = {
-        ...saved,
-        result: undefined,
-        last_good: undefined,
-        last_good_at: undefined,
-      };
-    const i = points.value.findIndex(
-      (p) => p.code === editingPoint.value?.code,
-    );
-    if (i >= 0) points.value.splice(i, 1, saved);
-    else points.value.push(saved);
-    persistDraft();
-    showPoint.value = false;
-  });
+        throw new Error(l("测点编码已存在", "Point code already exists"));
+      let saved = props.preview
+        ? point
+        : await dlt698Api.savePoint(id, point, editingPoint.value?.code);
+      if (token !== epoch) return;
+      if (
+        !props.preview &&
+        editingPoint.value &&
+        editingPoint.value.oad === saved.oad &&
+        editingPoint.value.data_type === saved.data_type
+      )
+        saved = { ...editingPoint.value, ...saved };
+      if (
+        props.preview &&
+        editingPoint.value &&
+        (editingPoint.value.oad !== point.oad ||
+          editingPoint.value.data_type !== point.data_type)
+      )
+        saved = {
+          ...saved,
+          result: undefined,
+          last_good: undefined,
+          last_good_at: undefined,
+        };
+      const i = points.value.findIndex(
+        (p) => p.code === editingPoint.value?.code,
+      );
+      if (i >= 0) points.value.splice(i, 1, saved);
+      else points.value.push(saved);
+      persistDraft();
+      showPoint.value = false;
+    },
+    editingPoint.value?.code || point.code,
+  );
 }
 async function deletePoint(point: Dlt698Point) {
-  await run("point", workspaceError, async (token, id) => {
+  await run("point-delete", workspaceError, async (token, id) => {
     if (!props.preview) await dlt698Api.deletePoint(id, point.code);
     if (token !== epoch) return;
     points.value = points.value.filter((p) => p.code !== point.code);
@@ -991,34 +1019,42 @@ async function deletePoint(point: Dlt698Point) {
     persistDraft();
   });
 }
-async function readPoints(rows: Dlt698Point[]) {
+async function readPoints(
+  rows: Dlt698Point[],
+  source: "point" | "batch" | "operation",
+) {
   if (!can("get") || !rows.length) return;
-  await run("read", workspaceError, async (token, id) => {
-    controller = new AbortController();
-    const codes = rows.map((p) => p.code);
-    try {
-      const results = await dlt698Api.read(id, codes, controller.signal);
-      if (token !== epoch) return;
-      readResults.value = results;
-      points.value = applyReadResults(points.value, results, codes);
-    } catch (e) {
-      if (token !== epoch) return;
-      const results: Dlt698Result[] = rows.map((p, index) => ({
-        index,
-        oad: p.oad,
-        kind: "transport_error",
-        message: controller?.signal.aborted
-          ? l(
-              "读取已取消；保留上次有效值",
-              "Read cancelled; last good value retained",
-            )
-          : errorText(e),
-      }));
-      readResults.value = results;
-      points.value = applyReadResults(points.value, results, codes);
-      throw e;
-    }
-  });
+  await run(
+    `read-${source}`,
+    workspaceError,
+    async (token, id) => {
+      controller = new AbortController();
+      const codes = rows.map((p) => p.code);
+      try {
+        const results = await dlt698Api.read(id, codes, controller.signal);
+        if (token !== epoch) return;
+        readResults.value = results;
+        points.value = applyReadResults(points.value, results, codes);
+      } catch (e) {
+        if (token !== epoch) return;
+        const results: Dlt698Result[] = rows.map((p, index) => ({
+          index,
+          oad: p.oad,
+          kind: "transport_error",
+          message: controller?.signal.aborted
+            ? l(
+                "读取已取消；保留上次有效值",
+                "Read cancelled; last good value retained",
+              )
+            : errorText(e),
+        }));
+        readResults.value = results;
+        points.value = applyReadResults(points.value, results, codes);
+        throw e;
+      }
+    },
+    source === "batch" ? "" : rows[0].code,
+  );
 }
 function cancelRead() {
   controller?.abort();

@@ -55,7 +55,9 @@
         header-align="center"
       >
         <template #default="scope">
-          <span class="timestamp">{{ scope.row.time }}</span>
+          <span class="timestamp">{{
+            formatBeijingDateTime(scope.row.time)
+          }}</span>
         </template>
       </el-table-column>
       <el-table-column
@@ -148,6 +150,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { formatBeijingDateTime } from "@/utils/beijingTime";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   Refresh,
