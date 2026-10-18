@@ -66,7 +66,7 @@ class Dlt698Handler(ProtocolHandler):
             runtime.point_states[point.code] = point
             device.point_manager.add_point(1, point)
             if point.scalar and runtime.config.role == "server":
-                device.simulation_controller.add_point(point, SimulateMethod.NoSimulation, 1, is_running=True)
+                device.simulation_controller.add_point(point, SimulateMethod.Random, 1, is_running=True)
 
     def add_points(self, points):
         if points:
