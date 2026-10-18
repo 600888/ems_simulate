@@ -83,6 +83,7 @@ class ModbusServerHandler(ServerHandler):
             on_connection_activity=self._on_connection_activity,
             on_connection_closed=self._on_connection_closed,
         )
+        self._server.setServerAddress(config.get("ip") or Config.DEFAULT_IP)
         # 设置回调函数，用于处理来自 Modbus 客户端的写入请求，记录测点变化日志
         self._server.on_write_callback = self._on_modbus_client_write
 

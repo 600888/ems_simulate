@@ -261,7 +261,7 @@ async def create_channel(req: ChannelCreateRequest, request: Request):
             else:
                 builder.setDeviceNetConfig(
                     port=req.port,
-                    ip=req.ip if protocol_enum == ProtocolType.OpcUaServer else Config.DEFAULT_IP,
+                    ip=req.ip or Config.DEFAULT_IP,
                 )
 
         # 传递 IEC61850 IED 模型名称

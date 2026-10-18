@@ -1,6 +1,7 @@
 import asyncio
 from datetime import UTC, datetime, timedelta, timezone
 import socket
+from types import SimpleNamespace
 
 import c104
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from src.device.core.connection import connection_registry
 from src.device.protocol.iec104_handler import IEC104ServerHandler, _c104_connection_time_utc
 from src.enums.modbus_def import ProtocolType
+from src.web.api.channel.helpers import configure_builder_network
 
 pytestmark = pytest.mark.skipif(
     not hasattr(c104, "ServerConnection"),
@@ -89,5 +91,62 @@ def test_handler_tracks_real_fork_connection_and_disconnect():
         finally:
             await handler.stop()
             connection_registry.set_event_sink(None)
+
+    asyncio.run(scenario())
+
+
+def test_same_port_servers_keep_connections_on_their_configured_ip():
+    async def scenario():
+        port = _free_port()
+        handlers = []
+        writers = []
+        try:
+            for channel_id, ip in enumerate(("127.0.0.1", "127.0.0.2"), 1942):
+                config = {"channel_id": channel_id, "protocol_type": ProtocolType.Iec104Server}
+                builder = SimpleNamespace(setDeviceNetConfig=config.update)
+                configure_builder_network(builder, 2, ProtocolType.Iec104Server, ip, port, {})
+                handler = IEC104ServerHandler()
+                handlers.append(handler)
+                handler.initialize(config)
+                assert await handler.start(), f"Could not listen on {ip}:{port}"
+
+            for ip in ("127.0.0.1", "127.0.0.2"):
+                reader, writer = await asyncio.open_connection(ip, port)
+                writers.append(writer)
+                writer.write(bytes.fromhex("68 04 07 00 00 00"))  # STARTDT_ACT
+                await writer.drain()
+                assert await asyncio.wait_for(reader.readexactly(6), 2) == bytes.fromhex("68 04 0b 00 00 00")
+
+            for _ in range(100):
+                connections = [handler.get_current_connections() for handler in handlers]
+                if all(len(items) == 1 for items in connections):
+                    break
+                await asyncio.sleep(0.01)
+            for index, ip in enumerate(("127.0.0.1", "127.0.0.2")):
+                assert len(connections[index]) == 1
+                assert connections[index][0]["local_ip"] == ip
+                assert connections[index][0]["local_port"] == port
+                assert connections[index][0]["channel_id"] == 1942 + index
+
+            await handlers[0].stop()
+            assert handlers[0].get_current_connections() == []
+            assert len(handlers[1].get_current_connections()) == 1
+            # The surviving server must not take over the stopped server's IP.
+            try:
+                _, unexpected_writer = await asyncio.wait_for(asyncio.open_connection("127.0.0.1", port), 0.5)
+            except (OSError, TimeoutError):
+                pass
+            else:
+                writers.append(unexpected_writer)
+                pytest.fail("The surviving server accepted a connection for the stopped server's IP")
+            writers[1].write(bytes.fromhex("68 04 43 00 00 00"))  # TESTFR_ACT
+            await writers[1].drain()
+            assert await asyncio.wait_for(reader.readexactly(6), 2) == bytes.fromhex("68 04 83 00 00 00")
+        finally:
+            for writer in writers:
+                writer.close()
+                await writer.wait_closed()
+            for handler in handlers:
+                await handler.stop()
 
     asyncio.run(scenario())

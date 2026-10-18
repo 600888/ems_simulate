@@ -179,7 +179,7 @@ class DeviceController:
                 else:  # TCP 服务端
                     general_device_builder.setDeviceNetConfig(
                         port=port,
-                        ip=ip if channel_protocol_type == ProtocolType.OpcUaServer else Config.DEFAULT_IP,
+                        ip=ip or Config.DEFAULT_IP,
                     )
 
                 # 传递 IEC61850 IED 模型名称
