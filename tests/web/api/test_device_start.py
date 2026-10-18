@@ -5,7 +5,25 @@ import pytest
 
 from src.enums.modbus_def import ProtocolType
 from src.web.api.channel.device_manage import create_and_start_device
-from src.web.api.schemas import ChannelIdRequest
+from src.web.api.device.router import start_device
+from src.web.api.exceptions import OperationError
+from src.web.api.schemas import ChannelIdRequest, DeviceStartRequest
+
+
+@pytest.mark.asyncio
+async def test_dlt698_start_returns_specific_serial_failure():
+    detail = "DL/T 698 串口 COM3 打开或协议关联超时（5000 ms）：TimeoutError"
+    device = SimpleNamespace(
+        protocol_type=ProtocolType.Dlt698Client,
+        protocol_handler=SimpleNamespace(last_error=detail),
+        start=AsyncMock(return_value=False),
+    )
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(device_controller=SimpleNamespace(device_map={"meter": device})))
+    )
+    with pytest.raises(OperationError, match="COM3.*关联超时") as raised:
+        await start_device(DeviceStartRequest(device_name="meter"), request)
+    assert raised.value.data is False
 
 
 @pytest.mark.asyncio

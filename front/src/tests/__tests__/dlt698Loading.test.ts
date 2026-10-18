@@ -6,6 +6,7 @@ import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
 import { createRenderer, nextTick, reactive } from "vue";
 import { dlt698Api } from "@/api/dlt698Api";
 import { defaultDlt698Config } from "@/utils/dlt698";
+import type { Dlt698Result } from "@/types/dlt698";
 
 jest.mock("vue-i18n", () => ({
   useI18n: () => ({ locale: { value: "en-US" } }),
@@ -140,6 +141,84 @@ test("a failed single read clears its loading state and retains the error", asyn
   expect(state.busy.value).toBe(false);
   expect(state.busyPointCode.value).toBe("");
   expect(state.workspaceError.value).toBe("Read failed");
+});
+
+test("batch reads publish progress and keep global result indexes across chunks", async () => {
+  const { state } = mount();
+  await flush();
+  const rows = Array.from({ length: 33 }, (_, i) => ({
+    ...point,
+    code: `p${i}`,
+  }));
+  state.points.value = rows;
+  const second = deferred<any[]>();
+  const response = (start: number, size: number): Dlt698Result[] =>
+    Array.from({ length: size }, (_, index) => ({
+      index,
+      oad: point.oad,
+      kind: "data",
+      data: { type: "UInt16", value: String(start + index) },
+    }));
+  jest
+    .mocked(dlt698Api.read)
+    .mockResolvedValueOnce(response(0, 16))
+    .mockReturnValueOnce(second.promise)
+    .mockResolvedValueOnce(response(32, 1));
+  const request = state.readPoints(rows, "batch");
+  await flush();
+  expect(state.readProgress.value).toEqual({ current: 16, total: 33 });
+  expect(state.points.value[15].last_good.value).toBe("15");
+  expect(dlt698Api.read).toHaveBeenNthCalledWith(
+    2,
+    3,
+    rows.slice(16, 32).map((p) => p.code),
+    expect.anything(),
+  );
+  second.resolve(response(16, 16));
+  await request;
+  expect(state.readProgress.value.current).toBe(33);
+  expect(state.readResults.value.map((r: any) => r.index)).toEqual(
+    rows.map((_, i) => i),
+  );
+  expect(state.points.value[32].last_good.value).toBe("32");
+  expect(state.busy.value).toBe(false);
+});
+
+test("cancelling a batch retains completed values and does not submit remaining chunks", async () => {
+  const { state } = mount();
+  await flush();
+  const rows = Array.from({ length: 40 }, (_, i) => ({
+    ...point,
+    code: `p${i}`,
+  }));
+  state.points.value = rows;
+  jest
+    .mocked(dlt698Api.read)
+    .mockResolvedValueOnce(
+      rows.slice(0, 16).map((p, index) => ({
+        index,
+        oad: p.oad,
+        kind: "data",
+        data: { type: "UInt16", value: "42" },
+      })) as any,
+    )
+    .mockImplementationOnce(
+      (_id, _codes, signal) =>
+        new Promise((_resolve, reject) => {
+          signal!.addEventListener("abort", () =>
+            reject(new Error("cancelled")),
+          );
+        }),
+    );
+  const request = state.readPoints(rows, "batch");
+  await flush();
+  state.cancelRead();
+  await request;
+  expect(dlt698Api.read).toHaveBeenCalledTimes(2);
+  expect(state.readResults.value[0].kind).toBe("data");
+  expect(state.readResults.value[16].kind).toBe("transport_error");
+  expect(state.points.value[0].last_good.value).toBe("42");
+  expect(state.busy.value).toBe(false);
 });
 
 test("inline SET owns only the edited point's saving state", async () => {

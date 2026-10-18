@@ -35,7 +35,7 @@ class Dlt698Handler(ProtocolHandler):
             self.last_error = ""
             return self._is_running
         except Exception as error:
-            self.last_error = str(error)
+            self.last_error = (self.runtime.error if self.runtime else "") or str(error) or type(error).__name__
             self._is_running = False
             raise
 

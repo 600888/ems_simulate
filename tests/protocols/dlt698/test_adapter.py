@@ -3,9 +3,9 @@
 import asyncio
 from copy import deepcopy
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
-from dlt698 import encode_data
+from dlt698 import ConnectionProfile, encode_data
 from dlt698.common import ErrorCode
 from dlt698.errors import RequestTimeoutError, ResourceLimitError
 import pytest
@@ -73,6 +73,63 @@ def test_standard_catalog_and_permissions_are_delegated_to_library():
     with pytest.raises(ValueError):
         normalize_protocol_params(8, 1, {"role": "server"})
     assert normalize_protocol_params(8, 2, None)["role"] == "server"
+
+
+@pytest.mark.parametrize("conn", [0, 1, 2, 3])
+@pytest.mark.parametrize("association", ["public", "preestablished"])
+@pytest.mark.asyncio
+async def test_start_selects_local_serial_or_remote_tcp_association(monkeypatch, conn, association):
+    role = "client" if conn in (0, 1) else "server"
+    runtime = Dlt698Runtime(
+        Dlt698Config(role=role, association=association),
+        {"conn_type": conn, "serial_port": "COM_TEST", "ip": "127.0.0.1", "port": 698},
+    )
+    endpoint = SimpleNamespace(
+        open_serial_configured=AsyncMock(),
+        connect_tcp=AsyncMock(),
+        start_serial_configured=AsyncMock(),
+        start_tcp=AsyncMock(),
+        aclose=AsyncMock(),
+    )
+    monkeypatch.setattr("src.proto.dlt698.runtime.AsyncClient", Mock(return_value=endpoint))
+    monkeypatch.setattr("src.proto.dlt698.runtime.AsyncServer", Mock(return_value=endpoint))
+    expected = (
+        ConnectionProfile.local_preset
+        if association == "preestablished"
+        else ConnectionProfile.local_public
+        if conn in (0, 3)
+        else ConnectionProfile.remote_public
+    )
+    try:
+        assert await runtime.start()
+        method = (
+            endpoint.open_serial_configured
+            if conn == 0
+            else endpoint.connect_tcp
+            if conn == 1
+            else endpoint.start_tcp
+            if conn == 2
+            else endpoint.start_serial_configured
+        )
+        assert method.await_count == 1
+        assert method.await_args.args[-1] == expected
+        assert runtime.state == ("associated" if role == "client" else "listening")
+    finally:
+        await runtime.stop()
+
+
+@pytest.mark.asyncio
+async def test_empty_serial_start_timeout_retains_diagnostic_and_closes_client(monkeypatch):
+    runtime = Dlt698Runtime(Dlt698Config(), {"conn_type": 0, "serial_port": "COM_TEST"})
+    client = SimpleNamespace(open_serial_configured=AsyncMock(side_effect=TimeoutError()), aclose=AsyncMock())
+    monkeypatch.setattr("src.proto.dlt698.runtime.AsyncClient", Mock(return_value=client))
+    with pytest.raises(TimeoutError, match="COM_TEST.*关联超时"):
+        await runtime.start()
+    assert "5000 ms" in runtime.error
+    assert "TimeoutError" in runtime.error
+    assert not runtime.running
+    assert not runtime.sessions
+    client.aclose.assert_awaited_once()
 
 
 @pytest.mark.parametrize("association", ["public", "preestablished"])
@@ -245,6 +302,55 @@ async def test_inflight_read_can_be_cancelled():
     with pytest.raises(asyncio.CancelledError):
         await task
     assert runtime.state == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_serial_cancel_finishes_current_transaction_and_preserves_association():
+    runtime = Dlt698Runtime(Dlt698Config(request_timeout_ms=100), {"conn_type": 0})
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    async def operation(_address):
+        started.set()
+        await finish.wait()
+        return SimpleNamespace(data=to_native(Data(type="UInt16", value="5000")), dar=0)
+
+    runtime.client = SimpleNamespace(get=operation)
+    runtime.sessions["1"] = {"associated": True}
+    task = asyncio.create_task(runtime.read(["200F0200"]))
+    await started.wait()
+    task.cancel()
+    finish.set()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 1)
+    assert runtime.state == "associated"
+    assert runtime.sessions["1"]["associated"]
+    assert not runtime.auto_read.read_lock.locked()
+    assert (await runtime.read(["200F0200"]))[0]["data"]["value"] == "5000"
+
+
+@pytest.mark.asyncio
+async def test_serial_cancel_has_a_deadline_when_current_transaction_never_completes():
+    runtime = Dlt698Runtime(Dlt698Config(request_timeout_ms=100), {"conn_type": 0})
+    started, cancelled = asyncio.Event(), asyncio.Event()
+
+    async def operation(_address):
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            cancelled.set()
+
+    runtime.client = SimpleNamespace(get=operation)
+    runtime.sessions["1"] = {"associated": True}
+    task = asyncio.create_task(runtime.read(["200F0200"]))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 0.5)
+    assert cancelled.is_set()
+    assert runtime.state == "cancelled"
+    assert not runtime.sessions
+    assert not runtime.auto_read.read_lock.locked()
 
 
 @pytest.mark.asyncio

@@ -282,6 +282,11 @@ async def start_device(req: DeviceStartRequest, request: Request):
     device = _get_device(req.device_name, request)
     success = await device.start()
     if not success:
+        if device.protocol_type in (ProtocolType.Dlt698Client, ProtocolType.Dlt698Server):
+            detail = getattr(device.protocol_handler, "last_error", "")
+            if detail:
+                log.error(f"设备 {req.device_name} 启动失败: {detail}")
+                raise OperationError(f"设备启动失败! {detail}", data=False)
         log.error(f"设备 {req.device_name} 启动失败 (连接被拒绝或超时)")
         raise OperationError("设备启动失败! (连接被拒绝或超时)", data=False)
     return BaseResponse(message="设备启动成功!", data=True)

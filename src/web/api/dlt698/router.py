@@ -7,7 +7,7 @@ from io import BytesIO
 import json
 
 from dlt698.errors import Dlt698Error
-from fastapi import APIRouter, Request, UploadFile
+from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.routing import APIRoute
 from openpyxl import load_workbook
 
@@ -48,6 +48,30 @@ class Dlt698Route(APIRoute):
 
 router = APIRouter(prefix="/api/dlt698/channels/{channel_id}", tags=["dlt698"], route_class=Dlt698Route)
 _locks = defaultdict(asyncio.Lock)
+
+
+async def while_connected(request, operation):
+    """客户端取消 HTTP 读取后，取消原生在途事务并释放通道锁。"""
+    task = asyncio.create_task(operation)
+
+    async def disconnected():
+        # 请求体已由 FastAPI 解析完毕。持续等待 ASGI 断线消息，避免
+        # is_disconnected() 的即时取消检查被 BaseHTTPMiddleware 的检查点吞掉。
+        while (await request.receive())["type"] != "http.disconnect":
+            pass
+
+    disconnect = asyncio.create_task(disconnected())
+    try:
+        done, _ = await asyncio.wait({task, disconnect}, return_when=asyncio.FIRST_COMPLETED)
+        if task in done:
+            return task.result()
+        await disconnect
+        raise HTTPException(status_code=499, detail="客户端已取消读取")
+    finally:
+        for pending in (task, disconnect):
+            if not pending.done():
+                pending.cancel()
+        await asyncio.gather(task, disconnect, return_exceptions=True)
 
 
 async def get_handler(channel_id, request):
@@ -216,19 +240,23 @@ async def point_catalog(channel_id: int, body: dict):
 
 @router.post("/read")
 async def read(channel_id: int, body: ReadRequest, request: Request):
-    async with _locks[channel_id]:
-        runtime = (await get_handler(channel_id, request)).get_runtime()
-        if any(code not in runtime.definitions for code in body.codes):
-            raise ValidationError("请求包含不存在的测点编码")
-        return BaseResponse(
-            data=await runtime.read([runtime.definitions[code]["oad"] for code in body.codes], body.codes)
-        )
+    async def operation():
+        async with _locks[channel_id]:
+            runtime = (await get_handler(channel_id, request)).get_runtime()
+            if any(code not in runtime.definitions for code in body.codes):
+                raise ValidationError("请求包含不存在的测点编码")
+            return await runtime.read([runtime.definitions[code]["oad"] for code in body.codes], body.codes)
+
+    return BaseResponse(data=await while_connected(request, operation()))
 
 
 @router.post("/probe")
 async def probe(channel_id: int, body: ProbeRequest, request: Request):
-    async with _locks[channel_id]:
-        return BaseResponse(data=await (await get_handler(channel_id, request)).get_runtime().probe(body.oads))
+    async def operation():
+        async with _locks[channel_id]:
+            return await (await get_handler(channel_id, request)).get_runtime().probe(body.oads)
+
+    return BaseResponse(data=await while_connected(request, operation()))
 
 
 @router.post("/operations")

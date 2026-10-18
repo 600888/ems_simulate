@@ -173,6 +173,10 @@
                 @click="cancelRead"
                 >{{ l("取消读取", "Cancel read") }}</el-button
               >
+              <span v-if="busyKind.startsWith('read-')" class="muted">
+                {{ l("已读取", "Read") }} {{ readProgress.current }} /
+                {{ readProgress.total }}
+              </span>
               <el-button v-if="preview" @click="exportDraft">{{
                 l("导出草稿", "Export draft")
               }}</el-button>
@@ -634,6 +638,7 @@ const busy = ref(false),
   workspaceError = ref(""),
   notice = ref(""),
   readResults = ref<Dlt698Result[]>([]);
+const readProgress = ref({ current: 0, total: 0 });
 const showPoint = ref(false),
   editingPoint = ref<Dlt698Point>(),
   pointError = ref(""),
@@ -809,6 +814,7 @@ async function load() {
   selected.value = [];
   emit("capabilities", status.value);
   readResults.value = [];
+  readProgress.value = { current: 0, total: 0 };
   serviceResults.value = [];
   recordResult.value = undefined;
   reports.value = [];
@@ -1028,27 +1034,57 @@ async function readPoints(
     `read-${source}`,
     workspaceError,
     async (token, id) => {
-      controller = new AbortController();
+      const readController = new AbortController();
+      controller = readController;
       const codes = rows.map((p) => p.code);
+      const results: Dlt698Result[] = [];
+      readResults.value = [];
+      readProgress.value = { current: 0, total: codes.length };
       try {
-        const results = await dlt698Api.read(id, codes, controller.signal);
-        if (token !== epoch) return;
-        readResults.value = results;
-        points.value = applyReadResults(points.value, results, codes);
+        // Match the protocol's batch size so slow serial reads publish progress
+        // and cancellation does not leave the entire point table queued.
+        for (let start = 0; start < codes.length; start += 16) {
+          if (readController.signal.aborted) throw new Error("Read cancelled");
+          const batch = await dlt698Api.read(
+            id,
+            codes.slice(start, start + 16),
+            readController.signal,
+          );
+          if (token !== epoch) return;
+          results.push(
+            ...batch.map((result) => ({
+              ...result,
+              index: start + result.index,
+            })),
+          );
+          readResults.value = [...results];
+          points.value = applyReadResults(
+            points.value,
+            batch,
+            codes.slice(start, start + 16),
+          );
+          readProgress.value = {
+            current: Math.min(start + 16, codes.length),
+            total: codes.length,
+          };
+        }
       } catch (e) {
         if (token !== epoch) return;
-        const results: Dlt698Result[] = rows.map((p, index) => ({
-          index,
-          oad: p.oad,
-          kind: "transport_error",
-          message: controller?.signal.aborted
-            ? l(
-                "读取已取消；保留上次有效值",
-                "Read cancelled; last good value retained",
-              )
-            : errorText(e),
-        }));
-        readResults.value = results;
+        const completed = readProgress.value.current;
+        results.push(
+          ...rows.slice(completed).map((p, index): Dlt698Result => ({
+            index: completed + index,
+            oad: p.oad,
+            kind: "transport_error",
+            message: readController.signal.aborted
+              ? l(
+                  "读取已取消；保留上次有效值",
+                  "Read cancelled; last good value retained",
+                )
+              : errorText(e),
+          })),
+        );
+        readResults.value = [...results];
         points.value = applyReadResults(points.value, results, codes);
         throw e;
       }

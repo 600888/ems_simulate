@@ -211,11 +211,13 @@ class Dlt698Runtime:
             self.config.role == "server" and conn not in (2, 3)
         ):
             raise ValueError("托管 API 支持 TCP/串口主站客户端与 TCP/串口从站服务端；反向拨号需专家接口")
-        profile = (
-            ConnectionProfile.local_preset
-            if self.config.association == "preestablished"
-            else ConnectionProfile.remote_public
-        )
+        if self.config.association == "preestablished":
+            profile = ConnectionProfile.local_preset
+        elif conn in (0, 3):
+            # 本地串口直接建立 CONNECT 关联，不等待远程链路的 LINK 登录。
+            profile = ConnectionProfile.local_public
+        else:
+            profile = ConnectionProfile.remote_public
         self.state, self.error = "associating", ""
         try:
             if self.config.role == "client":
@@ -249,7 +251,16 @@ class Dlt698Runtime:
             return True
         except BaseException as error:
             await self.stop()
-            self.error = str(error)
+            endpoint = (
+                f"串口 {self.network['serial_port']}"
+                if conn in (0, 3)
+                else f"TCP {self.network.get('ip')}:{self.network.get('port')}"
+            )
+            detail = str(error).strip() or type(error).__name__
+            if isinstance(error, TimeoutError):
+                self.error = f"DL/T 698 {endpoint} 打开或协议关联超时（{self.config.request_timeout_ms} ms）：{detail}"
+                raise TimeoutError(self.error) from error
+            self.error = f"DL/T 698 {endpoint} 启动失败：{detail}"
             raise
 
     async def stop(self):
@@ -313,13 +324,22 @@ class Dlt698Runtime:
 
     async def _request(self, operation):
         self.state = "requesting"
+        pending = asyncio.ensure_future(operation)
         try:
-            result = await operation
+            result = await asyncio.shield(pending)
             self.state, self.error = "associated", ""
             return result
         except asyncio.CancelledError:
-            self.state = "cancelled"
-            self.sessions.clear()
+            # 串口无法通过断开物理连接通知对端释放关联。停止后续读取，
+            # 当前事务在请求时限内收尾，避免对端仍关联而下次 CONNECT 被拒绝。
+            try:
+                timeout = self.config.request_timeout_ms / 1000 if self.network.get("conn_type") == 0 else 0
+                await asyncio.wait_for(pending, timeout=timeout)
+            except Exception:
+                self.state = "cancelled"
+                self.sessions.clear()
+            else:
+                self.state, self.error = "associated", ""
             raise
         except Dlt698Error as error:
             self.state = "timeout" if isinstance(error, TimeoutError) else "lost"
