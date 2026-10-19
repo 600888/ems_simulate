@@ -16,6 +16,7 @@ from src.device.core.message.message_parser import (
 from src.device.core.message.parsers import (
     describe_mms,
     parse_dlt645,
+    parse_dlt698,
     parse_dnp3,
     parse_iec101,
     parse_iec104,
@@ -50,6 +51,11 @@ _MODBUS_ALL_TYPES = _MODBUS_TCP_TYPES | _MODBUS_RTU_TYPES
 _DLT645_TYPES = {
     ProtocolType.Dlt645Server,
     ProtocolType.Dlt645Client,
+}
+
+_DLT698_TYPES = {
+    ProtocolType.Dlt698Server,
+    ProtocolType.Dlt698Client,
 }
 
 # IEC104 协议类型集合
@@ -142,6 +148,7 @@ class MessageFormatter:
             ProtocolType.Iec104Client,
             ProtocolType.Iec101Client,
             ProtocolType.Dlt645Client,
+            ProtocolType.Dlt698Client,
             ProtocolType.Iec61850Client,
             ProtocolType.Dnp3Client,
         ]
@@ -151,6 +158,7 @@ class MessageFormatter:
         is_modbus = protocol_type in _MODBUS_ALL_TYPES
         is_tcp = protocol_type in _MODBUS_TCP_TYPES
         is_dlt645 = protocol_type in _DLT645_TYPES
+        is_dlt698 = protocol_type in _DLT698_TYPES
         is_iec104 = protocol_type in _IEC104_TYPES
         is_iec101 = protocol_type in _IEC101_TYPES
         is_mms = protocol_type in _MMS_TYPES
@@ -193,6 +201,11 @@ class MessageFormatter:
                     last_request_info = None
             elif is_dlt645 and raw_hex:
                 description = DLT645MessageParser.parse(raw_hex)
+            elif is_dlt698 and raw_hex:
+                try:
+                    description = parse_dlt698(bytes.fromhex(raw_hex), role=msg_type)["summary"]
+                except (TypeError, ValueError):
+                    description = "DL/T698报文格式无效"
             elif is_iec104 and raw_hex:
                 description = IEC104MessageParser.parse(raw_hex)
             elif is_iec101 and raw_hex:
@@ -272,6 +285,8 @@ class MessageFormatter:
             )
         elif protocol_type in _DLT645_TYPES:
             detail = parse_dlt645(raw, role=role)
+        elif protocol_type in _DLT698_TYPES:
+            detail = parse_dlt698(raw, role=role)
         elif protocol_type in _IEC104_TYPES:
             detail = parse_iec104(raw, role=role)
         elif protocol_type in _IEC101_TYPES:
@@ -363,12 +378,43 @@ class MessageFormatter:
             self._enrich_modbus_objects(detail, points)
         elif protocol_type in _DLT645_TYPES:
             self._enrich_address_objects(detail, points, dlt645=True)
+        elif protocol_type in _DLT698_TYPES:
+            self._enrich_dlt698_objects(detail, points)
         elif protocol_type in _IEC104_TYPES:
             self._enrich_address_objects(detail, points, dlt645=False)
         elif protocol_type in _IEC101_TYPES:
             self._enrich_address_objects(detail, points, dlt645=False)
         elif protocol_type in _DNP3_TYPES:
             self._enrich_dnp3_objects(detail, points)
+
+    @staticmethod
+    def _enrich_dlt698_objects(detail: dict, points: list) -> None:
+        from decimal import Decimal
+
+        by_oad = {
+            point.definition["oad"].upper(): point
+            for point in points
+            if isinstance(getattr(point, "definition", None), dict) and point.definition.get("oad")
+        }
+        for item in detail["objects"]:
+            point = by_oad.get(item.get("address"))
+            if point is None or item.get("name") == "OMD":
+                continue
+            definition = point.definition
+            scaler = int(definition.get("scaler", 0))
+            item["name"] = point.name or item["name"]
+            item["unit"] = definition.get("unit", "")
+            item["point"] = {
+                "code": point.code,
+                "name": point.name,
+                "address": item["address"],
+                "decode_code": definition.get("data_type", "Data"),
+                "multiplier": 10**scaler,
+                "addition": 0,
+            }
+            value = item.get("value")
+            if isinstance(value, dict) and value.get("type", "").startswith(("int", "uint", "float")):
+                item["engineering_value"] = format(Decimal(str(value["value"])) * Decimal(10) ** scaler, "f")
 
     @staticmethod
     def _point_metadata(point) -> dict:

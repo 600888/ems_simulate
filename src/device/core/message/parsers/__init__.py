@@ -1,6 +1,7 @@
 """Protocol-specific field-level message parsers."""
 
 from .dlt645 import parse_dlt645
+from .dlt698 import parse_dlt698
 from .dnp3 import parse_dnp3
 from .goose import parse_goose
 from .iec101 import parse_iec101
@@ -11,6 +12,7 @@ from .modbus import parse_modbus
 __all__ = [
     "parse_modbus",
     "parse_dlt645",
+    "parse_dlt698",
     "parse_iec101",
     "parse_iec104",
     "parse_goose",
