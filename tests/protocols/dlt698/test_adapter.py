@@ -24,6 +24,63 @@ def point(code="frequency", oad="200F0200", kind="UInt16", value="5000", standar
     ).model_dump(exclude_none=True)
 
 
+@pytest.mark.parametrize("role", ["client", "server"])
+@pytest.mark.parametrize("association", ["public", "preestablished"])
+@pytest.mark.asyncio
+async def test_readable_meter_address_communicates_with_independent_wire_address_peer(role, association):
+    from dlt698 import AsyncClient, AsyncServer, ClientOptions, Device, ServerOptions, SessionOptions
+    from dlt698.codec import decode_frame
+    from dlt698.protocol.link import ServerAddress
+    from dlt698.session import Role
+
+    # The independent peer uses fixed wire bytes, never the EMS address converter.
+    wire_address = bytes.fromhex("70 48 80 47 01 01")
+    profile = ConnectionProfile.remote_public if association == "public" else ConnectionProfile.local_preset
+    peer_options = SessionOptions(
+        role=Role.server if role == "client" else Role.client,
+        server=ServerAddress(bytes=wire_address),
+        client_address=16,
+        preset_association=association == "preestablished",
+    )
+    parameters = peer_options.parameters
+    parameters.version = 1
+    peer_options.parameters = parameters
+    capture = MessageCapture()
+    runtime = Dlt698Runtime(
+        Dlt698Config(role=role, server_address="010147804870", association=association),
+        {"conn_type": 1 if role == "client" else 2, "ip": "127.0.0.1", "port": 0},
+        [point()],
+        capture,
+    )
+    if role == "client":
+        device = Device()
+        device.set(oad("200F0200"), to_native(Data(type="UInt16", value="5000")))
+        peer = AsyncServer(device, ServerOptions(protocol=peer_options))
+    else:
+        peer = AsyncClient(ClientOptions(protocol=peer_options))
+    try:
+        async with asyncio.timeout(5):
+            if role == "client":
+                await peer.start_tcp("127.0.0.1", 0, profile)
+                runtime.network["port"] = peer.local_port
+                await runtime.start()
+                assert (await runtime.read(["200F0200"]))[0]["data"]["value"] == "5000"
+            else:
+                await runtime.start()
+                await peer.connect_tcp("127.0.0.1", runtime.actual_port, profile)
+                assert (await peer.get(oad("200F0200"))).data.value == 5000
+        async with asyncio.timeout(1):
+            while not {"TX", "RX"}.issubset(message["direction"] for message in capture.get_messages(100)):
+                await asyncio.sleep(0.001)
+        messages = capture.get_messages(100)
+        assert {message["direction"] for message in messages} == {"TX", "RX"}
+        assert all(decode_frame(bytes.fromhex(message["data"])).server.bytes == wire_address for message in messages)
+        assert runtime.config.server_address == "010147804870"
+    finally:
+        await peer.aclose()
+        await runtime.stop()
+
+
 @pytest.mark.parametrize(
     "kind,value",
     [

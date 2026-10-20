@@ -126,10 +126,11 @@ class Dlt698Runtime:
 
     def options(self):
         c = self.config
+        # Config stores the readable meter address; the native API takes wire-order bytes.
         options = SessionOptions(
             role=getattr(Role, c.role),
             request_timeout=c.request_timeout_ms / 1000,
-            server=ServerAddress(bytes=bytes.fromhex(c.server_address), logical=c.logical_address),
+            server=ServerAddress(bytes=bytes.fromhex(c.server_address)[::-1], logical=c.logical_address),
             client_address=c.client_address,
             heartbeat_seconds=c.heartbeat_interval_s,
             preset_association=c.association == "preestablished",

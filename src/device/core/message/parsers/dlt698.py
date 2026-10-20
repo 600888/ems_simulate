@@ -463,10 +463,18 @@ def parse_dlt698(raw: bytes, *, role: str) -> dict[str, Any]:
         result["warnings"].append("帧后有额外字节，可能包含粘连报文；仅解析第一帧")
         fields.append(_field("trailing", "帧后数据", start + total, frame[total:], _hex(frame[total:])))
     frame = frame[:total]
+    # SA is transmitted low byte first; display the readable meter/configuration address.
     address = frame[5:client_pos][::-1].hex().upper()
     fields.extend(
         [
-            _field("server_address", "服务器地址 SA", start + 5, frame[5:client_pos], address, "低字节在前"),
+            _field(
+                "server_address",
+                "服务器地址 SA",
+                start + 5,
+                frame[5:client_pos],
+                address,
+                "低字节在前传输，解析值按正常表地址顺序显示",
+            ),
             _field(
                 "client_address",
                 "客户机地址 CA",

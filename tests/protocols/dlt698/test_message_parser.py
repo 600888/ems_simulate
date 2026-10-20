@@ -13,6 +13,8 @@ import pytest
 from src.device.core.message.message_formatter import MessageFormatter
 from src.device.core.message.parsers import parse_dlt698
 from src.enums.modbus_def import ProtocolType
+from src.proto.dlt698.runtime import Dlt698Runtime
+from src.proto.dlt698.schema import Dlt698Config
 
 
 def oad(oi=0x2000, index=0):
@@ -58,6 +60,43 @@ def test_known_get_request_vector():
     assert field(detail, "piid")["value"] == 1
     assert field(detail, "oad")["offset"] == 17
     assert all(item["passed"] for item in detail["validation"])
+    assert_spans(detail, raw)
+
+
+@pytest.mark.parametrize(
+    "server_address,wire_address",
+    [
+        ("12", "12"),
+        ("1234567890ab", "ab9078563412"),
+        ("0123456789abcdef1020304050607080", "8070605040302010efcdab8967452301"),
+        ("010147804870", "704880470101"),
+    ],
+)
+@pytest.mark.parametrize("role", ["client", "server"])
+def test_configured_server_address_converts_to_wire_and_back_to_display(server_address, wire_address, role):
+    config = Dlt698Config(role=role, server_address=server_address)
+    options = Dlt698Runtime(config, {}).options()
+    assert options.server.bytes == bytes.fromhex(wire_address)
+    raw = encode_frame(
+        Frame(
+            server=options.server, client=options.client_address, payload=encode_apdu(p.GetRequest(attributes=[oad()]))
+        )
+    )
+    captures = [{"sequence_id": 1, "direction": "TX" if role == "client" else "RX", "data": raw.hex()}]
+    formatter = MessageFormatter(
+        SimpleNamespace(
+            protocol_type=ProtocolType.Dlt698Client if role == "client" else ProtocolType.Dlt698Server,
+            protocol_handler=SimpleNamespace(get_captured_messages=lambda _limit: captures),
+        )
+    )
+    detail = formatter.get_message_detail(1)
+    address_field = field(detail, "server_address")
+    assert detail["valid"] and detail["complete"]
+    assert address_field["value"] == config.server_address
+    assert address_field["display_value"] == config.server_address
+    assert bytes.fromhex(address_field["raw_hex"]) == bytes.fromhex(wire_address)
+    assert f"服务器地址:{config.server_address}" in detail["summary"]
+    assert f"服务器地址:{config.server_address}" in formatter.get_messages()[0]["description"]
     assert_spans(detail, raw)
 
 

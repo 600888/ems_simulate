@@ -10,9 +10,20 @@
         }}</el-radio></el-radio-group
       ></el-form-item
     >
-    <el-form-item :label="l('服务器地址 SA', 'Server address SA')"
-      ><el-input v-model="modelValue.server_address" placeholder="000000000000"
-    /></el-form-item>
+    <el-form-item :label="l('服务器地址 SA', 'Server address SA')">
+      <el-input
+        v-model="modelValue.server_address"
+        placeholder="000000000000"
+      />
+      <p class="field-hint">
+        {{
+          l(
+            "电表地址采用小端序传输（低字节在前）。请直接填写实际电表地址，软件自动转换。",
+            "Meter addresses are transmitted in little-endian order (low byte first). Enter the actual meter address directly; conversion is automatic.",
+          )
+        }}
+      </p>
+    </el-form-item>
     <el-form-item :label="l('逻辑地址', 'Logical address')"
       ><el-input-number v-model="modelValue.logical_address" :min="0" :max="3"
     /></el-form-item>
@@ -177,3 +188,13 @@ const advanced = [
   },
 ] as const;
 </script>
+
+<style scoped>
+.field-hint {
+  width: 100%;
+  margin: 6px 0 0;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+</style>
