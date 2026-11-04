@@ -1,0 +1,11 @@
+# 保持 shell 脚本为 LF。
+# 仓库开启了 core.autocrlf=true，若不声明，Linux 上的 pa.sh / install.sh
+# 会变成 CRLF 行尾，报 "bad interpreter: /bin/sh^M"。
+*.sh text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.spec text eol=lf
+*.txt text eol=lf

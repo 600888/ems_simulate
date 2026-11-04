@@ -1,0 +1,9 @@
+PySide6>=6.6
+# 网卡抓包直接调用 libpcap/Npcap（ctypes），不需要 scapy 等第三方库。
+# Windows 需另行安装 Npcap：https://npcap.com/
+
+# 可选：装 psutil 后网卡列表能显示"以太网"这类系统连接名
+psutil>=5.9
+
+# 可选：安装后 DL/T 645 报文的 DI 可显示标准数据项中文名称与单位
+# dlt645[async]>=3.2.0

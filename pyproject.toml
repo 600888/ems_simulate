@@ -109,6 +109,21 @@ select = [
 "src/create_server.py" = ["ARG", "PTH", "SIM"] # 命令行工具
 "src/log.py" = ["ARG", "PTH", "SIM"] # 根级日志模块
 
+# 独立报文解析工具：解析内核复用主项目协议代码，UI 遵循 Qt 命名约定
+"packet_analyzer/core/{common,modbus,dlt645,iec101,iec104,dnp3,dnp3_objects,mms,goose,ft12}.py" = [
+    "N802",
+    "N803",
+    "N806",
+    "PTH",
+    "ARG",
+    "SIM",
+    "UP035",
+    "UP041",
+    "I001",
+]
+"packet_analyzer/ui/**" = ["N802", "N815", "B008"] # Qt 重写方法与信号使用驼峰
+"packet_analyzer/tests/**" = ["ARG005", "PTH123", "E501", "E402"] # 测试需先改 sys.path 再导入
+
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
 force-sort-within-sections = true
