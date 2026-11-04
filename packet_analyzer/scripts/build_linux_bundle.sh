@@ -77,13 +77,24 @@ if [ "${1:-}" = "--gui" ] || [ "${PA_GUI:-0}" = "1" ]; then
         GUI_ARGS+=(--libdbus "$LIBDBUS")
     fi
 
-    # libxcb-util.so.1：Qt5.15 的 xcb 插件需要它，而 Debian ≤10 只提供 .so.0，
-    # 缺了会报 "Could not load the Qt platform plugin xcb ... even though it was found"。
-    LIBXCBTUIL="${LIBXCBTUIL:-$ROOT/build/cache/libxcb-util.so.1}"
-    if [ -f "$LIBXCBTUIL" ]; then
-        GUI_ARGS+=(--extra-libs "$LIBXCBTUIL")
+    # Qt5.15 的 xcb 插件依赖一组 xcb 扩展库，最小化安装的老系统常缺其中几个，
+    # 缺了只会报含糊的 "Could not load the Qt platform plugin xcb ... even though it was found"。
+    # 这些库都很小（10~260KB）且只依赖 libc/libxcb，随包携带最省事。
+    XCB_LIBS_DIR="${XCB_LIBS_DIR:-$ROOT/build/cache/xcb-libs}"
+    EXTRA=()
+    # 兼容旧路径：单独放的 libxcb-util.so.1
+    [ -f "$ROOT/build/cache/libxcb-util.so.1" ] && EXTRA+=("$ROOT/build/cache/libxcb-util.so.1")
+    if [ -d "$XCB_LIBS_DIR" ]; then
+        for f in "$XCB_LIBS_DIR"/*.so*; do
+            [ -f "$f" ] && EXTRA+=("$f")
+        done
+    fi
+    if [ ${#EXTRA[@]} -gt 0 ]; then
+        GUI_ARGS+=(--extra-libs "${EXTRA[@]}")
+        echo "[INFO] 随包携带 ${#EXTRA[@]} 个补充运行库"
     else
-        echo "[WARN] 缺少 $LIBXCBTUIL；Debian ≤10 上图形界面会起不来" >&2
+        echo "[WARN] 未找到 $XCB_LIBS_DIR；最小化安装的老系统可能起不来图形界面" >&2
+        echo "       先跑 scripts/templates/fetch_offline_deps.sh 备齐依赖" >&2
     fi
     echo "[STEP] 图形版：PySide2 = $(basename "$PYSIDE2_WHEEL")"
 fi

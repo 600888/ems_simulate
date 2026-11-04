@@ -48,7 +48,7 @@ fi
 
 # 预检 xcb 插件的依赖。
 # 不查的话 Qt 只会含糊地说 "Could not load the Qt platform plugin xcb ... even though it was found"，
-# 实际原因通常是缺某个 .so（老系统常见 libxcb-util.so.1）。这里直接点名缺什么。
+# 实际原因通常是缺某个 .so。这里直接点名缺什么，并给出可执行的解决路径。
 if [ -f "$XCB_PLUGIN" ] && command -v ldd >/dev/null 2>&1; then
     missing=$(ldd "$XCB_PLUGIN" 2>/dev/null | awk '/not found/{print $1}' | sort -u)
     if [ -n "$missing" ]; then
@@ -57,12 +57,18 @@ if [ -f "$XCB_PLUGIN" ] && command -v ldd >/dev/null 2>&1; then
             echo "  · $lib" >&2
         done
         echo "" >&2
-        echo "处理办法（任一）：" >&2
-        echo "  1) 用 apt 安装对应软件包（需要软件源可用），例如：" >&2
-        echo "       sudo apt-get install libxcb-util1" >&2
-        echo "  2) 把该 .so 放进包内 Qt 库目录，然后重新运行本脚本：" >&2
+        echo "处理办法（任选其一）：" >&2
+        echo "  1) 在本机查询这个库来自哪个 deb 包（联网可用）：" >&2
+        if [ -f "$DIR/tools/find_missing_lib.py" ]; then
+            echo "       $DIR/python/bin/python3 $DIR/tools/find_missing_lib.py $(echo $missing)" >&2
+        else
+            echo "       apt-file search $lib" >&2
+            echo "       # 或网页查：https://packages.debian.org/search?searchon=contents&keywords=$lib" >&2
+        fi
+        echo "  2) 装上对应软件包：sudo apt-get install <包名>" >&2
+        echo "  3) 从别的机器把该 .so 拷进包内 Qt 库目录，然后重新运行本脚本：" >&2
         echo "       $QT_LIB/" >&2
-        echo "  3) 只做报文解析/抓包（不需要图形界面）：" >&2
+        echo "  4) 只做报文解析/抓包（不需要图形界面）：" >&2
         echo "       ./pa.sh capture|replay|parse" >&2
         exit 1
     fi

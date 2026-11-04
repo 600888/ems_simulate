@@ -323,6 +323,100 @@ cp usr/lib/x86_64-linux-gnu/libxcb-util.so.1.0.0 cache/libxcb-util.so.1
 都是对插件 `ldd` 找 `not found`，别去翻 Qt 的插件搜索路径。
 `pa-gui.sh` 已经把这一步做成启动前预检，缺库时直接点名。
 
+### 4.4 「这个 .so 到底从哪个包来」——查表拿下载地址
+
+xcb 系列有十几个包，名字相近（`libxcb-util0` / `libxcb-util1` / `libxcb-util-dev`…），
+靠猜很容易下错。用附带的解析器直接查：
+
+```bash
+# 查单个（不下载），会给出包名 + 完整下载地址 + deb 内路径
+python3 scripts/templates/find_missing_lib.py libxcb-xinerama.so.0
+
+# 一次查多个
+python3 scripts/templates/find_missing_lib.py libxcb-xinerama.so.0 libxcb-util.so.1
+
+# 直接吃 ldd 的输出，自动提取所有 not found
+LD_LIBRARY_PATH=$SP/PySide2/Qt/lib ldd $SP/PySide2/Qt/plugins/platforms/libqxcb.so > /tmp/ldd.txt
+python3 scripts/templates/find_missing_lib.py --ldd-output /tmp/ldd.txt
+
+# 下载并解包出 .so（自动校验 SONAME，并报告 GLIBC 要求）
+python3 scripts/templates/find_missing_lib.py --download ./xcb-libs libxcb-xinerama.so.0
+```
+
+输出长这样：
+
+```
+  libxcb-xinerama.so.0
+    包名   : libxcb-xinerama0（Xinerama 多屏）
+    下载   : http://deb.debian.org/debian/pool/main/libx/libxcb/libxcb-xinerama0_1.14-3_amd64.deb
+    deb 内 : usr/lib/x86_64-linux-gnu/libxcb-xinerama.so.0.*
+```
+
+图形版包内自带这个工具（`tools/find_missing_lib.py` + `tools/lib-packages.tsv`），
+所以在目标机上也能直接查，用的是包内 Python：
+
+```bash
+./python/bin/python3 tools/find_missing_lib.py libxcb-xinerama.so.0
+```
+
+**不想用工具时的通用办法**（任何 .so 都适用）：
+
+| 方法 | 命令 |
+| --- | --- |
+| Debian 网页查 | <https://packages.debian.org/search?searchon=contents&keywords=libxcb-xinerama.so.0> |
+| apt-file（需联网） | `sudo apt-get install apt-file && sudo apt-file update && apt-file search libxcb-xinerama.so.0` |
+| 看已装包 | `dpkg -S libxcb-xinerama.so.0` |
+| 直接翻 pool 目录 | <http://deb.debian.org/debian/pool/main/libx/libxcb/> |
+
+**手动解包 deb 的标准三步**（不需要 root）：
+
+```bash
+ar x libxcb-xinerama0_1.14-3_amd64.deb      # 拆出 data.tar.xz
+tar xf data.tar.*                            # 解出文件树
+cp usr/lib/x86_64-linux-gnu/libxcb-xinerama.so.0.0.0  /目标/目录/libxcb-xinerama.so.0
+```
+
+注意最后一步：**要把带完整版本号的文件名改成 SONAME**（`libxcb-xinerama.so.0`），
+否则动态加载器找不到。这也是为什么别直接用 `dpkg -x` 后原样拷贝。
+
+### 4.5 干脆全部随包携带（推荐）
+
+上面这些逐一排查很费劲。`libqxcb.so` 的直接依赖里，除 glibc/X11/GL 这些系统核心库外，
+有 **15 个**是「xcb 扩展 + 键盘」类小库，总共才 **764KB**：
+
+| 库 | 包 | 体积 | GLIBC 要求 |
+| --- | --- | --- | --- |
+| libxcb-xinerama.so.0 | libxcb-xinerama0 | 15KB | 2.4 |
+| libxcb-icccm.so.4 | libxcb-icccm4 | 23KB | 2.2.5 |
+| libxcb-image.so.0 | libxcb-image0 | 19KB | 2.14 |
+| libxcb-keysyms.so.1 | libxcb-keysyms1 | 11KB | 2.2.5 |
+| libxcb-render-util.so.0 | libxcb-render-util0 | 15KB | 2.4 |
+| libxcb-util.so.1 | libxcb-util1 | 27KB | 2.8 |
+| libxcb-shape.so.0 | libxcb-shape0 | 15KB | 2.4 |
+| libxcb-xfixes.so.0 | libxcb-xfixes0 | 35KB | 2.4 |
+| libxcb-shm.so.0 | libxcb-shm0 | 15KB | 2.4 |
+| libxcb-sync.so.1 | libxcb-sync1 | 34KB | 2.14 |
+| libxcb-render.so.0 | libxcb-render0 | 55KB | 2.14 |
+| libxcb-randr.so.0 | libxcb-randr0 | 67KB | 2.4 |
+| libxcb-xkb.so.1 | libxcb-xkb1 | 115KB | 2.14 |
+| libxkbcommon.so.0 | libxkbcommon0 | 263KB | 2.17 |
+| libxkbcommon-x11.so.0 | libxkbcommon-x11-0 | 35KB | 2.17 |
+
+全部只依赖 `libc` / `libxcb.so.1`，glibc 要求最高 2.17（正好等于便携 Python 的基线），
+所以**在 Debian 8 到 11 上都能安全携带**。完整名单见
+[`scripts/templates/lib-packages.tsv`](../scripts/templates/lib-packages.tsv)。
+
+`fetch_offline_deps.sh` 会自动下齐这 15 个到 `cache/xcb-libs/`，
+`build_linux_bundle.sh --gui` 会全部打进包内 `PySide2/Qt/lib/`。
+打包日志会显示：
+
+```
+[INFO] 随包携带 15 个补充运行库
+```
+
+**不要**顺手把 `libX11.so.6`、`libxcb.so.1`、`libGL.so.1`、`libstdc++.so.6` 也带上——
+这些与系统 X 服务/驱动/编译器运行时耦合，混版本容易出更怪的问题。
+
 ---
 
 ## 5. 打包成离线包
@@ -556,7 +650,7 @@ ssh -X ess@192.168.235.144
 | `ImportError: libQt5Qml.so.5` | 裁剪时删多了 | 把 `libQt5Qml` 加回白名单 |
 | `undefined symbol: ...QIPAddressUtils...` | 混用了系统 Qt5.3 | `LD_LIBRARY_PATH` 把包内 Qt 放最前 |
 | `LIBDBUS_1_3 not defined` | 系统 dbus < 1.10 | 包内带 `libdbus-1.so.3`（见 4.2） |
-| `Could not load the Qt platform plugin "xcb" ... even though it was found` | **xcb 插件缺依赖库**，最常见是 `libxcb-util.so.1` | 见 4.3 |
+| `Could not load the Qt platform plugin "xcb" ... even though it was found` | **xcb 插件缺依赖库** | 见 4.3，用 4.4 查包名 |
 | `could not connect to display` | 没有 `DISPLAY` | 在服务器桌面跑，或 `ssh -X` |
 | `xcb plugin not found` | 缺平台插件 | 保留 `plugins/platforms/libqxcb.so` |
 | 中文全是方块 | 缺中文字体 | `sudo apt install fonts-wqy-microhei` |
@@ -672,6 +766,8 @@ scp -r myapp ess@192.168.235.144:~/apps/myapp/
 | `scripts/templates/bundle_gui_app.py` | 通用打包器（跨平台，精确写权限位） |
 | `ui/qtcompat.py` | Qt5/Qt6 兼容层（可直接拷贝） |
 | `scripts/probe_pyside2.py` | 环境探测：一次性验证某台机器上哪些 Qt 用法可用 |
+| `scripts/templates/find_missing_lib.py` | 把 `libxxx.so.N => not found` 解析成包名 + 下载地址，可批量下载解包 |
+| `scripts/templates/lib-packages.tsv` | 库名 → 包名/版本/pool 路径 对照表（15 条 xcb 相关 + 扩展位） |
 
 探测脚本的用法（换新机器时先跑它，避免靠猜）：
 

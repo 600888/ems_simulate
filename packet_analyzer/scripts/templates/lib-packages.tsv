@@ -1,0 +1,33 @@
+﻿# Debian/Ubuntu 运行库 → 软件包 对照表
+#
+# 用途：遇到 "libxxx.so.N => not found" 时，查这个表拿到包名与下载路径，
+#       不用再猜是哪个包提供的。
+#
+# 列：soname <TAB> 包名 <TAB> 版本 <TAB> pool 路径（相对 debian/pool/main/）<TAB> 说明
+#
+# 维护提示：
+#   · Debian pool 的路径前缀规则是「源包名前 4 个字符」——libxcb → libx/libxcb，
+#     xcb-util → x/xcb-util。写错就 404。
+#   · 版本会随 Debian 发版更新，旧版本可能从 pool 移除；若 404，去
+#     http://deb.debian.org/debian/pool/main/<路径>/ 列目录换一个版本。
+#   · 这里刻意选 glibc 要求低的版本（多为 GLIBC_2.2.5/2.4），
+#     这样在 Debian 8 (glibc 2.19) 上也能用。
+
+# ---- Qt5 的 xcb 平台插件直接依赖的扩展库（体积都在 10~30KB，可安全随包携带）----
+libxcb-xinerama.so.0	libxcb-xinerama0	1.14-3	libx/libxcb	Xinerama 多屏
+libxcb-icccm.so.4	libxcb-icccm4	0.4.1-1.1	x/xcb-util-wm	窗口管理器协议
+libxcb-image.so.0	libxcb-image0	0.4.0-1+b3	x/xcb-util-image	图像格式转换
+libxcb-keysyms.so.1	libxcb-keysyms1	0.4.0-1+b2	x/xcb-util-keysyms	键码转换
+libxcb-render-util.so.0	libxcb-render-util0	0.3.9-1+b1	x/xcb-util-renderutil	渲染工具
+libxcb-util.so.1	libxcb-util1	0.4.0-1+b1	x/xcb-util	原子操作辅助
+libxcb-shape.so.0	libxcb-shape0	1.14-3	libx/libxcb	窗口形状
+libxcb-xfixes.so.0	libxcb-xfixes0	1.14-3	libx/libxcb	光标/区域修复
+libxcb-shm.so.0	libxcb-shm0	1.14-3	libx/libxcb	共享内存
+libxcb-sync.so.1	libxcb-sync1	1.14-3	libx/libxcb	同步
+libxcb-render.so.0	libxcb-render0	1.14-3	libx/libxcb	渲染
+libxcb-randr.so.0	libxcb-randr0	1.14-3	libx/libxcb	分辨率/旋转
+libxcb-xkb.so.1	libxcb-xkb1	1.14-3	libx/libxcb	键盘扩展
+
+# ---- 其它常见缺失 ----
+libxkbcommon.so.0	libxkbcommon0	1.0.3-2	libx/libxkbcommon	键盘映射（Qt 必需）
+libxkbcommon-x11.so.0	libxkbcommon-x11-0	1.0.3-2	libx/libxkbcommon	键盘映射 X11 后端

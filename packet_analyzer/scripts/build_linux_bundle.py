@@ -37,6 +37,9 @@ GUI_PACKAGE_DIRS = ("ui",)
 ROOT_FILES = ("pa.sh", "install.sh", "pa-gui.sh")
 EXECUTABLES = {"pa.sh", "install.sh", "pa-gui.sh"}
 EXTRA_FILES = {"docs/README-linux.md": "README-linux.md"}
+# 查缺失库的工具：图形版才需要，放进包内 tools/ 供目标机现场排查
+TOOL_FILES = {"scripts/templates/find_missing_lib.py": "tools/find_missing_lib.py",
+              "scripts/templates/lib-packages.tsv": "tools/lib-packages.tsv"}
 
 # -- Qt5(PySide2) 裁剪名单 -------------------------------------------------
 # 只保留界面真正用到的三个模块。整包 446MB 里 362MB 是 Qt 库，
@@ -284,6 +287,15 @@ def build(
             if source.is_file():
                 _add_file(archive, source, f"packet-analyzer/{target_name}", FILE_MODE)
                 total += 1
+
+        if qt5_wheels:
+            for source_name, target_name in TOOL_FILES.items():
+                source = package_dir / source_name
+                if source.is_file():
+                    mode = EXEC_MODE if target_name.endswith(".py") else FILE_MODE
+                    _add_file(archive, source, f"packet-analyzer/{target_name}", mode)
+                    total += 1
+            print("       附带 tools/find_missing_lib.py（现场查缺失库用）")
 
         print("[STEP] 并入便携 Python（保留原始权限位）")
         if not cache.is_file():

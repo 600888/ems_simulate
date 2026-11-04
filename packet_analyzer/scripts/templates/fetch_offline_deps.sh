@@ -15,7 +15,10 @@ set -euo pipefail
 
 # 默认放在「当前工作目录/cache」，可用 CACHE_DIR 覆盖。
 # 不默认放在脚本旁边，避免污染源码树。
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 CACHE_DIR="${CACHE_DIR:-$(pwd)/cache}"
+# 用本机 python3 跑 find_missing_lib.py（纯标准库，3.8+ 即可）
+PY_BIN="${PY_BIN:-$(command -v python3 || command -v python)}"
 PY_VER="${PY_VER:-3.10}"          # 3.10 / 3.11 / 3.12 都可以；3.9 及以下不行
 PBS_TAG="${PBS_TAG:-20240726}"    # python-build-standalone 的发布标签
 WANT_QT=1
@@ -139,33 +142,19 @@ if [ "$WANT_QT" = "1" ]; then
         fi
     fi
 
-    # ------------------------------------------------------------ 4. libxcb-util
-    # Qt5.15 的 xcb 插件要 libxcb-util.so.1，而 Debian ≤10 只给 .so.0（包名 libxcb-util0）。
-    # 缺了会报 "Could not load the Qt platform plugin xcb ... even though it was found"。
-    # 这个库只有 27KB，直接带进包里最省事。
-    if [ -s "libxcb-util.so.1" ]; then
-        say "已存在 libxcb-util.so.1，跳过"
+    # ------------------------------------------------- 4. xcb 扩展库（Qt5 平台插件依赖）
+    # libqxcb.so 直接依赖 14 个 xcb/键盘相关库。最小化安装的老系统常缺其中几个，
+    # 而 Qt 只会报 "Could not load the Qt platform plugin xcb ... even though it was found"，
+    # 完全不说是哪个库缺了。这些库总共才 760KB，全部随包携带。
+    #
+    # 名单与下载地址见 lib-packages.tsv，用 find_missing_lib.py 解析。
+    say "准备 xcb 扩展库"
+    if [ -d xcb-libs ] && [ "$(ls -1 xcb-libs 2>/dev/null | wc -l)" -ge 14 ]; then
+        say "  已存在 xcb-libs/（$(ls -1 xcb-libs | wc -l) 个），跳过"
     else
-        say "下载 libxcb-util1"
-        deb="libxcb-util1_0.4.0-1+b1_amd64.deb"
-        if curl -fSL --max-time 600 -o "$deb" "http://deb.debian.org/debian/pool/main/x/xcb-util/$deb"; then
-            here=$(pwd)
-            tmp=$(mktemp -d)
-            if (cd "$tmp" && ar x "$here/$deb" && tar xf data.tar.* 2>/dev/null); then
-                found=$(find "$tmp" -name "libxcb-util.so.1.*" | head -1)
-                if [ -n "$found" ]; then
-                    # 统一改名为 SONAME，打包器会据此写进 Qt 库目录
-                    cp "$found" libxcb-util.so.1
-                    say "  $(du -h libxcb-util.so.1 | cut -f1)"
-                else
-                    say "  未找到库文件，请手动解压 deb"
-                fi
-            fi
-            rm -rf "$tmp" "$deb"
-        else
-            say "  libxcb-util 下载失败；Debian ≤10 的图形界面会启动失败"
-            rm -f "$deb"
-        fi
+        names=$(grep -v '^#' "$SCRIPT_DIR/lib-packages.tsv" | awk -F'\t' 'NF>=4{print $1}')
+        # shellcheck disable=SC2086
+        "$PY_BIN" "$SCRIPT_DIR/find_missing_lib.py" --download xcb-libs $names 2>&1 | sed 's/^/  /'
     fi
 fi
 

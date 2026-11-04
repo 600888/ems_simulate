@@ -226,7 +226,8 @@ if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && [ -z "$QT_QPA_PLATFORM" ]; 
 fi
 
 # 预检 xcb 插件依赖：Qt 只会含糊地说 "plugin xcb ... even though it was found"，
-# 实际原因通常是缺某个 .so（老系统常见 libxcb-util.so.1）。
+# 实际原因通常是缺某个 .so（老系统常见 libxcb-util.so.1 / libxcb-xinerama.so.0）。
+# 直接点名缺什么，省得用户去翻 Qt 插件搜索路径。
 XCB_PLUGIN="$SP/PySide2/Qt/plugins/platforms/libqxcb.so"
 if [ -f "$XCB_PLUGIN" ] && command -v ldd >/dev/null 2>&1; then
     missing=$(ldd "$XCB_PLUGIN" 2>/dev/null | awk '/not found/{print $1}' | sort -u)
@@ -235,7 +236,8 @@ if [ -f "$XCB_PLUGIN" ] && command -v ldd >/dev/null 2>&1; then
         for lib in $missing; do echo "  · $lib" >&2; done
         echo "" >&2
         echo "处理办法：把对应 .so 放进 $SP/PySide2/Qt/lib/ 后重试，" >&2
-        echo "         或 apt-get install 对应软件包（如 libxcb-util1）。" >&2
+        echo "         或 apt-get install 对应软件包。" >&2
+        echo "  查包名：https://packages.debian.org/search?searchon=contents" >&2
         exit 1
     fi
 fi
