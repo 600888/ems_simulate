@@ -13,15 +13,17 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
-from PySide6.QtCore import QSettings  # noqa: E402
-from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
-
 from packet_analyzer.core import registry  # noqa: E402
 from packet_analyzer.core.capture import CaptureConfig  # noqa: E402
 from packet_analyzer.core.pcap import PcapConfig  # noqa: E402
 from packet_analyzer.main import build_application  # noqa: E402
 from packet_analyzer.ui.dialogs import CaptureDialog, ImportDialog, normalize_hex  # noqa: E402
 from packet_analyzer.ui.main_window import MainWindow  # noqa: E402
+from packet_analyzer.ui.qtcompat import (  # noqa: E402
+    QApplication,
+    QMessageBox,
+    QSettings,  # noqa: E402
+)
 
 failures: list[str] = []
 QSettings("EMS", "PacketAnalyzer").clear()

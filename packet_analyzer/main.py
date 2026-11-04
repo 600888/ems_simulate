@@ -16,13 +16,11 @@ import sys
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from PySide6.QtGui import QFont  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
-
 from packet_analyzer import APP_NAME, APP_VERSION  # noqa: E402
 from packet_analyzer.core import registry  # noqa: E402
-from packet_analyzer.ui import theme  # noqa: E402
+from packet_analyzer.ui import qtcompat, theme  # noqa: E402
 from packet_analyzer.ui.main_window import MainWindow, samples_path  # noqa: E402
+from packet_analyzer.ui.qtcompat import QApplication, QFont  # noqa: E402
 
 DEMO_FRAMES = [
     ("goose", "request", registry.ROLE_REQUEST),
@@ -203,6 +201,8 @@ def build_application(argv: list[str]) -> tuple[QApplication, argparse.Namespace
     )
     args, qt_args = parser.parse_known_args(argv)
 
+    # Qt5 必须显式开启高 DPI；Qt6 默认已开，此行是空操作
+    qtcompat.enable_high_dpi()
     app = QApplication([sys.argv[0], *qt_args])
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(APP_VERSION)
@@ -232,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
         app.processEvents()
         window.grab().save(args.screenshot)
         return 0
-    return app.exec()
+    return qtcompat.run_app(app)
 
 
 if __name__ == "__main__":

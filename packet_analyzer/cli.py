@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import csv
 from datetime import datetime
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -43,6 +44,14 @@ from .core.pcap import (
     _flow_key,
     describe_bpf,
     infer_role,
+)
+
+# 可选依赖：(模块名, 用途, 缺失是否算失败)
+# pydnp3_pure 缺失会让 DNP3 解析不出对象（功能缺失）；
+# dlt645 缺失只是 DI 没有中文名（显示降级）。
+OPTIONAL_DEPENDENCIES = (
+    ("pydnp3_pure", "DNP3 对象解析", True),
+    ("dlt645", "DL/T645 数据项中文名称", False),
 )
 
 # 每行一条的紧凑输出（现场盯流量时比表格实用）
@@ -429,12 +438,29 @@ def cmd_selftest(_args: argparse.Namespace) -> int:
             try:
                 detail = registry.parse_frame(raw, key, role=field)
                 summary = str(detail.get("summary") or "")
+                # 只把"解析失败"算问题；数据不完整之类的警告照常展示但不判失败，
+                # 否则样例里故意截断的帧会让自检永远红着。
                 ok = bool(summary) and "错误" not in summary
                 print(f"[{'OK  ' if ok else 'FAIL'}] {key:<10} {field:<8} {len(raw):>3}B  {summary}")
+                for warning in detail.get("warnings") or []:
+                    print(f"       警告：{warning}")
                 failures += 0 if ok else 1
             except Exception as exc:  # noqa: BLE001 - 自检要覆盖所有样例
                 print(f"[FAIL] {key:<10} {field:<8} 解析异常：{exc}")
                 failures += 1
+
+    # 可选依赖单独检查：缺 pydnp3_pure 会让 DNP3 只剩帧头、解析不出对象，
+    # 这种"功能缺失"必须报错；缺 dlt645 只是数据项没中文名，提示即可。
+    environment_failures = 0
+    for module, purpose, required in OPTIONAL_DEPENDENCIES:
+        present = importlib.util.find_spec(module) is not None
+        if present:
+            print(f"[OK  ] 可选依赖 {module:<12} {purpose}")
+        elif required:
+            print(f"[FAIL] 可选依赖 {module:<12} 缺失 → {purpose}不可用，请检查分发包是否完整")
+            environment_failures += 1
+        else:
+            print(f"[WARN] 可选依赖 {module:<12} 缺失 → {purpose}（不影响解析）")
 
     available, reason = capture_available()
     interfaces = list_interfaces()
@@ -443,8 +469,19 @@ def cmd_selftest(_args: argparse.Namespace) -> int:
     print(f"       可抓包网卡 {len(interfaces)} 块：" + ", ".join(item.name for item in interfaces[:8]))
     print()
     print(f"Python {sys.version.split()[0]} / {sys.platform}")
-    print("自检通过" if failures == 0 else f"自检失败：{failures}/{total} 帧解析异常")
-    return 0 if failures == 0 else 1
+    try:
+        from .ui import qtcompat
+
+        print(f"图形界面：{qtcompat.platform_note()}")
+    except ImportError:
+        print("图形界面：不可用（未安装 Qt 绑定，命令行功能不受影响）")
+
+    total_failures = failures + environment_failures
+    if total_failures:
+        print(f"自检失败：{failures} 帧解析异常，{environment_failures} 项依赖缺失")
+        return 1
+    print("自检通过")
+    return 0
 
 
 # -- 入口 ----------------------------------------------------------------

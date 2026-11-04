@@ -4,19 +4,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
+from . import theme
+from .qtcompat import (
     QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QScrollArea,
+    Qt,
     QVBoxLayout,
     QWidget,
 )
-
-from . import theme
 from .widgets import ByteStrip, FieldTable, InfoGrid, NoticeList, ObjectTree, Pill, SectionHeader, ValidationList
 
 ROLE_LABELS = {

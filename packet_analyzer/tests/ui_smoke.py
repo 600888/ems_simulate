@@ -15,12 +15,15 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
-from PySide6.QtCore import QSettings  # noqa: E402
-from PySide6.QtWidgets import QLabel, QTableWidget, QTreeWidget  # noqa: E402
-
 from packet_analyzer.main import DEMO_FRAMES, build_application  # noqa: E402
 from packet_analyzer.ui.detail_view import DetailPanel  # noqa: E402
 from packet_analyzer.ui.main_window import MainWindow  # noqa: E402
+from packet_analyzer.ui.qtcompat import (  # noqa: E402
+    QLabel,
+    QSettings,  # noqa: E402
+    QTableWidget,
+    QTreeWidget,
+)
 
 failures: list[str] = []
 QSettings("EMS", "PacketAnalyzer").clear()

@@ -37,6 +37,18 @@ if [ -z "$PY_BIN" ]; then
     exit 1
 fi
 
+# 本地 site-packages：用于把 pydnp3_pure 这类纯 Python 可选依赖并入包内
+SITE_PACKAGES=""
+for candidate in "$ROOT/.venv/Lib/site-packages" "$ROOT/.venv/lib/python3.10/site-packages" "$ROOT/.venv/lib/python3.11/site-packages"; do
+    if [ -d "$candidate" ]; then
+        SITE_PACKAGES="$candidate"
+        break
+    fi
+done
+if [ -z "$SITE_PACKAGES" ]; then
+    echo "[WARN] 未找到 .venv/site-packages，DNP3 对象解析会降级（缺 pydnp3_pure）" >&2
+fi
+
 mkdir -p "$OUT" "$(dirname "$PY_CACHE")"
 
 if [ ! -f "$PY_CACHE" ]; then
@@ -47,9 +59,34 @@ else
     echo "[STEP] 使用缓存的便携 Python：$PY_CACHE"
 fi
 
+# --gui：额外打包 PySide2(Qt5)，给装不了 Qt6 的老系统出图形版
+GUI_ARGS=()
+if [ "${1:-}" = "--gui" ] || [ "${PA_GUI:-0}" = "1" ]; then
+    WHEEL_DIR="${WHEEL_DIR:-$ROOT/build/cache/wheels}"
+    LIBDBUS="${LIBDBUS:-$ROOT/build/cache/libdbus-1.so.3}"
+    PYSIDE2_WHEEL=$(ls "$WHEEL_DIR"/PySide2-*.whl 2>/dev/null | head -1 || true)
+    SHIBOKEN_WHEEL=$(ls "$WHEEL_DIR"/shiboken2-*.whl 2>/dev/null | head -1 || true)
+    if [ -z "$PYSIDE2_WHEEL" ] || [ -z "$SHIBOKEN_WHEEL" ]; then
+        echo "错误：$WHEEL_DIR 下缺少 PySide2/shiboken2 的 manylinux wheel" >&2
+        echo "  参考 README-linux.md「图形界面」一节的下载说明" >&2
+        exit 1
+    fi
+    ARCHIVE="$OUT/packet-analyzer-linux-x86_64-gui.tar.gz"
+    GUI_ARGS=(--qt5-wheels "$SHIBOKEN_WHEEL" "$PYSIDE2_WHEEL" --gui)
+    if [ -f "$LIBDBUS" ]; then
+        GUI_ARGS+=(--libdbus "$LIBDBUS")
+    fi
+    echo "[STEP] 图形版：PySide2 = $(basename "$PYSIDE2_WHEEL")"
+fi
+
 "$PY_BIN" "$PKG/scripts/build_linux_bundle.py" \
     --package-dir "$PKG" \
     --cache "$PY_CACHE" \
-    --output "$ARCHIVE"
+    --output "$ARCHIVE" \
+    ${SITE_PACKAGES:+--site-packages "$SITE_PACKAGES"} \
+    "${GUI_ARGS[@]}"
 
-echo "[INFO] 部署：scp 到目标机后 tar xzf，然后 ./packet-analyzer/install.sh"
+echo "[INFO] 部署：scp 到目标机后 tar xzf，然后 ./install.sh"
+if [ ${#GUI_ARGS[@]} -gt 0 ]; then
+    echo "[INFO] 图形版启动：./pa-gui.sh（命令行仍用 ./pa.sh）"
+fi

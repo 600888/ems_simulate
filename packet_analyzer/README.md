@@ -1,13 +1,18 @@
-# 电力协议报文解析器（独立 PySide6 工具）
+# 电力协议报文解析器（独立 Qt 工具）
 
 从 EMS Simulate 中抽出的报文解析能力，做成**不依赖主项目运行环境**的桌面工具：
 同一套字段级解析内核，重写成 Qt 桌面界面，同时补上离线导入与 TCP 实时抓包。
+
+界面默认用 PySide6（Qt 6）；老系统可用 PySide2（Qt 5.15）跑同一份代码，
+差异集中在 `ui/qtcompat.py`。
 
 ```
 packet_analyzer/
 ├── main.py                # 图形版入口（含 --demo / --selftest / --screenshot）
 ├── cli.py                 # 命令行版入口（无 Qt，可在无图形环境运行）
-├── pa.sh / install.sh     # Linux 命令行版启动与自检脚本
+├── pa.sh                  # Linux 命令行版启动脚本
+├── pa-gui.sh              # Linux 图形版启动（自动优先包内 Qt5）
+├── install.sh             # 部署自检
 ├── scripts/
 │   ├── build_linux_bundle.sh   # 生成 Linux 离线部署包
 │   └── build_linux_bundle.py   # 打包实现（精确写入权限位）
@@ -28,7 +33,8 @@ packet_analyzer/
 │   ├── common.py          # 解析结果通用结构
 │   ├── dnp3_objects.py    # DNP3 G52 补充对象组（自包含）
 │   └── modbus.py / dlt645.py / iec104.py / iec101.py / dnp3.py / mms.py / goose.py / ft12.py
-├── ui/                    # PySide6 界面
+├── ui/                    # 界面（PySide6 / PySide2 通用）
+│   ├── qtcompat.py        # Qt5/Qt6 兼容层：绑定差异只在这里处理
 │   ├── main_window.py     # 主窗口：工具栏、列表、详情、菜单
 │   ├── detail_view.py     # 详情面板：概要 / 字节 / 字段 / 对象 / 校验
 │   ├── widgets.py         # 字节高亮、字段表、对象树、状态标签
@@ -96,28 +102,32 @@ Linux 需 `libpcap`（如 `apt install libpcap0.8`）；macOS 自带。
 
 可选：装 `psutil` 后网卡列表能显示"以太网"这类系统连接名（不装则显示硬件型号）。
 
-### 老 Linux 服务器（无图形 / glibc 太老）
+### 老 Linux 服务器（glibc 2.19 这类老系统）
 
-图形版依赖 Qt 6，要求 **glibc ≥ 2.28**；Debian 8 / glibc 2.19 这类老系统装不上。
-这种情况用**命令行版**：核心解析代码完全相同（`core/` 不含 Qt），另外提供一套 CLI。
+图形版默认用 PySide6（Qt 6，要求 **glibc ≥ 2.28**）。更老的系统（Debian 8 / glibc 2.19）
+可以走 **PySide2（Qt 5.15）**：界面代码通过 `ui/qtcompat.py` 同时兼容两版，不用维护两套。
 
 ```bash
-# 1. 打包（在开发机上，产物约 26MB，内含便携 CPython 3.10）
-bash packet_analyzer/scripts/build_linux_bundle.sh
-#   → build/linux/packet-analyzer-linux-x86_64.tar.gz
+# 1. 打包（在开发机上）
+bash packet_analyzer/scripts/build_linux_bundle.sh          # 命令行版，约 26MB
+bash packet_analyzer/scripts/build_linux_bundle.sh --gui     # 图形版，约 59MB
 
 # 2. 传到服务器并解压（不需要 root，不动系统 Python）
-scp build/linux/packet-analyzer-linux-x86_64.tar.gz ess@<服务器>:~/
+scp build/linux/packet-analyzer-linux-x86_64-gui.tar.gz ess@<服务器>:~/
 ssh ess@<服务器>
-tar xzf packet-analyzer-linux-x86_64.tar.gz && cd packet-analyzer
+tar xzf packet-analyzer-linux-x86_64-gui.tar.gz && cd packet-analyzer
 ./install.sh          # 自检 + 权限检查
 
 # 3. 使用
-./pa.sh ifaces
+./pa-gui.sh                                       # 图形界面
+./pa.sh ifaces                                    # 命令行
 sudo ./pa.sh capture --iface eth0 --ip 192.168.1.10 --duration 60 --log run.pcap
 ./pa.sh replay run.pcap --protocol modbus_tcp
 ./pa.sh parse 000100000006010300000009
 ```
+
+Qt5 与 Qt6 的差异（`QAction` 归属模块、`QApplication.exec_()`）只在 `ui/qtcompat.py` 里处理一次，
+界面代码仍用 Qt6 风格的全限定枚举。
 
 便携 Python 来自 python-build-standalone（面向 glibc 2.17+ 构建），解压即用。
 详见 [docs/README-linux.md](docs/README-linux.md)。

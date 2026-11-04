@@ -6,14 +6,20 @@ import ipaddress
 from pathlib import Path
 import re
 
-from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (
+from ..core import registry
+from ..core.capture import CaptureConfig
+from ..core.ifaces import capture_available, capture_runtime_info, list_interfaces
+from ..core.pcap import PcapConfig, describe_bpf
+from ..core.pcapfile import default_log_dir
+from . import theme
+from .qtcompat import (
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
     QFileDialog,
+    QFont,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -28,13 +34,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-from ..core import registry
-from ..core.capture import CaptureConfig
-from ..core.ifaces import capture_available, capture_runtime_info, list_interfaces
-from ..core.pcap import PcapConfig, describe_bpf
-from ..core.pcapfile import default_log_dir
-from . import theme
 
 
 def protocol_combo(current: str = registry.AUTO) -> QComboBox:

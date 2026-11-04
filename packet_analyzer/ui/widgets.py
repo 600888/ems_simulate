@@ -4,25 +4,26 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QFont
-from PySide6.QtWidgets import (
+from . import theme
+from .qtcompat import (
     QAbstractItemView,
+    QColor,
+    QFont,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QSizePolicy,
+    Qt,
     QTableWidget,
     QTableWidgetItem,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
+    Signal,
 )
-
-from . import theme
 
 
 def _item(text: str, *, mono: bool = False, color: str | None = None, align_center: bool = False):

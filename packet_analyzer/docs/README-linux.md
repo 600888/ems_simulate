@@ -106,20 +106,65 @@ sudo ./pa.sh capture --iface eth0 --port 502 --protocol modbus_tcp \
 scp -r packet_analyzer ess@192.168.235.144:~/packet-analyzer/
 ```
 
-## 八、图形界面
+## 八、图形界面（Qt5 / PySide2）
 
-若必须在这台机器上用图形版，前提是 Qt5 路线（PySide2）。已确认该机具备条件：
+Qt6（PySide6）要求 glibc ≥ 2.28，本类机器只有 2.19，因此图形版走 **PySide2 / Qt 5.15** 路线。
+同一份界面代码通过 `ui/qtcompat.py` 同时兼容 Qt5 与 Qt6，不需要两套代码。
 
-- glibc 2.19 ≥ PySide2 wheel 要求的 2.17
-- libstdc++ 到 GLIBCXX_3.4.24（Qt5.15 需要 3.4.21）
-- X11 相关库齐全，且 `ess` 用户在 `:0` 有桌面会话
-- 中文字体（文泉驿）已安装
+### 8.1 打包（在开发机上）
 
-代价：需要把 UI 代码从 Qt6 降到 Qt5（`QAction` 在 Qt5 属于 `QtWidgets`、部分枚举写法不同），
-并额外带约 160MB 的 PySide2 wheel。目前**未实施**——如果确实需要，可以作为下一步。
+```bash
+# 1) 准备 PySide2 与 shiboken2 的 manylinux wheel（约 158MB）
+mkdir -p build/cache/wheels
+pip download --only-binary=:all: --platform manylinux1_x86_64 \
+    --python-version 310 --implementation cp --abi abi3 \
+    -d build/cache/wheels "PySide2==5.15.2.1" "shiboken2==5.15.2.1"
+
+# 2) libdbus：目标机自带 1.8，Qt5.15 需要 >= 1.10，单独取一份较新的
+#    （Debian 包里的 .so 即可，放进 build/cache/libdbus-1.so.3）
+
+# 3) 出图形包（产物约 59MB，内含便携 Python + 裁剪后的 Qt5）
+bash packet_analyzer/scripts/build_linux_bundle.sh --gui
+#   → build/linux/packet-analyzer-linux-x86_64-gui.tar.gz
+```
+
+### 8.2 部署与运行
+
+```bash
+tar xzf packet-analyzer-linux-x86_64-gui.tar.gz && cd packet-analyzer
+./pa-gui.sh                      # 打开图形界面
+./pa-gui.sh --demo               # 带样例报文，便于快速确认渲染是否正常
+```
+
+`pa-gui.sh` 会自动：
+
+- 把**包内** Qt5 加入 `LD_LIBRARY_PATH`（必须优先于系统 Qt，否则符号不匹配）
+- 补好 `PYTHONPATH`
+- 检测无 DISPLAY 时给出提示而不是抛 xcb 错误
+
+命令行功能仍在 `./pa.sh`，两者共用同一套解析代码。
+
+### 8.3 为什么带 59MB 而不是 400MB+
+
+原始 PySide2 安装后 446MB，其中 362MB 是 Qt 库。工具只用 QtCore/QtGui/QtWidgets，
+打包器按白名单裁剪（见 `scripts/build_linux_bundle.py` 的 `QT_LIB_KEEP_PREFIXES`），
+保留必要的 `libQt5Qml`（Qt5Core 依赖）、`libQt5Network`（系统自带的是 5.3，必须用包内 5.15）、
+xcb/offscreen 平台插件与图像插件，最终约 167MB，压缩后 59MB。
+
+### 8.4 现场验证结果（192.168.235.144）
+
+| 项目 | 结果 |
+| --- | --- |
+| 绑定识别 | `PySide2 (Qt 5.15.2) on linux` |
+| `--selftest` | 通过（16 组样例帧 + 抓包能力） |
+| 离屏渲染自检 | 0 失败（含对象树、字节高亮、像素抽样） |
+| 交互流程自检 | 0 失败（导入、过滤、抓包参数、日志、回放） |
+| 真实 X 显示 | 在 `:0` 成功开窗并截图（1440×823） |
+| 已知依赖 | 系统 libdbus 1.8 太旧 → 包内自带 1.12.28 |
 
 ## 九、已知限制
 
+- 图形版**没有**隐藏的系统依赖，但要求目标机有 X11（本地桌面或 `ssh -X`）；纯字符界面下请用 `pa.sh`
 - 命令行为单条流式输出，没有图形版的详情面板与字节高亮；字段级信息用 `parse --json` 或 `replay --json` 取
 - 不做 TCP 应用层会话重放（只做链路帧 → 应用帧的分解）
 - GOOSE 只在无 IP 过滤时抓取（二层帧没有 IP 可言）

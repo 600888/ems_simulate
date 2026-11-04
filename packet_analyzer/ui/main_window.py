@@ -8,33 +8,6 @@ import json
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import QObject, QSettings, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QDesktopServices, QIcon
-from PySide6.QtWidgets import (
-    QAbstractItemView,
-    QApplication,
-    QCheckBox,
-    QComboBox,
-    QFileDialog,
-    QFrame,
-    QHBoxLayout,
-    QHeaderView,
-    QLabel,
-    QLineEdit,
-    QMainWindow,
-    QMenu,
-    QMessageBox,
-    QSizePolicy,
-    QSplitter,
-    QStatusBar,
-    QStyle,
-    QTableView,
-    QToolBar,
-    QToolButton,
-    QVBoxLayout,
-    QWidget,
-)
-
 from .. import APP_NAME, APP_VERSION
 from ..core import registry
 from ..core.capture import CaptureConfig, CaptureEngine
@@ -47,6 +20,40 @@ from . import theme
 from .detail_view import DetailPanel
 from .dialogs import CaptureDialog, ImportDialog, SendDialog
 from .message_model import MessageTableModel
+from .qtcompat import (
+    QAbstractItemView,
+    QAction,
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDesktopServices,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QIcon,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QObject,
+    QSettings,
+    QSize,
+    QSizePolicy,
+    QSplitter,
+    QStatusBar,
+    QStyle,
+    Qt,
+    QTableView,
+    QTimer,
+    QToolBar,
+    QToolButton,
+    QUrl,
+    QVBoxLayout,
+    QWidget,
+    Signal,
+)
 
 SETTINGS_ORG = "EMS"
 SETTINGS_APP = "PacketAnalyzer"

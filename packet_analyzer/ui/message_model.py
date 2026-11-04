@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
-from PySide6.QtGui import QColor, QFont
-
 from ..core import registry
 from ..core.store import FrameRecord, MessageStore
 from . import theme
+from .qtcompat import QAbstractTableModel, QColor, QFont, QModelIndex, Qt
 
 
 class MessageTableModel(QAbstractTableModel):
