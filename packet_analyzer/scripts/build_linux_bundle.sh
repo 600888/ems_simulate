@@ -76,6 +76,15 @@ if [ "${1:-}" = "--gui" ] || [ "${PA_GUI:-0}" = "1" ]; then
     if [ -f "$LIBDBUS" ]; then
         GUI_ARGS+=(--libdbus "$LIBDBUS")
     fi
+
+    # libxcb-util.so.1：Qt5.15 的 xcb 插件需要它，而 Debian ≤10 只提供 .so.0，
+    # 缺了会报 "Could not load the Qt platform plugin xcb ... even though it was found"。
+    LIBXCBTUIL="${LIBXCBTUIL:-$ROOT/build/cache/libxcb-util.so.1}"
+    if [ -f "$LIBXCBTUIL" ]; then
+        GUI_ARGS+=(--extra-libs "$LIBXCBTUIL")
+    else
+        echo "[WARN] 缺少 $LIBXCBTUIL；Debian ≤10 上图形界面会起不来" >&2
+    fi
     echo "[STEP] 图形版：PySide2 = $(basename "$PYSIDE2_WHEEL")"
 fi
 

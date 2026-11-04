@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import io
 from pathlib import Path
+import re
 import shutil
 import sys
 import tarfile
@@ -211,6 +212,19 @@ def _add_python(archive: tarfile.TarFile, cache: Path, prefix: str) -> int:
     return count
 
 
+def _lib_names(filename: str) -> list[str]:
+    """由带完整版本号的库名推出它可能被引用的名字。
+
+    libxcb-util.so.1.0.0 -> ["libxcb-util.so.1.0.0", "libxcb-util.so.1"]
+    动态加载器按 SONAME 查找，缓存文件名常常带三段版本号，两个都要有。
+    """
+    names = [filename]
+    stem = re.match(r"^(lib[^.]+\.so\.\d+)", filename)
+    if stem and stem.group(1) != filename:
+        names.append(stem.group(1))
+    return names
+
+
 # 纯 Python 的可选依赖：打进包内 site-packages，避免运行时缺模块导致功能降级
 VENDOR_PACKAGES = ("pydnp3_pure",)
 
@@ -224,6 +238,7 @@ def build(
     vendor: tuple[str, ...] = (),
     qt5_wheels: tuple[Path, ...] = (),
     libdbus: Path | None = None,
+    extra_libs: tuple[Path, ...] = (),
 ) -> int:
     staging_root = output.parent / "packet-analyzer"
     if staging_root.exists():
@@ -306,6 +321,20 @@ def build(
                 print(f"       并入 libdbus：{libdbus.name}")
             else:
                 print("       警告：未提供 libdbus，目标机若 dbus 过旧会导致 xcb 启动失败")
+
+        if extra_libs:
+            print("[STEP] 并入补充运行库")
+            lib_dir = f"{SITE_PACKAGES_PREFIX}/PySide2/Qt/lib"
+            for lib in extra_libs:
+                if not lib.is_file():
+                    print(f"       跳过 {lib.name}（不存在）")
+                    continue
+                data = lib.read_bytes()
+                # 目标机可能按 SONAME 找库，而缓存文件名带完整版本号，
+                # 两个名字都写一份，省得再纠结软链接。
+                for name in _lib_names(lib.name):
+                    _add_bytes(archive, f"{lib_dir}/{name}", data, FILE_MODE)
+                print(f"       {lib.name} -> {', '.join(_lib_names(lib.name))}")
     return total
 
 
@@ -333,6 +362,12 @@ def main() -> int:
     )
     parser.add_argument("--libdbus", default="", help="较新的 libdbus-1.so.3（Qt5.15 需要 >=1.10）")
     parser.add_argument(
+        "--extra-libs",
+        nargs="*",
+        default=[],
+        help="目标机可能缺失的运行库（如 libxcb-util.so.1），统一放进包内 Qt 库目录",
+    )
+    parser.add_argument(
         "--gui",
         action="store_true",
         help="同时包含图形界面启动脚本（需要 --qt5-wheels）",
@@ -347,6 +382,7 @@ def main() -> int:
     site_packages = Path(args.site_packages).resolve() if args.site_packages else None
     qt5_wheels = tuple(Path(item).resolve() for item in (args.qt5_wheels or []))
     libdbus = Path(args.libdbus).resolve() if args.libdbus else None
+    extra_libs = tuple(Path(item).resolve() for item in (args.extra_libs or []))
     started = time.time()
     count = build(
         package_dir,
@@ -356,6 +392,7 @@ def main() -> int:
         vendor=tuple(args.vendor or ()),
         qt5_wheels=qt5_wheels,
         libdbus=libdbus,
+        extra_libs=extra_libs,
     )
     if count == 0 and not output.exists():
         return 1

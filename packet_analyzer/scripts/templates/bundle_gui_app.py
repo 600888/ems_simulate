@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import io
 from pathlib import Path
+import re
 import shutil
 import sys
 import tarfile
@@ -156,6 +157,15 @@ def _keep_qt(name: str) -> bool:
     return False
 
 
+def _lib_names(filename: str) -> list[str]:
+    """带版本号的库名同时产出 SONAME 形式（libx.so.1.0.0 -> 也写 libx.so.1）。"""
+    names = [filename]
+    stem = re.match(r"^(lib[^.]+\.so\.\d+)", filename)
+    if stem and stem.group(1) != filename:
+        names.append(stem.group(1))
+    return names
+
+
 def _add_wheel(archive: tarfile.TarFile, wheel: Path, prefix: str, keep=None) -> tuple[int, int]:
     added = skipped = 0
     with zipfile.ZipFile(wheel) as zf:
@@ -215,6 +225,21 @@ if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && [ -z "$QT_QPA_PLATFORM" ]; 
     exit 1
 fi
 
+# 预检 xcb 插件依赖：Qt 只会含糊地说 "plugin xcb ... even though it was found"，
+# 实际原因通常是缺某个 .so（老系统常见 libxcb-util.so.1）。
+XCB_PLUGIN="$SP/PySide2/Qt/plugins/platforms/libqxcb.so"
+if [ -f "$XCB_PLUGIN" ] && command -v ldd >/dev/null 2>&1; then
+    missing=$(ldd "$XCB_PLUGIN" 2>/dev/null | awk '/not found/{print $1}' | sort -u)
+    if [ -n "$missing" ]; then
+        echo "错误：图形界面缺少以下运行库，Qt 的 xcb 插件因此加载失败：" >&2
+        for lib in $missing; do echo "  · $lib" >&2; done
+        echo "" >&2
+        echo "处理办法：把对应 .so 放进 $SP/PySide2/Qt/lib/ 后重试，" >&2
+        echo "         或 apt-get install 对应软件包（如 libxcb-util1）。" >&2
+        exit 1
+    fi
+fi
+
 PYTHONPATH="$SP:$DIR${{PYTHONPATH:+:$PYTHONPATH}}" exec "$DIR/python/bin/python3" -m {module} "$@"
 """
 
@@ -229,6 +254,7 @@ def build(
     cli_module: str = "",
     qt5_wheels: tuple[Path, ...] = (),
     libdbus: Path | None = None,
+    extra_libs: tuple[Path, ...] = (),
     vendor_dirs: tuple[Path, ...] = (),
     extra_files: tuple[Path, ...] = (),
     python_version: str = "3.10",
@@ -290,6 +316,16 @@ def build(
             else:
                 print("       警告：未提供 libdbus，目标机 dbus 过旧时 xcb 会启动失败")
 
+            if extra_libs:
+                for lib in extra_libs:
+                    if not lib.is_file():
+                        print(f"       跳过 {lib.name}（不存在）")
+                        continue
+                    data = lib.read_bytes()
+                    for name in _lib_names(lib.name):
+                        _add_bytes(archive, f"{sitepkg}/PySide2/Qt/lib/{name}", data, FILE_MODE)
+                    print(f"       {lib.name} -> {', '.join(_lib_names(lib.name))}")
+
         print("[STEP] 生成启动脚本")
         _add_bytes(
             archive,
@@ -327,6 +363,12 @@ def main() -> int:
     parser.add_argument("--cli-module", default="", help="命令行入口模块（提供则额外生成 run-cli.sh）")
     parser.add_argument("--qt5-wheels", nargs="*", default=[], help="PySide2 + shiboken2 的 manylinux wheel")
     parser.add_argument("--libdbus", default="", help="较新的 libdbus-1.so.3（Qt5.15 需要 >=1.10）")
+    parser.add_argument(
+        "--extra-libs",
+        nargs="*",
+        default=[],
+        help="目标机可能缺失的运行库（如 libxcb-util.so.1）",
+    )
     parser.add_argument("--vendor", nargs="*", default=[], help="要一并打包的纯 Python 包目录")
     parser.add_argument("--extra", nargs="*", default=[], help="额外文件（README、配置示例等）")
     parser.add_argument("--python-version", default="3.10", help="便携 Python 的 X.Y 版本（默认 3.10）")
@@ -349,6 +391,7 @@ def main() -> int:
         cli_module=args.cli_module,
         qt5_wheels=tuple(Path(p).resolve() for p in (args.qt5_wheels or [])),
         libdbus=Path(args.libdbus).resolve() if args.libdbus else None,
+        extra_libs=tuple(Path(p).resolve() for p in (args.extra_libs or [])),
         vendor_dirs=tuple(Path(p).resolve() for p in (args.vendor or [])),
         extra_files=tuple(Path(p).resolve() for p in (args.extra or [])),
         python_version=args.python_version,

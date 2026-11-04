@@ -272,6 +272,57 @@ cp lib/x86_64-linux-gnu/libdbus-1.so.3.19.17 cache/libdbus-1.so.3
 
 替换系统库是**错误做法**（会连带影响整个桌面），务必只放进包内目录。
 
+### 4.3 libxcb-util.so.1：最坑的一个，报错完全不提它
+
+Debian ≤ 10 提供的包是 `libxcb-util0`，SONAME 为 **`libxcb-util.so.0`**；
+而 Qt 5.15 的 `libqxcb.so` 链的是 **`libxcb-util.so.1`**（SONAME 升过级）。
+Debian 11 起才有 `libxcb-util1`。
+
+缺它的报错极具误导性：
+
+```
+qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized.
+Available platform plugins are: offscreen, xcb.
+已放弃 (核心已转储)
+```
+
+"even though it was found" 会让人以为是插件路径问题，其实是**依赖库缺失**。
+Qt 不会告诉你是哪个库。
+
+**定位方法**——直接对插件做 `ldd`：
+
+```bash
+cd ~/code/packet-analyzer
+SP="$PWD/python/lib/python3.10/site-packages"
+LD_LIBRARY_PATH="$SP/PySide2/Qt/lib" ldd "$SP/PySide2/Qt/plugins/platforms/libqxcb.so" \
+    | grep "not found"
+# → libxcb-util.so.1 => not found
+```
+
+`LD_LIBRARY_PATH` 必须带上，否则 `ldd` 会把包内 Qt 库也报成缺失，白排查一场。
+
+**解决**：这个库只有 **27KB**，直接带进包里，别指望目标机 apt 装得上。
+
+```bash
+# fetch_offline_deps.sh 已自动处理；手动方式：
+curl -O http://deb.debian.org/debian/pool/main/x/xcb-util/libxcb-util1_0.4.0-1+b1_amd64.deb
+ar x libxcb-util1_0.4.0-1+b1_amd64.deb && tar xf data.tar.*
+cp usr/lib/x86_64-linux-gnu/libxcb-util.so.1.0.0 cache/libxcb-util.so.1
+```
+
+实测该库只要求 `GLIBC_2.8`，在 glibc 2.19 / 2.28 上都能用。
+
+打包时用 `--extra-libs` 传入（会自动同时写 `libxcb-util.so.1` 与带版本号的名字）：
+
+```bash
+--extra-libs cache/libxcb-util.so.1
+```
+
+**顺便说一个通用技巧**：遇到任何 "plugin ... even though it was found"，
+都是对插件 `ldd` 找 `not found`，别去翻 Qt 的插件搜索路径。
+`pa-gui.sh` 已经把这一步做成启动前预检，缺库时直接点名。
+
 ---
 
 ## 5. 打包成离线包
@@ -505,6 +556,7 @@ ssh -X ess@192.168.235.144
 | `ImportError: libQt5Qml.so.5` | 裁剪时删多了 | 把 `libQt5Qml` 加回白名单 |
 | `undefined symbol: ...QIPAddressUtils...` | 混用了系统 Qt5.3 | `LD_LIBRARY_PATH` 把包内 Qt 放最前 |
 | `LIBDBUS_1_3 not defined` | 系统 dbus < 1.10 | 包内带 `libdbus-1.so.3`（见 4.2） |
+| `Could not load the Qt platform plugin "xcb" ... even though it was found` | **xcb 插件缺依赖库**，最常见是 `libxcb-util.so.1` | 见 4.3 |
 | `could not connect to display` | 没有 `DISPLAY` | 在服务器桌面跑，或 `ssh -X` |
 | `xcb plugin not found` | 缺平台插件 | 保留 `plugins/platforms/libqxcb.so` |
 | 中文全是方块 | 缺中文字体 | `sudo apt install fonts-wqy-microhei` |
@@ -628,7 +680,7 @@ scp -r myapp ess@192.168.235.144:~/apps/myapp/
 # 输出每项用法的 OK / FAIL，最后给结论
 ```
 
-## 附录 B：本机（192.168.235.144）实测记录
+## 附录 B：实测记录
 
 | 项目 | 结果 |
 | --- | --- |
@@ -641,6 +693,17 @@ scp -r myapp ess@192.168.235.144:~/apps/myapp/
 | 裁剪后 Qt5 | 446MB → 167MB（压缩后 59MB） |
 | 图形包总大小 | 59MB（压缩）/ 186MB（解压） |
 | 命令行包 | 26MB（压缩）/ 93MB（解压） |
+
+`192.168.235.142`（SERVER1，Debian 10 buster，glibc 2.28，系统 Qt 5.11）：
+
+| 项目 | 结果 |
+| --- | --- |
+| 首次启动 | ❌ `Could not load the Qt platform plugin "xcb"` |
+| 定位于 | `ldd libqxcb.so` → 缺 `libxcb-util.so.1` |
+| 修复后 | ✅ 离屏渲染 + 真实 X 显示均通过 |
+| 该机特点 | 只有 `libxcb-util.so.0`；系统 Qt 是 5.11（包内是 5.15，靠 `LD_LIBRARY_PATH` 隔离） |
+
+结论：**`libxcb-util.so.1` 必须随包携带**，否则每台 Debian ≤10 都会踩。
 
 ## 附录 C：可选依赖必须显式检查
 

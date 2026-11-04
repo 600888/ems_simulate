@@ -138,6 +138,35 @@ if [ "$WANT_QT" = "1" ]; then
             rm -f "$deb"
         fi
     fi
+
+    # ------------------------------------------------------------ 4. libxcb-util
+    # Qt5.15 的 xcb 插件要 libxcb-util.so.1，而 Debian ≤10 只给 .so.0（包名 libxcb-util0）。
+    # 缺了会报 "Could not load the Qt platform plugin xcb ... even though it was found"。
+    # 这个库只有 27KB，直接带进包里最省事。
+    if [ -s "libxcb-util.so.1" ]; then
+        say "已存在 libxcb-util.so.1，跳过"
+    else
+        say "下载 libxcb-util1"
+        deb="libxcb-util1_0.4.0-1+b1_amd64.deb"
+        if curl -fSL --max-time 600 -o "$deb" "http://deb.debian.org/debian/pool/main/x/xcb-util/$deb"; then
+            here=$(pwd)
+            tmp=$(mktemp -d)
+            if (cd "$tmp" && ar x "$here/$deb" && tar xf data.tar.* 2>/dev/null); then
+                found=$(find "$tmp" -name "libxcb-util.so.1.*" | head -1)
+                if [ -n "$found" ]; then
+                    # 统一改名为 SONAME，打包器会据此写进 Qt 库目录
+                    cp "$found" libxcb-util.so.1
+                    say "  $(du -h libxcb-util.so.1 | cut -f1)"
+                else
+                    say "  未找到库文件，请手动解压 deb"
+                fi
+            fi
+            rm -rf "$tmp" "$deb"
+        else
+            say "  libxcb-util 下载失败；Debian ≤10 的图形界面会启动失败"
+            rm -f "$deb"
+        fi
+    fi
 fi
 
 say "完成。cache 目录：$CACHE_DIR"
