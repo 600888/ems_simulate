@@ -26,6 +26,21 @@ from .qtcompat import (
 )
 
 
+def _drop_children(layout) -> None:
+    """清空布局中的控件：先隐藏，再交给事件循环销毁。
+
+    注意**不要**在这里调用 setParent(None)：Qt 中把可见控件设为无父级会让它
+    立刻变成顶级窗口，而 deleteLater 要到事件循环才真正销毁，中间这一帧控件
+    会作为无边框独立窗口闪现在屏幕上（切换报文时满屏弹窗就是这么来的）。
+    """
+    while layout.count():
+        entry = layout.takeAt(0)
+        widget = entry.widget()
+        if widget is not None:
+            widget.hide()
+            widget.deleteLater()
+
+
 def _item(text: str, *, mono: bool = False, color: str | None = None, align_center: bool = False):
     item = QTableWidgetItem(text)
     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -137,11 +152,7 @@ class InfoGrid(QWidget):
         self._grid.setVerticalSpacing(10)
 
     def set_items(self, items: list[tuple[str, str]]) -> None:
-        while self._grid.count():
-            entry = self._grid.takeAt(0)
-            widget = entry.widget()
-            if widget is not None:
-                widget.deleteLater()
+        _drop_children(self._grid)
         for index, (label, value) in enumerate(items):
             row, column = divmod(index, self._columns)
             cell = QWidget()
@@ -311,11 +322,7 @@ class ValidationList(QWidget):
         self._layout.setSpacing(6)
 
     def set_items(self, items: list[dict[str, Any]]) -> None:
-        while self._layout.count():
-            entry = self._layout.takeAt(0)
-            widget = entry.widget()
-            if widget is not None:
-                widget.deleteLater()
+        _drop_children(self._layout)
         for item in items:
             row = QWidget()
             row_layout = QHBoxLayout(row)
@@ -347,11 +354,7 @@ class NoticeList(QWidget):
         self._layout.setSpacing(6)
 
     def set_messages(self, warnings: list[str], errors: list[str]) -> None:
-        while self._layout.count():
-            entry = self._layout.takeAt(0)
-            widget = entry.widget()
-            if widget is not None:
-                widget.deleteLater()
+        _drop_children(self._layout)
         for text in warnings:
             self._add(text, "warning")
         for text in errors:
