@@ -1,5 +1,9 @@
 # 命令行版部署说明（Linux 服务器）
 
+> 想在这台服务器上**开发其它** Python GUI 程序？看
+> [LINUX-GUI-DEV-GUIDE.md](LINUX-GUI-DEV-GUIDE.md)：环境勘察、选型依据、
+> 便携 Python 与 Qt5 的准备、通用打包器与启动脚本模板。
+
 图形版需要 PySide6（Qt 6 要求 **glibc ≥ 2.28**）。老服务器（如 Debian 8 / glibc 2.19）装不上，
 因此单独提供这套**命令行版**：核心解析代码与图形版完全一致，只是没有界面。
 

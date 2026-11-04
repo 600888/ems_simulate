@@ -132,6 +132,10 @@ Qt5 与 Qt6 的差异（`QAction` 归属模块、`QApplication.exec_()`）只在
 便携 Python 来自 python-build-standalone（面向 glibc 2.17+ 构建），解压即用。
 详见 [docs/README-linux.md](docs/README-linux.md)。
 
+**要在同一台服务器上开发其它 Python GUI 程序**，看
+[docs/LINUX-GUI-DEV-GUIDE.md](docs/LINUX-GUI-DEV-GUIDE.md) —— 通用的环境勘察、
+选型依据、离线依赖准备、打包器与启动脚本模板，可直接复用到新项目。
+
 ```bat
 :: Windows
 cd packet_analyzer
