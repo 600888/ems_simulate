@@ -102,12 +102,16 @@ class DetailPanel(QScrollArea):
             validation = list(detail.get("validation") or [])
             if validation:
                 validation_list = ValidationList()
-                validation_list.set_items(validation)
+                # 必须先挂到布局（获得父级）再填数据：set_items() 内部会
+                # setVisible()，无父级时会让控件变成可见的顶级窗口，一闪而过。
                 self._add(self._section("完整性校验", validation_list))
+                validation_list.set_items(validation)
             if detail.get("warnings") or detail.get("errors"):
                 notices = NoticeList()
-                notices.set_messages(list(detail.get("warnings") or []), list(detail.get("errors") or []))
                 self._add(self._section("提示与告警", notices))
+                notices.set_messages(
+                    list(detail.get("warnings") or []), list(detail.get("errors") or [])
+                )
             self._layout.addStretch(1)
 
     @contextmanager
@@ -234,11 +238,13 @@ class DetailPanel(QScrollArea):
         layout.setSpacing(8)
         layout.addWidget(SectionHeader("字段解析"))
         table = FieldTable()
-        table.set_fields(list(detail.get("fields") or []))
         strip = getattr(self._last_raw_wrapper, "_byte_strip", None)
         if strip is not None:
             table.bytesSelected.connect(strip.highlight)
+        # 先入布局拿到父级，再灌数据：set_fields() 会 setVisible()，
+        # 无父级时调用会让控件短暂变成可见的顶级窗口（一闪而过的空白小窗）。
         layout.addWidget(table)
+        table.set_fields(list(detail.get("fields") or []))
         return wrapper
 
     def _objects_section(self, detail: dict[str, Any]) -> QWidget:
@@ -248,11 +254,12 @@ class DetailPanel(QScrollArea):
         layout.setSpacing(8)
         layout.addWidget(SectionHeader(f"数据对象（{len(detail.get('objects') or [])}）"))
         tree = ObjectTree()
-        tree.set_objects(list(detail.get("objects") or []))
         strip = getattr(self._last_raw_wrapper, "_byte_strip", None)
         if strip is not None:
             tree.bytesSelected.connect(strip.highlight)
+        # 先入布局拿到父级，再灌数据（set_objects 内部会 setVisible）
         layout.addWidget(tree)
+        tree.set_objects(list(detail.get("objects") or []))
         return wrapper
 
     def _correlation_section(self, detail: dict[str, Any]) -> QWidget:

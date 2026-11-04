@@ -26,6 +26,18 @@ from .qtcompat import (
 )
 
 
+def _set_visible_when_attached(widget: QWidget, visible: bool) -> None:
+    """安全地切换可见性：只对已有父级的控件生效。
+
+    刚 new 出来、还没 addWidget 的控件是没有父级的，此时 setVisible(True)
+    会让它立刻成为**可见的顶级窗口**——屏幕上就是一闪而过的空白小窗。
+    这种情况先不改可见性，等它被挂进布局后由调用方决定（本项目的调用点
+    都是"先入布局、再灌数据"，所以不会漏）。
+    """
+    if widget.parent() is not None:
+        widget.setVisible(visible)
+
+
 def _drop_children(layout) -> None:
     """清空布局中的控件：先隐藏，再交给事件循环销毁。
 
@@ -228,7 +240,7 @@ class FieldTable(QTableWidget):
                 cell.setToolTip(cell.text())
                 self.setItem(row, column, cell)
             self.setRowHeight(row, 26)
-        self.setVisible(bool(fields))
+        _set_visible_when_attached(self, bool(fields))
 
 
 class ObjectTree(QTreeWidget):
@@ -304,7 +316,7 @@ class ObjectTree(QTreeWidget):
                 for column in range(len(self.HEADERS)):
                     child.setToolTip(column, child.text(column))
                 top.addChild(child)
-        self.setVisible(bool(objects))
+        _set_visible_when_attached(self, bool(objects))
 
     def _on_click(self, item: QTreeWidgetItem, _column: int) -> None:
         data = item.data(0, Qt.ItemDataRole.UserRole)
@@ -341,7 +353,7 @@ class ValidationList(QWidget):
             row_layout.addWidget(name)
             row_layout.addWidget(detail, 1)
             self._layout.addWidget(row)
-        self.setVisible(bool(items))
+        _set_visible_when_attached(self, bool(items))
 
 
 class NoticeList(QWidget):
@@ -359,7 +371,7 @@ class NoticeList(QWidget):
             self._add(text, "warning")
         for text in errors:
             self._add(text, "danger")
-        self.setVisible(bool(warnings or errors))
+        _set_visible_when_attached(self, bool(warnings or errors))
 
     def _add(self, text: str, tone: str) -> None:
         tone_map = {
