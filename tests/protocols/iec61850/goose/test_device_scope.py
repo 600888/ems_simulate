@@ -1,12 +1,15 @@
 from unittest.mock import Mock
 
+import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from src.data.dao import goose_publisher_dao, goose_receiver_dao
 import src.data.model  # noqa: F401
 from src.data.model.base import Base
 from src.proto.iec61850.plugins.goose import manager as manager_module
+from src.proto.iec61850.plugins.goose.capture import CapturedPacket
 from src.proto.iec61850.plugins.goose.persistence import PersistenceAdapter
 
 
@@ -269,33 +272,94 @@ def test_remove_last_subscription_deletes_receiver_and_runtime_index(monkeypatch
     assert manager._interface_to_rid == {}
 
 
-def test_update_receiver_preserves_runtime_id(monkeypatch):
-    manager = manager_module.GooseResourceManager(PersistenceAdapter(_Backend()))
-    receiver = Mock()
-    receiver.is_running = False
-    receiver.get_subscriptions.return_value = [{"go_cb_ref": "LD0/LLN0$GO$gcb1"}]
-    manager._receivers = {"1:runtime-id": receiver}
-    manager._receiver_channel_map = {"1:runtime-id": 1}
-    manager._receiver_meta = {
-        "1:runtime-id": {"db_id": 3, "interface_key": "1:eth0:default"},
-    }
-    manager._interface_to_rid = {"1:eth0:default": "1:runtime-id"}
-    create_receiver = Mock(return_value={"id": "1:runtime-id"})
-    monkeypatch.setattr(manager, "create_receiver", create_receiver)
+@pytest.fixture
+def receiver_manager(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(goose_receiver_dao, "local_session", sessionmaker(engine, expire_on_commit=False))
+    return manager_module.GooseResourceManager()
 
-    result = manager.update_receiver("1:runtime-id", "WLAN")
 
-    assert result == {"id": "1:runtime-id"}
-    create_receiver.assert_called_once_with(
-        interface="WLAN",
-        subscriptions=[{"go_cb_ref": "LD0/LLN0$GO$gcb1"}],
+@pytest.mark.parametrize("running", [False, True])
+def test_update_receiver_keeps_subscriptions_and_runtime_id(monkeypatch, receiver_manager, running):
+    manager = receiver_manager
+    created = manager.create_receiver(
         channel_id=1,
-        name="default",
-        description="",
-        auto_start=False,
-        db_id=3,
-        runtime_id="1:runtime-id",
+        interface="eth0",
+        subscriptions=[{"go_cb_ref": "gcb1", "enabled": True}, {"go_cb_ref": "gcb2"}],
     )
+    rid = created["id"]
+    receiver = manager._receivers[rid]
+    receiver._on_captured_packet(
+        CapturedPacket(timestamp=1000, src_mac="", dst_mac="", raw_bytes=b"", length=0, go_cb_ref="gcb1")
+    )
+    subscriptions = receiver.get_subscriptions()
+    history = receiver.get_history("gcb1")
+    receiver._is_running = running
+    start = Mock(side_effect=lambda: setattr(receiver, "_is_running", True) or True)
+    stop = Mock(side_effect=lambda: setattr(receiver, "_is_running", False))
+    monkeypatch.setattr(receiver, "start", start)
+    monkeypatch.setattr(receiver, "stop", stop)
+
+    updated = manager.update_receiver(rid, "eth1")
+
+    assert manager._receivers[rid] is receiver
+    assert updated["id"] == rid
+    assert updated["db_id"] == created["db_id"]
+    assert updated["interface"] == "eth1"
+    assert updated["is_running"] is running
+    assert updated["subscriptions"] == subscriptions
+    assert receiver.get_history("gcb1") == history
+    assert manager._interface_to_rid == {"1:eth1:default": rid}
+    assert start.call_count == stop.call_count == int(running)
+    saved = goose_receiver_dao.GooseReceiverDao.list_by_channel(1)
+    assert [(item["db_id"], item["interface"]) for item in saved] == [(created["db_id"], "eth1")]
+    assert [sub["go_cb_ref"] for sub in saved[0]["subscriptions"]] == ["gcb1", "gcb2"]
+
+
+def test_update_receiver_rejects_interface_conflict_without_removing_subscriptions(receiver_manager):
+    manager = receiver_manager
+    source = manager.create_receiver(channel_id=1, interface="eth0", subscriptions=[{"go_cb_ref": "gcb1"}])
+    target = manager.create_receiver(channel_id=1, interface="eth1", subscriptions=[{"go_cb_ref": "gcb2"}])
+
+    with pytest.raises(ValueError, match="已存在同名 GOOSE Receiver"):
+        manager.update_receiver(source["id"], "eth1")
+
+    assert manager.list_receivers(1) == [source, target]
+    assert manager._interface_to_rid == {"1:eth0:default": source["id"], "1:eth1:default": target["id"]}
+
+
+@pytest.mark.parametrize("failure", ["start", "save"])
+def test_update_receiver_rolls_back_interface_when_reconfiguration_fails(monkeypatch, receiver_manager, failure):
+    manager = receiver_manager
+    created = manager.create_receiver(
+        channel_id=1, interface="eth0", subscriptions=[{"go_cb_ref": "gcb1", "enabled": True}]
+    )
+    rid = created["id"]
+    receiver = manager._receivers[rid]
+    receiver._is_running = True
+    start_interfaces = []
+
+    def start():
+        start_interfaces.append(receiver.interface)
+        receiver._is_running = failure != "start" or receiver.interface == "eth0"
+        return receiver._is_running
+
+    monkeypatch.setattr(receiver, "start", start)
+    monkeypatch.setattr(receiver, "stop", lambda: setattr(receiver, "_is_running", False))
+    dao = goose_receiver_dao.GooseReceiverDao
+    if failure == "save":
+        # A persisted Receiver may exist before its runtime resource is loaded.
+        dao.save(1, {"interface": "eth1", "subscriptions": [{"go_cb_ref": "gcb2"}]})
+    saved = dao.list_by_channel(1)
+    error = RuntimeError if failure == "start" else IntegrityError
+    with pytest.raises(error):
+        manager.update_receiver(rid, "eth1")
+
+    assert start_interfaces == ["eth1", "eth0"]
+    assert manager.get_receiver_status(rid) == {**created, "is_running": True}
+    assert manager._interface_to_rid == {"1:eth0:default": rid}
+    assert dao.list_by_channel(1) == saved
 
 
 def test_import_discovered_adds_disabled_subscription_and_restarts_running_receiver(monkeypatch):

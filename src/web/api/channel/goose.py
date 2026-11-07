@@ -11,12 +11,13 @@ ICD 文件 GOOSE 配置统一通过 /import-icd 接口导入（含 MMS 测点 + 
 from typing import Any
 
 from fastapi import APIRouter, Request
+from sqlalchemy.exc import IntegrityError
 
 from src.common.mac_address import format_mac_address
 from src.data.service.channel_service import ChannelService
 from src.proto.iec61850.plugins.goose.manager import GooseResourceManager
 from src.proto.iec61850.plugins.scl.parser.dataset_types import infer_fcda_iec_type
-from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
+from src.web.api.exceptions import ConflictError, NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import BaseResponse
 from src.web.api.schemas.goose import (
     GooseCaptureListRequest,
@@ -601,9 +602,15 @@ async def update_goose_receiver(body: GooseReceiverUpdate, request: Request):
     from src.web.api.network_interfaces import validate_network_interface
 
     validate_network_interface(body.interface)
-    result = manager.update_receiver(body.receiver_id, body.interface, body.name, body.description, body.auto_start)
+    try:
+        result = manager.update_receiver(body.receiver_id, body.interface, body.name, body.description, body.auto_start)
+    except (ValueError, IntegrityError) as exc:
+        message = str(exc) if isinstance(exc, ValueError) else "GOOSE Receiver 配置与已保存的记录冲突"
+        raise ConflictError(message) from exc
+    except RuntimeError as exc:
+        raise OperationError(str(exc)) from exc
     if not result:
-        raise OperationError("Receiver 运行中，停止后才能修改配置")
+        raise NotFoundError("GOOSE Receiver 未找到")
     return BaseResponse(message="GOOSE Receiver 配置已保存", data=result)
 
 

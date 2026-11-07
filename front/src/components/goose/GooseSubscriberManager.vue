@@ -606,6 +606,7 @@ async function applySubscriptionConfig(form: {
   const block = selected.value;
   if (
     !props.channelId ||
+    applying.value ||
     block?.kind !== "subscriber" ||
     !block.subscription ||
     !block.receiver_id
@@ -617,8 +618,6 @@ async function applySubscriptionConfig(form: {
       (item) => item.id === block.receiver_id,
     );
     if (receiver && form.interface && form.interface !== receiver.interface) {
-      if (receiver.is_running)
-        await stopGooseReceiver(props.channelId, receiver.id);
       await updateGooseReceiver(props.channelId, receiver.id, {
         interface: form.interface,
         name: receiver.name || "default",

@@ -157,6 +157,12 @@ class GooseReceiver:
         """返回GOOSE 接收器当前的网络接口。"""
         return self._config.interface
 
+    def set_interface(self, interface: str) -> None:
+        """修改已停止的接收器所绑定的网卡。"""
+        if self._is_running:
+            raise RuntimeError("Receiver 运行中，停止后才能切换网卡")
+        self._config = ReceiverConfig(interface=interface)
+
     # ===== 订阅管理 =====
 
     def add_subscription(

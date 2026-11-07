@@ -584,30 +584,51 @@ class GooseResourceManager:
         description: str = "",
         auto_start: bool = False,
     ) -> dict[str, Any] | None:
-        """更新接收器。"""
+        """更新原接收器，保留其订阅、历史和运行时标识。"""
         receiver = self._receivers.get(receiver_id)
-        if not receiver or receiver.is_running:
+        if not receiver:
             return None
-        subscriptions = receiver.get_subscriptions()
         channel_id = self._receiver_channel_map.get(receiver_id)
-        meta = self._receiver_meta.get(receiver_id, {})
-        db_id = meta.get("db_id")
-        old_key = meta.get("interface_key")
-        if old_key:
-            self._interface_to_rid.pop(old_key, None)
-        self._receivers.pop(receiver_id, None)
-        self._receiver_channel_map.pop(receiver_id, None)
-        self._receiver_meta.pop(receiver_id, None)
-        return self.create_receiver(
-            interface=interface,
-            subscriptions=subscriptions,
-            channel_id=channel_id,
-            name=name,
-            description=description,
-            auto_start=auto_start,
-            db_id=db_id,
-            runtime_id=receiver_id,
+        old_meta = self._receiver_meta.get(receiver_id, {})
+        old_key = old_meta.get("interface_key") or _scoped_key(
+            channel_id, f"{receiver.interface}:{old_meta.get('name', 'default')}"
         )
+        new_key = _scoped_key(channel_id, f"{interface}:{name}")
+        if self._interface_to_rid.get(new_key) not in (None, receiver_id):
+            raise ValueError(f"网卡 {interface} 上已存在同名 GOOSE Receiver: {name}")
+
+        meta = {
+            **old_meta,
+            "name": name,
+            "description": description,
+            "auto_start": auto_start,
+            "interface_key": new_key,
+        }
+        old_interface = receiver.interface
+        interface_changed = interface != old_interface
+        restart = interface_changed and receiver.is_running
+        if restart:
+            receiver.stop()
+        try:
+            if interface_changed:
+                receiver.set_interface(interface)
+            if restart and not receiver.start():
+                raise RuntimeError(f"GOOSE Receiver 无法在网卡 {interface} 上启动")
+            self._persist_receiver(receiver_id, meta=meta)
+        except Exception:
+            if interface_changed:
+                if receiver.is_running:
+                    receiver.stop()
+                receiver.set_interface(old_interface)
+                if restart and not receiver.start():
+                    log.error(f"GOOSE Receiver 恢复原网卡失败: id={receiver_id}, interface={old_interface}")
+            raise
+
+        if old_key != new_key and self._interface_to_rid.get(old_key) == receiver_id:
+            self._interface_to_rid.pop(old_key, None)
+        self._interface_to_rid[new_key] = receiver_id
+        self._receiver_meta[receiver_id] = meta
+        return self.get_receiver_status(receiver_id)
 
     def start_receiver(self, receiver_id: str) -> bool:
         """启动 Receiver"""
@@ -805,7 +826,7 @@ class GooseResourceManager:
             return None
         return receiver.get_history(go_cb_ref, limit)
 
-    def _persist_receiver(self, receiver_id: str) -> None:
+    def _persist_receiver(self, receiver_id: str, *, meta: dict[str, Any] | None = None) -> None:
         """保存接收器的最新订阅状态，使通道重启后能够恢复配置。"""
         channel_id = self._receiver_channel_map.get(receiver_id)
         receiver = self._receivers.get(receiver_id)
@@ -813,7 +834,8 @@ class GooseResourceManager:
             return
         from src.data.dao.goose_receiver_dao import GooseReceiverDao
 
-        meta = self._receiver_meta.get(receiver_id, {})
+        if meta is None:
+            meta = self._receiver_meta.get(receiver_id, {})
         db_id = GooseReceiverDao.save(
             channel_id,
             {
