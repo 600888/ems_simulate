@@ -19,7 +19,7 @@ hero:
 features:
   - icon: 🔌
     title: 多协议支持
-    details: 支持 Modbus TCP/RTU、IEC 60870-5-101/104、DL/T 645-2007 等工业通信协议
+    details: 支持 Modbus TCP/RTU、IEC 60870-5-101/104、DL/T 645-2007、IEC 61850、DNP3、OPC UA 等工业通信协议
   - icon: 🎯
     title: 设备模拟
     details: 可模拟 PCS 储能变流器、BMS 电池管理系统、电表、断路器等设备
@@ -37,8 +37,24 @@ features:
 |------|------|
 | **前端** | Vue 3, TypeScript, Vite, Element Plus |
 | **后端** | Python 3.11+, FastAPI, SQLAlchemy |
-| **协议** | pymodbus 3.12, c104, dlt645 |
+| **协议** | pymodbus 3.12, c104, dlt645, pyiec61850-ng, pydnp3-pure, asyncua 2.0.1, aiomqtt |
 | **数据库** | SQLite (默认) / MySQL |
+
+## OPC UA
+
+支持服务端与客户端，提供地址空间建模、变量读写、数据模拟、原生实时订阅、历史查询、事件、MQTT/JSON 发布、证书与安全配置，以及会话与通信日志。
+
+[协议介绍](./guide/protocols/opcua/) · [操作指南](./guide/protocols/opcua/operation) · [报文与诊断查看](./guide/protocols/opcua/packet-view)
+
+> 📷 **截图待补：OPC UA 地址空间与变量定义** — 展示 NodeId、BrowseName、数据类型、初始值及可写权限。
+> 建议文件名：`opcua-address-space.png`
+
+<!-- ![OPC UA 地址空间与变量定义](/img/opcua-address-space.png) -->
+
+> 📷 **截图待补：OPC UA 客户端实时订阅** — 展示地址空间树、监控变量、发布与采样间隔，以及实时表格或趋势。
+> 建议文件名：`opcua-subscription.png`
+
+<!-- ![OPC UA 客户端实时订阅](/img/opcua-subscription.png) -->
 
 ## 快速安装
 

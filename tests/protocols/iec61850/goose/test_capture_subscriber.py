@@ -1,4 +1,9 @@
+import socket
+import threading
 import time
+from unittest.mock import Mock
+
+import pytest
 
 from src.proto.iec61850.plugins.goose import capture as capture_module
 from src.proto.iec61850.plugins.goose.capture import GooseCaptureEngine
@@ -29,7 +34,7 @@ def _goose_frame() -> bytes:
             _tlv(0x81, b"\x03\xe8"),
             _tlv(0x82, b"LD0/LLN0$dsGOOSE1"),
             _tlv(0x83, b"gcb1"),
-            _tlv(0x84, b"\x00" * 8),
+            _tlv(0x84, b"\x00\x00\x00\x01" + bytes(4)),
             _tlv(0x85, b"\x01"),
             _tlv(0x86, b"\x02"),
             _tlv(0x87, b"\x00"),
@@ -41,7 +46,7 @@ def _goose_frame() -> bytes:
     )
     pdu = _tlv(0x61, pdu_fields)
     ethernet = bytes.fromhex("010ccd010001 020304050607 88b8")
-    goose_header = bytes.fromhex("0001 0000 0000 0000")
+    goose_header = bytes.fromhex("0001") + (len(pdu) + 8).to_bytes(2, "big") + bytes(4)
     return ethernet + goose_header + pdu
 
 
@@ -72,6 +77,49 @@ def test_capture_processes_goose_frame():
     assert packets[0]["data_values"][0]["value"] is True
     assert packets[0]["data_values"][0]["offset"] > 0
     assert packets[0]["fields"]
+
+
+@pytest.mark.parametrize("vlan_tag", [b"", bytes.fromhex("8100 8000"), bytes.fromhex("8100 8064")])
+def test_linux_receiver_reads_local_goose_from_bound_packet_socket(monkeypatch, vlan_tag):
+    from src.proto.iec61850.plugins.goose.subscriber import GooseReceiver
+
+    frame = _goose_frame()
+    frame = frame[:12] + vlan_tag + frame[12:]
+    app_id_offset = 14 + len(vlan_tag)
+    wrong_app_id = frame[:app_id_offset] + b"\x00\x02" + frame[app_id_offset + 2 :]
+    wrong_mac = bytes.fromhex("010ccd010002") + frame[6:]
+    frames = iter([frame[: app_id_offset + 8], wrong_app_id, wrong_mac, frame])
+    raw_socket = Mock(spec=_TimeoutSocket, wraps=_TimeoutSocket())
+    raw_socket.bind = Mock()
+    raw_socket.setsockopt = Mock()
+    raw_socket.recv.side_effect = lambda size: next(frames, None) or _TimeoutSocket().recv(size)
+    create_socket = Mock(return_value=raw_socket)
+    monkeypatch.setattr(capture_module.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(socket, "AF_PACKET", 17, raising=False)
+    monkeypatch.setattr(socket, "socket", create_socket)
+    monkeypatch.setattr(socket, "if_nametoindex", lambda _interface: 7)
+
+    receiver = GooseReceiver(ReceiverConfig(interface="eth-test"))
+    ref = "LD0/LLN0$GO$gcb1"
+    receiver.add_subscription(ref, app_id=1, dst_mac=[0x01, 0x0C, 0xCD, 0x01, 0x00, 0x01])
+    received = threading.Event()
+    receiver.set_callback(lambda _packet: received.set())
+
+    try:
+        assert receiver.start()
+        assert received.wait(2)
+        latest = receiver.get_subscription(ref)
+        assert latest["state"] == "connected"
+        assert latest["message_count"] == 1
+        assert latest["timestamp"] == 1000
+        assert receiver.get_history(ref)[0]["data_values"][0]["value"] is True
+        create_socket.assert_called_once_with(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
+        raw_socket.bind.assert_called_once_with(("eth-test", 3))
+        raw_socket.setsockopt.assert_called_once()
+    finally:
+        receiver.stop()
+
+    raw_socket.close.assert_called_once()
 
 
 def test_goose_receiver_keeps_subscriber_handles(monkeypatch):
@@ -120,7 +168,7 @@ def test_goose_receiver_keeps_subscriber_handles(monkeypatch):
 
     monkeypatch.setattr(subscriber_module, "HAS_IEC61850", True)
     monkeypatch.setattr(subscriber_module, "iec61850", FakeIec61850, raising=False)
-    monkeypatch.setattr(subscriber_module.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(subscriber_module.platform, "system", lambda: "Darwin")
 
     receiver = subscriber_module.GooseReceiver(ReceiverConfig(interface="eth-test"))
     receiver.add_subscription("LD0/LLN0$GO$gcb1", app_id=1)

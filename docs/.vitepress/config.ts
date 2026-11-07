@@ -79,12 +79,22 @@ export default defineConfig({
                             ]
                         },
                         {
+                            text: 'OPC UA',
+                            collapsed: false,
+                            items: [
+                                { text: '协议介绍', link: '/guide/protocols/opcua/' },
+                                { text: '操作指南', link: '/guide/protocols/opcua/operation' },
+                                { text: '报文与诊断查看', link: '/guide/protocols/opcua/packet-view' }
+                            ]
+                        },
+                        {
                             text: 'IEC 61850',
                             collapsed: false,
                             items: [
                                 { text: '协议介绍', link: '/guide/protocols/iec61850/' },
                                 { text: '操作指南', link: '/guide/protocols/iec61850/operation' },
-                                { text: '报文查看', link: '/guide/protocols/iec61850/packet-view' }
+                                { text: '报文查看', link: '/guide/protocols/iec61850/packet-view' },
+                                { text: 'GOOSE 跨平台收发与自发自收', link: '/guide/protocols/iec61850/goose-cross-platform' }
                             ]
                         }
                     ]

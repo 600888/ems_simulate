@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import platform
 import socket
+import struct
 import threading
 import time
 from typing import Any
@@ -27,6 +28,10 @@ from ...log import log
 # GOOSE EtherType
 ETHER_TYPE_GOOSE = 0x88B8
 ETHER_TYPE_VLAN = 0x8100
+ETH_P_ALL = 0x0003
+SOL_PACKET = 263
+PACKET_ADD_MEMBERSHIP = 1
+PACKET_MR_ALLMULTI = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,18 +119,24 @@ class _RawSocketProvider:
     @staticmethod
     def _create_linux_socket(interface: str) -> socket.socket | None:
         """Linux: 使用 AF_PACKET 原始套接字"""
+        sock = None
         try:
-            sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(0x0003))
+            # ETH_P_ALL also receives PACKET_OUTGOING copies of locally sent frames.
+            sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(ETH_P_ALL))
             if interface:
-                sock.bind((interface, 0))
+                sock.bind((interface, ETH_P_ALL))
+                # Join at socket scope so external GOOSE multicast still reaches this listener.
+                membership = struct.pack("=iHH8s", socket.if_nametoindex(interface), PACKET_MR_ALLMULTI, 0, b"")
+                sock.setsockopt(SOL_PACKET, PACKET_ADD_MEMBERSHIP, membership)
             log.info(f"Linux 原始套接字创建成功: interface={interface or 'all'}")
             return sock
         except PermissionError:
-            log.error("需要 root 权限才能创建原始套接字")
-            return None
+            log.error("创建 Linux GOOSE 原始套接字需要 CAP_NET_RAW 权限")
         except Exception as e:
             log.error(f"创建 Linux 套接字失败: {e}")
-            return None
+        if sock is not None:
+            sock.close()
+        return None
 
     @staticmethod
     def _create_windows_socket() -> socket.socket | None:
@@ -413,7 +424,7 @@ class GooseCaptureEngine:
             return
 
         # 解析 GOOSE 头
-        if len(raw_data) < offset + 8:
+        if len(raw_data) <= offset + 8:
             return
 
         app_id = (raw_data[offset] << 8) | raw_data[offset + 1]
@@ -426,9 +437,12 @@ class GooseCaptureEngine:
         from src.device.core.message.parsers.goose import parse_goose
 
         parsed = parse_goose(raw_data)
+        go_cb_ref = parsed.get("go_cb_ref")
+        if not parsed["complete"] or go_cb_ref is None:
+            return
 
         # GoCBRef 过滤
-        if self._filter_go_cb_ref and self._filter_go_cb_ref not in parsed["go_cb_ref"]:
+        if self._filter_go_cb_ref and self._filter_go_cb_ref not in go_cb_ref:
             return
 
         # 创建不可变报文记录
@@ -451,16 +465,16 @@ class GooseCaptureEngine:
             raw_bytes=raw_data,
             length=len(raw_data),
             app_id=app_id,
-            go_cb_ref=parsed["go_cb_ref"],
-            go_id=parsed["go_id"],
-            data_set_ref=parsed["data_set_ref"],
-            st_num=parsed["st_num"],
-            sq_num=parsed["sq_num"],
-            time_allowed_to_live=parsed["time_allowed_to_live"],
-            conf_rev=parsed["conf_rev"],
-            simulation=parsed["simulation"],
-            nds_com=parsed["nds_com"],
-            num_entries=parsed["num_entries"],
+            go_cb_ref=go_cb_ref,
+            go_id=parsed.get("go_id", ""),
+            data_set_ref=parsed.get("data_set_ref", ""),
+            st_num=parsed.get("st_num", 0),
+            sq_num=parsed.get("sq_num", 0),
+            time_allowed_to_live=parsed.get("time_allowed_to_live", 0),
+            conf_rev=parsed.get("conf_rev", 0),
+            simulation=parsed.get("simulation", False),
+            nds_com=parsed.get("nds_com", False),
+            num_entries=parsed.get("num_entries", 0),
             data_values=tuple(parsed["objects"]),
             parsed_fields=tuple(parsed["fields"]),
             vlan_id=vlan_id,

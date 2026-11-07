@@ -1,4 +1,4 @@
-"""GOOSE 接收器/订阅者 - 基于 pyiec61850 实现 GOOSE 报文接收
+"""GOOSE 接收器/订阅者
 
 管理单个网络接口上的 GOOSE 报文接收和多个订阅。
 """
@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from collections.abc import Callable
 import copy
+from functools import partial
 import platform
 import threading
 import time
@@ -19,10 +20,8 @@ from src.common.mac_address import normalize_mac_address
 
 from ...defs.constants import HAS_IEC61850
 from ...log import log
+from .capture import CapturedPacket, GooseCaptureEngine
 from .types import GooseState, GooseSubscriptionInfo, MmsType, ReceiverConfig
-
-if platform.system().lower() == "windows":
-    from .capture import CapturedPacket, GooseCaptureEngine
 
 
 class _PyGooseHandler(iec61850.GooseHandler):
@@ -364,7 +363,7 @@ class GooseReceiver:
         except Exception as e:
             log.error(f"GOOSE 报文处理异常: {e}")
 
-    def _on_captured_packet(self, packet: CapturedPacket) -> None:
+    def _on_captured_packet(self, packet: CapturedPacket, *, use_event_timestamp: bool = False) -> None:
         """处理抓包引擎交付的 GOOSE 报文，更新订阅状态、历史记录和业务回调。"""
         try:
             with self._lock:
@@ -385,7 +384,7 @@ class GooseReceiver:
                 sub.st_num = packet.st_num
                 sub.sq_num = packet.sq_num
                 sub.time_allowed_to_live = packet.time_allowed_to_live
-                sub.timestamp = int(packet.timestamp * 1000)
+                sub.timestamp = int((packet.send_timestamp if use_event_timestamp else packet.timestamp) * 1000)
                 sub.state = GooseState.CONNECTED
                 sub.last_update = packet.timestamp
 
@@ -433,7 +432,7 @@ class GooseReceiver:
             if self._callback:
                 self._callback(callback_data)
         except Exception as e:
-            log.error(f"GOOSE Npcap 报文处理异常: {e}")
+            log.error(f"GOOSE 捕获报文处理异常: {e}")
 
     # ===== 生命周期 =====
 
@@ -443,15 +442,19 @@ class GooseReceiver:
             return True
 
         try:
-            if platform.system().lower() == "windows":
-                self._capture_engine = GooseCaptureEngine(interface=self._config.interface, max_packets=200)
-                self._capture_engine.set_callback(self._on_captured_packet)
-                if not self._capture_engine.start():
-                    raise RuntimeError(f"Npcap GOOSE 捕获启动失败: interface={self._config.interface}")
+            system = platform.system()
+            if system in ("Linux", "Windows"):
+                # Linux libiec61850's EtherType filter drops VLAN-tagged outgoing frames.
+                transport = "AF_PACKET" if system == "Linux" else "Npcap"
+                capture = GooseCaptureEngine(interface=self._config.interface, max_packets=200)
+                capture.set_callback(partial(self._on_captured_packet, use_event_timestamp=system == "Linux"))
+                if not capture.start():
+                    raise RuntimeError(f"{transport} GOOSE 捕获启动失败: interface={self._config.interface}")
+                self._capture_engine = capture
                 self._is_running = True
                 self._start_monitor()
                 log.info(
-                    f"GOOSE Receiver 已启动 (Npcap): interface={self._config.interface}, "
+                    f"GOOSE Receiver 已启动 ({transport}): interface={self._config.interface}, "
                     f"订阅数={len(self._subscriptions)}"
                 )
                 return True
@@ -511,6 +514,9 @@ class GooseReceiver:
         except Exception as e:
             log.error(f"GOOSE Receiver 启动失败: {e}")
             self._is_running = False
+            if self._capture_engine:
+                self._capture_engine.stop()
+                self._capture_engine = None
             self._subscriber_handles.clear()
             self._goose_handlers.clear()
             self._goose_subscriber_py_list.clear()
