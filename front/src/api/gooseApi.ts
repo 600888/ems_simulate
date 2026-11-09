@@ -31,6 +31,10 @@ export interface GoosePublisherStatus {
   time_allowed_to_live: number;
   interface: string;
   simulation: boolean;
+  retransmit_initial_ms: number;
+  retransmit_multiplier: number;
+  retransmit_final_ms: number;
+  needs_commissioning: boolean;
   is_running: boolean;
   dst_mac: string;
   vlan_id: number;
@@ -126,6 +130,10 @@ export interface GoosePublisherCreateRequest {
   vlan_id?: number;
   vlan_prio?: number;
   simulation?: boolean;
+  retransmit_initial_ms?: number;
+  retransmit_multiplier?: number;
+  retransmit_final_ms?: number;
+  needs_commissioning?: boolean;
   entries?: {
     name: string;
     value: boolean | number | string;
@@ -144,6 +152,10 @@ export interface GoosePublisherUpdateRequest {
   conf_rev?: number;
   time_allowed_to_live?: number;
   simulation?: boolean;
+  retransmit_initial_ms?: number;
+  retransmit_multiplier?: number;
+  retransmit_final_ms?: number;
+  needs_commissioning?: boolean;
   dst_mac?: number[] | null;
   vlan_id?: number;
   vlan_prio?: number;
@@ -656,6 +668,10 @@ export interface GooseCapturedPacket {
   time_allowed_to_live: number;
   conf_rev: number;
   simulation: boolean;
+  retransmit_initial_ms: number;
+  retransmit_multiplier: number;
+  retransmit_final_ms: number;
+  needs_commissioning: boolean;
   nds_com: boolean;
   num_dat_set_entries: number;
   vlan_id: number;

@@ -231,6 +231,42 @@
         <el-form-item :label="$t('goose.simulation')">
           <el-switch v-model="publisherForm.simulation" />
         </el-form-item>
+        <el-form-item :label="$t('goose.needsCommissioning')">
+          <el-switch v-model="publisherForm.needs_commissioning" />
+        </el-form-item>
+        <el-form-item :label="$t('goose.retransmitInitial')">
+          <el-input-number
+            v-model="publisherForm.retransmit_initial_ms"
+            :min="1"
+            :max="publisherForm.retransmit_final_ms"
+            :precision="0"
+            :value-on-clear="2"
+            controls-position="right"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item :label="$t('goose.retransmitMultiplier')">
+          <el-input-number
+            v-model="publisherForm.retransmit_multiplier"
+            :min="1"
+            :max="100"
+            :step="0.1"
+            :value-on-clear="2"
+            controls-position="right"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item :label="$t('goose.retransmitFinal')">
+          <el-input-number
+            v-model="publisherForm.retransmit_final_ms"
+            :min="publisherForm.retransmit_initial_ms"
+            :max="60000"
+            :precision="0"
+            :value-on-clear="5000"
+            controls-position="right"
+            style="width: 100%"
+          />
+        </el-form-item>
         <el-form-item :label="$t('goose.entryList')">
           <div class="entry-list">
             <div
@@ -822,6 +858,10 @@ const publisherForm = reactive({
   vlan_id: 0,
   vlan_prio: 4,
   simulation: true,
+  retransmit_initial_ms: 2,
+  retransmit_multiplier: 2,
+  retransmit_final_ms: 5000,
+  needs_commissioning: false,
   entries: [] as { name: string; value: any; iec_type: string }[],
 });
 const publisherRules = {
@@ -989,6 +1029,10 @@ function showCreatePublisherDialog() {
     vlan_id: 0,
     vlan_prio: 4,
     simulation: true,
+    retransmit_initial_ms: 2,
+    retransmit_multiplier: 2,
+    retransmit_final_ms: 5000,
+    needs_commissioning: false,
     entries: [],
   });
   createPublisherVisible.value = true;
@@ -1098,6 +1142,10 @@ function showEditPublisherDialog(pub: GoosePublisherStatus) {
     vlan_id: pub.vlan_id,
     vlan_prio: pub.vlan_prio,
     simulation: pub.simulation,
+    retransmit_initial_ms: pub.retransmit_initial_ms ?? 2,
+    retransmit_multiplier: pub.retransmit_multiplier ?? 2,
+    retransmit_final_ms: pub.retransmit_final_ms ?? 5000,
+    needs_commissioning: pub.needs_commissioning ?? false,
     entries: [],
   });
   createPublisherVisible.value = true;
@@ -1158,6 +1206,10 @@ async function savePublisherConfig() {
       vlan_id: publisherForm.vlan_id,
       vlan_prio: publisherForm.vlan_prio,
       simulation: publisherForm.simulation,
+      retransmit_initial_ms: publisherForm.retransmit_initial_ms,
+      retransmit_multiplier: publisherForm.retransmit_multiplier,
+      retransmit_final_ms: publisherForm.retransmit_final_ms,
+      needs_commissioning: publisherForm.needs_commissioning,
     });
     ElMessage.success(
       publisherForm.dst_mac
@@ -1193,6 +1245,10 @@ async function createPublisher() {
       vlan_id: publisherForm.vlan_id,
       vlan_prio: publisherForm.vlan_prio,
       simulation: publisherForm.simulation,
+      retransmit_initial_ms: publisherForm.retransmit_initial_ms,
+      retransmit_multiplier: publisherForm.retransmit_multiplier,
+      retransmit_final_ms: publisherForm.retransmit_final_ms,
+      needs_commissioning: publisherForm.needs_commissioning,
       entries: publisherForm.entries,
       channel_id: props.channelId || 0,
       dst_mac: parseMac(publisherForm.dst_mac),
@@ -1626,13 +1682,13 @@ onUnmounted(() => {
     flex-direction: column;
   }
 
-  :deep(.el-tabs__content) {
+  :deep(.goose-tabs > .el-tabs__content) {
     flex: 1;
     min-height: 0;
     overflow: hidden;
   }
 
-  :deep(.el-tab-pane) {
+  :deep(.goose-tabs > .el-tabs__content > .el-tab-pane) {
     height: 100%;
     overflow: hidden;
   }

@@ -527,6 +527,10 @@ async function applyPublisherConfig(form: {
   vlan_id: number;
   vlan_prio: number;
   simulation: boolean;
+  retransmit_initial_ms: number;
+  retransmit_multiplier: number;
+  retransmit_final_ms: number;
+  needs_commissioning: boolean;
 }) {
   const block = selected.value;
   if (!props.channelId || block?.kind !== "publisher" || !block.publisher)
@@ -560,6 +564,10 @@ async function applyPublisherConfig(form: {
       vlan_id: form.vlan_id,
       vlan_prio: form.vlan_prio,
       simulation: form.simulation,
+      retransmit_initial_ms: form.retransmit_initial_ms,
+      retransmit_multiplier: form.retransmit_multiplier,
+      retransmit_final_ms: form.retransmit_final_ms,
+      needs_commissioning: form.needs_commissioning,
     });
     if (dataSetDetail) {
       const expectedNames = dataSetDetail.members.map((member) => member.ref);
@@ -807,15 +815,23 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
 }
-:deep(.el-tabs__content) {
+.workspace-tabs :deep(> .el-tabs__header) {
+  flex-shrink: 0;
+}
+.workspace-tabs :deep(> .el-tabs__content) {
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
-:deep(.el-tab-pane) {
+.workspace-tabs :deep(> .el-tabs__content > .el-tab-pane) {
   height: 100%;
+  min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
+  padding-bottom: 8px;
+  box-sizing: border-box;
 }
 .latest-pane {
   display: flex;

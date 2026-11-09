@@ -373,6 +373,10 @@ class DbController:
                     "name": "VARCHAR(128) NOT NULL DEFAULT ''",
                     "description": "VARCHAR(512) NOT NULL DEFAULT ''",
                     "auto_start": "BOOLEAN NOT NULL DEFAULT 0",
+                    "retransmit_initial_ms": "INTEGER NOT NULL DEFAULT 2",
+                    "retransmit_multiplier": "FLOAT NOT NULL DEFAULT 2",
+                    "retransmit_final_ms": "INTEGER NOT NULL DEFAULT 5000",
+                    "needs_commissioning": "BOOLEAN NOT NULL DEFAULT 0",
                 }
                 for column, ddl in definitions.items():
                     if column not in existing:

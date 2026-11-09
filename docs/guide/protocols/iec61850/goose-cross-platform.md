@@ -9,7 +9,7 @@ GOOSE 使用以太网二层组播，协议 EtherType 为 `0x88B8`。发布器、
 | 项目 | Linux | Windows |
 | --- | --- | --- |
 | 发布 | 由 `pyiec61850-ng` 调用 libiec61850，按发布配置构造并发送以太网帧 | 由 Scapy 构造以太网帧和 GOOSE 负载，通过 Npcap 发送 |
-| VLAN ID 为 `0` | 发布器仍生成 802.1Q 标签。VID 为 `0`，PCP 携带配置的优先级 | 发布器生成无标签帧。报文中没有 VLAN PCP 字段 |
+| VLAN ID 为 `0` | 发布器仍生成 802.1Q 标签。VID 为 `0`，PCP 携带配置的优先级 | 与 Linux 一致，始终添加 `Dot1Q` 头；VID 为 `0` 时仍保留配置的 PCP |
 | VLAN ID 大于 `0` | 发布器生成带 VID 和 PCP 的 802.1Q 帧 | Scapy 添加带 VID 和 PCP 的 `Dot1Q` 头。现场可在对端抓包确认网卡实际发出的标签 |
 | 订阅和独立抓包 | `AF_PACKET` 原始套接字绑定指定网卡，使用 `ETH_P_ALL` 接收，并在应用内解析 EtherType | Scapy 在指定的 Npcap 适配器上抓取二层帧，再使用同一套 GOOSE 解析器 |
 | 运行条件 | 后端进程在对应网络命名空间中具有 `CAP_NET_RAW`，并能看到目标网卡 | 安装并启用 Npcap。若安装时限制为仅管理员访问，后端需要相应权限 |
@@ -34,7 +34,7 @@ GOOSE 使用以太网二层组播，协议 EtherType 为 `0x88B8`。发布器、
 2. Linux 可将本机发送的帧以 `PACKET_OUTGOING` 类型交给同一接口上的其他抓包套接字。本机可以通过这份副本观察发布流量，无需等待交换机把帧送回。 [Linux packet(7)](https://man7.org/linux/man-pages/man7/packet.7.html)
 3. 旧订阅路径使用 libiec61850 的 Linux GOOSE 接收器。其内核过滤器只比较偏移 12–13 的值与 `0x88B8`。当出站副本保留 802.1Q 头时，该位置是 `0x8100`，帧在到达 GOOSE 解析和订阅匹配之前就被丢弃。这解释了同一网卡上独立抓包有数据、订阅计数却为零的现象。 [libiec61850 v1.6.1 Linux 接收过滤器源码](https://github.com/mz-automation/libiec61850/blob/v1.6.1/hal/ethernet/linux/ethernet_linux.c)
 
-Windows 默认 VID 为 `0` 时构造的是无标签帧，接收也走 Npcap 路径。相同的发布参数在两个系统上可能生成不同的以太网头。
+旧版 Windows 在 VID 为 `0` 时构造无标签帧。现在发布行为已统一为 Linux 的方式：始终携带单层 802.1Q 头，包括 VID 为 `0` 的优先级标签。两端均保留配置的 VID 和 PCP，外层 EtherType 为 `0x8100`，内层 GOOSE EtherType 为 `0x88B8`。接收与独立抓包仍兼容外部设备发来的无标签帧。
 
 ## 修复后的 Linux 接收流程
 
@@ -63,7 +63,7 @@ GOOSE Publisher → 指定以太网网卡 → 本机出站帧副本
 2. 发布和订阅选同一块已启用的以太网网卡。Linux 可用 `ip -br link` 查网卡名称。Windows 可用 `Get-NetAdapter` 查适配器名称和状态。容器或虚拟机内的后端需要使用其自身可见的网卡。
 3. 从发布配置复制实际的 GoCBRef、APPID 和目的组播 MAC。例如 GoCBRef 可以是 `IED1LD0/LLN0$GO$gcb1`。填写订阅后先启用本地接收，再启动发布。
 4. 查看订阅的最新数据和接收历史。周期重发时，接收计数应递增，`stNum` 通常保持稳定，`sqNum` 递增。变更一个发布成员值后，检查订阅值和 `stNum` 是否更新。
-5. 在 Linux 上先用 VID `0` 验证默认的优先级标签，再在允许该 VLAN 的测试网段验证非零 VID。Windows 可分别验证 VID `0` 的无标签帧和非零 VID 的带标签帧。
+5. 两个系统都先用 VID `0` 验证默认的优先级标签，再在允许该 VLAN 的测试网段验证非零 VID。相同 VID 和 PCP 配置下，两端的 802.1Q 头应一致；默认 VID `0`、PCP `4` 时，从偏移 12 开始应为 `81 00 80 00 88 B8`。
 
 ### Linux 抓包
 
@@ -98,8 +98,10 @@ sudo tcpdump -ni eth0 -Q out -e -vv +  'ether proto 0x88b8 or (vlan and ether pr
 
 回归测试模拟 Linux 原始套接字，分别注入无标签帧、VID `0` 优先级标签帧和 VID `100` 帧。测试检查绑定的网卡、订阅匹配、数据集历史和事件时标，并验证短帧以及 APPID 或目的 MAC 不匹配的帧不会更新订阅。
 
+Windows 发布回归测试拦截 Npcap 发送调用，检查 VID 为 `0` 和非零 VID 时实际构造的帧字节、PCP、内层 EtherType 和 GOOSE 长度，再把同一帧交给公共抓包与订阅处理链路，验证订阅计数和数据值更新。
+
 ```bash
-python -m pytest tests/protocols/iec61850/goose/test_capture_subscriber.py -q
+python -m pytest tests/protocols/iec61850/goose/test_capture_subscriber.py tests/protocols/iec61850/goose/test_publisher_transport.py -q
 ```
 
 该测试覆盖应用的收包和解析流程。网卡驱动是否提供出站帧副本，以及跨主机的 VLAN 标签和转发行为，需要按上面的实机步骤验证。

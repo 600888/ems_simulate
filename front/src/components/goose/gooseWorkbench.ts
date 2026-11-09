@@ -142,3 +142,28 @@ export function formatGooseTime(
   const label = formatBeijingDateTime(time);
   return label === "—" ? "-" : label;
 }
+
+/** Remaining receiver supervision time in milliseconds, measured from local reception. */
+export function remainingGooseTimeToLive(
+  subscription:
+    | Pick<
+        GooseSubscriptionStatus,
+        "enabled" | "state" | "last_update" | "time_allowed_to_live"
+      >
+    | null
+    | undefined,
+  nowMs = Date.now(),
+): number | null {
+  if (
+    !subscription?.enabled ||
+    subscription.state === "init" ||
+    !Number.isFinite(subscription.last_update) ||
+    subscription.last_update <= 0 ||
+    !Number.isFinite(subscription.time_allowed_to_live) ||
+    subscription.time_allowed_to_live <= 0
+  ) {
+    return null;
+  }
+  const elapsedMs = Math.max(0, nowMs - subscription.last_update * 1000);
+  return Math.max(0, Math.ceil(subscription.time_allowed_to_live - elapsedMs));
+}

@@ -2,52 +2,64 @@
   <el-empty v-if="!block" :description="$t('goose.selectControlBlock')" />
   <div v-else class="control-panel">
     <el-descriptions :column="2" border size="small" label-width="auto">
-      <el-descriptions-item :label="$t('goose.name')">{{
+      <el-descriptions-item :label="$t('goose.detailLabels.name')">{{
         block.display_name
       }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.state')">
+      <el-descriptions-item :label="$t('goose.detailLabels.state')">
         <el-tag :type="stateTag">{{ stateLabel }}</el-tag>
       </el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.goCbRefLabel')" :span="2">{{
-        block.go_cb_ref
-      }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.goId')">{{
+      <el-descriptions-item
+        :label="$t('goose.detailLabels.goCbRef')"
+        :span="2"
+        >{{ block.go_cb_ref }}</el-descriptions-item
+      >
+      <el-descriptions-item :label="$t('goose.detailLabels.goId')">{{
         block.go_id || "-"
       }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.appId')">{{
+      <el-descriptions-item :label="$t('goose.detailLabels.appId')">{{
         formatAppId(block.app_id)
       }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.dataSet')" :span="2">{{
-        block.data_set_ref || "-"
-      }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.iedLdLn')"
+      <el-descriptions-item
+        :label="$t('goose.detailLabels.dataSet')"
+        :span="2"
+        >{{ block.data_set_ref || "-" }}</el-descriptions-item
+      >
+      <el-descriptions-item :label="$t('goose.detailLabels.iedLdLn')"
         >{{ block.ied_name }} / {{ block.ld_inst }} /
         {{ block.ln_name }}</el-descriptions-item
       >
-      <el-descriptions-item :label="$t('goose.stNumSqNum')"
+      <el-descriptions-item :label="$t('goose.detailLabels.stNumSqNum')"
         >{{ block.st_num }} / {{ block.sq_num }}</el-descriptions-item
       >
-      <el-descriptions-item :label="$t('goose.confRevLabel')">
+      <el-descriptions-item :label="$t('goose.detailLabels.confRevLabel')">
         <span :class="{ mismatch: block.subscription?.config_mismatch }"
           >{{ block.conf_rev }} /
           {{ block.subscription?.received_conf_rev || "-" }}</span
         >
       </el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.interface')">{{
+      <el-descriptions-item :label="$t('goose.detailLabels.interface')">{{
         interfaceLabel
       }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.lastUpdate')">{{
+      <el-descriptions-item :label="$t('goose.detailLabels.lastUpdate')">{{
         formatGooseTime(block.last_update)
       }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.messageCountLabel')">{{
-        block.message_count || 0
-      }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.timeAllowedToLive')"
+      <el-descriptions-item
+        :label="$t('goose.detailLabels.messageCountLabel')"
+        >{{ block.message_count || 0 }}</el-descriptions-item
+      >
+      <el-descriptions-item :label="$t('goose.detailLabels.timeAllowedToLive')"
         >{{
           block.subscription?.time_allowed_to_live || 0
         }}
         ms</el-descriptions-item
       >
+      <el-descriptions-item
+        :label="$t('goose.detailLabels.remainingTimeToLive')"
+      >
+        <span :class="{ mismatch: remainingTimeToLive === 0 }">{{
+          remainingTimeToLive == null ? "-" : `${remainingTimeToLive} ms`
+        }}</span>
+      </el-descriptions-item>
     </el-descriptions>
 
     <section class="config-section">
@@ -142,12 +154,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Monitor } from "@element-plus/icons-vue";
 import type { NetworkInterfaceInfo } from "@/api/gooseApi";
 import type { GooseBlockItem } from "./gooseWorkbench";
-import { formatGooseTime } from "./gooseWorkbench";
+import { formatGooseTime, remainingGooseTimeToLive } from "./gooseWorkbench";
 
 const { t } = useI18n();
 
@@ -169,6 +181,17 @@ const form = reactive({
   description: "",
 });
 const appIdHex = ref("");
+const now = ref(Date.now());
+const remainingTimeToLive = computed(() =>
+  remainingGooseTimeToLive(props.block?.subscription, now.value),
+);
+let countdownTimer: ReturnType<typeof setInterval> | undefined;
+onMounted(() => {
+  countdownTimer = setInterval(() => {
+    now.value = Date.now();
+  }, 100);
+});
+onUnmounted(() => clearInterval(countdownTimer));
 const availableDataSets = computed(() => {
   if (
     !form.data_set_ref ||
@@ -276,6 +299,7 @@ function apply() {
 .config-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(280px, 1fr));
+  align-items: start;
   gap: 0 18px;
 }
 .config-form :deep(.el-form-item) {

@@ -247,6 +247,10 @@ async def create_goose_publisher(
         vlan_id=body.vlan_id,
         vlan_prio=body.vlan_prio,
         simulation=body.simulation,
+        retransmit_initial_ms=body.retransmit_initial_ms,
+        retransmit_multiplier=body.retransmit_multiplier,
+        retransmit_final_ms=body.retransmit_final_ms,
+        needs_commissioning=body.needs_commissioning,
         entries=[{"name": e.name, "value": e.value, "iec_type": e.iec_type} for e in body.entries],
         server=iec61850_server,
         channel_id=body.channel_id,
@@ -339,10 +343,17 @@ async def update_goose_publisher(
         vlan_id=body.vlan_id,
         vlan_prio=body.vlan_prio,
         simulation=body.simulation,
+        retransmit_initial_ms=body.retransmit_initial_ms,
+        retransmit_multiplier=body.retransmit_multiplier,
+        retransmit_final_ms=body.retransmit_final_ms,
+        needs_commissioning=body.needs_commissioning,
     )
     if "dst_mac" in body.model_fields_set:
         update_kwargs["dst_mac"] = body.dst_mac
-    result = manager.update_publisher(**update_kwargs)
+    try:
+        result = manager.update_publisher(**update_kwargs)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
     if not result:
         raise NotFoundError("GOOSE Publisher 未找到")
     return BaseResponse(message="更新 GOOSE Publisher 成功", data=result)

@@ -1,6 +1,11 @@
 """GOOSE Publisher Ethernet transport regression tests."""
 
-from types import SimpleNamespace
+from functools import partial
+import sys
+from types import ModuleType, SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
 
 from src.proto.iec61850.plugins.goose import publisher as publisher_module
 from src.proto.iec61850.plugins.goose.publisher import GoosePublisher
@@ -15,7 +20,8 @@ class _CommParameters:
         self.dstAddress = None
 
 
-def test_native_create_receives_configured_ethernet_parameters(monkeypatch):
+@pytest.mark.parametrize(("vlan_id", "vlan_prio"), [(0, 0), (0, 4), (100, 6), (4094, 7)])
+def test_native_create_receives_configured_ethernet_parameters(monkeypatch, vlan_id, vlan_prio):
     create_calls = []
     mac_calls = []
     fake_iec61850 = SimpleNamespace(
@@ -25,15 +31,17 @@ def test_native_create_receives_configured_ethernet_parameters(monkeypatch):
     )
     monkeypatch.setattr(publisher_module, "iec61850", fake_iec61850, raising=False)
     monkeypatch.setattr(publisher_module.platform, "system", lambda: "Linux")
-    publisher = GoosePublisher(PublisherConfig(interface="eth-test", app_id=0x2001, vlan_id=100, vlan_prio=6))
+    publisher = GoosePublisher(
+        PublisherConfig(interface="eth-test", app_id=0x2001, vlan_id=vlan_id, vlan_prio=vlan_prio)
+    )
 
     publisher._create_publisher()
 
     params, interface = create_calls[0]
     assert interface == "eth-test"
     assert params.appId == 0x2001
-    assert params.vlanId == 100
-    assert params.vlanPriority == 6
+    assert params.vlanId == vlan_id
+    assert params.vlanPriority == vlan_prio
     assert mac_calls == [(params, (0x01, 0x0C, 0xCD, 0x01, 0x20, 0x01))]
 
 
@@ -76,3 +84,62 @@ def test_windows_npcap_payload_is_valid_goose(monkeypatch):
     assert packets[0]["data_values"][0]["type"] == "boolean"
     assert packets[0]["data_values"][0]["value"] is True
     assert packets[0]["data_values"][0]["raw_value"] == "83 01 FF"
+
+
+@pytest.mark.parametrize(("vlan_id", "vlan_prio"), [(0, 0), (0, 4), (100, 6), (4094, 7)])
+def test_npcap_sends_linux_compatible_vlan_header_and_subscription_receives_it(monkeypatch, vlan_id, vlan_prio):
+    import scapy.config as scapy_config
+
+    # Serialize real Scapy layers without enumerating or opening host adapters.
+    monkeypatch.setattr(scapy_config, "_set_conf_sockets", Mock())
+    from scapy.layers.l2 import Dot1Q, Ether
+    from scapy.packet import Raw
+
+    from src.proto.iec61850.plugins.goose.capture import GooseCaptureEngine
+    from src.proto.iec61850.plugins.goose.subscriber import GooseReceiver
+    from src.proto.iec61850.plugins.goose.types import ReceiverConfig
+
+    sent = []
+    send = Mock(side_effect=lambda frame, **kwargs: sent.append(bytes(frame)))
+    scapy = ModuleType("scapy.all")
+    scapy.Ether = partial(Ether, src="02:03:04:05:06:07")
+    scapy.Dot1Q = Dot1Q
+    scapy.Raw = Raw
+    scapy.sendp = send
+    monkeypatch.setitem(sys.modules, "scapy.all", scapy)
+    ref = "TESTLD/LLN0$GO$gocb1"
+    publisher = GoosePublisher(
+        PublisherConfig(
+            interface="eth-test",
+            go_cb_ref=ref,
+            data_set_ref="TESTLD/LLN0$ds1",
+            app_id=0x2001,
+            vlan_id=vlan_id,
+            vlan_prio=vlan_prio,
+        )
+    )
+    publisher.add_entry(GooseDataSetEntry("stVal", True, IecDataType.BOOLEAN))
+
+    assert publisher._publish_with_npcap()
+    send.assert_called_once()
+    assert send.call_args.kwargs == {"iface": "eth-test", "count": 1, "verbose": False}
+    raw = sent[0]
+    # Match the Linux native publisher: TPID, PCP/DEI/VID, then GOOSE EtherType.
+    assert raw[12:18] == b"\x81\x00" + ((vlan_prio << 13) | vlan_id).to_bytes(2, "big") + b"\x88\xb8"
+    assert raw[18:20] == b"\x20\x01"
+    assert int.from_bytes(raw[20:22], "big") == len(raw) - 18
+
+    receiver = GooseReceiver(ReceiverConfig(interface="eth-test"))
+    receiver.add_subscription(ref, app_id=0x2001, dst_mac=publisher.dst_mac)
+    capture = GooseCaptureEngine(interface="eth-test")
+    capture.set_callback(receiver._on_captured_packet)
+    capture._process_packet(raw)
+
+    packet = capture.get_packets()[0]
+    assert packet["has_vlan"] is True
+    assert packet["vlan_id"] == vlan_id
+    assert packet["vlan_prio"] == vlan_prio
+    subscription = receiver.get_subscription(ref)
+    assert subscription["state"] == "connected"
+    assert subscription["message_count"] == 1
+    assert subscription["data_values"][0]["value"] is True

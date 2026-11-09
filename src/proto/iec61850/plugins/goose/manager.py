@@ -82,6 +82,10 @@ class GooseResourceManager:
         channel_id: int | None = None,
         force_recreate: bool = False,
         skip_model_rebuild: bool = False,
+        retransmit_initial_ms: int = 2,
+        retransmit_multiplier: float = 2.0,
+        retransmit_final_ms: int = 5000,
+        needs_commissioning: bool = False,
     ) -> dict[str, Any] | None:
         """创建 GOOSE Publisher
 
@@ -131,6 +135,10 @@ class GooseResourceManager:
                 vlan_id=vlan_id,
                 vlan_prio=vlan_prio,
                 simulation=simulation,
+                retransmit_initial_ms=retransmit_initial_ms,
+                retransmit_multiplier=retransmit_multiplier,
+                retransmit_final_ms=retransmit_final_ms,
+                needs_commissioning=needs_commissioning,
             )
             publisher = GoosePublisher(config)
 
@@ -166,8 +174,8 @@ class GooseResourceManager:
                         data_set_ref=data_set_ref,
                         conf_rev=conf_rev,
                         go_id=go_id,
-                        min_time=10,
-                        max_time=time_allowed_to_live,
+                        min_time=retransmit_initial_ms,
+                        max_time=retransmit_final_ms,
                         ld_inst=go_ld_inst,
                         entries=entries,
                         dst_mac=dst_mac,
@@ -220,6 +228,10 @@ class GooseResourceManager:
         vlan_id: int | None = None,
         vlan_prio: int | None = None,
         simulation: bool | None = None,
+        retransmit_initial_ms: int | None = None,
+        retransmit_multiplier: float | None = None,
+        retransmit_final_ms: int | None = None,
+        needs_commissioning: bool | None = None,
     ) -> dict[str, Any] | None:
         """更新 Publisher 配置 (仅未运行时)"""
         publisher = self._publishers.get(publisher_id)
@@ -246,6 +258,14 @@ class GooseResourceManager:
             vlan_id=vlan_id if vlan_id is not None else config.vlan_id,
             vlan_prio=vlan_prio if vlan_prio is not None else config.vlan_prio,
             simulation=simulation if simulation is not None else config.simulation,
+            retransmit_initial_ms=retransmit_initial_ms
+            if retransmit_initial_ms is not None
+            else config.retransmit_initial_ms,
+            retransmit_multiplier=retransmit_multiplier
+            if retransmit_multiplier is not None
+            else config.retransmit_multiplier,
+            retransmit_final_ms=retransmit_final_ms if retransmit_final_ms is not None else config.retransmit_final_ms,
+            needs_commissioning=needs_commissioning if needs_commissioning is not None else config.needs_commissioning,
         )
 
         # 需要重建 publisher (frozen config 不可变，只能重建)

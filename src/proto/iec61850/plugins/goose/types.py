@@ -156,6 +156,19 @@ class PublisherConfig:
     vlan_id: int = 0
     vlan_prio: int = 4
     simulation: bool = True
+    retransmit_initial_ms: int = 2
+    retransmit_multiplier: float = 2.0
+    retransmit_final_ms: int = 5000
+    needs_commissioning: bool = False
+
+    def __post_init__(self) -> None:
+        """拒绝无法调度的重传策略，包括非有限倍数。"""
+        import math
+
+        if not 1 <= self.retransmit_initial_ms <= self.retransmit_final_ms <= 60000:
+            raise ValueError("重传时间必须满足 1 ≤ Initial ≤ Final ≤ 60000 ms")
+        if not math.isfinite(self.retransmit_multiplier) or not 1 <= self.retransmit_multiplier <= 100:
+            raise ValueError("重传倍数必须在 1-100 之间")
 
 
 @dataclass(frozen=True, slots=True)

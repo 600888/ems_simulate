@@ -38,6 +38,10 @@ def test_clone_persistent_resources_deep_copies_goose_and_datasets(monkeypatch):
             vlan_id=12,
             vlan_prio=5,
             simulation=False,
+            retransmit_initial_ms=5,
+            retransmit_multiplier=1.5,
+            retransmit_final_ms=3000,
+            needs_commissioning=True,
             name="Trip publisher",
             description="source publisher",
             auto_start=True,
@@ -115,6 +119,10 @@ def test_clone_persistent_resources_deep_copies_goose_and_datasets(monkeypatch):
         assert copied_publisher.id != publisher.id
         assert copied_publisher.go_cb_ref == publisher.go_cb_ref
         assert copied_publisher.auto_start is True
+        assert copied_publisher.retransmit_initial_ms == 5
+        assert copied_publisher.retransmit_multiplier == 1.5
+        assert copied_publisher.retransmit_final_ms == 3000
+        assert copied_publisher.needs_commissioning is True
         assert copied_publisher.entries[0].name == "IEDLD0/GGIO1.SPCSO1.stVal"
 
         copied_receiver = session.query(GooseReceiverConfig).where(GooseReceiverConfig.channel_id == 20).one()

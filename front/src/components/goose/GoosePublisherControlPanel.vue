@@ -5,50 +5,74 @@
   />
   <div v-else class="control-panel">
     <el-descriptions :column="2" border size="small" label-width="auto">
-      <el-descriptions-item :label="$t('goose.publisherName')">{{
+      <el-descriptions-item :label="$t('goose.detailLabels.name')">{{
         block.display_name
       }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.publisherType')"
+      <el-descriptions-item :label="$t('goose.detailLabels.publisherType')"
         ><el-tag type="primary">{{
           $t("goose.publisher")
         }}</el-tag></el-descriptions-item
       >
-      <el-descriptions-item :label="$t('goose.goCbRef')" :span="2">{{
-        block.go_cb_ref
-      }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.goId')">{{
+      <el-descriptions-item
+        :label="$t('goose.detailLabels.goCbRef')"
+        :span="2"
+        >{{ block.go_cb_ref }}</el-descriptions-item
+      >
+      <el-descriptions-item :label="$t('goose.detailLabels.goId')">{{
         block.go_id || "-"
       }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.appId')">{{
+      <el-descriptions-item :label="$t('goose.detailLabels.appId')">{{
         formatAppId(block.app_id)
       }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.dataSet')" :span="2">{{
-        block.data_set_ref || "-"
-      }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.iedLdLn')"
+      <el-descriptions-item
+        :label="$t('goose.detailLabels.dataSet')"
+        :span="2"
+        >{{ block.data_set_ref || "-" }}</el-descriptions-item
+      >
+      <el-descriptions-item :label="$t('goose.detailLabels.iedLdLn')"
         >{{ block.ied_name }} / {{ block.ld_inst }} /
         {{ block.ln_name }}</el-descriptions-item
       >
-      <el-descriptions-item :label="$t('goose.stNumSqNum')"
+      <el-descriptions-item :label="$t('goose.detailLabels.stNumSqNum')"
         >{{ block.st_num }} / {{ block.sq_num }}</el-descriptions-item
       >
-      <el-descriptions-item :label="$t('goose.interface')">{{
+      <el-descriptions-item :label="$t('goose.detailLabels.interface')">{{
         block.interface
       }}</el-descriptions-item>
-      <el-descriptions-item :label="$t('goose.numEntries')">{{
+      <el-descriptions-item :label="$t('goose.detailLabels.numEntries')">{{
         block.data_values.length
       }}</el-descriptions-item>
     </el-descriptions>
 
     <section class="config-section">
-      <div class="section-title">{{ $t("goose.publishConfig") }}</div>
+      <div class="section-header">
+        <div class="section-title">{{ $t("goose.publishConfig") }}</div>
+        <el-button
+          type="primary"
+          :loading="loading"
+          @click="emit('apply', { ...form })"
+          >{{ $t("goose.applyConfig") }}</el-button
+        >
+      </div>
       <el-form label-width="200px" class="config-form">
-        <el-form-item :label="$t('goose.publishEnable')"
-          ><el-switch
-            v-model="form.enabled"
-            :active-text="$t('goose.enabled')"
-            :inactive-text="$t('goose.disabled')"
-        /></el-form-item>
+        <div class="config-switches">
+          <el-form-item :label="$t('goose.publishEnable')">
+            <el-switch
+              v-model="form.enabled"
+              :active-text="$t('goose.enabled')"
+              :inactive-text="$t('goose.disabled')"
+            />
+          </el-form-item>
+          <el-form-item :label="$t('goose.simulation')" label-width="auto">
+            <el-switch v-model="form.simulation" />
+          </el-form-item>
+          <el-form-item
+            class="commissioning-switch"
+            :label="$t('goose.needsCommissioning')"
+          >
+            <el-switch v-model="form.needs_commissioning" />
+          </el-form-item>
+        </div>
         <el-form-item :label="$t('goose.interface')">
           <el-select
             v-model="form.interface"
@@ -112,7 +136,7 @@
             :min="1"
             controls-position="right"
         /></el-form-item>
-        <el-form-item :label="$t('goose.maxTime')"
+        <el-form-item :label="$t('goose.timeAllowedToLive')"
           ><el-input-number
             v-model="form.time_allowed_to_live"
             :min="100"
@@ -124,19 +148,38 @@
         <el-form-item :label="$t('goose.vlanPrio')"
           ><el-input-number v-model="form.vlan_prio" :min="0" :max="7"
         /></el-form-item>
-        <el-form-item :label="$t('goose.simulation')"
-          ><el-switch v-model="form.simulation"
-        /></el-form-item>
+        <el-form-item :label="$t('goose.retransmitInitial')">
+          <el-input-number
+            v-model="form.retransmit_initial_ms"
+            :min="1"
+            :max="form.retransmit_final_ms"
+            :precision="0"
+            :value-on-clear="2"
+            controls-position="right"
+          />
+        </el-form-item>
+        <el-form-item :label="$t('goose.retransmitMultiplier')">
+          <el-input-number
+            v-model="form.retransmit_multiplier"
+            :min="1"
+            :max="100"
+            :step="0.1"
+            :value-on-clear="2"
+            controls-position="right"
+          />
+        </el-form-item>
+        <el-form-item :label="$t('goose.retransmitFinal')">
+          <el-input-number
+            v-model="form.retransmit_final_ms"
+            :min="form.retransmit_initial_ms"
+            :max="60000"
+            :precision="0"
+            :value-on-clear="5000"
+            controls-position="right"
+          />
+        </el-form-item>
       </el-form>
     </section>
-    <div class="actions">
-      <el-button
-        type="primary"
-        :loading="loading"
-        @click="emit('apply', { ...form })"
-        >{{ $t("goose.applyConfig") }}</el-button
-      >
-    </div>
   </div>
 </template>
 
@@ -165,6 +208,10 @@ interface PublisherForm {
   vlan_id: number;
   vlan_prio: number;
   simulation: boolean;
+  retransmit_initial_ms: number;
+  retransmit_multiplier: number;
+  retransmit_final_ms: number;
+  needs_commissioning: boolean;
 }
 const form = reactive<PublisherForm>({
   enabled: false,
@@ -178,6 +225,10 @@ const form = reactive<PublisherForm>({
   vlan_id: 0,
   vlan_prio: 4,
   simulation: true,
+  retransmit_initial_ms: 2,
+  retransmit_multiplier: 2,
+  retransmit_final_ms: 5000,
+  needs_commissioning: false,
 });
 const emit = defineEmits<{ (e: "apply", form: PublisherForm): void }>();
 const availableDataSets = computed(() => {
@@ -213,6 +264,10 @@ watch(
       vlan_id: publisher.vlan_id,
       vlan_prio: publisher.vlan_prio,
       simulation: publisher.simulation,
+      retransmit_initial_ms: publisher.retransmit_initial_ms ?? 2,
+      retransmit_multiplier: publisher.retransmit_multiplier ?? 2,
+      retransmit_final_ms: publisher.retransmit_final_ms ?? 5000,
+      needs_commissioning: publisher.needs_commissioning ?? false,
     });
   },
   { immediate: true },
@@ -235,8 +290,14 @@ function formatAppId(value: number | null) {
   border: 1px solid var(--border-color);
   background: var(--bg-subtle);
 }
-.section-title {
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 14px;
+}
+.section-title {
   color: var(--text-primary);
   font-weight: 700;
 }
@@ -252,9 +313,22 @@ function formatAppId(value: number | null) {
 .config-form :deep(.el-input-number) {
   width: 100%;
 }
-.actions {
-  display: flex;
-  justify-content: flex-end;
+.config-switches {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 18px;
+}
+.config-switches :deep(.el-form-item) {
+  min-width: 0;
+}
+.config-switches :deep(.el-form-item__label-wrap) {
+  margin-left: 0 !important;
+}
+.commissioning-switch {
+  // Align the label and switch with the second parameter column.
+  transform: translateX(calc(-50% - 9px));
 }
 @container (max-width: 1000px) {
   .config-form {

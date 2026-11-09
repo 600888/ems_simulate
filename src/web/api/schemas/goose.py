@@ -6,7 +6,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ===== GOOSE Publisher 相关 =====
 
@@ -33,7 +33,19 @@ class GooseDataSetEntryUpdate(BaseModel):
     value: bool | int | float | str = Field(..., description="新值")
 
 
-class GoosePublisherCreate(BaseModel):
+class GooseRetransmissionConfig(BaseModel):
+    """发布配置中通用的重传策略约束。"""
+
+    @model_validator(mode="after")
+    def validate_retransmission_order(self):
+        initial = self.retransmit_initial_ms
+        final = self.retransmit_final_ms
+        if initial is not None and final is not None and initial > final:
+            raise ValueError("Final 必须大于或等于 Initial")
+        return self
+
+
+class GoosePublisherCreate(GooseRetransmissionConfig):
     """创建 GOOSE Publisher"""
 
     interface: str = Field("eth0", description="网络接口名称", min_length=1)
@@ -47,6 +59,10 @@ class GoosePublisherCreate(BaseModel):
     vlan_id: int = Field(0, description="VLAN ID", ge=0, le=4095)
     vlan_prio: int = Field(4, description="VLAN 优先级", ge=0, le=7)
     simulation: bool = Field(True, description="是否为仿真模式")
+    retransmit_initial_ms: int = Field(2, description="初始重传间隔(ms)", ge=1, le=60000)
+    retransmit_multiplier: float = Field(2, description="重传间隔倍数", ge=1, le=100, allow_inf_nan=False)
+    retransmit_final_ms: int = Field(5000, description="最终重传间隔(ms)", ge=1, le=60000)
+    needs_commissioning: bool = Field(False, description="需要调试(ndsCom)")
     entries: list[GooseDataSetEntryCreate] = Field(default_factory=list, description="数据集条目列表")
     channel_id: int | None = Field(None, description="关联的通道ID (提供后持久化到数据库)", ge=1)
 
@@ -83,7 +99,7 @@ class GooseImportDiscoveredRequest(BaseModel):
     go_cb_refs: list[str] = Field(default_factory=list, description="要添加的控制块引用；为空时兼容导入全部")
 
 
-class GoosePublisherUpdate(BaseModel):
+class GoosePublisherUpdate(GooseRetransmissionConfig):
     """更新 GOOSE Publisher 配置"""
 
     publisher_id: str = Field(..., description="Publisher 标识 (go_cb_ref)")
@@ -96,6 +112,10 @@ class GoosePublisherUpdate(BaseModel):
     conf_rev: int | None = Field(None, description="配置修订号", ge=1)
     time_allowed_to_live: int | None = Field(None, description="报文存活时间(ms)", ge=100, le=60000)
     simulation: bool | None = Field(None, description="是否为仿真模式")
+    retransmit_initial_ms: int | None = Field(None, ge=1, le=60000)
+    retransmit_multiplier: float | None = Field(None, ge=1, le=100, allow_inf_nan=False)
+    retransmit_final_ms: int | None = Field(None, ge=1, le=60000)
+    needs_commissioning: bool | None = None
     dst_mac: list[int] | None = Field(None, min_length=6, max_length=6)
     vlan_id: int | None = Field(None, ge=0, le=4095)
     vlan_prio: int | None = Field(None, ge=0, le=7)
@@ -258,6 +278,10 @@ class GoosePublisherStatus(BaseModel):
     time_allowed_to_live: int = 1000
     interface: str = ""
     simulation: bool = True
+    retransmit_initial_ms: int = 2
+    retransmit_multiplier: float = 2
+    retransmit_final_ms: int = 5000
+    needs_commissioning: bool = False
     is_running: bool = False
     dst_mac: str = ""
     vlan_id: int = 0

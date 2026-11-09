@@ -63,6 +63,10 @@ class GoosePublisherDao:
                     existing.vlan_id = pub_data.get("vlan_id", 0)
                     existing.vlan_prio = pub_data.get("vlan_prio", 4)
                     existing.simulation = pub_data.get("simulation", True)
+                    existing.retransmit_initial_ms = pub_data.get("retransmit_initial_ms", 2)
+                    existing.retransmit_multiplier = pub_data.get("retransmit_multiplier", 2.0)
+                    existing.retransmit_final_ms = pub_data.get("retransmit_final_ms", 5000)
+                    existing.needs_commissioning = pub_data.get("needs_commissioning", False)
                     existing.name = pub_data.get("name", "")
                     existing.description = pub_data.get("description", "")
                     existing.auto_start = pub_data.get("auto_start", False)
@@ -87,6 +91,10 @@ class GoosePublisherDao:
                         vlan_id=pub_data.get("vlan_id", 0),
                         vlan_prio=pub_data.get("vlan_prio", 4),
                         simulation=pub_data.get("simulation", True),
+                        retransmit_initial_ms=pub_data.get("retransmit_initial_ms", 2),
+                        retransmit_multiplier=pub_data.get("retransmit_multiplier", 2.0),
+                        retransmit_final_ms=pub_data.get("retransmit_final_ms", 5000),
+                        needs_commissioning=pub_data.get("needs_commissioning", False),
                         name=pub_data.get("name", ""),
                         description=pub_data.get("description", ""),
                         auto_start=pub_data.get("auto_start", False),
@@ -375,6 +383,10 @@ class GoosePublisherDao:
             "vlan_id": publisher.vlan_id,
             "vlan_prio": publisher.vlan_prio,
             "simulation": publisher.simulation,
+            "retransmit_initial_ms": publisher.retransmit_initial_ms,
+            "retransmit_multiplier": publisher.retransmit_multiplier,
+            "retransmit_final_ms": publisher.retransmit_final_ms,
+            "needs_commissioning": publisher.needs_commissioning,
             "name": publisher.name,
             "description": publisher.description,
             "auto_start": publisher.auto_start,

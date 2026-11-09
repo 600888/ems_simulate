@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import contextlib
+import math
 import platform
 import struct
 import threading
@@ -104,12 +105,13 @@ class GoosePublisher:
         self._uses_npcap_transport = False
 
         # 定时重发
-        self._retransmit_interval = config.time_allowed_to_live / 2000.0
-        self._retransmit_stop = threading.Event()
+        self._retransmit_interval = config.retransmit_initial_ms / 1000.0
+        self._next_retransmit_at = 0.0
         self._retransmit_thread: threading.Thread | None = None
 
         # 线程锁
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._retransmit_condition = threading.Condition(self._lock)
 
     # ===== 配置属性 (只读) =====
 
@@ -224,12 +226,10 @@ class GoosePublisher:
                     self._st_num += 1
                     self._sq_num = 0
                     changed = True
-
-        if changed and self._is_running:
-            try:
-                self.publish()
-            except Exception as e:
-                log.error(f"更新条目值后立即发布 GOOSE 失败: {e}")
+                    # Keep the immediate state-change send and timer reset atomic
+                    # with respect to the retransmission worker.
+                    if self._is_running:
+                        self.publish()
 
         return changed
 
@@ -319,6 +319,9 @@ class GoosePublisher:
         adapter.call("GoosePublisher_setStNum", self._publisher, self._st_num)
         adapter.call("GoosePublisher_setSqNum", self._publisher, self._sq_num)
         adapter.call("GoosePublisher_setSimulation", self._publisher, self._config.simulation)
+        called, _ = adapter.call("GoosePublisher_setNeedsCommission", self._publisher, self._config.needs_commissioning)
+        if self._config.needs_commissioning and not called:
+            raise RuntimeError("当前 pyiec61850 不支持 Needs Commissioning")
 
         self._is_created = True
 
@@ -356,11 +359,7 @@ class GoosePublisher:
             # the background thread.
             if not self.publish():
                 raise RuntimeError(f"首次 GOOSE 报文发送失败，请检查 Npcap、管理员权限和网卡: {self._config.interface}")
-            with self._lock:
-                self._sq_num += 1
-
             # 启动定时重发线程
-            self._retransmit_stop.clear()
             self._retransmit_thread = threading.Thread(target=self._retransmit_loop, daemon=True)
             self._retransmit_thread.start()
 
@@ -374,8 +373,9 @@ class GoosePublisher:
 
     def stop(self) -> None:
         """停止 GOOSE Publisher"""
-        self._is_running = False
-        self._retransmit_stop.set()
+        with self._retransmit_condition:
+            self._is_running = False
+            self._retransmit_condition.notify_all()
 
         if self._retransmit_thread and self._retransmit_thread.is_alive():
             self._retransmit_thread.join(timeout=2.0)
@@ -457,7 +457,7 @@ class GoosePublisher:
         fields = b"".join(
             [
                 self._ber_tlv(0x80, self._config.go_cb_ref.encode("utf-8")),
-                self._ber_tlv(0x81, self._unsigned_bytes(self._config.time_allowed_to_live)),
+                self._ber_tlv(0x81, self._unsigned_bytes(self._effective_time_allowed_to_live())),
                 self._ber_tlv(0x82, self._config.data_set_ref.encode("utf-8")),
                 self._ber_tlv(0x83, self._config.go_id.encode("utf-8")),
                 self._ber_tlv(0x84, self._utc_time(now_ms)),
@@ -465,7 +465,7 @@ class GoosePublisher:
                 self._ber_tlv(0x86, self._unsigned_bytes(self._sq_num)),
                 self._ber_tlv(0x87, b"\xff" if self._config.simulation else b"\x00"),
                 self._ber_tlv(0x88, self._unsigned_bytes(self._config.conf_rev)),
-                self._ber_tlv(0x89, b"\x00"),
+                self._ber_tlv(0x89, b"\xff" if self._config.needs_commissioning else b"\x00"),
                 self._ber_tlv(0x8A, self._unsigned_bytes(len(self._entries))),
                 self._ber_tlv(0xAB, all_data),
             ]
@@ -476,36 +476,55 @@ class GoosePublisher:
         return header + pdu
 
     def _publish_with_npcap(self) -> bool:
-        """在 Windows 上通过 Npcap 发送带以太网头和可选 VLAN 标签的 GOOSE 帧。"""
+        """在 Windows 上通过 Npcap 发送带 802.1Q 头的 GOOSE 帧，与 Linux 保持一致。"""
         try:
             from scapy.all import Dot1Q, Ether, Raw, sendp
 
             dst = ":".join(f"{value:02x}" for value in self._dst_mac)
-            if self._config.vlan_id > 0:
-                frame = (
-                    Ether(dst=dst)
-                    / Dot1Q(prio=self._config.vlan_prio, vlan=self._config.vlan_id, type=0x88B8)
-                    / Raw(self._build_goose_payload())
-                )
-            else:
-                frame = Ether(dst=dst, type=0x88B8) / Raw(self._build_goose_payload())
+            # libiec61850 GoosePublisher_create always includes this header.
+            # VID 0 is a priority tag and must still carry the configured PCP.
+            frame = (
+                Ether(dst=dst, type=0x8100)
+                / Dot1Q(prio=self._config.vlan_prio, vlan=self._config.vlan_id, type=0x88B8)
+                / Raw(self._build_goose_payload())
+            )
             sendp(frame, iface=self._config.interface, count=1, verbose=False)
             return True
         except Exception as e:
             log.error(f"GOOSE Npcap 发布失败: interface={self._config.interface}, error={e}")
             return False
 
-    def _retransmit_loop(self) -> None:
-        """定时重发循环 (按照 IEC 61850 规范，GOOSE 应周期性重发)"""
-        while not self._retransmit_stop.is_set():
-            try:
-                self.publish()
-                with self._lock:
-                    self._sq_num += 1
-            except Exception as e:
-                log.error(f"GOOSE 重发失败: {e}")
+    def _next_interval(self) -> float:
+        """状态变化后从 Initial 开始，随后按倍数增长至 Final。"""
+        if self._sq_num == 0:
+            return self._config.retransmit_initial_ms / 1000.0
+        return min(
+            self._retransmit_interval * self._config.retransmit_multiplier,
+            self._config.retransmit_final_ms / 1000.0,
+        )
 
-            self._retransmit_stop.wait(self._retransmit_interval)
+    def _effective_time_allowed_to_live(self) -> int:
+        """TAL 至少覆盖两次重传间隔，防止慢速心跳被接收端误判超时。"""
+        return max(self._config.time_allowed_to_live, math.ceil(self._next_interval() * 2000))
+
+    def _complete_publish(self) -> None:
+        """仅成功发送后推进序号和重传计划；调用方持有发送锁。"""
+        self._retransmit_interval = self._next_interval()
+        self._sq_num += 1
+        self._next_retransmit_at = time.monotonic() + self._retransmit_interval
+        self._retransmit_condition.notify_all()
+
+    def _retransmit_loop(self) -> None:
+        """等待重传期限，状态变化或停止时立即重新计算等待时间。"""
+        with self._retransmit_condition:
+            while self._is_running:
+                remaining = self._next_retransmit_at - time.monotonic()
+                if remaining > 0:
+                    self._retransmit_condition.wait(remaining)
+                    continue
+                if not self.publish():
+                    # Failed sends retain their sequence and retry without spinning.
+                    self._next_retransmit_at = time.monotonic() + self._retransmit_interval
 
     def publish(self) -> bool:
         """立即发布 GOOSE 报文"""
@@ -523,6 +542,7 @@ class GoosePublisher:
                     result = self._publish_with_npcap()
                     if result:
                         log.debug(f"GOOSE 发布成功 (Npcap): stNum={self._st_num}, sqNum={self._sq_num}")
+                        self._complete_publish()
                     return result
 
                 # 创建 LinkedList 并填充 MMS 值
@@ -540,6 +560,9 @@ class GoosePublisher:
                     # 更新序号
                     iec61850.GoosePublisher_setStNum(self._publisher, self._st_num)
                     iec61850.GoosePublisher_setSqNum(self._publisher, self._sq_num)
+                    iec61850.GoosePublisher_setTimeAllowedToLive(
+                        self._publisher, self._effective_time_allowed_to_live()
+                    )
 
                     # 发布
                     result = iec61850.GoosePublisher_publish(self._publisher, data_set_values)
@@ -552,6 +575,7 @@ class GoosePublisher:
 
                 if result == 0:
                     log.debug(f"GOOSE 发布成功: stNum={self._st_num}, sqNum={self._sq_num}")
+                    self._complete_publish()
                     return True
                 else:
                     log.warning(f"GOOSE 发布失败: goCbRef={self._config.go_cb_ref}, result={result}")
@@ -573,6 +597,10 @@ class GoosePublisher:
             "time_allowed_to_live": self._config.time_allowed_to_live,
             "interface": self._config.interface,
             "simulation": self._config.simulation,
+            "retransmit_initial_ms": self._config.retransmit_initial_ms,
+            "retransmit_multiplier": self._config.retransmit_multiplier,
+            "retransmit_final_ms": self._config.retransmit_final_ms,
+            "needs_commissioning": self._config.needs_commissioning,
             "is_running": self._is_running,
             "dst_mac": ":".join(f"{b:02X}" for b in self._dst_mac),
             "vlan_id": self._config.vlan_id,

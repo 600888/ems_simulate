@@ -6,7 +6,7 @@ GOOSE Publisher 数据库模型
 
 from typing import Any, TypedDict
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.data.model.base import Base
@@ -39,6 +39,10 @@ class GoosePublisherDict(TypedDict):
     vlan_id: int
     vlan_prio: int
     simulation: bool
+    retransmit_initial_ms: int
+    retransmit_multiplier: float
+    retransmit_final_ms: int
+    needs_commissioning: bool
     name: str
     description: str
     auto_start: bool
@@ -109,6 +113,10 @@ class GoosePublisher(Base):
     vlan_id: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", comment="VLAN ID")
     vlan_prio: Mapped[int] = mapped_column(Integer, nullable=False, server_default="4", comment="VLAN 优先级")
     simulation: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1", comment="仿真模式")
+    retransmit_initial_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default="2")
+    retransmit_multiplier: Mapped[float] = mapped_column(Float, nullable=False, server_default="2")
+    retransmit_final_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default="5000")
+    needs_commissioning: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
     name: Mapped[str] = mapped_column(String(128), nullable=False, server_default="", comment="显示名称")
     description: Mapped[str] = mapped_column(String(512), nullable=False, server_default="", comment="描述")
     auto_start: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0", comment="自动启动")
@@ -140,6 +148,10 @@ class GoosePublisher(Base):
             "vlan_id": self.vlan_id,
             "vlan_prio": self.vlan_prio,
             "simulation": self.simulation,
+            "retransmit_initial_ms": self.retransmit_initial_ms,
+            "retransmit_multiplier": self.retransmit_multiplier,
+            "retransmit_final_ms": self.retransmit_final_ms,
+            "needs_commissioning": self.needs_commissioning,
             "name": self.name,
             "description": self.description,
             "auto_start": self.auto_start,
