@@ -107,7 +107,11 @@ class GoosePublisher(Base):
     app_id: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", comment="APPID")
     conf_rev: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", comment="配置修订号")
     time_allowed_to_live: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="1000", comment="存活时间 (ms)"
+        Integer,
+        nullable=False,
+        default=lambda context: 2 * context.get_current_parameters().get("retransmit_final_ms", 5000),
+        server_default="10000",
+        comment="存活时间 (ms)",
     )
     dst_mac_json: Mapped[str | None] = mapped_column(Text, nullable=True, comment="目标 MAC 地址 (JSON 数组)")
     vlan_id: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", comment="VLAN ID")

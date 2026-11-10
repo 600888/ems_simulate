@@ -556,6 +556,8 @@ async def import_icd(
                                 app_id=pub_config["app_id"],
                                 conf_rev=pub_config["conf_rev"],
                                 time_allowed_to_live=pub_config["time_allowed_to_live"],
+                                retransmit_initial_ms=pub_config.get("retransmit_initial_ms", 2),
+                                retransmit_final_ms=pub_config.get("retransmit_final_ms", 5000),
                                 dst_mac=pub_config.get("dst_mac"),
                                 vlan_id=pub_config.get("vlan_id", 0),
                                 vlan_prio=pub_config.get("vlan_prio", 4),

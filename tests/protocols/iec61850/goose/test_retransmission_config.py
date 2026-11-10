@@ -20,7 +20,7 @@ from src.proto.iec61850.plugins.goose.publisher import GoosePublisher
 from src.proto.iec61850.plugins.goose.types import GooseDataSetEntry, PublisherConfig
 from src.web.api.channel import goose
 from src.web.api.exceptions import ValidationError
-from src.web.api.schemas.goose import GoosePublisherCreate, GoosePublisherUpdate
+from src.web.api.schemas.goose import GoosePublisherCreate, GoosePublisherStatus, GoosePublisherUpdate
 
 CB_REF = "TESTLD/LLN0$GO$gcb1"
 
@@ -29,6 +29,79 @@ CB_REF = "TESTLD/LLN0$GO$gcb1"
 def enable_goose(monkeypatch):
     monkeypatch.setattr(publisher_module, "HAS_IEC61850", True)
     monkeypatch.setattr(manager_module, "HAS_IEC61850", True)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {},
+        {"retransmit_final_ms": 1, "retransmit_initial_ms": 1},
+        {"retransmit_final_ms": 3000},
+        {"retransmit_final_ms": 60000},
+    ],
+)
+def test_tal_defaults_to_twice_final(values):
+    expected = 2 * values.get("retransmit_final_ms", 5000)
+    assert PublisherConfig(**values).time_allowed_to_live == expected
+    assert GoosePublisherCreate(go_cb_ref=CB_REF, **values).time_allowed_to_live == expected
+    assert GoosePublisherStatus(go_cb_ref=CB_REF, **values).time_allowed_to_live == expected
+    status = manager_module.GooseResourceManager().create_publisher(go_cb_ref=CB_REF, **values)
+    assert status["time_allowed_to_live"] == expected
+
+
+def test_explicit_tal_is_preserved():
+    values = {"retransmit_final_ms": 3000, "time_allowed_to_live": 2000}
+    assert PublisherConfig(**values).time_allowed_to_live == 2000
+    assert GoosePublisherCreate(go_cb_ref=CB_REF, **values).time_allowed_to_live == 2000
+    status = manager_module.GooseResourceManager().create_publisher(go_cb_ref=CB_REF, **values)
+    assert status["time_allowed_to_live"] == 2000
+
+
+@pytest.mark.parametrize("values", [{}, {"time_allowed_to_live": 2000}])
+def test_changing_final_keeps_existing_tal(values):
+    manager = manager_module.GooseResourceManager()
+    created = manager.create_publisher(go_cb_ref=CB_REF, **values)
+    updated = manager.update_publisher(created["id"], retransmit_final_ms=3000)
+    assert updated["retransmit_final_ms"] == 3000
+    assert updated["time_allowed_to_live"] == created["time_allowed_to_live"]
+
+
+def test_imported_tal_defaults_to_twice_imported_final():
+    from src.proto.iec61850.plugins.scl.transformer.goose_transformer import GseControlInfo
+    from src.tools.icd_goose_importer import GooseGseControlInfo
+
+    for info in (GseControlInfo(), GooseGseControlInfo()):
+        info.go_cb_ref = CB_REF
+        info.min_time = 4
+        info.max_time = 3000
+        config = info.to_publisher_dict()
+        assert config["retransmit_initial_ms"] == 4
+        assert config["retransmit_final_ms"] == 3000
+        assert GoosePublisherCreate(**config).time_allowed_to_live == 6000
+
+
+def test_persistence_derives_missing_tal_and_preserves_explicit_values(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(goose_publisher_dao, "local_session", sessions)
+    dao = goose_publisher_dao.GoosePublisherDao
+    config = {"go_cb_ref": CB_REF, "retransmit_final_ms": 3000}
+    assert dao.save_publisher(7, config) is not None
+    assert dao.get_by_channel(7)[0]["time_allowed_to_live"] == 6000
+    config["retransmit_final_ms"] = 60000
+    assert dao.save_publisher(7, config) is not None
+    assert dao.get_by_channel(7)[0]["time_allowed_to_live"] == 120000
+    config["time_allowed_to_live"] = 2000
+    assert dao.save_publisher(7, config) is not None
+    assert dao.get_by_channel(7)[0]["time_allowed_to_live"] == 2000
+    with sessions.begin() as session:
+        for index, values in enumerate(({}, {"retransmit_final_ms": 3000})):
+            publisher = goose_publisher_dao.GoosePublisher(go_cb_ref=f"orm-{index}", **values)
+            session.add(publisher)
+            session.flush()
+            assert publisher.time_allowed_to_live == 2 * values.get("retransmit_final_ms", 5000)
+    engine.dispose()
 
 
 def test_worker_grows_intervals_caps_and_resets_on_data_change(monkeypatch):
@@ -151,6 +224,7 @@ async def test_api_create_update_persistence_and_runtime_reload(monkeypatch):
         request, GoosePublisherCreate(channel_id=7, interface="test", go_cb_ref=CB_REF, **values)
     )
     publisher_id = created.data["id"]
+    values["time_allowed_to_live"] = 6000
     for key, value in values.items():
         assert created.data[key] == value
     await goose.update_goose_publisher(

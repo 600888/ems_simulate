@@ -72,7 +72,7 @@ class GooseResourceManager:
         data_set_ref: str = "",
         app_id: int = 0x0001,
         conf_rev: int = 1,
-        time_allowed_to_live: int = 1000,
+        time_allowed_to_live: int | None = None,
         dst_mac: list[int] | None = None,
         vlan_id: int = 0,
         vlan_prio: int = 4,
@@ -96,7 +96,7 @@ class GooseResourceManager:
             data_set_ref: 数据集引用
             app_id: APPID
             conf_rev: 配置修订号
-            time_allowed_to_live: 存活时间 (ms)
+            time_allowed_to_live: 存活时间 (ms)，未指定时取 Final 的两倍
             dst_mac: 目标 MAC 地址
             vlan_id: VLAN ID
             vlan_prio: VLAN 优先级

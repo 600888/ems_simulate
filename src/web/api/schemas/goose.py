@@ -54,7 +54,6 @@ class GoosePublisherCreate(GooseRetransmissionConfig):
     data_set_ref: str = Field("", description="数据集引用 (如 LD0/LLN0$dsGOOSE1)")
     app_id: int = Field(0x0001, description="APPID", ge=0, le=0xFFFF)
     conf_rev: int = Field(1, description="配置修订号", ge=1)
-    time_allowed_to_live: int = Field(1000, description="报文存活时间(ms)", ge=100, le=60000)
     dst_mac: list[int] | None = Field(None, description="目标MAC地址 (6字节)", max_length=6)
     vlan_id: int = Field(0, description="VLAN ID", ge=0, le=4095)
     vlan_prio: int = Field(4, description="VLAN 优先级", ge=0, le=7)
@@ -62,6 +61,12 @@ class GoosePublisherCreate(GooseRetransmissionConfig):
     retransmit_initial_ms: int = Field(2, description="初始重传间隔(ms)", ge=1, le=60000)
     retransmit_multiplier: float = Field(2, description="重传间隔倍数", ge=1, le=100, allow_inf_nan=False)
     retransmit_final_ms: int = Field(5000, description="最终重传间隔(ms)", ge=1, le=60000)
+    time_allowed_to_live: int = Field(
+        default_factory=lambda data: 2 * data["retransmit_final_ms"],
+        description="报文存活时间(ms)，默认 Final 的两倍",
+        ge=1,
+        le=120000,
+    )
     needs_commissioning: bool = Field(False, description="需要调试(ndsCom)")
     entries: list[GooseDataSetEntryCreate] = Field(default_factory=list, description="数据集条目列表")
     channel_id: int | None = Field(None, description="关联的通道ID (提供后持久化到数据库)", ge=1)
@@ -110,7 +115,7 @@ class GoosePublisherUpdate(GooseRetransmissionConfig):
     data_set_ref: str | None = None
     app_id: int | None = Field(None, ge=0, le=0xFFFF)
     conf_rev: int | None = Field(None, description="配置修订号", ge=1)
-    time_allowed_to_live: int | None = Field(None, description="报文存活时间(ms)", ge=100, le=60000)
+    time_allowed_to_live: int | None = Field(None, description="报文存活时间(ms)", ge=1, le=120000)
     simulation: bool | None = Field(None, description="是否为仿真模式")
     retransmit_initial_ms: int | None = Field(None, ge=1, le=60000)
     retransmit_multiplier: float | None = Field(None, ge=1, le=100, allow_inf_nan=False)
@@ -275,12 +280,12 @@ class GoosePublisherStatus(BaseModel):
     conf_rev: int = 1
     st_num: int = 1
     sq_num: int = 0
-    time_allowed_to_live: int = 1000
     interface: str = ""
     simulation: bool = True
     retransmit_initial_ms: int = 2
     retransmit_multiplier: float = 2
     retransmit_final_ms: int = 5000
+    time_allowed_to_live: int = Field(default_factory=lambda data: 2 * data["retransmit_final_ms"])
     needs_commissioning: bool = False
     is_running: bool = False
     dst_mac: str = ""

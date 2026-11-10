@@ -58,7 +58,9 @@ class GoosePublisherDao:
                     existing.data_set_ref = pub_data.get("data_set_ref", "")
                     existing.app_id = pub_data.get("app_id", 1)
                     existing.conf_rev = pub_data.get("conf_rev", 1)
-                    existing.time_allowed_to_live = pub_data.get("time_allowed_to_live", 1000)
+                    existing.time_allowed_to_live = pub_data.get(
+                        "time_allowed_to_live", 2 * pub_data.get("retransmit_final_ms", 5000)
+                    )
                     existing.dst_mac_json = dst_mac_list
                     existing.vlan_id = pub_data.get("vlan_id", 0)
                     existing.vlan_prio = pub_data.get("vlan_prio", 4)
@@ -86,7 +88,9 @@ class GoosePublisherDao:
                         data_set_ref=pub_data.get("data_set_ref", ""),
                         app_id=pub_data.get("app_id", 1),
                         conf_rev=pub_data.get("conf_rev", 1),
-                        time_allowed_to_live=pub_data.get("time_allowed_to_live", 1000),
+                        time_allowed_to_live=pub_data.get(
+                            "time_allowed_to_live", 2 * pub_data.get("retransmit_final_ms", 5000)
+                        ),
                         dst_mac_json=dst_mac_list,
                         vlan_id=pub_data.get("vlan_id", 0),
                         vlan_prio=pub_data.get("vlan_prio", 4),
@@ -228,7 +232,7 @@ class GoosePublisherDao:
                     data_set_ref=data_set_ref,
                     app_id=0,
                     conf_rev=1,
-                    time_allowed_to_live=1000,
+                    time_allowed_to_live=10000,
                     dst_mac_json=None,
                     vlan_id=0,
                     vlan_prio=4,

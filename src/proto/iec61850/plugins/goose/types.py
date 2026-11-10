@@ -52,7 +52,8 @@ class MmsType(IntEnum):
 # IEC 61850-8-1 GOOSE multicast range: 01-0C-CD-01-00-00 through
 # 01-0C-CD-01-01-FF. The final two octets are derived from APPID.
 GOOSE_MULTICAST_MAC_PREFIX = [0x01, 0x0C, 0xCD, 0x01]
-DEFAULT_TIME_ALLOWED_TO_LIVE = 1000
+DEFAULT_RETRANSMIT_FINAL_MS = 5000
+DEFAULT_TIME_ALLOWED_TO_LIVE = 2 * DEFAULT_RETRANSMIT_FINAL_MS
 DEFAULT_CONF_REV = 1
 DEFAULT_ST_NUM = 1
 DEFAULT_SQ_NUM = 0
@@ -151,14 +152,14 @@ class PublisherConfig:
     data_set_ref: str = ""
     app_id: int = 0x0001
     conf_rev: int = DEFAULT_CONF_REV
-    time_allowed_to_live: int = DEFAULT_TIME_ALLOWED_TO_LIVE
+    time_allowed_to_live: int | None = None
     dst_mac: list[int] | None = None
     vlan_id: int = 0
     vlan_prio: int = 4
     simulation: bool = True
     retransmit_initial_ms: int = 2
     retransmit_multiplier: float = 2.0
-    retransmit_final_ms: int = 5000
+    retransmit_final_ms: int = DEFAULT_RETRANSMIT_FINAL_MS
     needs_commissioning: bool = False
 
     def __post_init__(self) -> None:
@@ -169,6 +170,8 @@ class PublisherConfig:
             raise ValueError("重传时间必须满足 1 ≤ Initial ≤ Final ≤ 60000 ms")
         if not math.isfinite(self.retransmit_multiplier) or not 1 <= self.retransmit_multiplier <= 100:
             raise ValueError("重传倍数必须在 1-100 之间")
+        if self.time_allowed_to_live is None:
+            object.__setattr__(self, "time_allowed_to_live", 2 * self.retransmit_final_ms)
 
 
 @dataclass(frozen=True, slots=True)

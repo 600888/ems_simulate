@@ -139,8 +139,8 @@
         <el-form-item :label="$t('goose.timeAllowedToLive')"
           ><el-input-number
             v-model="form.time_allowed_to_live"
-            :min="100"
-            :max="60000"
+            :min="1"
+            :max="120000"
         /></el-form-item>
         <el-form-item :label="$t('goose.vlanId')"
           ><el-input-number v-model="form.vlan_id" :min="0" :max="4095"
@@ -189,6 +189,7 @@ import { useI18n } from "vue-i18n";
 import { Monitor } from "@element-plus/icons-vue";
 import type { NetworkInterfaceInfo } from "@/api/gooseApi";
 import type { GooseBlockItem } from "./gooseWorkbench";
+import { DEFAULT_TIME_ALLOWED_TO_LIVE } from "./goosePublisherDefaults";
 const { t } = useI18n();
 const props = defineProps<{
   block: GooseBlockItem | null;
@@ -221,7 +222,7 @@ const form = reactive<PublisherForm>({
   data_set_ref: "",
   app_id: 1,
   conf_rev: 1,
-  time_allowed_to_live: 1000,
+  time_allowed_to_live: DEFAULT_TIME_ALLOWED_TO_LIVE,
   vlan_id: 0,
   vlan_prio: 4,
   simulation: true,

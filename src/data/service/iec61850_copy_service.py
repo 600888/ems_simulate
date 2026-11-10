@@ -244,7 +244,7 @@ class Iec61850CopyService:
                 data_set_ref=config.get("data_set_ref", ""),
                 app_id=config.get("app_id", 1),
                 conf_rev=config.get("conf_rev", 1),
-                time_allowed_to_live=config.get("time_allowed_to_live", 1000),
+                time_allowed_to_live=config.get("time_allowed_to_live"),
                 dst_mac=config.get("dst_mac"),
                 vlan_id=config.get("vlan_id", 0),
                 vlan_prio=config.get("vlan_prio", 4),

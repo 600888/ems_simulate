@@ -189,8 +189,8 @@
             >
               <el-input-number
                 v-model="publisherForm.time_allowed_to_live"
-                :min="100"
-                :max="60000"
+                :min="1"
+                :max="120000"
                 :step="100"
                 style="width: 100%"
               />
@@ -813,6 +813,7 @@ import {
   GOOSE_STATE_LABEL,
   GOOSE_IEC_TYPE_OPTIONS,
 } from "@/constants/protocol";
+import { DEFAULT_TIME_ALLOWED_TO_LIVE } from "./goosePublisherDefaults";
 import type {
   GoosePublisherStatus,
   GooseReceiverStatus,
@@ -854,7 +855,7 @@ const publisherForm = reactive({
   dst_mac: "",
   app_id: 0x0001,
   conf_rev: 1,
-  time_allowed_to_live: 1000,
+  time_allowed_to_live: DEFAULT_TIME_ALLOWED_TO_LIVE,
   vlan_id: 0,
   vlan_prio: 4,
   simulation: true,
@@ -1025,7 +1026,7 @@ function showCreatePublisherDialog() {
     dst_mac: "",
     app_id: 0x0001,
     conf_rev: 1,
-    time_allowed_to_live: 1000,
+    time_allowed_to_live: DEFAULT_TIME_ALLOWED_TO_LIVE,
     vlan_id: 0,
     vlan_prio: 4,
     simulation: true,
@@ -1095,8 +1096,8 @@ async function addDiscoveredAsPublisher() {
         data_set_ref: item.data_set_ref || "",
         app_id: parseGooseAppId(item.app_id) ?? 1,
         conf_rev: item.conf_rev || 1,
-        time_allowed_to_live:
-          item.max_time || item.time_allowed_to_live || 1000,
+        retransmit_initial_ms: item.min_time || 2,
+        retransmit_final_ms: item.max_time || 5000,
         dst_mac: parseMac(item.dst_mac || ""),
         vlan_id: item.vlan_id || 0,
         vlan_prio: item.vlan_prio ?? 4,
