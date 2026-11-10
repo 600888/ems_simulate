@@ -59,21 +59,35 @@
           <el-form-item :label="$t('goose.publishEnable')">
             <el-switch
               v-model="form.enabled"
+              inline-prompt
               :active-text="$t('goose.enabled')"
               :inactive-text="$t('goose.disabled')"
             />
           </el-form-item>
-          <el-form-item :label="$t('goose.simulation')" label-width="auto">
-            <el-switch v-model="form.simulation" />
+          <el-form-item
+            :label="$t('goose.configLabels.simulation')"
+            label-width="auto"
+          >
+            <el-switch
+              v-model="form.simulation"
+              inline-prompt
+              :active-text="$t('goose.enabled')"
+              :inactive-text="$t('goose.disabled')"
+            />
           </el-form-item>
           <el-form-item
             class="commissioning-switch"
-            :label="$t('goose.needsCommissioning')"
+            :label="$t('goose.configLabels.needsCommissioning')"
           >
-            <el-switch v-model="form.needs_commissioning" />
+            <el-switch
+              v-model="form.needs_commissioning"
+              inline-prompt
+              :active-text="$t('goose.enabled')"
+              :inactive-text="$t('goose.disabled')"
+            />
           </el-form-item>
         </div>
-        <el-form-item :label="$t('goose.interface')">
+        <el-form-item :label="$t('goose.configLabels.interface')">
           <el-select
             v-model="form.interface"
             style="width: 100%"
@@ -99,23 +113,23 @@
             </el-option>
           </el-select>
         </el-form-item>
-        <el-form-item :label="$t('goose.goId')"
+        <el-form-item :label="$t('goose.configLabels.goId')"
           ><el-input v-model="form.go_id"
         /></el-form-item>
-        <el-form-item :label="$t('goose.dstMacOptional')">
+        <el-form-item :label="$t('goose.configLabels.dstMacOptional')">
           <el-input
             v-model="form.dst_mac"
             :placeholder="`${$t('goose.autoUseAppId')} ${defaultMulticastMac}`"
           />
         </el-form-item>
-        <el-form-item :label="$t('goose.appId')"
+        <el-form-item :label="$t('goose.detailLabels.appId')"
           ><el-input-number
             v-model="form.app_id"
             :min="0"
             :max="65535"
             controls-position="right"
         /></el-form-item>
-        <el-form-item :label="$t('goose.dataSet')">
+        <el-form-item :label="$t('goose.configLabels.dataSet')">
           <el-select
             v-model="form.data_set_ref"
             style="width: 100%"
@@ -130,25 +144,25 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item :label="$t('goose.confRev')"
+        <el-form-item :label="$t('goose.configLabels.confRev')"
           ><el-input-number
             v-model="form.conf_rev"
             :min="1"
             controls-position="right"
         /></el-form-item>
-        <el-form-item :label="$t('goose.timeAllowedToLive')"
+        <el-form-item :label="$t('goose.configLabels.timeAllowedToLive')"
           ><el-input-number
             v-model="form.time_allowed_to_live"
             :min="1"
             :max="120000"
         /></el-form-item>
-        <el-form-item :label="$t('goose.vlanId')"
+        <el-form-item :label="$t('goose.configLabels.vlanId')"
           ><el-input-number v-model="form.vlan_id" :min="0" :max="4095"
         /></el-form-item>
-        <el-form-item :label="$t('goose.vlanPrio')"
+        <el-form-item :label="$t('goose.configLabels.vlanPrio')"
           ><el-input-number v-model="form.vlan_prio" :min="0" :max="7"
         /></el-form-item>
-        <el-form-item :label="$t('goose.retransmitInitial')">
+        <el-form-item :label="$t('goose.configLabels.retransmitInitial')">
           <el-input-number
             v-model="form.retransmit_initial_ms"
             :min="1"
@@ -158,7 +172,7 @@
             controls-position="right"
           />
         </el-form-item>
-        <el-form-item :label="$t('goose.retransmitMultiplier')">
+        <el-form-item :label="$t('goose.configLabels.retransmitMultiplier')">
           <el-input-number
             v-model="form.retransmit_multiplier"
             :min="1"
@@ -168,7 +182,7 @@
             controls-position="right"
           />
         </el-form-item>
-        <el-form-item :label="$t('goose.retransmitFinal')">
+        <el-form-item :label="$t('goose.configLabels.retransmitFinal')">
           <el-input-number
             v-model="form.retransmit_final_ms"
             :min="form.retransmit_initial_ms"
@@ -309,6 +323,13 @@ function formatAppId(value: number | null) {
 }
 .config-form :deep(.el-form-item) {
   margin-bottom: 14px;
+}
+.config-form :deep(.el-form-item__label) {
+  height: auto;
+  min-height: 32px;
+  align-items: center;
+  line-height: 20px;
+  overflow-wrap: anywhere;
 }
 .config-form :deep(.el-input),
 .config-form :deep(.el-input-number) {

@@ -63,9 +63,14 @@
     </el-descriptions>
 
     <section class="config-section">
-      <div class="section-title">{{ $t("goose.subConfig") }}</div>
+      <div class="section-header">
+        <div class="section-title">{{ $t("goose.subConfig") }}</div>
+        <el-button type="primary" :loading="loading" @click="apply">{{
+          $t("goose.applyConfig")
+        }}</el-button>
+      </div>
       <el-form label-width="200px" class="config-form">
-        <el-form-item :label="$t('goose.subscriptionEnable')">
+        <el-form-item :label="$t('goose.configLabels.subscriptionEnable')">
           <el-switch
             v-model="form.enabled"
             :active-text="$t('goose.enabled')"
@@ -75,7 +80,7 @@
             $t("goose.subscriptionEnableHint")
           }}</span>
         </el-form-item>
-        <el-form-item :label="$t('goose.interface')">
+        <el-form-item :label="$t('goose.configLabels.interface')">
           <el-select
             v-model="form.interface"
             style="width: 100%"
@@ -101,7 +106,7 @@
             </el-option>
           </el-select>
         </el-form-item>
-        <el-form-item :label="$t('goose.filterAppId')">
+        <el-form-item :label="$t('goose.configLabels.filterAppId')">
           <el-input
             v-model="appIdHex"
             placeholder="0x0000"
@@ -109,16 +114,16 @@
             @blur="normalizeAppIdHex"
           />
         </el-form-item>
-        <el-form-item :label="$t('goose.goId')">
+        <el-form-item :label="$t('goose.configLabels.goId')">
           <el-input v-model="form.go_id" />
         </el-form-item>
-        <el-form-item :label="$t('goose.dstAddressFilter')">
+        <el-form-item :label="$t('goose.configLabels.dstAddressFilter')">
           <el-input
             v-model="form.dst_mac"
             :placeholder="$t('goose.dstMacPlaceholder')"
           />
         </el-form-item>
-        <el-form-item :label="$t('goose.dataSet')">
+        <el-form-item :label="$t('goose.configLabels.dataSet')">
           <el-select
             v-model="form.data_set_ref"
             style="width: 100%"
@@ -133,23 +138,18 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item :label="$t('goose.confRev')">
+        <el-form-item :label="$t('goose.configLabels.confRev')">
           <el-input-number
             v-model="form.conf_rev"
             :min="0"
             controls-position="right"
           />
         </el-form-item>
-        <el-form-item :label="$t('goose.description')">
+        <el-form-item :label="$t('goose.configLabels.description')">
           <el-input v-model="form.description" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
     </section>
-    <div class="actions">
-      <el-button type="primary" :loading="loading" @click="apply">{{
-        $t("goose.applyConfig")
-      }}</el-button>
-    </div>
   </div>
 </template>
 
@@ -285,8 +285,14 @@ function apply() {
   border: 1px solid var(--border-color);
   background: var(--bg-subtle);
 }
-.section-title {
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 14px;
+}
+.section-title {
   color: var(--text-primary);
   font-weight: 700;
 }
@@ -305,13 +311,16 @@ function apply() {
 .config-form :deep(.el-form-item) {
   margin-bottom: 14px;
 }
+.config-form :deep(.el-form-item__label) {
+  height: auto;
+  min-height: 32px;
+  align-items: center;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
 .config-form :deep(.el-input),
 .config-form :deep(.el-input-number) {
   width: 100%;
-}
-.actions {
-  display: flex;
-  justify-content: flex-end;
 }
 .mismatch {
   color: #d98200;
