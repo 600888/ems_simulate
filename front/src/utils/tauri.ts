@@ -105,14 +105,19 @@ export async function saveDownload(
 export async function checkBackendStatus(
   backendUrl?: string,
 ): Promise<boolean> {
-  // 页面由后端自身提供时，当前 origin 才是实际端口（普通 MSI 可能因
-  // 8991 被占用而使用动态端口）。健康接口成功是服务运行的权威信号。
-  const isLocalHttpPage =
+  // Web 页面通过当前站点访问后端；远程服务器的 IP、域名和 HTTPS
+  // 也必须保留，不能回退到浏览器所在电脑的回环地址。
+  // 桌面端继续区分后端页面与 Tauri 自身的页面 origin。
+  const desktop = isTauri();
+  const usePageOrigin =
     ["http:", "https:"].includes(window.location.protocol) &&
-    ["127.0.0.1", "localhost", "::1"].includes(window.location.hostname);
+    (!desktop ||
+      ["127.0.0.1", "localhost", "::1", "[::1]"].includes(
+        window.location.hostname,
+      ));
   const baseUrl =
     backendUrl?.replace(/\/+$/, "") ||
-    (isLocalHttpPage ? window.location.origin : "http://127.0.0.1:8991");
+    (usePageOrigin ? window.location.origin : "http://127.0.0.1:8991");
 
   const probeHealth = async (): Promise<boolean> => {
     const controller = new AbortController();
@@ -130,7 +135,7 @@ export async function checkBackendStatus(
     }
   };
 
-  if (!isTauri()) return probeHealth();
+  if (!desktop) return probeHealth();
 
   // 桌面端同时参考 HTTP 健康接口和 Rust 进程状态。任一确认服务正常
   // 即显示运行中，避免过期进程句柄造成误报；连续失败保护仍由 Rust 负责。
