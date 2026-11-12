@@ -100,9 +100,7 @@ def _get_discovered_goose(channel_id: int, request: Request) -> list[dict[str, A
         )
         item.update(
             {
-                # 本项目按 IEDScout 的展示/发送约定使用完整 GoCB 引用作为 GoID，
-                # 避免设备只返回控制块短名称（如 gocbPub1）时配置不一致。
-                "go_id": go_cb_ref,
+                "go_id": item.get("go_id") or "",
                 "ied_name": item.get("ied_name") or ied_name,
                 "ld_inst": item.get("ld_inst") or ld_inst or "LD0",
                 "ln_name": item.get("ln_name") or ln_name or "LLN0",

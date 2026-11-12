@@ -270,7 +270,7 @@ watch(
     Object.assign(form, {
       enabled: publisher.is_running,
       interface: publisher.interface,
-      go_id: publisher.go_cb_ref || publisher.go_id,
+      go_id: publisher.go_id || "",
       dst_mac: publisher.dst_mac || "",
       data_set_ref: publisher.data_set_ref,
       app_id: publisher.app_id,

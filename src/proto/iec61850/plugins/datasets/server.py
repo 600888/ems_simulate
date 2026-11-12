@@ -225,19 +225,19 @@ class ServerDataSetManager:
             else:
                 log.info(f"GSEControlBlock 复用已注册 DataSet: {data_set_ref}")
 
-            # 2. 创建 GSEControlBlock
-            app_id_str = f"{app_id:04X}" if isinstance(app_id, int) else str(app_id)
+            # The native appId argument is SCL GSEControl.appID (string GoID).
+            # The numeric Ethernet APPID belongs only in PhyComAddress below.
             gse_cb = iec61850.GSEControlBlock_create(
                 name,
                 lln0,
-                app_id_str,
+                go_id,
                 ds_name,
                 conf_rev,
                 False,
                 min_time,
                 max_time,
             )
-            log.info(f"GSEControlBlock_create: {name}, {app_id_str}, {ds_name}, {conf_rev}")
+            log.info(f"GSEControlBlock_create: {name}, {go_id}, {ds_name}, {conf_rev}")
             if not gse_cb:
                 log.warning(f"创建 GSEControlBlock {name} 失败")
                 return False

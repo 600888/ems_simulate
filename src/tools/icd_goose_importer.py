@@ -93,7 +93,7 @@ class GooseGseControlInfo:
 
     def to_publisher_dict(self, interface: str = "eth0") -> dict[str, Any]:
         """转换为 GoosePublisher 创建参数"""
-        app_id_int = self._parse_app_id(self.app_id or self.gse_app_id)
+        app_id_int = self._parse_app_id(self.gse_app_id or self.app_id)
         dst_mac = self._parse_mac(self.mac_address) if self.mac_address else None
 
         entries = []
@@ -111,7 +111,7 @@ class GooseGseControlInfo:
         return {
             "interface": interface,
             "go_cb_ref": self.go_cb_ref,
-            "go_id": self.name,
+            "go_id": self.app_id,
             "data_set_ref": f"{self.ld_inst}/{self.ln_class}${self.dat_set}" if self.dat_set else "",
             "app_id": app_id_int,
             "conf_rev": self.conf_rev,
@@ -135,6 +135,7 @@ class GooseGseControlInfo:
 
         return {
             "go_cb_ref": self.go_cb_ref,
+            "go_id": self.app_id,
             "app_id": app_id_int,
             "dst_mac": dst_mac,
             "description": f"从 ICD 导入 ({self.ied_name})",
@@ -263,7 +264,7 @@ class IcdGooseImporter:
             "gse_controls": [
                 {
                     "go_cb_ref": g.go_cb_ref,
-                    "go_id": g.name,
+                    "go_id": g.app_id,
                     "app_id": g.app_id or g.gse_app_id,
                     "dat_set": g.dat_set,
                     "conf_rev": g.conf_rev,

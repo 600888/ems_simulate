@@ -731,13 +731,12 @@ class IEC61850Client:
         # 3. 发现 GOOSE 控制块 (从 ICD 文件)
         self._registry.discovered_goose_items.clear()
         for gse in result.goose.gse_controls:
+            # Keep the same GoID and numeric APPID as the import preview. This
+            # registry is copied to the handler and used by the discovered UI.
             goose_dict = {
-                "go_cb_ref": gse.go_cb_ref,
+                **gse.to_subscription_dict(),
                 "name": gse.name,
-                "app_id": gse.app_id or gse.gse_app_id,
                 "dat_set": gse.dat_set,
-                "data_set_ref": gse.data_set_ref,
-                "conf_rev": gse.conf_rev,
                 "mac_address": gse.mac_address,
                 "dataset_members": gse.dataset_members,
             }

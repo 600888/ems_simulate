@@ -212,7 +212,7 @@ function sync() {
   Object.assign(form, {
     enabled: !!props.block?.enabled,
     app_id: parseAppId(props.block?.app_id),
-    go_id: props.block?.go_cb_ref || props.block?.go_id || "",
+    go_id: props.block?.go_id || "",
     dst_mac: props.block?.dst_mac || "",
     interface: props.block?.interface || "",
     data_set_ref: props.block?.data_set_ref || "",

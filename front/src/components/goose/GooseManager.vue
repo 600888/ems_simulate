@@ -1092,7 +1092,7 @@ async function addDiscoveredAsPublisher() {
         channel_id: props.channelId,
         interface: interfaceId,
         go_cb_ref: item.go_cb_ref,
-        go_id: item.go_cb_ref,
+        go_id: item.go_id || "",
         data_set_ref: item.data_set_ref || "",
         app_id: parseGooseAppId(item.app_id) ?? 1,
         conf_rev: item.conf_rev || 1,

@@ -78,7 +78,8 @@ class GseControlInfo:
             "interface": interface,
             "ld_inst": self.ld_inst,
             "go_cb_ref": self.go_cb_ref,
-            "go_id": self.go_cb_ref,
+            # SCL GSEControl.appID is the string GoID, separate from Address/APPID.
+            "go_id": self.app_id,
             "data_set_ref": f"{self.ld_inst}/{self.ln_class}${self.dat_set}" if self.dat_set else "",
             "app_id": app_id_int,
             "conf_rev": self.conf_rev,
@@ -112,7 +113,7 @@ class GseControlInfo:
             "data_set_ref": self.data_set_ref
             or (f"{self.ld_inst}/{self.ln_class}${self.dat_set}" if self.dat_set else ""),
             "conf_rev": self.conf_rev,
-            "go_id": self.go_cb_ref,
+            "go_id": self.app_id,
             "dataset_entries": [
                 {
                     "name": member.get("fcda_ref", ""),
