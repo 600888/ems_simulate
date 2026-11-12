@@ -8,6 +8,8 @@ on:
 
 jobs:
   build-and-deploy:
+    # 仅上游仓库部署文档，fork 仓库跳过整个构建和部署任务
+    if: ${{ github.repository == '600888/ems_simulate' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # 需要写入内容权限 (用于推送到 gh-pages 分支)
