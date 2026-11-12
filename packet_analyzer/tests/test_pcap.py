@@ -17,7 +17,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
-from packet_analyzer.core import pcapfile, registry  # noqa: E402
+from packet_analyzer.core import pcapfile, registry, wpcap  # noqa: E402
 from packet_analyzer.core.ifaces import capture_available, list_interfaces  # noqa: E402
 from packet_analyzer.core.pcap import PcapCaptureEngine, PcapConfig, describe_bpf  # noqa: E402
 from packet_analyzer.core.store import MessageStore  # noqa: E402
@@ -330,6 +330,97 @@ class LogIntegrationTests(unittest.TestCase):
         )
         engine.close_log()
         self.assertGreaterEqual(engine.log_count, 1, "停止后仍应能读到写入帧数")
+
+    def test_log_uses_capture_timestamp_not_write_time(self):
+        """日志时间戳必须是抓包时间。
+
+        以前写的是 ``time.time()``，即「入库时刻」，比真实抓包时刻晚一个处理
+        延迟；回放时与设备日志按时间对齐会整体偏移。这里用一个明显不是当前
+        时刻的值来钉住这个行为。
+        """
+        engine = self._engine(protocol="modbus_tcp")
+        engine.set_log(str(self.path))
+        engine._open_log_if_needed()  # noqa: SLF001
+        capture_time = 1_700_000_000.25
+        engine._handle_packet(  # noqa: SLF001
+            bytes.fromhex("ffffffffffff001122334455") + bytes.fromhex("88b8") + bytes(40),
+            capture_time,
+        )
+        engine.close_log()
+
+        _linktype, records = pcapfile.read_pcap(self.path)
+        self.assertEqual(len(records), 1)
+        self.assertAlmostEqual(records[0].timestamp, capture_time, places=3)
+
+
+class CaptureTuningTests(unittest.TestCase):
+    """抓包调优参数：默认走缓冲批量，低延迟按需开启。"""
+
+    def _engine(self, **kwargs) -> PcapCaptureEngine:
+        return PcapCaptureEngine(PcapConfig(interface="dummy", **kwargs))
+
+    def test_defaults_are_buffered_not_immediate(self):
+        config = PcapConfig()
+        self.assertFalse(config.low_latency, "默认不应开立即模式（CPU 高 5 倍）")
+        self.assertGreaterEqual(config.buffer_mb, 16, "内核缓冲区应比 libpcap 默认值宽裕")
+
+    def test_old_saved_config_still_loads(self):
+        """旧版本保存的配置里没有新字段，反序列化不能报错。"""
+        config = PcapConfig.from_dict({"interface": "eth0", "protocol": "modbus_tcp", "promisc": False})
+        self.assertEqual(config.interface, "eth0")
+        self.assertFalse(config.low_latency)
+        self.assertEqual(config.buffer_mb, PcapConfig().buffer_mb)
+
+    def test_stats_default_to_zero_before_capture(self):
+        engine = self._engine()
+        self.assertEqual(engine.kernel_dropped, 0)
+        self.assertEqual(engine.delivered_count, 0)
+        self.assertEqual(engine.parse_dropped, 0)
+        self.assertEqual(engine.stats_summary(), "", "无丢包时不应显示")
+
+    def test_stats_summary_reports_drops(self):
+        engine = self._engine()
+        engine._kernel_dropped = 42  # noqa: SLF001 - 直接设定以验证展示逻辑
+        self.assertEqual(engine.stats_summary(), "丢包 42")
+
+    def test_batch_constants_are_sane(self):
+        """批处理间隔太大则界面迟滞，太小则退化成逐包唤醒。"""
+        from packet_analyzer.core import pcap
+
+        self.assertLessEqual(pcap.BATCH_TIMEOUT_MS, 50)
+        self.assertGreaterEqual(pcap.BATCH_TIMEOUT_MS, 5)
+        self.assertGreater(pcap.BATCH_PACKETS, 1)
+
+
+@unittest.skipUnless(wpcap.is_available(), "未安装 Npcap/libpcap")
+class BatchReadTests(unittest.TestCase):
+    """``read_batch`` 的返回值形状与 pcap_stats 的可调用性。"""
+
+    def test_read_batch_returns_typed_pairs(self):
+        """返回值必须是 (float 时间戳, bytes) 列表；回环上可能已有背景流量，不假设为空。"""
+        device = next((item.name for item in wpcap.list_devices() if item.is_loopback), "")
+        if not device:
+            self.skipTest("未找到回环网卡")
+        handle = wpcap.PcapHandle(device, timeout_ms=20, buffer_mb=8)
+        try:
+            batch = handle.read_batch(16)
+            self.assertIsInstance(batch, list)
+            self.assertLessEqual(len(batch), 16, "单次 dispatch 不得超过请求的包数")
+            for timestamp, data in batch:
+                self.assertIsInstance(timestamp, float)
+                self.assertIsInstance(data, bytes)
+                self.assertGreater(len(data), 0)
+            delivered, dropped = handle.stats()
+            self.assertIsInstance(delivered, int)
+            self.assertIsInstance(dropped, int)
+            self.assertGreaterEqual(dropped, 0)
+        finally:
+            handle.close()
+
+    def test_pcap_stat_struct_covers_windows_layout(self):
+        """Npcap 写 6 个 u_int；结构体小于 24 字节会导致越界写。"""
+        size = wpcap.ctypes.sizeof(wpcap._PcapStat)  # noqa: SLF001
+        self.assertGreaterEqual(size, 24)
 
 
 class InferRoleTests(unittest.TestCase):

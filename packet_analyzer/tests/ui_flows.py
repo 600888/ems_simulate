@@ -150,6 +150,32 @@ restored_direct = capture_dialog.direct_config()
 check(restored_direct.mode == "server" and restored_direct.port == 2404, "直连参数往返一致")
 check(restored_direct.poll_hex == "680407000000", "定时发送报文保留")
 
+# 9b. 抓包调优参数往返 + 丢包提示
+tuned = PcapConfig(interface="以太网", protocol="modbus_tcp", low_latency=True, buffer_mb=64)
+tuned_dialog = CaptureDialog(tuned, CaptureConfig())
+restored_tuned = tuned_dialog.pcap_config()
+check(restored_tuned.low_latency is True, "低延迟开关参数往返一致")
+check(restored_tuned.buffer_mb == 64, f"内核缓冲区参数往返一致：{restored_tuned.buffer_mb}MB")
+default_dialog = CaptureDialog(PcapConfig(), CaptureConfig())
+check(
+    default_dialog.pcap_config().low_latency is False,
+    "对话框默认不开低延迟模式（CPU 高 5 倍）",
+)
+
+from packet_analyzer.core.pcap import PcapCaptureEngine  # noqa: E402
+
+probe_engine = PcapCaptureEngine(PcapConfig(interface="dummy"))
+window.engine = probe_engine
+window._refresh_drop_label()
+check(not window.drop_label.isVisible(), "无丢包时不显示告警")
+probe_engine._kernel_dropped = 7  # noqa: SLF001 - 模拟内核统计
+window._refresh_drop_label()
+check(window.drop_label.isVisible(), "有丢包时状态栏出现告警")
+check("7" in window.drop_label.text(), f"丢包数正确显示：{window.drop_label.text()}")
+window.engine = None
+window._refresh_drop_label()
+check(not window.drop_label.isVisible(), "停止抓包后告警消失")
+
 # 10. 报文日志：对话框开关 + 回放
 import tempfile  # noqa: E402
 

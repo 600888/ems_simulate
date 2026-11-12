@@ -106,6 +106,7 @@ class MainWindow(QMainWindow):
         self._log_timer = QTimer(self)
         self._log_timer.setInterval(1000)
         self._log_timer.timeout.connect(self._refresh_log_label)
+        self._log_timer.timeout.connect(self._refresh_drop_label)
         self._log_timer.start()
 
     # -- 界面 -------------------------------------------------------------
@@ -298,6 +299,18 @@ class MainWindow(QMainWindow):
         )
         self.log_label.setVisible(False)
         status.addPermanentWidget(self.log_label)
+        # 丢包告警：只在真的丢包时出现，避免平时占地方
+        self.drop_label = QLabel("")
+        self.drop_label.setStyleSheet(
+            f"color:{theme.DANGER}; background:#FDECEC; border:1px solid #F5C6C6;"
+            "border-radius:9px; padding:1px 8px; font-size:11px;"
+        )
+        self.drop_label.setToolTip(
+            "抓包驱动的内核缓冲区溢出，导致报文未能送达本程序。\n"
+            "处理办法：调大「内核缓冲区」，或关闭低延迟模式以降低 CPU 占用。"
+        )
+        self.drop_label.setVisible(False)
+        status.addPermanentWidget(self.drop_label)
         for widget in (self.interface_label, self.count_label, self.protocol_label):
             widget.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; padding-right:12px;")
             status.addPermanentWidget(widget)
@@ -650,6 +663,23 @@ class MainWindow(QMainWindow):
     def _log_dir(self) -> Path:
         return Path(self._pcap_config.log_dir or default_log_dir())
 
+    def _refresh_drop_label(self) -> None:
+        """显示内核丢包数。
+
+        这是「界面看着正常、其实已经漏包」的唯一提示，所以只要大于 0 就常显，
+        不做自动隐藏——宁可显眼，也不要让人误以为抓全了。
+        """
+        engine = self.engine
+        if not isinstance(engine, PcapCaptureEngine):
+            self.drop_label.setVisible(False)
+            return
+        dropped = engine.kernel_dropped
+        if not dropped:
+            self.drop_label.setVisible(False)
+            return
+        self.drop_label.setText(f"丢包 {dropped}")
+        self.drop_label.setVisible(True)
+
     def _refresh_log_label(self) -> None:
         engine = self.engine
         if not (isinstance(engine, PcapCaptureEngine) and engine.log_count):
@@ -700,11 +730,16 @@ class MainWindow(QMainWindow):
         log_info = ""
         if isinstance(engine, PcapCaptureEngine) and engine.log_count:
             log_info = f"，报文日志 {engine.log_count} 帧 → {engine.log_path}"
+        drop_info = ""
+        if isinstance(engine, PcapCaptureEngine) and engine.kernel_dropped:
+            # 停止时明确告知漏了多少，避免用户拿不完整的会话下结论
+            drop_info = f"，内核丢包 {engine.kernel_dropped} 个（考虑调大内核缓冲区）"
         if engine:
             engine.stop()
         self._update_actions()
         self._refresh_log_label()
-        self.status_label.setText("抓包已停止" + log_info)
+        self._refresh_drop_label()
+        self.status_label.setText("抓包已停止" + log_info + drop_info)
 
     def send_manual(self) -> None:
         if not isinstance(self.engine, CaptureEngine) or not self.engine.running:

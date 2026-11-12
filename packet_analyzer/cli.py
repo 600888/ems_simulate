@@ -35,7 +35,7 @@ import time
 from typing import Any
 
 from . import APP_NAME, APP_VERSION
-from .core import linklayer, pcapfile, registry
+from .core import linklayer, pcapfile, registry, wpcap
 from .core.ifaces import capture_available, list_interfaces, local_addresses
 from .core.pcap import (
     FrameMeta,
@@ -191,6 +191,8 @@ def cmd_capture(args: argparse.Namespace) -> int:
         port_filter=int(args.port or 0),
         master_ip=args.master_ip or "",
         promisc=not args.no_promisc,
+        low_latency=bool(args.low_latency),
+        buffer_mb=int(args.buffer_mb),
     )
     if not config.interface:
         print("错误：未指定网卡，且没有找到合适的默认网卡。用 `ifaces` 子命令查看。")
@@ -269,6 +271,14 @@ def cmd_capture(args: argparse.Namespace) -> int:
     elapsed = max(0.001, time.time() - started)
     print()
     print(f"抓包结束：{stats['frames']} 帧，用时 {elapsed:.1f}s，收包 {engine.packet_count} 个")
+    if engine.kernel_dropped:
+        # 内核缓冲区溢出：说明抓到的报文不完整，拿它下结论会误判
+        print(
+            f"警告：内核丢包 {engine.kernel_dropped} 个（缓冲区溢出）。"
+            f"请调大 --buffer-mb（当前 {config.buffer_mb}MB），或关闭 --low-latency。"
+        )
+    if engine.parse_dropped:
+        print(f"提示：{engine.parse_dropped} 个畸形帧解析失败已跳过")
     if log_path:
         log_file = Path(log_path)
         size = log_file.stat().st_size if log_file.exists() else 0
@@ -514,6 +524,17 @@ def build_parser() -> argparse.ArgumentParser:
     cap.add_argument("--log", help="pcap 日志路径（默认存到程序目录 logs/）")
     cap.add_argument("--no-log", action="store_true", help="不写 pcap 日志")
     cap.add_argument("--no-promisc", action="store_true", help="关闭混杂模式，只收本机流量")
+    cap.add_argument(
+        "--low-latency",
+        action="store_true",
+        help="低延迟模式：每包立即交付，抓包 CPU 约高 5 倍（默认按约 20ms 批量交付）",
+    )
+    cap.add_argument(
+        "--buffer-mb",
+        type=int,
+        default=wpcap.DEFAULT_BUFFER_MB,
+        help=f"内核抓包缓冲区（MB），默认 {wpcap.DEFAULT_BUFFER_MB}；突发丢包时调大",
+    )
     cap.add_argument("--csv", help="同时导出 CSV 到指定路径")
     cap.add_argument("--json", help="同时导出 JSON 到指定路径")
     cap.add_argument("--quiet", action="store_true", help="不逐帧打印，只输出汇总")
