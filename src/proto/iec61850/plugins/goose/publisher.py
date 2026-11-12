@@ -478,13 +478,18 @@ class GoosePublisher:
     def _publish_with_npcap(self) -> bool:
         """在 Windows 上通过 Npcap 发送带 802.1Q 头的 GOOSE 帧，与 Linux 保持一致。"""
         try:
-            from scapy.all import Dot1Q, Ether, Raw, sendp
+            from scapy.all import Dot1Q, Ether, Raw, get_if_hwaddr, sendp
 
+            # sendp(iface=...) selects the output adapter, but an unset Ether.src
+            # is resolved via Scapy's default route, which may use another NIC.
+            src = get_if_hwaddr(self._config.interface)
+            if not src or src == "00:00:00:00:00:00":
+                raise ValueError(f"无法获取所选网卡的源 MAC 地址: {self._config.interface}")
             dst = ":".join(f"{value:02x}" for value in self._dst_mac)
             # libiec61850 GoosePublisher_create always includes this header.
             # VID 0 is a priority tag and must still carry the configured PCP.
             frame = (
-                Ether(dst=dst, type=0x8100)
+                Ether(src=src, dst=dst, type=0x8100)
                 / Dot1Q(prio=self._config.vlan_prio, vlan=self._config.vlan_id, type=0x88B8)
                 / Raw(self._build_goose_payload())
             )

@@ -1,6 +1,5 @@
 """GOOSE Publisher Ethernet transport regression tests."""
 
-from functools import partial
 import sys
 from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock
@@ -87,7 +86,10 @@ def test_windows_npcap_payload_is_valid_goose(monkeypatch):
 
 
 @pytest.mark.parametrize(("vlan_id", "vlan_prio"), [(0, 0), (0, 4), (100, 6), (4094, 7)])
-def test_npcap_sends_linux_compatible_vlan_header_and_subscription_receives_it(monkeypatch, vlan_id, vlan_prio):
+@pytest.mark.parametrize("interface", ["以太网 2", r"\Device\NPF_{12345678-1234-1234-1234-123456789ABC}"])
+def test_npcap_sends_linux_compatible_vlan_header_and_subscription_receives_it(
+    monkeypatch, vlan_id, vlan_prio, interface
+):
     import scapy.config as scapy_config
 
     # Serialize real Scapy layers without enumerating or opening host adapters.
@@ -102,15 +104,18 @@ def test_npcap_sends_linux_compatible_vlan_header_and_subscription_receives_it(m
     sent = []
     send = Mock(side_effect=lambda frame, **kwargs: sent.append(bytes(frame)))
     scapy = ModuleType("scapy.all")
-    scapy.Ether = partial(Ether, src="02:03:04:05:06:07")
+    scapy.Ether = Ether
     scapy.Dot1Q = Dot1Q
     scapy.Raw = Raw
     scapy.sendp = send
+    scapy.get_if_hwaddr = Mock(return_value="02:03:04:05:06:07")
+    # An unspecified source must not fall back to the default route's adapter.
+    monkeypatch.setattr(Ether, "route", Mock(side_effect=AssertionError("Default adapter used for source MAC")))
     monkeypatch.setitem(sys.modules, "scapy.all", scapy)
     ref = "TESTLD/LLN0$GO$gocb1"
     publisher = GoosePublisher(
         PublisherConfig(
-            interface="eth-test",
+            interface=interface,
             go_cb_ref=ref,
             data_set_ref="TESTLD/LLN0$ds1",
             app_id=0x2001,
@@ -121,9 +126,12 @@ def test_npcap_sends_linux_compatible_vlan_header_and_subscription_receives_it(m
     publisher.add_entry(GooseDataSetEntry("stVal", True, IecDataType.BOOLEAN))
 
     assert publisher._publish_with_npcap()
+    scapy.get_if_hwaddr.assert_called_once_with(interface)
     send.assert_called_once()
-    assert send.call_args.kwargs == {"iface": "eth-test", "count": 1, "verbose": False}
+    assert send.call_args.kwargs == {"iface": interface, "count": 1, "verbose": False}
     raw = sent[0]
+    assert raw[0:6] == bytes(publisher.dst_mac)
+    assert raw[6:12] == bytes.fromhex("020304050607")
     # Match the Linux native publisher: TPID, PCP/DEI/VID, then GOOSE EtherType.
     assert raw[12:18] == b"\x81\x00" + ((vlan_prio << 13) | vlan_id).to_bytes(2, "big") + b"\x88\xb8"
     assert raw[18:20] == b"\x20\x01"
@@ -143,3 +151,34 @@ def test_npcap_sends_linux_compatible_vlan_header_and_subscription_receives_it(m
     assert subscription["state"] == "connected"
     assert subscription["message_count"] == 1
     assert subscription["data_values"][0]["value"] is True
+
+
+@pytest.mark.parametrize("mac", [None, "", "00:00:00:00:00:00"])
+def test_npcap_does_not_send_when_selected_adapter_has_no_mac(monkeypatch, mac):
+    scapy = ModuleType("scapy.all")
+    scapy.Ether = Mock()
+    scapy.Dot1Q = Mock()
+    scapy.Raw = Mock()
+    scapy.sendp = Mock()
+    scapy.get_if_hwaddr = Mock(return_value=mac)
+    monkeypatch.setitem(sys.modules, "scapy.all", scapy)
+    publisher = GoosePublisher(PublisherConfig(interface="以太网 2"))
+
+    assert publisher._publish_with_npcap() is False
+    scapy.get_if_hwaddr.assert_called_once_with("以太网 2")
+    scapy.sendp.assert_not_called()
+
+
+def test_npcap_does_not_send_when_selected_adapter_cannot_be_resolved(monkeypatch):
+    scapy = ModuleType("scapy.all")
+    scapy.Ether = Mock()
+    scapy.Dot1Q = Mock()
+    scapy.Raw = Mock()
+    scapy.sendp = Mock()
+    scapy.get_if_hwaddr = Mock(side_effect=ValueError("Interface not found"))
+    monkeypatch.setitem(sys.modules, "scapy.all", scapy)
+    publisher = GoosePublisher(PublisherConfig(interface="missing-adapter"))
+
+    assert publisher._publish_with_npcap() is False
+    scapy.get_if_hwaddr.assert_called_once_with("missing-adapter")
+    scapy.sendp.assert_not_called()
