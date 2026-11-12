@@ -15,6 +15,8 @@ export interface GooseDataSetEntry {
   name: string;
   value: boolean | number | string;
   iec_type: string;
+  fc?: string;
+  description?: string;
 }
 
 /** GOOSE Publisher 状态 */

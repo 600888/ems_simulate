@@ -43,10 +43,19 @@ from src.web.api.schemas.goose import (
 )
 from src.web.log import log
 
+from .iec61850_metadata import enrich_iec61850_metadata
+
 router = APIRouter(tags=["goose"])
 
 
 # ===== 辅助函数 =====
+
+
+def _enrich_model_descriptions(request: Request, channel_id: int | None, data: Any) -> Any:
+    """Use the device's loaded dU/FC metadata, without making an MMS request."""
+    controller = getattr(request.app.state, "device_controller", None)
+    device = controller.get_device_by_channel_id(channel_id) if controller and channel_id is not None else None
+    return enrich_iec61850_metadata(device, data)
 
 
 def _validate_iec61850_channel(channel_id: int):
@@ -125,7 +134,7 @@ def _get_discovered_goose(channel_id: int, request: Request) -> list[dict[str, A
             }
         )
         results.append(item)
-    return results
+    return _enrich_model_descriptions(request, channel_id, results)
 
 
 def _resolve_dataset_entries(
@@ -136,7 +145,7 @@ def _resolve_dataset_entries(
 ) -> list[dict[str, Any]]:
     """Resolve GOOSE metadata from the loaded model without requiring MMS."""
     if configured or not data_set_ref:
-        return configured
+        return _enrich_model_descriptions(request, channel_id, configured)
     device_controller = getattr(request.app.state, "device_controller", None)
     device = device_controller.get_device_by_channel_id(channel_id) if device_controller else None
     handler = getattr(device, "protocol_handler", None) if device else None
@@ -166,7 +175,7 @@ def _resolve_dataset_entries(
     ]
     if entries:
         log.debug(f"从已加载模型关联 GOOSE DataSet 成员: ref={data_set_ref}, count={len(entries)}")
-    return entries or configured
+    return _enrich_model_descriptions(request, channel_id, entries or configured)
 
 
 def _cached_dataset_members(client: Any, data_set_ref: str) -> list[dict[str, Any]]:
@@ -264,6 +273,7 @@ async def list_goose_publishers(body: GooseChannelRequest, request: Request):
     manager = _get_goose_manager(request)
     _validate_iec61850_channel(body.channel_id)
     result = manager.list_publishers(body.channel_id)
+    result = _enrich_model_descriptions(request, body.channel_id, result)
     return BaseResponse(message="获取 GOOSE Publisher 列表成功", data={"items": result})
 
 
@@ -311,6 +321,7 @@ async def get_goose_publisher(
     if not result:
         raise NotFoundError("GOOSE Publisher 未找到")
     _require_resource_channel(result.get("channel_id"), body.channel_id)
+    result = _enrich_model_descriptions(request, result.get("channel_id"), result)
     return BaseResponse(message="获取 GOOSE Publisher 状态成功", data=result)
 
 
@@ -568,6 +579,7 @@ async def list_goose_receivers(body: GooseChannelRequest, request: Request):
     manager = _get_goose_manager(request)
     _validate_iec61850_channel(body.channel_id)
     result = manager.list_receivers(body.channel_id)
+    result = _enrich_model_descriptions(request, body.channel_id, result)
     return BaseResponse(message="获取 GOOSE Receiver 列表成功", data={"items": result})
 
 
@@ -582,6 +594,7 @@ async def get_goose_receiver(
     if not result:
         raise NotFoundError("GOOSE Receiver 未找到")
     _require_resource_channel(result.get("channel_id"), body.channel_id)
+    result = _enrich_model_descriptions(request, result.get("channel_id"), result)
     return BaseResponse(message="获取 GOOSE Receiver 状态成功", data=result)
 
 
@@ -732,6 +745,7 @@ async def get_receiver_subscription_history(request: Request, body: GooseSubscri
     items = manager.get_subscription_history(body.receiver_id, body.go_cb_ref, body.limit)
     if items is None:
         raise NotFoundError("GOOSE 控制块未找到")
+    items = _enrich_model_descriptions(request, body.channel_id, items)
     return BaseResponse(message="获取 GOOSE 报文历史成功", data={"items": items, "total": len(items)})
 
 

@@ -225,15 +225,10 @@
         :show-overflow-tooltip="false"
       >
         <template #default="scope">
-          <el-tag
+          <Iec61850FcTag
             v-if="scope.row._fc && !scope.row._isDoRow"
-            :color="IEC61850_FC_COLORS[scope.row._fc] || '#6b7280'"
-            effect="dark"
-            size="small"
-            class="fc-tag"
-          >
-            {{ scope.row._fc }}
-          </el-tag>
+            :fc="scope.row._fc"
+          />
         </template>
       </el-table-column>
 
@@ -808,25 +803,12 @@ import PointChangeHistory from "../point/PointChangeHistory.vue";
 import PointDetailTabs from "../point/PointDetailTabs.vue";
 import WritePointDialog from "./WritePointDialog.vue";
 import Iec61850WriteDialog from "./Iec61850WriteDialog.vue";
+import Iec61850FcTag from "../common/Iec61850FcTag.vue";
 import Dlt645WriteDialog from "./Dlt645WriteDialog.vue";
 
 const { t, locale } = useI18n();
 
 // ===== IEC61850 树形表格常量 =====
-
-/** FC → 颜色映射 (类似 IECSCOUT) */
-const IEC61850_FC_COLORS: Record<string, string> = {
-  MX: "#3b82f6", // 蓝色 - 测量
-  ST: "#10b981", // 绿色 - 状态
-  CO: "#f59e0b", // 橙色 - 控制
-  CF: "#8b5cf6", // 紫色 - 配置
-  DC: "#6b7280", // 灰色 - 描述
-  EX: "#ef4444", // 红色 - 扩展
-  SG: "#06b6d4", // 青色 - 设定组
-  SR: "#6b7280", // 灰色 - 替代
-  OR: "#f97316", // 深橙 - 操作
-  BL: "#94a3b8", // 浅灰 - 阻塞
-};
 
 const props = defineProps({
   slaveId: { type: Number, required: true },
@@ -1170,7 +1152,10 @@ const iec61850FlatRows = computed(() => {
           _enumRef: daNode.enum_ref,
           _fc: daNode.fc,
           地址: `${doRef}.${daNode.da_path}`,
-          测点名称: `${doNode.do_name}.${daNode.da_path}`,
+          测点名称:
+            daNode.description ||
+            doNode.du_name ||
+            `${doNode.do_name}.${daNode.da_path}`,
           测点编码: daNode.point_code || "",
           真实值: daNode.value || "",
           "16进制地址": "",
@@ -1919,16 +1904,6 @@ body.theme-dark {
   font-family: "Consolas", "Monaco", monospace;
   font-size: 12px;
   color: #475569;
-}
-
-/* FC 标签 */
-.fc-tag {
-  border: none !important;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  min-width: 36px;
-  text-align: center;
 }
 
 /* DO 子项数 badge */

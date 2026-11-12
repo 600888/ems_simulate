@@ -8,6 +8,8 @@ import threading
 import time
 from typing import Any
 
+from ..datasets.metadata import build_description_index, description_for_ref
+
 _CACHE_TTL_SECONDS = 2.0
 _CACHE_LOCK = threading.Lock()
 _METADATA_CACHE: dict[
@@ -15,6 +17,7 @@ _METADATA_CACHE: dict[
     tuple[float, list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]],
 ] = {}
 _POINT_LOOKUP_CACHE: dict[int, tuple[int, dict[str, dict[str, Any]]]] = {}
+_DESCRIPTION_CACHE: dict[int, tuple[int, dict[str, str]]] = {}
 _FC_SEGMENT = re.compile(r"\$(ST|MX|CO|SP|SG|SE|CF|DC|EX|SV|BL|OR)\$", re.IGNORECASE)
 
 
@@ -148,6 +151,14 @@ def enrich_goose_packet(packet: dict[str, Any], channel_id: int) -> dict[str, An
         int(packet["app_id"]) if packet.get("app_id") is not None else None,
     )
     point_lookup = _get_point_lookup(channel_id, points)
+    with _CACHE_LOCK:
+        cached_descriptions = _DESCRIPTION_CACHE.get(channel_id)
+    if cached_descriptions and cached_descriptions[0] == id(points):
+        descriptions = cached_descriptions[1]
+    else:
+        descriptions = build_description_index(points)
+        with _CACHE_LOCK:
+            _DESCRIPTION_CACHE[channel_id] = (id(points), descriptions)
     for index, value in enumerate(enriched["data_values"]):
         value["index"] = index
         if index >= len(entries):
@@ -156,10 +167,12 @@ def enrich_goose_packet(packet: dict[str, Any], channel_id: int) -> dict[str, An
         entry = entries[index]
         value["name"] = entry.get("name") or f"Entry[{index}]"
         value["fc"] = entry.get("fc", "")
-        value["description"] = entry.get("description", "")
+        value["description"] = description_for_ref(value["name"], descriptions) or entry.get("description", "")
         value["dataset_type"] = entry.get("type") or entry.get("iec_type") or ""
         point = _find_point(points, entry, point_lookup)
         if point:
+            if not value["fc"]:
+                value["fc"] = point.get("fc", "")
             value["point"] = {
                 "code": point.get("code", ""),
                 "name": point.get("name", ""),
@@ -178,6 +191,8 @@ def clear_goose_detail_cache(channel_id: int | None = None) -> None:
         if channel_id is None:
             _METADATA_CACHE.clear()
             _POINT_LOOKUP_CACHE.clear()
+            _DESCRIPTION_CACHE.clear()
         else:
             _METADATA_CACHE.pop(channel_id, None)
             _POINT_LOOKUP_CACHE.pop(channel_id, None)
+            _DESCRIPTION_CACHE.pop(channel_id, None)

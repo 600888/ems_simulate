@@ -27,7 +27,17 @@
         min-width="150"
         show-overflow-tooltip
       />
-      <el-table-column prop="fc" label="FC" width="70" align="center" />
+      <el-table-column
+        prop="fc"
+        label="FC"
+        width="70"
+        align="center"
+        :show-overflow-tooltip="false"
+      >
+        <template #default="{ row }">
+          <Iec61850FcTag :fc="row.fc" />
+        </template>
+      </el-table-column>
       <el-table-column prop="type" :label="$t('goose.type')" width="105" />
       <el-table-column :label="$t('goose.prevValue')" min-width="120"
         ><template #default="{ row }">{{
@@ -83,6 +93,7 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
 import type { GooseSubscriptionDataValue } from "@/api/gooseApi";
+import Iec61850FcTag from "../common/Iec61850FcTag.vue";
 import { formatGooseTime } from "./gooseWorkbench";
 const { t } = useI18n();
 const props = defineProps<{

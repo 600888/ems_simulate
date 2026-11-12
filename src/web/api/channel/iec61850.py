@@ -13,6 +13,8 @@ from src.web.api.exceptions import ConflictError, NotFoundError, OperationError,
 from src.web.api.schemas import BaseResponse
 from src.web.log import log
 
+from .iec61850_metadata import enrich_iec61850_metadata
+
 router = APIRouter(tags=["channel"])
 
 
@@ -1519,7 +1521,9 @@ def _build_iec61850_dataset_tree(device, dataset_ref: str) -> dict[str, Any]:
     if not matched_ds:
         return {"items": [], "total": 0}
 
-    members = matched_ds.get("members", [])
+    members = enrich_iec61850_metadata(
+        device, {"data_set_ref": matched_ds.get("ref", ""), "members": matched_ds.get("members", [])}
+    )["members"]
 
     # DataSet 表格查询只读取显式读取/后台任务留下的缓存快照。
     resolved_ref = matched_ds.get("ref") or dataset_ref
@@ -1586,7 +1590,7 @@ def _build_iec61850_dataset_tree(device, dataset_ref: str) -> dict[str, Any]:
                 "do_ref": do_ref,
                 "ld": ld,
                 "ln": ln,
-                "du_name": "",
+                "du_name": member.get("description", ""),
                 "fc": fc,
                 "frame_type": frame_type,
                 "children": [],
@@ -1599,7 +1603,8 @@ def _build_iec61850_dataset_tree(device, dataset_ref: str) -> dict[str, Any]:
             "fc": fc,
             "is_struct": False,
             "point_code": ref,
-            "point_name": da_path if da_path else do_name,
+            "point_name": member.get("description") or (da_path if da_path else do_name),
+            "description": member.get("description", ""),
             "value": str(value) if value is not None else "",
             "status": "成功" if value is not None else "未知",
             "读取时间": read_time,
@@ -1903,7 +1908,9 @@ async def get_iec61850_dataset_detail(
     values = snapshot.get("values") or {}
 
     # 复制成员，避免查询接口污染 Handler 的发现缓存。
-    members = [dict(member) for member in matched_ds.get("members", [])]
+    members = enrich_iec61850_metadata(
+        device, {"data_set_ref": resolved_ref, "members": matched_ds.get("members", [])}
+    )["members"]
     for member in members:
         ref = member.get("ref", "")
         member["value"] = values.get(ref, None)

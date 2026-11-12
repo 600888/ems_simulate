@@ -63,6 +63,8 @@ export function flattenGooseBlocks(
       data_values: (publisher.entries || []).map((entry, index) => ({
         index: entry.index ?? index,
         name: entry.name,
+        fc: entry.fc,
+        description: entry.description,
         type: entry.iec_type,
         value: entry.value,
       })),

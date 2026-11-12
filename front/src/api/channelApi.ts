@@ -176,6 +176,7 @@ export interface IEC61850BdaItem extends IEC61850ValueMetadata {
 }
 
 export interface IEC61850DaNode extends IEC61850ValueMetadata {
+  description?: string;
   da_name: string;
   da_path: string;
   fc: string;

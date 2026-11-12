@@ -100,3 +100,17 @@ def test_goose_detail_uses_publisher_entries_and_app_id_fallback(monkeypatch):
 
     assert enriched["data_values"][0]["name"] == "LD0/XCBR1.Pos.stVal"
     assert enriched["data_values"][0]["dataset_type"] == "boolean"
+
+
+def test_capture_description_uses_du_from_sibling_value_point(monkeypatch):
+    points = [{"reg_addr": "LD0/XCBR1.Pos.stVal", "name": "断路器位置", "code": "position"}]
+    entries = [{"name": "LD0/XCBR1$ST$Pos$q", "description": ""}]
+    publishers = [{"go_cb_ref": "LD0/LLN0$GO$gcb1", "entries": entries}]
+    monkeypatch.setattr(detail_module, "_load_channel_metadata", lambda _: ([], publishers, points))
+    detail_module.clear_goose_detail_cache()
+    packet = {"go_cb_ref": "LD0/LLN0$GO$gcb1", "data_values": [{"value": 0}]}
+
+    enriched = detail_module.enrich_goose_packet(packet, 7)
+
+    assert enriched["data_values"][0]["description"] == "断路器位置"
+    assert "description" not in packet["data_values"][0]
