@@ -10,7 +10,14 @@ import {
   closeSidebarOverlay,
 } from "@/components/header/isCollapse";
 import { isTauri, onCloseRequested } from "@/utils/tauri";
-import { computed, ref, watch, onMounted, onUnmounted } from "vue";
+import {
+  computed,
+  ref,
+  watch,
+  onMounted,
+  onUnmounted,
+  defineAsyncComponent,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -24,6 +31,15 @@ import zhCn from "element-plus/es/locale/lang/zh-cn";
 import en from "element-plus/es/locale/lang/en";
 
 const isClosing = ref(false);
+const DeviceManagementDialog = defineAsyncComponent(
+  () => import("@/components/device/DeviceManagementDialog.vue"),
+);
+const deviceManagementVisible = ref(false);
+const deviceManagementMounted = ref(false);
+function openDeviceManagement() {
+  deviceManagementMounted.value = true;
+  deviceManagementVisible.value = true;
+}
 const settingsVisible = ref(false);
 const logVisible = ref(false);
 const logErrorCount = ref(0);
@@ -129,6 +145,7 @@ async function fetchLogErrorCount() {
             <AppHeader
               @open-settings="openSettings"
               @open-logs="openLogs"
+              @open-device-management="openDeviceManagement"
               :log-error-count="logErrorCount"
             />
             <!-- 标签页 -->
@@ -164,6 +181,10 @@ async function fetchLogErrorCount() {
 
       <!-- 日志查看器 -->
       <LogViewerDialog v-model:visible="logVisible" />
+      <DeviceManagementDialog
+        v-if="deviceManagementMounted"
+        v-model:visible="deviceManagementVisible"
+      />
     </template>
   </el-config-provider>
 </template>

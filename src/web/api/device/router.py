@@ -14,6 +14,7 @@ from src.device.core.connection import connection_registry
 from src.device.core.device import Device
 from src.device.protocol.base_handler import ServerHandler
 from src.enums.modbus_def import ProtocolType
+from src.web.api.device.lifecycle import prepare_device_start
 from src.web.api.exceptions import ConflictError, NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import (
     ApplySimulationConfigRequest,
@@ -113,6 +114,43 @@ async def get_device_info(req: DeviceInfoRequest, request: Request):
         info_dict["current_connection_count"] = 0
     info_dict["iec61850_model_loaded"] = device.iec61850_model_loaded
     return BaseResponse(message="获取设备信息成功!", data=info_dict)
+
+
+@device_router.post("/management-status", response_model=BaseResponse)
+async def get_management_status(request: Request):
+    """一次返回设备管理弹框所需的运行状态，不逐台查询数据库。"""
+    items = []
+    for device in tuple(request.app.state.device_controller.device_list):
+        item = {"channel_id": device.device_id, "name": device.name}
+        try:
+            protocol = device.protocol_type.value
+            running = device.is_protocol_running()
+            supported = "Client" not in protocol
+            simulating = device.isSimulationRunning()
+            reason = "clientNoSim" if not supported else ""
+            handler = device.protocol_handler
+            if protocol == "OpcUaServer":
+                server = getattr(handler, "server", None)
+                capabilities = server.capabilities() if server is not None else []
+                simulation = next((c for c in capabilities if c["name"] == "simulation"), {})
+                rules = simulation.get("details", {}).get("rules", [])
+                supported = bool(simulation.get("running") and rules)
+                simulating = running and any(not r.get("paused", True) and not r.get("error") for r in rules)
+                reason = "" if supported else "noSimulationRules"
+            item.update(
+                running=running,
+                simulating=simulating,
+                simulation_supported=supported,
+                simulation_reason=reason,
+                model_loaded=device.iec61850_model_loaded,
+                error=str(getattr(handler, "last_error", "") or "") if not running else "",
+                status_available=True,
+            )
+        except Exception as exc:
+            log.warning(f"读取设备 {device.name} 管理状态失败: {exc}")
+            item.update(status_available=False, error=str(exc))
+        items.append(item)
+    return BaseResponse(data=items)
 
 
 @device_router.post("/connection-summary", response_model=BaseResponse)
@@ -280,6 +318,7 @@ async def apply_simulation_config(req: ApplySimulationConfigRequest, request: Re
 async def start_device(req: DeviceStartRequest, request: Request):
     """启动设备"""
     device = _get_device(req.device_name, request)
+    await prepare_device_start(device)
     success = await device.start()
     if not success:
         if device.protocol_type in (ProtocolType.Dlt698Client, ProtocolType.Dlt698Server):

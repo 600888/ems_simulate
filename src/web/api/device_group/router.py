@@ -5,6 +5,7 @@ import asyncio
 from fastapi import APIRouter, Request
 
 from src.data.service.device_group_service import DeviceGroupService
+from src.web.api.device.lifecycle import prepare_device_start
 from src.web.api.exceptions import NotFoundError, OperationError, ValidationError
 from src.web.api.schemas import (
     BaseResponse,
@@ -166,31 +167,30 @@ async def move_devices_to_group(request: DevicesToGroupRequest):
 
 @device_group_router.post("/batch-operation")
 async def batch_device_operation(body: BatchDeviceOperationRequest, req: Request):
-    """批量操作设备组内的设备"""
+    """并行批量操作当前设备组及其全部子组内的设备。"""
     device_controller = req.app.state.device_controller
 
     if body.group_id == 0:
         devices = await asyncio.to_thread(DeviceGroupService.get_ungrouped_devices)
     else:
-        devices = await asyncio.to_thread(DeviceGroupService.get_devices_by_group, body.group_id)
+        devices = await asyncio.to_thread(
+            DeviceGroupService.get_devices_by_group, body.group_id, include_descendants=True
+        )
 
     if not devices:
         raise NotFoundError("设备组内没有设备")
 
-    success_count = 0
-    fail_count = 0
-
-    for device_dict in devices:
+    async def operate_device(device_dict) -> bool:
         device_name = device_dict.get("name")
         device = device_controller.device_map.get(device_name)
 
         if not device:
-            fail_count += 1
-            continue
+            return False
 
         try:
             result = False
             if body.operation == "start":
+                await prepare_device_start(device)
                 result = await device.start()
             elif body.operation == "stop":
                 result = await device.stop()
@@ -198,14 +198,16 @@ async def batch_device_operation(body: BatchDeviceOperationRequest, req: Request
                 await asyncio.to_thread(device.resetPointValues)
                 result = True
 
-            if result:
-                success_count += 1
-            else:
+            if not result:
                 log.error(f"操作设备 {device_name} 失败: {body.operation} 返回 False")
-                fail_count += 1
+            return bool(result)
         except Exception as e:
             log.error(f"操作设备 {device_name} 失败: {e}")
-            fail_count += 1
+            return False
+
+    results = await asyncio.gather(*(operate_device(device_dict) for device_dict in devices))
+    success_count = sum(results)
+    fail_count = len(results) - success_count
 
     return BaseResponse(
         data={"success_count": success_count, "fail_count": fail_count},

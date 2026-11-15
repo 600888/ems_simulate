@@ -4,7 +4,7 @@
 import i18n from "@/i18n";
 
 import { instance, requestApi } from "./http";
-import { DEVICE_API } from "@/constants";
+import { DEVICE_API, HTTP_TIMEOUT_LONG } from "@/constants";
 
 // ===== 类型导出（供外部使用） =====
 
@@ -137,9 +137,12 @@ export async function applySimulationConfig(
 
 export async function startDevice(deviceName: string): Promise<boolean> {
   try {
-    const data = await requestApi(DEVICE_API.START, "post", {
-      device_name: deviceName,
-    });
+    const data = await requestApi(
+      DEVICE_API.START,
+      "post",
+      { device_name: deviceName },
+      HTTP_TIMEOUT_LONG,
+    );
     return data;
   } catch (error) {
     console.error("Error starting device:", error);

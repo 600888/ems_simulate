@@ -279,12 +279,13 @@ class DeviceGroupDao:
             raise e
 
     @classmethod
-    def get_devices_by_group(cls, group_id: int) -> list[dict]:
-        """获取指定设备组内的设备"""
+    def get_devices_by_group(cls, group_id: int, include_descendants: bool = False) -> list[dict]:
+        """获取指定设备组内的设备，可包含任意层级子组。"""
         try:
             with local_session() as session, session.begin():
+                group_ids = cls._get_descendant_group_ids(session, group_id) if include_descendants else [group_id]
                 result = (
-                    session.query(Device).where(Device.enable, Device.group_id == group_id).order_by(Device.id).all()
+                    session.query(Device).where(Device.enable, Device.group_id.in_(group_ids)).order_by(Device.id).all()
                 )
                 return [item.to_dict() for item in result]
         except Exception as e:

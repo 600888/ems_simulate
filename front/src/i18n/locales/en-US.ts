@@ -1,6 +1,8 @@
 import { opcuaEnUS } from "./opcua";
+import { deviceManagementEnUS } from "./deviceManagement";
 
 export default {
+  deviceManagement: deviceManagementEnUS,
   opcua: opcuaEnUS,
   common: {
     cancel: "Cancel",

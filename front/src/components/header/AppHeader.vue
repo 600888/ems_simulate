@@ -17,6 +17,16 @@
     <div class="breadcrumb-divider"></div>
 
     <div class="link-container">
+      <el-tooltip :content="t('deviceManagement.title')">
+        <button
+          type="button"
+          class="icon-link clickable device-management-button"
+          :aria-label="t('deviceManagement.title')"
+          @click="emit('open-device-management')"
+        >
+          <el-icon :size="24"><Operation /></el-icon>
+        </button>
+      </el-tooltip>
       <!-- Language Switch -->
       <el-icon
         :size="24"
@@ -83,6 +93,7 @@ import {
   Setting,
   Files,
   Document,
+  Operation,
 } from "@element-plus/icons-vue";
 import { useRoute } from "vue-router";
 import { isCollapse, sidebarOverlayMode } from "./isCollapse";
@@ -91,7 +102,11 @@ import { effectiveViewportWidth } from "@/composables/useAppSettings";
 import type { LocaleType } from "@/i18n";
 
 const { t, locale } = useI18n();
-const emit = defineEmits(["open-settings", "open-logs"]);
+const emit = defineEmits([
+  "open-settings",
+  "open-logs",
+  "open-device-management",
+]);
 const isCompactViewport = computed(() => effectiveViewportWidth.value < 1200);
 const sidebarDisplayCollapsed = computed(() =>
   isCompactViewport.value ? !sidebarOverlayMode.value : isCollapse.value,
@@ -254,6 +269,18 @@ watch(() => route.path, updateBreadcrumb, { immediate: true });
 
   .clickable {
     cursor: pointer;
+  }
+
+  .device-management-button {
+    border: 0;
+    padding: 4px;
+    border-radius: 5px;
+    background: transparent;
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
   }
 
   .log-btn {

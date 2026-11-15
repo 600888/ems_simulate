@@ -178,10 +178,10 @@ class DeviceGroupService:
             return 0
 
     @classmethod
-    def get_devices_by_group(cls, group_id: int) -> list[dict]:
-        """获取指定设备组内的设备"""
+    def get_devices_by_group(cls, group_id: int, include_descendants: bool = False) -> list[dict]:
+        """获取指定设备组内的设备，可包含任意层级子组。"""
         try:
-            return DeviceGroupDao.get_devices_by_group(group_id)
+            return DeviceGroupDao.get_devices_by_group(group_id, include_descendants=include_descendants)
         except Exception as e:
             log.error(f"获取设备组内设备失败: {e}")
             return []

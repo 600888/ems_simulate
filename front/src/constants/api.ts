@@ -47,6 +47,7 @@ export const CHANNEL_API = {
 export const DEVICE_API = {
   LIST: "/api/devices/list",
   INFO: "/api/devices/info",
+  MANAGEMENT_STATUS: "/api/devices/management-status",
   CONNECTION_SUMMARY: "/api/devices/connection-summary",
   CURRENT_CONNECTIONS: "/api/devices/current-connections",
   CONNECTION_HISTORY: "/api/devices/connection-history",

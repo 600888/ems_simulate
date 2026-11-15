@@ -1,6 +1,8 @@
 import { opcuaZhCN } from "./opcua";
+import { deviceManagementZhCN } from "./deviceManagement";
 
 export default {
+  deviceManagement: deviceManagementZhCN,
   opcua: opcuaZhCN,
   common: {
     cancel: "取消",
