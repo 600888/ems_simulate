@@ -3,7 +3,7 @@ import sys
 import threading
 import time
 from types import ModuleType, SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -79,6 +79,37 @@ def test_capture_processes_goose_frame():
     assert packets[0]["data_values"][0]["value"] is True
     assert packets[0]["data_values"][0]["offset"] > 0
     assert packets[0]["fields"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api", ["rest", "websocket"])
+@pytest.mark.parametrize("filter_app_id", [None, 0, 0x1001])
+async def test_capture_start_replaces_previous_appid_filter(monkeypatch, api, filter_app_id):
+    from src.web.api import network_interfaces
+    from src.web.api.channel import goose
+    from src.web.api.channel.goose_websocket import WebSocketSessionManager
+    from src.web.api.schemas.goose import GooseCaptureStartRequest
+
+    capture = GooseCaptureEngine(interface="WLAN")
+    capture.set_app_id_filter(1)
+    monkeypatch.setattr(capture, "start", Mock(return_value=True))
+    monkeypatch.setattr(network_interfaces, "validate_network_interface", Mock())
+    params = {"channel_id": 7, "interface": "WLAN", "filter_app_id": filter_app_id}
+    if api == "rest":
+        monkeypatch.setattr(goose, "_validate_iec61850_channel", Mock())
+        monkeypatch.setattr(goose, "_get_capture", lambda *_: capture)
+        await goose.start_goose_capture(GooseCaptureStartRequest(**params))
+    else:
+        monkeypatch.setattr(goose, "GOOSE_CAPTURE_INSTANCES", {"7:WLAN": capture})
+        monkeypatch.setattr(WebSocketSessionManager, "_instance", None)
+        await WebSocketSessionManager()._handle_start(
+            SimpleNamespace(send_text=AsyncMock()), params, GooseCaptureEngine
+        )
+
+    assert capture._filter_app_id == filter_app_id
+    frame = _goose_frame()
+    capture._process_packet(frame[:14] + b"\x10\x01" + frame[16:])
+    assert len(capture.get_packets()) == (0 if filter_app_id == 0 else 1)
 
 
 def test_windows_capture_reuses_socket_and_preserves_queued_sequences(monkeypatch):

@@ -292,8 +292,7 @@ class WebSocketSessionManager:
             GOOSE_CAPTURE_INSTANCES[key] = capture
 
         capture._max_packets = max_packets
-        if filter_app_id is not None:
-            capture.set_app_id_filter(filter_app_id)
+        capture.set_app_id_filter(filter_app_id)
 
         # 注册回调 — 用于实时推送（只需注册一次）
         capture.set_callback(lambda packet, cid=channel_id: self._on_packet_captured(packet, cid))

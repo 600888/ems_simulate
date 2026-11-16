@@ -1104,7 +1104,7 @@ export default {
     subState: "状态",
     subDataValue: "数据值",
     subOperation: "操作",
-    filterAppId: "应用标识过滤",
+    filterAppId: "全部 APPID（留空）",
     hexDumpPanel: "十六进制转储",
     hexStringPanel: "十六进制字符串",
     selectControlBlock: "请选择一个 GOOSE 控制块",

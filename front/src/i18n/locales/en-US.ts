@@ -1125,7 +1125,7 @@ export default {
     subState: "State",
     subDataValue: "Data Value",
     subOperation: "Operation",
-    filterAppId: "APPID Filter",
+    filterAppId: "All APPIDs (leave blank)",
     hexDumpPanel: "HEX Dump",
     hexStringPanel: "Hex String",
     selectControlBlock: "Please select a GOOSE control block",

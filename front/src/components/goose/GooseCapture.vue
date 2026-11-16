@@ -500,7 +500,7 @@ const captureRunning = ref(false);
 const interfaceName = ref("");
 const networkInterfaces = ref<NetworkInterfaceInfo[]>([]);
 const maxPackets = ref(100);
-const filterAppId = ref<number | null>(1);
+const filterAppId = ref<number | null>(null);
 
 const packets = shallowRef<GooseCapturedPacket[]>([]);
 const statistics = ref<GooseCaptureStatistics | null>(null);
@@ -845,9 +845,22 @@ cleanups.push(
         }
       } else if (res.command === "status") {
         if (res.success && res.data?.captures?.length > 0) {
-          const c = res.data.captures[0];
+          const c =
+            res.data.captures.find(
+              (capture: { is_running: boolean }) => capture.is_running,
+            ) ||
+            res.data.captures.find(
+              (capture: { interface: string }) =>
+                capture.interface === interfaceName.value,
+            ) ||
+            res.data.captures[0];
           const wasRunning = captureRunning.value;
           captureRunning.value = c.is_running;
+          if (c.is_running) {
+            interfaceName.value = c.interface;
+            filterAppId.value = c.filter_app_id ?? null;
+            maxPackets.value = c.max_packets ?? maxPackets.value;
+          }
           stopping.value = false;
           starting.value = false;
           // 重连后发现抓包在运行，拉取最新数据

@@ -818,8 +818,7 @@ async def start_goose_capture(
     if body.max_packets:
         capture._max_packets = body.max_packets
 
-    if body.filter_app_id is not None:
-        capture.set_app_id_filter(body.filter_app_id)
+    capture.set_app_id_filter(body.filter_app_id)
 
     success = capture.start()
     if not success:
