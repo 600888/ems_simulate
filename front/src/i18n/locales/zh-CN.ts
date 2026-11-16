@@ -5,6 +5,8 @@ export default {
   deviceManagement: deviceManagementZhCN,
   opcua: opcuaZhCN,
   common: {
+    expandView: "放大",
+    expandSection: "放大查看{title}",
     cancel: "取消",
     confirm: "确认",
     close: "关闭",

@@ -103,6 +103,7 @@ declare module 'vue' {
     ElTreeSelect: typeof import('element-plus/es')['ElTreeSelect']
     ElTreeV2: typeof import('element-plus/es')['ElTreeV2']
     ElUpload: typeof import('element-plus/es')['ElUpload']
+    ExpandableDetailSection: typeof import('./src/components/common/ExpandableDetailSection.vue')['default']
     FileExplorer: typeof import('./src/components/files/FileExplorer.vue')['default']
     FloatRegister: typeof import('./src/components/register/FloatRegister.vue')['default']
     GooseBlockTreePanel: typeof import('./src/components/goose/GooseBlockTreePanel.vue')['default']

@@ -329,121 +329,125 @@
           }}</el-descriptions-item>
         </el-descriptions>
 
-        <h4 style="margin: 16px 0 8px">{{ $t("goose.protocolFields") }}</h4>
-        <el-table
-          :data="detailPacket.fields || []"
-          border
-          size="small"
-          max-height="220"
-          highlight-current-row
-          @row-click="selectRawRange"
+        <ExpandableDetailSection
+          v-slot="{ expanded }"
+          :title="$t('goose.protocolFields')"
         >
-          <el-table-column :label="$t('goose.bytes')" width="85">
-            <template #default="{ row }">{{
-              formatByteRange(row.offset, row.length)
-            }}</template>
-          </el-table-column>
-          <el-table-column
-            prop="raw_hex"
-            :label="$t('goose.rawBytes')"
-            min-width="130"
-          />
-          <el-table-column prop="name" :label="$t('goose.field')" width="145" />
-          <el-table-column :label="$t('goose.parsedValue')" min-width="180">
-            <template #default="{ row }">{{
-              formatGooseParsedValue(row)
-            }}</template>
-          </el-table-column>
-          <el-table-column
-            prop="description"
-            :label="$t('goose.explanation')"
-            min-width="130"
-          />
-        </el-table>
+          <el-table
+            :data="detailPacket.fields || []"
+            border
+            size="small"
+            :max-height="expanded ? undefined : 220"
+            highlight-current-row
+            @row-click="selectRawRange"
+          >
+            <el-table-column :label="$t('goose.bytes')" width="85">
+              <template #default="{ row }">{{
+                formatByteRange(row.offset, row.length)
+              }}</template>
+            </el-table-column>
+            <el-table-column
+              prop="raw_hex"
+              :label="$t('goose.rawBytes')"
+              min-width="130"
+            />
+            <el-table-column
+              prop="name"
+              :label="$t('goose.field')"
+              width="145"
+            />
+            <el-table-column :label="$t('goose.parsedValue')" min-width="180">
+              <template #default="{ row }">{{
+                formatGooseParsedValue(row)
+              }}</template>
+            </el-table-column>
+            <el-table-column
+              prop="description"
+              :label="$t('goose.explanation')"
+              min-width="130"
+            />
+          </el-table>
+        </ExpandableDetailSection>
 
         <!-- 数据集值 -->
-        <h4 style="margin: 16px 0 8px">
-          {{ $t("goose.dataValues") }} ({{
-            detailPacket.data_values?.length || 0
-          }})
-        </h4>
-        <el-table
-          :data="detailPacket.data_values || []"
-          border
-          size="small"
-          max-height="260"
-          highlight-current-row
-          @row-click="selectRawRange"
+        <ExpandableDetailSection
+          v-slot="{ expanded }"
+          :title="`${$t('goose.dataValues')} (${detailPacket.data_values?.length || 0})`"
         >
-          <el-table-column
-            type="index"
-            :label="$t('goose.seqNum')"
-            width="60"
-          />
-          <el-table-column :label="$t('goose.bytes')" width="85">
-            <template #default="{ row }">{{
-              formatByteRange(row.offset, row.length)
-            }}</template>
-          </el-table-column>
-          <el-table-column :label="$t('goose.dataItems')" min-width="180">
-            <template #default="{ row }">
-              <div>{{ row.name || `Entry[${row.index ?? "-"}]` }}</div>
-              <small v-if="row.description" class="text-muted">{{
-                row.description
-              }}</small>
-            </template>
-          </el-table-column>
-          <el-table-column :label="$t('goose.linkedPoint')" min-width="150">
-            <template #default="{ row }">
-              <template v-if="row.point">
-                <div>{{ row.point.name || row.point.code }}</div>
-                <small class="text-muted"
-                  >{{ row.point.code }} · {{ row.point.address }}</small
-                >
+          <el-table
+            :data="detailPacket.data_values || []"
+            border
+            size="small"
+            :max-height="expanded ? undefined : 260"
+            highlight-current-row
+            @row-click="selectRawRange"
+          >
+            <el-table-column
+              type="index"
+              :label="$t('goose.seqNum')"
+              width="60"
+            />
+            <el-table-column :label="$t('goose.bytes')" width="85">
+              <template #default="{ row }">{{
+                formatByteRange(row.offset, row.length)
+              }}</template>
+            </el-table-column>
+            <el-table-column :label="$t('goose.dataItems')" min-width="180">
+              <template #default="{ row }">
+                <div>{{ row.name || `Entry[${row.index ?? "-"}]` }}</div>
               </template>
-              <span v-else class="text-muted">{{ $t("goose.unlinked") }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column
-            :label="$t('goose.entryType')"
-            width="120"
-            prop="type"
-          />
-          <el-table-column :label="$t('goose.entryValue')">
-            <template #default="{ row }">{{
-              formatCapturedValue(row)
-            }}</template>
-          </el-table-column>
-        </el-table>
+            </el-table-column>
+            <el-table-column
+              prop="description"
+              :label="$t('goose.description')"
+              min-width="150"
+              :show-overflow-tooltip="!expanded"
+            />
+            <el-table-column
+              :label="$t('goose.entryType')"
+              width="120"
+              prop="type"
+            />
+            <el-table-column :label="$t('goose.entryValue')">
+              <template #default="{ row }">{{
+                formatCapturedValue(row)
+              }}</template>
+            </el-table-column>
+          </el-table>
+        </ExpandableDetailSection>
 
         <!-- 十六进制转储 -->
-        <h4 style="margin: 16px 0 8px">{{ $t("goose.rawHex") }}</h4>
-        <div ref="hexDumpRef" class="hex-dump">
-          <div
-            v-for="line in hexDumpLines"
-            :key="line.offset"
-            class="hex-dump-line"
-          >
-            <span class="hex-offset">{{
-              line.offset.toString(16).padStart(4, "0")
-            }}</span>
-            <span class="hex-bytes">
-              <span
-                v-for="item in line.bytes"
-                :key="item.index"
-                class="raw-byte"
-                :class="{ selected: isRawByteSelected(item.index) }"
-                :data-byte-index="item.index"
-                :title="$t('goose.bytePosition', { index: item.index })"
-                >{{ item.hex }}</span
-              >
-            </span>
-            <span class="hex-ascii">{{ line.ascii }}</span>
+        <ExpandableDetailSection
+          v-slot="{ expanded }"
+          :title="$t('goose.rawHex')"
+        >
+          <div :ref="expanded ? undefined : 'hexDumpRef'" class="hex-dump">
+            <div
+              v-for="line in hexDumpLines"
+              :key="line.offset"
+              class="hex-dump-line"
+            >
+              <span class="hex-offset">{{
+                line.offset.toString(16).padStart(4, "0")
+              }}</span>
+              <span class="hex-bytes">
+                <span
+                  v-for="item in line.bytes"
+                  :key="item.index"
+                  class="raw-byte"
+                  :class="{ selected: isRawByteSelected(item.index) }"
+                  :data-byte-index="item.index"
+                  :title="$t('goose.bytePosition', { index: item.index })"
+                  >{{ item.hex }}</span
+                >
+              </span>
+              <span class="hex-ascii">{{ line.ascii }}</span>
+            </div>
           </div>
-        </div>
-        <div class="raw-byte-hint">
-          {{ $t("goose.clickToLocate") }}
-        </div>
+          <div class="raw-byte-hint">
+            {{ $t("goose.clickToLocate") }}
+          </div>
+        </ExpandableDetailSection>
       </template>
     </el-dialog>
   </div>
@@ -481,6 +485,7 @@ import type {
 } from "@/api/gooseApi";
 import { getGooseNetworkInterfaces } from "@/api/gooseApi";
 import { formatGooseTime } from "./gooseWorkbench";
+import ExpandableDetailSection from "../common/ExpandableDetailSection.vue";
 
 const props = defineProps<{ channelId: number }>();
 

@@ -73,8 +73,10 @@
           </el-descriptions-item>
         </el-descriptions>
 
-        <section class="section">
-          <h3>{{ $t("device.messageRawMessage") }}</h3>
+        <ExpandableDetailSection
+          class="section"
+          :title="$t('device.messageRawMessage')"
+        >
           <div class="raw-frame">
             <span
               v-for="(byte, index) in rawBytes"
@@ -86,10 +88,12 @@
             >
           </div>
           <div class="raw-hint">{{ $t("device.messageClickToHighlight") }}</div>
-        </section>
+        </ExpandableDetailSection>
 
-        <section class="section section-parse">
-          <h3>{{ $t("device.messageFieldParse") }}</h3>
+        <ExpandableDetailSection
+          class="section section-parse"
+          :title="$t('device.messageFieldParse')"
+        >
           <el-table
             :data="detail.fields"
             border
@@ -124,15 +128,19 @@
               min-width="150"
             />
           </el-table>
-        </section>
+        </ExpandableDetailSection>
 
-        <section v-if="displayObjects.length" class="section">
-          <h3>{{ $t("device.messageDataObjects") }}</h3>
+        <ExpandableDetailSection
+          v-if="displayObjects.length"
+          v-slot="{ expanded }"
+          class="section"
+          :title="$t('device.messageDataObjects')"
+        >
           <el-table
             :data="displayObjects"
             border
             size="small"
-            max-height="280"
+            :max-height="expanded ? undefined : 280"
             highlight-current-row
             @row-click="handleObjectRowClick"
           >
@@ -267,10 +275,13 @@
               }}</template></el-table-column
             >
           </el-table>
-        </section>
+        </ExpandableDetailSection>
 
-        <section v-if="detail.fragment_correlation" class="section">
-          <h3>{{ $t("device.messageFragmentLink") }}</h3>
+        <ExpandableDetailSection
+          v-if="detail.fragment_correlation"
+          class="section"
+          :title="$t('device.messageFragmentLink')"
+        >
           <el-descriptions :column="2" border>
             <el-descriptions-item :label="$t('device.messageFragmentId')">
               {{ detail.fragment_correlation.id }}
@@ -295,10 +306,13 @@
               </el-button>
             </el-descriptions-item>
           </el-descriptions>
-        </section>
+        </ExpandableDetailSection>
 
-        <section v-if="detail.correlation" class="section">
-          <h3>{{ $t("device.messageReqResLink") }}</h3>
+        <ExpandableDetailSection
+          v-if="detail.correlation"
+          class="section"
+          :title="$t('device.messageReqResLink')"
+        >
           <el-descriptions :column="2" border>
             <el-descriptions-item :label="$t('device.messageReqSeqNum')"
               >#{{
@@ -316,10 +330,13 @@
               detail.correlation.quantity
             }}</el-descriptions-item>
           </el-descriptions>
-        </section>
+        </ExpandableDetailSection>
 
-        <section v-if="detail.validation.length" class="section">
-          <h3>{{ $t("device.messageIntegrityCheck") }}</h3>
+        <ExpandableDetailSection
+          v-if="detail.validation.length"
+          class="section"
+          :title="$t('device.messageIntegrityCheck')"
+        >
           <div
             v-for="item in detail.validation"
             :key="item.name"
@@ -333,7 +350,7 @@
             <strong>{{ item.name }}</strong
             ><span>{{ item.detail }}</span>
           </div>
-        </section>
+        </ExpandableDetailSection>
 
         <el-alert
           v-for="message in detail.warnings"
@@ -362,6 +379,7 @@ import { useI18n } from "vue-i18n";
 import { formatBeijingDateTime } from "@/utils/beijingTime";
 import { showError } from "@/api/http";
 import { Rank } from "@element-plus/icons-vue";
+import ExpandableDetailSection from "../common/ExpandableDetailSection.vue";
 import {
   getMessageDetail,
   type MessageDetail,

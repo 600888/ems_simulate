@@ -5,6 +5,8 @@ export default {
   deviceManagement: deviceManagementEnUS,
   opcua: opcuaEnUS,
   common: {
+    expandView: "Expand",
+    expandSection: "Expand {title}",
     cancel: "Cancel",
     confirm: "Confirm",
     close: "Close",
