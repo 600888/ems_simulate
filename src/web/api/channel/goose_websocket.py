@@ -213,7 +213,14 @@ class WebSocketSessionManager:
             await asyncio.sleep(0.05)
             with self._lock:
                 packets = self._pending_packets.pop(channel_id, [])
+                context = next(
+                    (ws for ws in self._connections if self._connection_channels.get(ws) == channel_id), None
+                )
             if packets:
+                if context is not None:
+                    from .goose import _enrich_model_descriptions
+
+                    packets = _enrich_model_descriptions(context, channel_id, packets)
                 await self.broadcast({"type": "packets", "data": packets}, channel_id)
             with self._lock:
                 if self._pending_packets.get(channel_id):
@@ -402,6 +409,9 @@ class WebSocketSessionManager:
 
         channel_id = int(params.get("channel_id", 0))
         packets = [enrich_goose_packet(packet, channel_id) for packet in packets]
+        from .goose import _enrich_model_descriptions
+
+        packets = _enrich_model_descriptions(ws, channel_id, packets)
         stats = capture.get_statistics()
         status = capture.get_status()
 

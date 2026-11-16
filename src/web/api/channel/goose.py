@@ -10,7 +10,7 @@ ICD 文件 GOOSE 配置统一通过 /import-icd 接口导入（含 MMS 测点 + 
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, WebSocket
 from sqlalchemy.exc import IntegrityError
 
 from src.common.mac_address import format_mac_address
@@ -51,7 +51,7 @@ router = APIRouter(tags=["goose"])
 # ===== 辅助函数 =====
 
 
-def _enrich_model_descriptions(request: Request, channel_id: int | None, data: Any) -> Any:
+def _enrich_model_descriptions(request: Request | WebSocket, channel_id: int | None, data: Any) -> Any:
     """Use the device's loaded dU/FC metadata, without making an MMS request."""
     controller = getattr(request.app.state, "device_controller", None)
     device = controller.get_device_by_channel_id(channel_id) if controller and channel_id is not None else None
@@ -845,6 +845,7 @@ async def stop_goose_capture(body: GooseCaptureStopRequest):
 @router.post("/goose/capture/list", response_model=BaseResponse)
 async def list_goose_capture(
     body: GooseCaptureListRequest,
+    request: Request,
 ):
     """获取捕获的 GOOSE 报文列表"""
     # 查找正在运行的捕获器
@@ -864,6 +865,7 @@ async def list_goose_capture(
     from src.proto.iec61850.plugins.goose.detail import enrich_goose_packet
 
     packets = [enrich_goose_packet(packet, body.channel_id) for packet in packets]
+    packets = _enrich_model_descriptions(request, body.channel_id, packets)
     stats = capture.get_statistics()
     status = capture.get_status()
 

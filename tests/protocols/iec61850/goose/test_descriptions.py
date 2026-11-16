@@ -1,7 +1,8 @@
 """GOOSE descriptions follow the device's DataModel dU without MMS reads."""
 
+import json
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -9,8 +10,10 @@ from src.device.protocol.iec61850_handler import IEC61850ClientHandler, IEC61850
 from src.proto.iec61850.core.registry import PointRegistry
 from src.proto.iec61850.model.ied_model import DARef, DORef, IedModel, LDModel, LNModel
 from src.proto.iec61850.plugins.datasets.metadata import build_description_index, description_for_ref
+from src.proto.iec61850.plugins.goose import detail as detail_module
 from src.web.api.channel import goose
-from src.web.api.schemas.goose import GooseChannelRequest, GooseSubscriptionHistoryRequest
+from src.web.api.channel.goose_websocket import WebSocketSessionManager
+from src.web.api.schemas.goose import GooseCaptureListRequest, GooseChannelRequest, GooseSubscriptionHistoryRequest
 
 
 def test_description_uses_owning_do_and_explicit_du_with_exact_scope():
@@ -149,3 +152,56 @@ def test_unregistered_quality_fc_uses_model_and_description_uses_current_point_n
     result = goose._enrich_model_descriptions(_request(handler, None), 7, [{"name": "LD0/GGIO1.Ind1.q"}])
     assert result[0]["fc"] == "ST"
     assert result[0]["description"] == "实时描述"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["rest", "websocket_list", "websocket_live"])
+@pytest.mark.parametrize("channel_id", [7, 8])
+async def test_capture_uses_same_model_du_for_value_quality_and_time(monkeypatch, source, channel_id):
+    handler = IEC61850ServerHandler()
+    handler._server = SimpleNamespace(
+        scl_model=None, _du_descriptions={"LD0/GGIO1.Ind1": "模型dU"}, browse_datasets=lambda: []
+    )
+    request = _request(handler, None)
+    entries = [{"name": f"LD0/GGIO1$ST$Ind1${attribute}"} for attribute in ("stVal", "q", "t")]
+    publishers = [{"go_cb_ref": "LD0/LLN0$GO$gcb", "entries": entries}]
+    monkeypatch.setattr(detail_module, "_load_channel_metadata", lambda _: ([], publishers, []))
+    detail_module.clear_goose_detail_cache()
+    packet = {
+        "go_cb_ref": "LD0/LLN0$GO$gcb",
+        "data_values": [{"value": True}, {"value": 0}, {"value": 1}],
+    }
+    capture = SimpleNamespace(
+        is_running=True,
+        get_packets=lambda **_: [packet],
+        get_statistics=lambda: {},
+        get_status=lambda: {},
+    )
+    monkeypatch.setattr(goose, "GOOSE_CAPTURE_INSTANCES", {f"{channel_id}:test": capture})
+
+    class CaptureWebSocket:
+        app = request.app
+        send_text = AsyncMock()
+
+    ws = CaptureWebSocket()
+    monkeypatch.setattr(WebSocketSessionManager, "_instance", None)
+    manager = WebSocketSessionManager()
+    manager._connections.add(ws)
+    manager._connection_channels[ws] = channel_id
+
+    if source == "rest":
+        response = await goose.list_goose_capture(GooseCaptureListRequest(channel_id=channel_id), request)
+        packets = response.data["packets"]
+    elif source == "websocket_list":
+        await manager._handle_list(ws, {"channel_id": channel_id})
+        packets = json.loads(ws.send_text.call_args.args[0])["data"]["packets"]
+    else:
+        manager._pending_packets[channel_id] = [detail_module.enrich_goose_packet(packet, channel_id)]
+        manager._packet_batch_scheduled.add(channel_id)
+        await manager._flush_packet_batch(channel_id)
+        packets = json.loads(ws.send_text.call_args.args[0])["data"]
+
+    values = packets[0]["data_values"]
+    assert all("point" not in value for value in values)
+    assert [value.get("description", "") for value in values] == (["模型dU"] * 3 if channel_id == 7 else [""] * 3)
+    assert all("description" not in value for value in packet["data_values"])
