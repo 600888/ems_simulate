@@ -27,6 +27,21 @@ async def test_dlt698_start_returns_specific_serial_failure():
 
 
 @pytest.mark.asyncio
+async def test_iec104_start_returns_the_specific_connection_failure():
+    detail = "IEC104 连接失败: 服务器=127.0.0.1:19998, STARTDT 握手完成前对端关闭连接"
+    device = SimpleNamespace(
+        protocol_type=ProtocolType.Iec104Client,
+        protocol_handler=SimpleNamespace(last_error=detail),
+        start=AsyncMock(return_value=False),
+    )
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(device_controller=SimpleNamespace(device_map={"iec104": device})))
+    )
+    with pytest.raises(OperationError, match="19998.*STARTDT"):
+        await start_device(DeviceStartRequest(device_name="iec104"), request)
+
+
+@pytest.mark.asyncio
 async def test_starting_client_connects_without_enabling_default_auto_read():
     channel = {
         "id": 7,

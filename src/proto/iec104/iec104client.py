@@ -67,6 +67,13 @@ class IEC104Client:
         self._disconnect_requested = False
         self._ever_connected = False
         self._connect_in_progress = False
+        self._connection_active = False
+        self._connect_failed = False
+        self._saw_tcp_open = False
+        self._connect_lock = asyncio.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._transport_stop_task: asyncio.Task | None = None
+        self.last_error = ""
 
         # 报文捕获器
         self.message_capture = MessageCapture()
@@ -80,31 +87,61 @@ class IEC104Client:
     def _on_state_change(self, connection: c104.Connection, state: c104.ConnectionState) -> None:
         """记录 c104 连接状态，并区分主动关闭和非预期掉线。"""
         endpoint = f"{self.ip}:{self.port}"
-        open_states = {
-            c104.ConnectionState.OPEN,
-            c104.ConnectionState.OPEN_MUTED,
-        }
-        if state in open_states:
+        log.debug(f"IEC104 连接状态变化: 服务器={endpoint}, 状态={state}")
+        # Native callbacks can arrive after an explicit close. They must not
+        # turn a requested shutdown back into an unexpected disconnect.
+        if self._disconnect_requested:
+            return
+        if state == c104.ConnectionState.OPEN_MUTED:
+            self._saw_tcp_open = True
+            return
+        if state == c104.ConnectionState.OPEN:
             self._ever_connected = True
-            self._disconnect_requested = False
-            log.info(f"IEC104 连接状态变化: 服务器={endpoint}, 状态={state}")
+            self._connection_active = True
             return
 
         closed_states = {
             c104.ConnectionState.CLOSED,
-            c104.ConnectionState.CLOSED_AWAIT_OPEN,
             c104.ConnectionState.CLOSED_AWAIT_RECONNECT,
         }
-        if (
-            state in closed_states
-            and self._ever_connected
-            and not self._disconnect_requested
-            and not self._connect_in_progress
-        ):
-            log.error(f"IEC104 连接非预期断开: 服务器={endpoint}, 状态={state}")
-            return
+        if state in closed_states:
+            if self._connect_in_progress:
+                # c104 keeps queued callbacks across stop/start. A delayed close
+                # from the previous attempt must not fail the new connection.
+                if connection.state not in closed_states:
+                    return
+                self._connect_failed = True
+                self._connection_active = False
+                return
+            if self._connection_active:
+                self._connection_active = False
+                self.last_error = f"IEC104 连接非预期断开: 服务器={endpoint}, 状态={state}"
+                log.error(self.last_error)
+                if not self._connect_in_progress and self._loop and self._loop.is_running():
+                    self._loop.call_soon_threadsafe(self._schedule_transport_stop)
 
-        log.info(f"IEC104 连接状态变化: 服务器={endpoint}, 状态={state}")
+    def _schedule_transport_stop(self) -> None:
+        if self._transport_stop_task is None or self._transport_stop_task.done():
+            self._transport_stop_task = asyncio.create_task(self._stop_disconnected_transport())
+
+    async def _stop_disconnected_transport(self) -> None:
+        # c104 retries every second on its own. Stop its scheduler outside the
+        # native callback thread so the handler's configured backoff owns retries.
+        async with self._connect_lock:
+            if self._disconnect_requested or self.is_connected:
+                return
+            self._disconnect_requested = True
+            try:
+                await asyncio.to_thread(self._stop_transport)
+            except Exception as exc:
+                log.error(f"清理 IEC104 断开连接失败: 服务器={self.ip}:{self.port}, 异常={exc}")
+
+    def _stop_transport(self) -> None:
+        try:
+            self.client.stop()
+        finally:
+            if self._tls_bridge:
+                self._tls_bridge.stop()
 
     def _on_receive_raw(self, connection: c104.Connection, data: bytes) -> None:
         """接收原始报文回调"""
@@ -134,42 +171,63 @@ class IEC104Client:
         :param timeout: 连接超时时间(秒)
         :return: 是否连接成功
         """
+        async with self._connect_lock:
+            if self.is_connected:
+                return True
+            return await self._connect(timeout)
+
+    async def _connect(self, timeout: float) -> bool:
+        self._loop = asyncio.get_running_loop()
+        self.last_error = ""
+        self._connect_failed = False
+        self._saw_tcp_open = False
+        self._connection_active = False
         try:
             self._connect_in_progress = True
             self._disconnect_requested = False
             if self._tls_bridge:
                 self._tls_bridge.start()
             self.client.start()
-            start_time = time.time()
+            start_time = time.monotonic()
             while not self.is_connected:
-                if time.time() - start_time > timeout:
-                    log.error("连接服务器超时")
-                    self._disconnect_requested = True
-                    self.client.stop()
-                    if self._tls_bridge:
-                        self._tls_bridge.stop()
-                    if self._tls_bridge and self._tls_bridge.last_error:
-                        log.error(f"TLS 握手失败: {self._tls_bridge.last_error}")
-                    self._connect_in_progress = False
-                    return False
+                if self._connect_failed:
+                    detail = (
+                        "TCP 已连接，但 IEC104 初始化完成前对端关闭连接（STARTDT/总召唤阶段）"
+                        if self._saw_tcp_open
+                        else "TCP 连接失败"
+                    )
+                    raise ConnectionError(detail)
+                if time.monotonic() - start_time > timeout:
+                    raise TimeoutError(f"连接超时（{timeout:g} 秒，未进入数据传输就绪状态）")
                 await asyncio.sleep(0.1)
 
+            self._connection_active = True
             log.info(f"成功连接到服务器 {self.ip}:{self.port}")
-            self._connect_in_progress = False
             return True
-        except Exception as e:
-            log.error(f"连接服务器失败: {e}")
+        except asyncio.CancelledError:
             self._disconnect_requested = True
-            self.client.stop()
-            if self._tls_bridge:
-                self._tls_bridge.stop()
-            self._connect_in_progress = False
+            await asyncio.to_thread(self._stop_transport)
+            raise
+        except Exception as e:
+            detail = str(e)
+            if self._tls_bridge and self._tls_bridge.last_error:
+                detail += f"；TLS 握手失败: {self._tls_bridge.last_error}"
+            self.last_error = f"IEC104 连接失败: 服务器={self.ip}:{self.port}, {detail}"
+            log.error(self.last_error)
+            self._disconnect_requested = True
+            try:
+                await asyncio.to_thread(self._stop_transport)
+            except Exception as cleanup_error:
+                log.error(f"清理 IEC104 连接失败: {cleanup_error}")
             return False
+        finally:
+            self._connect_in_progress = False
 
     def disconnect(self) -> None:
         """断开与服务器的连接，并完整记录连接和资源清理状态。"""
         was_connected = self.is_connected
         self._disconnect_requested = True
+        self._connection_active = False
         transport = "TLS" if self._tls_bridge else "TCP"
         cleanup_results: list[str] = []
         cleanup_errors: list[str] = []
@@ -213,8 +271,8 @@ class IEC104Client:
 
     @property
     def is_connected(self) -> bool:
-        """检查是否已连接"""
-        return self.connection is not None and self.connection.is_connected
+        """STARTDT 握手完成、连接已可传输数据；OPEN_MUTED 仅代表 TCP 已打开。"""
+        return self.connection is not None and self.connection.is_connected and not self.connection.is_muted
 
     def get_station(self, common_address: int) -> c104.Station:
         """获取或创建指定公共地址的 Station

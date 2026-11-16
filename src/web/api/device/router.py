@@ -321,7 +321,7 @@ async def start_device(req: DeviceStartRequest, request: Request):
     await prepare_device_start(device)
     success = await device.start()
     if not success:
-        if device.protocol_type in (ProtocolType.Dlt698Client, ProtocolType.Dlt698Server):
+        if device.protocol_type in (ProtocolType.Dlt698Client, ProtocolType.Dlt698Server, ProtocolType.Iec104Client):
             detail = getattr(device.protocol_handler, "last_error", "")
             if detail:
                 log.error(f"设备 {req.device_name} 启动失败: {detail}")

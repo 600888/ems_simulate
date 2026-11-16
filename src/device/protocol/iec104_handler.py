@@ -521,7 +521,7 @@ class IEC104ClientHandler(ClientHandler):
     async def stop(self) -> bool:
         """停止客户端（断开连接）"""
         await self._stop_maintenance_task()
-        self.disconnect()
+        await asyncio.to_thread(self.disconnect)
         return True
 
     def _start_maintenance_task(self) -> None:
@@ -584,6 +584,10 @@ class IEC104ClientHandler(ClientHandler):
                 self._log.error(f"连接 IEC104 服务器失败: {e}")
             return False
 
+    @property
+    def last_error(self) -> str:
+        return str(getattr(self._client, "last_error", "") or "")
+
     def disconnect(self) -> None:
         """断开连接"""
         if self._client:
@@ -617,7 +621,7 @@ class IEC104ClientHandler(ClientHandler):
                 )
 
             try:
-                self.disconnect()
+                await asyncio.to_thread(self.disconnect)
                 connected = await self.connect()
                 if connected and self._log:
                     self._log.info("IEC104 客户端重连成功")

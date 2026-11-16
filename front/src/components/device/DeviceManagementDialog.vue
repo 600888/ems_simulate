@@ -192,7 +192,6 @@
           />
 
           <el-table
-            ref="tableRef"
             :data="pagedRows"
             row-key="id"
             height="100%"
@@ -200,14 +199,30 @@
             :empty-text="
               loading ? t('common.loading') : t('deviceManagement.empty')
             "
-            @selection-change="onSelectionChange"
           >
-            <el-table-column
-              type="selection"
-              width="44"
-              reserve-selection
-              :selectable="() => !controlsDisabled"
-            />
+            <el-table-column width="44" align="center">
+              <template #header>
+                <el-checkbox
+                  :model-value="allSelected"
+                  :indeterminate="partiallySelected"
+                  :disabled="controlsDisabled || !filteredRows.length"
+                  :aria-label="t('deviceManagement.selectAll')"
+                  :title="t('deviceManagement.selectAll')"
+                  @change="selectAll($event === true)"
+                />
+              </template>
+              <template #default="{ row }">
+                <el-checkbox
+                  :model-value="selectedIds.has(row.id)"
+                  :disabled="controlsDisabled"
+                  :aria-label="
+                    t('deviceManagement.selectDevice', { name: row.name })
+                  "
+                  @change="selectDevice(row.id, $event === true)"
+                  @click.stop
+                />
+              </template>
+            </el-table-column>
             <el-table-column
               :label="t('deviceManagement.name')"
               min-width="215"
@@ -438,7 +453,7 @@ import {
   VideoPause,
   VideoPlay,
 } from "@element-plus/icons-vue";
-import type { TableInstance, TreeInstance } from "element-plus";
+import type { TreeInstance } from "element-plus";
 import { getChannelList, getProtocolConfig } from "@/api/channelApi";
 import {
   getDeviceGroupTree,
@@ -461,17 +476,16 @@ import {
 } from "@/utils/deviceManagement";
 import type { ChannelInfo, ProtocolOption } from "@/types/channel";
 import { useSidebarRefresh } from "@/composables/useSidebarRefresh";
+import { useDeviceSelection } from "@/composables/useDeviceSelection";
 
 const visible = defineModel<boolean>("visible", { default: false });
 const { t } = useI18n();
-const tableRef = ref<TableInstance>();
 const treeRef = ref<TreeInstance>();
 const channels = ref<ChannelInfo[]>([]);
 const groups = ref<DeviceGroupTreeResponse>({ groups: [], ungrouped: [] });
 const protocols = ref<ProtocolOption[]>([]);
 const statuses = ref<DeviceRuntimeStatus[]>([]);
 const operationErrors = ref<Record<number, string>>({});
-const selected = ref<ManagedDevice[]>([]);
 const scopeKey = ref("all");
 const treeSearch = ref("");
 const search = ref("");
@@ -572,6 +586,15 @@ const filteredRows = computed(() =>
 const pagedRows = computed(() =>
   filteredRows.value.slice((page.value - 1) * pageSize, page.value * pageSize),
 );
+const {
+  selectedIds,
+  selected,
+  allSelected,
+  partiallySelected,
+  clearSelection,
+  selectAll,
+  selectDevice,
+} = useDeviceSelection(rows, filteredRows);
 function protocolName(value: number) {
   return protocols.value.find((p) => p.value === value)?.label || String(value);
 }
@@ -605,14 +628,6 @@ function filterTreeNode(value: string, data: ManagementTreeNode) {
 function selectScope(node: ManagementTreeNode) {
   if (!busy.value) scopeKey.value = node.key;
 }
-function clearSelection() {
-  tableRef.value?.clearSelection();
-  selected.value = [];
-}
-function onSelectionChange(selection: ManagedDevice[]) {
-  selected.value = selection;
-}
-
 async function loadDevices() {
   if (
     disposed ||
@@ -692,7 +707,7 @@ async function executeOperation(
     skipped = 0,
     failed = 0;
   try {
-    // Resolve reserved selections against current data, never execute stale row state.
+    // Resolve selected devices against current data before executing the batch.
     const current = targets
       .map((r) => rowById.value.get(r.id))
       .filter((r): r is ManagedDevice => !!r);
