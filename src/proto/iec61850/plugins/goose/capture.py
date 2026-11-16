@@ -202,6 +202,8 @@ class GooseCaptureEngine:
         self._capture_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._started_event = threading.Event()
+        self._stop_lock = threading.Lock()
+        self._stop_notifier: Callable[[], None] | None = None
         self._is_running = False
         self._packet_count = 0
 
@@ -235,6 +237,16 @@ class GooseCaptureEngine:
             log.warning("GOOSE 捕获已在运行中")
             return True
 
+        # signal_stop returns before cleanup. Finish the previous worker before
+        # clearing its stop event or installing a new notification channel.
+        if self._capture_thread and self._capture_thread.is_alive():
+            if self._capture_thread is threading.current_thread():
+                return False
+            self._capture_thread.join(timeout=3.0)
+            if self._capture_thread.is_alive():
+                log.warning("GOOSE 捕获线程仍在退出中")
+                return False
+
         self._stop_event.clear()
         self._started_event.clear()
         self._capture_thread = threading.Thread(
@@ -249,7 +261,7 @@ class GooseCaptureEngine:
         self._started_event.wait(startup_timeout)
         if not self._is_running:
             if self._capture_thread.is_alive():
-                self._stop_event.set()
+                self.signal_stop()
                 self._capture_thread.join(timeout=2.0)
             return False
 
@@ -258,16 +270,24 @@ class GooseCaptureEngine:
 
     def stop(self) -> None:
         """停止 GOOSE 报文捕获 (阻塞版本)"""
-        self._stop_event.set()
-        if self._capture_thread and self._capture_thread.is_alive():
+        self.signal_stop()
+        if (
+            self._capture_thread
+            and self._capture_thread.is_alive()
+            and self._capture_thread is not threading.current_thread()
+        ):
             self._capture_thread.join(timeout=3.0)
         self._is_running = False
         log.info("GOOSE 报文捕获已停止")
 
     def signal_stop(self) -> None:
-        """信号停止捕获 (非阻塞，仅设置停止标记)"""
-        self._stop_event.set()
-        self._is_running = False
+        """发出停止通知并唤醒捕获等待，不阻塞调用线程。"""
+        with self._stop_lock:
+            already_stopped = self._stop_event.is_set()
+            self._stop_event.set()
+            self._is_running = False
+            if not already_stopped and self._stop_notifier is not None:
+                self._stop_notifier()
 
     @property
     def is_running(self) -> bool:
@@ -371,29 +391,51 @@ class GooseCaptureEngine:
     def _capture_loop_scapy(self) -> bool:
         """使用 Scapy 持续捕获 GOOSE 以太网帧，并把解析结果送入统一回调。"""
         try:
-            from scapy.all import sniff
+            from scapy.all import Raw, conf, sniff
+            from scapy.automaton import ObjectPipe
         except ImportError:
             log.error("Windows GOOSE 抓包需要安装 Scapy/Npcap，原始 IP socket 无法捕获 EtherType 0x88B8")
             return False
 
+        capture_socket = None
+        stop_pipe = None
         try:
-            self._is_running = True
-            self._started_event.set()
+            # Capture and stop notifications share Scapy's selectable handles,
+            # including Windows events. No timeout or incoming frame is needed
+            # to wake an idle capture, and the Npcap handle stays open.
+            capture_socket = conf.L2listen(iface=self.interface or None)
+            stop_pipe = ObjectPipe("GOOSE capture stop")
+            # Both handles must use the same selector (Npcap's Windows events
+            # selector supports ObjectPipe as well).
+            stop_pipe.select = capture_socket.select
+            with self._stop_lock:
+                if self._stop_event.is_set():
+                    return True
+                self._stop_notifier = lambda: stop_pipe.send(Raw(b"\x00"))
+                self._is_running = True
+                self._started_event.set()
 
-            while not self._stop_event.is_set():
-                sniff(
-                    iface=self.interface or None,
-                    prn=lambda pkt: self._process_packet(bytes(pkt)),
-                    store=False,
-                    timeout=1.0,
-                )
+            sniff(
+                opened_socket={capture_socket: "capture", stop_pipe: "stop"},
+                prn=lambda pkt: self._process_packet(bytes(pkt)) if pkt.sniffed_on == "capture" else None,
+                stop_filter=lambda _pkt: self._stop_event.is_set(),
+                store=False,
+            )
             return True
         except Exception as e:
             log.error(f"Windows Scapy/Npcap GOOSE 抓包失败: {e}")
             return False
         finally:
-            self._is_running = False
-            self._started_event.set()
+            with self._stop_lock:
+                self._stop_notifier = None
+                self._is_running = False
+                self._started_event.set()
+            if stop_pipe is not None:
+                with contextlib.suppress(Exception):
+                    stop_pipe.close()
+            if capture_socket is not None:
+                with contextlib.suppress(Exception):
+                    capture_socket.close()
 
     def _process_packet(self, raw_data: bytes) -> None:
         """处理捕获的原始数据包"""

@@ -1,6 +1,8 @@
 import socket
+import sys
 import threading
 import time
+from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -77,6 +79,172 @@ def test_capture_processes_goose_frame():
     assert packets[0]["data_values"][0]["value"] is True
     assert packets[0]["data_values"][0]["offset"] > 0
     assert packets[0]["fields"]
+
+
+def test_windows_capture_reuses_socket_and_preserves_queued_sequences(monkeypatch):
+    from scapy.automaton import ObjectPipe
+    from scapy.packet import Raw
+    from scapy.sendrecv import sniff
+
+    engine = GooseCaptureEngine(interface="eth-test")
+    frames = [Raw(_goose_frame().replace(b"\x86\x01\x02", bytes([0x86, 1, seq]))) for seq in range(9)]
+    capture_socket = ObjectPipe("test capture")
+    for frame in frames:
+        capture_socket.send(frame)
+    capture_socket.close = Mock(wraps=capture_socket.close)
+
+    def open_socket(**kwargs):
+        assert kwargs == {"iface": "eth-test"}
+        assert not engine.is_running
+        assert not engine._started_event.is_set()
+        return capture_socket
+
+    def sniff_continuously(**kwargs):
+        assert kwargs["opened_socket"][capture_socket] == "capture"
+        assert "iface" not in kwargs
+        assert "timeout" not in kwargs
+        assert engine.is_running
+        assert engine._started_event.is_set()
+        return sniff(**kwargs)
+
+    scapy = ModuleType("scapy.all")
+    scapy.Raw = Raw
+    scapy.conf = SimpleNamespace(L2listen=Mock(side_effect=open_socket))
+    scapy.sniff = Mock(side_effect=sniff_continuously)
+    monkeypatch.setitem(sys.modules, "scapy.all", scapy)
+    received = []
+
+    def on_packet(packet):
+        received.append(packet.sq_num)
+        if len(received) == 9:
+            engine.signal_stop()
+
+    engine.set_callback(on_packet)
+
+    assert engine._capture_loop_scapy() is True
+    assert received == list(range(9))
+    assert [packet["sq_num"] for packet in engine.get_packets()] == list(range(9))
+    scapy.conf.L2listen.assert_called_once_with(iface="eth-test")
+    scapy.sniff.assert_called_once()
+    capture_socket.close.assert_called_once()
+    assert not engine.is_running
+
+
+@pytest.mark.parametrize("failure", ["open", "read"])
+def test_windows_capture_cleans_up_after_socket_failure(monkeypatch, failure):
+    from scapy.packet import Raw
+
+    engine = GooseCaptureEngine(interface="eth-test")
+    capture_socket = Mock()
+    scapy = ModuleType("scapy.all")
+    scapy.Raw = Raw
+    scapy.conf = SimpleNamespace(L2listen=Mock(return_value=capture_socket))
+    scapy.sniff = Mock(side_effect=OSError("capture failed"))
+    if failure == "open":
+        scapy.conf.L2listen.side_effect = OSError("adapter unavailable")
+    monkeypatch.setitem(sys.modules, "scapy.all", scapy)
+
+    assert engine._capture_loop_scapy() is False
+    assert not engine.is_running
+    assert engine._started_event.is_set()
+    if failure == "open":
+        scapy.sniff.assert_not_called()
+        capture_socket.close.assert_not_called()
+    else:
+        capture_socket.close.assert_called_once()
+    assert engine._stop_notifier is None
+
+
+@pytest.mark.parametrize("stop_mode", ["signal", "blocking", "restart"])
+def test_windows_idle_capture_stops_on_notification_and_can_restart(monkeypatch, stop_mode):
+    from scapy.automaton import ObjectPipe
+    from scapy.packet import Raw
+    from scapy.sendrecv import sniff
+
+    sockets = []
+    stop_pipes = []
+
+    def open_socket(**_kwargs):
+        capture_socket = ObjectPipe("idle capture")
+        sockets.append(capture_socket)
+        return capture_socket
+
+    def capture(**kwargs):
+        assert "timeout" not in kwargs
+        stop_pipes.extend(sock for sock, label in kwargs["opened_socket"].items() if label == "stop")
+        return sniff(**kwargs)
+
+    scapy = ModuleType("scapy.all")
+    scapy.Raw = Raw
+    scapy.conf = SimpleNamespace(L2listen=Mock(side_effect=open_socket))
+    scapy.sniff = Mock(side_effect=capture)
+    monkeypatch.setitem(sys.modules, "scapy.all", scapy)
+    monkeypatch.setattr(capture_module.platform, "system", lambda: "Windows")
+    engine = GooseCaptureEngine(interface="eth-test")
+
+    for _ in range(2):
+        try:
+            assert engine.start()
+            if stop_mode == "blocking":
+                engine.stop()
+            else:
+                engine.signal_stop()
+                engine.signal_stop()  # Repeated notifications are harmless.
+                if stop_mode == "restart":
+                    previous_worker = engine._capture_thread
+                    assert engine.start()
+                    assert not previous_worker.is_alive()
+                    engine.stop()
+                else:
+                    engine._capture_thread.join(timeout=0.5)
+            assert not engine._capture_thread.is_alive()
+            assert not engine.is_running
+            assert engine._stop_notifier is None
+            assert engine.get_packets() == []  # Stop messages are not captured frames.
+        finally:
+            engine.stop()
+
+    expected_starts = 4 if stop_mode == "restart" else 2
+    assert len(sockets) == expected_starts
+    assert len(stop_pipes) == expected_starts
+    assert all(sock.closed for sock in sockets + stop_pipes)
+
+
+@pytest.mark.parametrize("stop_timing", ["opening", "before_wait"])
+def test_windows_capture_preserves_stop_notification_during_startup(monkeypatch, stop_timing):
+    from scapy.automaton import ObjectPipe
+    from scapy.packet import Raw
+    from scapy.sendrecv import sniff
+
+    engine = GooseCaptureEngine(interface="eth-test")
+    capture_socket = ObjectPipe("opening capture")
+
+    def open_socket(**_kwargs):
+        if stop_timing == "opening":
+            engine.signal_stop()
+        return capture_socket
+
+    def capture(**kwargs):
+        # Stop after the notifier is installed but before sniff begins waiting.
+        engine.signal_stop()
+        return sniff(**kwargs)
+
+    scapy = ModuleType("scapy.all")
+    scapy.Raw = Raw
+    scapy.conf = SimpleNamespace(L2listen=Mock(side_effect=open_socket))
+    scapy.sniff = Mock(side_effect=capture)
+    monkeypatch.setitem(sys.modules, "scapy.all", scapy)
+
+    assert engine._capture_loop_scapy() is True
+    if stop_timing == "opening":
+        scapy.sniff.assert_not_called()
+    else:
+        scapy.sniff.assert_called_once()
+    assert capture_socket.closed
+    assert not engine.is_running
+    assert engine._started_event.is_set()
+    assert engine._stop_notifier is None
+    assert engine.get_packets() == []
 
 
 @pytest.mark.parametrize("vlan_tag", [b"", bytes.fromhex("8100 8000"), bytes.fromhex("8100 8064")])
