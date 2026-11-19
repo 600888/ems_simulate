@@ -289,6 +289,7 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
                 "iec_cot": point.get("iec_cot", 3),
                 "iec_type_id": point.get("iec_type_id"),
                 "iec_quality": point.get("iec_quality", 0),
+                "iec_command_mode": point.get("iec_command_mode", "DIRECT"),
                 "fc": point.get("fc"),
                 "enable": point.get("enable", True),
             }

@@ -183,6 +183,10 @@ async def edit_iec104_metadata(req: Iec104MetadataEditRequest, request: Request)
         "iec_type_id": req.iec_type_id,
         "iec_quality": req.iec_quality,
     }
+    if req.iec_command_mode is not None:
+        if device.protocol_type not in (ProtocolType.Iec104Server, ProtocolType.Iec104Client):
+            raise ValidationError("操作模式仅适用于 IEC104 遥控/遥调测点", data=False)
+        metadata["iec_command_mode"] = req.iec_command_mode.value
     success = await asyncio.to_thread(device.edit_point_metadata, req.point_code, metadata)
     if not success:
         raise ValidationError("编辑 IEC101/104 属性失败!", data=False)
@@ -233,6 +237,7 @@ async def add_point(req: PointCreateRequest, request: Request):
         "add_coe": req.add_coe,
         "iec_type_id": req.iec_type_id,
         "iec_quality": req.iec_quality,
+        "iec_command_mode": req.iec_command_mode.value,
     }
     success = await asyncio.to_thread(device.add_point_dynamic, channel_id, req.frame_type, point_data)
     if not success:

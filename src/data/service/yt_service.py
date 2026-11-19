@@ -122,6 +122,7 @@ class YtService:
                 frame_type=3,
                 iec_type_id=iec_type_id,
                 iec_quality=iec_quality,
+                iec_command_mode=item.get("iec_command_mode", "DIRECT"),
             )
 
         elif protocol_type in [ProtocolType.Iec61850Server, ProtocolType.Iec61850Client]:

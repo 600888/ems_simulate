@@ -305,6 +305,20 @@
       </el-form-item>
 
       <el-form-item
+        v-if="showCommandMode"
+        :label="$t('point.iec104CommandMode')"
+        prop="iec_command_mode"
+      >
+        <el-select v-model="formData.iec_command_mode" style="width: 100%">
+          <el-option :label="$t('point.iec104Direct')" value="DIRECT" />
+          <el-option
+            :label="$t('point.iec104SelectAndExecute')"
+            value="SELECT_AND_EXECUTE"
+          />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item
         v-if="showQualityFlags"
         :label="$t('point.qualityDescriptor')"
       >
@@ -460,6 +474,7 @@ const formData = reactive<PointCreateData>({
   add_coe: 0.0,
   iec_type_id: null,
   iec_quality: 0,
+  iec_command_mode: "DIRECT",
   dnp3_config: {
     static_variation: 5,
     event_variation: 7,
@@ -490,6 +505,12 @@ const dnp3EventVariations = computed(
       2: [1, 2],
       3: [1, 2, 3, 4, 5, 6, 7, 8],
     })[formData.frame_type] || [1],
+);
+
+const showCommandMode = computed(
+  () =>
+    ["Iec104Server", "Iec104Client"].includes(props.protocolType || "") &&
+    [2, 3].includes(formData.frame_type),
 );
 
 // 品质描述符标志位
@@ -632,6 +653,7 @@ const handleClose = () => {
   formRef.value?.resetFields();
   formData.bit = null;
   formData.iec_quality = 0;
+  formData.iec_command_mode = "DIRECT";
   qualityFlags.ov = false;
   qualityFlags.bl = false;
   qualityFlags.sb = false;

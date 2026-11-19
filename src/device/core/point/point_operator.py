@@ -18,6 +18,7 @@ from src.device.protocol.base_handler import ClientHandler
 from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import BasePoint, SimulateMethod, Yc, Yk, Yt, Yx
 from src.enums.points.change_tracker import ChangeSource, track_change
+from src.enums.points.iec104_command_mode import IEC104CommandMode
 
 if TYPE_CHECKING:
     from src.device.core.device import Device
@@ -370,6 +371,16 @@ class PointOperator:
         if not point:
             raise ValueError(f"未找到测点: {point_code}")
 
+        command_mode = None
+        if "iec_command_mode" in metadata:
+            if not isinstance(point, (Yk, Yt)) or self._device.protocol_type not in (
+                ProtocolType.Iec104Server,
+                ProtocolType.Iec104Client,
+            ):
+                raise ValueError("操作模式仅适用于 IEC104 遥控/遥调测点")
+            command_mode = IEC104CommandMode(metadata["iec_command_mode"])
+            metadata = {**metadata, "iec_command_mode": command_mode.value}
+
         # 记录是否需要重新同步值到协议处理器
         need_resync = False
         protocol_config_changed = False
@@ -436,7 +447,7 @@ class PointOperator:
         # 处理 IEC104 品质描述符修改
         if "iec_quality" in metadata:
             new_quality = metadata["iec_quality"]
-            if new_quality is not None:
+            if new_quality is not None and point.iec_quality_value != int(new_quality):
                 point.iec_quality_value = int(new_quality)
                 need_resync = True  # 品质变更需要重新同步
                 protocol_config_changed = True
@@ -506,7 +517,12 @@ class PointOperator:
         # 4. 更新数据库
         try:
             channel_id = self._get_channel_id()
-            return PointService.update_point_metadata(point_code, metadata, channel_id)
+            success = PointService.update_point_metadata(point_code, metadata, channel_id)
+            if success and command_mode is not None:
+                if self._handler:
+                    self._handler.update_command_mode(point, command_mode)
+                point.iec_command_mode = command_mode
+            return success
         except Exception as e:
             self._log.error(f"更新测点元数据失败: {e}")
             return False

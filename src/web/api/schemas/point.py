@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.enums.modbus_register import Decode
 from src.enums.point_data import SimulateMethod
+from src.enums.points.iec104_command_mode import IEC104CommandMode
 
 
 class PointEditDataRequest(BaseModel):
@@ -29,7 +30,9 @@ class PointMetadataEditRequest(BaseModel):
     @classmethod
     def normalize_decode_metadata(cls, metadata: dict[str, Any]) -> dict[str, Any]:
         if metadata.get("decode_code"):
-            return {**metadata, "decode_code": Decode.normalize(metadata["decode_code"])}
+            metadata = {**metadata, "decode_code": Decode.normalize(metadata["decode_code"])}
+        if "iec_command_mode" in metadata:
+            metadata = {**metadata, "iec_command_mode": IEC104CommandMode(metadata["iec_command_mode"]).value}
         return metadata
 
 
@@ -40,6 +43,7 @@ class Iec104MetadataEditRequest(BaseModel):
     point_code: str
     iec_type_id: str | None = Field(None, description="IEC104 ASDU类型标识（如M_ME_NC_1）", max_length=16)
     iec_quality: int | None = Field(0, description="IEC104品质描述符(位标志: OV=0x01 BL=0x02 SB=0x04 NT=0x08 IV=0x10)")
+    iec_command_mode: IEC104CommandMode | None = Field(None, description="IEC104操作模式（仅遥控/遥调）")
 
 
 class PointInfoRequest(BaseModel):
@@ -94,6 +98,7 @@ class PointCreateRequest(BaseModel):
     add_coe: float = Field(0.0, description="加系数（仅遥测/遥调）")
     iec_type_id: str | None = Field(None, description="IEC104 ASDU类型标识（如M_ME_NC_1）", max_length=16)
     iec_quality: int | None = Field(0, description="IEC104品质描述符(位标志: OV=0x01 BL=0x02 SB=0x04 NT=0x08 IV=0x10)")
+    iec_command_mode: IEC104CommandMode = Field(IEC104CommandMode.DIRECT, description="IEC104操作模式")
 
     @field_validator("decode_code")
     @classmethod
@@ -120,6 +125,7 @@ class PointItem(BaseModel):
     add_coe: float = Field(0.0, description="加系数（仅遥测/遥调）")
     iec_type_id: str | None = Field(None, description="IEC104 ASDU类型标识（如M_ME_NC_1）", max_length=16)
     iec_quality: int | None = Field(0, description="IEC104品质描述符(位标志: OV=0x01 BL=0x02 SB=0x04 NT=0x08 IV=0x10)")
+    iec_command_mode: IEC104CommandMode = Field(IEC104CommandMode.DIRECT, description="IEC104操作模式")
 
     @field_validator("decode_code")
     @classmethod

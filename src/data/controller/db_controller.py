@@ -79,6 +79,7 @@ class DbController:
             self._migrate_channel_point_table_mode_schema()
             self._migrate_channel_change_tracking_schema()
             self._migrate_dnp3_point_config_schema()
+            self._migrate_iec104_command_mode_schema()
             self._migrate_goose_schema()
             self._migrate_channel_security_schema()
 
@@ -164,6 +165,7 @@ class DbController:
             self._migrate_channel_point_table_mode_schema()
             self._migrate_channel_change_tracking_schema()
             self._migrate_dnp3_point_config_schema()
+            self._migrate_iec104_command_mode_schema()
             self._migrate_goose_schema()
             self._migrate_channel_security_schema()
 
@@ -255,6 +257,24 @@ class DbController:
                 conn.execute(
                     text("ALTER TABLE channel ADD COLUMN dlt698_point_mode VARCHAR(16) NOT NULL DEFAULT 'import'")
                 )
+
+    def _migrate_iec104_command_mode_schema(self) -> None:
+        """Keep legacy command points in direct mode when adding the setting."""
+        if not self.db_config:
+            return
+        from sqlalchemy import inspect, text
+
+        engine = self.db_config.engine
+        inspector = inspect(engine)
+        tables = set(inspector.get_table_names())
+        for table in ("point_yk", "point_yt"):
+            if table not in tables:
+                continue
+            if "iec_command_mode" not in {column["name"] for column in inspector.get_columns(table)}:
+                with engine.begin() as conn:
+                    conn.execute(
+                        text(f"ALTER TABLE {table} ADD COLUMN iec_command_mode VARCHAR(24) NOT NULL DEFAULT 'DIRECT'")
+                    )
 
     def _migrate_dnp3_point_config_schema(self) -> None:
         """Add one extensible JSON field to every legacy point table."""

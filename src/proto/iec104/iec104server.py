@@ -241,6 +241,7 @@ class IEC104Server:
         point_type: c104.Type = c104.Type.C_RC_TA_1,
         related_point_ioa: int | None = None,
         common_address: int = 1,
+        command_mode: c104.CommandMode = c104.CommandMode.DIRECT,
     ) -> c104.Point | None:
         """
         添加一个命令点到指定站
@@ -248,11 +249,12 @@ class IEC104Server:
         :param point_type: 点类型，默认是调节步命令(C_RC_TA_1)
         :param related_point_ioa: 关联的监控点IOA
         :param common_address: 站地址（对应从站 slave_id）
+        :param command_mode: 直接执行或选择后执行
         :return: 创建的命令点对象
         """
         station = self.get_station(common_address)
         # 创建命令点
-        command = station.add_point(io_address=io_address, type=point_type)
+        command = station.add_point(io_address=io_address, type=point_type, command_mode=command_mode)
         if not command:
             log.warning(f"创建命令点失败: IOA={io_address}, type={point_type}, common_address={common_address}")
             return None

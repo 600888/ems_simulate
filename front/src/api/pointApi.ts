@@ -4,7 +4,7 @@
 
 import { requestApi } from "./http";
 import { POINT_API } from "@/constants";
-import type { PointLimit } from "@/types/point";
+import type { IEC104CommandMode, PointLimit } from "@/types/point";
 
 // ===== 类型定义 =====
 
@@ -21,6 +21,7 @@ export interface PointCreateData {
   add_coe: number;
   iec_type_id?: string | null;
   iec_quality?: number;
+  iec_command_mode?: IEC104CommandMode;
   dnp3_config?: {
     static_variation: number;
     event_variation: number;
@@ -218,7 +219,11 @@ export async function editPointMetadata(
 export async function editIec104Metadata(
   deviceName: string,
   pointCode: string,
-  iec104Data: { iec_type_id: string | null; iec_quality: number },
+  iec104Data: {
+    iec_type_id: string | null;
+    iec_quality: number;
+    iec_command_mode?: IEC104CommandMode;
+  },
 ): Promise<boolean> {
   try {
     return await requestApi(POINT_API.EDIT_IEC104_METADATA, "post", {

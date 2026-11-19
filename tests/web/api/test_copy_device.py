@@ -357,6 +357,7 @@ def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
             "iec_cot": 6,
             "iec_quality": 0,
             "iec_type_id": "C_DC_TA_1",
+            "iec_command_mode": "SELECT_AND_EXECUTE",
             "command_type": 1,
             "related_yx_id": 102,
         },
@@ -373,6 +374,7 @@ def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
             "iec_cot": 6,
             "iec_quality": 1,
             "iec_type_id": "C_SE_NC_1",
+            "iec_command_mode": "SELECT_AND_EXECUTE",
             "related_yc_id": 101,
         },
     ]
@@ -411,6 +413,8 @@ def test_copy_iec104_preserves_protocol_metadata_for_all_point_types():
         assert copied["iec_common_address"] == source["iec_common_address"]
         assert copied["iec_cot"] == source["iec_cot"]
     assert copied_by_frame[1]["reverse"] is True
+    assert copied_by_frame[2]["iec_command_mode"] == "SELECT_AND_EXECUTE"
+    assert copied_by_frame[3]["iec_command_mode"] == "SELECT_AND_EXECUTE"
     assert copied_by_frame[2]["command_type"] == 1
     assert copied_by_frame[2]["related_yx_id"] == 202
     assert copied_by_frame[3]["related_yc_id"] == 201

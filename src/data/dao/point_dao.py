@@ -290,6 +290,9 @@ class PointDao:
                                 int(metadata["iec_quality"]) if metadata["iec_quality"] is not None else 0
                             )
 
+                        if model in [PointYk, PointYt] and "iec_command_mode" in metadata:
+                            result.iec_command_mode = metadata["iec_command_mode"]
+
                         # IEC61850 FC
                         if "fc" in metadata:
                             result.fc = metadata["fc"] if metadata["fc"] else None
@@ -439,6 +442,7 @@ class PointDao:
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
+                    iec_command_mode=point_data.get("iec_command_mode", "DIRECT"),
                     dnp3_config=_serialize_dnp3_config(point_data, 2),
                     enable=point_data.get("enable", True),
                 )
@@ -477,6 +481,7 @@ class PointDao:
                     iec_type_id=point_data.get("iec_type_id"),
                     iec_quality=point_data.get("iec_quality", 0),
                     fc=point_data.get("fc"),
+                    iec_command_mode=point_data.get("iec_command_mode", "DIRECT"),
                     dnp3_config=_serialize_dnp3_config(point_data, 3),
                     enable=point_data.get("enable", True),
                 )
@@ -576,6 +581,7 @@ class PointDao:
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
+                            iec_command_mode=point_data.get("iec_command_mode", "DIRECT"),
                             dnp3_config=_serialize_dnp3_config(point_data, 2),
                             enable=point_data.get("enable", True),
                         )
@@ -603,6 +609,7 @@ class PointDao:
                             iec_type_id=point_data.get("iec_type_id"),
                             iec_quality=point_data.get("iec_quality", 0),
                             fc=point_data.get("fc"),
+                            iec_command_mode=point_data.get("iec_command_mode", "DIRECT"),
                             dnp3_config=_serialize_dnp3_config(point_data, 3),
                             enable=point_data.get("enable", True),
                         )

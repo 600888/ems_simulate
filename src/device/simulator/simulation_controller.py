@@ -168,6 +168,7 @@ class SimulationController:
                     "frame_type": point.frame_type,
                     "iec_type_id": getattr(point, "iec_type_id", None),
                     "iec_quality": getattr(point, "iec_quality_value", 0),
+                    "iec_command_mode": getattr(point, "iec_command_mode", "DIRECT"),
                 }
                 # 遥测和遥调特有字段
                 if isinstance(point, (Yc, Yt)):

@@ -1,3 +1,5 @@
+export type IEC104CommandMode = "DIRECT" | "SELECT_AND_EXECUTE";
+
 export interface PointLimit {
   minValueLimit: number;
   maxValueLimit: number;

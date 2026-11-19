@@ -292,6 +292,7 @@ class IEC104Client:
         io_address: int,
         point_type: c104.Type = c104.Type.M_ME_NC_1,
         common_address: int = 1,
+        command_mode: c104.CommandMode = c104.CommandMode.DIRECT,
     ) -> c104.Point | None:
         """
         添加一个监控点到指定站
@@ -302,7 +303,7 @@ class IEC104Client:
         """
         station = self.get_station(common_address)
         # 创建监控点
-        point = station.add_point(io_address=io_address, type=point_type)
+        point = station.add_point(io_address=io_address, type=point_type, command_mode=command_mode)
         if point:
             self.points.append(point)
         return point

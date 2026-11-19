@@ -19,6 +19,7 @@ from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.device.protocol.iec60870_common import decode_point_value, resolve_asdu_type
 from src.enums.point_data import Yc, Yk, Yt, Yx
 from src.enums.points.base_point import BasePoint
+from src.enums.points.iec104_command_mode import IEC104CommandMode
 from src.enums.points.iec104_quality import (
     encode_quality_for_c104,
     supports_quality,
@@ -41,6 +42,21 @@ def _resolve_c104_type(point: BasePoint) -> c104.Type:
 
 
 _decode_c104_point_value = decode_point_value
+
+
+def _resolve_command_mode(point: BasePoint) -> c104.CommandMode:
+    mode = IEC104CommandMode(getattr(point, "iec_command_mode", IEC104CommandMode.DIRECT))
+    return getattr(c104.CommandMode, mode.value)
+
+
+def _update_command_mode(stations: dict, point: BasePoint, mode: str) -> None:
+    """Apply a saved workflow without transmitting a control command."""
+    common_address = int(point.rtu_addr) if point.rtu_addr else 1
+    station = stations.get(common_address)
+    if station is not None:
+        command = station.get_point(io_address=int(point.address))
+        if command is not None:
+            command.command_mode = getattr(c104.CommandMode, IEC104CommandMode(mode).value)
 
 
 def _c104_connection_time_utc(value: datetime | None) -> datetime | None:
@@ -361,6 +377,7 @@ class IEC104ServerHandler(ServerHandler):
                     io_address=point.address,
                     point_type=point_type,
                     common_address=common_address,
+                    command_mode=_resolve_command_mode(point),
                 )
                 if cmd_point is None:
                     if self._log:
@@ -374,6 +391,10 @@ class IEC104ServerHandler(ServerHandler):
 
         # 注册命令接收回调（每次 add_points 时更新）
         self._server.set_on_command_callback(self._on_command_received)
+
+    def update_command_mode(self, point: BasePoint, mode: str) -> None:
+        if self._server:
+            _update_command_mode(self._server.stations, point, mode)
 
     def _on_command_received(self, io_address: int, value, point_type, common_address: int = 1) -> None:
         """
@@ -868,7 +889,12 @@ class IEC104ClientHandler(ClientHandler):
                 io_address=int(point.address),
                 point_type=point_type,
                 common_address=common_address,
+                command_mode=_resolve_command_mode(point),
             )
+
+    def update_command_mode(self, point: BasePoint, mode: str) -> None:
+        if self._client:
+            _update_command_mode(self._client.stations, point, mode)
 
     @property
     def client(self):

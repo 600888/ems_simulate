@@ -28,6 +28,25 @@
           </el-form-item>
         </el-col>
       </el-row>
+      <el-row :gutter="20" v-if="showCommandMode">
+        <el-col :span="24">
+          <el-form-item
+            :label="$t('point.iec104CommandMode')"
+            class="form-item"
+          >
+            <el-select
+              v-model="iec104Form.iec_command_mode"
+              style="width: 100%"
+            >
+              <el-option :label="$t('point.iec104Direct')" value="DIRECT" />
+              <el-option
+                :label="$t('point.iec104SelectAndExecute')"
+                value="SELECT_AND_EXECUTE"
+              />
+            </el-select>
+          </el-form-item>
+        </el-col>
+      </el-row>
       <el-row :gutter="20" v-if="supportsQualityFlag(iec104Form.frame_type)">
         <el-col :span="24">
           <el-form-item
@@ -84,6 +103,7 @@ import { ref, reactive, computed, watch, onBeforeUnmount } from "vue";
 import { useI18n } from "vue-i18n";
 import { ElMessage } from "element-plus";
 import { getPointInfo, editIec104Metadata } from "@/api/pointApi";
+import type { IEC104CommandMode } from "@/types/point";
 import {
   IEC104_TYPES_BY_FRAME_TYPE,
   decodeIec104Quality,
@@ -127,7 +147,14 @@ const iec104Form = reactive({
   frame_type: 0,
   iec_type_id: null as string | null,
   iec_quality: 0,
+  iec_command_mode: "DIRECT" as IEC104CommandMode,
 });
+
+const showCommandMode = computed(
+  () =>
+    ["Iec104Server", "Iec104Client"].includes(props.protocolType || "") &&
+    [2, 3].includes(iec104Form.frame_type),
+);
 
 const qualityFlags = reactive({
   ov: false,
@@ -149,6 +176,7 @@ const loadIec104Info = async () => {
     if (info) {
       iec104Form.frame_type = info.frame_type ?? 0;
       iec104Form.iec_type_id = info.iec_type_id ?? null;
+      iec104Form.iec_command_mode = info.iec_command_mode ?? "DIRECT";
       iec104Form.iec_quality = info.iec_quality ?? 0;
       const qd = decodeIec104Quality(
         iec104Form.iec_quality,
@@ -174,6 +202,9 @@ const saveIec104Metadata = async () => {
     const result = await editIec104Metadata(props.deviceName, props.pointCode, {
       iec_type_id: iec104Form.iec_type_id,
       iec_quality: iecQuality,
+      ...(showCommandMode.value
+        ? { iec_command_mode: iec104Form.iec_command_mode }
+        : {}),
     });
     if (result) {
       ElMessage.success(t("device.iec104Updated"));

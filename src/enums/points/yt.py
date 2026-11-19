@@ -6,6 +6,7 @@ frame_type = 3
 
 from src.enums.modbus_register import Decode
 from src.enums.points.base_point import BasePoint, decimal_to_hex_formatted
+from src.enums.points.iec104_command_mode import IEC104CommandMode
 
 
 class Yt(BasePoint):
@@ -29,6 +30,7 @@ class Yt(BasePoint):
         iec_type_id: str | None = None,
         iec_quality: int | None = None,
         fc: str = "",
+        iec_command_mode: str = IEC104CommandMode.DIRECT,
     ) -> None:
         super().__init__(
             rtu_addr=rtu_addr,
@@ -43,6 +45,7 @@ class Yt(BasePoint):
             iec_quality=iec_quality,
             fc=fc,
         )
+        self.iec_command_mode = IEC104CommandMode(iec_command_mode)
 
         self._max_value_limit: float = float(max_value_limit)
         self._min_value_limit: float = float(min_value_limit)

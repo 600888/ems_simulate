@@ -5,6 +5,7 @@ frame_type = 2
 """
 
 from src.enums.points.base_point import BasePoint, decimal_to_hex_formatted
+from src.enums.points.iec104_command_mode import IEC104CommandMode
 
 
 class Yk(BasePoint):
@@ -26,6 +27,7 @@ class Yk(BasePoint):
         iec_type_id: str | None = None,
         iec_quality: int | None = None,
         fc: str = "",
+        iec_command_mode: str = IEC104CommandMode.DIRECT,
     ):
         super().__init__(
             rtu_addr=rtu_addr,
@@ -40,6 +42,7 @@ class Yk(BasePoint):
             iec_quality=iec_quality,
             fc=fc,
         )
+        self.iec_command_mode = IEC104CommandMode(iec_command_mode)
 
         self._bit: int | None = int(bit) if bit is not None and str(bit) != "" else None
         self._hex_value: str = decimal_to_hex_formatted(self._value)

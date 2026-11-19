@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from src.data.model.base import Base
 from src.enums.modbus_register import Decode
+from src.enums.points.iec104_command_mode import IEC104CommandMode
 
 
 class PointYkDict(TypedDict):
@@ -31,6 +32,7 @@ class PointYkDict(TypedDict):
     iec_cot: int | None
     iec_quality: int | None
     iec_type_id: str | None
+    iec_command_mode: str
     fc: str | None
     enable: bool
 
@@ -73,6 +75,10 @@ class PointYk(Base):
     )
     iec_type_id: Mapped[str | None] = mapped_column(String(16), nullable=True, comment="IEC104类型标识(如C_SC_NA_1)")
 
+    iec_command_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="DIRECT", server_default="DIRECT", comment="IEC104操作模式"
+    )
+
     # IEC61850 特定字段
     fc: Mapped[str | None] = mapped_column(
         String(8), nullable=True, comment="IEC61850功能约束(FC), 如MX/ST/CO/DC/CF/SF等"
@@ -85,6 +91,10 @@ class PointYk(Base):
         UniqueConstraint("code", "channel_id", "rtu_addr", name="uq_point_yk_code_channel_rtu"),
         {"comment": "遥控测点表"},
     )
+
+    @validates("iec_command_mode")
+    def _validate_iec_command_mode(self, _key: str, value: str) -> str:
+        return IEC104CommandMode(value).value
 
     @validates("decode_code")
     def _normalize_decode_code(self, _key: str, value: str) -> str:
