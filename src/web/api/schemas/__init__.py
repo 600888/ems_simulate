@@ -9,7 +9,7 @@ from .channel import (
     CopySingleDeviceRequest,
     CreateAndStartDeviceRequest,
 )
-from .connection import ConnectionDetailRequest, ConnectionHistoryRequest
+from .connection import ConnectionDetailRequest, ConnectionHistoryClearRequest, ConnectionHistoryRequest
 from .device import (
     ApplySimulationConfigRequest,
     AutoReadStartRequest,
@@ -113,6 +113,7 @@ __all__ = [
     "CopyDeviceRequest",
     "CopySingleDeviceRequest",
     "ConnectionHistoryRequest",
+    "ConnectionHistoryClearRequest",
     "ConnectionDetailRequest",
     "DeviceInfoRequest",
     "DeviceTableRequest",

@@ -212,3 +212,15 @@ class ConnectionSessionDao:
     def delete_by_channel(cls, channel_id: int) -> None:
         with local_session() as session, session.begin():
             session.execute(delete(ConnectionSession).where(ConnectionSession.channel_id == channel_id))
+
+    @classmethod
+    def clear_history(cls, channel_id: int, *, active_session_ids: list[str]) -> int:
+        """Delete history, including closed sessions whose final write is still queued."""
+        with local_session() as session, session.begin():
+            result = session.execute(
+                delete(ConnectionSession).where(
+                    ConnectionSession.channel_id == channel_id,
+                    ConnectionSession.session_id.not_in(active_session_ids),
+                )
+            )
+            return int(result.rowcount)

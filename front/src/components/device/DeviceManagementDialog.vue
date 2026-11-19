@@ -160,12 +160,20 @@
                 :type="
                   action.key === 'startSimulation'
                     ? 'primary'
-                    : action.key === 'stop'
+                    : action.key === 'stop' ||
+                        action.key === 'clearConnectionHistory'
                       ? 'danger'
                       : 'default'
                 "
-                :plain="action.key === 'stop'"
-                :disabled="controlsDisabled || !selected.length"
+                :plain="
+                  action.key === 'stop' ||
+                  action.key === 'clearConnectionHistory'
+                "
+                :disabled="
+                  (action.key === 'clearConnectionHistory'
+                    ? busy || loading || refreshing
+                    : controlsDisabled) || !selected.length
+                "
                 :loading="activeOperation === action.key"
                 @click="executeOperation(action.key, selected)"
               >
@@ -443,6 +451,7 @@ import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   DataLine,
+  Delete,
   Folder,
   InfoFilled,
   Monitor,
@@ -454,6 +463,7 @@ import {
   VideoPlay,
 } from "@element-plus/icons-vue";
 import type { TreeInstance } from "element-plus";
+import { ElMessageBox } from "element-plus";
 import { getChannelList, getProtocolConfig } from "@/api/channelApi";
 import {
   getDeviceGroupTree,
@@ -516,6 +526,7 @@ const actions: { key: DeviceOperation; icon: typeof SwitchButton }[] = [
   { key: "stop", icon: SwitchButton },
   { key: "startSimulation", icon: VideoPlay },
   { key: "stopSimulation", icon: VideoPause },
+  { key: "clearConnectionHistory", icon: Delete },
 ];
 
 const treeData = computed<ManagementTreeNode[]>(() => [
@@ -697,8 +708,30 @@ async function executeOperation(
   operation: DeviceOperation,
   targets: ManagedDevice[],
 ) {
-  if (controlsDisabled.value || !targets.length) return;
+  const disabled =
+    operation === "clearConnectionHistory"
+      ? busy.value || loading.value || refreshing.value
+      : controlsDisabled.value;
+  if (disabled || !targets.length) return;
   activeOperation.value = operation;
+  if (operation === "clearConnectionHistory") {
+    try {
+      await ElMessageBox.confirm(
+        t("deviceManagement.clearConnectionHistoryConfirm", {
+          count: targets.length,
+        }),
+        t("deviceManagement.clearConnectionHistory"),
+        {
+          confirmButtonText: t("connectionMonitor.confirmClearHistory"),
+          cancelButtonText: t("common.cancel"),
+          type: "warning",
+        },
+      );
+    } catch {
+      activeOperation.value = null;
+      return;
+    }
+  }
   completed.value = 0;
   operationTotal.value = targets.length;
   operationSummary.value = "";

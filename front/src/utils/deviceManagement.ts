@@ -3,7 +3,11 @@ import type { DeviceGroupTreeResponse } from "@/api/deviceGroupApi";
 import { isSerialConnectionType, PROTOCOL_TYPE } from "@/constants/protocol";
 
 export type DeviceOperation =
-  "start" | "stop" | "startSimulation" | "stopSimulation";
+  | "start"
+  | "stop"
+  | "startSimulation"
+  | "stopSimulation"
+  | "clearConnectionHistory";
 export interface DeviceRuntimeStatus {
   channel_id: number;
   name: string;
@@ -91,6 +95,7 @@ export function deviceOperationReason(
   device: ManagedDevice,
   operation: DeviceOperation,
 ): string {
+  if (operation === "clearConnectionHistory") return "";
   const state = device.runtime;
   if (state && !state.status_available) return "statusUnavailable";
   if (operation === "start") {

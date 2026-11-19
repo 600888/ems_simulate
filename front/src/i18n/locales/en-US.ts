@@ -73,6 +73,11 @@ export default {
     currentConnections: "Current",
     activeConnections: "Active",
     historyConnections: "History",
+    clearHistory: "Clear History",
+    clearHistoryConfirm:
+      "Clear all connection history for “{name}”? Current connections will stay connected.",
+    confirmClearHistory: "Confirm Clear",
+    historyCleared: "Connection history cleared",
     abnormalToday: "Abnormal Today",
     liveRefresh: "Live status · refreshes every 5 seconds",
     historyRetention: "Latest {count} · newest disconnect first",

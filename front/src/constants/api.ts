@@ -51,6 +51,7 @@ export const DEVICE_API = {
   CONNECTION_SUMMARY: "/api/devices/connection-summary",
   CURRENT_CONNECTIONS: "/api/devices/current-connections",
   CONNECTION_HISTORY: "/api/devices/connection-history",
+  CLEAR_CONNECTION_HISTORY: "/api/devices/clear-connection-history",
   CONNECTION_DETAIL: "/api/devices/connection-detail",
   START_SIMULATION: "/api/devices/start-simulation",
   STOP_SIMULATION: "/api/devices/stop-simulation",

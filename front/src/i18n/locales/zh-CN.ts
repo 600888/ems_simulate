@@ -72,6 +72,11 @@ export default {
     currentConnections: "当前连接",
     activeConnections: "活跃连接",
     historyConnections: "历史连接",
+    clearHistory: "清空历史记录",
+    clearHistoryConfirm:
+      "确定清空“{name}”的全部历史连接记录吗？当前在线连接不受影响。",
+    confirmClearHistory: "确认清空",
+    historyCleared: "历史连接记录已清空",
     abnormalToday: "今日异常断开",
     liveRefresh: "实时状态 · 每 5 秒自动刷新",
     historyRetention: "最近 {count} 条 · 按断开时间倒序",

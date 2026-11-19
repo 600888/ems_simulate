@@ -130,6 +130,27 @@ it("guards simulation independently from power and honors runtime capabilities",
   ).toBe("");
 });
 
+it("allows clearing saved history when a device is stopped, unloaded or has unknown runtime status", () => {
+  expect(
+    deviceOperationReason(
+      row({ runtime: undefined }),
+      "clearConnectionHistory",
+    ),
+  ).toBe("");
+  expect(
+    deviceOperationReason(
+      row({ runtime: { ...row().runtime!, running: false } }),
+      "clearConnectionHistory",
+    ),
+  ).toBe("");
+  expect(
+    deviceOperationReason(
+      row({ runtime: { ...row().runtime!, status_available: false } }),
+      "clearConnectionHistory",
+    ),
+  ).toBe("");
+});
+
 it("allows IEC61850 starts to restore models while retaining simulation guards", () => {
   const unloaded = row({
     protocol_type: 4,

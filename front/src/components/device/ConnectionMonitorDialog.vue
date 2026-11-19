@@ -121,8 +121,22 @@
                   :value="reason"
                 />
               </el-select>
+              <el-button
+                type="danger"
+                plain
+                :loading="clearingHistory"
+                :disabled="refreshing || summary.history_count === 0"
+                @click="handleClearHistory"
+              >
+                <el-icon><Delete /></el-icon>
+                {{ t("connectionMonitor.clearHistory") }}
+              </el-button>
             </template>
-            <el-button :loading="refreshing" @click="refreshActiveTab">
+            <el-button
+              :loading="refreshing"
+              :disabled="clearingHistory"
+              @click="refreshActiveTab"
+            >
               <el-icon><Refresh /></el-icon>
               {{ t("common.refresh") }}
             </el-button>
@@ -529,12 +543,13 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { formatBeijingDateTime, formatBeijingTime } from "@/utils/beijingTime";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import {
   Close,
   Clock,
   Connection,
   CopyDocument,
+  Delete,
   Lock,
   Refresh,
   SwitchButton,
@@ -543,6 +558,7 @@ import {
   UserFilled,
 } from "@element-plus/icons-vue";
 import {
+  clearConnectionHistory,
   getConnectionDetail,
   getConnectionHistory,
   getConnectionSummary,
@@ -593,6 +609,7 @@ const history = reactive<ConnectionHistoryResult>({
 const activeTab = ref<"current" | "history">("current");
 const initialLoading = ref(false);
 const refreshing = ref(false);
+const clearingHistory = ref(false);
 const detailLoading = ref(false);
 const detailVisible = ref(false);
 const detail = ref<ConnectionRecord | null>(null);
@@ -605,6 +622,7 @@ const filters = reactive<{ remoteIp: string; reason: DisconnectReason | "" }>({
 const lastUpdatedAt = ref<Date | null>(null);
 let pollTimer: number | null = null;
 let requestInFlight = false;
+let historyLoadVersion = 0;
 
 const disconnectReasonOptions: DisconnectReason[] = [
   "remote_closed",
@@ -632,17 +650,18 @@ const loadCurrent = async () => {
   currentConnections.value = result.items || [];
 };
 const loadHistory = async () => {
+  const version = ++historyLoadVersion;
   const result = await getConnectionHistory(props.deviceName, {
     page: historyPage.value,
     page_size: historyPageSize.value,
     disconnect_reason: filters.reason || null,
     remote_ip: filters.remoteIp || null,
   });
-  Object.assign(history, result);
+  if (version === historyLoadVersion) Object.assign(history, result);
 };
 
 const refreshActiveTab = async () => {
-  if (requestInFlight || !visible.value) return;
+  if (requestInFlight || clearingHistory.value || !visible.value) return;
   requestInFlight = true;
   refreshing.value = true;
   try {
@@ -654,6 +673,40 @@ const refreshActiveTab = async () => {
   } finally {
     refreshing.value = false;
     requestInFlight = false;
+  }
+};
+
+const handleClearHistory = async () => {
+  if (clearingHistory.value || requestInFlight) return;
+  clearingHistory.value = true;
+  try {
+    await ElMessageBox.confirm(
+      t("connectionMonitor.clearHistoryConfirm", { name: props.deviceName }),
+      t("connectionMonitor.clearHistory"),
+      {
+        confirmButtonText: t("connectionMonitor.confirmClearHistory"),
+        cancelButtonText: t("common.cancel"),
+        type: "warning",
+      },
+    );
+    ++historyLoadVersion;
+    await clearConnectionHistory(props.deviceName);
+    historyPage.value = 1;
+    history.items = [];
+    history.total = 0;
+    if (detail.value && ["closed", "abnormal"].includes(detail.value.state)) {
+      detailVisible.value = false;
+      detail.value = null;
+    }
+    await Promise.all([loadHistory(), loadSummary()]);
+    lastUpdatedAt.value = new Date();
+    ElMessage.success(t("connectionMonitor.historyCleared"));
+  } catch (error) {
+    if (error !== "cancel" && error !== "close") {
+      console.error("Failed to clear connection history:", error);
+    }
+  } finally {
+    clearingHistory.value = false;
   }
 };
 

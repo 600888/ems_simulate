@@ -15,6 +15,8 @@ from src.device.core.connection import (
     DisconnectInitiator,
     DisconnectReason,
 )
+from src.device.core.connection.persistence import ConnectionPersistenceWorker
+from src.device.core.connection.registry import ConnectionSessionRegistry
 
 
 def _session_factory(monkeypatch):
@@ -103,3 +105,52 @@ def test_batch_applies_open_then_close_and_ignores_deleted_channel(monkeypatch):
     assert detail is not None
     assert detail["state"] == "closed"
     assert ConnectionSessionDao.get_detail(999, deleted_channel.session_id) is None
+
+
+def test_clear_history_is_device_scoped_and_preserves_online_records(monkeypatch):
+    factory = _session_factory(monkeypatch)
+    with factory() as session, session.begin():
+        session.add(Channel(id=2, code="other-server", name="other-server"))
+    active = _snapshot(1, terminal=False)
+    abnormal = replace(
+        _snapshot(3),
+        state=ConnectionState.ABNORMAL,
+        disconnect_reason=DisconnectReason.NETWORK_RESET,
+    )
+    other = replace(_snapshot(5), channel_id=2)
+    ConnectionSessionDao.save_snapshots([active, _snapshot(2), abnormal, _snapshot(4, terminal=False), other])
+
+    assert ConnectionSessionDao.clear_history(1, active_session_ids=[active.session_id]) == 3
+    assert ConnectionSessionDao.list_history(1)[1] == 0
+    assert ConnectionSessionDao.summary_stats(1) == {"history_count": 0, "abnormal_disconnects_today": 0}
+    assert ConnectionSessionDao.get_detail(1, active.session_id)["state"] == "established"
+    assert ConnectionSessionDao.list_history(2)[1] == 1
+    assert ConnectionSessionDao.clear_history(1, active_session_ids=[active.session_id]) == 0
+
+
+def test_clear_discards_delayed_history_writes_and_keeps_future_disconnects(monkeypatch):
+    _session_factory(monkeypatch)
+    registry = ConnectionSessionRegistry()
+    monkeypatch.setattr("src.device.core.connection.persistence.connection_registry", registry)
+    snapshots = []
+    registry.set_event_sink(lambda _event, snapshot: snapshots.append(snapshot))
+    common = {"channel_id": 1, "protocol_type": "ModbusTcpServer", "server_instance_id": "server"}
+    active_id = registry.open_session(**common, connection_key="active")
+    closed_id = registry.open_session(**common, connection_key="closed")
+    ConnectionSessionDao.save_snapshots(snapshots)
+    registry.close_session(closed_id)
+    # The database still says established; the terminal snapshot is waiting to be written.
+    assert ConnectionSessionDao.get_detail(1, closed_id)["state"] == "established"
+    worker = ConnectionPersistenceWorker()
+    assert worker.clear_history(1) == 1
+
+    worker._write_batch(snapshots)
+    assert ConnectionSessionDao.get_detail(1, closed_id) is None
+    assert ConnectionSessionDao.list_history(1)[1] == 0
+    assert registry.get_current(1, active_id) is not None
+    assert ConnectionSessionDao.get_detail(1, active_id)["state"] == "established"
+
+    registry.close_session(active_id, reason=DisconnectReason.REMOTE_CLOSED)
+    worker._write_batch([snapshots[-1]])
+    assert ConnectionSessionDao.list_history(1)[1] == 1
+    assert ConnectionSessionDao.get_detail(1, active_id)["state"] == "closed"

@@ -2,7 +2,7 @@
 
 import ipaddress
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.device.core.connection import DisconnectReason
 
@@ -25,3 +25,14 @@ class ConnectionHistoryRequest(BaseModel):
 class ConnectionDetailRequest(BaseModel):
     device_name: str
     session_id: str = Field(..., min_length=1, max_length=36)
+
+
+class ConnectionHistoryClearRequest(BaseModel):
+    device_name: str | None = Field(None, min_length=1)
+    channel_id: int | None = Field(None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_target(self):
+        if (self.device_name is None) == (self.channel_id is None):
+            raise ValueError("请指定设备名称或通道ID，且只能指定其中一项")
+        return self

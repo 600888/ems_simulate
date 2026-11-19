@@ -21,6 +21,9 @@ export const deviceManagementZhCN = {
   powerOff: "关机",
   startSimulation: "启动模拟",
   stopSimulation: "停止模拟",
+  clearConnectionHistory: "清空连接历史",
+  clearConnectionHistoryConfirm:
+    "确定清空已勾选的 {count} 台设备的全部客户端连接历史记录吗？当前在线连接不受影响。",
   selectionOnly: "仅对已勾选设备执行",
   progress: "正在执行 {done} / {total}",
   name: "设备名称",
@@ -72,6 +75,9 @@ export const deviceManagementEnUS = {
   powerOff: "Power off",
   startSimulation: "Start simulation",
   stopSimulation: "Stop simulation",
+  clearConnectionHistory: "Clear connection history",
+  clearConnectionHistoryConfirm:
+    "Clear all client connection history for the {count} selected devices? Current connections will stay connected.",
   selectionOnly: "Selected devices only",
   progress: "Processing {done} / {total}",
   name: "Device name",

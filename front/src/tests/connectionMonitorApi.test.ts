@@ -1,4 +1,5 @@
 import {
+  clearConnectionHistory,
   getConnectionDetail,
   getConnectionHistory,
   getConnectionSummary,
@@ -16,6 +17,19 @@ const mockedRequest = requestApi as jest.MockedFunction<typeof requestApi>;
 
 describe("connection monitoring API", () => {
   beforeEach(() => mockedRequest.mockReset());
+
+  it("clears all history for the selected device", async () => {
+    mockedRequest.mockResolvedValue({ deleted_count: 7 });
+
+    await expect(clearConnectionHistory("IEC104 Server")).resolves.toEqual({
+      deleted_count: 7,
+    });
+    expect(mockedRequest).toHaveBeenCalledWith(
+      DEVICE_API.CLEAR_CONNECTION_HISTORY,
+      "post",
+      { device_name: "IEC104 Server" },
+    );
+  });
 
   it("uses the device-scoped summary and current endpoints", async () => {
     mockedRequest

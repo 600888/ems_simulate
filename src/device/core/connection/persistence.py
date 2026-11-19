@@ -1,5 +1,6 @@
 """Bounded background persistence for connection lifecycle callbacks."""
 
+from datetime import datetime
 from queue import Empty, Full, Queue
 import threading
 import time
@@ -7,7 +8,7 @@ import time
 from src.data.dao.connection_session_dao import ConnectionSessionDao
 from src.data.log import log
 
-from .models import ConnectionSnapshot
+from .models import ConnectionSnapshot, ConnectionState, utc_now
 from .registry import connection_registry
 
 
@@ -18,6 +19,8 @@ class ConnectionPersistenceWorker:
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
+        self._write_lock = threading.Lock()
+        self._history_cleared_at: dict[int, datetime] = {}
         self.dropped_events = 0
         self.failed_batches = 0
         self.written_events = 0
@@ -71,7 +74,33 @@ class ConnectionPersistenceWorker:
                     batch.append(self._activity.get_nowait())
                 except Empty:
                     break
-            snapshots = [snapshot for _, snapshot in batch]
+            self._write_batch([snapshot for _, snapshot in batch])
+
+    def clear_history(self, channel_id: int) -> int:
+        """Serialize clearing with writes and discard delayed snapshots of deleted history."""
+        with self._write_lock:
+            cutoff = utc_now()
+            active_ids = [snapshot.session_id for snapshot in connection_registry.current(channel_id)]
+            deleted = ConnectionSessionDao.clear_history(channel_id, active_session_ids=active_ids)
+            self._history_cleared_at[channel_id] = cutoff
+            return deleted
+
+    def _should_persist(self, snapshot: ConnectionSnapshot) -> bool:
+        cutoff = self._history_cleared_at.get(snapshot.channel_id)
+        if cutoff is None:
+            return True
+        if snapshot.state in (ConnectionState.CLOSED, ConnectionState.ABNORMAL):
+            return (snapshot.disconnected_at or snapshot.last_activity_at) > cutoff
+        return (
+            snapshot.transport_connected_at > cutoff
+            or connection_registry.get_current(snapshot.channel_id, snapshot.session_id) is not None
+        )
+
+    def _write_batch(self, snapshots: list[ConnectionSnapshot]) -> None:
+        with self._write_lock:
+            snapshots = [snapshot for snapshot in snapshots if self._should_persist(snapshot)]
+            if not snapshots:
+                return
             started_ns = time.monotonic_ns()
             for attempt, backoff_seconds in enumerate((0.0, 0.05, 0.2), start=1):
                 if backoff_seconds:

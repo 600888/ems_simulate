@@ -22,6 +22,12 @@ export async function controlManagedDevice(
   device: ManagedDevice,
   operation: DeviceOperation,
 ): Promise<void> {
+  if (operation === "clearConnectionHistory") {
+    await requestApi(DEVICE_API.CLEAR_CONNECTION_HISTORY, "post", {
+      channel_id: device.id,
+    });
+    return;
+  }
   if (operation === "start" && !device.runtime) {
     await reloadDeviceConfig(device.id);
     if (!(await startDevice(device.name)))

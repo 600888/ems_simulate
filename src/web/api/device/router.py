@@ -11,6 +11,7 @@ from src.data.dao.channel_dao import ChannelDao
 from src.data.dao.connection_session_dao import ConnectionSessionDao
 from src.device.auto_read import AutoReadConfig, AutoReadConflictError, AutoReadMode
 from src.device.core.connection import connection_registry
+from src.device.core.connection.persistence import connection_persistence
 from src.device.core.device import Device
 from src.device.protocol.base_handler import ServerHandler
 from src.enums.modbus_def import ProtocolType
@@ -21,6 +22,7 @@ from src.web.api.schemas import (
     AutoReadStartRequest,
     BaseResponse,
     ConnectionDetailRequest,
+    ConnectionHistoryClearRequest,
     ConnectionHistoryRequest,
     DeviceInfoRequest,
     DeviceStartRequest,
@@ -229,6 +231,24 @@ async def get_connection_history(req: ConnectionHistoryRequest, request: Request
             "items": items,
         },
     )
+
+
+@device_router.post("/clear-connection-history", response_model=BaseResponse)
+async def clear_connection_history(req: ConnectionHistoryClearRequest, request: Request):
+    """清空当前设备的连接历史，保留在线连接及其持久化记录。"""
+    if req.channel_id is not None:
+        channel = await asyncio.to_thread(ChannelDao.get_channel_by_id, req.channel_id)
+        if channel is None:
+            raise NotFoundError("设备不存在")
+        channel_id = req.channel_id
+    else:
+        device = _get_device(req.device_name, request)
+        handler = _get_connection_handler(device)
+        if handler is None or not handler.supports_connection_monitoring():
+            raise ValidationError("当前设备不支持客户端连接监控")
+        channel_id = device.device_id
+    deleted = await asyncio.to_thread(connection_persistence.clear_history, channel_id)
+    return BaseResponse(message="清空连接历史成功", data={"deleted_count": deleted})
 
 
 @device_router.post("/connection-detail", response_model=BaseResponse)

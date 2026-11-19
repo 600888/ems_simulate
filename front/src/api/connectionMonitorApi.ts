@@ -120,3 +120,11 @@ export async function getConnectionDetail(
     session_id: sessionId,
   });
 }
+
+export async function clearConnectionHistory(
+  deviceName: string,
+): Promise<{ deleted_count: number }> {
+  return await requestApi(DEVICE_API.CLEAR_CONNECTION_HISTORY, "post", {
+    device_name: deviceName,
+  });
+}

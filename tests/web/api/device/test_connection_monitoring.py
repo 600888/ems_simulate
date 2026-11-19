@@ -6,7 +6,7 @@ import pytest
 
 from src.device.protocol.base_handler import ServerHandler
 from src.web.api.device import router
-from src.web.api.schemas import ConnectionHistoryRequest, DeviceInfoRequest
+from src.web.api.schemas import ConnectionHistoryClearRequest, ConnectionHistoryRequest, DeviceInfoRequest
 
 
 class _MonitoredServerHandler(ServerHandler):
@@ -90,6 +90,66 @@ async def test_unsupported_mode_returns_empty_without_fake_connections():
         "unsupported_reason": "not_a_supported_network_server",
         "items": [],
     }
+
+
+@pytest.mark.asyncio
+async def test_clear_history_scopes_to_requested_device_without_closing_connections(monkeypatch):
+    handler = _MonitoredServerHandler()
+    handler.initialize({"channel_id": 44, "protocol_type": "ModbusTcpServer"})
+    event_sink = router.connection_registry._event_sink
+    router.connection_registry.set_event_sink(None)
+    handler._open_connection("live", remote_endpoint=("192.0.2.1", 41000))
+    device = SimpleNamespace(device_id=44, protocol_handler=handler)
+    clear = Mock(return_value=7)
+    monkeypatch.setattr(router.connection_persistence, "clear_history", clear)
+    try:
+        response = await router.clear_connection_history(
+            ConnectionHistoryClearRequest(device_name="server"), _request(device)
+        )
+        assert response.data == {"deleted_count": 7}
+        clear.assert_called_once_with(44)
+        assert len(handler.get_current_connections()) == 1
+    finally:
+        handler._close_all_connections()
+        router.connection_registry.set_event_sink(event_sink)
+
+
+@pytest.mark.asyncio
+async def test_clear_history_rejects_unsupported_device(monkeypatch):
+    clear = Mock()
+    monkeypatch.setattr(router.connection_persistence, "clear_history", clear)
+    device = SimpleNamespace(device_id=43, protocol_handler=object())
+    with pytest.raises(router.ValidationError):
+        await router.clear_connection_history(ConnectionHistoryClearRequest(device_name="server"), _request(device))
+    clear.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_clear_history_by_channel_id_works_without_runtime_device(monkeypatch):
+    lookup = Mock(return_value={"id": 71, "name": "Stopped server", "device_id": 900})
+    clear = Mock(return_value=4)
+    monkeypatch.setattr(router.ChannelDao, "get_channel_by_id", lookup)
+    monkeypatch.setattr(router.connection_persistence, "clear_history", clear)
+    response = await router.clear_connection_history(ConnectionHistoryClearRequest(channel_id=71), SimpleNamespace())
+    assert response.data == {"deleted_count": 4}
+    lookup.assert_called_once_with(71)
+    clear.assert_called_once_with(71)
+
+
+@pytest.mark.asyncio
+async def test_clear_history_by_missing_channel_does_not_delete(monkeypatch):
+    monkeypatch.setattr(router.ChannelDao, "get_channel_by_id", Mock(return_value=None))
+    clear = Mock()
+    monkeypatch.setattr(router.connection_persistence, "clear_history", clear)
+    with pytest.raises(router.NotFoundError):
+        await router.clear_connection_history(ConnectionHistoryClearRequest(channel_id=71), SimpleNamespace())
+    clear.assert_not_called()
+
+
+@pytest.mark.parametrize("values", [{}, {"channel_id": 0}, {"channel_id": 1, "device_name": "server"}])
+def test_clear_history_requires_one_explicit_device(values):
+    with pytest.raises(PydanticValidationError):
+        ConnectionHistoryClearRequest(**values)
 
 
 def test_history_request_validates_page_size_and_ip_address():
