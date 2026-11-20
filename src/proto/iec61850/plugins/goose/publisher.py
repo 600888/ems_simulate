@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import contextlib
+from dataclasses import replace
 import math
 import platform
 import struct
@@ -198,7 +199,7 @@ class GoosePublisher:
         with self._lock:
             if any(e.name == entry.name for e in self._entries):
                 raise ValueError(f"数据集条目名称已存在: {entry.name}")
-            self._entries.append(entry)
+            self._entries.append(replace(entry, last_update=time.time()))
             self._is_created = False
 
     def remove_entry(self, index: int) -> None:
@@ -220,9 +221,7 @@ class GoosePublisher:
             if 0 <= index < len(self._entries):
                 old_entry = self._entries[index]
                 if old_entry.value != value:
-                    self._entries[index] = GooseDataSetEntry(
-                        name=old_entry.name, value=value, iec_type=old_entry.iec_type
-                    )
+                    self._entries[index] = replace(old_entry, value=value, last_update=time.time())
                     self._st_num += 1
                     self._sq_num = 0
                     changed = True
@@ -235,10 +234,17 @@ class GoosePublisher:
 
     def get_entries(self) -> list[dict[str, Any]]:
         """获取条目并返回结果。"""
-        return [
-            {"index": i, "name": e.name, "value": e.value, "iec_type": e.iec_type.value}
-            for i, e in enumerate(self._entries)
-        ]
+        with self._lock:
+            return [
+                {
+                    "index": i,
+                    "name": e.name,
+                    "value": e.value,
+                    "iec_type": e.iec_type.value,
+                    "last_update": e.last_update,
+                }
+                for i, e in enumerate(self._entries)
+            ]
 
     # ===== 底层创建 =====
 

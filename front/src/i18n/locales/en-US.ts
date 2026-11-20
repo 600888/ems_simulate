@@ -1248,6 +1248,7 @@ export default {
     type: "Type",
     prevValue: "Previous Value",
     currentValue: "Current Value",
+    lastUpdateTime: "Last Update Time",
     changed: "Changed",
     srcMacLabel: "Src MAC",
     dstMacLabel: "Dest MAC",

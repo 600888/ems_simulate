@@ -79,6 +79,7 @@ class GooseDataSetEntry:
     name: str
     value: Any = False
     iec_type: IecDataType = IecDataType.BOOLEAN
+    last_update: float = 0.0
 
 
 @dataclass

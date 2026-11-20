@@ -1223,6 +1223,7 @@ export default {
     type: "类型",
     prevValue: "前值",
     currentValue: "当前值",
+    lastUpdateTime: "最后更新时间",
     changed: "已变化",
     srcMacLabel: "源MAC",
     searchBlocks: "搜索 IED / 逻辑设备 / GOOSE控制块",

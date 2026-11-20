@@ -87,6 +87,16 @@
           </template>
         </template>
       </el-table-column>
+      <el-table-column
+        prop="last_update"
+        :label="$t('goose.lastUpdateTime')"
+        min-width="205"
+        show-overflow-tooltip
+      >
+        <template #default="{ row }">{{
+          formatGooseTime(row.last_update)
+        }}</template>
+      </el-table-column>
     </el-table>
   </div>
 </template>

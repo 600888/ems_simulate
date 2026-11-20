@@ -19,6 +19,23 @@ class _CommParameters:
         self.dstAddress = None
 
 
+def test_entry_update_time_changes_only_when_its_value_changes(monkeypatch):
+    monkeypatch.setattr(
+        publisher_module, "time", SimpleNamespace(time=Mock(side_effect=[1000.123, 2000.456, 3000.789]))
+    )
+    publisher = GoosePublisher(PublisherConfig(interface="eth-test"))
+    publisher.add_entry(GooseDataSetEntry("stVal", False))
+    publisher.add_entry(GooseDataSetEntry("other", True))
+
+    assert publisher.get_entries()[0]["last_update"] == 1000.123
+    assert publisher.update_entry(0, False) is False
+    assert publisher.get_entries()[0]["last_update"] == 1000.123
+    assert publisher.update_entry(0, True) is True
+    assert [entry["last_update"] for entry in publisher.get_entries()] == [3000.789, 2000.456]
+    publisher.remove_entry(0)
+    assert publisher.get_entries()[0]["last_update"] == 2000.456
+
+
 @pytest.mark.parametrize(("vlan_id", "vlan_prio"), [(0, 0), (0, 4), (100, 6), (4094, 7)])
 def test_native_create_receives_configured_ethernet_parameters(monkeypatch, vlan_id, vlan_prio):
     create_calls = []

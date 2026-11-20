@@ -168,8 +168,8 @@ function stateClass(block?: GooseBlockItem) {
 
 <style scoped lang="scss">
 .goose-tree-panel {
-  width: 330px;
-  min-width: 280px;
+  width: 290px;
+  min-width: 260px;
   height: 100%;
   border-right: 1px solid var(--border-color);
   overflow-y: auto;

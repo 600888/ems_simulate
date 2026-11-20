@@ -15,6 +15,7 @@ export interface GooseDataSetEntry {
   name: string;
   value: boolean | number | string;
   iec_type: string;
+  last_update?: number;
   fc?: string;
   description?: string;
 }
@@ -56,6 +57,7 @@ export interface GooseSubscriptionDataValue {
   previous_value?: boolean | number | string | null;
   changed?: boolean;
   changed_at?: number;
+  last_update?: number;
 }
 
 export interface GooseDataSetMember {

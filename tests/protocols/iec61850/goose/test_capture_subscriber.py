@@ -463,3 +463,34 @@ def test_goose_subscription_history_tracks_dataset_changes(monkeypatch):
     assert len(history) == 3
     assert history[0]["changed_count"] == 0
     assert history[1]["changed_count"] == 1
+    assert history[2]["data_values"][0]["last_update"] == history[2]["received_at"]
+    assert history[1]["data_values"][0]["last_update"] == history[1]["received_at"]
+    assert latest["data_values"][0]["last_update"] == history[1]["received_at"]
+
+
+def test_captured_data_update_times_survive_retransmissions():
+    from src.proto.iec61850.plugins.goose.capture import CapturedPacket
+    from src.proto.iec61850.plugins.goose.subscriber import GooseReceiver
+
+    ref = "LD0/LLN0$GO$gcb1"
+    receiver = GooseReceiver(ReceiverConfig(interface="eth-test"))
+    receiver.add_subscription(ref)
+    for timestamp, values in [(1000.123, (False, 1)), (2000.456, (True, 1)), (3000.789, (True, 1))]:
+        receiver._on_captured_packet(
+            CapturedPacket(
+                timestamp=timestamp,
+                src_mac="02:03:04:05:06:07",
+                dst_mac="01:0C:CD:01:00:01",
+                raw_bytes=b"",
+                length=0,
+                go_cb_ref=ref,
+                data_values=tuple({"type": type(value).__name__, "value": value} for value in values),
+            )
+        )
+
+    latest = receiver.get_subscription(ref)
+    assert latest["last_update"] == 3000.789
+    assert [item["last_update"] for item in latest["data_values"]] == [2000.456, 1000.123]
+    history = receiver.get_history(ref)
+    assert [item["last_update"] for item in history[2]["data_values"]] == [1000.123, 1000.123]
+    assert [item["last_update"] for item in history[1]["data_values"]] == [2000.456, 1000.123]

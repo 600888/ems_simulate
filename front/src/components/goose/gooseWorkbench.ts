@@ -67,6 +67,7 @@ export function flattenGooseBlocks(
         description: entry.description,
         type: entry.iec_type,
         value: entry.value,
+        last_update: entry.last_update,
       })),
       publisher,
     };

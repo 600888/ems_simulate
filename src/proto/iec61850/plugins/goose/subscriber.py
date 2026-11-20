@@ -339,6 +339,11 @@ class GooseReceiver:
                     )
                     item["changed"] = value_changed
                     item["changed_at"] = changed_at if value_changed else 0.0
+                    item["last_update"] = (
+                        sub.last_update
+                        if previous_item is None or value_changed
+                        else previous_item.get("last_update", sub.last_update)
+                    )
                     if item["changed"]:
                         changed_count += 1
                 sub.data_values = parsed_values
@@ -415,6 +420,11 @@ class GooseReceiver:
                     )
                     item["changed"] = value_changed
                     item["changed_at"] = packet.timestamp if value_changed else 0.0
+                    item["last_update"] = (
+                        packet.timestamp
+                        if previous_item is None or value_changed
+                        else previous_item.get("last_update", packet.timestamp)
+                    )
                     changed_count += int(item["changed"])
                 sub.data_values = parsed_values
                 sub.message_count += 1
