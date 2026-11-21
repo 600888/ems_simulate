@@ -271,16 +271,6 @@ class PointManager:
             f"PointManager: Imported {len(yc_list)} YC, {len(yx_list)} YX, {len(yt_list)} YT, {len(yk_list)} YK points"
         )
 
-    def reset_all_values(self) -> None:
-        """重置所有测点值为 0"""
-        for point in self.code_map.values():
-            point.value = 0
-        # 确保 slave_code_index 中的点也被重置（可能超出 code_map 覆盖范围）
-        for slave_points in self.slave_code_index.values():
-            for point in slave_points.values():
-                if point.code not in self.code_map:
-                    point.value = 0
-
     def get_point_count(self) -> dict[str, int]:
         """获取各类型测点数量"""
         # 使用 slave_code_index 去重计算总点数

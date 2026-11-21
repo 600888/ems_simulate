@@ -177,6 +177,10 @@ class ServerHandler(ProtocolHandler):
         self._connection_sessions: dict[str, str] = {}
         self._connection_sessions_lock = threading.RLock()
 
+    def reset_point_value(self, point: BasePoint) -> bool:
+        """清零服务端独立保存的协议原始值。"""
+        return self.write_value(point, 0)
+
     def _configure_connection_monitoring(self, config: dict[str, Any], *, supported: bool) -> None:
         self._connection_monitoring_supported = bool(supported)
         self._connection_channel_id = int(config.get("channel_id") or 0)

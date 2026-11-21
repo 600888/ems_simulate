@@ -297,7 +297,10 @@ async def clear_points(req: ClearPointsRequest, request: Request):
 async def reset_point_data(req: DeviceResetRequest, request: Request):
     """重置测点数据"""
     device = _get_device(req.device_name, request)
-    await asyncio.to_thread(device.resetPointValues)
+    try:
+        await asyncio.to_thread(device.resetPointValues)
+    except ValueError as exc:
+        raise OperationError(str(exc), data=False) from exc
     return BaseResponse(message="重置测点数据成功!", data=True)
 
 

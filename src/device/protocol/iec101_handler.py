@@ -100,6 +100,10 @@ class IEC101ServerHandler(ServerHandler):
     def read_value(self, point: BasePoint) -> Any:
         return point.value
 
+    def reset_point_value(self, point: BasePoint) -> bool:
+        """总召直接读取测点对象，清零不需要额外排入自发报文。"""
+        return True
+
     def write_value(self, point: BasePoint, value: Any) -> bool:
         if not self._server:
             return False

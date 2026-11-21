@@ -386,6 +386,26 @@ class DLT645ServerHandler(ServerHandler):
         """添加测点（DLT645 按数据标识访问，无需预先添加）"""
         pass
 
+    def reset_point_value(self, point: BasePoint) -> bool:
+        """清零数值类 DI，保留最大需量的发生时间。"""
+        from dlt645.model.data.data_handler import set_data_item
+        from dlt645.model.types.dlt645_type import Demand
+
+        if not self._server:
+            return False
+        item = self._server.get_data_item(point.address)
+        value = getattr(item, "value", None)
+        if isinstance(value, Demand):
+            zero = Demand(0.0, value.time)
+        elif isinstance(value, (int, float)):
+            zero = type(value)(0)
+        else:
+            raise ValueError("此 DI 的数据类型不支持数值清零")
+        if not set_data_item(point.address, zero, self._server.data_map):
+            return False
+        point._dlt645_display_extra = None
+        return True
+
     def get_value_by_address(self, func_code: int, slave_id: int, address: int) -> Any:
         """根据地址获取值"""
         if self._server:

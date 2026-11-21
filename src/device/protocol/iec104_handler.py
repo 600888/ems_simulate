@@ -24,7 +24,7 @@ from src.enums.points.iec104_quality import (
     encode_quality_for_c104,
     supports_quality,
 )
-from src.enums.points.iec104_type import encode_iec104_value
+from src.enums.points.iec104_type import IEC104_TYPE_REGISTRY, IEC104ValueType, encode_iec104_value
 
 
 def _resolve_c104_type(point: BasePoint) -> c104.Type:
@@ -289,6 +289,27 @@ class IEC104ServerHandler(ServerHandler):
                 return _decode_c104_point_value(point, value)
             return None
         return 0
+
+    def reset_point_value(self, point: BasePoint) -> bool:
+        """用 ASDU 对应的原生类型清零，不改动测点品质。"""
+        if not self._server:
+            return False
+        station = self._server.stations.get(int(point.rtu_addr or 1))
+        native_point = station.get_point(io_address=int(point.address)) if station is not None else None
+        if native_point is None:
+            return False
+
+        asdu_type = resolve_asdu_type(point)
+        value_type = IEC104_TYPE_REGISTRY[asdu_type].value_type
+        if value_type is IEC104ValueType.DOUBLE:
+            native_point.value = c104.Double.INTERMEDIATE
+        elif value_type is IEC104ValueType.STEP:
+            native_point.value = c104.Step.INVALID_0
+        elif value_type is IEC104ValueType.SINGLE:
+            native_point.value = False
+        else:
+            native_point.value = encode_iec104_value(0, asdu_type)
+        return True
 
     def write_value(self, point: BasePoint, value: Any) -> bool:
         """写入测点值

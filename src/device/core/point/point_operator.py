@@ -14,7 +14,7 @@ from src.data.service.yc_service import YcService
 from src.data.service.yk_service import YkService
 from src.data.service.yt_service import YtService
 from src.data.service.yx_service import YxService
-from src.device.protocol.base_handler import ClientHandler
+from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.enums.modbus_def import ProtocolType
 from src.enums.point_data import BasePoint, SimulateMethod, Yc, Yk, Yt, Yx
 from src.enums.points.change_tracker import ChangeSource, track_change
@@ -90,6 +90,35 @@ class PointOperator:
         raise ValueError(f"找不到设备 {self._device.name} 的通道信息")
 
     # ===== 测点值读写 =====
+
+    def reset_values(self) -> None:
+        """清零所有测点的原始值，并同步服务端用于应答的数据。"""
+        from src.device.protocol.iec61850_handler import IEC61850ServerHandler
+
+        points = self._pm.get_all_points()
+        if not points:
+            return
+
+        handler = self._handler
+        sync_point = handler.reset_point_value if isinstance(handler, ServerHandler) else None
+        # IEC 61850 在一个数据模型事务中清零，避免每个点分别触发报告。
+        if isinstance(handler, IEC61850ServerHandler):
+            sync_point = None
+            if handler.is_running and not handler.write_values_batch([(point, 0) for point in points]):
+                raise ValueError("IEC 61850 服务端测点清零失败")
+
+        failures = 0
+        with track_change(ChangeSource.MANUAL, "重置测点值"):
+            for point in points:
+                try:
+                    if sync_point is not None and not sync_point(point):
+                        raise ValueError("协议层写入失败")
+                    point.value = 0
+                except Exception as exc:
+                    failures += 1
+                    self._log.warning(f"从站 {point.rtu_addr} 测点 {point.code or point.address} 清零失败: {exc}")
+        if failures:
+            raise ValueError(f"{failures} 个测点清零失败，请查看设备日志")
 
     def _set_real_value(self, point: BasePoint, real_value) -> bool:
         """An IEC enum ordinal must bypass binary Yx/Yk and analogue scaling rules."""

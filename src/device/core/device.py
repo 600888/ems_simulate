@@ -1088,7 +1088,7 @@ class Device:
 
     def resetPointValues(self) -> None:
         """重置所有测点值"""
-        self.point_manager.reset_all_values()
+        self.point_operator.reset_values()
 
     # ===== 动态测点/从机管理（委托给组件） =====
 
