@@ -4,6 +4,7 @@ from src.data.service.channel_service import ChannelService
 from src.device.protocol.iec101_handler import IEC101ClientHandler
 from src.device.protocol.runtime_config import get_protocol_param_defaults, normalize_protocol_params
 from src.enums.modbus_def import ProtocolType
+from src.enums.points.iec104_quality import IEC104QualityFlag
 from src.enums.points.yc import Yc
 from src.proto.iec60870.asdu import ASDU, InformationObject
 
@@ -29,7 +30,29 @@ def test_iec101_runtime_defaults_and_address_width_validation():
         normalize_protocol_params(6, 0, {"link_address_size": 1, "link_address": 256})
 
 
-def test_iec101_client_received_asdu_marks_ui_point_valid():
+@pytest.mark.parametrize(
+    ("wire_quality", "expected_flags"),
+    [
+        pytest.param(0x00, IEC104QualityFlag.NONE, id="good"),
+        pytest.param(0x01, IEC104QualityFlag.OV, id="overflow"),
+        pytest.param(0x10, IEC104QualityFlag.BL, id="blocked"),
+        pytest.param(0x20, IEC104QualityFlag.SB, id="substituted"),
+        pytest.param(0x40, IEC104QualityFlag.NT, id="not-topical"),
+        pytest.param(0x80, IEC104QualityFlag.IV, id="invalid"),
+        pytest.param(0x90, IEC104QualityFlag.BL | IEC104QualityFlag.IV, id="blocked-and-invalid"),
+        pytest.param(
+            0xF1,
+            IEC104QualityFlag.OV
+            | IEC104QualityFlag.BL
+            | IEC104QualityFlag.SB
+            | IEC104QualityFlag.NT
+            | IEC104QualityFlag.IV,
+            id="all-flags",
+        ),
+        pytest.param(0x0E, IEC104QualityFlag.NONE, id="reserved-bits-ignored"),
+    ],
+)
+def test_iec101_client_received_asdu_marks_ui_point_valid(wire_quality, expected_flags):
     handler = IEC101ClientHandler()
     point = Yc(
         rtu_addr="1",
@@ -41,9 +64,19 @@ def test_iec101_client_received_asdu_marks_ui_point_valid():
     )
     handler.add_points([point])
 
-    handler._on_asdu(ASDU(13, 20, 1, [InformationObject(100, 12.5, quality=0x10)]))
+    handler._on_asdu(ASDU(13, 20, 1, [InformationObject(100, 12.5, quality=wire_quality)]))
 
     assert point.value == pytest.approx(12.5)
     assert point.real_value == pytest.approx(12.5)
     assert point.is_valid is True
-    assert point.iec_quality_value == 0x10
+    # ASDU QDS uses BL/SB/NT/IV = 0x10/0x20/0x40/0x80. The application's
+    # stored quality uses 0x02/0x04/0x08/0x10 for those same flags.
+    assert point.iec_quality_value == expected_flags.value
+    assert point.iec_quality.to_flags() == expected_flags
+    assert point.iec_quality.blocked is bool(expected_flags & IEC104QualityFlag.BL)
+    assert point.iec_quality.invalid is bool(expected_flags & IEC104QualityFlag.IV)
+
+    # A later good response must clear earlier quality flags as well as update the value.
+    handler._on_asdu(ASDU(13, 20, 1, [InformationObject(100, 13.5, quality=0)]))
+    assert point.value == pytest.approx(13.5)
+    assert point.iec_quality_value == 0
