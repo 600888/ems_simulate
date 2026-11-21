@@ -1,7 +1,9 @@
 import { opcuaEnUS } from "./opcua";
 import { deviceManagementEnUS } from "./deviceManagement";
+import { toolsEnUS } from "./tools";
 
 export default {
+  tools: toolsEnUS,
   deviceManagement: deviceManagementEnUS,
   opcua: opcuaEnUS,
   common: {

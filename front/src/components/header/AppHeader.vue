@@ -71,6 +71,17 @@
         </el-icon>
       </el-badge>
 
+      <!-- Tools Button -->
+      <el-tooltip :content="t('tools.title')">
+        <button
+          type="button"
+          class="icon-link clickable device-management-button"
+          :aria-label="t('tools.title')"
+          @click="emit('open-tools')"
+        >
+          <el-icon :size="24"><SuitcaseLine /></el-icon>
+        </button>
+      </el-tooltip>
       <!-- Settings Button -->
       <el-icon
         :size="24"
@@ -94,6 +105,7 @@ import {
   Files,
   Document,
   Operation,
+  SuitcaseLine,
 } from "@element-plus/icons-vue";
 import { useRoute } from "vue-router";
 import { isCollapse, sidebarOverlayMode } from "./isCollapse";
@@ -104,6 +116,7 @@ import type { LocaleType } from "@/i18n";
 const { t, locale } = useI18n();
 const emit = defineEmits([
   "open-settings",
+  "open-tools",
   "open-logs",
   "open-device-management",
 ]);

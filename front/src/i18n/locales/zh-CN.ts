@@ -1,7 +1,9 @@
 import { opcuaZhCN } from "./opcua";
 import { deviceManagementZhCN } from "./deviceManagement";
+import { toolsZhCN } from "./tools";
 
 export default {
+  tools: toolsZhCN,
   deviceManagement: deviceManagementZhCN,
   opcua: opcuaZhCN,
   common: {

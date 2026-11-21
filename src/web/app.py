@@ -11,6 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src import __version__
 from src.proto.iec61850.core.exceptions import Iec61850Error
+from src.tools.subnet_scan import SubnetScanner
 from src.web.api.channel import channel_router
 from src.web.api.device import device_router
 from src.web.api.device_group import device_group_router
@@ -25,6 +26,7 @@ from src.web.api.schemas import BaseResponse
 from src.web.api.schemas.response_codes import DEFAULT_MESSAGES, Code
 from src.web.api.scl.router import router as scl_router
 from src.web.api.settings import settings_router
+from src.web.api.tools import tools_router
 from src.web.log import log
 
 
@@ -91,6 +93,8 @@ def create_app():
         lifespan=lifespan,
     )
 
+    app.state.subnet_scanner = SubnetScanner()
+
     # 配置CORS
     app.middleware("http")(initialization_guard)
     app.add_middleware(
@@ -134,6 +138,7 @@ def create_app():
     app.include_router(scl_router)
     app.include_router(modeling_router)
     app.include_router(settings_router)
+    app.include_router(tools_router)
     app.include_router(log_router)
     app.include_router(network_interfaces_router)
     app.include_router(opcua_router)
@@ -286,6 +291,9 @@ async def _background_init(application: FastAPI):
 
 async def _shutdown_application(application: FastAPI) -> None:
     """按依赖顺序关闭网络资源、设备资源和数据库连接池。"""
+    scanner = getattr(application.state, "subnet_scanner", None)
+    if scanner is not None:
+        await scanner.close()
     try:
         from src.web.api.channel.goose import GOOSE_CAPTURE_INSTANCES
         from src.web.api.channel.goose_websocket import WebSocketSessionManager

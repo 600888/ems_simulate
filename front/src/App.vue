@@ -41,6 +41,8 @@ function openDeviceManagement() {
   deviceManagementVisible.value = true;
 }
 const settingsVisible = ref(false);
+const toolsVisible = ref(false);
+const ToolsView = defineAsyncComponent(() => import("@/views/ToolsView.vue"));
 const logVisible = ref(false);
 const logErrorCount = ref(0);
 let errorCountTimer: number | null = null;
@@ -144,6 +146,7 @@ async function fetchLogErrorCount() {
           <el-container direction="vertical">
             <AppHeader
               @open-settings="openSettings"
+              @open-tools="toolsVisible = true"
               @open-logs="openLogs"
               @open-device-management="openDeviceManagement"
               :log-error-count="logErrorCount"
@@ -180,6 +183,16 @@ async function fetchLogErrorCount() {
       </el-dialog>
 
       <!-- 日志查看器 -->
+      <el-dialog
+        v-model="toolsVisible"
+        :title="t('tools.title')"
+        width="1000px"
+        top="4vh"
+        class="settings-dialog"
+      >
+        <ToolsView />
+      </el-dialog>
+
       <LogViewerDialog v-model:visible="logVisible" />
       <DeviceManagementDialog
         v-if="deviceManagementMounted"
