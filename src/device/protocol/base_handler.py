@@ -130,6 +130,10 @@ class ProtocolHandler(ABC):
         """
         pass
 
+    def update_point_definition(self, point: BasePoint, previous: BasePoint) -> None:
+        """更新协议独立持有的配置。直接读取测点对象的处理器无需额外同步。"""
+        return None
+
     def set_config(self, key: str, value: Any) -> None:
         """设置配置项"""
         self._config[key] = value

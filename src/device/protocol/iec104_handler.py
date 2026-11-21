@@ -59,6 +59,88 @@ def _update_command_mode(stations: dict, point: BasePoint, mode: str) -> None:
             command.command_mode = getattr(c104.CommandMode, IEC104CommandMode(mode).value)
 
 
+def _native_value(point: BasePoint, value: Any) -> Any:
+    asdu_type = resolve_asdu_type(point)
+    kind = IEC104_TYPE_REGISTRY[asdu_type].value_type
+    if kind is IEC104ValueType.DOUBLE:
+        return c104.Double(int(value))
+    if kind is IEC104ValueType.STEP:
+        return c104.Step(int(value))
+    if kind is IEC104ValueType.SINGLE:
+        return bool(value)
+    return encode_iec104_value(value, asdu_type)
+
+
+def _point_location(point: BasePoint) -> tuple[int, int]:
+    return int(point.rtu_addr or 1), int(point.address)
+
+
+def _refresh_native_point(handler, transport, point: BasePoint, previous: BasePoint, *, server: bool) -> None:
+    """Replace only the IEC104 registration whose address or ASDU type changed."""
+    old_key, new_key = _point_location(previous), _point_location(point)
+    if old_key == new_key and resolve_asdu_type(previous) == resolve_asdu_type(point):
+        if point.frame_type in (2, 3) and point.iec_command_mode != previous.iec_command_mode:
+            handler.update_command_mode(point, point.iec_command_mode)
+        if server:
+            station = transport.stations.get(new_key[0])
+            native = station.get_point(io_address=new_key[1]) if station else None
+            if native is not None and point.value != previous.value:
+                native.value = _native_value(point, point.value)
+            if (
+                native is not None
+                and native.quality is not None
+                and point.iec_quality_value != previous.iec_quality_value
+            ):
+                native.quality = c104.Quality(value=encode_quality_for_c104(point.iec_quality, point.frame_type))
+        return
+
+    old_station = transport.stations.get(old_key[0])
+    old_native = old_station.get_point(io_address=old_key[1]) if old_station else None
+    new_station = transport.stations.get(new_key[0])
+    if old_key != new_key and new_station and new_station.get_point(io_address=new_key[1]) is not None:
+        raise ValueError("目标公共地址和信息对象地址已注册")
+
+    def remove(key, native):
+        if not transport.stations[key[0]].remove_point(io_address=key[1]):
+            raise ValueError("无法注销原 IEC104 测点")
+        collection = transport.commands if server and point.frame_type in (2, 3) else transport.points
+        if native in collection:
+            collection.remove(native)
+        if server:
+            handler._command_point_map.pop(key, None)
+
+    def register(definition):
+        handler.add_points([definition])
+        native = transport.stations[definition.rtu_addr or 1].get_point(io_address=int(definition.address))
+        if native is None or native.type != _resolve_c104_type(definition):
+            raise ValueError("无法注册新的 IEC104 测点")
+        return native
+
+    old_info = old_native.info if old_native is not None else None
+    old_type = old_native.type if old_native is not None else None
+    if old_key == new_key and old_native is not None:
+        remove(old_key, old_native)
+    replacement = None
+    try:
+        replacement = register(point)
+        if old_info is not None and old_type == replacement.type:
+            replacement.info = old_info
+        if server and (old_info is None or old_type != replacement.type or point.value != previous.value):
+            replacement.value = _native_value(point, point.value)
+        if server and replacement.quality is not None:
+            replacement.quality = c104.Quality(value=encode_quality_for_c104(point.iec_quality, point.frame_type))
+        if old_key != new_key and old_native is not None:
+            remove(old_key, old_native)
+    except Exception:
+        if replacement is not None:
+            remove(new_key, replacement)
+        if old_key == new_key and old_native is not None:
+            register(previous).info = old_info
+            if server and previous.frame_type in (2, 3):
+                handler._command_point_map[old_key] = point
+        raise
+
+
 def _c104_connection_time_utc(value: datetime | None) -> datetime | None:
     """Normalize c104's native local datetime before registry storage.
 
@@ -299,71 +381,28 @@ class IEC104ServerHandler(ServerHandler):
         if native_point is None:
             return False
 
-        asdu_type = resolve_asdu_type(point)
-        value_type = IEC104_TYPE_REGISTRY[asdu_type].value_type
-        if value_type is IEC104ValueType.DOUBLE:
-            native_point.value = c104.Double.INTERMEDIATE
-        elif value_type is IEC104ValueType.STEP:
-            native_point.value = c104.Step.INVALID_0
-        elif value_type is IEC104ValueType.SINGLE:
-            native_point.value = False
-        else:
-            native_point.value = encode_iec104_value(0, asdu_type)
+        native_point.value = _native_value(point, 0)
         return True
 
     def write_value(self, point: BasePoint, value: Any) -> bool:
-        """写入测点值
-
-        根据 IEC104 ASDU 类型对值进行编码后写入 c104 点：
-        - 归一化类型 (M_ME_NA_1): 值需在 -1~+1 范围，使用 c104.NormalizedFloat
-        - 标度化类型 (M_ME_NB_1): 值取整，使用 c104.Int16
-        - 短浮点类型 (M_ME_NC_1): 保持 float
-
-        同时写入品质描述符（OV/BL/SB/NT/IV）。
-        """
-        if self._server:
-            common_address = int(point.rtu_addr) if point.rtu_addr else 1
-
-            if isinstance(point, (Yc, Yt)):
-                encoded_value = encode_iec104_value(value, point.iec_type_id)
-            elif isinstance(point, (Yx, Yk)):
-                # 遥信/遥控: 直接用 bool/int
-                self._server.set_point_value(
-                    io_address=int(point.address),
-                    value=bool(value),
-                    frame_type=point.frame_type,
-                    common_address=common_address,
-                )
-                # 写入品质描述符
-                if supports_quality(point.frame_type):
-                    quality_int = encode_quality_for_c104(point.iec_quality, point.frame_type)
-                    self._server.set_point_quality(
-                        io_address=int(point.address),
-                        quality=quality_int,
-                        frame_type=point.frame_type,
-                        common_address=common_address,
-                    )
-                return True
-            else:
-                encoded_value = value
-
-            self._server.set_point_value(
-                io_address=int(point.address),
-                value=encoded_value,
+        """用当前 ASDU 类型编码测点值和品质。"""
+        if not self._server:
+            return False
+        common_address, io_address = _point_location(point)
+        self._server.set_point_value(
+            io_address=io_address,
+            value=_native_value(point, value),
+            frame_type=point.frame_type,
+            common_address=common_address,
+        )
+        if supports_quality(point.frame_type) and resolve_asdu_type(point) != "M_ME_ND_1":
+            self._server.set_point_quality(
+                io_address=io_address,
+                quality=encode_quality_for_c104(point.iec_quality, point.frame_type),
                 frame_type=point.frame_type,
                 common_address=common_address,
             )
-            # 写入品质描述符
-            if supports_quality(point.frame_type):
-                quality_int = encode_quality_for_c104(point.iec_quality, point.frame_type)
-                self._server.set_point_quality(
-                    io_address=int(point.address),
-                    quality=quality_int,
-                    frame_type=point.frame_type,
-                    common_address=common_address,
-                )
-            return True
-        return False
+        return True
 
     async def read_value_async(self, point: BasePoint) -> Any:
         """异步读取测点值"""
@@ -416,6 +455,10 @@ class IEC104ServerHandler(ServerHandler):
     def update_command_mode(self, point: BasePoint, mode: str) -> None:
         if self._server:
             _update_command_mode(self._server.stations, point, mode)
+
+    def update_point_definition(self, point: BasePoint, previous: BasePoint) -> None:
+        if self._server:
+            _refresh_native_point(self, self._server, point, previous, server=True)
 
     def _on_command_received(self, io_address: int, value, point_type, common_address: int = 1) -> None:
         """
@@ -916,6 +959,10 @@ class IEC104ClientHandler(ClientHandler):
     def update_command_mode(self, point: BasePoint, mode: str) -> None:
         if self._client:
             _update_command_mode(self._client.stations, point, mode)
+
+    def update_point_definition(self, point: BasePoint, previous: BasePoint) -> None:
+        if self._client:
+            _refresh_native_point(self, self._client, point, previous, server=False)
 
     @property
     def client(self):

@@ -242,6 +242,16 @@ class DNP3ServerHandler(ServerHandler):
 
         self._server.set_on_command_callback(self._on_command_received)
 
+    def update_point_definition(self, point: BasePoint, previous: BasePoint) -> None:
+        old_index, index = _index_of(previous), _index_of(point)
+        config = getattr(point, "dnp3_config", None)
+        if self._server and (old_index != index or config != getattr(previous, "dnp3_config", None)):
+            self._server.update_point_definition(point.frame_type, old_index, index, config)
+            self._point_map.pop((point.frame_type, old_index), None)
+            self._point_map[(point.frame_type, index)] = point
+        if self._server and point.value != previous.value:
+            self._server.set_point_value(index, point.value, frame_type=point.frame_type)
+
     def _on_command_received(self, index: int, value: Any, frame_type: int = 0) -> None:
         """收到 Master 的遥控/遥调命令，同步更新应用层测点值。"""
         point = self._point_map.get((frame_type, int(index)))
@@ -564,6 +574,15 @@ class DNP3ClientHandler(ClientHandler):
         """注册 Master 测点映射，使轮询和主动上报能更新应用层测点。"""
         for point in points:
             self._point_map[(int(point.frame_type), _index_of(point))] = point
+
+    def update_point_definition(self, point: BasePoint, previous: BasePoint) -> None:
+        old_index, index = _index_of(previous), _index_of(point)
+        if old_index != index:
+            key = (point.frame_type, index)
+            if key in self._point_map:
+                raise ValueError("目标 DNP3 点索引已注册")
+            self._point_map.pop((point.frame_type, old_index), None)
+            self._point_map[key] = point
 
     def _on_point_update(self, group: int, index: int, value: Any, source: str) -> None:
         """把底层 Master 缓存更新同步到设备测点，供表格自动刷新读取。"""

@@ -342,6 +342,48 @@ class Dnp3Server:
         """获取指定类型的测点配置，缺失时返回默认配置。"""
         return self._point_configs.get((frame_type, index), Dnp3PointConfig.defaults(frame_type))
 
+    def update_point_definition(
+        self, frame_type: int, old_index: int, index: int, settings: dict[str, Any] | None
+    ) -> None:
+        """在点库锁内更新正在使用的配置和索引，保留实时值。"""
+        index = self._validate_index(index)
+        config = Dnp3PointConfig.from_mapping(frame_type, settings)
+        db = self._db
+        points, configs = {
+            0: (db._analog_inputs, db._ai_config),
+            1: (db._binary_inputs, db._bi_config),
+            2: (db._binary_outputs, db._bo_config),
+            3: (db._analog_outputs, None),
+        }[frame_type]
+        with db._lock:
+            current = points.get(old_index)
+            if current is None:
+                raise ValueError("原 DNP3 测点未注册")
+            if old_index != index and index in points:
+                raise ValueError("目标 DNP3 点索引已注册")
+            old_config = self.point_config(frame_type, old_index)
+            if old_index != index:
+                del points[old_index]
+                current.index = index
+                points[index] = current
+                self._point_configs.pop((frame_type, old_index), None)
+            if configs is not None:
+                db_config = PointConfig(
+                    event_class=config.event_class, deadband=config.deadband, default_variation=config.static_variation
+                )
+                db_config.event_variation = config.event_variation
+                db_config.event_enabled = config.event_enabled
+                db_config.timestamp_enabled = config.timestamp_enabled
+                configs.pop(old_index, None)
+                configs[index] = db_config
+            if old_config.initial_quality != config.initial_quality:
+                current.flags = config.initial_quality
+            self._point_configs[(frame_type, index)] = config
+            if frame_type in (2, 3) and (old_index != index or old_config.control_mode != config.control_mode):
+                if self._outstation_handler is not None:
+                    kind = "binary" if frame_type == 2 else "analog"
+                    self._outstation_handler._selections.pop((kind, old_index), None)
+
     # ---- 值读写 ----
 
     def update_analog_input(self, index: int, value: float, quality: int = 0) -> None:
@@ -474,6 +516,7 @@ class Dnp3Server:
                 confirm_timeout_seconds=float(runtime.get("confirm_timeout_ms", 5000)) / 1000.0,
                 max_confirm_retries=int(runtime.get("confirm_max_retries", 2)),
                 request_unsolicited_send=self._schedule_unsolicited,
+                point_config=self.point_config,
             )
 
             self._build_stack()

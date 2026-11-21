@@ -205,18 +205,16 @@ class PointManager:
                 if not slave_points:
                     del self.slave_code_index[sid]
 
-    def rename_point_in_index(self, old_code: str, new_code: str, slave_id: int) -> None:
-        """在索引中重命名测点编码"""
-        # 更新 code_map
-        old_composite = f"{slave_id}:{old_code}"
-        if old_composite in self.code_map:
-            point = self.code_map.pop(old_composite)
-            new_composite = f"{slave_id}:{new_code}"
-            self.code_map[new_composite] = point
-        # 更新 slave_code_index
-        if slave_id in self.slave_code_index and old_code in self.slave_code_index[slave_id]:
-            point = self.slave_code_index[slave_id].pop(old_code)
-            self.slave_code_index[slave_id][new_code] = point
+    def reindex_point(self, point: BasePoint, old_slave_id: int, old_code: str) -> None:
+        """更新编码索引，并在从站地址变更时移动实际的测点对象。"""
+        self.remove_point_from_index(old_code, old_slave_id)
+        if old_slave_id != point.rtu_addr:
+            groups = {0: self.yc_dict, 1: self.yx_dict, 2: self.yk_dict, 3: self.yt_dict}
+            group = groups[point.frame_type]
+            if point in group[old_slave_id]:
+                group[old_slave_id].remove(point)
+            group[point.rtu_addr].append(point)
+        self.add_point_to_index(point.rtu_addr, point)
 
     def import_from_db(self, channel_id: int, protocol_type: ProtocolType) -> None:
         """从数据库导入测点

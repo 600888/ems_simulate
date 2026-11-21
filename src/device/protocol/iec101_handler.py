@@ -7,11 +7,14 @@ from typing import Any
 
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.device.protocol.iec60870_common import decode_point_value, resolve_asdu_type_code
-from src.enums.point_data import Yc, Yk, Yt, Yx
 from src.enums.points.base_point import BasePoint
 from src.enums.points.change_tracker import ChangeSource, track_change
-from src.enums.points.iec104_quality import IEC104QualityDescriptor
+from src.enums.points.iec104_quality import IEC104QualityDescriptor, encode_quality_for_c104
 from src.proto.iec60870.asdu import ASDU, InformationObject
+
+
+def _point_data(point: BasePoint) -> tuple[Any, int]:
+    return point.value, encode_quality_for_c104(point.iec_quality, point.frame_type)
 
 
 def _endpoint_options(config: dict[str, Any]) -> dict[str, Any]:
@@ -84,12 +87,12 @@ class IEC101ServerHandler(ServerHandler):
                 common_address,
                 io_address,
                 resolve_asdu_type_code(point),
-                lambda point=point: (point.value, point.iec_quality_value),
+                lambda point=point: _point_data(point),
             )
 
     def _on_command(self, asdu: ASDU, obj: InformationObject) -> bool:
         point = self._points.get((asdu.common_address, obj.io_address))
-        if point is None or not isinstance(point, (Yk, Yt, Yx, Yc)):
+        if point is None or asdu.type_id != resolve_asdu_type_code(point):
             return False
         try:
             point.value = decode_point_value(point, obj.value)
@@ -104,6 +107,15 @@ class IEC101ServerHandler(ServerHandler):
         """总召直接读取测点对象，清零不需要额外排入自发报文。"""
         return True
 
+    def update_point_definition(self, point: BasePoint, previous: BasePoint) -> None:
+        old_key = (int(previous.rtu_addr or 1), int(previous.address))
+        new_key = (int(point.rtu_addr or 1), int(point.address))
+        type_id = resolve_asdu_type_code(point)
+        if self._server and (old_key != new_key or type_id != resolve_asdu_type_code(previous)):
+            self._server.update_point(old_key, new_key, type_id, lambda: _point_data(point))
+            self._points.pop(old_key, None)
+            self._points[new_key] = point
+
     def write_value(self, point: BasePoint, value: Any) -> bool:
         if not self._server:
             return False
@@ -113,7 +125,7 @@ class IEC101ServerHandler(ServerHandler):
             io_address=int(point.address),
             type_id=resolve_asdu_type_code(point),
             value=point.value,
-            quality=point.iec_quality_value,
+            quality=encode_quality_for_c104(point.iec_quality, point.frame_type),
             link_address=self._common_to_link.get(int(point.rtu_addr or 1), int(point.rtu_addr or 1)),
         )
         return True
@@ -191,6 +203,21 @@ class IEC101ClientHandler(ClientHandler):
         for point in points:
             self._points[(int(point.rtu_addr or 1), int(point.address))] = point
 
+    def update_point_definition(self, point: BasePoint, previous: BasePoint) -> None:
+        old_key = (int(previous.rtu_addr or 1), int(previous.address))
+        new_key = (int(point.rtu_addr or 1), int(point.address))
+        if old_key == new_key:
+            return
+        if self._client and (
+            new_key[0] not in self._common_to_link
+            or not 0 <= new_key[1] < 1 << (8 * self._client.asdu_codec.io_address_size)
+        ):
+            raise ValueError("目标 IEC101 公共地址或信息对象地址超出通道配置的范围")
+        if new_key in self._points:
+            raise ValueError("目标 IEC101 信息对象地址已注册")
+        self._points.pop(old_key, None)
+        self._points[new_key] = point
+
     def _on_asdu(self, asdu: ASDU) -> None:
         for obj in asdu.objects:
             point = self._points.get((asdu.common_address, obj.io_address))
@@ -199,7 +226,7 @@ class IEC101ClientHandler(ClientHandler):
             try:
                 with track_change(ChangeSource.CLIENT_READ, f"IEC101响应更新 {point.code}"):
                     point.value = decode_point_value(point, obj.value)
-                point.iec_quality = IEC104QualityDescriptor.from_int(obj.quality)
+                point.iec_quality = IEC104QualityDescriptor.from_int((obj.quality & 1) | ((obj.quality >> 3) & 0x1E))
                 # 客户端表格会屏蔽未知/失败状态的值。被动接收总召唤、
                 # 周期数据或主动上送后必须显式标记为有效。
                 point.is_valid = True

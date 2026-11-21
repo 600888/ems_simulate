@@ -5,6 +5,9 @@
 
 from __future__ import annotations
 
+from copy import copy
+import struct
+from threading import RLock
 from typing import TYPE_CHECKING
 
 from src.data.dao.channel_dao import ChannelDao
@@ -16,6 +19,7 @@ from src.data.service.yt_service import YtService
 from src.data.service.yx_service import YxService
 from src.device.protocol.base_handler import ClientHandler, ServerHandler
 from src.enums.modbus_def import ProtocolType
+from src.enums.modbus_register import Decode
 from src.enums.point_data import BasePoint, SimulateMethod, Yc, Yk, Yt, Yx
 from src.enums.points.change_tracker import ChangeSource, track_change
 from src.enums.points.iec104_command_mode import IEC104CommandMode
@@ -55,6 +59,7 @@ class PointOperator:
 
     def __init__(self, device: Device) -> None:
         self._device = device
+        self._metadata_lock = RLock()
 
     @property
     def _pm(self):
@@ -395,166 +400,143 @@ class PointOperator:
     # ===== 测点元数据编辑 =====
 
     def edit_metadata(self, point_code: str, metadata: dict) -> bool:
-        """编辑测点元数据"""
-        point = self._pm.get_point_by_code(point_code)
-        if not point:
-            raise ValueError(f"未找到测点: {point_code}")
+        """保存配置并同步实际负责收发报文的测点定义。"""
+        with self._metadata_lock:
+            point = self._pm.get_point_by_code(point_code)
+            if point is None:
+                raise ValueError(f"未找到测点: {point_code}")
+            previous = copy(point)
+            updated = copy(point)
+            updated._is_updating = False
+            updated.is_send_signal = False
+            updated.disable_change_tracking()
+            try:
+                changes, original = self._prepare_metadata(updated, metadata)
+            except (struct.error, OverflowError) as exc:
+                raise ValueError("当前测点值超出新解析码的范围") from exc
+            if not changes:
+                return True
 
-        command_mode = None
+            channel_id = self._get_channel_id()
+            if not PointService.update_point_metadata(point_code, changes, channel_id):
+                return False
+
+            # 保留原对象及其模拟配置、事件订阅和变更历史。
+            fields = {
+                name: value
+                for name, value in vars(updated).items()
+                if name not in {"is_send_signal", "_change_tracking_enabled", "_is_updating"}
+                and vars(previous).get(name) != value
+            }
+            vars(point).update(fields)
+            try:
+                handler = self._handler
+                sync_definition = getattr(handler, "update_point_definition", None)
+                if sync_definition is not None:
+                    sync_definition(point, previous)
+                elif handler and isinstance(point, Yt) and point.value != previous.value:
+                    if not isinstance(handler, ClientHandler) and not handler.write_value(point, point.value):
+                        raise ValueError("遥调值同步失败")
+            except Exception as exc:
+                for name in fields:
+                    if name in vars(previous):
+                        vars(point)[name] = vars(previous)[name]
+                    else:
+                        vars(point).pop(name, None)
+                if not PointService.update_point_metadata(updated.code, original, channel_id):
+                    raise RuntimeError("协议属性同步失败，且无法恢复数据库中的旧属性") from exc
+                raise ValueError(f"测点 {point_code} 的协议属性同步失败: {exc}") from exc
+
+            if (point.rtu_addr, point.code) != (previous.rtu_addr, previous.code):
+                self._pm.reindex_point(point, previous.rtu_addr, previous.code)
+            return True
+
+    def _prepare_metadata(self, point: BasePoint, metadata: dict) -> tuple[dict, dict]:
+        """在不通知任何协议回调的副本上转换和验证属性。"""
+        changes = {}
+        original = {}
+
+        def update(key, value, attr=None):
+            attr = attr or key
+            old = getattr(point, attr, None)
+            if value == old:
+                return
+            setattr(point, attr, value)
+            changes[key] = getattr(point, attr)
+            original[key] = old
+
+        for key in ("name", "code"):
+            if metadata.get(key):
+                update(key, metadata[key])
+        if metadata.get("rtu_addr") not in (None, ""):
+            slave_id = int(metadata["rtu_addr"])
+            if slave_id != point.rtu_addr and slave_id not in self._pm.slave_id_list:
+                raise ValueError(f"从站 {slave_id} 不存在")
+            update("rtu_addr", slave_id)
+        if metadata.get("reg_addr") not in (None, ""):
+            address = str(metadata["reg_addr"]).strip()
+            if isinstance(point.address, str):
+                if address != point.address:
+                    raise ValueError("模型测点地址由协议模型管理")
+            else:
+                value = int(address, 16 if address.lower().startswith("0x") else 10)
+                if value < 0:
+                    raise ValueError("测点地址不能小于 0")
+                if value != point.address:
+                    original["reg_addr"] = point.hex_address
+                    point.address = value
+                    changes["reg_addr"] = point.hex_address
+        if metadata.get("func_code") not in (None, ""):
+            update("func_code", int(metadata["func_code"]))
+        if metadata.get("decode_code"):
+            update("decode_code", Decode.normalize(metadata["decode_code"]), "decode")
+        if isinstance(point, (Yk, Yx)) and "bit" in metadata:
+            bit = metadata["bit"]
+            bit = int(bit) if bit not in (None, "") else None
+            if bit is not None and not 0 <= bit <= 31:
+                raise ValueError("位偏移必须在 0 到 31 之间")
+            update("bit", bit)
+
+        if isinstance(point, (Yc, Yt)):
+            current_real_value = point.real_value
+            for key in ("mul_coe", "add_coe"):
+                if metadata.get(key) not in (None, ""):
+                    update(key, float(metadata[key]))
+            if "mul_coe" in changes or "add_coe" in changes:
+                if isinstance(point, Yt):
+                    if point.mul_coe == 0 or not point.set_real_value(current_real_value):
+                        raise ValueError("当前遥调值无法按新系数编码")
+                else:
+                    point.real_value = point.value * point.mul_coe + point.add_coe
+
+        if "iec_type_id" in metadata:
+            from src.enums.points.iec104_type import IEC104_TYPE_REGISTRY
+
+            type_id = metadata["iec_type_id"] or None
+            if type_id is not None:
+                info = IEC104_TYPE_REGISTRY.get(type_id)
+                if info is None or info.frame_type != point.frame_type:
+                    raise ValueError("ASDU 类型不适用于当前测点类型")
+            update("iec_type_id", type_id)
+        if "iec_quality" in metadata:
+            update("iec_quality", int(metadata["iec_quality"] or 0), "iec_quality_value")
         if "iec_command_mode" in metadata:
             if not isinstance(point, (Yk, Yt)) or self._device.protocol_type not in (
                 ProtocolType.Iec104Server,
                 ProtocolType.Iec104Client,
             ):
                 raise ValueError("操作模式仅适用于 IEC104 遥控/遥调测点")
-            command_mode = IEC104CommandMode(metadata["iec_command_mode"])
-            metadata = {**metadata, "iec_command_mode": command_mode.value}
-
-        # 记录是否需要重新同步值到协议处理器
-        need_resync = False
-        protocol_config_changed = False
-        scaling_changed = False
-        current_real_value = getattr(point, "real_value", None)
-
-        # 1. 更新内存配置
-        if "name" in metadata and metadata["name"]:
-            point.name = metadata["name"]
-        if "rtu_addr" in metadata and str(metadata["rtu_addr"]) != "":
-            point.rtu_addr = int(metadata["rtu_addr"])
-        if "reg_addr" in metadata and metadata["reg_addr"]:
-            addr_str = metadata["reg_addr"]
-            point.address = int(addr_str, 16) if addr_str.startswith("0x") else int(addr_str)
-            need_resync = True  # 地址变更需要重新同步
-            protocol_config_changed = True
-        if "func_code" in metadata and str(metadata["func_code"]) != "":
-            point.func_code = int(metadata["func_code"])
-            need_resync = True  # 功能码变更需要重新同步
-            protocol_config_changed = True
-        if "decode_code" in metadata and metadata["decode_code"]:
-            old_decode = point.decode
-            point.decode = metadata["decode_code"]
-            if old_decode != metadata["decode_code"]:
-                need_resync = True  # 解析码变更需要重新同步
-                protocol_config_changed = True
-
-        if isinstance(point, (Yk, Yx)) and "bit" in metadata:
-            old_bit = getattr(point, "bit", None)
-            val = metadata["bit"]
-            new_bit = int(val) if val is not None and str(val) != "" else None
-            point.bit = new_bit
-            if old_bit != new_bit:
-                need_resync = True
-                protocol_config_changed = True
-
-        if isinstance(point, (Yc, Yt)):
-            if "mul_coe" in metadata and str(metadata["mul_coe"]) != "":
-                old_mul_coe = point.mul_coe
-                point.mul_coe = float(metadata["mul_coe"])
-                if old_mul_coe != float(metadata["mul_coe"]):
-                    need_resync = True
-                    scaling_changed = True
-            if "add_coe" in metadata and str(metadata["add_coe"]) != "":
-                old_add_coe = point.add_coe
-                point.add_coe = float(metadata["add_coe"])
-                if old_add_coe != float(metadata["add_coe"]):
-                    need_resync = True
-                    scaling_changed = True
-
-            # 与 Modbus 遥测一致：修改系数时保持协议原始值不变，立即重算真实值。
-            if isinstance(point, Yc) and scaling_changed:
-                point.real_value = point.value * point.mul_coe + point.add_coe
-
-        # 处理 IEC104 类型标识修改
-        if "iec_type_id" in metadata:
-            old_iec_type_id = getattr(point, "iec_type_id", None)
-            new_iec_type_id = metadata["iec_type_id"] if metadata["iec_type_id"] else None
-            if old_iec_type_id != new_iec_type_id:
-                point.iec_type_id = new_iec_type_id
-                need_resync = True  # IEC104 类型变更需要重新同步
-                protocol_config_changed = True
-
-        # 处理 IEC104 品质描述符修改
-        if "iec_quality" in metadata:
-            new_quality = metadata["iec_quality"]
-            if new_quality is not None and point.iec_quality_value != int(new_quality):
-                point.iec_quality_value = int(new_quality)
-                need_resync = True  # 品质变更需要重新同步
-                protocol_config_changed = True
-
+            update("iec_command_mode", IEC104CommandMode(metadata["iec_command_mode"]))
         if "dnp3_config" in metadata:
             from src.proto.dnp3.point_config import Dnp3PointConfig
 
-            point.dnp3_config = Dnp3PointConfig.from_mapping(point.frame_type, metadata["dnp3_config"]).to_dict()
-            metadata["dnp3_config"] = point.dnp3_config
-            protocol_config_changed = True
-
-        # 处理 code 修改
-        if "code" in metadata and metadata["code"] and metadata["code"] != point_code:
-            new_code = metadata["code"]
-            slave_id = point.rtu_addr
-            # 更新 PointManager 的索引
-            self._pm.rename_point_in_index(point_code, new_code, slave_id)
-            point.code = new_code
-
-        # 3. 如果配置发生变更，重新将真实值写入协议处理器
-        if need_resync and self._handler:
-            # IEC104 协议下 iec_type_id 变更需要重新同步（影响编码方式）
-            protocol_type = self._device.protocol_type
-            if protocol_type in [
-                ProtocolType.Iec104Server,
-                ProtocolType.Iec104Client,
-                ProtocolType.Iec101Server,
-                ProtocolType.Iec101Client,
-            ]:
-                try:
-                    if isinstance(point, Yc):
-                        # 遥测的协议值是原始值；系数修改只改变真实值。
-                        # IEC104 客户端的遥测点不可写，仅服务端在协议属性变更时重新同步。
-                        if protocol_config_changed and not isinstance(self._handler, ClientHandler):
-                            result = self._handler.write_value(point, point.value)
-                            if result:
-                                self._log.info(f"测点 {point.code} 元数据更新后已重新同步值到 IEC104 协议处理器")
-                            else:
-                                self._log.warning(f"重新同步测点 {point.code} 值失败")
-                    elif isinstance(point, Yt) and current_real_value is not None:
-                        if point.set_real_value(current_real_value):
-                            result = self._handler.write_value(point, point.value)
-                            if result:
-                                self._log.info(f"测点 {point.code} 元数据更新后已重新同步值到 IEC104 协议处理器")
-                            else:
-                                self._log.warning(f"重新同步测点 {point.code} 值失败")
-                    elif isinstance(point, (Yx, Yk)):
-                        result = self._handler.write_value(point, point.value)
-                        if result:
-                            self._log.info(f"测点 {point.code} 元数据更新后已重新同步值到 IEC104 协议处理器")
-                        else:
-                            self._log.warning(f"重新同步测点 {point.code} 值失败")
-                except Exception as e:
-                    self._log.warning(f"重新同步测点 {point.code} 值失败: {e}")
-            elif current_real_value is not None and isinstance(point, (Yk, Yt)):
-                try:
-                    # 使用新的配置重新计算并写入
-                    if point.set_real_value(current_real_value):
-                        result = self._handler.write_value(point, point.value)
-                        if result:
-                            self._log.info(f"测点 {point.code} 元数据更新后已重新同步值到协议处理器")
-                        else:
-                            self._log.warning(f"重新同步测点 {point.code} 值失败: 编辑完配置同步失败")
-                except Exception as e:
-                    self._log.warning(f"重新同步测点 {point.code} 值失败: {e}")
-
-        # 4. 更新数据库
-        try:
-            channel_id = self._get_channel_id()
-            success = PointService.update_point_metadata(point_code, metadata, channel_id)
-            if success and command_mode is not None:
-                if self._handler:
-                    self._handler.update_command_mode(point, command_mode)
-                point.iec_command_mode = command_mode
-            return success
-        except Exception as e:
-            self._log.error(f"更新测点元数据失败: {e}")
-            return False
+            settings = metadata["dnp3_config"]
+            if settings is not None:
+                if not isinstance(settings, dict):
+                    raise ValueError("DNP3 测点配置必须是对象")
+                settings = {**(getattr(point, "dnp3_config", None) or {}), **settings}
+            update("dnp3_config", Dnp3PointConfig.from_mapping(point.frame_type, settings).to_dict())
+        return changes, original
 
     def edit_limit(self, point_code: str, min_value_limit: int, max_value_limit: int) -> bool:
         """编辑测点限值"""
@@ -571,13 +553,14 @@ class PointOperator:
             point.min_value_limit, point.max_value_limit = min_value_limit, max_value_limit
             return True
 
-        point.max_value_limit = max_value_limit
-        point.min_value_limit = min_value_limit
         try:
             channel_id = self._get_channel_id()
-            return PointService.update_point_limit(
+            if not PointService.update_point_limit(
                 self._device.name, point_code, min_value_limit, max_value_limit, channel_id
-            )
+            ):
+                return False
+            point.min_value_limit, point.max_value_limit = min_value_limit, max_value_limit
+            return True
         except Exception as e:
             self._log.error(f"更新测点限值失败: {e}")
             return False

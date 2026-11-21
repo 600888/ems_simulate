@@ -69,6 +69,25 @@ class IEC101Slave(SerialFT12Endpoint):
     def set_command_callback(self, callback: Callable[[ASDU, InformationObject], bool] | None) -> None:
         self._on_command = callback
 
+    def update_point(
+        self,
+        old_key: tuple[int, int],
+        new_key: tuple[int, int],
+        type_id: int,
+        provider: Callable[[], tuple[Any, int]],
+    ) -> None:
+        """Publish a new registration snapshot for the serial worker."""
+        if new_key[0] not in self.station_links:
+            raise ValueError("目标 IEC101 公共地址未配置")
+        if not 0 <= new_key[1] < 1 << (8 * self.asdu_codec.io_address_size):
+            raise ValueError("信息对象地址超出 IEC101 通道配置的范围")
+        points = self._points.copy()
+        if old_key != new_key and new_key in points:
+            raise ValueError("目标 IEC101 信息对象地址已注册")
+        points.pop(old_key, None)
+        points[new_key] = (type_id, provider)
+        self._points = points
+
     def start(self) -> bool:
         self.open()
         self._stop_event.clear()

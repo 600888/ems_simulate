@@ -72,6 +72,7 @@ class ReliableOutstationSession(OutstationSession):
         confirm_timeout_seconds: float = 5.0,
         max_confirm_retries: int = 2,
         request_unsolicited_send=None,
+        point_config=None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -79,6 +80,7 @@ class ReliableOutstationSession(OutstationSession):
         self._confirm_timeout_seconds = confirm_timeout_seconds
         self._max_confirm_retries = max_confirm_retries
         self._request_unsolicited_send = request_unsolicited_send
+        self._point_config = point_config
         self._pending_event_responses: dict[tuple[bool, int], _PendingEventResponse] = {}
         self._unsolicited_sequence = 0
         self._unsolicited_enabled = bool(self._config.enable_unsolicited)
@@ -129,6 +131,9 @@ class ReliableOutstationSession(OutstationSession):
                     event_classes.add(header.variation - 1)
                 continue
             points = self._read_requested_points(header)
+            if header.variation == 0 and header.group in (1, 10, 30, 40):
+                response_objects.extend(self._configured_static_objects(header.group, points))
+                continue
             response = _object_for_points(header.group, header.variation, points)
             if response is not None:
                 response_objects.append(response)
@@ -224,33 +229,32 @@ class ReliableOutstationSession(OutstationSession):
 
     def _read_class0(self) -> list[ObjectData]:
         """读取全部 Class 0 静态点并按测点配置的变体组织成对象。"""
-        configured = (
-            (1, self._db.get_binary_inputs(), self._db._bi_config),
-            (10, 2, self._db.get_binary_outputs()),
-            (30, self._db.get_analog_inputs(), self._db._ai_config),
-            (40, 3, self._db.get_analog_outputs()),
-            (20, 1, self._db.get_counters()),
-            (21, 1, self._db.get_frozen_counters()),
+        groups = (
+            (1, self._db.get_binary_inputs()),
+            (10, self._db.get_binary_outputs()),
+            (30, self._db.get_analog_inputs()),
+            (40, self._db.get_analog_outputs()),
+            (20, self._db.get_counters()),
+            (21, self._db.get_frozen_counters()),
         )
-        result: list[ObjectData] = []
-        for entry in configured:
-            if len(entry) == 3 and isinstance(entry[1], list):
-                group, points, configs = entry
-                by_variation: dict[int, list[Any]] = {}
-                for point in points:
-                    config = configs.get(point.index)
-                    variation = config.default_variation if config else _DEFAULT_VARIATIONS[group]
-                    by_variation.setdefault(variation, []).append(point)
-                result.extend(
-                    obj
-                    for variation, selected in by_variation.items()
-                    if (obj := _object_for_points(group, variation, selected))
-                )
+        return [obj for group, points in groups for obj in self._configured_static_objects(group, points)]
+
+    def _configured_static_objects(self, group: int, points: list[Any]) -> list[ObjectData]:
+        frame_type = {1: 1, 10: 2, 30: 0, 40: 3}.get(group)
+        db_configs = {1: self._db._bi_config, 30: self._db._ai_config}.get(group, {})
+        by_variation: dict[int, list[Any]] = {}
+        for point in points:
+            if self._point_config is not None and frame_type is not None:
+                variation = self._point_config(frame_type, point.index).static_variation
             else:
-                group, variation, points = entry
-                if obj := _object_for_points(group, variation, points):
-                    result.append(obj)
-        return result
+                config = db_configs.get(point.index)
+                variation = config.default_variation if config else _DEFAULT_VARIATIONS[group]
+            by_variation.setdefault(variation, []).append(point)
+        return [
+            obj
+            for variation, selected in by_variation.items()
+            if (obj := _object_for_points(group, variation, selected)) is not None
+        ]
 
     def _events_in_flight(self) -> set[int]:
         """返回当前正在等待确认的事件 id 集合。"""

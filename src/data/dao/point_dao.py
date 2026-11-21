@@ -275,6 +275,10 @@ class PointDao:
 
                         # 遥测和遥调特有字段
                         if model in [PointYc, PointYt]:
+                            if "min_limit" in metadata:
+                                result.min_limit = float(metadata["min_limit"])
+                            if "max_limit" in metadata:
+                                result.max_limit = float(metadata["max_limit"])
                             if "mul_coe" in metadata and str(metadata["mul_coe"]) != "":
                                 result.mul_coe = float(metadata["mul_coe"])
                             if "add_coe" in metadata and str(metadata["add_coe"]) != "":

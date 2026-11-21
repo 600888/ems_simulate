@@ -108,8 +108,6 @@ class IEC104Server:
         self.related_point_map = {}
         # 命令接收后的应用层回调（由 handler 注册，用于同步应用层 BasePoint）
         self._on_command_received_callback = None
-        # IOA → common_address 映射，用于命令回调反查站地址
-        self._ioa_to_ca: dict[int, int] = {}
         # 设置默认回调函数
         self._setup_callbacks()
 
@@ -232,7 +230,6 @@ class IEC104Server:
         point = station.add_point(io_address=io_address, type=point_type, report_ms=report_ms)
         if point:
             self.points.append(point)
-            self._ioa_to_ca[io_address] = common_address
         return point
 
     def add_command_point(
@@ -262,7 +259,6 @@ class IEC104Server:
         command.on_receive(callable=self._on_command_received)
         # 添加到命令点列表
         self.commands.append(command)
-        self._ioa_to_ca[io_address] = common_address
         return command
 
     def get_point_value(self, io_address: int, frame_type: int = 0, common_address: int = 1) -> float:
@@ -408,8 +404,9 @@ class IEC104Server:
         :return: 响应状态(SUCCESS/FAILURE)
         """
         log.info(f"收到命令 - IOA: {point.io_address}, 类型: {point.type}, 值: {point.value}")
-        # 查找 IOA 对应的站地址
-        common_address = self._ioa_to_ca.get(point.io_address, 1)
+        # 不同站可以注册相同 IOA，由收到命令的原生点确定所属站。
+        station = point.station
+        common_address = station.common_address if station is not None else 1
         # 通知应用层回调（如果有注册），传递 IOA、值、帧类型和站地址
         if self._on_command_received_callback:
             try:

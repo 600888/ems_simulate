@@ -168,10 +168,11 @@ class CallbackDeviceContext(ModbusDeviceContext):
 
     def setValues(self, fx, address, values):
         """拦截写入操作"""
-        super().setValues(fx, address, values)
+        result = super().setValues(fx, address, values)
         # 仅当不是 EMS 内部写入，且配置了回调时触发回调
-        if getattr(self, "on_write_callback", None) and not getattr(self, "is_internal_write", False):
+        if result is None and self.on_write_callback and not self.is_internal_write:
             self.on_write_callback(self.slave_id, fx, address, values)
+        return result
 
 
 class ModbusServer:
@@ -657,14 +658,14 @@ class ModbusServer:
             self._logger.error(
                 f"setValueByAddress: rtu_addr {rtu_addr} 不在 slaves 中, 现有 slaves: {list(self.slaves.keys())}"
             )
-            return
+            return False
 
         registers = Decode.encode_registers(decode, value)
 
         # 设置寄存器值
         # 保持寄存器: func_code=3 (读)/ 6 (写单)/ 10/16 (写多) 归一化到3
         # 线圈: func_code=1 (读)/ 5 (写单)/ 15 (写多) 归一化到1
-        if func_code in (3, 10, 16):
+        if func_code in (3, 6, 10, 16):
             func_code = 3
         elif func_code in (1, 5, 15):
             func_code = 1
@@ -673,7 +674,7 @@ class ModbusServer:
         if isinstance(slave_ctx, CallbackDeviceContext):
             slave_ctx.is_internal_write = True
         try:
-            slave_ctx.setValues(func_code, address, registers)
+            return slave_ctx.setValues(func_code, address, registers) is None
         finally:
             if isinstance(slave_ctx, CallbackDeviceContext):
                 slave_ctx.is_internal_write = False

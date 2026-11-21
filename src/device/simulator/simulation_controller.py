@@ -173,10 +173,11 @@ class SimulationController:
                 # 遥测和遥调特有字段
                 if isinstance(point, (Yc, Yt)):
                     info["mul_coe"] = point.mul_coe
-                if isinstance(point, Yt):
                     info["add_coe"] = point.add_coe
-                if isinstance(point, Yx):
+                if hasattr(point, "bit"):
                     info["bit"] = point.bit
+                if hasattr(point, "dnp3_config"):
+                    info["dnp3_config"] = point.dnp3_config
                 # 上下限值（Yc/Yt 都有）
                 if isinstance(point, (Yc, Yt)):
                     info["min_value"] = point.min_value_limit

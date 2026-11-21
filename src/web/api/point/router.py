@@ -167,7 +167,10 @@ async def set_point_simulation_range(req: SimulateRangeSetRequest, request: Requ
 async def edit_point_metadata(req: PointMetadataEditRequest, request: Request):
     """修改测点元数据"""
     device = _get_device(req.device_name, request)
-    success = await asyncio.to_thread(device.edit_point_metadata, req.point_code, req.metadata)
+    try:
+        success = await asyncio.to_thread(device.edit_point_metadata, req.point_code, req.metadata)
+    except ValueError as exc:
+        raise OperationError(str(exc), data=False) from exc
     if not success:
         raise ValidationError("编辑测点属性失败!", data=False)
     return BaseResponse(message="编辑测点属性成功!", data=True)
@@ -179,15 +182,15 @@ async def edit_iec104_metadata(req: Iec104MetadataEditRequest, request: Request)
     device = _get_device(req.device_name, request)
     if device.protocol_type not in _IEC104_PROTOCOLS:
         raise ValidationError("只有 IEC 101/104 设备可以编辑 IEC 60870-5 测点属性", data=False)
-    metadata = {
-        "iec_type_id": req.iec_type_id,
-        "iec_quality": req.iec_quality,
-    }
+    metadata = req.model_dump(include={"iec_type_id", "iec_quality"}, exclude_unset=True)
     if req.iec_command_mode is not None:
         if device.protocol_type not in (ProtocolType.Iec104Server, ProtocolType.Iec104Client):
             raise ValidationError("操作模式仅适用于 IEC104 遥控/遥调测点", data=False)
         metadata["iec_command_mode"] = req.iec_command_mode.value
-    success = await asyncio.to_thread(device.edit_point_metadata, req.point_code, metadata)
+    try:
+        success = await asyncio.to_thread(device.edit_point_metadata, req.point_code, metadata)
+    except ValueError as exc:
+        raise OperationError(str(exc), data=False) from exc
     if not success:
         raise ValidationError("编辑 IEC101/104 属性失败!", data=False)
     return BaseResponse(message="编辑 IEC101/104 属性成功!", data=True)

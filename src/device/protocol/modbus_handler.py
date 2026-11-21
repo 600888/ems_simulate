@@ -169,7 +169,9 @@ class ModbusServerHandler(ServerHandler):
                     except (ValueError, TypeError):
                         pass
 
-            self._server.setValueByAddress(point.func_code, slave_id, point.address, write_val, point.decode)
+            written = self._server.setValueByAddress(point.func_code, slave_id, point.address, write_val, point.decode)
+            if written is False:
+                return False
             self._log.info(f"写入测点 {point.code} 成功: value={write_val}")
             return True
 
@@ -184,6 +186,22 @@ class ModbusServerHandler(ServerHandler):
         for p in points:
             if p not in self._points:
                 self._points.append(p)
+
+    def update_point_definition(self, point: BasePoint, previous: BasePoint) -> None:
+        fields = ("rtu_addr", "address", "func_code", "decode", "bit")
+        value_changed = point.value != previous.value
+        layout_changed = any(getattr(point, field, None) != getattr(previous, field, None) for field in fields)
+        if not self._server or not (layout_changed or value_changed):
+            return
+        if point.rtu_addr not in self._server.slaves:
+            raise ValueError("目标 Modbus 从站未注册")
+        if point.func_code not in (1, 2, 3, 4, 5, 6, 10, 15, 16):
+            raise ValueError("不支持的 Modbus 功能码")
+        if not 0 <= point.address <= 0xFFFF:
+            raise ValueError("Modbus 地址必须在 0 到 65535 之间")
+        current = point.value if value_changed else self.read_value(previous)
+        if not self.write_value(point, point.value if current is None else current):
+            raise ValueError("Modbus 寄存器同步失败")
 
     def _on_modbus_client_write(self, slave_id: int, fx: int, address: int, values: list[int]) -> None:
         """处理来自 Modbus 客户端的写入请求，并同步回设备测点"""
