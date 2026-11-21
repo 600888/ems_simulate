@@ -1,6 +1,7 @@
 """通道管理 - 设备管理路由（创建启动/重启/重载/复制）"""
 
 import asyncio
+from collections.abc import Callable
 
 from fastapi import APIRouter, Request
 
@@ -27,6 +28,15 @@ from src.web.api.schemas import BaseResponse, ChannelIdRequest, CopyDeviceReques
 from src.web.log import log
 
 router = APIRouter(tags=["channel"])
+
+
+def _build_copied_device(channel: dict):
+    builder = get_device_builder(channel["id"], channel["code"])
+    protocol = ChannelService.get_protocol_type(channel)
+    configure_builder_network(builder, channel.get("conn_type", 1), protocol, channel["ip"], channel["port"], channel)
+    return builder.makeGeneralDevice(
+        device_id=channel["id"], device_name=channel["name"], protocol_type=protocol, is_start=False
+    )
 
 
 @router.post("/create-and-start", response_model=BaseResponse)
@@ -109,26 +119,66 @@ async def copy_single_device(req: CopySingleDeviceRequest, request: Request):
     return await _copy_device(req, request)
 
 
-async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request: Request):
+async def _start_copy_task(req: CopyDeviceRequest | CopySingleDeviceRequest, request: Request):
+    source = await asyncio.to_thread(ChannelService.get_channel_by_id, req.channel_id)
+    if not source:
+        raise NotFoundError("源通道不存在")
+    names = (
+        [req.target_name]
+        if isinstance(req, CopySingleDeviceRequest)
+        else [f"{req.prefix or ''}{source['name']}{req.suffix or ''}{index}" for index in range(1, req.count + 1)]
+    )
+    job = request.app.state.device_copy_tasks.start(
+        req.channel_id, source["name"], names, lambda progress: _copy_device(req, request, progress)
+    )
+    return BaseResponse(data=job.snapshot())
+
+
+@router.post("/copy-tasks", response_model=BaseResponse)
+async def start_copy_task(req: CopyDeviceRequest, request: Request):
+    return await _start_copy_task(req, request)
+
+
+@router.post("/copy-single-tasks", response_model=BaseResponse)
+async def start_single_copy_task(req: CopySingleDeviceRequest, request: Request):
+    return await _start_copy_task(req, request)
+
+
+@router.get("/copy-tasks/{task_id}", response_model=BaseResponse)
+async def get_copy_task(task_id: str, request: Request):
+    return BaseResponse(data=request.app.state.device_copy_tasks.get(task_id).snapshot())
+
+
+@router.get("/copy-active-task", response_model=BaseResponse)
+async def get_active_copy_task(request: Request):
+    active = next((job for job in request.app.state.device_copy_tasks.tasks.values() if job.status == "running"), None)
+    return BaseResponse(data=active.snapshot() if active else None)
+
+
+async def _copy_device(
+    req: CopyDeviceRequest | CopySingleDeviceRequest, request: Request, progress: Callable | None = None
+):
     from src.data.dao.point_dao import PointDao
     from src.data.service.device_group_service import DeviceGroupService
     from src.data.service.device_service import DeviceService
 
-    source_channel = ChannelService.get_channel_by_id(req.channel_id)
+    source_channel = await asyncio.to_thread(ChannelService.get_channel_by_id, req.channel_id)
     if not source_channel:
         raise NotFoundError("源通道不存在")
     is_opcua = source_channel.get("protocol_type") == 7
 
     source_device_id = source_channel.get("device_id")
-    source_device = DeviceService.get_device_by_id(source_device_id) if source_device_id else None
+    source_device = (
+        await asyncio.to_thread(DeviceService.get_device_by_id, source_device_id) if source_device_id else None
+    )
     source_group_id = source_device.get("group_id") if source_device else None
     is_single = isinstance(req, CopySingleDeviceRequest)
     target_group_id = (
         req.target_group_id if not is_single and "target_group_id" in req.model_fields_set else source_group_id
     )
-    if target_group_id is not None and not DeviceGroupService.get_group_by_id(target_group_id):
+    if target_group_id is not None and not await asyncio.to_thread(DeviceGroupService.get_group_by_id, target_group_id):
         raise NotFoundError(f"目标设备组 {target_group_id} 不存在")
-    source_points = [] if is_opcua else PointDao.get_points_by_channel(req.channel_id)
+    source_points = [] if is_opcua else await asyncio.to_thread(PointDao.get_points_by_channel, req.channel_id)
     source_ip = source_channel.get("ip", Config.DEFAULT_IP)
     source_port = source_channel.get("port", Config.DEFAULT_PORT)
     is_iec61850 = source_channel.get("protocol_type") == Iec61850CopyService.PROTOCOL_ID
@@ -141,6 +191,13 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
     created_server_endpoints: list[tuple[str | None, int, str]] = []
 
     for i in range(1, copy_count + 1):
+
+        def report(index=i, **changes):
+            if progress is not None:
+                progress(index, **changes)
+
+        report(status="running", stage="creating", progress=5, points_total=len(source_points))
+        warnings = []
         ip_offset = 0 if is_single or req.ip_start_offset == 0 else req.ip_start_offset + i - 1
         if is_single:
             new_ip = str(req.target_ip)
@@ -161,15 +218,18 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
 
         if is_opcua:
             try:
-                OpcUaConfigService.validate_channel_endpoint(req.channel_id, make_endpoint_url(new_ip, new_port))
+                await asyncio.to_thread(
+                    OpcUaConfigService.validate_channel_endpoint, req.channel_id, make_endpoint_url(new_ip, new_port)
+                )
             except ValueError as exc:
                 raise ValidationError(str(exc)) from exc
 
-        existing = ChannelService.get_channel_by_code(new_code)
+        existing = await asyncio.to_thread(ChannelService.get_channel_by_code, new_code)
         if existing:
             if is_single:
                 raise ConflictError(f"设备编码 '{new_code}' 已存在，请使用其他编码")
             log.warning(f"通道编码 {new_code} 已存在，跳过")
+            report(status="skipped", stage="skipped", progress=100, message=f"设备编码 {new_code} 已存在")
             continue
 
         # TCP 服务端复制：IP+端口 组合唯一（含 0.0.0.0 通配），
@@ -177,11 +237,12 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
         is_server_copy = source_channel.get("conn_type", 2) == 2
         if is_server_copy:
             try:
-                _validate_server_endpoint_unique(new_ip, new_port)
+                await asyncio.to_thread(_validate_server_endpoint_unique, new_ip, new_port)
             except ValidationError as exc:
                 if is_single:
                     raise ConflictError(str(exc)) from exc
                 log.warning(f"复制设备 {new_name} 跳过：{exc}")
+                report(status="skipped", stage="skipped", progress=100, message=str(exc))
                 continue
             conflicting_copy = next(
                 (
@@ -196,9 +257,11 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
                 if is_single:
                     raise ConflictError(message)
                 log.warning(f"复制设备 {new_name} 跳过：{message}")
+                report(status="skipped", stage="skipped", progress=100, message=message)
                 continue
 
-        new_device_id = DeviceService.create_device(
+        new_device_id = await asyncio.to_thread(
+            DeviceService.create_device,
             code=new_code,
             name=new_name,
             device_type=source_device.get("device_type", 0) if source_device else 0,
@@ -206,15 +269,18 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
         )
         if new_device_id <= 0:
             log.error(f"创建设备记录失败: {new_code}")
+            report(status="failed", stage="failed", progress=100, message="创建设备记录失败")
             continue
         if source_device and not is_iec61850:
-            DeviceService.update_device(
+            await asyncio.to_thread(
+                DeviceService.update_device,
                 new_device_id,
                 icd_path=source_device.get("icd_path"),
                 icd_file_hash=source_device.get("icd_file_hash"),
             )
 
-        new_channel_id = ChannelService.create_channel(
+        new_channel_id = await asyncio.to_thread(
+            ChannelService.create_channel,
             code=new_code,
             name=new_name,
             device_id=new_device_id,
@@ -240,20 +306,24 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
         )
         if new_channel_id <= 0:
             log.error(f"创建通道失败: {new_code}")
+            report(status="failed", stage="failed", progress=100, message="创建通道失败")
             continue
         if is_server_copy:
             created_server_endpoints.append((new_ip, new_port, new_name))
 
         iec61850_copy = Iec61850CopyResult()
         opcua_copy = None
+        report(stage="configuration", progress=15)
         try:
-            ChannelConfigurationService.clone_for_channel(
+            await asyncio.to_thread(
+                ChannelConfigurationService.clone_for_channel,
                 req.channel_id,
                 new_channel_id,
                 source_channel.get("protocol_type", 1),
                 source_channel.get("conn_type", 2),
             )
-            iec61850_copy = Iec61850CopyService.clone_for_channel(
+            iec61850_copy = await asyncio.to_thread(
+                Iec61850CopyService.clone_for_channel,
                 source_channel,
                 new_channel_id,
                 new_device_id,
@@ -267,15 +337,18 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
                 await asyncio.to_thread(Dlt698Service.clone, req.channel_id, new_channel_id)
         except Exception as e:
             log.error(f"复制通道配置失败: {new_code}: {e}")
-            ChannelConfigurationService.delete_for_channel(new_channel_id)
-            ChannelService.delete_channel(new_channel_id)
+            await asyncio.to_thread(ChannelConfigurationService.delete_for_channel, new_channel_id)
+            await asyncio.to_thread(ChannelService.delete_channel, new_channel_id)
+            report(status="failed", stage="failed", progress=100, message=f"复制通道配置失败: {e}")
             continue
 
         source_point_ids = {
             (point.get("frame_type", 0), point["id"]) for point in source_points if point.get("id") is not None
         }
         copied_point_ids: dict[tuple[int, int], int] = {}
-        for point in sorted(source_points, key=lambda item: item.get("frame_type", 0)):
+        report(stage="points", progress=20)
+        point_errors = 0
+        for point_index, point in enumerate(sorted(source_points, key=lambda item: item.get("frame_type", 0)), 1):
             point_copy = {
                 # Point codes only need to be unique within the copied device.
                 # Device naming options must not change the point table identity.
@@ -317,25 +390,31 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
                     if point_copy["related_yc_id"] is None and (0, related_yc_id) not in source_point_ids:
                         point_copy["related_yc_id"] = related_yc_id
             try:
-                created_point = PointDao.create_point(new_channel_id, frame_type, point_copy)
+                created_point = await asyncio.to_thread(PointDao.create_point, new_channel_id, frame_type, point_copy)
                 source_point_id = point.get("id")
                 created_point_id = created_point.get("id")
                 if source_point_id is not None and created_point_id is not None:
                     copied_point_ids[(frame_type, source_point_id)] = created_point_id
             except Exception as e:
+                point_errors += 1
                 log.error(f"复制测点失败: {point.get('code')} -> {point_copy['code']}: {e}")
+            if point_index % 25 == 0 or point_index == len(source_points):
+                report(points_completed=point_index, progress=20 + int(65 * point_index / len(source_points)))
 
+        if point_errors:
+            warnings.append(f"{point_errors} 个测点复制失败")
+
+        report(stage="mappings", progress=88)
         try:
-            PointMappingService.clone_for_device(source_channel["name"], new_name)
+            await asyncio.to_thread(PointMappingService.clone_for_device, source_channel["name"], new_name)
         except Exception as e:
+            warnings.append(f"测点映射复制失败: {e}")
             log.error(f"复制设备测点映射失败: {new_name}: {e}")
 
+        report(stage="runtime", progress=93)
         try:
             device_controller = request.app.state.device_controller
-            builder = get_device_builder(new_channel_id, new_code)
-            channel_protocol_type = ChannelService.get_protocol_type(source_channel)
-            conn_type = source_channel.get("conn_type", 1)
-            new_channel_data = ChannelService.get_channel_by_id(new_channel_id)
+            new_channel_data = await asyncio.to_thread(ChannelService.get_channel_by_id, new_channel_id)
             if not new_channel_data or new_channel_data.get("id") != new_channel_id:
                 new_channel_data = {
                     **source_channel,
@@ -348,29 +427,27 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
                     "icd_path": iec61850_copy.model_path,
                     "icd_file_hash": iec61850_copy.model_hash,
                 }
-            configure_builder_network(builder, conn_type, channel_protocol_type, new_ip, new_port, new_channel_data)
-            new_device = builder.makeGeneralDevice(
-                device_id=new_channel_id,
-                device_name=new_name,
-                protocol_type=channel_protocol_type,
-                is_start=False,
-            )
+
+            new_device = await asyncio.to_thread(_build_copied_device, new_channel_data)
             new_device.name = new_name
             device_controller.device_list.append(new_device)
             device_controller.device_map[new_device.name] = new_device
-            mappings = PointMappingService.get_all_mappings()
-            new_device.set_device_provider(device_controller, mappings)
+            mappings = await asyncio.to_thread(PointMappingService.get_all_mappings)
+            await asyncio.to_thread(new_device.set_device_provider, device_controller, mappings)
             log.info(f"复制设备 {new_name} (ID: {new_channel_id}) 已在内存中创建")
         except Exception as e:
+            warnings.append(f"设备运行态同步失败: {e}")
             log.error(f"内存同步复制设备失败: {e}")
 
         if is_iec61850:
             try:
-                Iec61850CopyService.hydrate_runtime_resources(
+                await asyncio.to_thread(
+                    Iec61850CopyService.hydrate_runtime_resources,
                     new_channel_id,
                     getattr(request.app.state, "goose_manager", None),
                 )
             except Exception as e:
+                warnings.append(f"GOOSE 运行态同步失败: {e}")
                 # Persistence is already complete. Runtime hydration is a
                 # recoverable convenience and must not invalidate the copy.
                 log.warning(f"复制设备 GOOSE 运行态同步失败: {new_name}: {e}")
@@ -386,6 +463,13 @@ async def _copy_device(req: CopyDeviceRequest | CopySingleDeviceRequest, request
                 "iec61850": iec61850_copy.to_dict() if is_iec61850 else None,
                 "opcua": opcua_copy,
             }
+        )
+        report(
+            status="warning" if warnings else "completed",
+            stage="completed",
+            progress=100,
+            message="；".join(warnings),
+            channel_id=new_channel_id,
         )
 
     return BaseResponse(

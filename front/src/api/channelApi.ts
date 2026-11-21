@@ -61,6 +61,67 @@ export interface CopySingleDeviceRequest {
   target_port: number;
 }
 
+export interface DeviceCopyTaskItem {
+  index: number;
+  name: string;
+  status:
+    "pending" | "running" | "completed" | "warning" | "failed" | "skipped";
+  stage:
+    | "pending"
+    | "creating"
+    | "configuration"
+    | "points"
+    | "mappings"
+    | "runtime"
+    | "completed"
+    | "failed"
+    | "skipped";
+  progress: number;
+  points_completed: number;
+  points_total: number;
+  message: string;
+}
+
+export interface DeviceCopyTask {
+  id: string;
+  source_channel_id: number;
+  source_name: string;
+  status: "running" | "completed" | "failed";
+  total: number;
+  completed: number;
+  progress: number;
+  copied_count: number;
+  failed_count: number;
+  skipped_count: number;
+  warning_count: number;
+  error: string | null;
+  items: DeviceCopyTaskItem[];
+}
+
+export function startDeviceCopyTask(
+  request: CopyDeviceRequest,
+): Promise<DeviceCopyTask> {
+  return requestApi("/api/channels/copy-tasks", "post", request);
+}
+
+export function startSingleDeviceCopyTask(
+  request: CopySingleDeviceRequest,
+): Promise<DeviceCopyTask> {
+  return requestApi("/api/channels/copy-single-tasks", "post", request);
+}
+
+export function getDeviceCopyTask(id: string): Promise<DeviceCopyTask> {
+  return requestApi(
+    `/api/channels/copy-tasks/${encodeURIComponent(id)}`,
+    "get",
+    null,
+  );
+}
+
+export function getActiveDeviceCopyTask(): Promise<DeviceCopyTask | null> {
+  return requestApi("/api/channels/copy-active-task", "get", null);
+}
+
 export interface IEC61850DataSetInfo {
   ref: string;
   name: string;

@@ -27,6 +27,7 @@ from src.web.api.schemas.response_codes import DEFAULT_MESSAGES, Code
 from src.web.api.scl.router import router as scl_router
 from src.web.api.settings import settings_router
 from src.web.api.tools import tools_router
+from src.web.copy_tasks import DeviceCopyTaskManager
 from src.web.log import log
 
 
@@ -94,6 +95,7 @@ def create_app():
     )
 
     app.state.subnet_scanner = SubnetScanner()
+    app.state.device_copy_tasks = DeviceCopyTaskManager()
 
     # 配置CORS
     app.middleware("http")(initialization_guard)
@@ -291,6 +293,9 @@ async def _background_init(application: FastAPI):
 
 async def _shutdown_application(application: FastAPI) -> None:
     """按依赖顺序关闭网络资源、设备资源和数据库连接池。"""
+    copy_tasks = getattr(application.state, "device_copy_tasks", None)
+    if copy_tasks is not None:
+        await copy_tasks.close()
     scanner = getattr(application.state, "subnet_scanner", None)
     if scanner is not None:
         await scanner.close()

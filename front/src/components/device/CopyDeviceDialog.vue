@@ -1,18 +1,22 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    :title="$t('copyDevice.title')"
+    :title="$t(copyTask ? 'copyDevice.progressTitle' : 'copyDevice.title')"
     width="640px"
     :close-on-click-modal="false"
-    @close="handleClose"
+    :close-on-press-escape="!submitting"
+    :show-close="!submitting"
+    @closed="handleClosed"
     class="modern-dialog"
   >
     <el-form
+      v-if="!copyTask"
       ref="formRef"
       :model="form"
       :rules="rules"
       label-width="100px"
       label-position="right"
+      :disabled="loading"
     >
       <el-tabs
         v-model="copyMode"
@@ -202,12 +206,123 @@
       </el-tabs>
     </el-form>
 
+    <section v-else class="copy-progress-page" aria-live="polite">
+      <div class="copy-progress-heading">
+        <strong>{{ copyTask.source_name }}</strong>
+        <el-tag :type="taskTagType">{{ taskStatusLabel }}</el-tag>
+      </div>
+      <p class="copy-progress-hint">{{ $t("copyDevice.backgroundHint") }}</p>
+      <el-progress
+        :percentage="copyTask.progress"
+        :status="taskProgressStatus"
+        :stroke-width="10"
+      />
+      <div class="copy-summary">
+        <span>{{
+          $t("copyDevice.completedCount", {
+            completed: copyTask.completed,
+            total: copyTask.total,
+          })
+        }}</span>
+        <span>{{
+          $t("copyDevice.resultCounts", {
+            success: copyTask.copied_count,
+            failed: copyTask.failed_count,
+            skipped: copyTask.skipped_count,
+          })
+        }}</span>
+      </div>
+      <el-alert
+        v-if="copyTask.error"
+        :title="copyTask.error"
+        type="error"
+        :closable="false"
+        show-icon
+      />
+      <div class="copy-progress-list">
+        <article
+          v-for="item in copyTask.items"
+          :key="item.index"
+          class="copy-progress-item"
+        >
+          <div class="copy-item-heading">
+            <strong>{{ item.index }}. {{ item.name }}</strong>
+            <el-tag
+              size="small"
+              :type="
+                item.status === 'failed'
+                  ? 'danger'
+                  : item.status === 'warning'
+                    ? 'warning'
+                    : item.status === 'completed'
+                      ? 'success'
+                      : 'info'
+              "
+              >{{ $t(`copyDevice.taskStates.${item.status}`) }}</el-tag
+            >
+          </div>
+          <el-progress
+            :percentage="item.progress"
+            :status="
+              item.status === 'failed'
+                ? 'exception'
+                : item.status === 'warning'
+                  ? 'warning'
+                  : item.status === 'completed'
+                    ? 'success'
+                    : undefined
+            "
+            :stroke-width="6"
+          />
+          <div class="copy-item-stage">
+            {{ $t(`copyDevice.stages.${item.stage}`) }}
+            <span v-if="item.points_total > 0 && item.stage === 'points'">
+              · {{ item.points_completed }} / {{ item.points_total }}</span
+            >
+          </div>
+          <p v-if="item.message" class="copy-item-message">
+            {{ item.message }}
+          </p>
+        </article>
+      </div>
+    </section>
+    <el-alert
+      v-if="progressError"
+      class="copy-request-error"
+      :title="progressError"
+      type="error"
+      :closable="false"
+      show-icon
+    />
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose" round>{{
-          $t("common.cancel")
+        <el-button :disabled="submitting" @click="handleClose" round>{{
+          $t(
+            copyTask?.status === "running"
+              ? "copyDevice.runInBackground"
+              : copyTask
+                ? "common.close"
+                : "common.cancel",
+          )
         }}</el-button>
         <el-button
+          v-if="
+            progressError && (copyTask?.status === 'running' || recoveryNeeded)
+          "
+          type="primary"
+          @click="copyTask ? pollCopyTask() : restoreActiveCopyTask()"
+          round
+          >{{ $t("copyDevice.resumeProgress") }}</el-button
+        >
+        <el-button
+          v-else-if="copyTask && !loading"
+          type="primary"
+          @click="resetCopyTask"
+          round
+          >{{ $t("copyDevice.copyAgain") }}</el-button
+        >
+        <el-button
+          v-else-if="!copyTask"
           type="primary"
           :loading="loading"
           @click="handleSubmit"
@@ -223,12 +338,18 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, reactive, watch } from "vue";
+import { ref, computed, reactive, watch, onBeforeUnmount } from "vue";
 import { useI18n } from "vue-i18n";
-import { ElMessage } from "element-plus";
 import type { FormInstance, FormRules } from "element-plus";
 import { Check } from "@element-plus/icons-vue";
-import { copyDevice, copySingleDevice } from "@/api/channelApi";
+import {
+  startDeviceCopyTask,
+  startSingleDeviceCopyTask,
+  getDeviceCopyTask,
+  getActiveDeviceCopyTask,
+  type DeviceCopyTask,
+} from "@/api/channelApi";
+import { getApiErrorMessage } from "@/api/http";
 import type { DeviceGroupTreeNode } from "@/api/deviceGroupApi";
 
 const props = defineProps<{
@@ -254,7 +375,126 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const formRef = ref<FormInstance>();
-const loading = ref(false);
+const submitting = ref(false);
+const recovering = ref(false);
+const recoveryNeeded = ref(false);
+const copyTask = ref<DeviceCopyTask | null>(null);
+const loading = computed(
+  () =>
+    submitting.value ||
+    recovering.value ||
+    recoveryNeeded.value ||
+    copyTask.value?.status === "running",
+);
+const progressError = ref("");
+let pollTimer: ReturnType<typeof setTimeout> | undefined;
+let disposed = false;
+let generation = 0;
+let completedTaskId = "";
+const taskHasIssues = computed(() =>
+  Boolean(
+    copyTask.value &&
+    (copyTask.value.failed_count ||
+      copyTask.value.skipped_count ||
+      copyTask.value.warning_count),
+  ),
+);
+const taskTagType = computed(() =>
+  copyTask.value?.status === "failed"
+    ? "danger"
+    : copyTask.value?.status === "running"
+      ? "primary"
+      : taskHasIssues.value
+        ? "warning"
+        : "success",
+);
+const taskProgressStatus = computed(() =>
+  copyTask.value?.status === "failed"
+    ? "exception"
+    : copyTask.value?.status === "running"
+      ? undefined
+      : taskHasIssues.value
+        ? "warning"
+        : "success",
+);
+const taskStatusLabel = computed(() =>
+  t(
+    copyTask.value?.status === "running"
+      ? "copyDevice.taskRunning"
+      : copyTask.value?.status === "failed"
+        ? "copyDevice.taskFailed"
+        : taskHasIssues.value
+          ? "copyDevice.taskPartial"
+          : "copyDevice.taskFinished",
+  ),
+);
+
+function applyTask(task: DeviceCopyTask) {
+  copyTask.value = task;
+  if (task.status !== "running" && completedTaskId !== task.id) {
+    completedTaskId = task.id;
+    emit("success");
+  }
+}
+
+async function pollCopyTask(id = copyTask.value?.id, token = generation) {
+  if (!id || disposed || token !== generation) return;
+  clearTimeout(pollTimer);
+  progressError.value = "";
+  try {
+    const task = await getDeviceCopyTask(id);
+    if (disposed || token !== generation) return;
+    applyTask(task);
+    if (task.status === "running")
+      pollTimer = setTimeout(() => void pollCopyTask(id, token), 500);
+  } catch (error) {
+    if (!disposed && token === generation)
+      progressError.value = getApiErrorMessage(
+        error,
+        t("copyDevice.progressFailed"),
+      );
+  }
+}
+
+async function restoreActiveCopyTask(clearError = true) {
+  const token = generation;
+  recovering.value = true;
+  recoveryNeeded.value = true;
+  if (clearError) progressError.value = "";
+  try {
+    const task = await getActiveDeviceCopyTask();
+    if (disposed || token !== generation) return;
+    recoveryNeeded.value = false;
+    if (task) {
+      progressError.value = "";
+      applyTask(task);
+      void pollCopyTask(task.id, token);
+    }
+  } catch (error) {
+    if (!disposed && token === generation)
+      progressError.value = getApiErrorMessage(
+        error,
+        t("copyDevice.progressFailed"),
+      );
+  } finally {
+    if (token === generation) recovering.value = false;
+  }
+}
+
+function resetCopyTask() {
+  if (loading.value) return;
+  ++generation;
+  clearTimeout(pollTimer);
+  copyTask.value = null;
+  progressError.value = "";
+  recoveryNeeded.value = false;
+}
+
+onBeforeUnmount(() => {
+  disposed = true;
+  ++generation;
+  clearTimeout(pollTimer);
+});
 const copyMode = ref<"single" | "batch">("single");
 
 const form = reactive({
@@ -367,6 +607,11 @@ watch(
   () => props.visible,
   (visible) => {
     if (visible) {
+      if (copyTask.value) {
+        if (copyTask.value.status === "running") void pollCopyTask();
+        return;
+      }
+      void restoreActiveCopyTask();
       form.targetGroupId = props.deviceGroupId || 0;
       form.targetName = `${props.deviceName}_COPY`;
       form.targetCode = `${props.deviceCode}_COPY`;
@@ -423,21 +668,22 @@ function getPreviewPort(index: number): number {
 }
 
 const handleSubmit = async () => {
-  if (!formRef.value) return;
+  if (!formRef.value || loading.value) return;
   await formRef.value.validate(async (valid) => {
     if (!valid) return;
-    loading.value = true;
+    submitting.value = true;
+    progressError.value = "";
     try {
       const result =
         copyMode.value === "single"
-          ? await copySingleDevice({
+          ? await startSingleDeviceCopyTask({
               channel_id: props.channelId,
               target_name: form.targetName.trim(),
               target_code: form.targetCode.trim(),
               target_ip: form.targetIp.trim(),
               target_port: form.targetPort,
             })
-          : await copyDevice({
+          : await startDeviceCopyTask({
               channel_id: props.channelId,
               count: form.count,
               prefix: form.prefix,
@@ -448,16 +694,18 @@ const handleSubmit = async () => {
               target_group_id:
                 form.targetGroupId === 0 ? null : form.targetGroupId,
             });
-      ElMessage.success(
-        t("copyDevice.copySuccess", { count: result.copied_count }),
+      if (!disposed) {
+        applyTask(result);
+        void pollCopyTask();
+      }
+    } catch (error) {
+      progressError.value = getApiErrorMessage(
+        error,
+        t("copyDevice.taskStartFailed"),
       );
-      emit("success");
-      dialogVisible.value = false;
-      window.location.reload();
-    } catch (e: any) {
-      console.error(e.message || "复制失败");
+      await restoreActiveCopyTask(false);
     } finally {
-      loading.value = false;
+      submitting.value = false;
     }
   });
 };
@@ -467,12 +715,73 @@ const handleTabChange = () => {
 };
 
 const handleClose = () => {
+  if (submitting.value) return;
   dialogVisible.value = false;
+};
+
+const handleClosed = () => {
+  if (copyTask.value?.status !== "running") resetCopyTask();
   emit("close");
 };
 </script>
 
 <style lang="scss" scoped>
+.copy-progress-heading,
+.copy-item-heading,
+.copy-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-primary);
+}
+.copy-progress-heading strong,
+.copy-item-heading strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.copy-item-heading .el-tag {
+  flex-shrink: 0;
+}
+.copy-progress-hint,
+.copy-summary,
+.copy-item-stage,
+.copy-item-message {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.copy-progress-hint {
+  margin: 12px 0 18px;
+}
+.copy-summary {
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.copy-progress-list {
+  max-height: 380px;
+  overflow-y: auto;
+  margin-top: 16px;
+}
+.copy-progress-item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+.copy-item-heading {
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.copy-item-stage {
+  margin-top: 6px;
+}
+.copy-item-message {
+  margin: 4px 0 0;
+  color: var(--el-color-warning);
+  overflow-wrap: anywhere;
+}
+.copy-request-error {
+  margin-top: 12px;
+}
 .form-tip {
   font-size: 12px;
   color: #909399;
