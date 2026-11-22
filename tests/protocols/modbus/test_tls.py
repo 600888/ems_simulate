@@ -2,16 +2,18 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 import socket
 import ssl
+from types import SimpleNamespace
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
-from pymodbus.client import AsyncModbusTlsClient
-from pymodbus.datastore import ModbusDeviceContext, ModbusServerContext
-from pymodbus.server import ModbusTlsServer
+from loguru import logger
 import pytest
 
+from src.device.core.message.message_formatter import MessageFormatter
+from src.device.protocol.modbus_handler import ModbusServerHandler
+from src.enums.modbus_def import ProtocolType
 from src.proto.pyModbus.tls import (
     ModbusTlsConfigurationError,
     create_client_ssl_context,
@@ -200,36 +202,71 @@ def test_invalid_tls_mode_is_rejected(tls_files):
         )
 
 
-@pytest.mark.parametrize("tls_mode", ["one_way", "mutual"])
-def test_pymodbus_client_and_server_connect_with_supported_tls_modes(tls_files, tls_mode):
+@pytest.mark.parametrize("tls_mode", [None, "one_way", "mutual"], ids=["tcp", "one_way", "mutual"])
+def test_modbus_server_captures_request_and_response_once(tls_files, tls_mode):
     async def run_connection():
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
 
-        server_ssl = create_server_ssl_context(
-            tls_mode=tls_mode,
-            certificate_path=tls_files["server_certificate"],
-            private_key_path=tls_files["server_key"],
-            ca_certificate_path=tls_files["ca"] if tls_mode == "mutual" else None,
+        client_ssl = None
+        if tls_mode:
+            client_ssl = create_client_ssl_context(
+                tls_mode=tls_mode,
+                certificate_path=tls_files["client_certificate"] if tls_mode == "mutual" else None,
+                private_key_path=tls_files["client_key"] if tls_mode == "mutual" else None,
+                ca_certificate_path=tls_files["ca"],
+            )
+
+        handler = ModbusServerHandler(logger)
+        protocol_type = ProtocolType.ModbusTcpServer
+        handler.initialize(
+            {
+                "channel_id": 1802,
+                "protocol_type": protocol_type,
+                "ip": "127.0.0.1",
+                "port": port,
+                "security": {
+                    "tls_enabled": bool(tls_mode),
+                    "tls_mode": tls_mode,
+                    "certificate_path": tls_files["server_certificate"],
+                    "private_key_path": tls_files["server_key"],
+                    "ca_certificate_path": tls_files["ca"] if tls_mode == "mutual" else None,
+                },
+            }
         )
-        client_ssl = create_client_ssl_context(
-            tls_mode=tls_mode,
-            certificate_path=tls_files["client_certificate"] if tls_mode == "mutual" else None,
-            private_key_path=tls_files["client_key"] if tls_mode == "mutual" else None,
-            ca_certificate_path=tls_files["ca"],
-        )
-        server = ModbusTlsServer(
-            ModbusServerContext(ModbusDeviceContext()),
-            address=("127.0.0.1", port),
-            sslctx=server_ssl,
-        )
-        client = AsyncModbusTlsClient("localhost", port=port, sslctx=client_ssl)
+        request = bytes.fromhex("00 01 00 00 00 06 01 03 00 00 00 08")
+        response = bytes.fromhex("00 01 00 00 00 13 01 03 10") + bytes(16)
+        writer = None
         try:
-            await server.serve_forever(background=True)
-            assert await client.connect() is True
+            assert await handler.start()
+            for _ in range(50):
+                try:
+                    reader, writer = await asyncio.open_connection("127.0.0.1", port, ssl=client_ssl)
+                    break
+                except ConnectionRefusedError:
+                    await asyncio.sleep(0.01)
+            else:
+                raise AssertionError("Modbus server did not start listening")
+
+            writer.write(request)
+            await writer.drain()
+            assert await asyncio.wait_for(reader.readexactly(len(response)), timeout=2) == response
+
+            formatter = MessageFormatter(SimpleNamespace(protocol_handler=handler, protocol_type=protocol_type))
+            messages = formatter.get_messages()
+            assert [(message["direction"], message["raw_hex"]) for message in messages] == [
+                ("RX", request.hex()),
+                ("TX", response.hex()),
+            ]
+            assert "0x0000-0x0007" in messages[1]["description"]
+            (connection,) = handler.get_current_connections()
+            assert (connection["rx_messages"], connection["rx_bytes"]) == (1, len(request))
+            assert (connection["tx_messages"], connection["tx_bytes"]) == (1, len(response))
         finally:
-            client.close()
-            await server.shutdown()
+            if writer is not None:
+                writer.close()
+                await writer.wait_closed()
+            await handler.stop()
 
     asyncio.run(run_connection())

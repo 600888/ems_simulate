@@ -11,7 +11,7 @@ from pymodbus.datastore import (
 # Alias for backward compatibility
 ModbusSlaveContext = ModbusDeviceContext
 
-from pymodbus.framer import FRAMER_NAME_TO_CLASS
+from pymodbus.framer import FramerType
 from pymodbus.pdu.device import ModbusDeviceIdentification
 from pymodbus.server import (
     ModbusSerialServer,
@@ -27,9 +27,6 @@ from src.enums.modbus_register import Decode
 from src.enums.points.change_tracker import change_client_info_ctx
 from src.proto.pyModbus import helper
 from src.proto.pyModbus.tls import create_server_ssl_context
-
-# 从子模块导入捕获Framer
-from .capture import CreateCaptureRtuFramer, CreateCaptureSocketFramer
 
 
 class CaptureRequestHandler(ServerRequestHandler):
@@ -101,16 +98,11 @@ class CaptureRequestHandler(ServerRequestHandler):
             self._on_connection_activity(self._connection_key, "rx", len(data))
         return super().callback_data(data, addr)
 
-    def pdu_send(self, pdu, addr: tuple | None = None) -> None:
-        """Count server→client response bytes (TX) before dispatching the frame."""
-        if self._on_connection_activity and pdu is not None:
-            try:
-                size = len(self.framer.buildFrame(pdu))
-            except Exception:
-                size = 0
-            if size:
-                self._on_connection_activity(self._connection_key, "tx", size)
-        return super().pdu_send(pdu, addr)
+    def send(self, data: bytes, addr: tuple | None = None) -> None:
+        """Count TX bytes from the encoded frame passed to the transport."""
+        super().send(data, addr)
+        if self.transport and self._on_connection_activity:
+            self._on_connection_activity(self._connection_key, "tx", len(data))
 
     def callback_disconnected(self, exc: Exception | None) -> None:
         task = self._idle_watchdog_task
@@ -335,6 +327,15 @@ class ModbusServer:
         )
         return args
 
+    def _capture_packet(self, sending: bool, data: bytes) -> bytes:
+        """Capture Modbus bytes at the protocol layer, including TLS plaintext."""
+        if data:
+            if sending:
+                self.message_capture.add_tx(data)
+            else:
+                self.message_capture.add_rx(data)
+        return data
+
     async def runAsyncServer(self, args):
         """Run server."""
         txt = f"### start ASYNC server, listening on {self.port} - {self.protocol_type}"
@@ -344,11 +345,12 @@ class ModbusServer:
         common_params = {
             "context": args.context,  # Data storage
             "identity": args.identity,  # server identify
+            "trace_packet": self._capture_packet,
         }
+        address = (self.ip or "", self.port or None)
 
         try:
             if self.protocol_type == ProtocolType.ModbusTcpServer and self.tls_enabled:
-                address = (self.ip if self.ip else "", self.port if self.port else None)
                 ssl_context = create_server_ssl_context(
                     tls_mode=self.tls_mode,
                     tls_version=self.tls_version,
@@ -362,51 +364,15 @@ class ModbusServer:
                     **common_params,
                 )
             elif self.protocol_type == ProtocolType.ModbusTcpServer:
-                address = (
-                    self.ip if self.ip else "",
-                    self.port if self.port else None,
-                )
-
-                # 使用自定义 Frmaer
-                framer_cls = CreateCaptureSocketFramer(self.message_capture)
-                framer_key = f"CAPTURE_SOCKET_{id(self)}"
-                FRAMER_NAME_TO_CLASS[framer_key] = framer_cls
-
-                self.server = ModbusTcpServer(
-                    address=address,  # listen address
-                    framer=framer_key,
-                    **common_params,
-                )
+                self.server = ModbusTcpServer(address=address, **common_params)
             elif self.protocol_type == ProtocolType.ModbusRtuOverTcp:
-                address = (
-                    self.ip if self.ip else "",
-                    self.port if self.port else None,
-                )
-
-                framer_cls = CreateCaptureRtuFramer(self.message_capture)
-                framer_key = f"CAPTURE_RTU_OVER_TCP_{id(self)}"
-                FRAMER_NAME_TO_CLASS[framer_key] = framer_cls
-
                 self.server = ModbusTcpServer(
-                    address=address,  # listen address
-                    framer=framer_key,  # The framer strategy to use
+                    address=address,
+                    framer=FramerType.RTU,
                     **common_params,
                 )
             elif self.protocol_type == ProtocolType.ModbusUdp:
-                address = (
-                    self.ip if self.ip else "",
-                    self.port if self.port else None,
-                )
-
-                framer_cls = CreateCaptureSocketFramer(self.message_capture)
-                framer_key = f"CAPTURE_UDP_{id(self)}"
-                FRAMER_NAME_TO_CLASS[framer_key] = framer_cls
-
-                self.server = ModbusUdpServer(
-                    address=address,  # listen address
-                    framer=framer_key,
-                    **common_params,
-                )
+                self.server = ModbusUdpServer(address=address, **common_params)
             elif self.protocol_type in (ProtocolType.ModbusRtu, ProtocolType.ModbusRtuServer):
                 serial_params = {
                     "port": self.serial_port,
@@ -417,12 +383,8 @@ class ModbusServer:
                 }
                 self._logger.info(f"启动 Modbus RTU 服务器: {serial_params}")
 
-                framer_cls = CreateCaptureRtuFramer(self.message_capture)
-                framer_key = f"CAPTURE_RTU_{id(self)}"
-                FRAMER_NAME_TO_CLASS[framer_key] = framer_cls
-
                 self.server = ModbusSerialServer(
-                    framer=framer_key,
+                    framer=FramerType.RTU,
                     **common_params,
                     **serial_params,
                 )
