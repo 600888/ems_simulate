@@ -102,6 +102,108 @@ def test_windows_npcap_payload_is_valid_goose(monkeypatch):
     assert packets[0]["data_values"][0]["raw_value"] == "83 01 FF"
 
 
+def test_npcap_payload_keeps_event_time_until_data_changes(monkeypatch):
+    from src.proto.iec61850.plugins.goose.capture import GooseCaptureEngine
+
+    clock = Mock(return_value=1000.125)
+    monkeypatch.setattr(publisher_module, "time", SimpleNamespace(time=clock, monotonic=lambda: 0))
+    publisher = GoosePublisher(PublisherConfig(go_cb_ref="TESTLD/LLN0$GO$gocb1"))
+    publisher.add_entry(GooseDataSetEntry("stVal", False))
+    capture = GooseCaptureEngine(interface="test")
+    ethernet_header = bytes.fromhex("010ccd010001 020304050607 88b8")
+
+    def send():
+        capture._process_packet(ethernet_header + publisher._build_goose_payload())
+        return True
+
+    monkeypatch.setattr(publisher_module.platform, "system", lambda: "Windows")
+    monkeypatch.setitem(sys.modules, "scapy.all", SimpleNamespace(sendp=Mock()))
+    monkeypatch.setattr(publisher, "_publish_with_npcap", send)
+    monkeypatch.setattr(publisher_module, "threading", SimpleNamespace(Thread=Mock()))
+
+    clock.return_value = 2000.250
+    assert publisher.start()
+    clock.return_value = 3000.375
+    assert not publisher.update_entry(0, False)
+    assert publisher.publish()
+    clock.return_value = 4000.500
+    assert publisher.update_entry(0, True)
+    clock.return_value = 5000.625
+    assert publisher.publish()
+    publisher.stop()
+    clock.return_value = 6000.750
+    assert publisher.start()
+    publisher.stop()
+
+    packets = capture.get_packets()
+    assert [(p["st_num"], p["sq_num"], p["send_timestamp"]) for p in packets] == [
+        (1, 0, 2000.250),
+        (1, 1, 2000.250),
+        (2, 0, 4000.500),
+        (2, 1, 4000.500),
+        (3, 0, 6000.750),
+    ]
+    assert packets[-1]["event_timestamp"] == 6000.750
+
+
+def test_bitstring_round_trips_through_native_and_npcap_encoders():
+    from pyiec61850 import pyiec61850 as iec61850
+
+    from src.device.core.message.parsers.goose import parse_goose
+    from src.proto.iec61850.plugins.goose.subscriber import _DataSetParser
+
+    publisher = GoosePublisher(PublisherConfig(go_cb_ref="TESTLD/LLN0$GO$gocb1"))
+    publisher.add_entry(GooseDataSetEntry("q", 5, IecDataType.BITSTRING))
+    ethernet_header = bytes.fromhex("010ccd010001 020304050607 88b8")
+    assert publisher.update_entry(0, "2")
+    native = publisher._entry_to_mms_value(publisher._entries[0])
+    try:
+        assert iec61850.MmsValue_getBitStringBit(native, 2)
+        assert _DataSetParser._parse_element(native, 0)["value"] == 2
+    finally:
+        iec61850.MmsValue_delete(native)
+    packet = parse_goose(ethernet_header + publisher._build_goose_payload())
+    assert packet["objects"][0]["raw_value"] == "84 02 04 20"
+    assert packet["objects"][0]["value"] == 2
+
+
+def test_native_publisher_refreshes_event_time_once_even_if_send_fails(monkeypatch):
+    native = object()
+    binding = SimpleNamespace(
+        GoosePublisher_create=Mock(return_value=native),
+        GoosePublisher_increaseStNum=Mock(),
+        GoosePublisher_setStNum=Mock(),
+        GoosePublisher_setSqNum=Mock(),
+        GoosePublisher_setTimeAllowedToLive=Mock(),
+        GoosePublisher_publish=Mock(side_effect=[0, 0, -1, 0, 0]),
+        LinkedList_create=Mock(return_value=object()),
+        LinkedList_add=Mock(),
+        LinkedList_destroyDeep=Mock(),
+        MmsValue_newBoolean=Mock(),
+        MmsValue_delete=Mock(),
+    )
+    monkeypatch.setattr(publisher_module, "iec61850", binding, raising=False)
+    monkeypatch.setattr(publisher_module.platform, "system", lambda: "Linux")
+    publisher = GoosePublisher(PublisherConfig())
+    publisher.add_entry(GooseDataSetEntry("stVal", False))
+    monkeypatch.setattr(publisher, "_create_comm_parameters", lambda: None)
+    publisher._create_publisher()
+    publisher._is_running = True
+
+    assert publisher.publish()
+    assert not publisher.update_entry(0, False)
+    assert publisher.publish()
+    binding.GoosePublisher_increaseStNum.assert_not_called()
+    assert publisher.update_entry(0, True)
+    binding.GoosePublisher_increaseStNum.assert_called_once_with(native)
+    assert publisher.publish()
+    assert publisher.publish()
+
+    binding.GoosePublisher_increaseStNum.assert_called_once_with(native)
+    assert [call.args[1] for call in binding.GoosePublisher_setSqNum.call_args_list] == [0, 0, 1, 0, 0, 1]
+    assert binding.GoosePublisher_setStNum.call_args.args == (native, 2)
+
+
 @pytest.mark.parametrize(("vlan_id", "vlan_prio"), [(0, 0), (0, 4), (100, 6), (4094, 7)])
 @pytest.mark.parametrize("interface", ["以太网 2", r"\Device\NPF_{12345678-1234-1234-1234-123456789ABC}"])
 def test_npcap_sends_linux_compatible_vlan_header_and_subscription_receives_it(

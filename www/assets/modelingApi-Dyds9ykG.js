@@ -1,4 +1,4 @@
-import{bq as a,bo as c}from"./index-EzjUZeZR.js";function r(e){return e.data.data}function m(e){return typeof Worker>"u"?Promise.resolve(JSON.parse(e)):new Promise((t,o)=>{const n=`
+import{bq as a,bo as c}from"./index-BsQukx2V.js";function r(e){return e.data.data}function m(e){return typeof Worker>"u"?Promise.resolve(JSON.parse(e)):new Promise((t,o)=>{const n=`
       self.onmessage = ({ data }) => {
         try {
           self.postMessage({ value: JSON.parse(data) });

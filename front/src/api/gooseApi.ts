@@ -660,6 +660,8 @@ export interface GooseCapturedPacket {
   timestamp: number;
   time: string;
   receive_timestamp?: number;
+  event_timestamp?: number;
+  /** Legacy alias of the frame's event time. */
   send_timestamp?: number;
   length: number;
   app_id: number;

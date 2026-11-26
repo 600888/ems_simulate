@@ -1,3 +1,4 @@
+from dataclasses import replace
 import socket
 import sys
 import threading
@@ -8,7 +9,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from src.proto.iec61850.plugins.goose import capture as capture_module
-from src.proto.iec61850.plugins.goose.capture import GooseCaptureEngine
+from src.proto.iec61850.plugins.goose.capture import CapturedPacket, GooseCaptureEngine
 from src.proto.iec61850.plugins.goose.types import ReceiverConfig
 
 
@@ -79,6 +80,26 @@ def test_capture_processes_goose_frame():
     assert packets[0]["data_values"][0]["value"] is True
     assert packets[0]["data_values"][0]["offset"] > 0
     assert packets[0]["fields"]
+
+
+def test_bad_frames_do_not_replace_subscription_data_and_padding_is_allowed():
+    from src.proto.iec61850.plugins.goose.subscriber import GooseReceiver
+
+    ref = "LD0/LLN0$GO$gcb1"
+    receiver = GooseReceiver(ReceiverConfig(interface="eth-test"))
+    receiver.add_subscription(ref)
+    capture = GooseCaptureEngine(interface="eth-test")
+    capture.set_callback(receiver._on_captured_packet)
+    frame = _goose_frame()
+
+    capture._process_packet(frame + bytes(4))
+    before = receiver.get_subscription(ref)
+    assert before["state"] == "connected"
+    capture._process_packet(frame[:-5])
+    capture._process_packet(frame.replace(bytes.fromhex("8a 01 01"), bytes.fromhex("8a 01 02")))
+
+    assert len(capture.get_packets()) == 1
+    assert receiver.get_subscription(ref) == before
 
 
 @pytest.mark.asyncio
@@ -384,6 +405,8 @@ def test_goose_subscription_history_tracks_dataset_changes(monkeypatch):
     from src.proto.iec61850.plugins.goose import subscriber as subscriber_module
 
     class FakeIec61850:
+        MMS_BOOLEAN = 2
+
         @staticmethod
         def GooseSubscriber_getGoCbRef(subscriber):
             return subscriber["go_cb_ref"]
@@ -434,7 +457,7 @@ def test_goose_subscription_history_tracks_dataset_changes(monkeypatch):
 
         @staticmethod
         def MmsValue_getType(_element):
-            return subscriber_module.MmsType.BOOLEAN
+            return FakeIec61850.MMS_BOOLEAN
 
         @staticmethod
         def MmsValue_getBoolean(element):
@@ -469,13 +492,16 @@ def test_goose_subscription_history_tracks_dataset_changes(monkeypatch):
 
 
 def test_captured_data_update_times_survive_retransmissions():
-    from src.proto.iec61850.plugins.goose.capture import CapturedPacket
     from src.proto.iec61850.plugins.goose.subscriber import GooseReceiver
 
     ref = "LD0/LLN0$GO$gcb1"
     receiver = GooseReceiver(ReceiverConfig(interface="eth-test"))
     receiver.add_subscription(ref)
-    for timestamp, values in [(1000.123, (False, 1)), (2000.456, (True, 1)), (3000.789, (True, 1))]:
+    for st_num, sq_num, timestamp, values in [
+        (1, 0, 1000.123, (False, 1)),
+        (2, 0, 2000.456, (True, 1)),
+        (2, 1, 3000.789, (True, 1)),
+    ]:
         receiver._on_captured_packet(
             CapturedPacket(
                 timestamp=timestamp,
@@ -484,6 +510,8 @@ def test_captured_data_update_times_survive_retransmissions():
                 raw_bytes=b"",
                 length=0,
                 go_cb_ref=ref,
+                st_num=st_num,
+                sq_num=sq_num,
                 data_values=tuple({"type": type(value).__name__, "value": value} for value in values),
             )
         )
@@ -494,3 +522,128 @@ def test_captured_data_update_times_survive_retransmissions():
     history = receiver.get_history(ref)
     assert [item["last_update"] for item in history[2]["data_values"]] == [1000.123, 1000.123]
     assert [item["last_update"] for item in history[1]["data_values"]] == [2000.456, 1000.123]
+
+
+@pytest.mark.parametrize("restart_st_num", [1, 10])
+def test_subscription_ignores_late_frames_and_recovers_after_publisher_restart(restart_st_num):
+    from src.proto.iec61850.plugins.goose.subscriber import GooseReceiver
+
+    ref = "LD0/LLN0$GO$gcb1"
+    receiver = GooseReceiver(ReceiverConfig(interface="eth-test"))
+    receiver.add_subscription(ref)
+    first = CapturedPacket(
+        timestamp=1000.1,
+        src_mac="",
+        dst_mac="",
+        raw_bytes=b"",
+        length=0,
+        go_cb_ref=ref,
+        st_num=9,
+        sq_num=2,
+        send_timestamp=1000,
+        time_allowed_to_live=1000,
+        data_values=({"value": False},),
+    )
+    current = replace(first, timestamp=1001.1, st_num=10, sq_num=5, send_timestamp=1001, data_values=({"value": True},))
+    receiver._on_captured_packet(first)
+    receiver._on_captured_packet(current)
+    before = receiver.get_subscription(ref)
+
+    receiver._on_captured_packet(replace(first, timestamp=1001.2, sq_num=3))
+    receiver._on_captured_packet(replace(current, timestamp=1001.3, sq_num=4))
+    receiver._on_captured_packet(replace(current, timestamp=1001.4))
+    assert receiver.get_subscription(ref) == before
+    assert len(receiver.get_history(ref)) == 2
+
+    receiver._on_captured_packet(replace(first, timestamp=1002.1, st_num=restart_st_num, sq_num=1, send_timestamp=1002))
+    latest = receiver.get_subscription(ref)
+    assert latest["st_num"] == restart_st_num
+    assert latest["sq_num"] == 1
+    assert latest["data_values"][0]["value"] is False
+    assert latest["last_update"] == 1002.1
+
+
+def test_subscription_accepts_sequence_and_state_counter_wrap():
+    from src.proto.iec61850.plugins.goose.subscriber import GooseReceiver
+    from src.proto.iec61850.plugins.goose.types import MAX_GOOSE_SEQUENCE
+
+    ref = "LD0/LLN0$GO$gcb1"
+    receiver = GooseReceiver(ReceiverConfig(interface="eth-test"))
+    receiver.add_subscription(ref)
+    packet = CapturedPacket(
+        timestamp=1000,
+        src_mac="",
+        dst_mac="",
+        raw_bytes=b"",
+        length=0,
+        go_cb_ref=ref,
+        send_timestamp=999,
+        st_num=MAX_GOOSE_SEQUENCE,
+        sq_num=MAX_GOOSE_SEQUENCE,
+    )
+    receiver._on_captured_packet(packet)
+    receiver._on_captured_packet(replace(packet, sq_num=1))
+    assert receiver.get_subscription(ref)["sq_num"] == 1
+    receiver._on_captured_packet(replace(packet, st_num=1, sq_num=0))
+    assert receiver.get_subscription(ref)["st_num"] == 1
+
+
+def test_subscription_detects_small_float_changes():
+    from src.proto.iec61850.plugins.goose.publisher import GoosePublisher
+    from src.proto.iec61850.plugins.goose.subscriber import GooseReceiver
+    from src.proto.iec61850.plugins.goose.types import GooseDataSetEntry, IecDataType, PublisherConfig
+
+    ref = "LD0/LLN0$GO$gcb1"
+    receiver = GooseReceiver(ReceiverConfig(interface="eth-test"))
+    receiver.add_subscription(ref)
+    capture = GooseCaptureEngine(interface="eth-test")
+    capture.set_callback(receiver._on_captured_packet)
+    publisher = GoosePublisher(PublisherConfig(go_cb_ref=ref))
+    publisher.add_entry(GooseDataSetEntry("mag", 1e-7, IecDataType.FLOAT))
+    ethernet = bytes.fromhex("010ccd010001 020304050607 88b8")
+    capture._process_packet(ethernet + publisher._build_goose_payload())
+    assert publisher.update_entry(0, 2e-7)
+    capture._process_packet(ethernet + publisher._build_goose_payload())
+
+    latest = receiver.get_history(ref)[0]
+    assert latest["changed_count"] == 1
+    value = latest["data_values"][0]
+    assert value["previous_value"] == pytest.approx(1e-7)
+    assert value["value"] == pytest.approx(2e-7)
+    assert value["last_update"] == latest["received_at"]
+
+
+def test_subscription_tal_uses_monotonic_deadline(monkeypatch):
+    from src.proto.iec61850.plugins.goose import subscriber as subscriber_module
+
+    clock = [20.0]
+    monkeypatch.setattr(subscriber_module, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    ref = "LD0/LLN0$GO$gcb1"
+    receiver = subscriber_module.GooseReceiver(ReceiverConfig(interface="eth-test"))
+    sub = receiver.add_subscription(ref)
+    receiver._on_captured_packet(
+        CapturedPacket(
+            timestamp=1000,
+            src_mac="",
+            dst_mac="",
+            raw_bytes=b"",
+            length=0,
+            go_cb_ref=ref,
+            st_num=1,
+            time_allowed_to_live=100,
+        )
+    )
+    receiver._is_running = True
+
+    def wait(timeout):
+        if timeout is None:
+            assert sub.state == "lost"
+            receiver._is_running = False
+        else:
+            assert sub.state == "connected"
+            assert timeout == pytest.approx(0.1)
+            clock[0] += timeout
+
+    monkeypatch.setattr(receiver._monitor_condition, "wait", wait)
+    receiver._monitor_loop()
+    assert sub.expires_at is None

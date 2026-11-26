@@ -65,7 +65,7 @@ def _decode_mms(tag: int, raw: bytes) -> Any:
     if tag == 0x83:
         return bool(raw[0]) if raw else False
     if tag == 0x84:
-        return int.from_bytes(raw[1:], "big") if len(raw) > 1 else 0
+        return int.from_bytes(raw[1:], "big") >> raw[0] if raw and raw[0] < 8 else _hex(raw)
     if tag == 0x85:
         return int.from_bytes(raw, "big", signed=True) if raw else 0
     if tag == 0x86:
@@ -73,9 +73,9 @@ def _decode_mms(tag: int, raw: bytes) -> Any:
     if tag == 0x87:
         payload = raw[1:] if len(raw) in (5, 9) else raw
         if len(payload) == 4:
-            return round(struct.unpack(">f", payload)[0], 6)
+            return struct.unpack(">f", payload)[0]
         if len(payload) == 8:
-            return round(struct.unpack(">d", payload)[0], 9)
+            return struct.unpack(">d", payload)[0]
         return _hex(raw)
     if tag == 0x89:
         return raw.hex()
@@ -95,11 +95,13 @@ def _parse_all_data(result: dict[str, Any], data: bytes, start: int, end: int) -
         cursor += 1
         length, value_start = _read_length(data, cursor)
         if length is None or value_start + length > end:
+            result["valid"] = False
             result["complete"] = False
             result["warnings"].append(f"ALL_DATA第{len(objects)}项BER长度无效")
             break
         value_end = value_start + length
         raw_value = data[value_start:value_end]
+        value = _decode_mms(tag, raw_value)
         objects.append(
             {
                 "index": len(objects),
@@ -110,13 +112,13 @@ def _parse_all_data(result: dict[str, Any], data: bytes, start: int, end: int) -
                 "address": None,
                 "type": MMS_TYPES.get(tag, f"unknown(0x{tag:02X})"),
                 "ber_tag": f"0x{tag:02X}",
-                "value": _decode_mms(tag, raw_value),
+                "value": value,
                 "raw_value": _hex(data[object_start:value_end]),
                 "value_raw_hex": _hex(raw_value),
                 "quality": None,
                 "timestamp": None,
                 "fields": [
-                    _field("value", "DataSet值", value_start, raw_value, _decode_mms(tag, raw_value)),
+                    _field("value", "DataSet值", value_start, raw_value, value),
                 ],
             }
         )
@@ -187,21 +189,22 @@ def parse_goose(raw: bytes, *, role: str = "Publish") -> dict[str, Any]:
             ),
         ]
     )
-    _validation(
-        result,
-        "GOOSE长度",
-        declared_length == len(raw) - header_offset,
-        f"声明{declared_length}字节，实际{len(raw) - header_offset}字节",
-    )
     result["app_id"] = app_id
     pdu_start = header_offset + 8
+    goose_end = header_offset + declared_length
+    if not pdu_start < goose_end <= len(raw):
+        return _fail(result, f"GOOSE长度无效: 声明{declared_length}字节，收到{len(raw) - header_offset}字节")
+    _validation(result, "GOOSE长度", True, f"声明{declared_length}字节")
     if raw[pdu_start] != 0x61:
         return _fail(result, f"GOOSE PDU标签应为0x61，实际0x{raw[pdu_start]:02X}")
     pdu_length, content_start = _read_length(raw, pdu_start + 1)
     if pdu_length is None:
         return _fail(result, "GOOSE PDU BER长度无效")
-    pdu_end = min(content_start + pdu_length, len(raw))
+    pdu_end = content_start + pdu_length
+    if pdu_end != goose_end:
+        return _fail(result, "GOOSE PDU BER长度与GOOSE头的声明长度不符")
     fields.append(_field("goose_pdu", "GOOSE PDU", pdu_start, raw[pdu_start:content_start], f"内容长度{pdu_length}"))
+    tags: set[int] = set()
     cursor = content_start
     while cursor < pdu_end:
         tlv_start = cursor
@@ -209,9 +212,10 @@ def parse_goose(raw: bytes, *, role: str = "Publish") -> dict[str, Any]:
         cursor += 1
         length, value_start = _read_length(raw, cursor)
         if length is None or value_start + length > pdu_end:
-            result["complete"] = False
-            result["warnings"].append(f"PDU字段0x{tag:02X}长度无效")
-            break
+            return _fail(result, f"PDU字段0x{tag:02X}长度无效")
+        if tag in tags and (tag in PDU_FIELDS or tag == 0xAB):
+            return _fail(result, f"PDU字段0x{tag:02X}重复")
+        tags.add(tag)
         value_end = value_start + length
         value_raw = raw[value_start:value_end]
         if tag == 0xAB:
@@ -223,6 +227,8 @@ def parse_goose(raw: bytes, *, role: str = "Publish") -> dict[str, Any]:
                 value: Any = value_raw.decode("utf-8", errors="replace")
             elif kind == "integer":
                 value = int.from_bytes(value_raw, "big")
+                if not value_raw or value > 0xFFFFFFFF:
+                    return _fail(result, f"{name}超出无符号32位整数范围")
             elif kind == "boolean":
                 value = bool(value_raw[0]) if value_raw else False
             elif kind == "utc_time":
@@ -233,6 +239,16 @@ def parse_goose(raw: bytes, *, role: str = "Publish") -> dict[str, Any]:
             fields.append(_field(key, name, tlv_start, raw[tlv_start:value_end], value, f"BER标签0x{tag:02X}"))
         cursor = value_end
 
+    if not {0x80, 0x81, 0x82, 0x84, 0x85, 0x86, 0x88, 0x8A, 0xAB} <= tags:
+        return _fail(result, "GOOSE PDU缺少必需字段")
+    if not isinstance(result["goose_timestamp"], dict):
+        return _fail(result, "GOOSE事件时间长度无效")
+    _validation(
+        result,
+        "DataSet条目数",
+        result["num_entries"] == len(result["objects"]),
+        f"声明{result['num_entries']}项，解析到{len(result['objects'])}项",
+    )
     result["frame_kind"] = "GOOSE发布报文"
     result["summary"] = (
         f"APPID 0x{app_id:04X}，GoCB {result.get('go_cb_ref', '-') or '-'}，"

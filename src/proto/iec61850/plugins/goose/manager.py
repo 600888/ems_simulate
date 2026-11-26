@@ -279,6 +279,7 @@ class GooseResourceManager:
                 name=e["name"],
                 value=e["value"],
                 iec_type=IecDataType(e.get("iec_type", "boolean")),
+                last_update=e["last_update"],
             )
             new_publisher.add_entry(entry)
 

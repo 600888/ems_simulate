@@ -20,7 +20,12 @@ from src.proto.iec61850.plugins.goose.publisher import GoosePublisher
 from src.proto.iec61850.plugins.goose.types import GooseDataSetEntry, PublisherConfig
 from src.web.api.channel import goose
 from src.web.api.exceptions import ValidationError
-from src.web.api.schemas.goose import GoosePublisherCreate, GoosePublisherStatus, GoosePublisherUpdate
+from src.web.api.schemas.goose import (
+    GoosePublisherCreate,
+    GoosePublisherEntryUpdate,
+    GoosePublisherStatus,
+    GoosePublisherUpdate,
+)
 
 CB_REF = "TESTLD/LLN0$GO$gcb1"
 
@@ -64,6 +69,17 @@ def test_changing_final_keeps_existing_tal(values):
     updated = manager.update_publisher(created["id"], retransmit_final_ms=3000)
     assert updated["retransmit_final_ms"] == 3000
     assert updated["time_allowed_to_live"] == created["time_allowed_to_live"]
+
+
+def test_changing_publisher_config_preserves_entry_update_time(monkeypatch):
+    clock = Mock(side_effect=[1000.125, 1001.250])
+    monkeypatch.setattr(publisher_module, "time", SimpleNamespace(time=clock))
+    manager = manager_module.GooseResourceManager()
+    created = manager.create_publisher(go_cb_ref=CB_REF, entries=[{"name": "stVal", "value": False}])
+    assert manager.update_publisher_entry(created["id"], 0, True)
+    updated = manager.update_publisher(created["id"], simulation=False)
+    assert updated["entries"][0]["value"] is True
+    assert updated["entries"][0]["last_update"] == 1001.250
 
 
 def test_imported_tal_defaults_to_twice_imported_final():
@@ -186,6 +202,34 @@ def test_failed_send_does_not_advance_strategy_or_sequence(monkeypatch):
     assert publisher.sq_num == 0
     assert publisher._next_retransmit_at == 0
     assert publisher._retransmit_interval == 0.002
+
+
+@pytest.mark.asyncio
+async def test_invalid_entry_update_keeps_sending_last_valid_state(monkeypatch):
+    save = Mock(return_value=1)
+    manager = manager_module.GooseResourceManager(PersistenceAdapter(SimpleNamespace(save_publisher=save)))
+    created = manager.create_publisher(
+        go_cb_ref=CB_REF, channel_id=7, entries=[{"name": "mag", "value": 3, "iec_type": "integer"}]
+    )
+    publisher = manager._publishers[created["id"]]
+    publisher._is_running = publisher._is_created = publisher._uses_npcap_transport = True
+    publisher._publisher = object()
+    send = Mock(return_value=True)
+    monkeypatch.setattr(publisher, "_publish_with_npcap", send)
+    assert publisher.publish()
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(goose_manager=manager)))
+
+    with pytest.raises(ValidationError, match="integer"):
+        await goose.update_publisher_entry(
+            request, GoosePublisherEntryUpdate(publisher_id=created["id"], index=0, value="invalid")
+        )
+
+    assert publisher.get_entries() == created["entries"]
+    assert publisher.st_num == 1
+    assert publisher.sq_num == 1
+    save.assert_called_once()
+    send.assert_called_once()
+    assert publisher.publish()
 
 
 @pytest.mark.parametrize(

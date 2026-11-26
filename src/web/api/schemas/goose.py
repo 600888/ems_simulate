@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from src.proto.iec61850.plugins.goose.types import IecDataType, normalize_goose_value
+
 # ===== GOOSE Publisher 相关 =====
 
 
@@ -25,6 +27,11 @@ class GooseDataSetEntryCreate(BaseModel):
         if v not in allowed:
             raise ValueError(f"iec_type 必须是 {allowed} 之一, 收到: {v}")
         return v
+
+    @model_validator(mode="after")
+    def validate_value(self):
+        self.value = normalize_goose_value(IecDataType(self.iec_type), self.value)
+        return self
 
 
 class GooseDataSetEntryUpdate(BaseModel):

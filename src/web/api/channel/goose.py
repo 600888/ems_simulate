@@ -460,11 +460,14 @@ async def update_publisher_entry(
 ):
     """更新 Publisher 数据集条目值"""
     manager = _get_goose_manager(request)
-    result = manager.update_publisher_entry(
-        publisher_id=body.publisher_id,
-        index=body.index,
-        value=body.value,
-    )
+    try:
+        result = manager.update_publisher_entry(
+            publisher_id=body.publisher_id,
+            index=body.index,
+            value=body.value,
+        )
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
     if result is None:
         raise NotFoundError("GOOSE Publisher 或条目未找到")
 
@@ -488,8 +491,9 @@ async def update_publisher_entry(
                                 entry_name = entries[body.index].get("name", "")
                                 if entry_name:
                                     # 尝试更新 MMS 数据模型中的对应 DA
-                                    iec61850_server.set_point_value(entry_name, body.value)
-                                    log.debug(f"已同步更新 MMS 模型 DA: {entry_name} = {body.value}")
+                                    value = entries[body.index]["value"]
+                                    iec61850_server.set_point_value(entry_name, value)
+                                    log.debug(f"已同步更新 MMS 模型 DA: {entry_name} = {value}")
     except Exception as sync_err:
         log.debug(f"同步 MMS 模型 DA 值失败（非致命）: {sync_err}")
 

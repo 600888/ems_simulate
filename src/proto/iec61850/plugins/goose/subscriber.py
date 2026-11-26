@@ -19,9 +19,10 @@ from pyiec61850 import pyiec61850 as iec61850
 from src.common.mac_address import normalize_mac_address
 
 from ...defs.constants import HAS_IEC61850
+from ...defs.mms_types import MmsType, mms_type_from_native
 from ...log import log
 from .capture import CapturedPacket, GooseCaptureEngine
-from .types import GooseState, GooseSubscriptionInfo, MmsType, ReceiverConfig
+from .types import MAX_GOOSE_SEQUENCE, GooseState, GooseSubscriptionInfo, ReceiverConfig
 
 
 class _PyGooseHandler(iec61850.GooseHandler):
@@ -75,7 +76,7 @@ class _DataSetParser:
         """解析单个 MMS 数据元素"""
         entry: dict[str, Any] = {"index": index, "type": "unknown", "value": None}
 
-        mms_type = iec61850.MmsValue_getType(element)
+        mms_type = mms_type_from_native(iec61850.MmsValue_getType(element), iec61850)
 
         if mms_type == MmsType.BOOLEAN:
             entry["type"] = "boolean"
@@ -97,7 +98,7 @@ class _DataSetParser:
             entry["value"] = int(iec61850.MmsValue_getUtcTimeInMs(element))
         elif mms_type == MmsType.BIT_STRING:
             entry["type"] = "bitstring"
-            entry["value"] = int(iec61850.MmsValue_getBitStringAsInteger(element))
+            entry["value"] = int(iec61850.MmsValue_getBitStringAsIntegerBigEndian(element))
 
         return entry
 
@@ -139,7 +140,7 @@ class GooseReceiver:
         self._capture_engine: GooseCaptureEngine | None = None
 
         # 状态监控
-        self._monitor_stop = threading.Event()
+        self._monitor_condition = threading.Condition(self._lock)
         self._monitor_thread: threading.Thread | None = None
 
     @property
@@ -207,6 +208,7 @@ class GooseReceiver:
         with self._lock:
             if go_cb_ref in self._subscriptions:
                 del self._subscriptions[go_cb_ref]
+                self._monitor_condition.notify()
                 return True
             return False
 
@@ -234,6 +236,7 @@ class GooseReceiver:
             if sub is None:
                 return None
             new_ref = str(changes.pop("go_cb_ref", current_go_cb_ref) or current_go_cb_ref)
+            previous_filter = (sub.go_cb_ref, sub.app_id, sub.dst_mac, sub.enabled)
             allowed = {
                 "app_id",
                 "dst_mac",
@@ -262,6 +265,10 @@ class GooseReceiver:
                 self._subscriptions[new_ref] = sub
                 if current_go_cb_ref in self._history:
                     self._history[new_ref] = self._history.pop(current_go_cb_ref)
+            if previous_filter != (sub.go_cb_ref, sub.app_id, sub.dst_mac, sub.enabled):
+                sub.state = GooseState.INIT
+                sub.expires_at = None
+                self._monitor_condition.notify()
             return sub.to_dict()
 
     @staticmethod
@@ -290,6 +297,34 @@ class GooseReceiver:
 
     # ===== 报文处理 =====
 
+    @staticmethod
+    def _accept_sequence(
+        sub: GooseSubscriptionInfo, st_num: int, sq_num: int, event_timestamp: float, now: float
+    ) -> bool:
+        """Reject late and duplicate frames while allowing publisher restart and counter wrap."""
+        if sub.state not in (GooseState.CONNECTED, GooseState.LOST):
+            return True
+        has_event_time = event_timestamp > 0 and sub.event_timestamp > 0
+        if has_event_time and event_timestamp != sub.event_timestamp:
+            # A restarted publisher may reuse stNum, even if its first frame was missed.
+            return event_timestamp > sub.event_timestamp
+        if not has_event_time and sq_num == 0 and (st_num, sq_num) != (sub.st_num, sub.sq_num):
+            if sub.state == GooseState.LOST or (sub.expires_at is not None and now >= sub.expires_at):
+                return True
+        if st_num == sub.st_num:
+            delta = (sq_num - sub.sq_num) & MAX_GOOSE_SEQUENCE
+        else:
+            delta = (st_num - sub.st_num) & MAX_GOOSE_SEQUENCE
+        return 0 < delta <= MAX_GOOSE_SEQUENCE // 2
+
+    def _refresh_subscription(self, sub: GooseSubscriptionInfo, event_timestamp: float, now: float) -> None:
+        """Mark an accepted frame as live and wake the monitor to use the new deadline."""
+        sub.state = GooseState.CONNECTED
+        sub.event_timestamp = event_timestamp
+        tal = sub.time_allowed_to_live
+        sub.expires_at = now + tal / 1000 if tal > 0 else None
+        self._monitor_condition.notify()
+
     def _on_goose_message(self, subscriber: Any) -> None:
         """GOOSE 报文接收回调 (底层 C 回调的 Python 包装)"""
         try:
@@ -297,7 +332,14 @@ class GooseReceiver:
 
             with self._lock:
                 sub = self._subscriptions.get(go_cb_ref)
-                if not sub:
+                if not sub or not sub.enabled or not iec61850.GooseSubscriber_isValid(subscriber):
+                    return
+
+                st_num = iec61850.GooseSubscriber_getStNum(subscriber)
+                sq_num = iec61850.GooseSubscriber_getSqNum(subscriber)
+                timestamp = iec61850.GooseSubscriber_getTimestamp(subscriber)
+                now = time.monotonic()
+                if not self._accept_sequence(sub, st_num, sq_num, timestamp / 1000, now):
                     return
 
                 # 读取报文字段
@@ -305,16 +347,12 @@ class GooseReceiver:
                 sub.data_set_ref = iec61850.GooseSubscriber_getDataSet(subscriber) or ""
                 sub.received_conf_rev = iec61850.GooseSubscriber_getConfRev(subscriber)
                 sub.config_mismatch = bool(sub.conf_rev and sub.received_conf_rev != sub.conf_rev)
-                sub.st_num = iec61850.GooseSubscriber_getStNum(subscriber)
-                sub.sq_num = iec61850.GooseSubscriber_getSqNum(subscriber)
+                sub.st_num = st_num
+                sub.sq_num = sq_num
                 sub.time_allowed_to_live = iec61850.GooseSubscriber_getTimeAllowedToLive(subscriber)
-                sub.timestamp = iec61850.GooseSubscriber_getTimestamp(subscriber)
-
-                # 检查有效性
-                is_valid = iec61850.GooseSubscriber_isValid(subscriber)
-
-                sub.state = GooseState.CONNECTED if is_valid else GooseState.ERROR
+                sub.timestamp = timestamp
                 sub.last_update = time.time()
+                self._refresh_subscription(sub, timestamp / 1000, now)
 
                 # 解析数据集值
                 previous_items = sub.data_values
@@ -387,6 +425,9 @@ class GooseReceiver:
                     expected_mac = ":".join(f"{item:02X}" for item in sub.dst_mac)
                     if packet.dst_mac.upper() != expected_mac:
                         return
+                now = time.monotonic()
+                if not self._accept_sequence(sub, packet.st_num, packet.sq_num, packet.send_timestamp, now):
+                    return
 
                 sub.go_id = packet.go_id
                 sub.data_set_ref = packet.data_set_ref
@@ -396,8 +437,8 @@ class GooseReceiver:
                 sub.sq_num = packet.sq_num
                 sub.time_allowed_to_live = packet.time_allowed_to_live
                 sub.timestamp = int((packet.send_timestamp if use_event_timestamp else packet.timestamp) * 1000)
-                sub.state = GooseState.CONNECTED
                 sub.last_update = packet.timestamp
+                self._refresh_subscription(sub, packet.send_timestamp, now)
 
                 previous_items = sub.data_values
                 parsed_values = [dict(item) for item in packet.data_values]
@@ -540,14 +581,14 @@ class GooseReceiver:
 
     def _start_monitor(self) -> None:
         """启动 GOOSE 抓包监控；已有监控线程运行时不重复创建。"""
-        self._monitor_stop.clear()
         self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._monitor_thread.start()
 
     def stop(self) -> None:
         """停止 GOOSE Receiver"""
-        self._is_running = False
-        self._monitor_stop.set()
+        with self._monitor_condition:
+            self._is_running = False
+            self._monitor_condition.notify()
 
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=2.0)
@@ -584,26 +625,28 @@ class GooseReceiver:
         with self._lock:
             for sub in self._subscriptions.values():
                 sub.state = GooseState.INIT
+                sub.expires_at = None
 
         log.info("GOOSE Receiver 已停止")
 
     def _monitor_loop(self) -> None:
         """状态监控循环 - 检测超时订阅"""
-        while not self._monitor_stop.is_set():
-            try:
-                now = time.time()
-                with self._lock:
-                    for sub in self._subscriptions.values():
-                        if sub.last_update > 0 and sub.time_allowed_to_live > 0:
-                            elapsed = (now - sub.last_update) * 1000  # ms
-                            if elapsed > sub.time_allowed_to_live:
-                                if sub.state != GooseState.LOST:
-                                    sub.state = GooseState.LOST
-                                    log.warning(f"GOOSE 订阅超时: {sub.go_cb_ref}")
-            except Exception as e:
-                log.error(f"GOOSE 状态监控异常: {e}")
-
-            self._monitor_stop.wait(1.0)
+        with self._monitor_condition:
+            while self._is_running:
+                now = time.monotonic()
+                next_deadline = None
+                for sub in self._subscriptions.values():
+                    deadline = sub.expires_at
+                    if deadline is None:
+                        continue
+                    if deadline <= now:
+                        sub.state = GooseState.LOST
+                        sub.expires_at = None
+                        log.warning(f"GOOSE 订阅超时: {sub.go_cb_ref}")
+                    elif next_deadline is None or deadline < next_deadline:
+                        next_deadline = deadline
+                timeout = None if next_deadline is None else min(next_deadline - now, threading.TIMEOUT_MAX)
+                self._monitor_condition.wait(timeout)
 
     def get_status(self) -> dict[str, Any]:
         """获取 Receiver 状态"""

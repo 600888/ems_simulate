@@ -13,6 +13,7 @@ def _frame() -> bytes:
             _tlv(0x81, b"\x03\xe8"),
             _tlv(0x82, b"LD0/LLN0$dsGOOSE1"),
             _tlv(0x83, b"gcb1"),
+            _tlv(0x84, b"\x00\x00\x00\x01" + bytes(4)),
             _tlv(0x85, b"\x01"),
             _tlv(0x86, b"\x00"),
             _tlv(0x87, b"\x00"),

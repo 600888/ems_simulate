@@ -259,8 +259,10 @@
     >
       <template v-if="detailPacket">
         <el-descriptions :column="3" border size="small">
-          <el-descriptions-item :label="$t('goose.sendTime')">{{
-            formatGooseTime(detailPacket.send_timestamp)
+          <el-descriptions-item :label="$t('goose.eventTime')">{{
+            formatGooseTime(
+              detailPacket.event_timestamp ?? detailPacket.send_timestamp,
+            )
           }}</el-descriptions-item>
           <el-descriptions-item :label="$t('goose.receiveTime')">{{
             formatGooseTime(
@@ -270,9 +272,11 @@
           <el-descriptions-item :label="$t('goose.length')">{{
             $t("goose.bytes", { count: detailPacket.length })
           }}</el-descriptions-item>
-          <el-descriptions-item :label="$t('goose.e2eDelay')" :span="3">{{
-            formatE2eDelay(detailPacket)
-          }}</el-descriptions-item>
+          <el-descriptions-item
+            :label="$t('goose.eventToCaptureTime')"
+            :span="3"
+            >{{ formatEventToCaptureTime(detailPacket) }}</el-descriptions-item
+          >
           <el-descriptions-item :label="$t('goose.srcMac')">{{
             detailPacket.src_mac
           }}</el-descriptions-item>
@@ -569,32 +573,12 @@ function toEpochMs(value: number | null | undefined): number | null {
   return Math.abs(n) >= 100_000_000_000 ? n : n * 1000;
 }
 
-/** 端到端延时 = 接收时间 − 报文发出时间，单位 ms。 */
-function packetE2eDelayMs(
-  packet: {
-    timestamp?: number | null | undefined;
-    receive_timestamp?: number | null | undefined;
-    send_timestamp?: number | null | undefined;
-  } | null,
-): number | null {
-  if (!packet) return null;
+function formatEventToCaptureTime(packet: GooseCapturedPacket): string {
   const recv = toEpochMs(packet.receive_timestamp ?? packet.timestamp);
-  const send = toEpochMs(packet.send_timestamp);
-  if (recv === null || send === null || send <= 0) return null;
-  return recv - send;
-}
-
-/** 格式化端到端延时 */
-function formatE2eDelay(
-  packet: {
-    timestamp?: number | null | undefined;
-    receive_timestamp?: number | null | undefined;
-    send_timestamp?: number | null | undefined;
-  } | null,
-): string {
-  const ms = packetE2eDelayMs(packet);
-  if (ms === null) return "-";
-  if (Math.abs(ms) < 1000) return `${ms} ms`;
+  const event = toEpochMs(packet.event_timestamp ?? packet.send_timestamp);
+  if (recv === null || event === null || event <= 0) return "-";
+  const ms = recv - event;
+  if (Math.abs(ms) < 1000) return `${ms.toFixed(3)} ms`;
   return `${(ms / 1000).toFixed(3)} s`;
 }
 

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum
+import math
+import struct
 from typing import Any
 
 from src.common.mac_address import format_mac_address, normalize_mac_address
@@ -57,6 +59,38 @@ DEFAULT_TIME_ALLOWED_TO_LIVE = 2 * DEFAULT_RETRANSMIT_FINAL_MS
 DEFAULT_CONF_REV = 1
 DEFAULT_ST_NUM = 1
 DEFAULT_SQ_NUM = 0
+MAX_GOOSE_SEQUENCE = 0xFFFFFFFF
+GOOSE_BITSTRING_WIDTH = 4
+
+
+def normalize_goose_value(iec_type: IecDataType, value: Any) -> bool | int | float | str:
+    """Convert a value to the common representation accepted by both transports."""
+    try:
+        if iec_type == IecDataType.BOOLEAN:
+            if isinstance(value, str):
+                return {"true": True, "false": False, "1": True, "0": False}[value.strip().lower()]
+            if value in (None, False, True):
+                return bool(value)
+        elif iec_type == IecDataType.STRING:
+            return str(value or "")
+        elif iec_type == IecDataType.FLOAT:
+            number = float(value or 0)
+            if math.isfinite(number):
+                struct.pack(">f", number)
+                return number
+        else:
+            number = int(value or 0)
+            if not isinstance(value, float) or value == number:
+                if iec_type == IecDataType.INTEGER and -(1 << 31) <= number < (1 << 31):
+                    return number
+                if iec_type == IecDataType.BITSTRING and 0 <= number < 1 << GOOSE_BITSTRING_WIDTH:
+                    return number
+                if iec_type == IecDataType.TIMESTAMP and 0 <= number < (1 << 32) * 1000:
+                    return number
+    except (KeyError, OverflowError, TypeError, ValueError):
+        pass
+    raise ValueError(f"无效的 GOOSE {iec_type.value} 值: {value!r}")
+
 
 GOOSE_STATE_COLOR: dict[GooseState, str] = {
     GooseState.INIT: "#909399",
@@ -109,6 +143,8 @@ class GooseSubscriptionInfo:
     data_values: list[dict[str, Any]] = field(default_factory=list)
     message_count: int = 0
     last_change: float = 0.0
+    event_timestamp: float = 0.0
+    expires_at: float | None = None
 
     def __post_init__(self) -> None:
         """完成GooseSubscriptionInfo字段初始化，并规范化需要参与匹配的配置值。"""
@@ -165,8 +201,6 @@ class PublisherConfig:
 
     def __post_init__(self) -> None:
         """拒绝无法调度的重传策略，包括非有限倍数。"""
-        import math
-
         if not 1 <= self.retransmit_initial_ms <= self.retransmit_final_ms <= 60000:
             raise ValueError("重传时间必须满足 1 ≤ Initial ≤ Final ≤ 60000 ms")
         if not math.isfinite(self.retransmit_multiplier) or not 1 <= self.retransmit_multiplier <= 100:

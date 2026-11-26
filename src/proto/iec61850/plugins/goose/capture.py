@@ -60,7 +60,7 @@ class CapturedPacket:
     vlan_prio: int = 0
     has_vlan: bool = False
     interface: str = ""
-    # 报文发出时间（GOOSE 帧内 goose_timestamp 字段，epoch 秒）；解析不到时为 0
+    # GOOSE 帧内事件时间 t（epoch 秒）。保留旧字段名供已有调用方使用。
     send_timestamp: float = 0.0
     receive_timestamp: float = 0.0
 
@@ -76,6 +76,7 @@ class CapturedPacket:
             "dst_mac": self.dst_mac,
             "timestamp": self.timestamp,
             "receive_timestamp": self.receive_timestamp or self.timestamp,
+            "event_timestamp": self.send_timestamp,
             "send_timestamp": self.send_timestamp,
             "time": self.formatted_time,
             "length": self.length,
@@ -480,7 +481,7 @@ class GooseCaptureEngine:
 
         parsed = parse_goose(raw_data)
         go_cb_ref = parsed.get("go_cb_ref")
-        if not parsed["complete"] or go_cb_ref is None:
+        if not parsed["valid"] or not parsed["complete"] or not go_cb_ref:
             return
 
         # GoCBRef 过滤
@@ -488,8 +489,7 @@ class GooseCaptureEngine:
             return
 
         # 创建不可变报文记录
-        # 报文的"发出时间"取自 GOOSE 帧内的 goose_timestamp（事件时间），
-        # 接收时间即捕获时刻 (time.time())。
+        # 同一状态的重传帧携带相同的事件时间 t。
         now_ts = time.time()
         goose_time = parsed.get("goose_timestamp")
         send_ts = 0.0

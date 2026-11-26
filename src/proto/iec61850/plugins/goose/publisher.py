@@ -20,10 +20,13 @@ from ...log import log
 from .types import (
     DEFAULT_SQ_NUM,
     DEFAULT_ST_NUM,
+    GOOSE_BITSTRING_WIDTH,
     GOOSE_MULTICAST_MAC_PREFIX,
+    MAX_GOOSE_SEQUENCE,
     GooseDataSetEntry,
     IecDataType,
     PublisherConfig,
+    normalize_goose_value,
 )
 
 if HAS_IEC61850:
@@ -92,6 +95,7 @@ class GoosePublisher:
         self._entries: list[GooseDataSetEntry] = []
         self._st_num: int = DEFAULT_ST_NUM
         self._sq_num: int = DEFAULT_SQ_NUM
+        self._state_timestamp_ms: int | None = None
 
         # 计算默认组播 MAC
         self._dst_mac = config.dst_mac or (
@@ -104,6 +108,7 @@ class GoosePublisher:
         self._is_running = False
         self._is_created = False
         self._uses_npcap_transport = False
+        self._native_st_num = DEFAULT_ST_NUM
 
         # 定时重发
         self._retransmit_interval = config.retransmit_initial_ms / 1000.0
@@ -199,7 +204,7 @@ class GoosePublisher:
         with self._lock:
             if any(e.name == entry.name for e in self._entries):
                 raise ValueError(f"数据集条目名称已存在: {entry.name}")
-            self._entries.append(replace(entry, last_update=time.time()))
+            self._entries.append(entry if entry.last_update else replace(entry, last_update=time.time()))
             self._is_created = False
 
     def remove_entry(self, index: int) -> None:
@@ -213,17 +218,19 @@ class GoosePublisher:
         """更新条目值，返回 True 表示值有变化 (触发 stNum 递增)
 
         当值变化时:
-        - stNum 自动递增，sqNum 重置
+        - stNum 自动递增，sqNum 重置，更新事件时间 t
         - 如果 Publisher 正在运行，立即发送 GOOSE 报文（IEC 61850 要求）
         """
         changed = False
         with self._lock:
             if 0 <= index < len(self._entries):
                 old_entry = self._entries[index]
+                value = normalize_goose_value(old_entry.iec_type, value)
                 if old_entry.value != value:
-                    self._entries[index] = replace(old_entry, value=value, last_update=time.time())
-                    self._st_num += 1
-                    self._sq_num = 0
+                    update_time = time.time()
+                    self._entries[index] = replace(old_entry, value=value, last_update=update_time)
+                    self._state_timestamp_ms = int(update_time * 1000)
+                    self._advance_state()
                     changed = True
                     # Keep the immediate state-change send and timer reset atomic
                     # with respect to the retransmission worker.
@@ -231,6 +238,10 @@ class GoosePublisher:
                         self.publish()
 
         return changed
+
+    def _advance_state(self) -> None:
+        self._st_num = (self._st_num + 1) & MAX_GOOSE_SEQUENCE or 1
+        self._sq_num = DEFAULT_SQ_NUM
 
     def get_entries(self) -> list[dict[str, Any]]:
         """获取条目并返回结果。"""
@@ -323,6 +334,7 @@ class GoosePublisher:
         adapter.call("GoosePublisher_setConfRev", self._publisher, self._config.conf_rev)
         adapter.call("GoosePublisher_setTimeAllowedToLive", self._publisher, self._config.time_allowed_to_live)
         adapter.call("GoosePublisher_setStNum", self._publisher, self._st_num)
+        self._native_st_num = self._st_num
         adapter.call("GoosePublisher_setSqNum", self._publisher, self._sq_num)
         adapter.call("GoosePublisher_setSimulation", self._publisher, self._config.simulation)
         called, _ = adapter.call("GoosePublisher_setNeedsCommission", self._publisher, self._config.needs_commissioning)
@@ -333,18 +345,21 @@ class GoosePublisher:
 
     def _entry_to_mms_value(self, entry: GooseDataSetEntry) -> Any:
         """将 GooseDataSetEntry 转换为 MmsValue"""
+        value = normalize_goose_value(entry.iec_type, entry.value)
         if entry.iec_type == IecDataType.BOOLEAN:
-            return iec61850.MmsValue_newBoolean(bool(entry.value))
+            return iec61850.MmsValue_newBoolean(value)
         elif entry.iec_type == IecDataType.INTEGER:
-            return iec61850.MmsValue_newIntegerFromInt32(int(entry.value or 0))
+            return iec61850.MmsValue_newIntegerFromInt32(value)
         elif entry.iec_type == IecDataType.FLOAT:
-            return iec61850.MmsValue_newFloat(float(entry.value or 0.0))
+            return iec61850.MmsValue_newFloat(value)
         elif entry.iec_type == IecDataType.STRING:
-            return iec61850.MmsValue_newVisibleString(str(entry.value or ""))
+            return iec61850.MmsValue_newVisibleString(value)
         elif entry.iec_type == IecDataType.BITSTRING:
-            return iec61850.MmsValue_newBitString(4)
+            bitstring = iec61850.MmsValue_newBitString(GOOSE_BITSTRING_WIDTH)
+            iec61850.MmsValue_setBitStringFromIntegerBigEndian(bitstring, value)
+            return bitstring
         elif entry.iec_type == IecDataType.TIMESTAMP:
-            return iec61850.MmsValue_newUtcTimeByMsTime(int(entry.value or 0))
+            return iec61850.MmsValue_newUtcTimeByMsTime(value)
         else:
             return iec61850.MmsValue_newBoolean(False)
 
@@ -356,6 +371,11 @@ class GoosePublisher:
             return True
 
         try:
+            # Reopening the transport creates a fresh event time on both paths.
+            # Send that event with a new state and its initial sequence number.
+            if self._sq_num != DEFAULT_SQ_NUM:
+                self._advance_state()
+            self._state_timestamp_ms = None
             self._create_publisher()
             self._is_running = True
 
@@ -441,24 +461,26 @@ class GoosePublisher:
 
     def _encode_mms_data(self, entry: GooseDataSetEntry) -> bytes:
         """按 IEC 数据类型把数据集成员编码为 GOOSE allData 项。"""
+        value = normalize_goose_value(entry.iec_type, entry.value)
         if entry.iec_type == IecDataType.BOOLEAN:
-            return self._ber_tlv(0x83, b"\xff" if bool(entry.value) else b"\x00")
+            return self._ber_tlv(0x83, b"\xff" if value else b"\x00")
         if entry.iec_type == IecDataType.INTEGER:
-            return self._ber_tlv(0x85, self._signed_bytes(int(entry.value or 0)))
+            return self._ber_tlv(0x85, self._signed_bytes(int(value)))
         if entry.iec_type == IecDataType.FLOAT:
-            return self._ber_tlv(0x87, b"\x08" + struct.pack(">f", float(entry.value or 0.0)))
+            return self._ber_tlv(0x87, b"\x08" + struct.pack(">f", value))
         if entry.iec_type == IecDataType.STRING:
-            return self._ber_tlv(0x8A, str(entry.value or "").encode("utf-8"))
+            return self._ber_tlv(0x8A, str(value).encode("utf-8"))
         if entry.iec_type == IecDataType.BITSTRING:
-            value = int(entry.value or 0) & 0x0F
-            return self._ber_tlv(0x84, bytes([4, value << 4]))
+            padding = 8 - GOOSE_BITSTRING_WIDTH
+            return self._ber_tlv(0x84, bytes([padding, int(value) << padding]))
         if entry.iec_type == IecDataType.TIMESTAMP:
-            return self._ber_tlv(0x91, self._utc_time(int(entry.value or 0)))
+            return self._ber_tlv(0x91, self._utc_time(int(value)))
         return self._ber_tlv(0x83, b"\x00")
 
     def _build_goose_payload(self) -> bytes:
         """根据当前 GoCB、序号和数据集内容构造完整 GOOSE APDU。"""
-        now_ms = int(time.time() * 1000)
+        if self._state_timestamp_ms is None:
+            self._state_timestamp_ms = int(time.time() * 1000)
         all_data = b"".join(self._encode_mms_data(entry) for entry in self._entries)
         fields = b"".join(
             [
@@ -466,7 +488,7 @@ class GoosePublisher:
                 self._ber_tlv(0x81, self._unsigned_bytes(self._effective_time_allowed_to_live())),
                 self._ber_tlv(0x82, self._config.data_set_ref.encode("utf-8")),
                 self._ber_tlv(0x83, self._config.go_id.encode("utf-8")),
-                self._ber_tlv(0x84, self._utc_time(now_ms)),
+                self._ber_tlv(0x84, self._utc_time(self._state_timestamp_ms)),
                 self._ber_tlv(0x85, self._unsigned_bytes(self._st_num)),
                 self._ber_tlv(0x86, self._unsigned_bytes(self._sq_num)),
                 self._ber_tlv(0x87, b"\xff" if self._config.simulation else b"\x00"),
@@ -521,7 +543,7 @@ class GoosePublisher:
     def _complete_publish(self) -> None:
         """仅成功发送后推进序号和重传计划；调用方持有发送锁。"""
         self._retransmit_interval = self._next_interval()
-        self._sq_num += 1
+        self._sq_num = (self._sq_num + 1) & MAX_GOOSE_SEQUENCE or 1
         self._next_retransmit_at = time.monotonic() + self._retransmit_interval
         self._retransmit_condition.notify_all()
 
@@ -556,6 +578,12 @@ class GoosePublisher:
                         self._complete_publish()
                     return result
 
+                if self._native_st_num != self._st_num:
+                    # libiec61850 refreshes t in increaseStNum; setStNum only changes the counter.
+                    iec61850.GoosePublisher_increaseStNum(self._publisher)
+                    iec61850.GoosePublisher_setStNum(self._publisher, self._st_num)
+                    self._native_st_num = self._st_num
+
                 # 创建 LinkedList 并填充 MMS 值
                 data_set_values = iec61850.LinkedList_create()
                 if not data_set_values:
@@ -569,7 +597,6 @@ class GoosePublisher:
                             iec61850.LinkedList_add(data_set_values, mms_val)
 
                     # 更新序号
-                    iec61850.GoosePublisher_setStNum(self._publisher, self._st_num)
                     iec61850.GoosePublisher_setSqNum(self._publisher, self._sq_num)
                     iec61850.GoosePublisher_setTimeAllowedToLive(
                         self._publisher, self._effective_time_allowed_to_live()
